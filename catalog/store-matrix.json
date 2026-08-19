@@ -28,16 +28,6 @@
     "outOfMatrixRule": "Repos that exist in the org and are deliberately NOT part of the store matrix. Each carries `why` in prose. A bare allow-list is a place to silence findings; a list where every line must say what it is for is a list somebody has to defend. `measured` records HOW MUCH is actually known about the entry, so a name-only declaration cannot be read later as a statement about the repo's contents.",
     "outOfMatrix": [
       {
-        "repo": "Nikatru_Storefront_Public",
-        "why": "THE STOREFRONT, under the name GitHub now gives it. A SHOP IS NOT A PRODUCT IN ITS OWN SHOP: Nikatru_Web_Store/Web/Apps read by the tree's own pattern means 'products shipped to a web store', so filing the storefront there makes the store a product of itself and hands the matrix's rename rules to the very repository that holds the pinned owner/repo strings. It is also the CONSUMER of every catalogue in this matrix - it reads apps.json and extensions.json out of the slots - and a consumer filed as one of the things it consumes is a cycle, not a row. backing.products[storefront] still claims no slot, deliberately. This entry REPLACES the `Project_Web_Presence` line lifted on 2026-08-19; that line is kept verbatim in github.supersededOutOfMatrix, because the repo did not stop existing, it stopped being called that.",
-        "measured": "2026-08-19 (second reading): exists in the org, PUBLIC, from read-only `gh repo list globalonlinedeveloper --limit 200 --json name,visibility,isArchived`. NOT archived. The working copy Projects/Nikatru_Storefront_Public now has origin https://github.com/globalonlinedeveloper/Nikatru_Storefront_Public.git - the rename LANDED and the local remote followed it, both measured, where the morning reading recorded the origin still pointing at Project_Web_Presence. Its CONTENTS were not re-enumerated by this edit; catalog/upstreams.json WAS opened, and is recorded under renamePins.observable[storefront-upstreams]."
-      },
-      {
-        "repo": "Rajasekar_Site_Public",
-        "why": "The PERSONAL CV SITE for rajasekarselvam.com, split out of the storefront into its own repository. It is not a Nikatru product at all - not an app, not a game, not an extension - so there is no store, no target and no type that could make it a row, and inventing one would put a person's CV in a product matrix to make a count tidy. Declared here for GitHub accounting; the working copy is declared in the top-level `infrastructure` block with the argument in full.",
-        "measured": "2026-08-19: exists in the org, PUBLIC, from the read-only `gh repo list`. Local working copy Projects/Rajasekar_Site_Public has origin https://github.com/globalonlinedeveloper/Rajasekar_Site_Public.git, read from .git/config. Its CONTENTS were NOT examined - another job was publishing that directory while this registry was written and it was deliberately left alone."
-      },
-      {
         "repo": "nikatru-private",
         "why": "Not part of the store matrix. Declared by NAME ONLY so that a NEW repo appearing in the org is loud instead of drowned.",
         "measured": "2026-08-18: name and visibility from `gh repo list` only. Contents NOT examined. This line is not a statement about what the repo holds."
@@ -128,7 +118,8 @@
           "measured": "2026-08-18: exists in the org, PRIVATE. Its CONTENTS were NOT fetched or compared - the shape difference above is quoted from the corpus, not measured here."
         }
       ]
-    }
+    },
+    "deletionRecord20260819": "The 26 empty placeholder slot repos and the two site repos (Nikatru_Storefront_Public, Rajasekar_Site_Public) were DELETED from the org on 2026-08-19 after the owner locked one-repo/one-pipeline. Measured immediately after: `gh repo list` returns 13 repos, of which 4 are Nikatru_* and all four carry real source. Both live domains still returned HTTP 200 because both Cloudflare Pages projects build from Nikatru_Android_Apps_Public (repo_id 1304047609) and always did — the split was staged and never cut over, so deleting the staged repos changed nothing on the wire. The local working copies were NOT deleted and the app repo still holds all 61 files under sites/."
   },
   "infrastructure": {
     "what": "Repositories that live in this tree and are NOT store products. A slot is a Store x Target x Type cell - a thing SHIPPED TO a storefront. Neither entry below is one, and neither is missing a row: each is here because forcing it into `slots` would state something false about it. Added 2026-08-19, when the storefront moved to the top of Projects/ under a Nikatru_*_Public name and the personal site was split into its own repo, and the two of them became visible to a checker that had until then had nothing to be wrong about.",
@@ -141,21 +132,24 @@
       {
         "id": "storefront",
         "dir": "Nikatru_Storefront_Public",
-        "repo": "Nikatru_Storefront_Public",
-        "why": "The storefront. See whyTheStorefrontIsNotASlot above. It is also renamePins.observable[storefront-upstreams].repoDir - the file that pins this matrix's bound remotes by name lives in THIS directory.",
-        "measured": "2026-08-19: 83 files across 25 directories, a git checkout, origin https://github.com/globalonlinedeveloper/Project_Web_Presence.git read from .git/config. Holds sites/_shared and sites/nikatru; sites/rajasekarselvam is GONE from it and is now its own repo. 2026-08-19 SECOND READING: the GitHub repo has been RENAMED to Nikatru_Storefront_Public and the working copy's origin now reads https://github.com/globalonlinedeveloper/Nikatru_Storefront_Public.git, read by running `git remote -v` in it (the earlier reading took it from .git/config because another job held the directory; that job has finished). Directory name and repo name now AGREE, closing the divergence openDecisions[STORE-MATRIX-PLAN.md 5.3] recorded. Its catalog/upstreams.json was opened and all three entries pin NEW names - see renamePins.observable[storefront-upstreams].",
-        "repoWas": "Project_Web_Presence, through 2026-08-19 morning. Renamed by the owner, not by anything in this tree; nothing in this repository can rename a repository. Kept because 'what the repo used to be called' is the question a stale URL's 404 asks."
+        "why": "The storefront working DIRECTORY at Projects/ depth 1 — slot-shaped by name, not a slot. Declared so the out-of-shape check exempts it BY DECLARATION rather than skipping it.",
+        "measured": "2026-08-19 EVENING: the GitHub repo of this name was DELETED after the owner locked one-repo/one-pipeline. The local DIRECTORY remains with its working copy, which is why the row stays — infrastructure declares DIRECTORIES THAT EXIST, not remotes. Its origin now points at a repo that is gone. Nothing depends on it: both Cloudflare Pages projects build from Nikatru_Android_Apps_Public (repo_id 1304047609) and always did, the app repo still holds all 61 files under sites/, and both domains returned HTTP 200 immediately after the deletion. Its CUTOVER-RUNBOOK.md (972 lines) was preserved to the corpus at notes/ARCHIVED-CUTOVER-RUNBOOK-2026-08-19.md BEFORE the delete.",
+        "repoWas": "Project_Web_Presence through 2026-08-19 morning, then Nikatru_Storefront_Public, then deleted the same evening. Kept because 'what the repo used to be called' is the question a stale URL's 404 asks.",
+        "remoteDeleted": true,
+        "repoDeleted20260819": "Nikatru_Storefront_Public"
       },
       {
         "id": "personal-site",
         "dir": "Rajasekar_Site_Public",
-        "repo": "Rajasekar_Site_Public",
-        "why": "The personal CV site. See whyThePersonalSiteIsNotASlot above. Its name has no Nikatru_ prefix, so it never triggered the out-of-shape check and needed no exemption; it is declared anyway, because a non-store repo that is invisible to the registry is a non-store repo nobody will notice becoming one.",
-        "measured": "2026-08-19: 23 files across 6 directories, a git checkout, origin https://github.com/globalonlinedeveloper/Rajasekar_Site_Public.git read from .git/config, holding sites/rajasekarselvam. CONTENTS NOT EXAMINED FURTHER - another job was publishing this directory and it was left alone. 2026-08-19 SECOND READING: still in the org, still PUBLIC, still named Rajasekar_Site_Public - it was NOT one of the five renames and did not need to be, because its name was never slot-shaped in the first place. Re-confirmed read-only from `gh repo list`. Contents STILL not examined."
+        "why": "The personal CV site directory. Its name is not slot-shaped so it never triggered the out-of-shape check; declared anyway, because a non-store directory invisible to the registry is one nobody will notice becoming one.",
+        "measured": "2026-08-19 EVENING: GitHub repo DELETED in the same batch. Local directory remains. rajasekarselvam.com returned 200 immediately after, because that Pages project builds from Nikatru_Android_Apps_Public/sites/rajasekarselvam, which was never touched — P8 has held all session.",
+        "remoteDeleted": true,
+        "repoDeleted20260819": "Rajasekar_Site_Public"
       }
     ],
     "notMeasured": "Projects/Project_Web_Presence.reverted-attempt - 4,824 files, a git checkout with NO remote configured - is deliberately NOT declared here. It is neither a slot nor infrastructure; its name is not slot-shaped, so no checker asks about it, and declaring a directory whose purpose this work did not establish would put a guess in a registry. Recorded as an observation, not a row.",
-    "reconciledOn20260819": "RE-READ against the org after the renames landed, and the argument below is UNCHANGED by them - which is the point of having written it as an argument rather than as a name. A shop is still not a product in its own shop, and a personal CV site is still not a Nikatru product at all, whatever either repository is now called. What DID change is one field: the storefront entry's `repo` was Project_Web_Presence and is now Nikatru_Storefront_Public, because GitHub renamed it and this field records what GitHub calls the repo, not what the plan hoped to call it. 🔴 THE STOREFRONT NAME IS NOW SLOT-SHAPED IN BOTH PLACES AT ONCE - directory AND repository - so the exemption in `whatItBuysTheChecker` is doing more work than it was on the day it was added, not less: without it, Nikatru_Storefront_Public at depth 1 reads to assert-store-matrix.mjs as a slot hiding out of shape, and the fact that a matching repo now exists in the org would make that misreading look corroborated. Neither repo gained a store, a target or a type by being renamed, so neither gained a row."
+    "reconciledOn20260819": "RE-READ against the org after the renames landed, and the argument below is UNCHANGED by them - which is the point of having written it as an argument rather than as a name. A shop is still not a product in its own shop, and a personal CV site is still not a Nikatru product at all, whatever either repository is now called. What DID change is one field: the storefront entry's `repo` was Project_Web_Presence and is now Nikatru_Storefront_Public, because GitHub renamed it and this field records what GitHub calls the repo, not what the plan hoped to call it. 🔴 THE STOREFRONT NAME IS NOW SLOT-SHAPED IN BOTH PLACES AT ONCE - directory AND repository - so the exemption in `whatItBuysTheChecker` is doing more work than it was on the day it was added, not less: without it, Nikatru_Storefront_Public at depth 1 reads to assert-store-matrix.mjs as a slot hiding out of shape, and the fact that a matching repo now exists in the org would make that misreading look corroborated. Neither repo gained a store, a target or a type by being renamed, so neither gained a row.",
+    "deleted20260819": "Nikatru_Storefront_Public and Rajasekar_Site_Public were DELETED from the org on 2026-08-19 after the one-repo/one-pipeline lock. Their local working copies still exist on disk and the app repo still holds all 61 files under sites/, so nothing was lost; both live domains kept returning 200 because both Pages projects always built from Nikatru_Android_Apps_Public. These rows are removed rather than marked absent because infrastructure declares DIRECTORIES THAT EXIST, not intent."
   },
   "naming": {
     "directoryRule": "Nikatru_<target>_<type>_<Public|Private>. Holds for all 30 directories measured on 2026-08-18, which is why `publicDir` is CHECKED against it rather than derived from it. It is stored per row because it is what is literally on disk, and disk is the authority on existence.",
@@ -180,7 +174,7 @@
     "live": 2,
     "shell-claimed": 2,
     "shell-empty": 11,
-    "intendedReposExistingOnGitHub": 30,
+    "intendedReposExistingOnGitHub": 4,
     "loudest": "ALL 30 INTENDED REPO NAMES NOW EXIST, and the previous reading of this field - kept verbatim in `loudestSuperseded` - said the exact opposite hours earlier. What is loud NOW is the gap that the naming success opens up. (1) TWENTY-SIX OF THE THIRTY ARE EMPTY NAMES: a repo existing is not a product existing, and 26 slot directories still hold 0 files. A count of 30 read without the state column reads as a portfolio and is a set of claimed names. (2) THE BACKUP-REPO COLLISION IS NO LONGER LATENT-BY-NAME. See collisions[latent-backup-remote-name]: the repo that carries the WRONG SHAPE is now called Nikatru_Android_Apps_Private, which is precisely the name this registry intends for that slot's private half. It looks right. It is not bound, and it must not be bound before STORE-MATRIX-PLAN.md 5.4 is answered. (3) CLOUDFLARE STILL POINTS AT A NAME THAT NO LONGER EXISTS - both Pages projects read repo_name=Project_Cross_Platform_Apps and are serving only because GitHub still resolves the rename by repository id. See github.renamePins.unobservable[cloudflare-pages].",
     "discrepancyOnRecord": "The task that commissioned this file carried '12 of 15 slots have no product'. Re-measured here the number is 11, under the rule in `backing.rule`. The three extension slots are backed by a product that exists (FullShot) and simply is not filed into them, so they are shell-claimed rather than empty: 11 + 3 + 1 = 15. Recorded rather than reconciled. An inherited number that does not reproduce is a finding, and writing the counting rule down beside it means the disagreement can be settled by arguing about the rule instead of by re-typing the number.",
     "previouslyAlso": "2026-08-19, EARLIER THE SAME DAY (the reading this edit supersedes): slots 15, directories 30, live 2, shell-claimed 2, shell-empty 11, intendedReposExistingOnGitHub 0. Kept beside the current numbers for the same reason `previously` is: these fields MUST track the rows, so the only way a count can also be a record is for the superseded one to stay visible. Two supersessions on one date is not a mistake in the dating - the owner performed five renames and created twenty-six repositories between the two readings.",
@@ -378,14 +372,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -398,14 +394,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -418,14 +416,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -438,14 +438,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -484,14 +486,16 @@
       },
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -507,14 +511,16 @@
       },
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -550,14 +556,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -570,14 +578,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -590,14 +600,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -610,14 +622,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -630,14 +644,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -650,14 +666,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     },
@@ -670,14 +688,16 @@
       "backing": null,
       "repos": {
         "public": {
-          "existsOnGitHub": true,
-          "visibility": "PUBLIC",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         },
         "private": {
-          "existsOnGitHub": true,
-          "visibility": "PRIVATE",
-          "boundRemote": null
+          "existsOnGitHub": false,
+          "visibility": null,
+          "boundRemote": null,
+          "deletedNote": "2026-08-19 (evening): the 26 empty placeholder repos and the two site repos were DELETED by owner decision after the one-repo/one-pipeline lock. This slot's repo does not exist and is not intended to until the day something ships to this store. The slot ROW stays: store/target/type still drives resolve-slot.mjs and the per-environment job, which is what the pipeline reads. Only the repo binding is gone."
         }
       }
     }
