@@ -126,7 +126,6 @@
     "structure that cannot EXPRESS the split will be misread again, so the sideload channel is carried as",
     "its own entry rather than as a comment on the Play row: see `purchaseRails.awaitingChannelRow`."
   ],
-
   "aggregatingJob": {
     "_why": [
       "[R-5] 'a release either produces the complete artifact set for its declared channels or produces",
@@ -138,7 +137,6 @@
     "workflow": ".github/workflows/build-platforms.yml",
     "job": "all_platforms"
   },
-
   "storeMetadataContract": {
     "_why": [
       "[10]D-5's REQUIRED_COVERAGE, expressed as a RELATIONSHIP rather than a number: every app that",
@@ -168,7 +166,10 @@
       "support-url.txt",
       "screenshots/README.md"
     ],
-    "urlFiles": ["privacy-policy-url.txt", "support-url.txt"],
+    "urlFiles": [
+      "privacy-policy-url.txt",
+      "support-url.txt"
+    ],
     "derivedFields": {
       "_why": "GENERATED FROM THE SPEC is [10]D-5's headline, and a README saying so is not a mechanism. Each entry names the ONE place the value already lives, and the guard compares the file to it — so a listing edited in a console and pasted back here without touching the spec fails the build instead of quietly forking.",
       "_brickVarWhy": [
@@ -178,10 +179,24 @@
         "post_gen.dart, so the catalogue row and the listing title are the same string by construction",
         "rather than by two spellings agreeing today."
       ],
-      "title.txt": { "source": "apps.json", "field": "name", "brickVar": "short_name" },
-      "short-description.txt": { "source": "apps.json", "field": "tagline", "brickVar": "description" },
-      "privacy-policy-url.txt": { "source": "portfolioUrls", "field": "privacyUrl" },
-      "support-url.txt": { "source": "portfolioUrls", "field": "supportUrl" }
+      "title.txt": {
+        "source": "apps.json",
+        "field": "name",
+        "brickVar": "short_name"
+      },
+      "short-description.txt": {
+        "source": "apps.json",
+        "field": "tagline",
+        "brickVar": "description"
+      },
+      "privacy-policy-url.txt": {
+        "source": "portfolioUrls",
+        "field": "privacyUrl"
+      },
+      "support-url.txt": {
+        "source": "portfolioUrls",
+        "field": "supportUrl"
+      }
     },
     "portfolioUrls": {
       "_why": [
@@ -205,7 +220,9 @@
       ],
       "privacyUrl": "https://nikatru.com/privacy.html",
       "supportUrl": "https://nikatru.com/contact.html",
-      "agreesWithAppConfigConst": { "privacyUrl": "privacyUrl" }
+      "agreesWithAppConfigConst": {
+        "privacyUrl": "privacyUrl"
+      }
     },
     "appConfigPaths": [
       "apps/{app}/lib/core/config/app_config.dart",
@@ -235,7 +252,9 @@
         "already sitting on a limit we did not set."
       ],
       "windows-store": {
-        "additionalFiles": ["search-terms.txt"],
+        "additionalFiles": [
+          "search-terms.txt"
+        ],
         "maxLines": {
           "search-terms.txt": {
             "max": 7,
@@ -256,7 +275,11 @@
           "condensed FROM. Mapping the 37-character tagline onto a 30-character field would fail on",
           "correct input, which is the exact failure mode this file exists to avoid."
         ],
-        "additionalFiles": ["subtitle.txt", "keywords.txt", "promotional-text.txt"],
+        "additionalFiles": [
+          "subtitle.txt",
+          "keywords.txt",
+          "promotional-text.txt"
+        ],
         "maxChars": {
           "_why": [
             "THE ONLY TWO APPLE NUMBERS THAT WERE SOURCED. Private/requirements/ledger.json entry [10]D-5 (was pipeline/10-distribution-store.md, folded into the JSON spec 2026-08-15).",
@@ -282,7 +305,11 @@
           "record per platform, one metadata tree, one review outcome, which is why the register",
           "carries two rows rather than one. The limits are the same page and the same fetch."
         ],
-        "additionalFiles": ["subtitle.txt", "keywords.txt", "promotional-text.txt"],
+        "additionalFiles": [
+          "subtitle.txt",
+          "keywords.txt",
+          "promotional-text.txt"
+        ],
         "maxChars": {
           "title.txt": {
             "max": 30,
@@ -320,7 +347,10 @@
           "the true word and the recipe reaches the same answer by the only route snapd accepts. Sources are",
           "on that constant; assert-snapcraft-generable.mjs holds both directions."
         ],
-        "additionalFiles": ["snap-name.txt", "license.txt"]
+        "additionalFiles": [
+          "snap-name.txt",
+          "license.txt"
+        ]
       },
       "android-play": {
         "_why": [
@@ -448,7 +478,10 @@
             "minSide": 320,
             "maxSide": 3840,
             "maxAspectRatio": 2,
-            "recommendedPortrait": { "width": 1080, "height": 1920 },
+            "recommendedPortrait": {
+              "width": 1080,
+              "height": 1920
+            },
             "source": "https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — Screenshots, Requirements, verbatim: \"You must provide a minimum of two screenshots across different device types to publish your store listing\" · \"JPEG or 24-bit PNG (no alpha)\" · \"Minimum dimension: 320px\" · \"Maximum dimension: 3840px\" · \"The maximum dimension of your screenshot can't be more than twice as long as the minimum dimension.\" · \"You can add up to 8 screenshots for each supported device type.\" Highly recommended, verbatim: \"For apps, you must provide at least four screenshots with minimum 1080px resolution. These should be 16:9 for landscape (minimum 1920x1080px) screenshots and 9:16 for portrait screenshots (minimum 1080x1920px).\"",
             "_provenanceWhy": [
               "🔴 A PNG CARRIES NO EVIDENCE OF WHICH BUILD IT PHOTOGRAPHED, AND THAT IS THE ONE QUESTION",
@@ -540,7 +573,6 @@
       }
     }
   },
-
   "keyKinds": {
     "none": "the channel signs for us — nothing of ours can be lost",
     "upload-key": "we sign the upload; the store holds the real app signing key (Play App Signing)",
@@ -549,7 +581,6 @@
     "code-signing-certificate": "a CA-issued certificate chaining to a trusted root — a real recurring cost",
     "own-signing-key": "our own detached signature, no gatekeeper verifying it for us"
   },
-
   "ciSecretRegister": {
     "_why": [
       "🔴 [9]R-3 LIMB 2 — 'a guard fails if a release build target's signing configuration ... names a",
@@ -711,7 +742,6 @@
       }
     ]
   },
-
   "purchaseRails": {
     "_why": [
       "🔴 THE ONE PLACE THE RAIL ANSWER LIVES. [ADR 039] (LOCKED 2026-08-09, after a 6-agent",
@@ -793,14 +823,21 @@
       {
         "id": "android-sideload",
         "name": "APK sideload (direct .apk install, outside Google Play)",
-        "platforms": ["android"],
+        "platforms": [
+          "android"
+        ],
         "kind": "direct",
-        "artifactFormats": [".apk"],
+        "artifactFormats": [
+          ".apk"
+        ],
         "railSplitsFrom": "android-play",
         "purchaseRail": {
           "rail": "paddle",
           "why": "Google Play's Payments policy binds apps DISTRIBUTED THROUGH GOOGLE PLAY, not the Android artifact — an install Play did not deliver sits under no store commerce policy, so there is no 15% tier in the path and the hosted apex checkout nets 7.5%.",
-          "forbids": ["play-billing", "apple-iap"],
+          "forbids": [
+            "play-billing",
+            "apple-iap"
+          ],
           "forbidsWhy": "MECHANICAL, not policy: the Play Billing Library resolves a purchase against the Play install that delivered the app, so a sideloaded build has no billing backend to talk to. Shipping it here would be a paywall that cannot complete a sale, which is a worse failure than a forbidden one because it looks like a bug rather than a violation.",
           "source": "[ADR 039] D1"
         },
@@ -817,14 +854,21 @@
       {
         "id": "macos-direct",
         "name": "macOS direct download (Developer ID-signed, notarised, outside the Mac App Store)",
-        "platforms": ["macos"],
+        "platforms": [
+          "macos"
+        ],
         "kind": "direct",
-        "artifactFormats": [".dmg", ".app"],
+        "artifactFormats": [
+          ".dmg",
+          ".app"
+        ],
         "railSplitsFrom": "macos-appstore",
         "purchaseRail": {
           "rail": "paddle",
           "why": "App Store Review Guideline 3.1.1 governs apps distributed through the App Store; a Developer ID-signed, notarised app the user downloads from our own site is not App Store distribution, so no Apple commerce policy applies and the rail is the same hosted checkout the web channel uses.",
-          "forbids": ["play-billing"],
+          "forbids": [
+            "play-billing"
+          ],
           "forbidsWhy": "MECHANICAL: there is no Play surface on macOS at all. Apple IAP is deliberately NOT listed as forbidden here — StoreKit outside the Mac App Store is a question this register has not researched, and an unresearched vendor fact must never be written down as an answer in either direction.",
           "source": "[ADR 039] D1"
         },
@@ -839,12 +883,13 @@
       }
     ]
   },
-
   "channels": [
     {
       "id": "web",
       "name": "Web (Cloudflare Pages, app subdomain)",
-      "platforms": ["web"],
+      "platforms": [
+        "web"
+      ],
       "kind": "web",
       "storefrontKey": "web",
       "served": true,
@@ -852,11 +897,16 @@
       "purchaseRail": {
         "rail": "paddle",
         "why": "Our own site. No store sits between us and the buyer, so no platform commerce policy applies at all and the only cut is Paddle's — $18.49 of the $19.99 annual SKU.",
-        "forbids": ["play-billing", "apple-iap"],
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
         "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists in a browser. Listed anyway because `forbids` is what a checker reads to catch a SHIPMENT rather than an omission, and a rail that cannot work is still a rail that must not ship.",
         "source": "[ADR 039] D1"
       },
-      "artifactFormats": ["static-bundle"],
+      "artifactFormats": [
+        "static-bundle"
+      ],
       "signing": {
         "keyKind": "none",
         "identity": null,
@@ -865,15 +915,27 @@
           "date": null,
           "required": false,
           "note": "No identity of ours exists to restore. This is why [9]R-3 is not revenue-critical: the one live channel has no signing identity to lose."
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": null,
+          "verify": null,
+          "artifactGlob": null,
+          "why": "The web channel signs nothing. TLS is Cloudflare's certificate, not ours, and there is no store to submit to. The one channel where \"nothing to do\" is the complete and correct answer."
         }
       },
-      "minimumToolchain": ["flutter", "wrangler"],
+      "minimumToolchain": [
+        "flutter",
+        "wrangler"
+      ],
       "lane": {
         "workflow": ".github/workflows/deploy-web.yml",
         "job": "deploy-web"
       },
       "crashSink": {
-        "layers": ["dart"],
+        "layers": [
+          "dart"
+        ],
         "native": false,
         "note": "sentry_flutter on web captures Dart exceptions and unhandled JS errors. VERIFIED LIVE: GlitchTip issue SUBLY-2, release subly@1.0.75+e509a26, environment production, from https://subly.nikatru.com/. [pipeline 11]E-7"
       },
@@ -903,7 +965,9 @@
     {
       "id": "android-play",
       "name": "Google Play",
-      "platforms": ["android"],
+      "platforms": [
+        "android"
+      ],
       "kind": "store",
       "storefrontKey": "play",
       "served": false,
@@ -911,11 +975,16 @@
       "purchaseRail": {
         "rail": "play-billing",
         "why": "ARITHMETIC, not just policy — and the arithmetic REVERSED the earlier recommendation. Play requires Play Billing for in-app digital purchases; against that, the annual SKU's breakeven tolerates only an 8.1% conversion loss from detouring buyers to the web, while MEASURED web-detour losses run 12-36% even WITH a tappable link (a Play build may offer none), and the monthly SKU nets the same to the cent either way so any detour loss there is pure loss. A no-card web trial also converts at roughly a third of a card-on-file store trial.",
-        "forbids": ["paddle", "apple-iap"],
+        "forbids": [
+          "paddle",
+          "apple-iap"
+        ],
         "forbidsWhy": "POLICY for `paddle`: once IAP is offered there is NO in-app steering to another rail, and the US link-out program is not taken (its 0% window ends 2026-09-30, after which ~10% nets below Play Billing). MECHANICAL for `apple-iap`. 🔴 THE SIDELOAD OF THIS SAME APP IS `paddle` — see purchaseRails.awaitingChannelRow.android-sideload. The rail follows the CHANNEL, not the artifact.",
         "source": "[ADR 039] D2"
       },
-      "artifactFormats": [".aab"],
+      "artifactFormats": [
+        ".aab"
+      ],
       "signing": {
         "keyKind": "upload-key",
         "identity": "release-keystore/release.keystore",
@@ -1045,9 +1114,19 @@
           "date": null,
           "required": true,
           "note": "NEVER DRILLED, and that is now the ONLY unexecuted half. The file has existed since 11 Jun 2026; as of 2026-08-04 it is wired — build-platforms.yml and submit-play.yml materialise it from ANDROID_KEYSTORE_BASE64 and assert-artifact-signed.mjs proves what signed the bundle. What has still never happened is a RESTORE: recovering the keystore from its recorded custody and signing with the recovered copy. OWNER_QUEUE S-5 originally said 'generate' — reconciliation decision #25 rewords it to 'adopt or replace, then drill a restore', and only the drill remains."
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": "tooling/ci/android-signing.mjs",
+          "verify": "tooling/ci/assert-artifact-signed.mjs",
+          "artifactGlob": "apps/*/build/app/outputs/bundle/release/*.aab",
+          "why": "Upload key we hold. Play fixes the upload certificate at the first upload, so the verify step reads the real signer out of the bundle and compares it with the pinned SHA-256 in this register."
         }
       },
-      "minimumToolchain": ["flutter", "java"],
+      "minimumToolchain": [
+        "flutter",
+        "java"
+      ],
       "lane": {
         "workflow": ".github/workflows/build-platforms.yml",
         "job": "linux_web_android",
@@ -1076,7 +1155,9 @@
         ]
       },
       "crashSink": {
-        "layers": ["dart"],
+        "layers": [
+          "dart"
+        ],
         "native": false,
         "note": "The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so Dart errors from this artifact reach GlitchTip. sentry_flutter vendors sentry-android, but NOTHING HAS EXERCISED THE NATIVE PATH FROM THIS FACTORY — no Android artifact has ever run on a handset. Native coverage is UNVERIFIED and is not claimed. ⚠️ The reason given here used to be 'Android cannot be built on the owner's box at all', which is false: it builds in WSL (see the lane note). The gap is that nobody has INSTALLED a build on a device, which is a different and still-open thing — correcting the reason does not close it. [pipeline 11]E-7"
       },
@@ -1195,7 +1276,9 @@
     {
       "id": "ios-appstore",
       "name": "Apple App Store (iOS)",
-      "platforms": ["ios"],
+      "platforms": [
+        "ios"
+      ],
       "kind": "store",
       "storefrontKey": "appstore",
       "served": false,
@@ -1203,11 +1286,16 @@
       "purchaseRail": {
         "rail": "apple-iap",
         "why": "App Store Review Guideline 3.1.1 requires in-app purchase for digital content, and launching an external checkout is a documented rejection cause rather than a grey area. Subly is not reader-app eligible, and 3.1.3(b) parity forbids the consumption-only trick Play permits. 15% under the Small Business Program.",
-        "forbids": ["paddle", "play-billing"],
+        "forbids": [
+          "paddle",
+          "play-billing"
+        ],
         "forbidsWhy": "POLICY for `paddle`: 3.1.1 plus the anti-steering rule. MECHANICAL for `play-billing`. The 3.1.3(f) free-companion posture is worth ONE cheap attempt when OWNER_QUEUE A-4 opens, with the IAP build as the ready fallback — that is an attempt at a different classification, not permission for a second rail.",
         "source": "[ADR 039] D3"
       },
-      "artifactFormats": [".ipa"],
+      "artifactFormats": [
+        ".ipa"
+      ],
       "signing": {
         "keyKind": "distribution-certificate",
         "identity": null,
@@ -1258,9 +1346,19 @@
             "APPLE_PROVISIONING_PROFILES_BASE64": "The .mobileprovision / .provisionprofile set, base64-encoded for the same path reason. NOT key material, but Apple's codesign refuses without it and the profile binds the certificate to the bundle id and entitlements — a build signed by the right key against the wrong profile is rejected at upload, so it is signing configuration and belongs on this side of the partition rather than in nonSigning.",
             "APPLE_TEAM_ID": "The 10-character Apple Developer Team identifier xcodebuild resolves the signing identity against. An identifier, not an authenticator — declared here rather than in nonSigning because it is an INPUT TO SIGNING: with the wrong team id xcodebuild selects a different identity or none, which is the failure mode limb 2 exists to make visible."
           }
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": "tooling/ci/apple-signing.mjs",
+          "verify": "tooling/ci/assert-artifact-signed-apple.mjs",
+          "artifactGlob": "apps/*/build/ios/ipa/*.ipa",
+          "why": "Developer identity in a temporary keychain plus provisioning profiles. Notarisation is a network step and belongs to the seam, not to a table."
         }
       },
-      "minimumToolchain": ["flutter", "xcode"],
+      "minimumToolchain": [
+        "flutter",
+        "xcode"
+      ],
       "lane": null,
       "deploymentEnvironment": "{app}-ios-appstore",
       "storeMetadataDir": "apps/{app}/store/ios-appstore",
@@ -1344,7 +1442,9 @@
     {
       "id": "macos-appstore",
       "name": "Apple App Store (macOS)",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "kind": "store",
       "storefrontKey": "mac",
       "served": false,
@@ -1352,11 +1452,16 @@
       "purchaseRail": {
         "rail": "apple-iap",
         "why": "The same 3.1.1 family as iOS, against a SEPARATE App Store Connect record — one record per platform, one review outcome, and therefore one rail answer of its own rather than an inherited one. 15% under the Small Business Program.",
-        "forbids": ["paddle", "play-billing"],
+        "forbids": [
+          "paddle",
+          "play-billing"
+        ],
         "forbidsWhy": "POLICY for `paddle`: 3.1.1 and anti-steering, identically to iOS. MECHANICAL for `play-billing`. 🔴 A macOS BUILD DISTRIBUTED OUTSIDE THE MAC APP STORE IS NOT THIS CHANNEL and is not covered by this row — it is `paddle`; see purchaseRails.awaitingChannelRow.macos-direct.",
         "source": "[ADR 039] D3"
       },
-      "artifactFormats": [".pkg"],
+      "artifactFormats": [
+        ".pkg"
+      ],
       "signing": {
         "keyKind": "distribution-certificate",
         "identity": null,
@@ -1397,9 +1502,19 @@
             "APPLE_PROVISIONING_PROFILES_BASE64": "The .provisionprofile for the Mac App Store record, base64 for the same path reason. Signing CONFIGURATION rather than key material: it binds the certificate to this bundle id and its entitlements, and a build signed by the right key against the wrong profile is refused at upload.",
             "APPLE_TEAM_ID": "The 10-character Team identifier xcodebuild resolves the signing identity against. An identifier, but an INPUT TO SIGNING — with the wrong value xcodebuild selects a different identity or none at all."
           }
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": "tooling/ci/apple-signing.mjs",
+          "verify": "tooling/ci/assert-artifact-signed-apple.mjs",
+          "artifactGlob": "apps/*/build/macos/Build/Products/Release/*.pkg",
+          "why": "Same seam as iOS, different artifact and a different bundle identifier. This register holds both."
         }
       },
-      "minimumToolchain": ["flutter", "xcode"],
+      "minimumToolchain": [
+        "flutter",
+        "xcode"
+      ],
       "lane": null,
       "deploymentEnvironment": "{app}-macos-appstore",
       "storeMetadataDir": "apps/{app}/store/macos-appstore",
@@ -1455,7 +1570,9 @@
     {
       "id": "windows-store",
       "name": "Microsoft Store",
-      "platforms": ["windows"],
+      "platforms": [
+        "windows"
+      ],
       "kind": "store",
       "storefrontKey": "microsoft",
       "served": false,
@@ -1463,11 +1580,16 @@
       "purchaseRail": {
         "rail": "paddle",
         "why": "PERMISSION, read from the primary text: Microsoft Store Policies v7.19 (effective 2025-10-14) §10.8.1 lets a non-game PC app use \"a secure third-party purchase API\" for digital goods and §10.8.6 says the same for subscriptions, and the App Developer Agreement exempts third-party commerce from the Store Fee — 0% store tax, so the only cut is Paddle's 7.5%. This row was UNVERIFIED-therefore-denied until the source was read on 2026-08-09.",
-        "forbids": ["play-billing", "apple-iap"],
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows. TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are not optional — Paddle must be identified as the seller at purchase time (its hosted checkout does this), and the third-party purchase API must be DECLARED in Partner Center at submission (Private/runbooks/store-submission-windows.md carries that step).",
         "source": "[ADR 039] D1"
       },
-      "artifactFormats": [".msix"],
+      "artifactFormats": [
+        ".msix"
+      ],
       "signing": {
         "keyKind": "none",
         "identity": null,
@@ -1476,9 +1598,18 @@
           "date": null,
           "required": false,
           "note": "No key of ours exists on this path. This is what makes Microsoft the cheapest real store channel."
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": "tooling/ci/windows-signing.mjs",
+          "verify": null,
+          "artifactGlob": "apps/*/build/windows/msix/*.msix",
+          "why": "🔴 NOTHING IN THIS REPOSITORY READS THE SIGNATURE OUT OF AN .msix. The preparation seam exists; the proof does not. Until it does, a Microsoft Store channel cannot honestly claim a verified artifact."
         }
       },
-      "minimumToolchain": ["flutter"],
+      "minimumToolchain": [
+        "flutter"
+      ],
       "lane": {
         "workflow": ".github/workflows/build-platforms.yml",
         "job": "windows",
@@ -1492,7 +1623,9 @@
         ]
       },
       "crashSink": {
-        "layers": ["dart"],
+        "layers": [
+          "dart"
+        ],
         "native": false,
         "note": "THE DART LAYER ONLY, and this row is where that is written down. The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so a Dart exception reaches GlitchTip; a native crash in the C++ runner or in a plugin's native half does NOT. 'Windows crashes reach GlitchTip' is therefore true of Dart exceptions and false of access violations, and six green build ticks must never be read as six covered platforms. [pipeline 11]E-7"
       },
@@ -1567,7 +1700,9 @@
     {
       "id": "windows-direct",
       "name": "Windows direct download (dl.nikatru.com)",
-      "platforms": ["windows"],
+      "platforms": [
+        "windows"
+      ],
       "kind": "direct",
       "storefrontKey": null,
       "served": false,
@@ -1575,11 +1710,17 @@
       "purchaseRail": {
         "rail": "paddle",
         "why": "Direct download from our own domain. No store, no gatekeeper, and therefore no commerce policy to satisfy — the arithmetic is the same 7.5% as the web channel because it is the same hosted checkout.",
-        "forbids": ["play-billing", "apple-iap"],
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Windows.",
         "source": "[ADR 039] D1"
       },
-      "artifactFormats": [".msix", ".exe"],
+      "artifactFormats": [
+        ".msix",
+        ".exe"
+      ],
       "signing": {
         "keyKind": "code-signing-certificate",
         "identity": null,
@@ -1660,15 +1801,27 @@
             "run, as a print and not a failure. The channel is deferred (39-CHASSIS §4 cut 5) and its",
             "blocker is a PURCHASE, which is owner work; failing here would block every merge on it."
           ],
-          "names": ["WINDOWS_CODESIGN_PFX_BASE64", "WINDOWS_CODESIGN_PFX_PASSWORD"],
+          "names": [
+            "WINDOWS_CODESIGN_PFX_BASE64",
+            "WINDOWS_CODESIGN_PFX_PASSWORD"
+          ],
           "why": {
             "_why": "One written reason per name, enforced by assert-channel-register.mjs §8 — the same requirement every `ciSecretRegister.nonSigning` entry carries, so that adding a name to this list stays a classification decision rather than a copy-paste.",
             "WINDOWS_CODESIGN_PFX_BASE64": "The purchased code-signing certificate and its private key as a base64 PKCS#12. It is the key material `signtool sign /f` consumes, and it travels as bytes because signtool wants a FILE — the identical transport problem ANDROID_KEYSTORE_BASE64 solves on the Play row, and the reason that name is also the one exception to Gradle's variable map there. Losing it is a re-purchase, not a reset: unlike the Play upload key, no gatekeeper can reissue it for us.",
             "WINDOWS_CODESIGN_PFX_PASSWORD": "The passphrase on that .pfx, passed as `signtool sign /p`. Two secrets for one credential because that is the shape signtool accepts; neither half is usable alone."
           }
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": null,
+          "verify": null,
+          "artifactGlob": null,
+          "why": "Not submittable and no lane emits its formats. This register declares `.exe` and nothing in this repository packages one. Declared so the channel cannot pass through unnoticed."
         }
       },
-      "minimumToolchain": ["flutter"],
+      "minimumToolchain": [
+        "flutter"
+      ],
       "lane": null,
       "deploymentEnvironment": "{app}-windows-direct",
       "storeMetadataDir": null,
@@ -1689,7 +1842,9 @@
     {
       "id": "linux-snap",
       "name": "Snap Store",
-      "platforms": ["linux"],
+      "platforms": [
+        "linux"
+      ],
       "kind": "store",
       "storefrontKey": "linux",
       "served": false,
@@ -1697,11 +1852,16 @@
       "purchaseRail": {
         "rail": "paddle",
         "why": "The Snap Store imposes no commerce policy on digital goods sold by the publisher and takes no cut of them — Canonical signs the binary and hosts the download, which is a distribution service, not a payments one. So a `kind: store` row takes the non-store rail, which is why the rail cannot be derived from `kind`.",
-        "forbids": ["play-billing", "apple-iap"],
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Linux.",
         "source": "[ADR 039] D1"
       },
-      "artifactFormats": [".snap"],
+      "artifactFormats": [
+        ".snap"
+      ],
       "signing": {
         "keyKind": "none",
         "identity": null,
@@ -1710,9 +1870,19 @@
           "date": null,
           "required": false,
           "note": "No key of ours. Cost is a per-app namespace registration, the same one-time shape as Play and MS Store."
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": null,
+          "verify": null,
+          "artifactGlob": "apps/*/build/*.snap",
+          "why": "NO KEY OF OURS — Canonical signs the binary, which is why keyKind is \"none\". Nothing to prepare and nothing of ours to verify. ⚠️ The one-way step here is not a signature: `snapcraft register <name>` claims a GLOBAL namespace, once, per app."
         }
       },
-      "minimumToolchain": ["flutter", "snapcraft"],
+      "minimumToolchain": [
+        "flutter",
+        "snapcraft"
+      ],
       "lane": {
         "workflow": ".github/workflows/submit-snap.yml",
         "job": "dry-run",
@@ -1755,7 +1925,9 @@
       "storeMetadataDir": "apps/{app}/store/linux-snap",
       "ownerQueue": "A-6",
       "crashSink": {
-        "layers": ["dart"],
+        "layers": [
+          "dart"
+        ],
         "native": false,
         "note": "THE DART LAYER ONLY. The lane has supplied --dart-define=GLITCHTIP_DSN since 2026-08-09, when it started compiling a Linux bundle at all, so a Dart exception from a packed .snap reaches GlitchTip; a native crash in the GTK runner or a plugin's native half does NOT. ⚠️ NOTHING HAS EVER RUN A .snap — the artifact is packed and uploaded, never installed — so even the Dart layer is UNVERIFIED on this channel and is claimed as wiring, not as coverage. [pipeline 11]E-7"
       },
@@ -1836,7 +2008,9 @@
     {
       "id": "linux-appimage",
       "name": "AppImage from dl.nikatru.com",
-      "platforms": ["linux"],
+      "platforms": [
+        "linux"
+      ],
       "kind": "direct",
       "storefrontKey": null,
       "served": false,
@@ -1844,11 +2018,16 @@
       "purchaseRail": {
         "rail": "paddle",
         "why": "An AppImage served from dl.nikatru.com has no gatekeeper at all — nothing signs it for us, nothing hosts it for us, and nothing takes a cut of a sale made through it.",
-        "forbids": ["play-billing", "apple-iap"],
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
         "forbidsWhy": "MECHANICAL: neither store's billing exists on Linux.",
         "source": "[ADR 039] D1"
       },
-      "artifactFormats": [".AppImage"],
+      "artifactFormats": [
+        ".AppImage"
+      ],
       "signing": {
         "keyKind": "own-signing-key",
         "identity": null,
@@ -1910,14 +2089,25 @@
             "⚠️ NOTHING CONSUMES IT YET — §8 prints `SIGNING SECRET DECLARED, NO LANE NAMES IT` on every",
             "run, as a print and not a failure. Native Linux is deferred by [ADR 015] §2 until revenue."
           ],
-          "names": ["APPIMAGE_SIGNING_KEY_B64"],
+          "names": [
+            "APPIMAGE_SIGNING_KEY_B64"
+          ],
           "why": {
             "_why": "One written reason per name, enforced by assert-channel-register.mjs §8 — the same requirement every `ciSecretRegister.nonSigning` entry carries, so a name cannot enter this list by copy-paste.",
             "APPIMAGE_SIGNING_KEY_B64": "The base64 Ed25519 PRIVATE seed the release lane signs the .AppImage with, matching `signingPublicKey.publicKeyBase64` above. It is real key material and the register's most exposed kind: `own-signing-key` means no gatekeeper re-signs and no store can reissue, so losing it silently breaks every future update's provenance for users who verified an earlier one, and disclosing it lets anyone publish an .AppImage this project cannot disown."
           }
+        },
+        "seam": {
+          "_why": "LIFTED 2026-08-20 from tooling/store-pipeline/signing-seams.mjs, deleted in the same commit. `artifactGlob` existed nowhere else in the repository. `prepare` and `verify` name the scripts that arrange a credential and read the result back out of the artifact — a pair, because a step that arranges a thing and then reports its own success is the \"green means ran\" failure with extra stages.",
+          "prepare": "tooling/ci/appimage-signing.mjs",
+          "verify": null,
+          "artifactGlob": "apps/*/build/*.AppImage",
+          "why": "A preparation seam exists; no reader of an AppImage signature does. Not submittable today, so this is a gap rather than a live hole — recorded either way."
         }
       },
-      "minimumToolchain": ["flutter"],
+      "minimumToolchain": [
+        "flutter"
+      ],
       "lane": null,
       "deploymentEnvironment": "{app}-linux-appimage",
       "storeMetadataDir": null,
@@ -1937,12 +2127,13 @@
       ]
     }
   ],
-
   "disqualified": [
     {
       "id": "flathub",
       "name": "Flathub",
-      "platforms": ["linux"],
+      "platforms": [
+        "linux"
+      ],
       "adr": "Private/decisions/015-linux-distribution-channel.md",
       "date": "2026-07-25",
       "ownerQueue": "A-5",
@@ -1958,7 +2149,10 @@
         "⚠️ `.deb` and `apt` are deliberately NOT here: [ADR 015] rejected them as OPTIONS, it did not",
         "disqualify them as channels, and a token that broad would fire on any prose about Linux."
       ],
-      "tells": ["flathub", "flatpak"],
+      "tells": [
+        "flathub",
+        "flatpak"
+      ],
       "reason": [
         "Flathub's requirements page bans AI-generated or AI-assisted code, documentation or any other",
         "content, and says such submissions can be rejected without review with repeat violations risking",
@@ -1971,7 +2165,6 @@
       ]
     }
   ],
-
   "_serviceEnvironmentsWhy": [
     "🔴 A BACKEND WORKER IS NOT A RELEASE CHANNEL, and record-deployment.mjs used to insist it was.",
     "Since [10]D-9 (commit 3a16272) that script resolved EVERY environment against `channels` and",
@@ -2017,7 +2210,6 @@
       "notes": "NOT app-scoped — one instance serves every app (config, analytics, consent, entitlements, money webhook, cron). Deployed by .github/workflows/deploy-workers.yml."
     }
   ],
-
   "nonChannelSigningIdentities": [
     {
       "id": "content-pack-k1",
@@ -2050,5 +2242,57 @@
         "optional')."
       ]
     }
-  ]
+  ],
+  "artifactBuild": {
+    "_why": [
+      "🔴 LIFTED 2026-08-20 FROM tooling/store-pipeline/artifact-build.mjs, WHICH WAS DELETED IN THE SAME",
+      "COMMIT. It was the ONLY place in this repository recording which Flutter build verb emits which",
+      "artifact format — `git grep -l flutterTarget` returned only files inside that one directory. The",
+      "file stated its own justification: \"nothing says that `.aab` comes from `flutter build appbundle`.\"",
+      "",
+      "It lives HERE because 36 production scripts already read this register and NOTHING read that",
+      "directory — no workflow, no guard, no meta-guard. A fact in a file nothing opens is a fact on its",
+      "way out. assert-channel-register.mjs now holds this block to the channel rows in both directions:",
+      "a format declared by a channel with no entry here FAILS, and an entry here no channel declares",
+      "FAILS. That is the check the deleted directory used to make, moved to where it can run.",
+      "",
+      "⚠️ `.exe` IS THE ENTRY WORTH READING. The windows-direct channel declares that format and nothing",
+      "in this repository packages one. That gap was recorded nowhere else, and deleting the old file",
+      "without this block would have deleted the only written record of it."
+    ],
+    "formats": {
+      "static-bundle": {
+        "flutterTarget": "web",
+        "packagedBy": null
+      },
+      ".aab": {
+        "flutterTarget": "appbundle",
+        "packagedBy": null
+      },
+      ".ipa": {
+        "flutterTarget": "ipa",
+        "packagedBy": null
+      },
+      ".pkg": {
+        "flutterTarget": "macos",
+        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane."
+      },
+      ".msix": {
+        "flutterTarget": "windows",
+        "packagedBy": "`dart run msix:create` — the lane workflow the register names."
+      },
+      ".exe": {
+        "flutterTarget": "windows",
+        "packagedBy": "🔴 installer packaging — NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY. The windows-direct channel declares this format and nothing emits it."
+      },
+      ".snap": {
+        "flutterTarget": "linux",
+        "packagedBy": "`snapcraft pack` over a recipe generated by tooling/release/generate-snapcraft.mjs — the lane workflow."
+      },
+      ".AppImage": {
+        "flutterTarget": "linux",
+        "packagedBy": "AppImage packaging — tooling/ci/appimage-signing.mjs and its lane."
+      }
+    }
+  }
 }
