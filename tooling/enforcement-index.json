@@ -1044,6 +1044,18 @@
   },
   {
     "claims": [
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-privacy-manifest.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "B-17"
     ],
     "invokedBy": [

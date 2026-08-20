@@ -154,6 +154,9 @@ jobs:
       - name: The enforcement index is what the tree says
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-enforcement-index.mjs
+      - name: An Apple privacy manifest that exists is one the build copies
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-privacy-manifest.mjs
       # [13]T-10 forbids TWO things — "never a per-app cron AND never Durable
       # Object Alarms" — and only the cron half was ever built (S-6's limb in
       # assert-clone-contract.mjs). `rg -i alarm tooling/ci/*.mjs` found nothing
