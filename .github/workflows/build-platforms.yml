@@ -688,11 +688,6 @@ jobs:
       # Key material goes to $RUNNER_TEMP for the reason recorded on the Android
       # key step in the job above — this repo is PUBLIC and its artifacts are
       # downloadable by anyone.
-      - name: Prepare the Windows code-signing certificate
-        env:
-          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: node tooling/ci/windows-signing.mjs --app ${{ matrix.app }}
       # [pipeline 11]E-7, and this job is the lane of the `windows-store` row.
       # ⚠️ WINDOWS GETS THE DART LAYER ONLY. sentry_flutter's Windows support is
       # the Dart error handler; a native crash in the C++ runner or in a plugin's
@@ -766,6 +761,47 @@ jobs:
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
         run: dart run msix:create
+      # ── THE CERTIFICATE, AND THE READ-BACK IT EXISTS FOR ────────────────
+      # 🔴 THIS STEP RAN BEFORE `Build windows` UNTIL 2026-08-20, AND WAS NEVER
+      # GIVEN `--artifact`. Both halves of that were defects and the second is
+      # the one that mattered: with no `--artifact`, windows-signing.mjs:804
+      # falls back to a SAMPLE path, prints the `signtool sign` and `signtool
+      # verify /pa` commands it WOULD run, and reports at :829
+      # `READ-BACK NOT PERFORMED`. The lane has therefore never read a signature
+      # out of a real Windows binary — it printed a plausible command about a
+      # file it never opened, on every run, in green.
+      #
+      # It now runs AFTER the build and the packaging, where the binaries exist.
+      # Verified safe to move rather than assumed:
+      #   · NOTHING consumes `WINDOWS_SIGNING_POSTURE` — no workflow, no guard.
+      #     (Its Apple counterpart IS consumed, by assert-artifact-signed-apple,
+      #     which is why that one must stay ahead of its builds.)
+      #   · NOTHING consumes `WINDOWS_CODESIGN_PFX_PATH` between the old and new
+      #     positions.
+      #   · `msix:create` SKIPS SIGNING ENTIRELY in this repo — the Store
+      #     re-signs, so apps/*/pubspec.yaml holds no certificate and needs none.
+      #     Had it signed, moving the cert materialisation after it would have
+      #     produced an unsigned package with every check still green.
+      #
+      # ⚠️ `shell: bash` IS LOAD-BEARING, for the reason written out on the
+      # `Derive the release line` step above: this job's default shell is pwsh,
+      # which does not expand a wildcard into a native executable's arguments.
+      # Under pwsh `node … --artifact 'Release/*.exe'` hands node the literal
+      # string, and windows-signing.mjs does not glob — `optAll('artifact')`
+      # takes argv values as paths. The read-back would then fail to find a file
+      # whose name contains an asterisk, which reads as a missing artifact
+      # rather than as a shell that never expanded. It runs `node` and nothing
+      # else, so bash is safe here on the same grounds as that step.
+      - name: Prepare the Windows code-signing certificate, and read the signature back
+        shell: bash
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: >
+          node tooling/ci/windows-signing.mjs --app ${{ matrix.app }}
+          $(for f in apps/${{ matrix.app }}/build/windows/x64/runner/Release/*.exe
+          apps/${{ matrix.app }}/build/windows/x64/runner/Release/*.dll; do
+          if [ -e "$f" ]; then printf -- '--artifact %s ' "$f"; fi; done)
       # ── 🔴 THIS IS THE LANE THE UNION TRAP WAS FOUND ON ─────────────────────
       # The upload below sets `if-no-files-found: error` and it does NOT do what
       # that name suggests on a multi-path set: it fails only when the WHOLE set
