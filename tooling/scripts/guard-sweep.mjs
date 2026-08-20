@@ -119,6 +119,82 @@ const isLibrary = (name) => {
   return !/process\.(exit|argv)/.test(src);
 };
 
+
+// 🔴 THE TWO MECHANISMS assert-guard-coverage.mjs HAS AND THIS SWEEP DID NOT.
+// Until 2026-08-20 this file exited 1 with three UNREACHED entries while
+// assert-guard-coverage reported the same tree fully accounted for. Both read
+// correctly; they answered DIFFERENT questions with the same word. A file can
+// fail to be invoked by a workflow for three different reasons:
+//
+//   a LIBRARY            no entry point at all.            Handled above.
+//   IMPORTED             CI does reach it, through the import graph of an
+//                        invoked guard, which a per-file invocation scan
+//                        cannot see.
+//   NOT-CI-RUNNABLE      a deliberate exemption with a written reason.
+//
+// Only the fourth case is a finding. Calling all four UNREACHED is what made
+// this sweep disagree with the guard that owns the question, and a sweep that
+// cries orphan over an explained file teaches its reader to skip the line.
+//
+// ⚠️ BOTH ARE DERIVED FROM assert-guard-coverage.mjs ITSELF, never re-declared
+// here. A second copy of an exemption list is the drift this repository keeps
+// deleting: two lists agree today and diverge silently later, which is exactly
+// the state being fixed. build-enforcement-index.mjs reads the same declaration
+// the same way, for the same reason.
+const COVERAGE_GUARD = 'assert-guard-coverage.mjs';
+
+/** The names assert-guard-coverage.mjs records as NOT CI-runnable, read out of
+ *  its own NOT_CI_RUNNABLE map. null when the declaration cannot be found, which
+ *  is COVERAGE LOST rather than an empty exemption set. */
+function readNotCiRunnable() {
+  if (!files.includes(COVERAGE_GUARD)) return null;
+  const lines = readFileSync(join(CI_DIR, COVERAGE_GUARD), 'utf8').split('\n');
+  const start = lines.findIndex((l) => /^const NOT_CI_RUNNABLE = new Map\(\[/.test(l));
+  if (start === -1) return null;
+  const end = lines.findIndex((l, i) => i > start && /^\]\);/.test(l));
+  if (end === -1) return null;
+  const names = new Set();
+  for (const l of lines.slice(start + 1, end)) {
+    const m = /^\s*(?:\[\s*)?'([A-Za-z0-9._-]+\.mjs)',?\s*$/.exec(l);
+    if (m) names.add(m[1]);
+  }
+  return names;
+}
+
+const notCiRunnable = readNotCiRunnable();
+if (notCiRunnable === null || notCiRunnable.size === 0) {
+  console.error(`\u2717 COVERAGE LOST \u2014 ${COVERAGE_GUARD}'s NOT_CI_RUNNABLE declaration could not be read ` +
+    `(${notCiRunnable === null ? 'absent' : 'parsed to ZERO names'}).`);
+  console.error('  Every deliberately-exempt file would then be reported as an orphan, and this sweep would');
+  console.error('  disagree with the guard that owns the question \u2014 loudly, and wrongly.');
+  process.exit(1);
+}
+
+/** Everything reachable from an invoked file through relative imports. Comments
+ *  are stripped first: an import named only in prose is not an edge. */
+function reachableByImport() {
+  const importsOf = (name) => {
+    const src = readFileSync(join(CI_DIR, name), 'utf8')
+      .split('\n').filter((l) => {
+        const t = l.trim();
+        return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+      }).join('\n');
+    const out = new Set();
+    for (const m of src.matchAll(/from\s*['"]\.\/([A-Za-z0-9._-]+\.mjs)['"]/g)) out.add(m[1]);
+    for (const m of src.matchAll(/import\(\s*['"]\.\/([A-Za-z0-9._-]+\.mjs)['"]\s*\)/g)) out.add(m[1]);
+    return [...out];
+  };
+  const seen = new Set();
+  const queue = files.filter((f) => (invocations.get(f) ?? []).length > 0);
+  while (queue.length) {
+    for (const dep of importsOf(queue.pop())) {
+      if (files.includes(dep) && !seen.has(dep)) { seen.add(dep); queue.push(dep); }
+    }
+  }
+  return seen;
+}
+const importReached = reachableByImport();
+
 const rows = [];
 let unreached = 0;
 let ran = 0;
@@ -133,8 +209,18 @@ for (const name of files) {
       rows.push({ name, verdict: 'LIBRARY', note: 'no process.exit/argv — imported, not executed' });
       continue;
     }
+    if (importReached.has(name)) {
+      rows.push({ name, verdict: 'IMPORTED',
+        note: 'no workflow names it; CI reaches it through the import graph of one that is' });
+      continue;
+    }
+    if (notCiRunnable.has(name)) {
+      rows.push({ name, verdict: 'NOT-CI-RUNNABLE',
+        note: `recorded in ${COVERAGE_GUARD}'s NOT_CI_RUNNABLE with a stated reason — explained, not orphaned` });
+      continue;
+    }
     unreached++;
-    rows.push({ name, verdict: 'UNREACHED', note: '🔴 runnable, and NO workflow invokes it — neither run nor explained' });
+    rows.push({ name, verdict: 'UNREACHED', note: '🔴 runnable, invoked by NO workflow, reached by no import, and carrying no recorded exemption' });
     continue;
   }
 
