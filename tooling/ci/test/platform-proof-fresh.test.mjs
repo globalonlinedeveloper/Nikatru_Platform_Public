@@ -540,13 +540,37 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
    *  guard. A fixture root without it is testing a guard that cannot know what
    *  it is supposed to cover — which is itself one of the COVERAGE LOST cases
    *  below, so it is exercised deliberately rather than by accident. */
-  const mutate = (transform, { register = 'real' } = {}) => {
+  // 🔴 A MUTATION THAT STOPPED MUTATING IS THE FAILURE MODE OF THIS WHOLE FILE.
+  // Every negative test below builds its fixture by string-surgery on the REAL
+  // workflow, so a transform is only a test for as long as its pattern still
+  // matches. On 2026-08-20 two of them stopped: `run: flutter build ios
+  // --release --no-codesign` became a folded `run: >` block when the lane gained
+  // its --dart-defines, and both transforms silently became the IDENTITY. They
+  // failed loudly here only because the guard returns `null` on a healthy tree
+  // and `assert.match(null, ...)` throws — luck, not design. Had either asserted
+  // something weaker they would have gone on passing over an UNMUTATED tree,
+  // certifying that the guard catches a defect nobody had actually introduced.
+  //
+  // So an unchanged result is now a REFUSAL, with an `identity` knob for the two
+  // cases that legitimately want the real file verbatim. This is the standing
+  // rule of this repository applied to its own fixtures: derive it, derive it
+  // AFTER the mutation, and keep the new limb negative-testable.
+  const mutate = (transform, { register = 'real', identity = false } = {}) => {
     const root = mkdtempSync(join(tmpdir(), 'nikatru-f4-wf-'));
     const dir = join(root, '.github', 'workflows');
     mkdirSync(dir, { recursive: true });
     mkdirSync(join(root, 'tooling'), { recursive: true });
     const real = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
-    writeFileSync(join(dir, 'build-platforms.yml'), transform(real));
+    const after = transform(real);
+    if (!identity && after === real) {
+      rmSync(root, { recursive: true, force: true });
+      throw new Error(
+        'mutate(): the transform returned the workflow UNCHANGED. Its pattern no longer matches the real ' +
+          'build-platforms.yml, so this test would have run against a healthy tree and reported the guard ' +
+          'as catching something it was never shown. Repoint the pattern, or pass { identity: true }.',
+      );
+    }
+    writeFileSync(join(dir, 'build-platforms.yml'), after);
     if (register === 'real') {
       writeFileSync(join(root, 'tooling', 'channel-register.json'), readFileSync(join(REPO, 'tooling', 'channel-register.json')));
     } else if (register !== null) {
@@ -555,14 +579,26 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
     return root;
   };
 
+  // ── the refusal above, exercised ──────────────────────────────────────────
+  // A guard that refuses is only a guard while something watches it refuse.
+  // This is the 2026-08-20 rot in miniature: a pattern handed to mutate() that
+  // no longer matches the file. Before the refusal existed this produced an
+  // unmutated fixture and a test that graded a healthy tree.
+  test('mutate() REFUSES a transform that changed nothing — the rot that started this', () => {
+    assert.throws(
+      () => mutate((s) => s.replace('a literal that build-platforms.yml does not contain', 'x')),
+      /returned the workflow UNCHANGED/,
+    );
+  });
+
   test('the real workflow, unmodified, passes', () => {
-    const root = mutate((s) => s);
+    const root = mutate((s) => s, { identity: true });
     assert.equal(assertWatchedWorkflowIntact(root), null);
     rmSync(root, { recursive: true, force: true });
   });
 
   test('a pass REPORTS what it covered — a green tick that names nothing is the defect this file is about', () => {
-    const root = mutate((s) => s);
+    const root = mutate((s) => s, { identity: true });
     const { problem, summary } = platformProofCoverage(root);
     assert.equal(problem, null);
     assert.match(summary, /REQUIRED_COVERAGE — 6 platform\(s\)/);
@@ -601,7 +637,16 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
     // disabled build contains exactly that string. Only iOS is disguised here,
     // so the failure has to name iOS specifically and leave the other five alone
     // — a guard that goes red for the wrong reason is a guard nobody believes.
-    const root = mutate((s) => s.replace('run: flutter build ios --release --no-codesign', 'run: echo "flutter build ios --release --no-codesign is disabled"'));
+    // Matches the build command whether it sits inline after `run:` or on its own
+    // line inside a folded `run: >` block — both shapes are live in this repo
+    // today. mutate() refuses an unchanged result, so if BOTH stop matching, this
+    // test says so instead of quietly grading a healthy tree.
+    const root = mutate((s) =>
+      s.replace(
+        /^([ \t]*)(run:[ \t]*)?flutter build ios\b([^\n]*)$/m,
+        (_m, pad, run, rest) => `${pad}${run ?? ''}echo "flutter build ios${rest} is disabled"`,
+      ),
+    );
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
     assert.match(problem, /no longer builds: ios \(needs `flutter build ios`\)/);
@@ -610,7 +655,10 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
   });
 
   test('the ENTIRE Apple half deleted -> both platforms named, not one summary shrug', () => {
-    const root = mutate((s) => s.split('\n').filter((l) => !/^\s*run:\s*flutter build (macos|ios)\b/.test(l)).join('\n'));
+    // `run:` is OPTIONAL for the same reason as above: inside a folded `run: >`
+    // block the command sits on its own line. Comments naming these commands
+    // start with `#`, so the line anchor leaves them alone.
+    const root = mutate((s) => s.split('\n').filter((l) => !/^\s*(?:run:\s*)?flutter build (macos|ios)\b/.test(l)).join('\n'));
     const problem = assertWatchedWorkflowIntact(root);
     assert.match(problem, /COVERAGE LOST/);
     assert.match(problem, /ios/);

@@ -47,10 +47,17 @@
 //
 // ── WHAT IT DELIBERATELY DOES NOT ASSERT ─────────────────────────────────────
 // iOS. `flutter build ios --release --no-codesign` produces an unsigned .app and
-// no .ipa, and no step uploads it — the `ios-appstore` row's `.ipa` has no lane
-// at all. Writing an assertion over an artifact that does not exist is how a
-// guard acquires a check that can never fail; the gap is PRINTED on every run of
-// the apple lane instead, so it stays visible until a lane produces something.
+// no .ipa — the `ios-appstore` row's `.ipa` has no lane at all. Writing an
+// assertion over an artifact that does not exist is how a guard acquires a check
+// that can never fail; the gap is PRINTED on every run of the apple lane
+// instead, so it stays visible until a lane produces something.
+//
+// 🔴 THE .app IS NOW RETAINED (2026-08-20). build-platforms.yml's `apple` job
+// uploads build/ios/iphoneos as `<app>-ios-<posture>`, so the clause that used
+// to sit here — "and no step uploads it" — stopped being true the moment that
+// step landed, and is removed rather than left to age. What is still absent is
+// the `.ipa`, and any assertion over what IS retained; the second is the next
+// change, not this one.
 //
 // ── NEGATIVE TEST ────────────────────────────────────────────────────────────
 // tooling/ci/test/artifact-shape.test.mjs. The load-bearing case is the exact
@@ -159,7 +166,7 @@ const LANE_OUTPUTS = new Map([
         },
       ],
       gaps: [
-        'iOS — `flutter build ios --release --no-codesign` produces an UNSIGNED build/ios/iphoneos/*.app and no .ipa, and no step uploads it. The `ios-appstore` row accepts ".ipa" and has no lane. Nothing is asserted for iOS here: an assertion over an artifact that does not exist could never fail, and a check that cannot fail inflates coverage instead of adding it. This line is the gap, printed every run, and it stops being printed by a lane producing something — not by anybody editing it away.',
+        'iOS — `flutter build ios --release --no-codesign` produces an UNSIGNED build/ios/iphoneos/*.app and no .ipa. As of 2026-08-20 that .app IS uploaded and retained for 90 days as `<app>-ios-<posture>`, and THIS GUARD STILL ASSERTS NOTHING ABOUT IT. That is now a gap in this table rather than a fact about the lane: until today an assertion here would have ranged over an artifact that did not exist, which could never fail and would have inflated coverage instead of adding it. There is something to look at now. The `ios-appstore` row still accepts ".ipa", which nothing produces, and still has no lane. This line stops being printed when the assertion is written — not by anybody editing it away.',
       ],
     },
   ],
