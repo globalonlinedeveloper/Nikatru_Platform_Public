@@ -9,7 +9,7 @@ description: >-
 version: 0.1.0
 publish_to: none
 resolution: workspace
-repository: https://github.com/globalonlinedeveloper/Nikatru_Android_Apps_Public
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

@@ -183,8 +183,8 @@ describe('assert-store-matrix — positive controls', () => {
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
     assert.equal(r.status, 0, out);
     assert.match(out, /assert-store-matrix: ok/);
-    // 15 rows, not 0: an `ok` over an empty registry would satisfy the line above.
-    assert.match(out, /checked 15 slot row\(s\)/);
+    // 2 rows since 2026-08-19 (was 15 before the intent-only rows were dropped), not 0: an `ok` over an empty registry would satisfy the line above.
+    assert.match(out, /checked 2 slot row\(s\)/);
   });
 
   test('P2 a no-flag run REACHES whichever tree is here, and forms a verdict about it', () => {
@@ -212,7 +212,7 @@ describe('assert-store-matrix — positive controls', () => {
       // guard's business and would mean it had quietly stopped looking.
       assert.ok(r.code === 0 || r.code === 1, `expected 0 or 1, got ${r.code}\n${r.out}`);
       assert.match(r.out, /tree limb: RAN against/);
-      assert.match(r.out, /across 15 slot path\(s\)/);
+      assert.match(r.out, /across 2 slot path\(s\)/);
     } else {
       assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST/);
