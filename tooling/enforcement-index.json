@@ -1,0 +1,2129 @@
+[
+  {
+    "claims": [
+      "DoD H"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "lane",
+    "ref": ".github/workflows/ci.yml#app_brick",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/android-signing.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 015",
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/appimage-signing.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/apple-signing.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-a11y-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-adapter-capabilities.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-ads-declarations.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-6",
+      "O-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-alert-disposition.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-14",
+      "E-1",
+      "E-2",
+      "E-3"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-analytics-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-android-target-sdk.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "N-2",
+      "N-3",
+      "N-5",
+      "N-8",
+      "N-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick",
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-app-dod.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#windows",
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/submit-snap.yml#dry-run"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-app-versioning.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple",
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#windows"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-artifact-shape.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-artifact-signed-apple.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-artifact-signed.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-1",
+      "C-2",
+      "C-3",
+      "T-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-capability-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 055"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-catalog-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 006",
+      "D-2b",
+      "S-7",
+      "S-7a"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-catalog-reachable.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-6",
+      "E-14"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-ceiling-budget.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-1",
+      "D-7",
+      "W-1"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-channel-claims.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-4",
+      "D-5",
+      "R-3",
+      "R-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-channel-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 020"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-clone-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-config-registry.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-6",
+      "K-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-consent-withdrawal-surface.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 019",
+      "G-36",
+      "K-10",
+      "P-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-content-licences.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-copy-parity.mjs",
+    "references": [],
+    "state": "NOT-CI-RUNNABLE"
+  },
+  {
+    "claims": [
+      "B-2",
+      "S-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-cors-allowlist.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "S-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-d1-bindings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-d1-sql-inventory.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-data-inventory.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 027",
+      "C-15"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-deletion-control.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-deploy-triggers-deploy.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-2",
+      "R-1"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-deploy-triggers.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-desktop-runner-identity.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "W-1",
+      "W-2a",
+      "W-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-discovery-surface.mjs",
+    "references": [
+      "D-1",
+      "D-11",
+      "F-9",
+      "S-7a"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "N-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-e2e-legs.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "N-6",
+      "R-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-e2e-proof-fresh.mjs",
+    "references": [
+      "F-4"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-elf-page-alignment.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-enforcement-index.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "M-2",
+      "M-3",
+      "M-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-entitlement-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-erasure-reach.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "E-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-flag-exposure.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-5b"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#gate",
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#detect",
+      ".github/workflows/submit-appstore.yml#gate",
+      ".github/workflows/submit-play.yml#gate",
+      ".github/workflows/submit-snap.yml#gate",
+      ".github/workflows/submit-windows-store.yml#gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-gate-passed.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-github-matrix.mjs",
+    "references": [],
+    "state": "NOT-CI-RUNNABLE"
+  },
+  {
+    "claims": [
+      "R-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-green-means-ran.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-guard-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-guards-refuse-empty.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "S-1"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-input-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-lane-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-7",
+      "O-7",
+      "R-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-launch-smoke.mjs",
+    "references": [
+      "C-6"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-launcher-icons.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-legal-tripwires.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-10",
+      "K-11",
+      "P-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick",
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-licence-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-lint-inheritance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-6",
+      "D-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/store-screenshots.yml#capture"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-listing-assets.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-lockfile-discipline.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-mail-transport-claims.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 039",
+      "M-1",
+      "M-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-money-config.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "E-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-monitor-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 004",
+      "ADR 020",
+      "M-1",
+      "M-14"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-mor-adapters.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-10",
+      "C-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-clone-tells.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "T-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-do-alarms.mjs",
+    "references": [
+      "S-6"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "N-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-gate-weakening.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-12",
+      "C-4",
+      "DoD E"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-hardcoded-strings.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "M-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-price-literals.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 042",
+      "C-15",
+      "C-3",
+      "C-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-seam-forks.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "R-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-secret-defines.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 016",
+      "R-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-no-tls-pinning.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "R-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-obfuscation-coupled.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-1",
+      "O-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ops-watch.yml#digest"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-ops-register.mjs",
+    "references": [
+      "E-9"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "P-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-pack-inert.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 022",
+      "P-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-pack-roundtrip.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-package-boundaries.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-package-earned.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-palette-consistent.mjs",
+    "references": [
+      "K-4"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-platform-proof-fresh.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-1",
+      "B-13",
+      "B-18"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-platform-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "G-32",
+      "K-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-play-declarations.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-play-device-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-policy-archive.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-3",
+      "K-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-policy-claims.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-17"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-prod-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 019",
+      "P-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-prompt-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-provider-graph-acyclic.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 020",
+      "C-3",
+      "M-16"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-pseudonymity-firewall.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 020",
+      "B-18",
+      "P-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-publish-gate.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-publish-records.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-2",
+      "M-10",
+      "M-15",
+      "M-6",
+      "M-8",
+      "M-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-purchase-path.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "P-1"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-recipe-contract.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 015",
+      "R-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-release-durable.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "R-1"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#prepare",
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/deploy-web.yml#prepare",
+      ".github/workflows/e2e.yml#prepare"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-release-lane-generic.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-9",
+      "F-10",
+      "F-5b",
+      "R-4",
+      "R-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-release-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-render-payload.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-repo-posture.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-responsive-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-17"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-retention-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "P-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-review-gate.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 045",
+      "E-11",
+      "K-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-rollup-lossless.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#runner-budget"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-runner-budget.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-13",
+      "DoD A"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-screen-set.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-seams-wired.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-signup-consent-shape.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-sink-disclosure.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-10",
+      "D-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/submit-snap.yml#dry-run"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-snapcraft-generable.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "DoD G",
+      "S-14"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-stamp-brand-assets.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "S-3",
+      "S-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-stamp-platforms.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-16",
+      "DoD C",
+      "DoD D",
+      "DoD F",
+      "M-13",
+      "N-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-stamp-properties.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-stamp-text-fidelity.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "S-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-stamp-wiring.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-build-config.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-3"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-identity.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-matrix.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-5",
+      "R-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick",
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-metadata.mjs",
+    "references": [
+      "C-6",
+      "F-2"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-10",
+      "D-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-submission-safety.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-supabase-templates.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "G-32",
+      "K-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-sworn-store-files.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-update-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-vendor-portability.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-version-consistency.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-walks-bounded.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 023",
+      "R-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-web-cache-policy.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "E-8",
+      "R-1",
+      "R-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-worker-error-sink.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-workflow-hardening.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-1"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#workspace_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-workspace-coverage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-10"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/build-enforcement-index.mjs",
+    "references": [],
+    "state": "IMPORTED"
+  },
+  {
+    "claims": [
+      "C-6"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/channel-arming.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/check-migrations.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-9",
+      "W-3a"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/check-site-integrity.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/d1-sql-inventory.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "D-9"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/deployment-record.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/flutter-stock-assets.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "K-10",
+      "P-5"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/licence-cross-assert.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "B-17"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/migration-tables.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "D-3"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/read-identity.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "D-9",
+      "F-5b"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/deploy-workers.yml#subly-api"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/record-deployment.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "R-1",
+      "R-4",
+      "R-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#release"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/release-manifest.mjs",
+    "references": [
+      "D-10"
+    ],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/scan-secrets.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-10",
+      "F-11"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/scan-workflows.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/text-reductions.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/tree-walk.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#windows"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/windows-signing.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/workflow-scan.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "ADR 007"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#content_gate"
+    ],
+    "kind": "script",
+    "ref": "tooling/content_pipeline/cli.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "DoD B"
+    ],
+    "invokedBy": [],
+    "kind": "human",
+    "ref": "tooling/dod-register.json#four-states",
+    "references": [],
+    "state": "HELD"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/store-screenshots.yml#capture"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/provision_user.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "N-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e",
+      ".github/workflows/store-screenshots.yml#capture"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/purge.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/verify_consent.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/verify_purged.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/verify_row.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 035",
+      "C-6",
+      "E-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-analytics-liveness.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "K-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-d1-accepts-live-sql.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-4"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#digest",
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-heartbeats.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "B-17"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#prod-provenance"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-prod-provenance.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-7",
+      "O-8",
+      "R-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/deploy-workers.yml#subly-api"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/post-deploy-smoke.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "E-9",
+      "O-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#digest",
+      ".github/workflows/ops-watch.yml#status"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/status.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-alarm-chains.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-auth-providers.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 033"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-free-api-scope.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "E-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#glitchtip"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-monitors.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#supabase-drift"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/verify-supabase-templates.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 015",
+      "D-10",
+      "D-5"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/submit-snap.yml#dry-run"
+    ],
+    "kind": "script",
+    "ref": "tooling/release/generate-snapcraft.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-10",
+      "D-9",
+      "F-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/submit-appstore.yml#dry-run"
+    ],
+    "kind": "script",
+    "ref": "tooling/release/submit-appstore.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-10",
+      "D-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/submit-play.yml#dry-run",
+      ".github/workflows/submit-play.yml#submit"
+    ],
+    "kind": "script",
+    "ref": "tooling/release/submit-play.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 031",
+      "D-10",
+      "D-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/submit-snap.yml#dry-run"
+    ],
+    "kind": "script",
+    "ref": "tooling/release/submit-snap.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "D-10",
+      "D-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform",
+      ".github/workflows/submit-windows-store.yml#dry-run"
+    ],
+    "kind": "script",
+    "ref": "tooling/release/submit-windows-store.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/assert-no-dead-files.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "C-6",
+      "N-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/check-selection-record.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "S-12"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app_brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/scripts/provision-backend.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-apps-data.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-landing-payload.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "O-7",
+      "R-13"
+    ],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "script",
+    "ref": "tooling/smoke/smoke-web-artifact.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/store-screenshots.yml#capture"
+    ],
+    "kind": "script",
+    "ref": "tooling/store/capture-play-screenshots.mjs",
+    "references": [],
+    "state": "WIRED"
+  }
+]
