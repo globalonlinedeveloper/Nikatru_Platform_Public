@@ -122,6 +122,11 @@ const ANDROID_OK = {
 const APPLE_OK = {
   'build/macos/Build/Products/Release/Subly.app/Contents/MacOS/Subly': 'MACHO',
   'build/macos/Build/Products/Release/Subly.app/Contents/Info.plist': '<plist/>',
+  // The iOS half. `flutter build ios --no-codesign` writes an .app whose binary
+  // sits at the BUNDLE ROOT, not under Contents/MacOS — iOS bundles are flat and
+  // macOS bundles are not. Retained since 2026-08-20; asserted since this change.
+  'build/ios/iphoneos/Runner.app/Runner': 'MACHO-ARM64',
+  'build/ios/iphoneos/Runner.app/Info.plist': '<plist/>',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,11 +236,21 @@ describe('assert-artifact-shape — the same trap on the Android lane', () => {
 });
 
 describe('assert-artifact-shape — the apple lane asserts what it produces, and prints what it does not', () => {
-  test('a macOS .app bundle with contents passes, and the iOS gap is printed', () => {
+  test('BOTH apple bundles pass, and the gap that remains is the .ipa alone', () => {
     const { code, out } = run(fixture({ build: APPLE_OK }), ['--app', 'subly', '--platform', 'apple']);
     assert.equal(code, 0, out);
     assert.match(out, /Subly\.app\//);
-    assert.match(out, /GAP — iOS/);
+    // The iOS half must appear as a SATISFIED artifact, not merely as prose. A
+    // green run that names only the macOS bundle is the state this change ended.
+    assert.match(out, /build\/ios\/iphoneos\/Runner\.app\//);
+    assert.match(out, /2 expectation\(s\) satisfied/);
+    // The gap is pinned to the .ipa specifically. `GAP — iOS` alone kept matching
+    // across this whole change, which makes it a pin that cannot tell the old
+    // disclaimer from the new one — exactly the weak proxy this repo keeps
+    // deleting. What is owner-gated is the FORMAT, and that is what is asserted.
+    assert.match(out, /GAP — iOS — THE \.ipa/);
+    assert.match(out, /OWNER_QUEUE A-4/);
+    assert.doesNotMatch(out, /STILL ASSERTS NOTHING ABOUT IT/, 'the old disclaimer must be gone, not merely outvoted');
     assert.match(out, /no channel in tooling\/channel-register\.json names lane job "apple"/);
   });
 
@@ -253,6 +268,41 @@ describe('assert-artifact-shape — the apple lane asserts what it produces, and
       fixture({ build: { 'build/macos/Build/Products/Release/Runner.txt': 'not a bundle' } }),
       ['--app', 'subly', '--platform', 'apple'],
     );
+    assert.equal(code, 1, out);
+    assert.match(out, /no "\.app" bundle at this path/);
+  });
+
+  // ── the iOS half, asserted since 2026-08-20 ──────────────────────────
+  // 🔴 THESE THREE WERE RUN AGAINST THE GUARD BEFORE THE iOS ENTRY EXISTED AND
+  // ALL THREE RETURNED EXIT 0 — PASS. That is the measurement, not the
+  // illustration: until the entry landed there was no assertion here to fail,
+  // and a lane with no iOS build at all was graded clean.
+  test('the iOS bundle is MISSING entirely — the state every run before 2026-08-20 was in', () => {
+    const build = { ...APPLE_OK };
+    delete build['build/ios/iphoneos/Runner.app/Runner'];
+    delete build['build/ios/iphoneos/Runner.app/Info.plist'];
+    const { code, out } = run(fixture({ build }), ['--app', 'subly', '--platform', 'apple']);
+    assert.equal(code, 1, out);
+    assert.match(out, /build\/ios\/iphoneos\/\*\.app — the containing directory does not exist/);
+    assert.doesNotMatch(out, /build\/macos.*does not exist/, 'the macOS half is intact and must not be blamed');
+  });
+
+  test('the iOS .app exists and is EMPTY — a directory the upload accepts happily', () => {
+    const build = { ...APPLE_OK };
+    delete build['build/ios/iphoneos/Runner.app/Runner'];
+    delete build['build/ios/iphoneos/Runner.app/Info.plist'];
+    build['build/ios/iphoneos/Runner.app'] = null;
+    const { code, out } = run(fixture({ build }), ['--app', 'subly', '--platform', 'apple']);
+    assert.equal(code, 1, out);
+    assert.match(out, /the \.app bundle exists and is EMPTY/);
+  });
+
+  test('build/ios/iphoneos holds something that is NOT an .app', () => {
+    const build = { ...APPLE_OK };
+    delete build['build/ios/iphoneos/Runner.app/Runner'];
+    delete build['build/ios/iphoneos/Runner.app/Info.plist'];
+    build['build/ios/iphoneos/Runner.txt'] = 'not a bundle';
+    const { code, out } = run(fixture({ build }), ['--app', 'subly', '--platform', 'apple']);
     assert.equal(code, 1, out);
     assert.match(out, /no "\.app" bundle at this path/);
   });
