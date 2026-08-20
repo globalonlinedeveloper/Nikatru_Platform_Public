@@ -1493,14 +1493,16 @@
             "APPLE_DIST_CERT_P12_BASE64",
             "APPLE_DIST_CERT_PASSWORD",
             "APPLE_PROVISIONING_PROFILES_BASE64",
-            "APPLE_TEAM_ID"
+            "APPLE_TEAM_ID",
+            "APPLE_INSTALLER_CERT_P12_BASE64"
           ],
           "why": {
             "_why": "One written reason per name, enforced by assert-channel-register.mjs §8. Stated per row rather than referenced, because a `why` that says 'see the other row' is a `why` that survives the other row being edited.",
             "APPLE_DIST_CERT_P12_BASE64": "The Apple Distribution certificate and private key as a base64 PKCS#12. The SAME certificate as ios-appstore — one account, one identity — carried as a file's bytes because `security import` wants a path and a path cannot travel through a repository secret.",
             "APPLE_DIST_CERT_PASSWORD": "The passphrase on that .p12. Two secrets for one credential because that is the only shape `security import -P` accepts.",
             "APPLE_PROVISIONING_PROFILES_BASE64": "The .provisionprofile for the Mac App Store record, base64 for the same path reason. Signing CONFIGURATION rather than key material: it binds the certificate to this bundle id and its entitlements, and a build signed by the right key against the wrong profile is refused at upload.",
-            "APPLE_TEAM_ID": "The 10-character Team identifier xcodebuild resolves the signing identity against. An identifier, but an INPUT TO SIGNING — with the wrong value xcodebuild selects a different identity or none at all."
+            "APPLE_TEAM_ID": "The 10-character Team identifier xcodebuild resolves the signing identity against. An identifier, but an INPUT TO SIGNING — with the wrong value xcodebuild selects a different identity or none at all.",
+            "APPLE_INSTALLER_CERT_P12_BASE64": "\ud83d\udd34 macOS ONLY \u2014 DO NOT COPY THIS NAME ONTO THE ios-appstore ROW. A Mac App Store submission is a .pkg, and productbuild signs it with a MAC INSTALLER DISTRIBUTION identity ('3rd Party Mac Developer Installer'), which is a FIFTH certificate and a DIFFERENT one from the Apple Distribution identity APPLE_DIST_CERT_P12_BASE64 carries \u2014 that one signs the .app INSIDE the package and cannot sign the package itself. iOS ships an .ipa and needs no installer certificate at all, so declaring it on that row would name a credential the lane can never use, which is exactly the ceiling \u00a78 exists to bound. Until OWNER_QUEUE A-4 creates the account nothing can issue it; apple-signing.mjs plans the productbuild step and PRINTS the gap rather than pretending the command is runnable."
           }
         },
         "seam": {

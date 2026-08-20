@@ -606,11 +606,21 @@ describe('apple-signing — the signed-export intents', () => {
     assert.deepEqual(ios.argv, ['flutter', 'build', 'ipa', '--release', '--export-options-plist', '/tmp/eo.plist']);
   });
 
-  test('the macOS .pkg intent is productbuild, and it PRINTS the certificate the register does not declare', () => {
+  // 🔴 THE TWO GAPS CLOSE ON DIFFERENT DAYS AND THIS PINS WHICH ONE IS OPEN.
+  // Until 2026-08-20 the register named no installer certificate, so the gap was
+  // "not declared" — an ENGINEERING omission, closable in a commit. The
+  // macos-appstore row now declares APPLE_INSTALLER_CERT_P12_BASE64 with its
+  // reason, so what remains is that the certificate DOES NOT EXIST, which needs
+  // an Apple Developer account and is the owner's. Asserting the old sentence
+  // would keep a closed gap open in the log; asserting only /OWNER_QUEUE A-4/
+  // would pass on either, which is a pin that cannot tell the change apart.
+  test('the macOS .pkg intent is productbuild, and the gap it prints is now the CERTIFICATE, not the declaration', () => {
     const pkg = plan().find((s) => s.argv[0] === 'productbuild');
     assert.ok(pkg, 'the .pkg intent is missing');
-    assert.match(pkg.gap, /INSTALLER CERTIFICATE IS NOT IN THE REGISTER/);
+    assert.match(pkg.gap, /DECLARED AND DOES NOT EXIST/);
+    assert.match(pkg.gap, /APPLE_INSTALLER_CERT_P12_BASE64/);
     assert.match(pkg.gap, /OWNER_QUEUE A-4/);
+    assert.doesNotMatch(pkg.gap, /IS NOT IN THE REGISTER/, 'the register declares it now — that sentence is false');
   });
 
   test('every intent names the channel it belongs to', () => {
