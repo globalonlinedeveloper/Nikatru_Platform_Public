@@ -172,6 +172,18 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "F-2"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#windows"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-artifact-signed-msix.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
