@@ -517,10 +517,15 @@ export function signedExportPlan({ appSlug, exportOptionsPath, keychain, teamId,
       ],
       produces: join(outDir ?? '$RUNNER_TEMP', `${appSlug}.pkg`),
       gap:
-        'THE INSTALLER CERTIFICATE IS NOT IN THE REGISTER. A Mac App Store .pkg needs a Mac Installer ' +
-        'Distribution identity, which is a DIFFERENT certificate from the Apple Distribution one ' +
-        `${ROLE_ENV.p12} carries. No secret is declared for it, so this command is planned and cannot be ` +
-        `completed from the declared set. The missing item is part of the ${OWNER_GAP}.`,
+        'THE INSTALLER CERTIFICATE IS DECLARED AND DOES NOT EXIST. A Mac App Store .pkg needs a Mac ' +
+        'Installer Distribution identity, which is a DIFFERENT certificate from the Apple Distribution ' +
+        `one ${ROLE_ENV.p12} carries — that one signs the .app INSIDE the package and cannot sign the ` +
+        'package itself. As of 2026-08-20 the macos-appstore row DECLARES ' +
+        '`APPLE_INSTALLER_CERT_P12_BASE64` with its reason, so the name is no longer missing from the ' +
+        'register; what is missing is the certificate, which nothing can issue until ' +
+        `${OWNER_GAP} creates the account. This command stays PLANNED and unrunnable, and the ` +
+        'sentence says which of the two gaps it is — they close on different days and by different ' +
+        'people.',
     },
   ];
   return plan;
