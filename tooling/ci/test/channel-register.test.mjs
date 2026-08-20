@@ -146,6 +146,7 @@ const servedWeb = () => ({
     keyKind: 'none',
     identity: null,
     custody: 'the web channel signs nothing',
+    seam: { prepare: null, verify: null, artifactGlob: null, why: 'the web channel signs nothing and has no store to submit to' },
     restoreDrill: { date: null, required: false, note: 'nothing of ours to restore' },
   },
   minimumToolchain: ['flutter'],
@@ -167,6 +168,7 @@ const deferredWindowsStore = () => ({
     keyKind: 'none',
     identity: null,
     custody: 'the Store re-signs the MSIX',
+    seam: { prepare: null, verify: null, artifactGlob: null, why: 'the Store re-signs the MSIX, so there is no key of ours to prepare or verify' },
     restoreDrill: { date: null, required: false, note: 'no key of ours' },
   },
   minimumToolchain: ['flutter'],
@@ -253,6 +255,7 @@ const androidPlay = () => ({
     keyKind: 'upload-key',
     identity: 'release-keystore/release.keystore',
     custody: 'recorded in the private SSoT',
+    seam: { prepare: null, verify: null, artifactGlob: null, why: 'fixture channel: the seam is declared with nulls so the shape is present and explained' },
     restoreDrill: { date: '2026-08-04', required: true, note: 'drilled' },
     ciSecrets: {
       names: [...ANDROID_SECRETS],
@@ -360,8 +363,14 @@ const gradleFile = ({
  * Build a fixture repo. Everything is valid unless a knob says otherwise.
  * `mutate(register)` breaks exactly one thing, so a failure is attributable.
  */
+/* Which Flutter build verb emits which fixture format. Anything a mutation invents
+   falls back to 'web' so the register stays well formed and the test fails on the
+   thing it is testing rather than on a missing verb. */
+const FIXTURE_BUILD_VERB = { 'static-bundle': 'web', '.msix': 'windows', '.aab': 'appbundle' };
+
 function tree({
   mutate = null,
+  breakArtifactBuild = null,
   platforms = ['web'],
   omitRegister = false,
   registerRaw = null,
@@ -448,6 +457,22 @@ function tree({
   // same way it breaks every other one — one mutation, one attributable failure.
   if (withAndroid) register.channels.push(androidPlay());
   if (mutate) mutate(register);
+  // §10 — DERIVED FROM THE CHANNELS AFTER `mutate`, NEVER TYPED.
+  // It must be derived AFTER, because several tests mutate a channel's
+  // artifactFormats: deriving first left the table describing the pre-mutation
+  // channels and failed those tests for a second, unrelated reason. A fixture
+  // that types this table cannot survive both directions of the guard's check.
+  // `breakArtifactBuild` is the deliberate escape hatch, so §10 can still be
+  // negative-tested without any test having to hand-write the whole table.
+  register.artifactBuild = {
+    formats: Object.fromEntries(
+      [...new Set(register.channels.flatMap((c) => c.artifactFormats ?? []))].map((f) => [
+        f,
+        { flutterTarget: FIXTURE_BUILD_VERB[f] ?? 'web', packagedBy: null },
+      ]),
+    ),
+  };
+  if (breakArtifactBuild) breakArtifactBuild(register);
 
   // 🔴 DERIVED FROM THE REGISTER AFTER THE MUTATION, never typed. A case that
   // renames a secret HERE would otherwise leave the lane naming the old one, and
@@ -2106,5 +2131,83 @@ describe('assert-channel-register — §6d: pinned signing material and its sent
     );
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /pinned signing-material block/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §10 — the two tables lifted out of tooling/store-pipeline/ on 2026-08-20,
+// which was deleted in the same commit.
+//
+// 🔴 THESE TESTS ARE THE POINT OF THE LIFT. The tables previously lived in a
+// directory NOTHING ran — no workflow, no guard, no meta-guard — so the checks
+// over them had stopped being performed long before the directory was removed.
+// Moving the data without moving the check would have been a slower deletion.
+// Each case below is a mutation that was run by hand against the real register
+// before this suite existed, and each one turned the guard red.
+describe('assert-channel-register — §10 artifactBuild and the signing seams', () => {
+  test('M1 the whole artifactBuild block deleted is caught', () => {
+    const { code, out } = run(tree({ breakArtifactBuild: (r) => { delete r.artifactBuild; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no `artifactBuild\.formats` block/);
+    // The message must carry WHY it matters, not just that it is absent.
+    assert.match(out, /nothing says that `\.aab` comes from `flutter build appbundle`/);
+  });
+
+  test('M2 a format a channel declares with no build verb is caught', () => {
+    const { code, out } = run(tree({ breakArtifactBuild: (r) => { delete r.artifactBuild.formats['static-bundle']; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /format "static-bundle" is declared by a channel/);
+  });
+
+  test('M3 a build verb for a format NO channel declares is caught', () => {
+    const { code, out } = run(tree({
+      breakArtifactBuild: (r) => { r.artifactBuild.formats['.deb'] = { flutterTarget: 'linux', packagedBy: null }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /describes a build verb for a format NO channel declares/);
+  });
+
+  test('an entry with no flutterTarget is caught — the whole content of the entry', () => {
+    const { code, out } = run(tree({
+      breakArtifactBuild: (r) => { r.artifactBuild.formats['static-bundle'] = { packagedBy: null }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /carries no `flutterTarget`/);
+  });
+
+  test('M5 a kind:"store" channel with no signing.seam is caught', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.channels[1].signing.seam; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is kind:"store" and carries no `signing\.seam`/);
+  });
+
+  test('M4 a seam naming a script that does not exist is caught', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => { r.channels[1].signing.seam.verify = 'tooling/ci/does-not-exist.mjs'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /which does not exist/);
+    assert.match(out, /a seam pointing at a script that is gone is a seam nobody can run/i);
+  });
+
+  test('a seam with no written `why` is caught — an unexplained null is an omission', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].signing.seam.why = ''; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /carries no written `why`/);
+  });
+
+  // ── anti-vacuity ──────────────────────────────────────────────────────────
+  test('COVERAGE LOST when no channel declares any artifactFormats', () => {
+    const { code, out } = run(tree({ mutate: (r) => { for (const c of r.channels) c.artifactFormats = []; } }));
+    assert.equal(code, 1, out);
+    // It must say the cross-check ranged over nothing, not merely pass.
+    assert.match(out, /COVERAGE LOST|no `artifactFormats`/);
+  });
+
+  test('the real register passes both limbs, and says what it measured', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /artifactBuild — \d+ format\(s\), every one declared by a channel/);
+    assert.match(out, /signing seams — \d+ channel\(s\) carry one/);
   });
 });

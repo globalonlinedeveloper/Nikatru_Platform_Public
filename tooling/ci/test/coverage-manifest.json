@@ -22,7 +22,7 @@
   "ceiling-budget.test.mjs": 73,
   "channel-arming.test.mjs": 26,
   "channel-claims.test.mjs": 45,
-  "channel-register.test.mjs": 151,
+  "channel-register.test.mjs": 160,
   "clone-contract.test.mjs": 34,
   "config-registry.test.mjs": 22,
   "consent-anon-id.test.mjs": 12,

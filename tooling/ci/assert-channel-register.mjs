@@ -1917,6 +1917,93 @@ if (gradleFilesCrossChecked > 0) {
   );
 }
 
+// ── §10 · artifactBuild and the signing seams ────────────────────────────────
+// 🔴 LIFTED 2026-08-20 FROM tooling/store-pipeline/, WHICH WAS DELETED THE SAME
+// DAY. Two tables lived only in that directory — `ARTIFACT_BUILD` (which Flutter
+// build verb emits which artifact format) and `SIGNING_SEAMS` (which script
+// prepares a credential, which reads the signature back, and where the artifact
+// lands). `git grep -l "flutterTarget\|artifactGlob"` returned only files inside
+// it, and NOTHING ran that directory — no workflow, no guard, no meta-guard.
+//
+// Moving the data without moving the CHECK would have been a slower deletion, so
+// these limbs are the check the deleted `assert-slot-pipeline.mjs` used to make,
+// relocated to a register 36 production scripts already read. Both directions,
+// because a one-way check lets the other side rot: a format a channel declares
+// with no build verb FAILS, and a build verb no channel declares FAILS.
+{
+  const ab = register.artifactBuild;
+  if (!ab || typeof ab !== 'object' || !ab.formats || typeof ab.formats !== 'object') {
+    problems.push(
+      'the register declares no `artifactBuild.formats` block. It is the only record of which Flutter build ' +
+        'verb emits which artifact format — the file it was lifted from stated its own reason: "nothing says ' +
+        'that `.aab` comes from `flutter build appbundle`." Without it that fact is written down nowhere.',
+    );
+  } else {
+    const declaredFormats = new Set();
+    for (const row of register.channels ?? []) for (const f of row.artifactFormats ?? []) declaredFormats.add(f);
+    const built = new Set(Object.keys(ab.formats));
+
+    if (declaredFormats.size === 0) {
+      problems.push('COVERAGE LOST — no channel declares any `artifactFormats`, so the artifactBuild cross-check ranges over nothing.');
+    }
+    for (const f of declaredFormats) {
+      if (!built.has(f)) {
+        problems.push(
+          `format "${f}" is declared by a channel's \`artifactFormats\` and has no \`artifactBuild.formats\` entry, ` +
+            'so nothing records which build verb produces it.',
+        );
+      } else if (typeof ab.formats[f].flutterTarget !== 'string' || !ab.formats[f].flutterTarget) {
+        problems.push(`artifactBuild.formats["${f}"] carries no \`flutterTarget\`, which is the whole content of the entry.`);
+      }
+    }
+    for (const f of built) {
+      if (!declaredFormats.has(f)) {
+        problems.push(
+          `artifactBuild.formats["${f}"] describes a build verb for a format NO channel declares. Either a channel ` +
+            'lost its format or this entry outlived its channel; an unreachable build verb reads as coverage it is not.',
+        );
+      }
+    }
+    ok(`artifactBuild — ${built.size} format(s), every one declared by a channel and every declared format built [lifted from store-pipeline 2026-08-20]`);
+  }
+
+  // The seams. Every kind:"store" row must carry one, and every path it names
+  // must resolve — the same "does the enforcer exist" property the deleted
+  // directory checked, against the same scripts.
+  let seamsChecked = 0;
+  let seamPathsResolved = 0;
+  for (const row of register.channels ?? []) {
+    const seam = row.signing?.seam;
+    if (!seam) {
+      if (row.kind === 'store') {
+        problems.push(
+          `channel "${row.id}" is kind:"store" and carries no \`signing.seam\`. The seam records where its artifact ` +
+            'lands and which script reads the signature back out of it; without one, "this artifact is signed" has no ' +
+            'right-hand side on that channel.',
+        );
+      }
+      continue;
+    }
+    seamsChecked++;
+    for (const k of ['prepare', 'verify']) {
+      const p = seam[k];
+      if (p === null || p === undefined) continue;
+      if (typeof p !== 'string' || !p) { problems.push(`channel "${row.id}" seam.${k} is not a path.`); continue; }
+      if (!existsSync(join(ROOT, p))) {
+        problems.push(`channel "${row.id}" seam.${k} names ${p}, which does not exist. A seam pointing at a script that is gone is a seam nobody can run.`);
+      } else seamPathsResolved++;
+    }
+    if (typeof seam.why !== 'string' || seam.why.length < 20) {
+      problems.push(`channel "${row.id}" seam carries no written \`why\`. A null prepare/verify is a CLAIM that nothing needs doing, and an unexplained null is indistinguishable from an omission.`);
+    }
+  }
+  if (seamsChecked === 0) {
+    problems.push('COVERAGE LOST — no channel carries a `signing.seam`, so every seam check above ranged over nothing.');
+  } else {
+    ok(`signing seams — ${seamsChecked} channel(s) carry one, ${seamPathsResolved} named script(s) resolve on disk, every null explained [lifted from store-pipeline 2026-08-20]`);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 if (prints.length) {
   console.log('');
