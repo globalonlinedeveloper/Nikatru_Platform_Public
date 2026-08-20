@@ -761,6 +761,24 @@ jobs:
       - name: Package MSIX (Microsoft Store)
         working-directory: apps/${{ matrix.app }}
         run: dart run msix:create
+      # ── WHAT msix:create ACTUALLY WROTE ────────────────────────────
+      # 🔴 TWO GUARDS ALREADY COMPARE THIS IDENTITY AND NEITHER HAS EVER OPENED
+      # THE PACKAGE. assert-store-metadata.mjs compares channel-register.json's
+      # `packageIdentity` against the pubspec's `msix_config` — declaration
+      # against declaration. Between that and the shipped bytes sits the step
+      # above, and nothing has ever asked what it wrote.
+      #
+      # Partner Center binds the identity to the PRODUCT, not to the upload, so
+      # a package built under the wrong one submits cleanly and is
+      # UNRECOVERABLE once published. It also asserts the package carries NO
+      # AppxSignature.p7x, which is the positive evidence that `store: true`
+      # took effect — `store: false` silently re-introduces a test certificate
+      # nobody owns.
+      - name: The MSIX carries the identity the register declares
+        shell: bash
+        run: >
+          node tooling/ci/assert-artifact-signed-msix.mjs
+          apps/${{ matrix.app }}/build/windows/msix/${{ matrix.app }}.msix
       # ── THE CERTIFICATE, AND THE READ-BACK IT EXISTS FOR ────────────────
       # 🔴 THIS STEP RAN BEFORE `Build windows` UNTIL 2026-08-20, AND WAS NEVER
       # GIVEN `--artifact`. Both halves of that were defects and the second is
