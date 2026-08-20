@@ -36,7 +36,7 @@
   "data-inventory.test.mjs": 42,
   "deletion-control.test.mjs": 18,
   "deploy-triggers.test.mjs": 17,
-  "deployment-record.test.mjs": 45,
+  "deployment-record.test.mjs": 52,
   "desktop-runner-identity.test.mjs": 16,
   "discovery-surface.test.mjs": 68,
   "dod-sync.test.mjs": 20,
