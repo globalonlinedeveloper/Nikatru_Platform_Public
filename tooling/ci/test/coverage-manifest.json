@@ -137,5 +137,6 @@
   "windows-signing.test.mjs": 73,
   "windows-store-submission.test.mjs": 20,
   "worker-error-sink.test.mjs": 18,
-  "workflow-scan.test.mjs": 16
+  "workflow-scan.test.mjs": 16,
+  "xcode-floor.test.mjs": 19
 }

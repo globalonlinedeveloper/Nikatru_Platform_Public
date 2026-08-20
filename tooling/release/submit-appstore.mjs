@@ -446,6 +446,22 @@ if (missingCreds.length === 0) {
 // Printed on every run rather than failing, because pinning Xcode is real work
 // that nobody can validate without an Apple runner — and a gap nobody sees
 // becomes permanent ([pipeline C-6]).
+//
+// 🔴 THIS TEST IS `hasOwnProperty`, AND FROM 2026-08-08 TO 2026-08-20 THAT WAS
+// THE ONLY THING IN THE REPOSITORY STANDING BETWEEN A BUILD AND A STORE POLICY
+// ALREADY IN FORCE — the warning landed 2026-08-01 (e90b110) and the `xcode` key
+// that silenced it landed 2026-08-08 (fb9fe26), both measured with `git log -S`.
+// The key's PRESENCE silenced the warning; nothing compared the pin to
+// the machine, so writing `xcode: "26"` down removed the sentence describing
+// the hazard and left the hazard untouched. A declaration read as an
+// enforcement is this corpus's cardinal defect wearing its most convincing
+// costume, because the declaration is TRUE — it is just not a check.
+//
+// Since 2026-08-20 the enforcement exists: tooling/ci/assert-xcode-floor.mjs
+// runs in build-platforms.yml's `apple` job and compares `xcodebuild -version`
+// against this key, refusing COVERAGE LOST when it cannot ask. So the test
+// below is now what it always read like — "is there a floor for that guard to
+// enforce?" — rather than the floor itself.
 const versionsRaw = read('tooling/versions.json');
 let xcodePinned = false;
 if (versionsRaw !== null) {
@@ -458,7 +474,7 @@ if (versionsRaw !== null) {
 if (!xcodePinned) {
   prints.push(
     'XCODE FLOOR NOT PINNED — developer.apple.com/news/upcoming-requirements/ (fetched 2026-07-29): apps uploaded to App Store Connect "must be built with Xcode 26 or later", in force since 28 April 2026. ' +
-      'tooling/versions.json has no `xcode` key and build-platforms.yml pins only the runner image label (`macos-26`), which is not the same thing: the image can move its default Xcode without this repo noticing. ' +
+      'tooling/versions.json has no `xcode` key, so tooling/ci/assert-xcode-floor.mjs has no floor to compare the runner against and exits COVERAGE LOST. ' +
       'Also sourced and relevant: the macos-26 runner is arm64-only.',
   );
 }
