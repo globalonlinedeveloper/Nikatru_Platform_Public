@@ -489,9 +489,31 @@ if (SUBMIT) {
         '     environment, and it is indistinguishable from a real gate anywhere except here.',
       ]);
     }
-    ok(
-      `PG-5 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s); this job only reached this line because one of them approved it`,
-    );
+    // 🔴 `can_admins_bypass` COMES FROM THE SAME GET, AND UNTIL 2026-08-20 THIS
+    // LINE CLAIMED AN APPROVAL IT HAD NOT CHECKED. It read "this job only
+    // reached this line because one of them approved it" — which is false
+    // whenever an administrator can bypass the reviewer, and MEASURED on this
+    // repository that flag is `true`. The gate is then a gate for everyone
+    // except the one person who runs every release here.
+    //
+    // The remedy is not to fail: bypass is a legitimate setting and turning it
+    // off is a repo-admin act (OWNER_QUEUE). The remedy is to STOP ASSERTING
+    // WHAT WAS NOT OBSERVED. The reviewer requirement IS verified and still
+    // reported; what is no longer claimed is that it was exercised.
+    const adminsCanBypass = envJson.can_admins_bypass !== false;
+    if (adminsCanBypass) {
+      ok(
+        `PG-5 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s). ` +
+          '⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an ' +
+          'administrator can dispatch straight past the gate. The requirement is verified; the approval is not. ' +
+          'Set it false to make this lane say what it used to claim.',
+      );
+    } else {
+      ok(
+        `PG-5 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s) and ` +
+          '`can_admins_bypass` is false, so this job only reached this line because one of them approved it',
+      );
+    }
   }
 }
 

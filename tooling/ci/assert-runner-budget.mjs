@@ -135,7 +135,14 @@ const CEILING_EPSILON_USD = 0.01;
 // Before it, no credential PRINTS and exits 0. After it, no credential is exit 2.
 const BUDGET_READ_DEADLINE = Date.parse('2026-09-08T00:00:00Z');
 
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
+// 🔴 REPOINTED 2026-08-20. This read `Nikatru_Android_Apps_Public`, which
+// `gh repo list` shows is NOT A LIVE REPOSITORY — the owner renamed it again after
+// the 2026-08-19 pass that put it here. A RENAME FREES THE OLD NAME. GitHub follows
+// rename redirects, so a read against the freed name answers 200 and this looked
+// fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
+// reports on it as if it were ours. Verify a repo name with `gh repo list`, never
+// with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 const PRODUCT = 'actions';
 
 const EXIT_OK = 0;

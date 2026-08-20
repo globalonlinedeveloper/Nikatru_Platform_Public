@@ -1620,7 +1620,14 @@ export function evaluate(reg, tree, nowMs) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GH_API = 'https://api.github.com';
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
+// 🔴 REPOINTED 2026-08-20. This read `Nikatru_Android_Apps_Public`, which
+// `gh repo list` shows is NOT A LIVE REPOSITORY — the owner renamed it again after
+// the 2026-08-19 pass that put it here. A RENAME FREES THE OLD NAME. GitHub follows
+// rename redirects, so a read against the freed name answers 200 and this looked
+// fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
+// reports on it as if it were ours. Verify a repo name with `gh repo list`, never
+// with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 const PROBE_TIMEOUT_MS = 15_000;
 // 🔴 SEPARATE, AND MUCH LARGER, THAN THE NETWORK ONE — measured, not guessed. A
 // COLD `powershell` start plus the ScheduledTasks module autoload exceeded 15 s
