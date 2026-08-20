@@ -74,21 +74,91 @@ function flagValue(argv, name) {
   return v;
 }
 
+// ── THE WRITE IS RETRIED, AND ONLY WHERE RETRYING IS HONEST ──────────────
+// 🔴 A 503 ON 2026-08-17 LEFT A PUBLISHED SHA WITH NO DEPLOYMENT RECORD. The
+// deploy itself succeeded; this script then failed the job, correctly, saying
+// the one thing it exists to say — the code shipped and we cannot state what
+// shipped. But the cause was a transient upstream error on a single POST, and
+// the record for that SHA does not exist to this day.
+//
+// A whole-job re-run is not the remedy: by then the deploy has already
+// happened, so re-running re-deploys to get a second chance at the write.
+//
+// WHAT IS RETRIED, AND WHAT MUST NEVER BE. 5xx and network failures only.
+//   · a 5xx says "ask again"                                → retry
+//   · a network error never reached GitHub at all           → retry
+//   · a 4xx is a REAL ANSWER — a bad token, a missing repo, an unprocessable
+//     body. Retrying it repeats a wrong request three times and reports the
+//     same failure later, having taught the reader that the guard is flaky
+//     rather than that the request is wrong.
+//
+// ⚠️ 429 IS DELIBERATELY NOT RETRIED, though it is the one 4xx that would
+// justify it. Honouring a rate limit means reading `Retry-After` and waiting
+// what it says; retrying a 429 on a fixed backoff is how a client turns a
+// throttle into a ban. That is a different change with its own source to cite,
+// and inventing the wait here would be exactly the fabricated number this
+// repository keeps deleting.
+export const RETRY_ATTEMPTS = 3;
+
+/** Pure, so both directions are tested without a network or a token. */
+export function isRetryable({ status = null, networkError = false }) {
+  if (networkError) return true;
+  if (typeof status !== 'number') return false;
+  return status >= 500 && status <= 599;
+}
+
+/** Pure. Bounded and short: this runs at the end of a real deploy, and a long
+ *  sleep here is a job holding a runner open to re-ask a question that has
+ *  already been answered twice. */
+export const retryDelayMs = (attempt) => 500 * 2 ** (attempt - 1);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function api(path, token, repo, body) {
-  const res = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: 'application/vnd.github+json',
-      'x-github-api-version': '2022-11-28',
-      'content-type': 'application/json',
-      'user-agent': 'nikatru-record-deployment',
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status} ${text.slice(0, 300)}`);
-  return JSON.parse(text);
+  let last = null;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    let res = null;
+    let networkError = false;
+    try {
+      res = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
+          'content-type': 'application/json',
+          'user-agent': 'nikatru-record-deployment',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      networkError = true;
+      last = new Error(`POST ${path} → ${e && e.message ? e.message : e}`);
+    }
+
+    if (res !== null) {
+      const text = await res.text();
+      if (res.ok) {
+        // EVERY ATTEMPT IS PRINTED, including the one that worked. A retry that
+        // succeeds silently is a transient fault nobody ever learns about, and
+        // the 2026-08-17 outage was invisible until somebody went looking for a
+        // record that was not there.
+        if (attempt > 1) console.log(`   ⬜ POST ${path} succeeded on attempt ${attempt} of ${RETRY_ATTEMPTS}.`);
+        return JSON.parse(text);
+      }
+      last = new Error(`POST ${path} → ${res.status} ${text.slice(0, 300)}`);
+      if (!isRetryable({ status: res.status })) throw last;
+      console.error(`   ⬜ POST ${path} → ${res.status} on attempt ${attempt} of ${RETRY_ATTEMPTS} — retrying.`);
+    } else if (isRetryable({ networkError })) {
+      console.error(`   ⬜ POST ${path} could not reach GitHub on attempt ${attempt} of ${RETRY_ATTEMPTS} — retrying (${last.message}).`);
+    }
+
+    if (attempt < RETRY_ATTEMPTS) await sleep(retryDelayMs(attempt));
+  }
+  // The attempts are exhausted, not the reasons. This still fails the job — an
+  // unrecorded deploy is the state this script exists to abolish, and a retry
+  // budget running out does not make the record exist.
+  throw new Error(`${last.message} (after ${RETRY_ATTEMPTS} attempts)`);
 }
 
 async function main() {
@@ -228,4 +298,15 @@ async function main() {
   }
 }
 
-await main();
+// ── RUN ONLY WHEN RUN, NOT WHEN IMPORTED ────────────────────────────
+// This was a bare `await main()` until 2026-08-20, so IMPORTING this file
+// executed a deploy recorder: with no environment and no token it took the
+// failure path and set a non-zero exit code on whatever imported it. That is
+// why the retry decisions above could not be unit-tested until now — the only
+// way to reach them was to run the whole outward-facing script.
+//
+// The guard is the same one build-enforcement-index.mjs uses. Invoked as
+// `node tooling/ci/record-deployment.mjs …` this is true and nothing changes;
+// the top-level await is kept so the process still waits for the write.
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (isMain) await main();

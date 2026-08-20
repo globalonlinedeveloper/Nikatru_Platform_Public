@@ -37,6 +37,7 @@ import {
   STATE_MEANING,
 } from '../deployment-record.mjs';
 import { RECORD_CALL, expandMatrixEnvironment } from '../workflow-scan.mjs';
+import { isRetryable, retryDelayMs, RETRY_ATTEMPTS } from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(CI_DIR, '../..');
@@ -492,5 +493,59 @@ describe('deployment-record — SUBMIT_TIME_STATES draws the submitted/live line
     for (const s of ['live', 'rejected', 'pulled']) {
       assert.equal(SUBMIT_TIME_STATES.includes(s), false, `${s} is decided after the submitting run has ended`);
     }
+  });
+});
+
+// ── the retry, and the far more important question of what is NOT retried ───
+// 🔴 A 503 ON 2026-08-17 LEFT A PUBLISHED SHA WITH NO DEPLOYMENT RECORD, and
+// the record for it does not exist to this day. A whole-job re-run is not the
+// remedy — by then the deploy has happened, so re-running re-deploys to get a
+// second chance at the write. These are pure decisions so both directions run
+// with no network and no token.
+describe('record-deployment — the write is retried, and only where retrying is honest', () => {
+  test('a 5xx says "ask again"', () => {
+    for (const status of [500, 502, 503, 504, 599]) {
+      assert.equal(isRetryable({ status }), true, `${status} must be retryable`);
+    }
+  });
+
+  test('a network failure never reached GitHub at all', () => {
+    assert.equal(isRetryable({ networkError: true }), true);
+    assert.equal(isRetryable({ status: null, networkError: true }), true);
+  });
+
+  // A 4xx is a REAL ANSWER. Retrying it repeats a wrong request and reports the
+  // same failure later, having taught the reader the guard is flaky rather than
+  // that the request is wrong.
+  test('a 4xx is never retried — it is an answer, not a hiccup', () => {
+    for (const status of [400, 401, 403, 404, 409, 422]) {
+      assert.equal(isRetryable({ status }), false, `${status} must NOT be retried`);
+    }
+  });
+
+  // ⚠️ The one 4xx that would justify a retry, and it is still excluded.
+  // Honouring a rate limit means reading `Retry-After`; retrying a 429 on a
+  // fixed backoff is how a client turns a throttle into a ban. Pinned so that
+  // adding 429 has to be a deliberate act with a source, not a widened range.
+  test('429 is DELIBERATELY not retried — that needs Retry-After, not a backoff', () => {
+    assert.equal(isRetryable({ status: 429 }), false);
+  });
+
+  test('a 2xx and a 3xx are not retry decisions at all', () => {
+    for (const status of [200, 201, 204, 301, 302]) assert.equal(isRetryable({ status }), false);
+  });
+
+  test('a missing or non-numeric status is not an invitation to retry', () => {
+    for (const status of [undefined, null, '503', NaN, {}]) assert.equal(isRetryable({ status }), false);
+    assert.equal(isRetryable({}), false);
+  });
+
+  test('the budget is BOUNDED and the backoff grows', () => {
+    assert.ok(RETRY_ATTEMPTS >= 2 && RETRY_ATTEMPTS <= 5, `${RETRY_ATTEMPTS} attempts`);
+    const waits = Array.from({ length: RETRY_ATTEMPTS - 1 }, (_, i) => retryDelayMs(i + 1));
+    for (let i = 1; i < waits.length; i++) assert.ok(waits[i] > waits[i - 1], 'each wait exceeds the last');
+    // This runs at the end of a real deploy. A long sleep here holds a runner
+    // open to re-ask a question already answered twice.
+    assert.ok(waits.reduce((a, b) => a + b, 0) <= 10_000, `total backoff ${waits} must stay under 10s`);
   });
 });
