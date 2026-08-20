@@ -142,7 +142,8 @@
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#platform",
       ".github/workflows/deploy-web.yml#deploy-web",
-      ".github/workflows/submit-snap.yml#dry-run"
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-app-versioning.mjs",
@@ -1324,7 +1325,8 @@
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/ci.yml#platform",
-      ".github/workflows/submit-snap.yml#dry-run"
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-snapcraft-generable.mjs",
@@ -2006,7 +2008,8 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
-      ".github/workflows/submit-snap.yml#dry-run"
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit"
     ],
     "kind": "script",
     "ref": "tooling/release/generate-snapcraft.mjs",
@@ -2051,7 +2054,8 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#platform",
-      ".github/workflows/submit-snap.yml#dry-run"
+      ".github/workflows/submit-snap.yml#dry-run",
+      ".github/workflows/submit-snap.yml#submit"
     ],
     "kind": "script",
     "ref": "tooling/release/submit-snap.mjs",

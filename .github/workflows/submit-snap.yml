@@ -52,17 +52,39 @@ name: Snap Store submission path (dry run)
 # a snap that mismatches its base installs and then misbehaves at runtime. The
 # `--pack-runner` argument below is what compares them, and it fails the job.
 #
-# ── THE UPLOAD IS STILL REFUSED, AND THAT IS NOT LEFTOVER CAUTION ───────────
-# Nothing here contacts the Snap Store. `--dry-run` has no network path at all,
-# and `--submit` refuses with UNVERIFIED — which matters more on this channel
-# than any other, because Snap auto-updates SILENTLY: a guessed `release` verb
-# does not fail cleanly, it puts the wrong revision on real machines. The name
-# this snap would claim is a GLOBAL namespace and claiming it IS OWNER_QUEUE A-6.
-# A packed .snap changes what this workflow can PROVE; it changes nothing about
-# what it is allowed to SEND.
+# ── WHAT ACTUALLY STOPS AN UPLOAD, MEASURED BY RUNNING IT ───────────────
+# 🔴 THIS BLOCK SAID "`--submit` REFUSES WITH UNVERIFIED" UNTIL 2026-08-20 AND
+# THAT WAS THE WRONG REASON. submit-snap.mjs really does run
+# `snapcraft upload <snap> --release=<channel>` (:985) — the verbs are sourced.
+# Run on 2026-08-20 with the CI markers set, the actual refusal was:
+#
+#     FAIL no job in .github/workflows/submit-snap.yml invokes
+#          `submit-snap.mjs --submit`.
+#
+# The refusal was STRUCTURAL, not epistemic: the script requires this workflow to
+# declare the job that submits, and none did. Two documents disagreed about this
+# — the register's linux-snap row says the script "refuses to guess", this
+# header said UNVERIFIED — and NEITHER named the real gate. That is the
+# recorded lesson of this repo applied to itself: do not trust a workflow header
+# over the script it invokes; run it.
+#
+# ⚠️ SO ADDING THE `submit` JOB BELOW LIFTS THAT REFUSAL, DELIBERATELY. What
+# stops an upload now is the next gate in line and it is a real one: no
+# SNAPCRAFT_STORE_CREDENTIALS secret exists, so the job fails naming the missing
+# credential. Beyond that sits OWNER_QUEUE A-6, the GLOBAL snap-name claim, which
+# is irreversible and is the owner's. Snap auto-updates SILENTLY, so a wrong
+# revision does not fail cleanly — it lands on real machines. Hence the typed
+# `confirm`, the `store-publish` environment with its required reviewer, and a
+# job that rebuilds and re-gates the artifact it is about to send.
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SUBMIT-TO-SNAP-STORE to run the upload job. Anything else runs the dry run only.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -286,3 +308,205 @@ jobs:
           path: apps/subly/build/linux/snap/subly.snap
           retention-days: 7
           if-no-files-found: error
+
+  # 🔴 THE JOB WHOSE ABSENCE WAS THE REFUSAL. Measured 2026-08-20, before this
+  # job existed: `GITHUB_ACTIONS=true GITHUB_REPOSITORY=... submit-snap.mjs
+  # --submit --app subly --confirm SUBMIT-TO-SNAP-STORE` exited 1 with
+  #     FAIL no job in .github/workflows/submit-snap.yml invokes
+  #          `submit-snap.mjs --submit`.
+  # The script requires this workflow to DECLARE the job that submits. So the
+  # implementation at submit-snap.mjs:985 — a real `snapcraft upload
+  # <snap> --release=<channel>` — was unreachable, and the header of this file
+  # named a different reason for that. Both are corrected together.
+  #
+  # ⚠️ WHAT STOPS AN UPLOAD NOW, in order:
+  #   1. `confirm` must be typed exactly. A dispatch without it runs the dry run.
+  #   2. `environment: store-publish` — 1 required reviewer, MEASURED today
+  #      via the environments API. (Its `can_admins_bypass` is true, which is why
+  #      submit-play.mjs's PG-5 no longer claims an approval it cannot observe.)
+  #   3. no SNAPCRAFT_STORE_CREDENTIALS secret exists, so the script fails naming
+  #      the missing credential. THIS is the gate that holds today.
+  #   4. OWNER_QUEUE A-6, the GLOBAL snap-name claim — irreversible, owner-only,
+  #      and deliberately sequenced AFTER this job exists: claiming a global name
+  #      for a lane that cannot submit spends a one-way act on nothing.
+  #
+  # It REBUILDS rather than downloading the dry run's artifact, for the reason
+  # submit-play.yml's submit job records: a gate that graded a different artifact
+  # from the one being uploaded is "green means ran" with extra steps. Snap
+  # auto-updates SILENTLY, so the wrong revision does not fail cleanly — it
+  # lands on machines.
+  submit:
+    name: Upload to the Snap Store (owner-approved)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [gate, dry-run]
+    if: inputs.confirm == 'SUBMIT-TO-SNAP-STORE'
+    environment: store-publish
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${ env.FLUTTER_VERSION }
+      - name: Linux build deps (the same list the Linux build lane installs)
+        run: |
+          set -euo pipefail
+          deps="$(node tooling/release/generate-snapcraft.mjs --emit-build-deps)"
+          echo "installing: ${deps}"
+          sudo apt-get update
+          sudo apt-get install -y ${deps}
+      # apps/subly is a pub WORKSPACE member: resolution happens at the repo
+      # root, not in the app directory.
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      # ── [9]R-2 · THE RELEASE LINE, DERIVED, NEVER TYPED ─────────────────────
+      # The same step build-platforms.yml and deploy-web.yml run, reading the same
+      # pubspec with the same parser the guard uses. The recipe's `version` and the
+      # binary's `--build-name` come from this one value: the Snap Store orders
+      # revisions by the recipe's version, and a recipe versioned differently from
+      # the binary it packages is two release lines wearing one name.
+      - name: Derive the release line from pubspec
+        id: ver
+        run: node tooling/ci/assert-app-versioning.mjs --emit apps/subly >> "$GITHUB_OUTPUT"
+      # 🔴 THE DEFINES ARE WHAT MAKE THIS A REAL BUILD RATHER THAN THE DEMO.
+      # `AppConfig.isBackendLive` compares each of them against a PLACEHOLDER;
+      # left unpassed, the .snap packed below would ship `MockAuthRepository` and
+      # `SeedApiClient` — the exact state the Google Play lane was found in on
+      # 2026-08-04, with every check green. Graded by
+      # tooling/ci/assert-store-build-config.mjs, which derives the required set
+      # from `isBackendLive` and the lane from this row's `lane`/`submission`.
+      #
+      # RELEASE_CHANNEL is `linux-snap` and NOT `linux-appimage`, which is the one
+      # place this job differs from build-platforms.yml's Linux build. That build
+      # stamps `linux-appimage` because it is a build PROOF that no channel
+      # consumes and the register names exactly one direct Linux download channel;
+      # this one packs the artifact the Snap Store would take, so the closest true
+      # answer here is the exact one. assert-channel-register.mjs §6b resolves the
+      # value against a register row, so a typo cannot compile.
+      - name: Build linux
+        working-directory: apps/subly
+        run: >
+          flutter build linux --release
+          --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+          --dart-define=APP_VERSION=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}+${GITHUB_SHA::7}
+          --dart-define=RELEASE_CHANNEL=linux-snap
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ── the recipe, DERIVED from the bundle just built ───────────────────────
+      # The same invocation build-platforms.yml makes, against the bundle this job
+      # produced. The recipe is generated and never committed: a committed one is a
+      # SECOND COPY of five facts that already have one home each — the snap name,
+      # the summary, the description, the licence and the Linux binary identity.
+      # `--out` IS the snapcraft project directory; `snap/snapcraft.yaml` is the
+      # fixed path inside it, and `snapcraft` is run from there below.
+      - name: Generate the snapcraft recipe
+        run: >
+          node tooling/release/generate-snapcraft.mjs
+          --app subly
+          --bundle apps/subly/build/linux/x64/release/bundle
+          --out "$RUNNER_TEMP/snapcraft-subly"
+          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+      # A GENERATOR THAT HAS STOPPED READING THE TREE STILL WRITES A FILE. Same
+      # step build-platforms.yml runs, plus the two questions only a job that is
+      # about to PACK can ask: does the `base` match the host packing it, and does
+      # `source:` resolve — from the project directory, which is how snapcraft
+      # resolves it — to a directory holding this app's binary. Both are cheap here
+      # and both are silent everywhere else: a wrong base produces a snap that
+      # installs and misbehaves, and a `source` off by one `..` is still relative,
+      # still free of host paths, and still points at nothing.
+      #
+      # ✅ AND, SINCE THE FIRST DISPATCH, THE TWO RULES OF THE SNAP FORMAT ITSELF
+      # that no amount of comparing the recipe to this tree could ever have caught:
+      # the licence is an SPDX expression snapd accepts or the key is absent, and
+      # the launcher resolves inside the snap. Each carries the exact string
+      # snapcraft failed with, so the next reader does not have to spend a runner
+      # to find out what these limbs are for.
+      - name: The generated recipe is complete, still derived, and packable here
+        run: >
+          node tooling/ci/assert-snapcraft-generable.mjs
+          --emitted "$RUNNER_TEMP/snapcraft-subly/snap/snapcraft.yaml"
+          --app subly
+          --pack-runner ubuntu-24.04
+      # ── PACK ────────────────────────────────────────────────────────────────
+      # `--destructive-mode` builds on the host; see the header for why that is the
+      # right choice on a runner whose release already matches the recipe's base.
+      # ✅ `sudo` is not caution: snapcraft's build-environment page (fetched
+      # 2026-08-09) states that a core22+ destructive-mode build needs root-level
+      # permissions to install packages, snaps and repositories — which is exactly
+      # what `stage-packages` makes it do.
+      #
+      # ✅ THE FIRST DISPATCH (run 31294305898, 2026-08-09) PROVED THE MECHANISM,
+      # and this note records it rather than leaving the claim aspirational. It
+      # reached snapcraft's own validation, which means: the Flutter build, the
+      # recipe generation, `--destructive-mode` on this runner, `plugin: dump`
+      # ingesting a `source:` that points OUTSIDE the project directory, and
+      # `stage-packages` resolving under snapcraft's own apt handling ALL WORK.
+      #
+      # 🔴 WHAT IT REJECTED WAS THE RECIPE'S CONTENT, in two ways no check in this
+      # repository could have seen, because every check compared the recipe to THE
+      # TREE and none knew a rule of the snap FORMAT:
+      #   · `cannot validate license "proprietary": unknown license: proprietary`
+      #   · `Icon 'com.nikatru.subly' … not found in prime directory`
+      # Both are fixed at their source in tooling/release/generate-snapcraft.mjs
+      # (the `license:` key is omitted, and the launcher moved to `snap/gui/` with
+      # an absolute `${SNAP}/meta/gui/…` icon path), and BOTH ARE NOW ASSERTED by
+      # the step above — with the failing input recorded, so re-introducing either
+      # reddens before a runner is spent rather than after a full Linux build.
+      #
+      # 🔴 THE OUTPUT NAME IS SNAPCRAFT'S, AND THE PATH THIS REPO COLLECTS IT AT IS
+      # OURS. snapcraft writes `<name>_<version>_<arch>.snap`; submit-snap.mjs
+      # validates `apps/<app>/build/linux/snap/<app>.snap`, a convention this
+      # repository chose. So the file is MOVED rather than guessed at, and the move
+      # refuses unless there is EXACTLY ONE candidate: zero means the pack produced
+      # nothing while exiting 0, and two means this step would have to choose which
+      # snap the channel submits, silently.
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+      - name: Pack the snap
+        run: |
+          set -euo pipefail
+          project="${RUNNER_TEMP}/snapcraft-subly"
+          collected="${GITHUB_WORKSPACE}/apps/subly/build/linux/snap/subly.snap"
+          cd "$project"
+          sudo snapcraft pack --destructive-mode
+          count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
+          if [ "$count" -ne 1 ]; then
+            echo "FAIL snapcraft exited 0 and left ${count} .snap file(s) in ${project}:" >&2
+            find "$project" -maxdepth 1 -type f -name '*.snap' >&2
+            echo "     Exactly one is required. Zero is a pack that produced nothing while reporting" >&2
+            echo "     success; more than one means this step would have to choose which snap the" >&2
+            echo "     channel submits, and a chooser with no stated rule picks silently." >&2
+            exit 1
+          fi
+          built="$(find "$project" -maxdepth 1 -type f -name '*.snap')"
+          mkdir -p "$(dirname "$collected")"
+          sudo mv "$built" "$collected"
+          sudo chown "$(id -u):$(id -g)" "$collected"
+          ls -l "$collected"
+      # The credential does not exist yet — OWNER_QUEUE A-6 — and the script
+      # reports its ABSENCE as a printed gap rather than a failure. It is wired
+      # now so that the day it exists, nothing about this job changes. `secrets`
+      # are empty strings when unset, which is what the presence check reads.
+      #
+      # ⚠️ NO `--allow-missing-artifact`. The step above produced the artifact, so
+      # the script validates a package that exists on disk rather than a listing
+      # beside nothing.
+      # The upload. It fails on the MISSING CREDENTIAL today, which is the
+      # honest end of this path until the owner supplies one.
+      - name: Upload to the Snap Store
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          # PG-6 reads the publish environment's protection rules through the
+          # REST API and refuses without a token, because a gated environment and
+          # one GitHub auto-created when a workflow first named it look identical
+          # from inside the job. `contents: read` is enough: the endpoint is
+          # readable by anyone with read access.
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: >
+          node tooling/release/submit-snap.mjs --submit --app subly
+          --confirm SUBMIT-TO-SNAP-STORE
