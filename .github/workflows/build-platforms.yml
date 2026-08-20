@@ -871,7 +871,12 @@ jobs:
         run: node tooling/ci/apple-signing.mjs --app ${{ matrix.app }}
       - name: Build macos
         working-directory: apps/${{ matrix.app }}
-        run: flutter build macos --release
+        run: >
+          flutter build macos --release
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # ── READ THE SIGNATURE OUT OF THE BUNDLE, not out of the config ──────────
       # The step above says what was ARRANGED. This one says what HAPPENED, and
       # the Android pair is two files for exactly this reason: a step that
@@ -906,21 +911,32 @@ jobs:
       # owner-gated step and must not block build verification.
       - name: Build ios (no codesign)
         working-directory: apps/${{ matrix.app }}
-        run: flutter build ios --release --no-codesign
-      # ── the same question, asked of the one artifact this lane uploads ───────
-      # This job's `path:` is a SINGLE directory, so `if-no-files-found: error`
-      # is not being fooled by a union here — but a `Release/` holding a .plist
-      # and no .app satisfies it just as happily, and a macOS .app is a DIRECTORY
-      # whose size on disk says nothing about whether it can launch. The guard
-      # checks that a `*.app` bundle exists and has contents.
+        run: >
+          flutter build ios --release --no-codesign
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
+          --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ── the same question, asked of the macOS bundle ──────────────────────
+      # The macOS upload's `path:` is a SINGLE directory, so `if-no-files-found:
+      # error` is not being fooled by a union there — but a `Release/` holding a
+      # .plist and no .app satisfies it just as happily, and a macOS .app is a
+      # DIRECTORY whose size on disk says nothing about whether it can launch.
+      # The guard checks that a `*.app` bundle exists and has contents.
       #
       # ⬜ IT ASSERTS NOTHING ABOUT iOS, and the guard PRINTS that gap on every
       # run of this lane rather than passing over it. `flutter build ios
-      # --no-codesign` produces an unsigned .app and no `.ipa`, and no step
-      # uploads it; the `ios-appstore` row accepts ".ipa" and has no lane at all.
-      # An assertion over an artifact that does not exist could never fail, which
-      # would add apparent coverage and no coverage. The gap closes when a lane
-      # produces something — not when somebody edits the line away.
+      # --no-codesign` produces an unsigned .app and no `.ipa`; the
+      # `ios-appstore` row accepts ".ipa" and has no lane at all.
+      #
+      # 🔴 THE REASON FOR THAT GAP CHANGED TODAY (2026-08-20) and the sentence
+      # that used to sit here — "and no step uploads it" — is gone with it. Until
+      # this commit an assertion over the iOS bundle would have ranged over an
+      # artifact that did not outlive the job: it could never fail, and a check
+      # that cannot fail adds apparent coverage and no coverage. The step below
+      # now retains that bundle for 90 days, so there IS something to look at.
+      # What is missing is the assertion, and that is the next change. The gap
+      # closes when somebody writes it — not when somebody edits the line away.
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs
@@ -929,6 +945,42 @@ jobs:
         with:
           name: ${{ matrix.app }}-macos
           path: apps/${{ matrix.app }}/build/macos/Build/Products/Release
+          retention-days: 90
+          if-no-files-found: error
+      # ── THE iOS BUNDLE, RETAINED — the artifact this lane has never had ─────
+      # `flutter build ios --release --no-codesign` above writes
+      # build/ios/iphoneos/*.app and, until this step, NOTHING UPLOADED IT. The
+      # runner is ephemeral, so the bundle's retention was zero seconds: it was
+      # compiled, proven to compile, and destroyed. 33 guards in this repository
+      # name ios or macos and not one of them could ever see an iOS artifact,
+      # because none existed for longer than the job.
+      #
+      # 🔴 THIS IS THE UNBLOCKER, NOT THE FEATURE. Six of the nine stages the
+      # ios-appstore channel is measured on — SIGN, VERIFY-SIGNATURE, the shape
+      # assertion, PACKAGE, SUBMIT, RELEASE — cannot be worked on at all while
+      # the thing they operate on does not outlive the job. Every one of them is
+      # reachable from here; none was before.
+      #
+      # THE POSTURE IS IN THE NAME, for the reason recorded on the Android
+      # upload above: `subly-ios-unsigned-build-proof` cannot be mistaken for a
+      # submittable build by anyone reading the run's artifact list, and today
+      # it is exactly what it says — apple-signing.mjs exports
+      # `unsigned-build-proof` when the four Apple secrets are absent, which
+      # they are. The app prefix is not cosmetic either: upload-artifact@v4
+      # rejects a second upload under a name already used in the run, so a
+      # matrix over two apps with a fixed name is a hard failure on the second
+      # leg, not a naming inconvenience.
+      #
+      # ⚠️ AN UNSIGNED .app IS NOT AN .ipa AND MUST NEVER BE READ AS ONE. The
+      # ios-appstore row accepts `.ipa` and its artifactGlob names
+      # build/ios/ipa/*.ipa, which this does not produce and does not claim to.
+      # What is retained here is a BUILD PROOF. It becomes a release candidate
+      # when an Apple account exists and something signs and packages it — not
+      # when somebody widens this path.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.app }}-ios-${{ env.APPLE_SIGNING_POSTURE }}
+          path: apps/${{ matrix.app }}/build/ios/iphoneos
           retention-days: 90
           if-no-files-found: error
 
