@@ -811,13 +811,22 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
-      # KEPT, not temporary. `tooling/versions.json` pins the runner LABEL and the
-      # Flutter version, but NOTHING pins Xcode — and a label names an image
-      # family, not an immutable image. `[9]R-5`'s channel register prints that
-      # gap on every guard run for exactly this reason. When the macOS build
-      # breaks, the first question is "what toolchain was this?", and without
-      # these three lines the answer is unrecoverable after the fact.
+      # KEPT, not temporary. `tooling/versions.json` pins the runner LABEL, the
+      # Flutter version and — since the `xcode` key landed — an Xcode floor of
+      # "26". A label names an image FAMILY, not an immutable image, so the image
+      # can move its default Xcode without this repo noticing. When the macOS
+      # build breaks, the first question is "what toolchain was this?", and
+      # without these three lines the answer is unrecoverable after the fact.
       # It cost one CI cycle to learn that on 2026-07-31; it costs 2 seconds here.
+      #
+      # 🔴 THIS COMMENT SAID "NOTHING pins Xcode" UNTIL 2026-08-20, AND THE PIN
+      # HAD ALREADY LANDED. Worse, the pin is still not ENFORCED: nothing
+      # compares the runner's actual Xcode to versions.json's, and
+      # submit-appstore.mjs decides whether to warn about it with
+      # `hasOwnProperty('xcode')` — the KEY'S PRESENCE, nothing more. Adding the
+      # key silenced the warning and left the risk it described exactly where it
+      # was. `xcodebuild -version` below PRINTS the answer and asserts nothing.
+      # A guard that compares them is the next change.
       - name: Toolchain under test
         run: |
           sw_vers
@@ -917,6 +926,31 @@ jobs:
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
+      # ── READ THE SIGNATURE OUT OF THE iOS BUNDLE TOO ───────────────────
+      # The macOS half above has had this since it existed; the iOS half could
+      # not, because nothing it could read outlived the job. It does now.
+      #
+      # ⚠️ A .app, NEVER AN .ipa. `UNREADABLE_SUFFIXES` in that guard is
+      # ['.ipa','.pkg','.zip','.dmg'] — an .ipa is a ZIP, and `codesign` pointed
+      # at one reports UNSIGNED for a correctly signed app. The guard REFUSES
+      # such a path BY NAME rather than reading it as unsigned, because "the
+      # tool cannot read this" and "this is not signed" must never share an exit
+      # code. A `.app` is readable, which is why this step is possible at all.
+      #
+      # WHAT IT ASSERTS TODAY, under posture `unsigned-build-proof`: that the
+      # bundle is unsigned, LOUDLY and on purpose — and, in the other direction,
+      # that NO identity reached this build through a path the lane never
+      # arranged (a leftover keychain, an inherited environment). That second
+      # direction is the whole value of running it before an Apple account
+      # exists: an artifact nobody can attribute is the thing that must never
+      # reach a store, and it is exactly what an unwatched lane accumulates.
+      # When the four Apple secrets land, the posture flips to `release-signed`
+      # and the same step starts demanding a distribution identity and the
+      # pinned team — no edit here.
+      - name: The iOS bundle is signed by the identity this lane intended
+        run: >
+          node tooling/ci/assert-artifact-signed-apple.mjs
+          apps/${{ matrix.app }}/build/ios/iphoneos/*.app
       # ── the same question, asked of the macOS bundle ──────────────────────
       # The macOS upload's `path:` is a SINGLE directory, so `if-no-files-found:
       # error` is not being fooled by a union there — but a `Release/` holding a
