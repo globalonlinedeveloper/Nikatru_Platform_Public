@@ -46,18 +46,22 @@
 // Either direction failing is COVERAGE LOST, not a pass.
 //
 // ── WHAT IT DELIBERATELY DOES NOT ASSERT ─────────────────────────────────────
-// iOS. `flutter build ios --release --no-codesign` produces an unsigned .app and
-// no .ipa — the `ios-appstore` row's `.ipa` has no lane at all. Writing an
-// assertion over an artifact that does not exist is how a guard acquires a check
-// that can never fail; the gap is PRINTED on every run of the apple lane
-// instead, so it stays visible until a lane produces something.
+// THE iOS .ipa — and ONLY the .ipa. `flutter build ios --release --no-codesign`
+// cannot emit one: an .ipa is a signed archive and needs an Apple Developer
+// account (OWNER_QUEUE A-4). The `ios-appstore` row accepts ".ipa" and declares
+// no lane. That gap is owner-gated, so it is PRINTED on every run of the apple
+// lane rather than failed — a guard that reds the build over work only a person
+// with a chequebook can do is a guard somebody switches off.
 //
-// 🔴 THE .app IS NOW RETAINED (2026-08-20). build-platforms.yml's `apple` job
-// uploads build/ios/iphoneos as `<app>-ios-<posture>`, so the clause that used
-// to sit here — "and no step uploads it" — stopped being true the moment that
-// step landed, and is removed rather than left to age. What is still absent is
-// the `.ipa`, and any assertion over what IS retained; the second is the next
-// change, not this one.
+// 🔴 WHAT THIS FILE USED TO SAY, AND WHY IT NO LONGER DOES. Until 2026-08-20
+// the entry here disclaimed iOS entirely, on the reasoning that "an assertion
+// over an artifact that does not exist could never fail". That was true, and it
+// held for six weeks during which THIS GUARD WOULD HAVE GRADED A LANE THAT
+// EMITTED NOTHING AT ALL FOR iOS AS CLEAN — measured, not supposed: the three
+// negative cases in the test file were run against the previous version of this
+// table and all three exited 0. The .app is now built, retained 90 days by
+// build-platforms.yml, and asserted in LANE_OUTPUTS like any other bundle. Only
+// the format nobody can produce is still disclaimed.
 //
 // ── NEGATIVE TEST ────────────────────────────────────────────────────────────
 // tooling/ci/test/artifact-shape.test.mjs. The load-bearing case is the exact
@@ -157,16 +161,21 @@ const LANE_OUTPUTS = new Map([
   [
     'apple',
     {
-      what: 'the macOS application bundle',
+      what: 'the macOS and iOS application bundles',
       expect: [
         {
           treeGlob: 'build/macos/Build/Products/Release',
           suffix: '.app',
           why: 'the macOS application bundle — what this lane actually produces and uploads today',
         },
+        {
+          treeGlob: 'build/ios/iphoneos',
+          suffix: '.app',
+          why: 'the iOS application bundle — UNSIGNED, produced by `flutter build ios --release --no-codesign` and, since 2026-08-20, uploaded and retained for 90 days as `<app>-ios-<posture>`. It is a BUILD PROOF, not a submittable artifact: the ios-appstore row accepts `.ipa`, which nothing here produces. What this asserts is that the compile actually emitted a bundle with bytes in it — for six weeks a lane that emitted NOTHING for iOS was graded clean, because the only iOS statement in this table was a printed gap',
+        },
       ],
       gaps: [
-        'iOS — `flutter build ios --release --no-codesign` produces an UNSIGNED build/ios/iphoneos/*.app and no .ipa. As of 2026-08-20 that .app IS uploaded and retained for 90 days as `<app>-ios-<posture>`, and THIS GUARD STILL ASSERTS NOTHING ABOUT IT. That is now a gap in this table rather than a fact about the lane: until today an assertion here would have ranged over an artifact that did not exist, which could never fail and would have inflated coverage instead of adding it. There is something to look at now. The `ios-appstore` row still accepts ".ipa", which nothing produces, and still has no lane. This line stops being printed when the assertion is written — not by anybody editing it away.',
+        'iOS — THE .ipa, which nothing in this repository produces. The unsigned build/ios/iphoneos/*.app IS now built, retained and asserted above; what is still missing is the SUBMITTABLE format. `ios-appstore` accepts ".ipa", declares no lane, and `flutter build ios --release --no-codesign` cannot emit one — an .ipa needs a signing identity, which needs an Apple Developer account (OWNER_QUEUE A-4). So this gap is owner-gated, not code-gated, and it is printed rather than failed for that reason. It closes when an account exists and something packages a signed archive — not when somebody edits the line away.',
       ],
     },
   ],

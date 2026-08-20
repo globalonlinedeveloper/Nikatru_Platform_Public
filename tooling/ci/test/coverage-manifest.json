@@ -12,7 +12,7 @@
   "appimage-signing.test.mjs": 73,
   "apple-signing.test.mjs": 74,
   "appstore-submission.test.mjs": 37,
-  "artifact-shape.test.mjs": 22,
+  "artifact-shape.test.mjs": 25,
   "artifact-signed-apple.test.mjs": 35,
   "assert-deploy-triggers-deploy.test.mjs": 11,
   "capability-register-seams.test.mjs": 27,
