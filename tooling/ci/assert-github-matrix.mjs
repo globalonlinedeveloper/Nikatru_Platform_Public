@@ -395,7 +395,23 @@ for (const s of reg.slots) {
     const rec = s.repos?.[side];
     if (!rec || typeof rec !== 'object') continue;
     const declared = typeof rec.boundRemote === 'string' ? rec.boundRemote : null;
-    const abs = join(PROJECTS, s.store, s.target, s.type, dirOf(s, side));
+    // 🔴 THIS RESOLVED ONLY THE STORE x PLATFORM x TYPE PATH UNTIL 2026-08-20,
+    // AND THAT TREE WAS FLATTENED ON 2026-08-19. `Projects/Google_Play_Store/
+    // Android/Apps/...` and `Projects/Chrome_Web_Store/Chrome/Extensions/...` do
+    // not exist; the four repos are plain siblings under `Projects/`. So every
+    // one of the four local-remote comparisons below reported "slot directory
+    // NOT PRESENT" and was SKIPPED — and this guard still printed
+    // `ok — registry and org reconcile`, having compared nothing on disk.
+    //
+    // Resolved location-TOLERANTLY rather than repointed, because both shapes are
+    // real history and a guard that only knows today's layout breaks on the next
+    // move instead of following it. The nested form is tried first so a tree that
+    // still has it is read where it sits.
+    const abs = [
+      join(PROJECTS, s.store, s.target, s.type, dirOf(s, side)),
+      join(PROJECTS, dirOf(s, side)),
+    ].find((c) => existsSync(c) && statSync(c).isDirectory())
+      ?? join(PROJECTS, dirOf(s, side));
 
     if (!existsSync(abs) || !statSync(abs).isDirectory()) {
       localUnreachable++;
@@ -696,6 +712,29 @@ console.log(`  anchor   ${PROJECTS}`);
 console.log(`  registry ${REGISTRY}`);
 console.log(`  rows ${reg.slots.length} · intended repo names ${intendedOwners.size} · bound remotes ${boundOwners.size} · declared out-of-matrix ${outOfMatrix.size}`);
 console.log(`  local remotes compared ${localCompared} · slot directories not in this checkout ${localUnreachable}`);
+
+// 🔴 ZERO COMPARISONS IS NOT A PASS, AND UNTIL 2026-08-20 IT WAS. `localCompared`
+// and `localUnreachable` were PRINTED and nothing read them, so the whole
+// local-vs-registry half could skip every row and this guard still exited 0
+// saying the registry and the org reconcile. It had been doing exactly that since
+// the 2026-08-19 flattening: 4 declared boundRemotes, 0 compared.
+//
+// ⚠️ The floor is DERIVED from the registry, not typed: however many sides
+// declare a `boundRemote`, at least one of them must have been read off a real
+// checkout. A registry that declares none legitimately compares none.
+const declaredSides = reg.slots.reduce(
+  (n, sl) => n + ['public', 'private'].filter((side) => typeof sl.repos?.[side]?.boundRemote === 'string').length,
+  0,
+);
+if (declaredSides > 0 && localCompared === 0) {
+  console.error(
+    `✗ COVERAGE LOST — ${declaredSides} slot side(s) declare a boundRemote and NOT ONE was compared against a ` +
+      'checkout on disk. Every "registry and org reconcile" verdict above rests on the GitHub half alone; the local ' +
+      'half proved nothing. That is the state this guard was in from the 2026-08-19 flattening until 2026-08-20, ' +
+      'while printing ok.',
+  );
+  process.exitCode = 1;
+}
 console.log(`  github limb ${ranGitHub ? 'RAN' : 'DID NOT RUN'}`);
 console.log('');
 

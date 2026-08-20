@@ -332,6 +332,24 @@ describe('assert-github-matrix', () => {
       assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /cannot parse/);
     });
+
+    // 🔴 THE LOCAL HALF COMPARING NOTHING WAS A PASS UNTIL 2026-08-20, AND IT
+    // HAD BEEN COMPARING NOTHING SINCE THE 2026-08-19 FLATTENING. The slot path
+    // was resolved as Projects/<store>/<target>/<type>/<dir>, a tree that no
+    // longer exists, so all four sides reported "slot directory NOT PRESENT",
+    // were skipped, and the guard printed `ok — registry and org reconcile` on
+    // the GitHub half alone. `localCompared` was printed and read by nothing.
+    test('slot directories absent from the anchor: the LOCAL half compared nothing, and that is NOT a pass', () => {
+      const bare = join(TMP, `bare-anchor-${seq++}`);
+      mkdirSync(bare, { recursive: true });
+      const r = spawnSync(
+        process.execPath,
+        [GUARD, '--gh-fixture', fixture(cleanListing()), '--projects', bare],
+        { encoding: 'utf8', env: cleanEnv() },
+      );
+      assert.notEqual(r.status, 0, r.stdout);
+      assert.match(`${r.stdout}${r.stderr}`, /NOT ONE was compared against a checkout on disk/);
+    });
   });
 
   // ── FINDINGS: the reconciliation itself must be able to go red ─────────────
