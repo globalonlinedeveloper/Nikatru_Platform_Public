@@ -832,6 +832,14 @@ jobs:
           sw_vers
           xcodebuild -version
           flutter --version
+      # ── AND THE FLOOR IS ASSERTED, NOT MERELY PRINTED ──────────────────
+      # The step above PRINTS the toolchain and asserts nothing about it, which
+      # is exactly right for a forensic record and useless as a gate. This
+      # compares what `xcodebuild` just reported against versions.json's `xcode`
+      # floor. Absent xcodebuild is COVERAGE LOST, never a pass — which is why
+      # this is here, on the macOS runner, and deliberately NOT in ci.yml.
+      - name: The Xcode floor is met, not just declared
+        run: node tooling/ci/assert-xcode-floor.mjs
       # ⚠️ If this ever aborts with `AOT snapshotter exited with code -6` again,
       # add --verbose BEFORE diagnosing anything: gen_snapshot's stderr is not in
       # the step log and not in `gh run view --log-failed`. That flag is the only

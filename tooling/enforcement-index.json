@@ -1570,6 +1570,18 @@
   },
   {
     "claims": [
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#apple"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-xcode-floor.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "F-10"
     ],
     "invokedBy": [],

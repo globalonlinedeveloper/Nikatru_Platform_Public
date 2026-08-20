@@ -56,8 +56,9 @@
 // 🔴 WHAT THIS FILE USED TO SAY, AND WHY IT NO LONGER DOES. Until 2026-08-20
 // the entry here disclaimed iOS entirely, on the reasoning that "an assertion
 // over an artifact that does not exist could never fail". That was true, and it
-// held for six weeks during which THIS GUARD WOULD HAVE GRADED A LANE THAT
-// EMITTED NOTHING AT ALL FOR iOS AS CLEAN — measured, not supposed: the three
+// held for the 12 days from this file's first commit (193083a, 2026-08-08) to
+// 2026-08-20, during which THIS GUARD WOULD HAVE GRADED A LANE THAT EMITTED
+// NOTHING AT ALL FOR iOS AS CLEAN — measured, not supposed: the three
 // negative cases in the test file were run against the previous version of this
 // table and all three exited 0. The .app is now built, retained 90 days by
 // build-platforms.yml, and asserted in LANE_OUTPUTS like any other bundle. Only
@@ -171,7 +172,7 @@ const LANE_OUTPUTS = new Map([
         {
           treeGlob: 'build/ios/iphoneos',
           suffix: '.app',
-          why: 'the iOS application bundle — UNSIGNED, produced by `flutter build ios --release --no-codesign` and, since 2026-08-20, uploaded and retained for 90 days as `<app>-ios-<posture>`. It is a BUILD PROOF, not a submittable artifact: the ios-appstore row accepts `.ipa`, which nothing here produces. What this asserts is that the compile actually emitted a bundle with bytes in it — for six weeks a lane that emitted NOTHING for iOS was graded clean, because the only iOS statement in this table was a printed gap',
+          why: 'the iOS application bundle — UNSIGNED, produced by `flutter build ios --release --no-codesign` and, since 2026-08-20, uploaded and retained for 90 days as `<app>-ios-<posture>`. It is a BUILD PROOF, not a submittable artifact: the ios-appstore row accepts `.ipa`, which nothing here produces. What this asserts is that the compile actually emitted a bundle with bytes in it — from the first commit of this file (2026-08-08) until 2026-08-20 a lane that emitted NOTHING for iOS was graded clean, because the only iOS statement in this table was a printed gap',
         },
       ],
       gaps: [
