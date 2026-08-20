@@ -147,7 +147,14 @@ const WORKFLOW_REL = `${WORKFLOW_DIR}/${WORKFLOW}`;
 const REGISTER_REL = 'tooling/channel-register.json';
 const BRANCH = 'main';
 const MAX_AGE_DAYS = 14;
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
+// 🔴 REPOINTED 2026-08-20. This read `Nikatru_Android_Apps_Public`, which
+// `gh repo list` shows is NOT A LIVE REPOSITORY — the owner renamed it again after
+// the 2026-08-19 pass that put it here. A RENAME FREES THE OLD NAME. GitHub follows
+// rename redirects, so a read against the freed name answers 200 and this looked
+// fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
+// reports on it as if it were ours. Verify a repo name with `gh repo list`, never
+// with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 
 /** A full commit id. Abbreviations are refused rather than resolved: the API
  *  always returns 40 hex, so a short one means the field was written by

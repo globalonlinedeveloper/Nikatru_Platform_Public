@@ -66,9 +66,13 @@ name: Google Play submission path
 #    environments/{environment_name}", parameters wait_timer, prevent_self_review,
 #    reviewers[{type,id}], deployment_branch_policy.
 #
-#   🔴 REPOINTED 2026-08-19 — the three `gh api repos/…` lines below named
-#   `Project_Cross_Platform_Apps`, which the owner renamed to
-#   `Nikatru_Android_Apps_Public` that day. These are commands somebody TYPES, so a
+#   🔴 REPOINTED TWICE — 2026-08-19 and again 2026-08-20, AND THE SECOND TIME
+#   PROVES THE WARNING BELOW IS NOT THEORETICAL. These lines named
+#   `Project_Cross_Platform_Apps`, were repointed to `Nikatru_Android_Apps_Public`
+#   on 2026-08-19, and that name is now itself DEAD: `gh repo list` does not
+#   return it. The live name is `Nikatru_Platform_Public`. So for a day these
+#   were `--method PUT` commands aimed at a FREED name — the exact hazard the
+#   paragraph below describes, sitting inside the paragraph that describes it. These are commands somebody TYPES, so a
 #   stale name here is not prose. They would still have appeared to work: GitHub
 #   follows rename redirects, so `gh api repos/<owner>/<old-name>/…` answers 200 —
 #   which is exactly why the old name must not be left standing. A rename FREES the
@@ -80,7 +84,7 @@ name: Google Play submission path
 #
 #   # 2 · create the environment WITH the required reviewer, in one call.
 #   gh api --method PUT \
-#     repos/globalonlinedeveloper/Nikatru_Android_Apps_Public/environments/store-publish \
+#     repos/globalonlinedeveloper/Nikatru_Platform_Public/environments/store-publish \
 #     --input - <<'JSON'
 #   {
 #     "wait_timer": 0,
@@ -93,13 +97,13 @@ name: Google Play submission path
 #   # 3 · restrict which branch may reach the gate at all (the custom policy
 #   #     declared above is inert until a pattern is added).
 #   gh api --method POST \
-#     repos/globalonlinedeveloper/Nikatru_Android_Apps_Public/environments/store-publish/deployment-branch-policies \
+#     repos/globalonlinedeveloper/Nikatru_Platform_Public/environments/store-publish/deployment-branch-policies \
 #     -f name='main'
 #
 #   # 4 · prove it took. This is the EXACT read PG-5 makes, so a non-empty
 #   #     `reviewers` here is a submit job that can pass, and `[]` is one that
 #   #     cannot.
-#   gh api repos/globalonlinedeveloper/Nikatru_Android_Apps_Public/environments/store-publish \
+#   gh api repos/globalonlinedeveloper/Nikatru_Platform_Public/environments/store-publish \
 #     --jq '.protection_rules'
 #
 # ⚠️ `prevent_self_review` IS DELIBERATELY false, AND THE HONEST REASON MATTERS.

@@ -118,7 +118,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'e2e.yml';
 const BRANCH = 'main';
 const MAX_AGE_DAYS = 3;
-const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Android_Apps_Public';
+// 🔴 REPOINTED 2026-08-20. This read `Nikatru_Android_Apps_Public`, which
+// `gh repo list` shows is NOT A LIVE REPOSITORY — the owner renamed it again after
+// the 2026-08-19 pass that put it here. A RENAME FREES THE OLD NAME. GitHub follows
+// rename redirects, so a read against the freed name answers 200 and this looked
+// fine; the day somebody re-claims it, this guard reads a STRANGER'S repository and
+// reports on it as if it were ours. Verify a repo name with `gh repo list`, never
+// with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
+const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 
 /** The work the run must still be doing, or its green tick means nothing.
  *
