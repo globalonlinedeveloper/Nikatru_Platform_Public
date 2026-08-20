@@ -586,6 +586,25 @@ jobs:
         run: >
           node tooling/ci/assert-artifact-shape.mjs
           --app ${{ matrix.app }} --platform linux_web_android
+      # ── THE PLAY STORE GATE FOR THIS ENVIRONMENT ────────────────────────────
+      # 🔴 IT RUNS HERE AND NOWHERE ELSE, BECAUSE ONLY HERE DOES THE SUBJECT
+      # EXIST. `ci.yml` never builds Android, so this guard in that workflow
+      # could only ever report COVERAGE LOST. This is what "one job per
+      # environment, each carrying its own store gates on top of the shared
+      # ones" means in practice: the shared gates ran at `gate`, and the gates
+      # that need a built artifact run in the lane that built it.
+      #
+      # It reads the ELF program headers of every 64-bit `.so` inside the bundle
+      # and refuses a LOAD segment under 16 KB. Nothing in this repository had
+      # ever opened a `.so`, and the alignment is set by the NDK and by linker
+      # flags Flutter passes — there is no line in this tree to review, which is
+      # why a toolchain move can change it with no diff. Placed AFTER the shape
+      # check, so a missing or empty .aab is reported as a missing .aab rather
+      # than as an unreadable archive.
+      - name: Every native library is aligned for a 16 KB memory page
+        run: >
+          node tooling/ci/assert-elf-page-alignment.mjs
+          apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
       # 🔴 THE POSTURE IS IN THE ARTIFACT NAME, and that is the "labelled, not
       # indistinguishable" half of the fix. A downloaded `subly-linux-web-android`
       # said nothing about whether its .aab could be uploaded anywhere; a
