@@ -88,7 +88,16 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'no
 import { join, dirname, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from '../ci/tree-walk.mjs';
-import { isChromePage, applyChrome, footer as chromeFooter, footerCss as chromeFooterCss, openMarker, closeMarker } from './chrome.mjs';
+import {
+  isChromePage,
+  applyChrome,
+  footer as chromeFooter,
+  footerCss as chromeFooterCss,
+  skipLink as chromeSkipLink,
+  a11yCss as chromeA11yCss,
+  openMarker,
+  closeMarker,
+} from './chrome.mjs';
 import { lastmodFor } from './lastmod.mjs';
 
 /** The deploy root this generator owns. The mirror (`sites/rajasekarselvam`) is
@@ -239,7 +248,9 @@ const STYLE = `<style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
   .wrap{max-width:880px;margin:0 auto;padding:0 24px}
-  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+${openMarker('a11y-css', true)}
+${chromeA11yCss()}
+${closeMarker('a11y-css', true)}
   nav{background:rgba(11,18,32,.96);position:sticky;top:0;z-index:10;border-bottom:1px solid rgba(255,255,255,.06)}
   .nav-in{max-width:880px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
@@ -635,6 +646,7 @@ ${jsonLd(ld)}
 </script>
 </head>
 <body>
+${[openMarker('skiplink', false), chromeSkipLink(), closeMarker('skiplink', false)].join('\n')}
 ${NAV('/apps/', 'All apps')}
 
 <header>
@@ -644,7 +656,7 @@ ${NAV('/apps/', 'All apps')}
 ${openButton}  </div>
 </header>
 
-<main>
+<main id="main">
   <section>
     <div class="wrap">
       <h2>About ${esc(app.name)}</h2>
@@ -724,6 +736,7 @@ ${jsonLd(ld)}
 </script>
 </head>
 <body>
+${[openMarker('skiplink', false), chromeSkipLink(), closeMarker('skiplink', false)].join('\n')}
 ${NAV('/', 'Nikatru home')}
 
 <header>
@@ -733,7 +746,7 @@ ${NAV('/', 'Nikatru home')}
   </div>
 </header>
 
-<main>
+<main id="main">
   <section>
     <div class="wrap">
 ${cards}    </div>

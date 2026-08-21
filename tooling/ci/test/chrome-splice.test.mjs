@@ -14,6 +14,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  a11yCss,
+  skipLink,
   CHROME_EXCLUDED,
   CHROME_ROOT,
   REGIONS,
@@ -30,9 +32,11 @@ import {
 
 /** A page carrying one valid pair for every region this module knows. */
 const page = (body = 'content') => {
-  let head = '<html><head><style>\n';
+  let head = '<html lang="en"><head><style>\n';
+  head += `${openMarker('a11y-css', true)}\n  /* old a11y */\n${closeMarker('a11y-css', true)}\n`;
   head += `${openMarker('footer-css', true)}\n  /* old css */\n${closeMarker('footer-css', true)}\n`;
   head += '</style></head><body>\n';
+  head += `${openMarker('skiplink', false)}\n<a>old skip</a>\n${closeMarker('skiplink', false)}\n`;
   head += `${body}\n`;
   head += `${openMarker('footer', false)}\n<footer>old</footer>\n${closeMarker('footer', false)}\n`;
   return `${head}</body></html>\n`;
@@ -54,7 +58,7 @@ describe('chrome.mjs · spliceRegion', () => {
     const body = '<h1>Hand written</h1>\n<p>Thirty-three kilobytes of it.</p>';
     const out = spliceRegion(page(body), 'footer', '<footer>NEW</footer>');
     assert.ok(out.includes(body), 'the body must survive the splice byte-for-byte');
-    assert.ok(out.startsWith('<html><head><style>'));
+    assert.ok(out.startsWith('<html lang="en"><head><style>'));
     assert.ok(out.endsWith('</body></html>\n'));
   });
 
@@ -111,7 +115,7 @@ describe('chrome.mjs · applyChrome', () => {
   test('REGIONS is the single list both the generator and the guard iterate', () => {
     // Adding a region must not require editing three files. If this set is ever
     // read from somewhere else, the two readers can disagree about what chrome is.
-    assert.deepEqual([...REGIONS.keys()].sort(), ['footer', 'footer-css']);
+    assert.deepEqual([...REGIONS.keys()].sort(), ['a11y-css', 'footer', 'footer-css', 'skiplink']);
     for (const produce of REGIONS.values()) assert.equal(typeof produce(), 'string');
   });
 });
@@ -186,5 +190,31 @@ describe('chrome.mjs · the footer itself', () => {
 
   test('the external credit link is safe-rel', () => {
     assert.match(footer(), /target="_blank" rel="noopener"/);
+  });
+});
+
+describe('chrome.mjs · the accessibility chrome', () => {
+  test('🔴 the skip link points at #main — the id limb G resolves per page', () => {
+    assert.match(skipLink(), /href="#main"/);
+    assert.match(skipLink(), /class="skip-link"/);
+  });
+
+  test('🔴 the skip link is moved OFF-SCREEN, never display:none', () => {
+    // display:none is not focusable, so it is the one way to write a skip link
+    // that cannot be used at all — and it looks entirely correct in the markup.
+    assert.match(a11yCss(), /\.skip-link\{[^}]*position:absolute/);
+    assert.match(a11yCss(), /\.skip-link\{[^}]*left:-9999px/);
+    assert.doesNotMatch(a11yCss(), /\.skip-link\{[^}]*display:none/);
+  });
+
+  test('it returns to the viewport on focus, or it is decoration', () => {
+    assert.match(a11yCss(), /\.skip-link:focus\{[^}]*left:0/);
+  });
+
+  test('🔴 :focus-visible carries a FALLBACK colour', () => {
+    // These regions are spliced into eleven pages and not every one defines
+    // --primary. `2px solid var(--primary)` on a page that does not is an outline
+    // of nothing: it fails silently and looks fine in the source.
+    assert.match(a11yCss(), /:focus-visible\{[^}]*var\(--primary,s*#[0-9A-Fa-f]{6}\)/);
   });
 });

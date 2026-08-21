@@ -28,6 +28,12 @@
   .links{margin-top:26px;font-size:14px}
   .links a{color:#B6C2D9;text-decoration:none;margin:0 10px}
   .links a:hover{color:#fff}
+  /* CHROME:a11y-css */
+  :focus-visible{outline:2px solid var(--primary,#2E6FF2);outline-offset:2px;border-radius:6px}
+  .skip-link{position:absolute;left:-9999px;top:0;z-index:100;background:var(--primary,#2E6FF2);color:#fff;
+    padding:10px 18px;border-radius:0 0 8px 0;text-decoration:none;font-weight:600}
+  .skip-link:focus{left:0}
+  /* /CHROME:a11y-css */
   /* CHROME:footer-css */
   footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px;line-height:1.9}
   footer .foot-em{color:#fff}
@@ -37,6 +43,10 @@
 </style>
 </head>
 <body>
+<!-- CHROME:skiplink -->
+<a class="skip-link" href="#main">Skip to content</a>
+<!-- /CHROME:skiplink -->
+  <main id="main">
   <div class="box">
     <svg class="logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs><linearGradient id="nm" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2E6FF2"/><stop offset="0.55" stop-color="#2AA0D8"/><stop offset="1" stop-color="#17C3A2"/></linearGradient></defs>
@@ -53,6 +63,7 @@
       <a href="/contact">Contact</a>
     </div>
   </div>
+  </main>
 <!-- CHROME:footer -->
 <footer>
   <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/contact">Contact</a><br><br>

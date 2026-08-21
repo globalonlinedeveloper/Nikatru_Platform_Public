@@ -186,12 +186,55 @@ export function footerCss() {
   footer a:hover{color:#fff}`;
 }
 
+/**
+ * The skip link, and it is the FIRST thing in the body for a reason.
+ *
+ * WCAG 2.2 SC 2.4.1 (Bypass Blocks, Level A). Every page on this site opens with
+ * the same sticky nav, so a keyboard or screen-reader user tabs through the whole
+ * of it before reaching a word of content, on every page, every time.
+ *
+ * Measured before this existed: ONE of the eleven pages had a skip link
+ * (`index.html`), and it is the page a visitor is least likely to be deep-linked
+ * into. The other ten — including all four legal pages a store reviewer opens —
+ * had none.
+ *
+ * `href="#main"` is a contract with the page: the target id must exist, or the
+ * link is worse than absent because it silently does nothing. Limb G of
+ * assert-discovery-surface.mjs resolves it per page.
+ */
+export function skipLink() {
+  return '<a class="skip-link" href="#main">Skip to content</a>';
+}
+
+/**
+ * The accessibility chrome that has to be present on every page to be worth
+ * anything: a visible focus ring, and the skip link's own styling.
+ *
+ * 🔴 `:focus-visible` WAS ON FOUR OF ELEVEN PAGES. A focus indicator is not a
+ * nicety on a site whose primary CTA on seven pages is a link — without it a
+ * keyboard user cannot tell where they are, which is WCAG 2.2 SC 2.4.7 (Focus
+ * Visible, Level AA). It was present on the two generated app pages and two
+ * others, and absent from every legal page.
+ *
+ * The skip link is positioned off-screen and returns on focus, rather than being
+ * `display:none` — a hidden element is not focusable, so `display:none` is the
+ * one way to write a skip link that cannot be used at all.
+ */
+export function a11yCss() {
+  return `  :focus-visible{outline:2px solid var(--primary,#2E6FF2);outline-offset:2px;border-radius:6px}
+  .skip-link{position:absolute;left:-9999px;top:0;z-index:100;background:var(--primary,#2E6FF2);color:#fff;
+    padding:10px 18px;border-radius:0 0 8px 0;text-decoration:none;font-weight:600}
+  .skip-link:focus{left:0}`;
+}
+
 // ── THE SPLICE ───────────────────────────────────────────────────────────────
 
 /** Region names this module knows how to emit, mapped to their producer. Adding a
  *  region means adding it here and nowhere else; the generator and the guard both
  *  iterate this map rather than naming regions of their own. */
 export const REGIONS = new Map([
+  ['a11y-css', a11yCss],
+  ['skiplink', skipLink],
   ['footer', footer],
   ['footer-css', footerCss],
 ]);
@@ -203,7 +246,7 @@ export const openMarker = (region, css) => (css ? `  /* CHROME:${region} */` : `
 export const closeMarker = (region, css) => (css ? `  /* /CHROME:${region} */` : `<!-- /CHROME:${region} -->`);
 
 /** Regions written in CSS comment syntax because they live inside `<style>`. */
-const CSS_REGIONS = new Set(['footer-css']);
+const CSS_REGIONS = new Set(['footer-css', 'a11y-css']);
 export const isCssRegion = (region) => CSS_REGIONS.has(region);
 
 /**

@@ -198,33 +198,61 @@ if (!currentSnaps || currentSnaps.size === 0) {
       'while they are still the live page.',
   );
 } else {
-  // 🔴 THE SHARED FOOTER IS STRIPPED FROM BOTH SIDES BEFORE COMPARING, and this is
-  // a FOURTH tolerated difference in the same family as the three named above —
-  // not a loosening of what the archive protects.
+  // 🔴 THE COMPARISON IS THE <main> CONTENT, POSITIVELY — not "everything except
+  // the chrome I remembered to subtract". That distinction is not pedantry; the
+  // subtractive version was written first and was wrong TWICE IN ONE DAY.
   //
-  // Since 2026-08-21 the live pages take their footer from tooling/sites/chrome.mjs,
-  // and the dated snapshots deliberately do NOT (they are frozen records; splicing
-  // today's chrome into them would make an archive of what was served on its date
-  // start showing today's site). So every future footer change would otherwise
-  // report the policy TEXT as edited, on a day nobody touched a word of it — and
-  // the honest response to that report would be a version bump, which would tell
-  // users the policy changed when it had not. That is a worse outcome than the
-  // one this guard exists to prevent.
+  // Since 2026-08-21 the live pages take shared chrome from tooling/sites/chrome.mjs
+  // and the dated snapshots deliberately do NOT — they are frozen records, and
+  // splicing today's chrome into them would make an archive of what was served on
+  // its date start showing today's site. So the two sides legitimately differ
+  // outside the policy document, and they will differ MORE every time a chrome
+  // region is added.
   //
-  // Measured on the first run after the footer landed: with the footer included
-  // the two documents differed; with it stripped they are IDENTICAL — so the
-  // policy body had not moved at all.
+  // The first fix stripped `<footer>` from both sides. It was correct for the
+  // footer and silently insufficient the moment the accessibility chrome landed a
+  // few hours later, because a skip link contributes VISIBLE TEXT ("Skip to
+  // content") to the live page and not to the snapshot. A subtractive rule has to
+  // be updated by whoever adds the next region, and nothing makes them.
   //
-  // What is still compared is everything a reader would call the policy. A test
-  // asserts that an edit to the actual policy TEXT is still caught, because a
-  // reduction that removed the subject would pass this guard and mean nothing.
-  const withoutChrome = (html) => html.replace(/<footer[\s\S]*?<\/footer>/gi, '');
-  const live = visibleText(withoutChrome(liveSrc));
+  // Reading the <main> element is the same assertion stated positively: compare
+  // the DOCUMENT, and let chrome be whatever it is. It cannot fall behind a
+  // region that has not been invented yet.
+  //
+  // Measured 2026-08-21 across all three snapshots: the 2026-08-10 copy (the
+  // version the live page publishes) matches on <main> text, and the 2026-07-26
+  // and 2026-08-01 copies do NOT — which is correct, they are older policy texts.
+  //
+  // ⚠️ A page with no <main> is COVERAGE LOST, never a silent fallback to the whole
+  // document. Extracting nothing and comparing it to nothing is the shape that
+  // passes hardest exactly when the reduction has stopped working.
+  const mainOf = (html) => {
+    const m = html.match(/<main\b[^>]*>([\s\S]*?)<\/main\s*>/i);
+    return m ? m[1] : null;
+  };
+  const liveMain = mainOf(liveSrc);
+  if (liveMain === null) {
+    coverageLost(
+      `${LIVE_POLICY} has no <main> element, so the archive comparison had no document to read.`,
+      'The published policy is compared to its snapshot on the CONTENT of <main>, positively, so that',
+      'shared page chrome is out of scope by construction. No <main> means no comparison at all.',
+    );
+  }
+  const live = visibleText(liveMain);
   for (const [locale, snap] of currentSnaps) {
     // Only the notice the live page IS can be compared to it. Other locales are
     // translations; K-14 owns whether they exist and whether they are reviewed.
     if (locale !== 'en') continue;
-    if (visibleText(withoutChrome(snap.src)) !== live) {
+    const snapMain = mainOf(snap.src);
+    if (snapMain === null) {
+      problems.push(
+        `${rel(snap.file)} has no <main> element. The snapshot is compared to the live page on the content ` +
+          'of <main>; without one there is nothing to compare, and a snapshot that cannot be compared is not ' +
+          'a record of anything.',
+      );
+      continue;
+    }
+    if (visibleText(snapMain) !== live) {
       problems.push(
         `${rel(snap.file)} and ${LIVE_POLICY} do not carry the same text, and both claim version ${published}. ` +
           'One of them was edited without a version bump, so the "exact text the user consented to" is now two ' +
