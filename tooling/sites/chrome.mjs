@@ -135,7 +135,16 @@ export function isChromePage(rel) {
  * "Registered MSME" wording, and both now appear everywhere rather than being
  * dropped to reach a lowest common denominator.
  *
- * Deliberately class-light. The homepage version used `.wrap`, `.foot-links` and
+ * 🔴 NO `<b>` IN THE FOOTER, and that is a correctness constraint rather than a
+ * style choice. `assert-policy-claims.mjs` reads every `<b>`/`<strong>` span in
+ * the visible text of a LEGAL page as a published CLAIM that owes a row in
+ * tooling/legal/policy-claims.json — reasonably, because an emphasised sentence
+ * on a policy page is a promise. The first version of this footer bolded the
+ * company and developer names for colour alone, and immediately registered EIGHT
+ * false claims across the four legal pages. `.foot-em` gets the identical white
+ * from the shared CSS below without asserting anything.
+ *
+ * Deliberately otherwise class-light. The homepage version used `.wrap`, `.foot-links` and
  * `.foot-dev`, none of which the other ten pages define — emitting those classes
  * site-wide would have rendered unstyled everywhere they were absent, which is
  * exactly the kind of "it looked fine on the page I tested" failure that produced
@@ -144,8 +153,8 @@ export function isChromePage(rel) {
 export function footer() {
   return `<footer>
   <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/contact">Contact</a><br><br>
-  <b>Nikatru&trade;</b> &middot; Chennai, Tamil Nadu, India &middot; Registered MSME UDYAM-TN-02-0487004<br>
-  Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><b>Rajasekar Selvam</b></a><br>
+  <span class="foot-em">Nikatru&trade;</span> &middot; Chennai, Tamil Nadu, India &middot; Registered MSME UDYAM-TN-02-0487004<br>
+  Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><span class="foot-em">Rajasekar Selvam</span></a><br>
   &copy; 2026 Nikatru. All rights reserved.
 </footer>`;
 }
@@ -172,7 +181,7 @@ export function footer() {
  */
 export function footerCss() {
   return `  footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px;line-height:1.9}
-  footer b{color:#fff}
+  footer .foot-em{color:#fff}
   footer a{color:#B6C2D9;text-decoration:none;margin:0 7px;display:inline-block;padding:4px 0}
   footer a:hover{color:#fff}`;
 }

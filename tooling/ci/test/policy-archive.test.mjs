@@ -18,7 +18,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -60,6 +60,11 @@ const policyPage = (version, { robots = 'index,follow', canonical = true, body =
 /** An archived copy: the page with the three permitted differences applied. */
 const snapshot = (version, opts = {}) =>
   policyPage(version, { robots: 'noindex,follow', canonical: false, ...opts });
+
+/** The same page with a <footer> appended. The live pages take their footer from
+  * tooling/sites/chrome.mjs and the dated snapshots deliberately do not, so the two
+  * sides legitimately differ there and nowhere else. */
+const withFooter = (html, text) => html.replace('</body>', '<footer>' + text + '</footer>\n</body>');
 
 const g = (root, ...args) => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
 
@@ -405,5 +410,38 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
     const r = run(repo({ locales: ['en', 'ta', 'hi'] }));
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.match(r.stdout, /NO NOTICE IN hi, ta/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The shared footer is chrome, not policy text. Added 2026-08-21 with
+// tooling/sites/chrome.mjs, which gave the live pages one footer and left the
+// dated snapshots frozen -- so the two sides now differ THERE by design.
+describe('assert-policy-archive · the shared footer is not policy text', () => {
+  test('a footer that differs from the snapshot does NOT report the text as edited', () => {
+    // Without this the guard would report a policy edit on every footer change,
+    // and the honest response to that report is a version bump -- telling users
+    // the policy changed when not one word of it had.
+    const root = repo({ versions: ['2026-07-26'], workingVersion: '2026-07-26' });
+    const live = join(root, 'sites', 'nikatru', 'privacy.html');
+    writeFileSync(live, withFooter(readFileSync(live, 'utf8'), 'Nikatru - Chennai - UDYAM-TN-02-0487004'));
+    const snapPath = join(root, 'sites', 'nikatru', 'legal', '2026-07-26', 'en', 'privacy.html');
+    writeFileSync(snapPath, withFooter(readFileSync(snapPath, 'utf8'), 'an older footer, frozen on its date'));
+    const r = run(root);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+
+  test('🔴 …but an edit to the POLICY TEXT is still caught', () => {
+    // The half that makes the reduction above safe. A reduction that removed the
+    // subject would pass this guard and mean nothing.
+    const root = repo({ versions: ['2026-07-26'], workingVersion: '2026-07-26' });
+    const live = join(root, 'sites', 'nikatru', 'privacy.html');
+    const src = withFooter(readFileSync(live, 'utf8'), 'identical footer');
+    writeFileSync(live, src.replace('The policy text.', 'We may now share your data with partners.'));
+    const snapPath = join(root, 'sites', 'nikatru', 'legal', '2026-07-26', 'en', 'privacy.html');
+    writeFileSync(snapPath, withFooter(readFileSync(snapPath, 'utf8'), 'identical footer'));
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout + r.stderr, /do not carry the same text/);
   });
 });
