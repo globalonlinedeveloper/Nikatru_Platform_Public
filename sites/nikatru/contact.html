@@ -37,6 +37,12 @@
   .c b{display:block;color:var(--strong);font-size:15px;margin-bottom:4px}
   .c a{font-size:16px;font-weight:600}
   .c span{color:var(--muted);font-size:14px}
+  /* CHROME:a11y-css */
+  :focus-visible{outline:2px solid var(--primary,#2E6FF2);outline-offset:2px;border-radius:6px}
+  .skip-link{position:absolute;left:-9999px;top:0;z-index:100;background:var(--primary,#2E6FF2);color:#fff;
+    padding:10px 18px;border-radius:0 0 8px 0;text-decoration:none;font-weight:600}
+  .skip-link:focus{left:0}
+  /* /CHROME:a11y-css */
   /* CHROME:footer-css */
   footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px;line-height:1.9}
   footer .foot-em{color:#fff}
@@ -47,6 +53,9 @@
 </style>
 </head>
 <body>
+<!-- CHROME:skiplink -->
+<a class="skip-link" href="#main">Skip to content</a>
+<!-- /CHROME:skiplink -->
 <nav>
   <div class="nav-in">
     <a class="brand" href="/">
@@ -61,7 +70,7 @@
   </div>
 </nav>
 
-<main>
+<main id="main">
   <h1>Contact us</h1>
   <p class="updated">We'd love to hear from you &mdash; support, feedback or business enquiries.</p>
 

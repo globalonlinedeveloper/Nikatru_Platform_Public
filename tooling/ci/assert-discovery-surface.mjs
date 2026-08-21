@@ -834,6 +834,88 @@ let chromePagesChecked = 0;
   }
 }
 
+// ── G · THE WEB SURFACE IS ACCESSIBLE, AND SOMETHING FINALLY CHECKS ─────────
+//
+// 🔴 THE WEB PAGES WERE UNPOLICED FOR ACCESSIBILITY AND THAT FACT WAS INVISIBLE.
+// `assert-a11y-coverage.mjs` sounds like it covers this and does not: its own
+// scope is Flutter routed screens and modal sheets — measured 2026-08-21, it
+// reports 19 reachable surfaces and NONE of them is a web page. So the eleven
+// served pages, including the four legal ones a store reviewer opens, had no
+// accessibility assertion of any kind.
+//
+// These five are the CHROME half — the properties that are the same on every page
+// and are therefore emitted once by tooling/sites/chrome.mjs. Measured before that
+// happened: a skip link on ONE page of eleven, `:focus-visible` on FOUR, and
+// `404.html` with no <main> landmark at all.
+//
+// Deliberately NOT a full WCAG audit. Colour contrast, reading order and form
+// labelling are not decidable from a static parse, and a limb that pretended
+// otherwise would report a clean run about a page it had barely read. What is
+// here is exactly what can be established by reading the file.
+let a11yChecked = 0;
+{
+  const rootAbs = abs(DEPLOY_ROOT);
+  const found = [];
+  const stack = existsSync(rootAbs) ? [rootAbs] : [];
+  while (stack.length) {
+    const dir = stack.pop();
+    for (const e of listDir(dir, { withFileTypes: true })) {
+      const f = join(dir, e.name);
+      if (e.isDirectory()) { stack.push(f); continue; }
+      if (e.name.toLowerCase().endsWith('.html')) {
+        found.push(`${DEPLOY_ROOT}/${f.slice(rootAbs.length + 1).split(sep).join('/')}`);
+      }
+    }
+  }
+
+  for (const rel of found.filter(isChromePage)) {
+    a11yChecked++;
+    const html = readFileSync(abs(rel), 'utf8');
+
+    if (!/<html[^>]+\blang\s*=\s*["'][a-z]{2}/i.test(html)) {
+      problems.push(`${rel} has no <html lang="…">. A screen reader with no declared language reads the page in the user's default voice, which mispronounces every word of it.`);
+    }
+
+    const mains = (html.match(/<main\b/gi) ?? []).length;
+    if (mains !== 1) {
+      problems.push(
+        `${rel} has ${mains} <main> element(s), expected exactly 1. Zero leaves a reader no way to skip the ` +
+          'nav that opens every page on this site; more than one makes "the main content" ambiguous.',
+      );
+    }
+
+    // The skip link is only worth having if its target exists. A link that
+    // silently does nothing is worse than none: it reports the problem solved.
+    const skip = html.match(/<a[^>]+class\s*=\s*["'][^"']*\bskip-link\b[^"']*["'][^>]*href\s*=\s*["']#([^"']+)["']/i);
+    if (!skip) {
+      problems.push(`${rel} has no skip link. Every page here opens with the same sticky nav, so without one a keyboard user tabs through all of it before reaching any content (WCAG 2.2 SC 2.4.1).`);
+    } else if (!new RegExp(`id\s*=\s*["']${skip[1]}["']`, 'i').test(html)) {
+      problems.push(
+        `${rel} has a skip link pointing at #${skip[1]} and no element carries that id. It resolves to ` +
+          'nothing, which is worse than having no skip link at all — the page looks like it solved the problem.',
+      );
+    }
+
+    if (!/:focus-visible/.test(html)) {
+      problems.push(`${rel} declares no :focus-visible rule. A keyboard user cannot see where they are (WCAG 2.2 SC 2.4.7).`);
+    }
+
+    for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+      if (!/\balt\s*=/i.test(tag)) {
+        problems.push(`${rel} has an <img> with no alt attribute: ${tag.slice(0, 90)}. An absent alt is read aloud as the filename; alt="" is the correct way to say "decorative".`);
+      }
+    }
+  }
+
+  if (found.length > 0 && a11yChecked === 0) {
+    coverageLost([
+      `${found.length} .html file(s) are served from ${DEPLOY_ROOT} and the accessibility limb examined NONE.`,
+      'This limb is the only accessibility assertion the web surface has — assert-a11y-coverage.mjs is',
+      'scoped to Flutter screens — so an empty run here means the pages are unpoliced again, silently.',
+    ])
+  }
+}
+
 // ── F · THE DATED SNAPSHOTS STAY INERT ──────────────────────────────────────
 // They are excluded from shared chrome because they are frozen consent records.
 // That exclusion is only safe while they stay self-contained: a snapshot that
@@ -880,7 +962,8 @@ console.log(
     `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating; ` +
     `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares; ` +
     `${chromePagesChecked} page(s) carry shared chrome from tooling/sites/chrome.mjs ` +
-    `(${CHROME_EXCLUDED.size} excluded by name, ${snapshotsChecked} dated snapshot(s) asserted inert)`,
+    `(${CHROME_EXCLUDED.size} excluded by name, ${snapshotsChecked} dated snapshot(s) asserted inert); ` +
+    `${a11yChecked} page(s) carry lang + one <main> + a skip link that resolves + :focus-visible + alt on every <img>`,
 );
 
 if (prints.length) {

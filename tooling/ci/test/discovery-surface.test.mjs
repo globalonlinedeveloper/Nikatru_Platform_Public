@@ -216,10 +216,12 @@ const SUBLY = {
  *  markers is not a smaller fixture, it is an invalid page, and the generator
  *  correctly refuses it. */
 const chromed = (body) =>
-  '<html><head><style>\n' +
+  '<html lang="en"><head><style>\n' +
+  '  /* CHROME:a11y-css */\n  :focus-visible{outline:2px}\n  /* /CHROME:a11y-css */\n' +
   '  /* CHROME:footer-css */\n  /* /CHROME:footer-css */\n' +
-  '</style></head><body>' +
-  body +
+  '</style></head><body>\n' +
+  '<!-- CHROME:skiplink -->\n<a class="skip-link" href="#main">Skip</a>\n<!-- /CHROME:skiplink -->\n' +
+  '<main id="main">' + body + '</main>' +
   '\n<!-- CHROME:footer -->\n<!-- /CHROME:footer -->\n</body></html>\n';
 
 const p = (root, ...rel) => join(root, 'sites', 'nikatru', ...rel);
@@ -1118,5 +1120,78 @@ describe('the shared chrome relationship', () => {
     const r = guard(root);
     assert.equal(r.code, 1);
     assert.match(r.out, /not served from/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Limb G. Before it existed the web pages had NO accessibility assertion of any
+// kind -- assert-a11y-coverage.mjs sounds like it covers them and is scoped to
+// Flutter screens. Each of the five properties gets a failing case, because a
+// limb whose failing input nobody has written is a limb nobody has checked.
+describe('the web accessibility chrome', () => {
+  const mutate = (root, fn) => {
+    const f = p(root, 'index.html');
+    writeFileSync(f, fn(readFileSync(f, 'utf8')));
+    return guard(root);
+  };
+
+  test('a tree with the chrome passes, and says what it checked', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /carry lang \+ one <main> \+ a skip link that resolves/);
+  });
+
+  test('🔴 a page with no <html lang> FAILS', () => {
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.replace('<html lang="en">', '<html>'));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no <html lang/);
+  });
+
+  test('🔴 zero <main> elements FAILS, and so would two', () => {
+    const root = tree([SUBLY]); generate(root);
+    const none = mutate(root, (h) => h.replace('<main id="main">', '<div>').replace('</main>', '</div>'));
+    assert.equal(none.code, 1);
+    assert.match(none.out, /has 0 <main> element\(s\)/);
+
+    const root2 = tree([SUBLY]); generate(root2);
+    const two = mutate(root2, (h) => h.replace('<main id="main">', '<main id="main"></main><main>'));
+    assert.equal(two.code, 1);
+    assert.match(two.out, /has 2 <main> element\(s\)/);
+  });
+
+  test('🔴 a skip link whose target does not exist FAILS - worse than having none', () => {
+    // The case that matters most: the page LOOKS like it solved the problem.
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.replace('id="main"', 'id="content"'));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /no element carries that id/);
+  });
+
+  test('🔴 a missing skip link FAILS', () => {
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.replace(/<a[^>]*skip-link[^>]*>[^<]*<\/a>/, ''));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /has no skip link/);
+  });
+
+  test('🔴 no :focus-visible rule FAILS', () => {
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.split(':focus-visible').join('.nope'));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /declares no :focus-visible/);
+  });
+
+  test('🔴 an <img> with no alt FAILS, and alt="" is accepted as decorative', () => {
+    const root = tree([SUBLY]); generate(root);
+    const bad = mutate(root, (h) => h.replace('</main>', '<img src="/x.png"></main>'));
+    assert.equal(bad.code, 1);
+    assert.match(bad.out, /no alt attribute/);
+
+    const root2 = tree([SUBLY]); generate(root2);
+    const ok = mutate(root2, (h) => h.replace('</main>', '<img src="/x.png" alt=""></main>'));
+    assert.equal(ok.code, 0, ok.out);
   });
 });

@@ -417,7 +417,7 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
 // The shared footer is chrome, not policy text. Added 2026-08-21 with
 // tooling/sites/chrome.mjs, which gave the live pages one footer and left the
 // dated snapshots frozen -- so the two sides now differ THERE by design.
-describe('assert-policy-archive · the shared footer is not policy text', () => {
+describe('assert-policy-archive · the comparison is <main>, positively', () => {
   test('a footer that differs from the snapshot does NOT report the text as edited', () => {
     // Without this the guard would report a policy edit on every footer change,
     // and the honest response to that report is a version bump -- telling users
@@ -443,5 +443,44 @@ describe('assert-policy-archive · the shared footer is not policy text', () => 
     const r = run(root);
     assert.equal(r.status, 1);
     assert.match(r.stdout + r.stderr, /do not carry the same text/);
+  });
+
+  test('🔴 ANY chrome outside <main> is out of scope — not just the footer', () => {
+    // The rule was subtractive first (strip <footer>) and that was wrong TWICE IN
+    // ONE DAY: the accessibility chrome landed hours later and a skip link
+    // contributes visible text too. A positive rule cannot fall behind a region
+    // that has not been invented yet, so this asserts the general property.
+    const root = repo({ versions: ['2026-07-26'], workingVersion: '2026-07-26' });
+    const live = join(root, 'sites', 'nikatru', 'privacy.html');
+    const src = readFileSync(live, 'utf8');
+    writeFileSync(
+      live,
+      src.replace('<body>', '<body>\n<a class="skip-link" href="#main">Skip to content</a>')
+        .replace('</body>', '<footer>a footer the snapshot has never seen</footer>\n</body>'),
+    );
+    const r = run(root);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+
+  test('🔴 a live page with NO <main> is COVERAGE LOST, never a silent whole-document fallback', () => {
+    // Extracting nothing and comparing it to nothing is the shape that passes
+    // hardest exactly when the reduction has stopped working.
+    const root = repo({ versions: ['2026-07-26'], workingVersion: '2026-07-26' });
+    const live = join(root, 'sites', 'nikatru', 'privacy.html');
+    const src = readFileSync(live, 'utf8');
+    writeFileSync(live, src.replace('<main>', '<div>').replace('</main>', '</div>'));
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout + r.stderr, /COVERAGE LOST/);
+  });
+
+  test('🔴 a SNAPSHOT with no <main> is reported, not skipped', () => {
+    const root = repo({ versions: ['2026-07-26'], workingVersion: '2026-07-26' });
+    const snapPath = join(root, 'sites', 'nikatru', 'legal', '2026-07-26', 'en', 'privacy.html');
+    const src = readFileSync(snapPath, 'utf8');
+    writeFileSync(snapPath, src.replace('<main>', '<div>').replace('</main>', '</div>'));
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout + r.stderr, /has no <main> element/);
   });
 });
