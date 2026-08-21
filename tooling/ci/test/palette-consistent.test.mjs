@@ -410,7 +410,7 @@ describe('it refuses rather than reporting on a subject it did not read', () => 
   test('losing one page trips the page floor', () => {
     const r = run(untrack(fixture(), 'sites/nikatru/pricing.html'));
     assert.equal(r.code, 2, r.all);
-    assert.match(r.err, /16 page\(s\) in the subject, expected at least 17/);
+    assert.match(r.err, /17 page\(s\) in the subject, expected at least 18/);
   });
 
   test('losing a NAMED source gives the named message, not the count one', () => {
@@ -434,7 +434,7 @@ describe('it refuses rather than reporting on a subject it did not read', () => 
   test('an ordinary page losing its :root trips the block floor', () => {
     const r = run(patch(fixture(), 'sites/nikatru/404.html', ':root{', 'html{'));
     assert.equal(r.code, 2, r.all);
-    assert.match(r.err, /`:root` block\(s\) parsed across .* expected at least 31/);
+    assert.match(r.err, /`:root` block\(s\) parsed across .* expected at least 32/);
   });
 
   test('a file that is tracked but missing from disk is COVERAGE LOST', () => {
