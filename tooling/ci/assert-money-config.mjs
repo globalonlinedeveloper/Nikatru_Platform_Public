@@ -44,12 +44,62 @@
 //   5 EVERY money-door Worker's own tests EXERCISE the 503 — a branch that is
 //     written but never fired is exactly what the MC7 mutation run found.
 //
+// ── HOW THIS GUARD READS SOURCE (2026-08-21) ────────────────────────────────
+// SIX FILE READS LIVE IN THIS GUARD AND THIS LIST IS ALL OF THEM. An
+// enumeration that omits a reader is exactly how the weakest reader stays
+// invisible — the first version of this block, written earlier the same day,
+// omitted limb 2's, which was the most permissive comment reader in the file.
+//   · THE DEPLOYED CONFIGS are read once and used twice: `parseJsonc` below
+//     PARSES them (comments stripped, so the object is the config and never the
+//     prose about it) and LIMB 2 SCANS them for sandbox shapes.
+//   · LIMB 2 scanned with a home-grown `/^\s*\/\/.*$/gm` line-strip until
+//     2026-08-21. Measured that day against SANDBOX_SHAPES: a full-line
+//     `// …sandbox-api.paddle.com` was clean, but the SAME host in a TRAILING
+//     `// …` or inside a `/* … */` block FAILED the build. FALSE RED — a
+//     comment cannot deploy a credential. It now uses the shared reduction,
+//     which is clean on all three comment shapes and still red on the real
+//     value `"PADDLE_API": "https://sandbox-api.paddle.com"`.
+//   · LIMB 3's registry read, LIMB 3's adapter read and LIMB 5's per-test-file
+//     read were RAW until 2026-08-21 and now go through the shared reduction. A
+//     guard that matches raw source cannot tell code from prose about code, and
+//     this file's own house style puts a great deal of prose about code next to
+//     the code.
+//   · LIMBS 1 and 4 keep their OLDER line-prefix strip (drop a line whose first
+//     non-space is `//` or `*`). Weaker on a TRAILING comment, measured to move
+//     no verdict here today, and left alone rather than opening a third idiom.
+// THE SHARED REDUCTION IS `stripSourceComments(src, ext)` from
+// `text-reductions.mjs` — the one implementation several guards share, blanking
+// comments to spaces so offsets and line numbers survive, and passing STRING
+// AND TEMPLATE LITERALS THROUGH VERBATIM. It returns an UNKNOWN EXTENSION
+// UNCHANGED AND SILENTLY, so every call here hands it an extension the module
+// covers: `.ts` at the three source sites (those paths are built as `.ts` or
+// filtered to `.test.ts`, so no other extension can reach them) and the LITERAL
+// `'.jsonc'` for the deployed configs — `.json` is NOT in COMMENT_STYLES, so
+// passing a `wrangler.json`'s real extname would silently scan its comments
+// back in while looking like it stripped them.
+// THIS WAS A LATENT HAZARD, NOT A CAUGHT DEFECT. Measured 2026-08-21 across the
+// live tree: the limb-3 reads resolve identically raw and stripped (registry
+// providers ["paddle"] both ways, its MOR_VERIFIERS match on line 29 both ways;
+// the guard's `secretEnvVar: '…'` PATTERN matches exactly once in services/, at
+// paddle.ts:422, raw and stripped), limb 5's block count falls 413→412 on
+// platform and 210→209 on subly-api while `proven` stays at 8 and 2 — the SAME
+// blocks — and limb 2 sees no sandbox shape in either view. The `ok` line this
+// guard prints is byte-identical before and after. What the change buys is that
+// the next comment cannot quietly become the evidence.
+// ⚠️ CORRECTED THE SAME DAY, and the correction is the point of house rule 2:
+// this block first read "`secretEnvVar` occurs exactly once in all of services/
+// and it is code". The TOKEN occurs FIVE times in five files — contract.ts:202,
+// paddle.ts:422, registry.ts:39, money.ts:97, money.test.ts:306. What occurs
+// once is the guard's PATTERN. A dated number a reader can falsify with one
+// grep discredits the numbers standing beside it.
+//
 // Usage:  node tooling/ci/assert-money-config.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -213,7 +263,21 @@ if (declaringEnvironment.length === 0) {
 for (const c of configs) {
   // Comments are stripped: the config's own prose explains what a sandbox value
   // would be, and a scanner that reads prose grades the explanation.
-  const code = c.raw.replace(/^\s*\/\/.*$/gm, '');
+  //
+  // ⚠️ THE EXTENSION IS THE LITERAL `'.jsonc'`, NOT `extname(c.rel)`. The read
+  // above accepts `wrangler.json` as well as `wrangler.jsonc`, `.json` is not in
+  // COMMENT_STYLES, and an unknown extension comes back UNCHANGED AND SILENT —
+  // so the honest-looking version of this line would scan the comments back in
+  // on exactly the file that hides them. Both files are parsed as JSONC here
+  // anyway (`parseJsonc` above), so reading them as JSONC is not a guess.
+  //
+  // Until 2026-08-21 this line was `c.raw.replace(/^\s*\/\/.*$/gm, '')`, which
+  // dropped only WHOLE-LINE `//` comments. Measured that day: a sandbox host in
+  // a TRAILING `// …` or a `/* … */` block failed the build off the comment
+  // alone (false RED), while the shared reduction is clean on both and still red
+  // on the real value. It is string-aware, so `"https://…supabase.co"` — a `//`
+  // inside a quoted value — survives in both readings.
+  const code = stripSourceComments(c.raw, '.jsonc');
   for (const s of SANDBOX_SHAPES) {
     if (s.re.test(code)) {
       fail(
@@ -231,13 +295,43 @@ let secretVars = [];
 if (!existsSync(registryPath)) {
   fail(`COVERAGE LOST — ${REGISTRY} does not exist, so the money-secret set is empty and limb 3 asserts nothing.`);
 } else {
-  const registry = readFileSync(registryPath, 'utf8');
+  // ⚠️ BOTH READS IN THIS LIMB ARE COMMENT-STRIPPED, and both take the FIRST
+  // match, which is the whole reason. A doc comment sitting ABOVE either
+  // declaration and quoting an older version of it wins the race against the
+  // real code below — and what limb 3 does with the answer is decide WHICH env
+  // var names must not appear as committed `vars` in a PUBLIC repo. A shadowed
+  // read here does not merely mis-report; it stops looking for the secret that
+  // is actually there. `stripSourceComments` blanks comments to spaces (offsets
+  // and line numbers survive) and passes STRING LITERALS THROUGH VERBATIM —
+  // load-bearing, since `secretEnvVar: 'PADDLE_NOTIFICATION_SECRET'` is a
+  // string. Both paths end in `.ts` by construction (REGISTRY is a constant and
+  // the adapter path is built as `${p}.ts`), so the module's silent
+  // unknown-extension passthrough cannot be reached from here; `.ts` picks the
+  // C-family lexer, in which block comments do NOT nest — and a nesting stripper
+  // on a .ts file swallows the file tail.
+  //
+  // LATENT, NOT LIVE — measured 2026-08-21 against this tree. registry.ts: the
+  // MOR_VERIFIERS match lands on line 29 raw AND stripped, providers ["paddle"]
+  // either way, 2084 CHARACTERS in and out. (Characters, not bytes, and the distinction is
+  // measurable rather than pedantic: the blanked comments hold multi-byte UTF-8 — box rules,
+  // middots, emoji — so the same file is 2402 utf8 bytes on disk and 2084 after the strip.
+  // The property this module promises is offset preservation, and offsets are characters.)
+  // paddle.ts: the PATTERN below matches
+  // EXACTLY ONCE in the whole of services/ — paddle.ts:422 — raw first match ===
+  // stripped first match === PADDLE_NOTIFICATION_SECRET. (The bare TOKEN
+  // `secretEnvVar` occurs five times in five files; it is the pattern, not the
+  // token, that is unique. This comment said "the token" until it was measured
+  // the same day.) Both verdicts are unchanged today.
+  // What this does NOT catch: a `secretEnvVar` inside a string or template
+  // literal still counts (strings are deliberately not blanked), and nothing
+  // here checks that the name the adapter declares is the name it READS.
+  const registry = stripSourceComments(readFileSync(registryPath, 'utf8'), extname(registryPath).toLowerCase());
   const arr = /MOR_VERIFIERS\s*:\s*readonly\s+MoRWebhookVerifier\[\]\s*=\s*\[([^\]]*)\]/.exec(registry);
   const providers = arr ? [...new Set([...arr[1].matchAll(/([A-Za-z_$][\w$]*)Verifier/g)].map((m) => m[1]))] : [];
   for (const p of providers) {
     const adapter = join(ROOT, `services/platform/src/lib/mor/${p}.ts`);
     if (!existsSync(adapter)) continue;
-    const m = /secretEnvVar\s*:\s*'([A-Z][A-Z0-9_]*)'/.exec(readFileSync(adapter, 'utf8'));
+    const m = /secretEnvVar\s*:\s*'([A-Z][A-Z0-9_]*)'/.exec(stripSourceComments(readFileSync(adapter, 'utf8'), extname(adapter).toLowerCase()));
     if (!m) {
       fail(`adapter services/platform/src/lib/mor/${p}.ts declares no \`secretEnvVar\`, so its destination secret is not enumerable and cannot be checked.`);
       continue;
@@ -345,7 +439,44 @@ for (const svc of doorServices) {
   }
   const blocks = [];
   for (const f of files) {
-    const src = readFileSync(join(testDir, f), 'utf8');
+    // ⚠️ READ COMMENT-STRIPPED, and the two matches below fail in OPPOSITE
+    // DIRECTIONS, so they are worth naming separately.
+    //
+    //   · THE describe.skip TEST, on raw source, drops an ENTIRE FILE from the
+    //     scan when a COMMENT merely mentions `describe.skip(` — "do not turn
+    //     this into describe.skip(...)" in a review note is enough. Fewer blocks
+    //     means `proven` can go FALSE over a suite that does fire its 503. That
+    //     is the FALSE RED direction: noisy, but it fails loudly and someone
+    //     looks. (It needs the literal paren; prose writing `describe.skip`
+    //     without one does not drop the file.)
+    //
+    //   · THE it|test ENUMERATOR, on raw source, picks up prose and INFLATES the
+    //     block count. A comment carrying `503`, `environment` and `expect(`
+    //     together would satisfy `proven` on its own — the guard would declare a
+    //     money door's fail-closed branch EXERCISED on the strength of a
+    //     sentence describing it. That is the FALSE GREEN direction, and it is
+    //     the one that matters: this limb exists precisely because the MC7
+    //     mutation run found a branch that was written and never fired, and a
+    //     comment is the purest form of written-and-never-fired.
+    //
+    // LATENT, NOT LIVE — measured 2026-08-21 against this tree. Blocks
+    // enumerated: services/platform 413 raw vs 412 stripped, services/subly-api
+    // 210 vs 209. The two raw-only blocks are prose, both of them:
+    // services/platform/test/insights-equivalence.test.ts:490 (a doc comment
+    // quoting `.test(JSON.stringify(rows))`) and
+    // services/subly-api/test/webhooks.test.ts:94 (a doc comment reading "null
+    // OMITS it (a clock-less event)" — `it(` inside English). Neither is a
+    // proving block: `proven` resolves to 8 real blocks on platform and 2 on
+    // subly-api, IDENTICAL set-for-set raw and stripped, so THE VERDICT DOES NOT
+    // MOVE TODAY. `describe.skip`/`.todo` occurs ZERO times across all 36 test
+    // files in either view, so that half of the hazard is fully latent — no file
+    // is dropped today by either reading.
+    //
+    // WHAT THIS DOES NOT CATCH: string literals pass through VERBATIM by design,
+    // so a test whose 503/environment/expect( co-occurrence sits inside a
+    // template literal still counts as proof; and a block that CONTAINS the
+    // three tokens is still not the same thing as a block that ASSERTS on them.
+    const src = stripSourceComments(readFileSync(join(testDir, f), 'utf8'), extname(f).toLowerCase());
     // ⚠️ A SKIPPED TEST IS TEXT, NOT EVIDENCE. Mutation-proven 2026-08-01:
     // changing the [5]M-12 suite to `describe.skip` left every assertion
     // readable and none of them running, and this limb said ok.

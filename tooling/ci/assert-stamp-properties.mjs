@@ -1502,9 +1502,84 @@ const COVERED_BY = {
   contentPackProvider: 'content-pack-consumed',
   // The verifier is SUBSTITUTED by that property rather than exercised: the
   // Ed25519 mathematics is proven for real in core's own suite against a
-  // throwaway keypair, and re-proving it here would need the signing key the
-  // owner has not generated (OWNER_QUEUE S-3). Named here so the substitution
-  // is a recorded choice rather than a gap nobody noticed.
+  // throwaway keypair, and re-proving it here would need the PRIVATE seed,
+  // which is not in the repository and never reaches CI. Named here so the
+  // substitution is a recorded choice rather than a gap nobody noticed.
+  //
+  // 📌 CORRECTED 2026-08-21. Recorded rather than swapped: a note about stale
+  // prose that quietly rewrites itself is this file's own subject, one level up.
+  //
+  // ⚠️ AND THE LOCATOR IN THIS NOTE WAS ITSELF WRONG TWICE BEFORE IT WAS RIGHT,
+  // which is worth one line because it is the same defect a third time: the
+  // first version said the stale clause was what the paragraph "used to end"
+  // with, the second said it was the "THIRD sentence". The paragraph above has
+  // exactly TWO sentences. Count them before citing one.
+  //
+  // (1) The FIRST sentence above used to end "...would need the signing key the
+  // owner has not generated (OWNER_QUEUE S-3)". Its second and closing sentence,
+  // "Named here so the substitution is a recorded choice...", was already there
+  // and is unchanged. That clause was STALE, and it was stale against a number THIS FILE
+  // ALREADY PRINTS: limb (d) of content-pack-consumed counts the pinned keys
+  // ~1000 lines below, and the note above pinnedPackKeys() records the same
+  // check. Re-measured today, not cited:
+  // `kContentPackPublicKeys` in packages/core/lib/src/content/
+  // pack_verifier.dart carries ONE key, `'k1'` (a real 44-char base64 value,
+  // not a placeholder), and assert-seams-wired.mjs prints `1 production key(s)
+  // pinned` on the same tree. So the public half was never what blocked a
+  // substitution here — the private seed is, and that is owner custody by design.
+  //
+  // (2) The clause that REPLACED it said the seed was "deliberately outside the
+  // agent's reach". MEASURED FALSE on this working tree: `.claude/
+  // pack-signing.seed` is on disk (45 bytes, mtime 2026-07-27), at exactly the
+  // path packages/core/lib/src/content/pack_verifier.dart:28 documents, and
+  // nikatru/OWNER_QUEUE.md's S-3 row records a pack ALREADY signed with that
+  // seed and verified through the production `Ed25519PackVerifier` — i.e. the
+  // proof the sentence called impossible has been done. What IS true and
+  // checkable is narrower, and is what now stands above: `.gitignore:13` is a
+  // bare `.claude/`, `git ls-files .claude/pack-signing.seed` finds nothing, so
+  // the seed is absent from the repository and from every CI checkout.
+  // Re-measured this run, both commands. Emphasis is not evidence — (2) was the
+  // same species of unverifiable assertion as (1), one revision later.
+  //
+  // LATENT, not live, for both: this text sits in a `//` comment inside
+  // COVERED_BY, no regex in this file or any other matches on it, and no exit
+  // path moved when either was rewritten. What they cost was READER trust —
+  // emphatic sentences asserting EXTERNAL state, believed because they were
+  // emphatic; (1) disagreed with the guard's own printed measurement in the
+  // same run, and (2) disagreed with a file sitting in this directory.
+  //
+  // What remains OPEN on S-3 is owner custody work, not key generation:
+  // tooling/channel-register.json `content-pack-k1.restoreDrill.date` is still
+  // `null` with `required: true` (read 2026-08-21). Pointed at that FIELD
+  // rather than restated in prose, so the next reader checks a value instead of
+  // trusting a sentence — but do NOT expect a guard to go red when it goes stale.
+  //
+  // 📌 LOCATOR CORRECTED 2026-08-21, and this is the third instance of the same
+  // defect in one comment: the line above used to read "the next reader
+  // falsifies this mechanically — assert-channel-register.mjs §2/§3 read it".
+  // They do NOT, and both loops were re-read this run rather than grepped.
+  // §2/§3 is headed at assert-channel-register.mjs:233, loops
+  // `for (const c of channels)` at :327 (closing at :618), and its two
+  // restoreDrill limbs — :373-376 and :575-581 — read
+  // `channels[].signing.restoreDrill` only. `content-pack-k1` is NOT a channel:
+  // it lives in `nonChannelSigningIdentities`, which is reached at exactly two
+  // sites, :1322 (header at :1311, "non-channel signing identities: shape only,
+  // printed") and :1550 (the `collectSigning` sweep in §8b, secrets — §8's own
+  // header is at :1346, 8b's at :1493). And :1322's drill limb is a PRINT, not a
+  // verdict — :1340-1342 pushes "UNDRILLED IDENTITY: content-pack-k1" onto
+  // `prints`, and the guard exits 0 carrying it (measured this run: EXIT 0,
+  // that line present). Nothing in the tree FAILS on this field in either
+  // direction; when the drill lands the print just stops appearing. So the date
+  // above is a READER's checkpoint that a machine can re-read, not one a
+  // machine will defend. Saying so is the honest version of the sentence it
+  // replaces, which claimed a mechanical falsifier that does not exist.
+  // NOT CLAIMED HERE: WHICH custody step is outstanding. The sources disagree
+  // and this guard cannot settle it — nikatru/OWNER_QUEUE.md:470 calls PRINTING
+  // the seed the only remaining step, while the private release plan and this
+  // register's own `restoreDrill.note` both assert it is already printed and
+  // name the drill as what is left. Left unresolved on purpose; `restoreDrill
+  // .date` is the half that is a FIELD rather than a sentence — re-readable
+  // even though no guard fails on it — so it is the half named.
   packVerifierProvider: 'content-pack-consumed',
   remindersEnabledProvider: 'reminder-intent-persisted',
   notificationServiceProvider: 'reminder-intent-persisted',

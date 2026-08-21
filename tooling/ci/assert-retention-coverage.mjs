@@ -103,13 +103,21 @@
 // Usage:  node tooling/ci/assert-retention-coverage.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const INVENTORY_REL = 'tooling/legal/data-inventory.json';
+
+/** A three-line sample carrying a comment in EVERY style text-reductions.mjs knows
+ *  (`//` C-family, `--` SQL, `#` hash). If `stripSourceComments` hands it back
+ *  unchanged, the extension is one the module does not know and the "read as code"
+ *  guarantee of the `ttl` limb below is not in force. Measured 2026-08-21:
+ *  .js .ts .sql .jsonc .yaml .dart all REDUCE it; .md, .py and "" do not. */
+const REDUCTION_PROBE = 'x // c\nx -- c\nx # c\n';
 
 const coverageLost = (lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
@@ -349,7 +357,78 @@ function main() {
       errors.push(`${r.id} — \`rule: ttl\` whose anchor \`${anchor}\` does not exist, so the claim cannot be checked against anything.`);
       continue;
     }
-    const src = readFileSync(p, 'utf8');
+    // 🔴 THE ANCHOR IS READ AS CODE, NOT AS TEXT (added 2026-08-21). Both limbs
+    // below ask `src.includes(...)`, and `src` was the RAW file — so a comment that
+    // merely DISCUSSED the TTL satisfied a rule whose own failure text below says
+    // "reading the code is the only thing that makes it a rule rather than an intention".
+    //
+    // THIS WAS LATENT, NOT LIVE. Re-measured 2026-08-21 through `stripSourceComments`
+    // in sites/nikatru/functions/api/subscribe.js — the anchor BOTH `ttl` rows share:
+    // `expirationTtl` appears at lines 204, 231, 315 in COMMENTS and at 245, 301 in
+    // CODE, and both `ttlSource` strings (`expirationTtl: RATE_WINDOW_SECONDS` at 301,
+    // `const SIGNUP_RETENTION_DAYS = 400;` at 225) are code. Nothing was passing on
+    // prose today and the guard's exit code is unchanged by this edit. What changes is
+    // that the limb can now FAIL for the right reason — proven by fixture, not assumed:
+    // an anchor whose only `expirationTtl` sits in a line comment, or in a block
+    // comment, or whose `ttlSource` sits in a comment while a SIBLING row's real put
+    // supplies `expirationTtl`, each passed before and each is reported now. That third
+    // shape is the two-rows-one-anchor case named above, reopened one level down at the
+    // `ttlSource` check. Held by tooling/ci/test/retention-coverage.test.mjs.
+    //
+    // 📌 THE REDUCTION IS `stripSourceComments` FROM tooling/ci/text-reductions.mjs —
+    // the ONE implementation 37 of the 144 files directly under tooling/ci import
+    // (measured 2026-08-21; 39 import something from it, 2 of those take only the HTML
+    // reductions). ⚠️ A LINE-BASED `grep -l "import.*stripSourceComments"` ANSWERS 35, NOT 37,
+    // because two of the import blocks span lines — that wrong number stood in this very
+    // comment for an hour. Count by parsing the brace group, and use `:(glob)tooling/ci/*.mjs`:
+    // a bare `tooling/ci/*.mjs` pathspec crosses `/` and sweeps test/ in as well. ~~An earlier draft of this paragraph
+    // named a SECOND stripper module instead~~ — one written and then deleted on
+    // 2026-08-21, because it duplicated a reduction this repository already had. The
+    // name is corrected rather than left dangling at a file that does not exist, and
+    // it is not repeated here: a dead module named in prose is the drift this whole
+    // pass exists to remove.
+    //
+    // WHAT THIS DOES NOT CATCH, and must not be described as caught:
+    //   · String literals pass through VERBATIM (`stripSourceComments` blanks comments
+    //     only — `stripStringLiterals` is the separate, composable tool, deliberately
+    //     NOT composed here because other guards match on string contents). So a log
+    //     line or an error message containing `expirationTtl` satisfies the FIRST limb —
+    //     and, if it spells the declared `ttlSource` out, the SECOND one too. MEASURED
+    //     2026-08-21, not reasoned about: an anchor whose only occurrence of both is
+    //     `console.log("expirationTtl: 600")` exits 0 here. ~~An earlier draft of this
+    //     bullet scoped the hole to "the first limb"~~ — that understated it, and the
+    //     second limb is the one that makes the check row-specific at all (see the
+    //     `ttlSource` note above). subscribe.js holds no such literal today: the
+    //     stripped matches are 245 and 301 only, both code. Pinned by the fixture
+    //     named KNOWN GAP in tooling/ci/test/retention-coverage.test.mjs.
+    //
+    // Comment spans are blanked to spaces with newlines kept, so the string stays the
+    // same length and any line number derived from it still points where it did —
+    // measured on this anchor today: 17734 characters in, 17734 out.
+    //
+    // 🔴 AND THE REDUCTION MUST ACTUALLY REDUCE. `stripSourceComments` dispatches on
+    // EXTENSION and returns an UNKNOWN one VERBATIM, saying nothing — text-reductions.mjs's
+    // own header records that trap costing `.kts` a whole scan before the map learned it.
+    // An anchor's extension is REGISTER DATA, not something this file reads off the tree:
+    // both are `.js` today, and a future row anchored at a `.py`, a `.md` or an
+    // extensionless file would silently revert this limb to the raw-read semantics the
+    // paragraph above exists to end. So it is asserted, the way assert-no-do-alarms.mjs:226
+    // and assert-android-target-sdk.mjs:322 assert it, rather than assumed. It is asserted
+    // on a PROBE rather than on the anchor's own before/after, because an anchor is allowed
+    // to contain no comments at all — comparing the real read to its input would then call
+    // a perfectly good `.js` file unreduced. The probe carries a comment in every style the
+    // module knows, so only the extension can decide the answer.
+    const ext = extname(anchor).toLowerCase();
+    if (stripSourceComments(REDUCTION_PROBE, ext) === REDUCTION_PROBE) {
+      errors.push(
+        `${r.id} — \`rule: ttl\` anchored at \`${anchor}\`, whose extension \`${ext}\` is one text-reductions.mjs does ` +
+          'not know: it returns an unknown extension VERBATIM and says nothing, so the two limbs below would read ' +
+          'this file\'s COMMENTS as code and a rule could be satisfied by prose about it. Teach COMMENT_STYLES the ' +
+          'extension or move the anchor — a reduction that silently did not happen reads exactly like one that did.',
+      );
+      continue;
+    }
+    const src = stripSourceComments(readFileSync(p, 'utf8'), ext);
     if (!src.includes('expirationTtl')) {
       errors.push(
         `${r.id} — \`rule: ttl\` and \`${anchor}\` contains no \`expirationTtl\`. The rule is a claim about the code; ` +

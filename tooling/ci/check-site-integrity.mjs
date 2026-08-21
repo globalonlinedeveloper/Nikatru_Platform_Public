@@ -46,13 +46,16 @@
 // cannot outlive the thing it claims.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { join, relative, resolve, dirname, sep } from 'node:path';
+import { join, relative, resolve, dirname, sep, extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 // ONE reading of "what a person saw on this page", shared with the archive and
 // claims guards. See tooling/ci/text-reductions.mjs for why it is not four copies.
-import { stripInert, visibleText } from './text-reductions.mjs';
+// `stripSourceComments` is the same module's reading of "what this file's CODE
+// says", and it is here for the same reason: the Pages-Function limb below had
+// been letting a comment stand in for the code it was checking.
+import { stripInert, visibleText, stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 // ONE reading of "when did this page last change", shared with the generator
 // that WRITES sites/nikatru/sitemap.xml. See tooling/sites/lastmod.mjs for why
@@ -972,6 +975,18 @@ const functionsByRoot = siteRoots.map((root) => {
 const functionFiles = functionsByRoot.flatMap((r) => r.files);
 
 // ── what a Pages Function does with a visitor's IP, and what it promises ─────
+// text-reductions.mjs returns an UNKNOWN extension VERBATIM and says nothing —
+// the trap its own header records against `.kts`. Every file below is a `.js`
+// Pages Function (the walk above filters on that extension), so this asserts the
+// reduction still knows `.js` rather than assuming it: without the assertion, a
+// reduction that stopped reducing would look exactly like a file with no
+// comments, and the three limbs below would silently go back to reading prose.
+// Same shape as the startup check in assert-no-do-alarms.mjs.
+if (stripSourceComments('x // c', '.js') === 'x // c') {
+  problems.push(
+    'stripSourceComments() left a `.js` sample containing a comment completely unchanged. text-reductions.mjs returns an unknown extension VERBATIM and says nothing, so the Pages-Function limbs below would be reading comments as code — the precise defect they were amended to stop.',
+  );
+}
 let ipReaders = 0;
 let promiseMarkers = 0;
 const saltSecrets = new Set();
@@ -980,9 +995,13 @@ for (const { root, files } of functionsByRoot) {
   const rootHtml = htmlIn(root).map((f) => readFileSync(f, 'utf8'));
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
+    // The file's CODE, comments blanked to spaces (same length, same line
+    // numbers, string literals untouched). The SITE PROMISE limb further down
+    // keeps reading raw `src` on purpose — its subject IS a comment.
+    const codeSrc = stripSourceComments(src, extname(file).toLowerCase());
     const where = relative(repoRoot, file).split(sep).join('/');
 
-    if (src.toLowerCase().includes(IP_HEADER)) {
+    if (codeSrc.toLowerCase().includes(IP_HEADER)) {
       ipReaders++;
       // 🔴 A KEYED hash, not a digest. `sha256(ip)` is not pseudonymisation: IPv4
       // is 2^32 values, so the whole space can be hashed and looked up — minutes
@@ -991,13 +1010,73 @@ for (const { root, files } of functionsByRoot) {
       // network identifier wearing a hash.
       //
       // WHAT THIS DOES NOT CATCH, said plainly: it asserts the file HAS a keyed
-      // construction and an env-sourced secret, not that every path through it
-      // uses them. A Function keeping the HMAC helper and adding a second,
-      // unkeyed digest of the address beside it would pass. Catching that needs
-      // dataflow, and an assertion that pretends to more reach than it has is
-      // how a check stops checking without anyone noticing.
-      const keyed = /crypto\.subtle\.sign\s*\(/.test(src) && /HMAC/.test(src);
-      const secrets = [...src.matchAll(/\benv\.([A-Z][A-Z0-9_]*(?:SALT|SECRET|KEY)[A-Z0-9_]*)\b/g)].map((m) => m[1]);
+      // construction and an env-sourced secret IN CODE, not that every path
+      // through it uses them. A Function keeping the HMAC helper and adding a
+      // second, unkeyed digest of the address beside it would pass. Catching
+      // that needs dataflow, and an assertion that pretends to more reach than
+      // it has is how a check stops checking without anyone noticing.
+      // ("IN CODE" is the amendment below, and it is the only thing that changed
+      // in this sentence: until 2026-08-21 all three limbs read RAW source, so
+      // "HAS" meant "the token appears somewhere in the file, comments included".)
+      //
+      // AMENDED 2026-08-21 (`keyed`), EXTENDED 2026-08-22 to the other two limbs
+      // it had been left beside — the IP-reader test above, `keyed` and `secrets`
+      // now all read `codeSrc`, this file's comments blanked to spaces by the shared
+      // reduction in tooling/ci/text-reductions.mjs (the same module the visible-
+      // text reductions at the top of this file come from — there is one reader
+      // of "what this text really says", not one per guard).
+      //
+      // MEASURED 2026-08-21 and re-measured unchanged 2026-08-22, on
+      // sites/nikatru/functions/api/subscribe.js, the only
+      // Pages Function in the tree (`find sites -path '*/functions/*' -name
+      // '*.js'` returns exactly it):
+      //     /HMAC/                raw 11, 19, 121, 132, 136  ->  132, 136
+      //     crypto.subtle.sign(   raw 136                    ->  136
+      //     cf-connecting-ip      raw 287                    ->  287
+      //     env.*(SALT|SECRET|KEY) raw 288 SUBSCRIBE_RATE_LIMIT_SALT -> 288, same
+      //     length 17734 -> 17734, blanked and never deleted, so every line
+      //     number above is the same number in both views.
+      // Three of the five /HMAC/ matches were the paragraph explaining why the
+      // rate-limit key is an HMAC. House style FORBIDS deleting an explanatory
+      // comment, so those three are PERMANENT: that half of the conjunction
+      // could not go false no matter what the code did. NO VERDICT MOVES ON
+      // TODAY'S TREE — every anchor survives the reduction and the guard prints
+      // the same line before and after.
+      //
+      // BUT THE FALSE NEGATIVES ARE NOT HYPOTHETICAL, and that is the correction
+      // to the earlier reading of this change as demonstrable-but-not-live. Each
+      // one below was produced by RUNNING this guard, and each is pinned by a
+      // test in tooling/ci/test/site-integrity.test.mjs that PASSES here and
+      // FAILS against the raw-reading version (all three: guard EXIT 0):
+      //   keyed     a Function that digests the address bare, mentions HMAC only
+      //             in the note above it, and signs an unrelated unsubscribe
+      //             token. Raw: reported clean.
+      //   secrets   a Function with a hardcoded pepper whose only mention of the
+      //             environment is `// the salt comes from env.PROBE_SALT`. Raw:
+      //             exit 0 AND it PRINTED "must be set in Cloudflare: PROBE_SALT"
+      //             — naming a Cloudflare secret no code reads while the key
+      //             material sits in the repo. That is worse than silence.
+      //   ipReaders a Function that moved to another header and left the old name
+      //             in a comment still counted as a reader, which held up the
+      //             COVERAGE LOST floor at the foot of this file. A floor whose
+      //             whole job is to notice vacuous quiet was itself being
+      //             satisfied by a sentence.
+      //
+      // The SITE PROMISE limb further down still reads RAW `src`, and must: its
+      // subject IS a comment (subscribe.js:4 is the only such marker in the tree,
+      // 1 match raw and 0 after the reduction), which is why `src` is not
+      // rebound for the whole loop body. String literals pass through VERBATIM,
+      // load-bearing here: "HMAC" at 132 and 136 IS a string literal, because
+      // that is how WebCrypto names an algorithm, and a reduction that blanked
+      // strings too would take this correct file to zero HMAC matches and fail
+      // it. Do not "harden" this with stripStringLiterals.
+      //
+      // STILL NOT CAUGHT — the residue, not an exhaustive list: a file that keeps
+      // the HMAC helper in code and digests the address beside it. That one needs
+      // dataflow, which is why it is still open; anything cheaper than dataflow
+      // that turns up should be fixed rather than added to this paragraph.
+      const keyed = /crypto\.subtle\.sign\s*\(/.test(codeSrc) && /HMAC/.test(codeSrc);
+      const secrets = [...codeSrc.matchAll(/\benv\.([A-Z][A-Z0-9_]*(?:SALT|SECRET|KEY)[A-Z0-9_]*)\b/g)].map((m) => m[1]);
       for (const s of secrets) saltSecrets.add(s);
       if (!keyed) {
         problems.push(

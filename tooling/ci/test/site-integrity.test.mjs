@@ -754,10 +754,78 @@ describe('check-site-integrity · what a Function does with a visitor IP', () =>
     assert.match(out, /never calls crypto\.subtle\.sign with HMAC/);
   });
 
+  test('🔴 an HMAC surviving only inside a COMMENT does NOT count as keyed', () => {
+    // The negative half of the 2026-08-21 change, and the case the guard used to
+    // MISS. Every ingredient below is real except the one that matters: the
+    // address goes through a bare digest, and the only reason /HMAC/ matched at
+    // all is the paragraph explaining what the code no longer does. The
+    // `crypto.subtle.sign(` half of the conjunction is satisfied honestly, by an
+    // unrelated token signer — which is why the conjunction alone never caught
+    // this. Reading RAW source, this fixture printed "ok".
+    //
+    // It is the same bargain the seller-name limb already strikes by running its
+    // subject through visibleText(): a name that exists only inside an HTML
+    // comment is not a name the page makes.
+    const { code, out } = run(
+      fn(
+        'ip-hmac-in-comment-only',
+        '// The rate-limit key used to be an HMAC-SHA-256 over the address under a\n' +
+          '// secret. Anything less is reversible: IPv4 is 2^32 values.\n' +
+          'export async function onRequestPost({ request, env }) {\n' +
+          '  const ip = request.headers.get("cf-connecting-ip") || "";\n' +
+          '  const salt = env.PROBE_SALT || "";\n' +
+          '  /* Fingerprint the caller. HMAC, per the note above. */\n' +
+          '  await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip + salt));\n' +
+          '  return new Response("ok");\n' +
+          '}\n' +
+          'export async function signUnsubscribeToken(k, t) {\n' +
+          '  return crypto.subtle.sign("ECDSA", k, new TextEncoder().encode(t));\n' +
+          '}\n',
+      ),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /never calls crypto\.subtle\.sign with HMAC/);
+  });
+
+  test('an HMAC that is a STRING LITERAL still counts — the stripper keeps strings', () => {
+    // The other way this could go wrong, and it fails CLOSED on a correct file,
+    // which is worse. Both live HMAC tokens in sites/nikatru/functions/api/
+    // subscribe.js (lines 132 and 136, measured 2026-08-21) are string literals,
+    // because that is how WebCrypto names an algorithm. A stripper asked to blank
+    // strings as well as comments takes this fixture to zero HMAC matches and
+    // reports a keyed Function as unkeyed. Strings pass through VERBATIM; this
+    // case is what says so out loud.
+    const { code, out } = run(fn('ip-hmac-string', KEYED_FN));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 Function\(s\) fingerprint the client IP under an env secret/);
+  });
+
   test('FAILS when the key material is in the repo instead of the environment', () => {
     const { code, out } = run(fn('ip-nosalt', KEYED_FN.replace('env.PROBE_SALT || ""', '"hardcoded-pepper"')));
     assert.equal(code, 1);
     assert.match(out, /reads no salt\/secret\/key from `env`/);
+  });
+
+  test('🔴 an env secret named only in a COMMENT is not an env-sourced secret', () => {
+    // The sibling of the HMAC-in-a-comment case above, and the one the guard was
+    // still missing after the 2026-08-21 keyed fix: `secrets` read RAW source one
+    // line below the line that had just been repaired. The pepper here is
+    // hardcoded — the key material IS in the repo — and the only thing that ever
+    // mentioned the environment is the note above it. Reading raw, the guard
+    // exits 0 AND prints "must be set in Cloudflare: PROBE_SALT", naming a secret
+    // no code reads, which is worse than silence: it tells the owner the feature
+    // is armed.
+    const { code, out } = run(
+      fn(
+        'ip-secret-in-comment-only',
+        '// The rate-limit salt comes from env.PROBE_SALT, set in the Cloudflare\n' +
+          '// dashboard rather than committed here.\n' +
+          KEYED_FN.replace('env.PROBE_SALT || ""', '"hardcoded-pepper"'),
+      ),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /reads no salt\/secret\/key from `env`/);
+    assert.doesNotMatch(out, /must be set in Cloudflare/);
   });
 
   test('a Function that never touches the IP is not asked for a secret', () => {
@@ -1169,6 +1237,38 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     );
     assert.equal(r.code, 1);
     assert.match(r.out, /NO Pages Function reads the cf-connecting-ip header/);
+  });
+
+  test('🔴 COVERAGE LOST when the header survives only in a COMMENT — a floor a sentence could hold up', () => {
+    // The anti-vacuity floor above it exists to notice when NO Function reads the
+    // client IP any more. Until 2026-08-21 the reader test itself read raw
+    // source, so a Function that had STOPPED reading the header — and said so in
+    // a comment — still counted as a reader, and the floor stayed quiet on
+    // exactly the tree it was written to catch. The edit below is the real shape
+    // of that: the code moves to another header, the old name survives only in
+    // the note explaining the move.
+    const r = afterEdit('cf-ip-comment-only', (d) =>
+      patch(
+        d,
+        'sites/nikatru/functions/api/probe.js',
+        'request.headers.get("cf-connecting-ip")',
+        'request.headers.get("x-forwarded-for") /* was cf-connecting-ip */',
+      ),
+    );
+    assert.equal(r.code, 1);
+    assert.match(r.out, /NO Pages Function reads the cf-connecting-ip header/);
+  });
+
+  test('🔴 the reduction the three IP limbs rest on must still REDUCE `.js`', () => {
+    // text-reductions.mjs returns an unknown extension VERBATIM and says nothing,
+    // so if `.js` ever left COMMENT_STYLES the three limbs above would quietly go
+    // back to reading comments as code and every case in this file would still
+    // pass. The guard asserts the reduction on a two-token sample at startup;
+    // this is the edit that proves the assertion is wired. Without it the same
+    // fixture exits 0.
+    const r = afterEdit('cf-strip-stopped', (d) => patch(d, 'tooling/ci/text-reductions.mjs', "['.js', 'c'],", ''));
+    assert.equal(r.code, 1);
+    assert.match(r.out, /left a `\.js` sample containing a comment completely unchanged/);
   });
 
   test('COVERAGE LOST when the last SITE PROMISE marker is deleted', () => {

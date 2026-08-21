@@ -1638,8 +1638,7 @@
   },
   {
     "claims": [
-      "F-9",
-      "W-3a"
+      "F-9"
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites"

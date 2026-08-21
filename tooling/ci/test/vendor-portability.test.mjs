@@ -7,8 +7,15 @@
 // ⚠️ SECOND LINE OF EVIDENCE. Nine mutations were run against the REAL repository
 // first, all caught. Three of them exist because the lock named exactly which
 // blind spot each derivation source covers, and every one checked out:
-//   · a new vendor as a MULTILINE dart-define — a line-based grep finds 2 of the
-//     11 defines that exist, so this is the source that hides UPDATE_URL
+//   · a new vendor as a MULTILINE dart-define — a line-based grep finds a small
+//     fraction of the defines that exist, so this is the source that hides
+//     UPDATE_URL
+//     ⚠️ This line read "finds 2 of the 11 defines that exist" from 2026-07-28
+//     until 2026-08-21, the same stale pair corrected in the guard's own header
+//     that day. Re-measured over 311 tracked .dart files, comments stripped:
+//     multiline 37 hits / 20 distinct, line-based 13 / 8, and UPDATE_URL is
+//     still absent from the line-based set. The ratio is the claim; the numbers
+//     are corrected rather than deleted so the supersession stays visible.
 //   · a new vendor only in a Worker `Env` — REVENUECAT_WEBHOOK_SECRET lives only
 //     there, so without it RevenueCat is invisible
 //   · a new `ratelimits[].name` — that block keys on `name`, not `binding`, so a
@@ -324,6 +331,136 @@ describe('assert-vendor-portability', () => {
     test('…and that mutation leaves NO stale-claim signal, which is why the count was the only guard', () => {
       const { out } = run(tree({ apiWranglerName: 'wrangler.json' }));
       assert.doesNotMatch(out, /claims surface `SUBLY_DB`/);
+    });
+  });
+
+  // ── PROSE MUST NOT DERIVE A SURFACE ───────────────────────────────────────
+  // 🔴 ADDED 2026-08-21. Source (a) read Dart RAW while source (c) in the same
+  // file stripped comments — so a `fromEnvironment('X')` written in a doc
+  // comment was entered into `derived` and then demanded a vendor claim for a
+  // surface no code opens. Measured on the real tree that day: 38 raw hits ->
+  // 37 stripped, and the one comment hit named APP_VERSION, which is ALSO a
+  // real define — so `derived.size` was 41 either way and the build never
+  // turned on it. The count was wrong, not the verdict.
+  //
+  // These cases make it a verdict. Every one of them EXITS 1 against the
+  // pre-fix guard, which is the only reason they are worth having.
+  describe('a define that exists only inside a comment is not an external surface', () => {
+    test('a doc-comment mention alone stays green and derives nothing', () => {
+      const { code, out } = run(tree({
+        dart: "/// A second `String.fromEnvironment('COMMENT_ONLY_KEY')` is discussed here.\n",
+      }));
+      assert.equal(code, 0);
+      assert.ok(!out.includes('COMMENT_ONLY_KEY'), 'a token named only in prose must not reach `derived`');
+    });
+
+    // All three comment forms, and — the half that matters — a REAL define
+    // sitting beside them that must still be seen. A stripper that blanked the
+    // live line too would make this test pass for the wrong reason, so the
+    // positive control is in the same fixture rather than a separate one.
+    test('doc, trailing and block comments derive nothing, while live code beside them still does', () => {
+      const { code, out } = run(tree({
+        dart:
+          "/// A second `String.fromEnvironment('DOC_ONLY_KEY')` is discussed here.\n" +
+          "const int z = 0; // String.fromEnvironment('TRAILING_ONLY_KEY')\n" +
+          '/*\n  String.fromEnvironment(\n  \'BLOCK_ONLY_KEY\',\n);\n*/\n' +
+          "static const String live = String.fromEnvironment(\n  'REAL_LIVE_KEY',\n);\n",
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /`REAL_LIVE_KEY` \(found in dart-define\) is claimed by NO vendor/);
+      for (const t of ['DOC_ONLY_KEY', 'TRAILING_ONLY_KEY', 'BLOCK_ONLY_KEY']) {
+        assert.ok(!out.includes(t), `${t} exists only in a comment and must not derive a surface`);
+      }
+    });
+
+    // 🔴 THE .jsonc REACH, PINNED. Source (c) always stripped, but with a
+    // LINE-PREFIX-ONLY regex that never saw a trailing or block comment. It is
+    // now `stripSourceComments(src, '.jsonc')` from text-reductions.mjs, which
+    // covers `.jsonc` and tracks string state.
+    // ⚠️ CORRECTED 2026-08-21: this comment previously said `.jsonc` was NOT in
+    // the module's table and that the read had to use a `lang: 'js'` override.
+    // That was true of a second, now-deleted stripper, not of this one. The live
+    // trap it warned about is real in general — an extension the module does not
+    // know comes back VERBATIM and says nothing — and the guard now probes for
+    // it at startup instead of relying on this paragraph.
+    // No count moves on today's tree either way (measured 2026-08-21: 12
+    // wrangler surfaces under the old line-prefix strip, under the module, AND
+    // under no strip at all), so this test is the only thing that can see a
+    // stripper regress here.
+    test('a commented-out wrangler binding is not a surface, in any of the three comment forms', () => {
+      const root = tree();
+      writeFileSync(
+        join(root, 'services/platform/wrangler.jsonc'),
+        '{\n' +
+          '  "d1_databases": [{ "binding": "PLATFORM_DB" }],\n' +
+          '  // { "binding": "FULL_LINE_ONLY_DB" },\n' +
+          '  "kv_namespaces": [{ "binding": "CONFIG_KV" }], // { "binding": "TRAILING_ONLY_KV" }\n' +
+          '  /* { "binding": "BLOCK_ONLY_BUCKET" } */\n' +
+          '  "r2_buckets": [{ "binding": "EXPORTS" }],\n' +
+          '  "ratelimits": [\n    {\n      "name": "EVENTS_LIMITER"\n    }\n  ],\n' +
+          '  "triggers": {\n    "crons": ["0 6 * * *"]\n  }\n}\n',
+      );
+      const { code, out } = run(root);
+      assert.equal(code, 0);
+      for (const t of ['FULL_LINE_ONLY_DB', 'TRAILING_ONLY_KV', 'BLOCK_ONLY_BUCKET']) {
+        assert.ok(!out.includes(t), `${t} is commented out and must not derive a surface`);
+      }
+      // …and the live surfaces around them are untouched, or the strip is
+      // blanking code rather than comments. platform:5 = three bindings +
+      // EVENTS_LIMITER + the cron; api:1 = SUBLY_DB. Pinned as an exact count
+      // because "no commented token appeared" is also satisfied by a strip that
+      // ate the whole file.
+      assert.match(out, /6 wrangler surface\(s\) across 2 service\(s\) \(api:1, platform:5\)/);
+    });
+  });
+
+  // ── THE READS NOTHING COULD OBSERVE ───────────────────────────────────────
+  // 🔴 ADDED 2026-08-21, from a refutation of the change above. Five reads in
+  // the guard were repointed at the shared stripper; only two of them — source
+  // (a) and source (c)/(d) — had a test that could see the difference. The
+  // other three (source (b), the seam symbol, the RUNTIME_MIGRATIONS anchors)
+  // could be reverted to a raw `readFileSync` with the whole suite still green
+  // and the real tree still EXIT 0: measured that day, tests 22 / pass 22 with
+  // all three reverted. An unfalsifiable behaviour change is the corpus's own
+  // "assertion that cannot fail", one level down. These cases make each of the
+  // three a verdict; every one of them EXITS 1 against a raw-reading guard.
+  describe('every stripped read is observable, not just the two that were tested', () => {
+    test('a Worker Env key that exists only inside a block comment is not a surface', () => {
+      const { code, out } = run(tree({ env: '  /*\n  TWILIO_AUTH_TOKEN: string;\n  */\n' }));
+      assert.equal(code, 0);
+      assert.ok(!out.includes('TWILIO_AUTH_TOKEN'), 'a key commented out of `interface Env` must not demand a vendor claim');
+      // …and the live keys around it are still counted, or the strip ate code
+      // rather than comments. 15 in platform + SUBLY_DB in api.
+      assert.match(out, /16 Worker Env key\(s\)/);
+    });
+
+    test('a seam whose only class declaration is commented out does not satisfy part 2', () => {
+      const root = tree();
+      writeFileSync(join(root, 'packages/core/lib/seam.dart'), '// abstract interface class AuthRepository {}\n');
+      const { code, out } = run(root);
+      assert.equal(code, 1);
+      assert.match(out, /names seam symbol `AuthRepository`.*which does not declare it/s);
+    });
+
+    // A seam file the stripper cannot classify comes back VERBATIM and says
+    // nothing — which would restore the raw read the case above exists to
+    // remove, for that vendor only, with no signal. The seam path is the one
+    // read in the guard whose extension the register chooses, so it is the one
+    // that has to say so out loud.
+    test('a seam file with an extension the stripper does not know is named, not read raw in silence', () => {
+      const { code, out } = run(tree({
+        mutate: (r) => { r.vendors.supabase.seam.file = 'runbooks/ops.md'; return r; },
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /extension `\.md` is unknown to the shared comment stripper/);
+    });
+
+    test('a runtime-migration anchor surviving only as a comment is not the implementation', () => {
+      const { code, out } = run(tree({
+        core: "// final x = AppConfig(updateUrl: json['update_url']);\nfinal x = AppConfig();\n",
+      }));
+      assert.equal(code, 1);
+      assert.match(out, /must PARSE `update_url`/);
     });
   });
 });
