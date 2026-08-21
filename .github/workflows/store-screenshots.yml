@@ -168,7 +168,14 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: play-screenshots-subly
-          path: apps/subly/store/android-play/screenshots/
+          # BOTH device-type sets. The capture drives two viewports since
+          # 2026-08-21 (Play's minimum is two device TYPES, not two files), and a
+          # path pinned to the phone directory alone would have uploaded half of
+          # what the run produced while `if-no-files-found: error` stayed happy —
+          # a silent half-capture is the shape this file's own header warns about.
+          path: |
+            apps/subly/store/android-play/screenshots/
+            apps/subly/store/android-play/screenshots-tablet/
           if-no-files-found: error
 
       # 🔴 THE STEP THAT MAKES THE CAPTURE OUTLIVE ITS RUN. Everything above is
@@ -196,7 +203,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          SHOTS=apps/subly/store/android-play/screenshots
+          # Both sets, for the same reason as the upload above: the capture
+          # produces two device types and a PR proposing one is a PR that leaves
+          # the listing one type short — which is exactly the state
+          # assert-play-device-coverage.mjs fails the submission lane for.
+          SHOTS="apps/subly/store/android-play/screenshots apps/subly/store/android-play/screenshots-tablet"
           BRANCH="chore/play-screenshots-${{ github.run_id }}"
 
           git config user.name  "github-actions[bot]"
@@ -204,7 +215,7 @@ jobs:
 
           # -f: the listing directory is not gitignored, but being explicit means
           # a future ignore rule cannot silently drop the payload of this PR.
-          git add -f "$SHOTS"
+          git add -f $SHOTS
           if git diff --cached --quiet; then
             echo "::notice title=Nothing to propose::The captured set is byte-identical to what is already committed. The listing already carries this exact capture; no pull request is needed."
             exit 0

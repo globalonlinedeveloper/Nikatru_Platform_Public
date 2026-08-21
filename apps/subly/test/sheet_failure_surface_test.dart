@@ -117,6 +117,44 @@ Widget _app(void Function(BuildContext) open) {
   );
 }
 
+/// [_app] with the platform text scale forced to [scale].
+///
+/// The scaler is applied in `MaterialApp.builder`, which wraps the NAVIGATOR —
+/// so it reaches the modal route the sheet mounts into. Wrapping `home` instead
+/// would scale the open button and nothing else: `showModalBottomSheet` builds
+/// its route above `home`, not inside it.
+Widget _appScaled(void Function(BuildContext) open, double scale) {
+  return ProviderScope(
+    overrides: <Override>[
+      keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
+      subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
+      sublyNotificationServiceProvider.overrideWithValue(
+        _SilentNotifications(),
+      ),
+    ],
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (BuildContext context, Widget? child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: Builder(
+          builder: (BuildContext context) => Center(
+            child: TextButton(
+              onPressed: () => open(context),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 Subscription _sub() => Subscription(
   id: 'sub-1',
   name: 'Netflix',
@@ -125,6 +163,44 @@ Subscription _sub() => Subscription(
   cycle: BillingCycle.monthly,
   nextRenewal: DateTime.utc(2026, 9, 12),
 );
+
+/// The two windows the height cases below are pinned to, named so a failure says
+/// WHICH viewport was being measured rather than a bare pair of numbers.
+/// [kLandscapePhone] is a phone on its side — the shortest viewport this app
+/// ships to that is not a fold.
+const Size kLandscapePhone = Size(740, 360);
+const Size kPortraitPhone = Size(375, 812);
+
+/// A short portrait phone. Separate from [kPortraitPhone] because the two fail
+/// for DIFFERENT reasons and each pins a different half of the fix — see the
+/// block comment above the height cases.
+const Size kShortPhone = Size(375, 667);
+
+/// Fails, naming the control and the window, when [finder]'s rect leaves the
+/// window.
+///
+/// 🔴 THIS IS THE ASSERTION, NOT `takeException()`. A `ClipRect` around the
+/// sheet would silence the overflow exception and leave the buttons exactly as
+/// unreachable as they were; "the user can see and tap it" is the property, and
+/// only a rect can state it.
+void _expectOnScreen(
+  WidgetTester tester,
+  Finder finder,
+  Size window,
+  String what,
+) {
+  final Rect r = tester.getRect(finder);
+  expect(
+    r.left >= 0 &&
+        r.top >= 0 &&
+        r.right <= window.width &&
+        r.bottom <= window.height,
+    isTrue,
+    reason:
+        '$what laid out at $r, which leaves the $window window — '
+        'it is on screen for nobody',
+  );
+}
 
 void main() {
   testWidgets('add sheet: a failed save re-arms the button and says so', (
@@ -192,5 +268,121 @@ void main() {
     expect(find.text('Cancelled'), findsNothing);
     expect(find.text('Cancelling…'), findsNothing);
     expect(find.text('Confirm cancel'), findsOneWidget);
+  });
+
+  // ── THE CONFIRMATION SURVIVES A SHORT VIEWPORT ────────────────────────────
+  //
+  // 🔴 THE AUDIT'S DIAGNOSIS WAS WRONG AND THE BUG WAS REAL. It suspected the
+  // step-0 `Row` of two `Expanded` buttons of clipping at large text scale. Two
+  // `Expanded`s always fit the width they are handed — measured at 1.3× and at
+  // 2.0×, the row laid out at its full 596 px both times and threw nothing.
+  // What overflowed was the sheet's OUTER `Column`, and the axis that ran out
+  // was HEIGHT: 137 px on a 740×360 phone at 1.3× against
+  // `showModalBottomSheet`'s default cap of 9/16 of the window (202.5 px). The
+  // row was pushed to y 416.5–466.5 — below the bottom of a 360 px screen — so
+  // 'Keep it' and 'Confirm cancel' were both unreachable, and the only way out
+  // of a destructive confirmation was to dismiss it.
+  //
+  // Fixed in `showCancelSheet`, NOT by re-laying-out the row: wrapping or
+  // stacking those buttons makes the sheet TALLER, which is the wrong direction.
+  // The fix is two parts, and the three cases below are one-per-part plus a
+  // control. Both parts were mutation-tested against this file on 2026-08-21:
+  //   · drop `isScrollControlled: true` → the LANDSCAPE case goes red on its
+  //     HEIGHT line, and ONLY there. The 9/16 cap comes back, the scroll view
+  //     obediently squeezes the copy into the ~75 px that leaves, and both
+  //     buttons stay on screen — so the two rect assertions accept it. The
+  //     sheet would be legible-in-principle and unreadable in fact.
+  //   · drop the `Flexible` + `SingleChildScrollView` → the SHORT-PHONE case
+  //     goes red (overflowed by 80 px), because at 2.0× the content is taller
+  //     than the whole 667 px window, not merely taller than 9/16 of it.
+  // Neither mutation is caught by the other's case. That is why there are two.
+
+  testWidgets(
+    '🔴 landscape 740×360 at 1.3× text: both confirmation buttons are on screen',
+    (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(kLandscapePhone);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _appScaled((BuildContext c) => showCancelSheet(c, _sub()), 1.3),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      _expectOnScreen(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Keep it'),
+        kLandscapePhone,
+        "'Keep it'",
+      );
+      _expectOnScreen(
+        tester,
+        find.widgetWithText(FilledButton, 'Confirm cancel'),
+        kLandscapePhone,
+        "'Confirm cancel'",
+      );
+      // 🔴 AND THE 9/16 CAP IS GONE, not merely worked around.
+      // `isScrollControlled: false` caps the sheet at
+      // `constraints.maxHeight * 9/16` — `bottom_sheet.dart:32`, applied at
+      // `:621-623` — which is 202.5 px in this window, measured. The scroll
+      // view satisfies that cap by squeezing the copy, so every assertion
+      // above still passes with the flag deleted. This is the one that does
+      // not: the sheet is as tall as its content, so the reason the user is
+      // being asked to confirm is fully on screen and nothing scrolls at all.
+      expect(
+        tester.getSize(find.byType(BottomSheet)).height,
+        greaterThan(kLandscapePhone.height * 9 / 16),
+      );
+    },
+  );
+
+  testWidgets(
+    '🔴 short phone 375×667 at 2.0× text: the confirmation is still reachable',
+    (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(kShortPhone);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _appScaled((BuildContext c) => showCancelSheet(c, _sub()), 2.0),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // No `ensureVisible` — that is the point. At this scale the COPY is
+      // taller than the window and scrolls; the button row is outside the
+      // viewport and is still sitting on screen with nothing scrolled.
+      _expectOnScreen(
+        tester,
+        find.widgetWithText(FilledButton, 'Confirm cancel'),
+        kShortPhone,
+        "'Confirm cancel'",
+      );
+    },
+  );
+
+  testWidgets('portrait 375×812 at 1.3× text: the sheet still shrink-wraps', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(kPortraitPhone);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _appScaled((BuildContext c) => showCancelSheet(c, _sub()), 1.3),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // The CONTROL case: this window never overflowed, and it is here to catch
+    // the cost of the fix rather than the bug. `isScrollControlled: true`
+    // REMOVES the 9/16 cap, so what it risks is a two-button confirmation that
+    // grew into a full-height sheet on an ordinary phone. It does not, because
+    // `SingleChildScrollView` sizes itself to its child within the incoming
+    // constraints rather than filling them — measured on both sides of this
+    // change on an 800×600 host, the sheet is 289 px tall either way and the
+    // 'Confirm cancel' rect is identical to the pixel.
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byType(BottomSheet)).height,
+      lessThan(kPortraitPhone.height),
+    );
   });
 }

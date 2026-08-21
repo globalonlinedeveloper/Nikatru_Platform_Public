@@ -5,12 +5,12 @@ import 'package:go_router/go_router.dart';
 // this file's two `core/theme/*` re-export shims redundant (`AppColors`,
 // `AppText` come through both), which is an `unnecessary_import` info on each —
 // two NEW analyzer issues for a port that is supposed to contribute zero. The
-// shims stay as they were; only the two symbols this port actually adds come
+// shims stay as they were; only the symbols this file actually uses come
 // straight from the package.
 import 'package:intl/date_symbols.dart' show DateSymbols;
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show AppSpacing, ContentPane;
+    show AppSpacing, ContentPane, TwoPane;
 
 import '../../core/format/currency.dart';
 import '../../core/theme/app_colors.dart';
@@ -57,11 +57,57 @@ import '../shared/widgets.dart';
   return (ink: scheme.onSurface, muted: scheme.onSurfaceVariant);
 }
 
-class CalendarScreen extends ConsumerWidget {
+/// The page inset, now shared by BOTH panes.
+///
+/// PADDING RE-BASED FOR THE CHASSIS SHELL (the landed home precedent,
+/// `home_screen.dart` MERGE CHANGE 3). Live was `fromLTRB(18, 58, 18, 108)`;
+/// both odd numbers paid for the old shell — 58 cleared a status bar under an
+/// app-bar-less `Scaffold`, 108 cleared the floating pill bar plus the FAB.
+/// `AppScaffold._compact()` wraps the body in a `SafeArea` and puts navigation
+/// in `bottomNavigationBar`, so both insets are now paid twice. 18 is
+/// `AppSpacing.gutterCompact`, the chassis's own page gutter.
+///
+/// ⚠️ A CONST RATHER THAN TWO LITERALS since the two-pane split: the detail
+/// column is a second scroll view one divider away from the first, and two page
+/// insets that agree today and drift tomorrow would read as a step in the seam
+/// between them.
+const EdgeInsets _pageInset = EdgeInsets.fromLTRB(
+  AppSpacing.gutterCompact,
+  AppSpacing.gutterCompact,
+  AppSpacing.gutterCompact,
+  AppSpacing.xl,
+);
+
+/// 🔴 STATEFUL SINCE THE `TwoPane` ADOPTION, AND THE STATE IS EXACTLY ONE INT.
+/// The detail column needs a selected day and nothing else: the month, the
+/// renewals and the totals are all still derived per build from `DateTime.now()`
+/// and the subscriptions provider, unchanged. See
+/// [_CalendarScreenState._selectedDay] for why a day-of-month is the whole
+/// selection.
+class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
+}
+
+class _CalendarScreenState extends ConsumerState<CalendarScreen> {
+  /// The selected day of THIS month, or null for "the whole month".
+  ///
+  /// A bare int and not a `DateTime`, because the screen renders exactly one
+  /// month — the one `DateTime.now()` falls in — and there is no month
+  /// navigation to select out of. Storing a full date would let the two
+  /// disagree; a day-of-month cannot.
+  ///
+  /// 🔴 IT IS NOT TRUSTED ON READ. The month rolls over at midnight and the
+  /// subscription list can change under a selection, so `build` re-validates it
+  /// against `byDay` every frame rather than trying to keep it correct at write
+  /// time. An invalid selection reads as null — the whole month — which is the
+  /// state the screen was in before anything was tapped.
+  int? _selectedDay;
+
+  @override
+  Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final ({Color ink, Color muted}) neutral = _neutrals(context);
     final Currency currency = ref.watch(currencyProvider);
@@ -153,6 +199,13 @@ class CalendarScreen extends ConsumerWidget {
       (double a, Subscription s) => a + s.monthlyPrice,
     );
 
+    // The selection, re-validated — see [_selectedDay]. `byDay` is the same map
+    // the grid paints its dots from, so "is selectable" and "has a dot" are ONE
+    // condition read in two places rather than two conditions that agree today.
+    final int? selectedDay = byDay.containsKey(_selectedDay)
+        ? _selectedDay
+        : null;
+
     // P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
     //
     // 🔴 CORRECTED 2026-08-21 — THE DEFAULT CAP NEVER BOUND, SO IT WAS NOT A
@@ -178,261 +231,499 @@ class CalendarScreen extends ConsumerWidget {
     //     At 720 the price still sits within an eye movement of the name; the
     //     840–960 that suits a denser row list buys this row nothing, because it
     //     carries four fields, not eight.
-    // The old note's objection — that two caps on one scroll column would leave
+    //
+    // ⚠️ CORRECTED AGAIN BY THE `TwoPane` ADOPTION — ONE SENTENCE OF THE ABOVE
+    // HAD BECOME FALSE AND IS REWRITTEN RATHER THAN DELETED. It used to end:
+    // "The old note's objection — that two caps on one scroll column would leave
     // the grid card narrower than the rows beneath it — is answered by taking
     // ONE cap for the page, the narrower of the two candidates. One page, one
-    // cap, and it is now a cap that binds.
+    // cap, and it is now a cap that binds." That holds for the SINGLE-COLUMN
+    // path and only there. At/above `AppBreakpoints.expanded` the rows are no
+    // longer BENEATH the grid, so there is no longer one scroll column to hold
+    // one cap: the grid and the day's renewals are two columns, and the grid
+    // card being narrower than the rows beside it is now the intended shape
+    // rather than the defect that sentence was guarding against.
     //
-    // 🔴 NO `padding:` ON THE PANE — the same rule the stamped settings screen
-    // records. `test/width_calendar_test.dart` asserts the ListView is OFFERED
-    // exactly 375 at phone width and exactly `AppBreakpoints.reading` from 768
-    // upward; a pane inset would subtract from both. The gutters stay where they
-    // always were: inside the ListView.
-    return ContentPane.reading(
-      child: ListView(
-        // PADDING RE-BASED FOR THE CHASSIS SHELL (the landed home precedent,
-        // `home_screen.dart` MERGE CHANGE 3). Live was
-        // `fromLTRB(18, 58, 18, 108)`; both odd numbers paid for the old shell
-        // — 58 cleared a status bar under an app-bar-less `Scaffold`, 108
-        // cleared the floating pill bar plus the FAB. `AppScaffold._compact()`
-        // wraps the body in a `SafeArea` and puts navigation in
-        // `bottomNavigationBar`, so both insets are now paid twice. 18 is
-        // `AppSpacing.gutterCompact`, the chassis's own page gutter.
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.gutterCompact,
-          AppSpacing.gutterCompact,
-          AppSpacing.gutterCompact,
-          AppSpacing.xl,
-        ),
-        children: <Widget>[
-          Text(
-            l10n.calendarTitle,
-            style: AppText.title.copyWith(fontSize: 26, color: neutral.ink),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            // ONE key with two placeholders, not a sentence built from
-            // fragments: `{month}` carries the month AND the year together
-            // because a locale is free to order them the other way round, and
-            // the word "renewing" cannot be translated in isolation from what
-            // it follows.
-            l10n.calendarSubtitle(
-              monthYearFmt.format(now),
-              currency.fmt(monthTotal),
-            ),
-            style: AppText.muted.copyWith(fontSize: 12, color: neutral.muted),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: cardDecoration(context),
-            child: Column(
+    // 🔴 AND THIS IS WHY `TwoPane` IS THE OUTERMOST WIDGET AND THE PANE IS NOT.
+    // `TwoPane` measures the box IT was given, and it splits at
+    // `AppBreakpoints.expanded` (840). A `ContentPane.reading` wrapped AROUND it
+    // would hand it 720 at every surface — 720 < 840 — so the split could never
+    // happen at any window width whatsoever, and the whole two-pane layout would
+    // be dead code that compiles, renders and tests green as a single column.
+    // The cap therefore moved INSIDE, onto each pane.
+    return TwoPane(
+      // THE MASTER IS THE WHOLE SCREEN BELOW 840, unchanged. `TwoPane` returns
+      // `list` UNWRAPPED in single-column mode, so a phone renders the tree it
+      // rendered before this widget existed — which is why the by-date section
+      // is dropped from this column ONLY when the split actually happened.
+      list: Builder(
+        builder: (BuildContext context) {
+          // 🔴 `TwoPane.isTwoPaneOf`, NOT `MediaQuery`. This is the decision
+          // `TwoPane` published from the width IT was handed; re-deriving it
+          // from the window would be a second decision, and at the boundary the
+          // two disagree — `AppScaffold` gives the body `min(W - 361, 1280)`, so
+          // a 1200 px window is 839 px of body. Deriving from the window would
+          // drop the renewals out of this column while the detail column was not
+          // being built at all, i.e. lose them from the screen entirely.
+          final bool split = TwoPane.isTwoPaneOf(context);
+          return ContentPane.reading(
+            // ⚠️ KEYED because there are now TWO panes on this screen and
+            // `find.byType(ContentPane)` cannot tell them apart — the idiom
+            // `test/support/width_harness.dart`'s `inPaneOf` records, and the
+            // one `subscription_detail_screen.dart` already follows.
+            key: const Key('calendar-grid-pane'),
+            child: ListView(
+              // 🔴 NO `padding:` ON THE PANE — the same rule the stamped
+              // settings screen records. `test/width_calendar_test.dart` asserts
+              // the ListView is OFFERED exactly 375 at phone width and exactly
+              // `AppBreakpoints.reading` at 768; a pane inset would subtract
+              // from both. The gutters stay where they always were: inside the
+              // ListView.
+              //
+              // ⚠️ That sentence used to read "…and exactly
+              // `AppBreakpoints.reading` from 768 UPWARD", which the split made
+              // false. From 840 up this column is offered `TwoPaneSplit`'s list
+              // width — 420 at the boundary, 480 from 1201 on — and the 720 cap
+              // never binds again. The test now measures both regimes.
+              padding: _pageInset,
               children: <Widget>[
-                // Indexed rather than `.map`, because each column now needs BOTH
-                // of its forms — the letter it paints and the name it says.
-                Row(
-                  children: <Widget>[
-                    for (int i = 0; i < weekdayHeads.length; i++)
-                      Expanded(
-                        // `excludeSemantics` so the narrow letter does not ride
-                        // along behind the name ("Tuesday T"). Semantics wraps
-                        // the `Center`, which lays out exactly as it did — the
-                        // annotation is a proxy and takes no space.
-                        //
-                        // `container: true` because seven label-only
-                        // annotations with nothing to conflict over are ABSORBED
-                        // into one node — measured: the header row became a
-                        // single stop reading "Sunday Monday Tuesday Wednesday
-                        // Thursday Friday Saturday". That is one thing to hear
-                        // instead of seven things to land on, and it makes the
-                        // column under the finger unidentifiable, which is the
-                        // defect this whole change is about.
-                        child: Semantics(
-                          container: true,
-                          label: weekdayNames[i],
-                          excludeSemantics: true,
-                          child: Center(
-                            child: Text(
-                              weekdayHeads[i],
-                              style: AppText.label.copyWith(
-                                fontSize: 10,
-                                color: neutral.muted,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // 🔴 THE 44 px CELL *DID* CLIP AT LARGE TEXT — BUT NOT WHERE THE
-                // AUDIT SAID, AND NOT FOR THE REASON IT GAVE. The flag read
-                // "`mainAxisExtent: 44` may clip at large text scale … it will
-                // overflow at 1.3". Measured on a 375 phone, the numeral's line
-                // box is 12.0 px at 1.0 and 16.0 at 1.3, so the column needs 22
-                // of its 44 and there is 22 px of HEADROOM at 1.3 — the stated
-                // threshold is clean, and a purely vertical argument stays clean
-                // until the numeral box passes 38 px, i.e. past 3.1×.
-                //
-                // The real failure is HORIZONTAL and it starts at ≈1.8×.
-                // A cell on a 375 phone is 41.3 px wide. A TWO-DIGIT day (10–31,
-                // i.e. 22 of the month's cells) at a scaled 12 pt outgrows that
-                // width, WRAPS to two lines, and two lines plus the 2 px gap and
-                // the 4 px dot is 54 px in a 44 px box. Measured, per scale, at
-                // 375: 1.0/1.3/1.5 clean · 2.0 → 22 cells overflow by 10.0 px ·
-                // 3.5 → 31 cells (the single-digit ones join in). So the flag was
-                // right that the number bites and wrong about both the mechanism
-                // and the threshold — which is the whole reason it was measured
-                // instead of patched.
-                //
-                // ✅ THE FIX IS A CLAMP ON THE CELL'S TEXT SCALE, NOT A BIGGER
-                // BOX, and the clamp is what makes 44 PROVABLE rather than
-                // lucky. At 1.5× the numeral is 18 px, so even the worst case —
-                // a narrow 320 px phone where two digits still wrap — is
-                // 2×18 + 2 + 4 = 42 ≤ 44. There is no scale factor and no phone
-                // width at which this cell can now overflow, which a larger
-                // fixed extent could not have promised.
-                //
-                // ⚠️ AND IT COSTS THE USER NOTHING, which is the only reason to
-                // clamp anything. This grid is a GLANCEABLE SUMMARY — a numeral
-                // and a 4 px dot — and every fact in it is repeated in full,
-                // unclamped, scaling text in the by-date list directly below
-                // (day, month, name, due phrase, price). A reader at 200% text
-                // loses no information; they read the list, which is the shape
-                // that scales. Clamping the LIST would be the unacceptable
-                // version of this change.
-                //
-                // 📌 AND THE PRECEDENT IS THE SAME WIDGET IN THE FRAMEWORK.
-                // Material's own `CalendarDatePicker` wraps its day-picker
-                // `GridView` in exactly this call
-                // (`calendar_date_picker.dart:1171`), for exactly this reason,
-                // with `_kDayPickerGridPortraitMaxScaleFactor = 2.0` and
-                // `…LandscapeMaxScaleFactor = 1.5`. 1.5 here is the framework's
-                // tighter number, and deliberately so: its day cells get a full
-                // 48 px box, ours get 44.
-                MediaQuery.withClampedTextScaling(
-                  maxScaleFactor: 1.5,
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    // 🔴 THE SQ-GRID DEFECT, FIXED. Without a `mainAxisExtent`
-                    // this delegate inherits `childAspectRatio: 1.0` — every day
-                    // cell is a SQUARE, so its height scales linearly with
-                    // viewport width. Measured: ≈41 px per cell at 375 (the
-                    // designed look), ≈97 at 768, ≈170 at the 1280 the pane used
-                    // to allow — a month card of ~1035 px of mostly-empty tinted
-                    // squares around 12 pt numerals that do not scale. Nothing
-                    // overflows and nothing throws; it is visible only to a
-                    // measurement, which is what `test/width_calendar_test.dart`
-                    // now is.
-                    //
-                    // 44 ≈ the cell's intrinsic content (12 pt numeral + 2 gap +
-                    // 4 px dot + breathing room) and is within 3 px of today's
-                    // phone rendering, so 375 is visually unchanged while any
-                    // wider surface collapses the card to ≈279 px (6×44 + 5×3).
-                    // `mainAxisExtent` takes precedence over `childAspectRatio`,
-                    // so no other delegate field needs touching.
-                    //
-                    // `crossAxisCount: 7` STAYS. A week has seven days: this is
-                    // the one grid in the app where a `MaxCrossAxisExtent`
-                    // delegate would be wrong, because the column count is
-                    // semantic rather than responsive.
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 7,
-                          mainAxisSpacing: 3,
-                          crossAxisSpacing: 3,
-                          mainAxisExtent: 44,
-                        ),
-                    itemCount: firstOffset + dim,
-                    itemBuilder: (BuildContext context, int i) {
-                      if (i < firstOffset) return const SizedBox.shrink();
-                      final int day = i - firstOffset + 1;
-                      final bool today = day == now.day;
-                      final bool has = byDay.containsKey(day);
-                      return Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(11),
-                          gradient: today ? AppColors.brandGradient : null,
-                          // The has-renewal wash is the brand accent at 10%, and
-                          // it is deliberately NOT a neutral: it reads against
-                          // both the white card and the dark
-                          // surfaceContainerHighest one, because it is a tint of
-                          // the brand rather than a shade of the surface.
-                          color: today
-                              ? null
-                              : (has
-                                    ? const Color.fromRGBO(100, 89, 245, 0.1)
-                                    : Colors.transparent),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Text(
-                              dayFmt.format(DateTime(y, m, day)),
-                              style: AppText.fig.copyWith(
-                                fontSize: 12,
-                                // ✅ `Colors.white` STAYS on the today branch. It
-                                // is painted on `AppColors.brandGradient`, not on
-                                // the card, so it is an ON-GRADIENT colour: it
-                                // must not follow the scheme, because the surface
-                                // underneath it does not either. Only the
-                                // off-gradient branch is a neutral, and that is
-                                // the branch that was invisible in dark.
-                                color: today ? Colors.white : neutral.ink,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            if (has)
-                              Container(
-                                width: 4,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  // Same on-gradient rule for the dot; the
-                                  // off-gradient branch is the brand accent,
-                                  // which is legible on either card.
-                                  color: today
-                                      ? Colors.white
-                                      : AppColors.accent,
-                                ),
-                              )
-                            else
-                              const SizedBox(height: 4),
-                          ],
-                        ),
-                      );
-                    },
+                Text(
+                  l10n.calendarTitle,
+                  style: AppText.title.copyWith(
+                    fontSize: 26,
+                    color: neutral.ink,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  // ONE key with two placeholders, not a sentence built from
+                  // fragments: `{month}` carries the month AND the year together
+                  // because a locale is free to order them the other way round,
+                  // and the word "renewing" cannot be translated in isolation
+                  // from what it follows.
+                  //
+                  // It stays on the MASTER and stays a MONTH total even when a
+                  // day is selected: it is the caption of the month grid, and
+                  // the month grid is what this column is.
+                  l10n.calendarSubtitle(
+                    monthYearFmt.format(now),
+                    currency.fmt(monthTotal),
+                  ),
+                  style: AppText.muted.copyWith(
+                    fontSize: 12,
+                    color: neutral.muted,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: cardDecoration(context),
+                  child: Column(
+                    children: <Widget>[
+                      // Indexed rather than `.map`, because each column now
+                      // needs BOTH of its forms — the letter it paints and the
+                      // name it says.
+                      Row(
+                        children: <Widget>[
+                          for (int i = 0; i < weekdayHeads.length; i++)
+                            Expanded(
+                              // `excludeSemantics` so the narrow letter does not
+                              // ride along behind the name ("Tuesday T").
+                              // Semantics wraps the `Center`, which lays out
+                              // exactly as it did — the annotation is a proxy
+                              // and takes no space.
+                              //
+                              // `container: true` because seven label-only
+                              // annotations with nothing to conflict over are
+                              // ABSORBED into one node — measured: the header
+                              // row became a single stop reading "Sunday Monday
+                              // Tuesday Wednesday Thursday Friday Saturday".
+                              // That is one thing to hear instead of seven
+                              // things to land on, and it makes the column under
+                              // the finger unidentifiable, which is the defect
+                              // this whole change is about.
+                              child: Semantics(
+                                container: true,
+                                label: weekdayNames[i],
+                                excludeSemantics: true,
+                                child: Center(
+                                  child: Text(
+                                    weekdayHeads[i],
+                                    style: AppText.label.copyWith(
+                                      fontSize: 10,
+                                      color: neutral.muted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // 🔴 THE 44 px CELL *DID* CLIP AT LARGE TEXT — BUT NOT
+                      // WHERE THE AUDIT SAID, AND NOT FOR THE REASON IT GAVE.
+                      // The flag read "`mainAxisExtent: 44` may clip at large
+                      // text scale … it will overflow at 1.3". Measured on a 375
+                      // phone, the numeral's line box is 12.0 px at 1.0 and 16.0
+                      // at 1.3, so the column needs 22 of its 44 and there is 22
+                      // px of HEADROOM at 1.3 — the stated threshold is clean,
+                      // and a purely vertical argument stays clean until the
+                      // numeral box passes 38 px, i.e. past 3.1×.
+                      //
+                      // The real failure is HORIZONTAL and it starts at ≈1.8×.
+                      // A cell on a 375 phone is 41.3 px wide. A TWO-DIGIT day
+                      // (10–31, i.e. 22 of the month's cells) at a scaled 12 pt
+                      // outgrows that width, WRAPS to two lines, and two lines
+                      // plus the 2 px gap and the 4 px dot is 54 px in a 44 px
+                      // box. Measured, per scale, at 375: 1.0/1.3/1.5 clean ·
+                      // 2.0 → 22 cells overflow by 10.0 px · 3.5 → 31 cells (the
+                      // single-digit ones join in). So the flag was right that
+                      // the number bites and wrong about both the mechanism and
+                      // the threshold — which is the whole reason it was
+                      // measured instead of patched.
+                      //
+                      // ✅ THE FIX IS A CLAMP ON THE CELL'S TEXT SCALE, NOT A
+                      // BIGGER BOX, and the clamp is what makes 44 PROVABLE
+                      // rather than lucky. At 1.5× the numeral is 18 px, so even
+                      // the worst case — a narrow 320 px phone where two digits
+                      // still wrap — is 2×18 + 2 + 4 = 42 ≤ 44. There is no
+                      // scale factor and no phone width at which this cell can
+                      // now overflow, which a larger fixed extent could not have
+                      // promised.
+                      //
+                      // ⚠️ AND IT COSTS THE USER NOTHING, which is the only
+                      // reason to clamp anything. This grid is a GLANCEABLE
+                      // SUMMARY — a numeral and a 4 px dot — and every fact in
+                      // it is repeated in full, unclamped, scaling text in the
+                      // by-date list (directly below on a phone, in the column
+                      // beside it from 840 up): day, month, name, due phrase,
+                      // price. A reader at 200% text loses no information; they
+                      // read the list, which is the shape that scales. Clamping
+                      // the LIST would be the unacceptable version of this
+                      // change.
+                      //
+                      // 📌 AND THE PRECEDENT IS THE SAME WIDGET IN THE
+                      // FRAMEWORK. Material's own `CalendarDatePicker` wraps its
+                      // day-picker `GridView` in exactly this call
+                      // (`calendar_date_picker.dart:1171`), for exactly this
+                      // reason, with `_kDayPickerGridPortraitMaxScaleFactor =
+                      // 2.0` and `…LandscapeMaxScaleFactor = 1.5`. 1.5 here is
+                      // the framework's tighter number, and deliberately so: its
+                      // day cells get a full 48 px box, ours get 44.
+                      MediaQuery.withClampedTextScaling(
+                        maxScaleFactor: 1.5,
+                        child: GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          // 🔴 THE SQ-GRID DEFECT, FIXED. Without a
+                          // `mainAxisExtent` this delegate inherits
+                          // `childAspectRatio: 1.0` — every day cell is a
+                          // SQUARE, so its height scales linearly with viewport
+                          // width. Measured: ≈41 px per cell at 375 (the
+                          // designed look), ≈97 at 768, ≈170 at the 1280 the
+                          // pane used to allow — a month card of ~1035 px of
+                          // mostly-empty tinted squares around 12 pt numerals
+                          // that do not scale. Nothing overflows and nothing
+                          // throws; it is visible only to a measurement, which
+                          // is what `test/width_calendar_test.dart` now is.
+                          //
+                          // 44 ≈ the cell's intrinsic content (12 pt numeral + 2
+                          // gap + 4 px dot + breathing room) and is within 3 px
+                          // of today's phone rendering, so 375 is visually
+                          // unchanged while any wider surface collapses the card
+                          // to ≈279 px (6×44 + 5×3). `mainAxisExtent` takes
+                          // precedence over `childAspectRatio`, so no other
+                          // delegate field needs touching.
+                          //
+                          // `crossAxisCount: 7` STAYS. A week has seven days:
+                          // this is the one grid in the app where a
+                          // `MaxCrossAxisExtent` delegate would be wrong,
+                          // because the column count is semantic rather than
+                          // responsive.
+                          //
+                          // ✅ AND THE CELL'S *WIDTH* IS CAPPED NOW TOO, WITHOUT
+                          // A NUMBER BEING INVENTED FOR IT. The height was
+                          // untied from the viewport above; the width never was,
+                          // and a 900 px-wide grid of 44 px cells is exactly the
+                          // letterbox the pane note describes. `TwoPane` caps
+                          // the master column at `AppBreakpoints.pane` (480), so
+                          // a cell measures (480 − 36 gutter − 32 card padding −
+                          // 18 spacing) / 7 ≈ 56.3 × 44 in two-pane mode —
+                          // NARROWER than the ≈90.6 the 720 single column gives
+                          // it, and within 15 px of the ≈41.3 the design was
+                          // drawn at. Widening the window past 1201 moves
+                          // neither number: `TwoPane` stops growing there and
+                          // splits the leftover between the outer edges.
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 7,
+                                mainAxisSpacing: 3,
+                                crossAxisSpacing: 3,
+                                mainAxisExtent: 44,
+                              ),
+                          itemCount: firstOffset + dim,
+                          itemBuilder: (BuildContext context, int i) {
+                            if (i < firstOffset) return const SizedBox.shrink();
+                            final int day = i - firstOffset + 1;
+                            final bool today = day == now.day;
+                            final bool has = byDay.containsKey(day);
+                            // 🔴 SELECTION EXISTS ONLY IN TWO-PANE MODE. Below
+                            // 840 there is no detail column for a selection to
+                            // point at, so a selected cell would be a highlight
+                            // that changed nothing — and a window shrunk back to
+                            // a phone would carry a mark the user could no
+                            // longer clear. `split` gates the MARKER as well as
+                            // the tap, which is what keeps the single-column
+                            // grid identical to the shipped one.
+                            final bool selected = split && day == selectedDay;
+                            final Widget content = Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                Text(
+                                  dayFmt.format(DateTime(y, m, day)),
+                                  style: AppText.fig.copyWith(
+                                    fontSize: 12,
+                                    // ✅ `Colors.white` STAYS on the today
+                                    // branch. It is painted on
+                                    // `AppColors.brandGradient`, not on the
+                                    // card, so it is an ON-GRADIENT colour: it
+                                    // must not follow the scheme, because the
+                                    // surface underneath it does not either.
+                                    // Only the off-gradient branch is a neutral,
+                                    // and that is the branch that was invisible
+                                    // in dark.
+                                    color: today ? Colors.white : neutral.ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                if (has)
+                                  Container(
+                                    width: 4,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      // Same on-gradient rule for the dot; the
+                                      // off-gradient branch is the brand accent,
+                                      // which is legible on either card.
+                                      color: today
+                                          ? Colors.white
+                                          : AppColors.accent,
+                                    ),
+                                  )
+                                else
+                                  const SizedBox(height: 4),
+                              ],
+                            );
+                            return Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(11),
+                                gradient: today
+                                    ? AppColors.brandGradient
+                                    : null,
+                                // The has-renewal wash is the brand accent at
+                                // 10%, and it is deliberately NOT a neutral: it
+                                // reads against both the white card and the dark
+                                // surfaceContainerHighest one, because it is a
+                                // tint of the brand rather than a shade of the
+                                // surface.
+                                color: today
+                                    ? null
+                                    : (has
+                                          ? const Color.fromRGBO(
+                                              100,
+                                              89,
+                                              245,
+                                              0.1,
+                                            )
+                                          : Colors.transparent),
+                              ),
+                              // 🔴 `foregroundDecoration`, NOT a `border:` ON
+                              // THE DECORATION ABOVE, AND THE DIFFERENCE IS THE
+                              // 44 px PROOF. `Container` applies its
+                              // decoration's padding around its child, so a 1 px
+                              // border would inset the numeral by 1 on every
+                              // side and leave the clamp's worst case at
+                              // 2×18 + 2 + 4 = 42 in a 42 px box — exactly zero
+                              // headroom, on the one cell nobody would think to
+                              // re-measure. A foreground decoration paints OVER
+                              // the child and changes no layout at all, so every
+                              // number in the clamp note above still holds for
+                              // the selected cell.
+                              //
+                              // The marker is a rule in the brand accent at
+                              // `Border.all`'s default 1 px — the same weight as
+                              // the divider `TwoPane` draws between the two
+                              // columns — rather than a new fill: the two fills
+                              // this cell can already carry (today's gradient,
+                              // the 10% has-renewal wash) both stay visible
+                              // underneath it, so "today", "has renewals" and
+                              // "selected" stay three readable facts instead of
+                              // three colours competing for one background.
+                              foregroundDecoration: selected
+                                  ? BoxDecoration(
+                                      borderRadius: BorderRadius.circular(11),
+                                      border: Border.all(
+                                        color: AppColors.accent,
+                                      ),
+                                    )
+                                  : null,
+                              // 🔴 ONLY DAYS THAT HAVE RENEWALS ARE TAPPABLE,
+                              // and that is what keeps `l10n.calendarEmpty` ("No
+                              // renewals this month.") true in every state this
+                              // screen can reach. An empty day is selectable in
+                              // principle, but its detail column would then need
+                              // a "nothing renews on this day" sentence and
+                              // there is no arb key for one — inventing the
+                              // English here would ship an untranslated string
+                              // into the `ta` build. The dot already tells the
+                              // user which days are worth a tap, so the
+                              // affordance and the existing visual agree.
+                              child: (split && has)
+                                  ? MergeSemantics(
+                                      // Same pair as `_dateRow` below and for
+                                      // the same reason: without them the
+                                      // numeral is a bare text stop that is not
+                                      // announced as a control. `selected:` is
+                                      // what makes the 1 px marker reach a
+                                      // screen reader at all.
+                                      child: Semantics(
+                                        button: true,
+                                        selected: selected,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              11,
+                                            ),
+                                            // Tapping the selected day again
+                                            // clears it, and that is the only
+                                            // way back to the whole month: a
+                                            // dedicated "show all" control would
+                                            // need copy this screen has no key
+                                            // for, and the toggle is the gesture
+                                            // a user tries first anyway.
+                                            onTap: () => setState(() {
+                                              _selectedDay = selected
+                                                  ? null
+                                                  : day;
+                                            }),
+                                            child: content,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : content,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // BELOW 840 THE RENEWALS SIT UNDER THE GRID, exactly as they
+                // shipped. Above it they ARE the detail column, so including
+                // them here as well would render every row twice.
+                if (!split)
+                  ..._renewals(
+                    context,
+                    l10n,
+                    currency,
+                    neutral,
+                    now,
+                    l10n.calendarByDate,
+                    inMonth,
+                  ),
               ],
             ),
-          ),
-          const SizedBox(height: 8),
-          // ⚠️ `SectionHeader` paints with `AppText.title`, whose baked
-          // `AppColors.ink` this file cannot reach — it lives in
-          // `features/shared/widgets.dart`, which L1 owns. Named in this
-          // increment's report: the heading is still ink-on-dark until the
-          // shared widget takes the same branch these call sites now do.
-          SectionHeader(l10n.calendarByDate),
-          ...inMonth.map(
-            (Subscription s) => Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: _dateRow(context, l10n, currency, s, now),
-            ),
-          ),
-          if (inMonth.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                l10n.calendarEmpty,
-                style: AppText.muted.copyWith(color: neutral.muted),
-              ),
-            ),
-        ],
+          );
+        },
       ),
+      // THE DETAIL IS NEVER NULL, and that is a decision rather than an
+      // accident: with nothing selected it is the WHOLE month — the same list,
+      // under the same `calendarByDate` heading, that sat under the grid before
+      // the split. So the two-pane screen has no cold-start empty column to
+      // explain, and selecting a day NARROWS the detail instead of filling it.
+      detail: ContentPane.reading(
+        key: const Key('calendar-day-pane'),
+        child: ListView(
+          padding: _pageInset,
+          children: _renewals(
+            context,
+            l10n,
+            currency,
+            neutral,
+            now,
+            selectedDay == null
+                ? l10n.calendarByDate
+                // The heading for one day is that day, formatted from the same
+                // symbol table the month caption and the grid numerals come
+                // from. No arb key: a date is not copy — the argument this file
+                // already made when it deleted three English tables.
+                : DateFormat.yMMMMd(
+                    l10n.localeName,
+                  ).format(DateTime(y, m, selectedDay)),
+            selectedDay == null
+                ? inMonth
+                : inMonth
+                      .where(
+                        (Subscription s) => s.nextRenewal.day == selectedDay,
+                      )
+                      .toList(),
+          ),
+        ),
+      ),
+      // 🔴 UNREACHABLE BY CONSTRUCTION, and named as such rather than dressed up
+      // as an empty state. `TwoPane` requires a placeholder because a detail
+      // column with nothing selected is a state most screens WILL show; this one
+      // cannot, because `detail` above is never null. A `TwoPanePlaceholder`
+      // here would need a sentence ("Select a day…") that has no arb key, so it
+      // would either ship English into the `ta` build or reuse a string that
+      // says something else. If a later change makes `detail` nullable, this
+      // must become a real placeholder AND the key must be added first.
+      placeholder: const SizedBox.shrink(),
     );
   }
+
+  /// The "By date" section — heading, rows, and the empty line.
+  ///
+  /// ONE builder for both panes: below 840 it is the tail of the master column,
+  /// above 840 it is the whole detail column. Two copies would be two chances
+  /// for the phone's list and the desktop's list to drift into different rows.
+  List<Widget> _renewals(
+    BuildContext context,
+    AppLocalizations l10n,
+    Currency currency,
+    ({Color ink, Color muted}) neutral,
+    DateTime now,
+    String heading,
+    List<Subscription> rows,
+  ) => <Widget>[
+    // ⚠️ `SectionHeader` paints with `AppText.title`, whose baked
+    // `AppColors.ink` this file cannot reach — it lives in
+    // `features/shared/widgets.dart`, which L1 owns. Named in this increment's
+    // report: the heading is still ink-on-dark until the shared widget takes
+    // the same branch these call sites now do.
+    SectionHeader(heading),
+    ...rows.map(
+      (Subscription s) => Padding(
+        padding: const EdgeInsets.only(bottom: 9),
+        child: _dateRow(context, l10n, currency, s, now),
+      ),
+    ),
+    // Reachable only with `heading == l10n.calendarByDate`: a day is selectable
+    // only when it HAS renewals, so a per-day list is never empty and this
+    // month-scoped sentence can never appear under a day heading. See the
+    // itemBuilder's note on why empty days are not tappable.
+    if (rows.isEmpty)
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          l10n.calendarEmpty,
+          style: AppText.muted.copyWith(color: neutral.muted),
+        ),
+      ),
+  ];
 
   Widget _dateRow(
     BuildContext context,

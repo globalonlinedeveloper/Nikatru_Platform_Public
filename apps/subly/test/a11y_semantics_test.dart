@@ -356,7 +356,8 @@ Future<int> contrastSubjects(WidgetTester tester) async {
       .length;
 }
 
-/// Positive proof the contrast sweep beside this call ranged over something.
+/// Positive proof the contrast sweep beside this call ranged over the strings
+/// the case CLAIMS it ranged over.
 ///
 /// 🔴 THE SAME REASON THE TAP-TARGET FAMILY HAS ONE, AND A SHARPER ONE. A
 /// guideline that inspects nothing returns `Evaluation.pass()`, byte-identical
@@ -367,12 +368,66 @@ Future<int> contrastSubjects(WidgetTester tester) async {
 /// pointed at a second family: without [sizeSurface] every string below 600
 /// logical pixels on an 812-tall phone would be culled and the sweep would
 /// report the screen clean having read nothing off it.
+///
+/// 🔴 [covers] IS REQUIRED, AND IT IS WHY THIS HELPER CHANGED ON 2026-08-21.
+/// `subjects >= 1` is the vacuous-pass shape ONE SIZE DOWN, and it was passing:
+/// the dark home sweep cleared it on TWO strings — `Calendar` and `Upcoming
+/// renewals` — while not one of the five `RowCard`s on that screen was measured,
+/// and it would have gone on clearing it if the count fell to one. A COUNT says
+/// something was looked at; only a NAMED LIST says what. Every entry is asserted
+/// against the node labels the run actually reported, so a case whose coverage
+/// silently narrows fails by naming the string it lost instead of passing on
+/// whatever happened to survive.
+///
+/// ⚠️ THE ENTRIES ARE MEASURED LABELS, NOT STRINGS TYPED FROM THE ARB — each one
+/// was reported by this guideline on this screen in this rig on 2026-08-21 (the
+/// counts are in the per-case comments). If an arb string moves, this fails
+/// loudly with the missing label named, which is the only honest way for a
+/// coverage claim to rot: visibly, at the case that made it.
+///
+/// 📌 AND IT STILL CANNOT SEE A MERGED CONTROL. No [covers] list can name a
+/// `RowCard`'s title, because the guideline structurally never measures one —
+/// see [expectRowCardsLegible], which is the limb that does.
 Future<void> expectContrastHadSubjects(
   WidgetTester tester,
-  String screen,
-) async {
+  String screen, {
+  required List<String> covers,
+}) async {
   expect(
-    await contrastSubjects(tester),
+    covers,
+    isNotEmpty,
+    reason:
+        'a coverage claim with nothing in it is exactly the assertion this '
+        'argument was added to replace — name at least one string $screen is '
+        'supposed to measure',
+  );
+  final Evaluation e = await const _EveryTextFailsContrast().evaluate(tester);
+  final String reported = e.reason ?? '';
+  final List<String> lines = reported.split('\n');
+  final int nodes = lines
+      .where((String l) => l.startsWith('SemanticsNode#'))
+      .length;
+  final int measured = lines
+      .where((String l) => l.contains('Expected contrast ratio of at least'))
+      .length;
+  // `Evaluation.fail` emits exactly one `$node:` line and one `Expected contrast
+  // ratio of at least` line per rejected (node, element) pair
+  // (accessibility.dart:465-473), so the two counts are 1:1 by construction —
+  // measured equal on all 26 cases in this family on 2026-08-21. If they ever
+  // disagree, the message format has moved under BOTH the count and the label
+  // search below, and neither number means what it used to.
+  expect(
+    nodes,
+    measured,
+    reason:
+        'the guideline\'s failure message no longer pairs one `SemanticsNode#` '
+        'line with one `Expected contrast ratio` line ($nodes vs $measured on '
+        '$screen), so neither the subject count nor the labels this helper '
+        'reads out of it can be trusted. Re-read `_evaluateElement` before '
+        'touching anything else in this family.',
+  );
+  expect(
+    measured,
     greaterThanOrEqualTo(1),
     reason:
         'COVERAGE LOST — the text-contrast guideline measured NOT ONE string on '
@@ -383,6 +438,22 @@ Future<void> expectContrastHadSubjects(
         'whose paint bounds fall outside `view.physicalSize` — which is what '
         '[sizeSurface] exists to keep honest.',
   );
+  for (final String label in covers) {
+    // The quotes are part of the needle, so `label: "Cancel"` does not match the
+    // node labelled `Cancel plan`.
+    expect(
+      reported,
+      contains('label: "$label"'),
+      reason:
+          'COVERAGE LOST — the sweep on $screen measured $measured string(s) '
+          'and "$label" was NOT one of them, so this case no longer checks what '
+          'it says it checks. Either the screen stopped rendering that string, '
+          'or the string stopped being reachable: the guideline matches a node '
+          'to its element by `find.text(data.label)` (accessibility.dart:370), '
+          'so a label that gains a sibling inside a merged control leaves this '
+          'sweep without leaving the screen.\n$reported',
+    );
+  }
 }
 
 /// Whether WCAG **AAA** (7.0 normal / 4.5 large) would additionally hold here.
@@ -444,6 +515,223 @@ Future<void> expectOpaqueGround(WidgetTester tester, String screen) async {
         'their background from `AppScaffold`. Pass `paintBackground: true` to '
         '[pumpScreen]; do NOT relax the sweep.\n  ${transparent.join('\n  ')}',
   );
+}
+
+/// One string painted on a [RowCard], with the ground the real tree resolved
+/// for it.
+///
+/// [ground] is null when the string sits on a decoration of ITS OWN — the
+/// [GlyphTile]'s translucent gradient, the unused-plans badge's amber square —
+/// rather than on the card fill. Those cannot be measured from tokens alone,
+/// because their real ground is a blend of a 13%-alpha gradient over whatever
+/// the card is painting, and `Color.computeLuminance()` ignores alpha (the trap
+/// [expectOpaqueGround] exists for). They are reported as exempt BY NAME rather
+/// than dropped quietly.
+class _CardText {
+  const _CardText(this.text, this.color, this.ground, this.fontSize, this.bold);
+
+  final String text;
+  final Color color;
+  final Color? ground;
+  final double? fontSize;
+  final bool bold;
+}
+
+/// Every `Text` inside every BUILT [RowCard], with its resolved colour, its
+/// resolved size/weight and the ground under it.
+///
+/// The ground is taken from the first `Material` with a colour on the way down —
+/// that is RowCard's own fill (`features/shared/widgets.dart:274-276`), the
+/// thing a row's text is actually painted on — and a string is marked as having
+/// its own ground the moment a `DecoratedBox` that really paints (a colour or a
+/// gradient) sits between it and that fill.
+///
+/// The style is resolved the way `_evaluateElement` resolves it
+/// (accessibility.dart:425-433): the inherited `DefaultTextStyle` merged with
+/// the widget's own, so the numbers here and the framework's agree on what
+/// "15px bold" means.
+List<_CardText> _rowCardTexts(WidgetTester tester) {
+  final List<_CardText> out = <_CardText>[];
+  for (final Element card in find.byType(RowCard).evaluate()) {
+    void walk(Element element, Color? ground) {
+      final Widget widget = element.widget;
+      Color? here = ground;
+      if (widget is Material && widget.color != null) {
+        here = widget.color;
+      } else if (widget is DecoratedBox) {
+        final Decoration decoration = widget.decoration;
+        if (decoration is BoxDecoration &&
+            (decoration.color != null || decoration.gradient != null)) {
+          here = null;
+        }
+      }
+      if (widget is Text) {
+        final TextStyle style = DefaultTextStyle.of(
+          element,
+        ).style.merge(widget.style);
+        expect(
+          style.color,
+          isNotNull,
+          reason:
+              '"${widget.data}" on a RowCard resolved to no colour at all, so '
+              'nothing below this line can measure it',
+        );
+        out.add(
+          _CardText(
+            widget.data ?? '',
+            style.color!,
+            here,
+            style.fontSize,
+            // The framework's own definition of "bold" for the large-text bar,
+            // not a second opinion: `FontWeight.bold` IS w700
+            // (accessibility.dart:429).
+            style.fontWeight == FontWeight.bold,
+          ),
+        );
+        return;
+      }
+      element.visitChildren((Element child) => walk(child, here));
+    }
+
+    walk(card, null);
+  }
+  return out;
+}
+
+/// Refuses a screen whose COMMONEST CONTROL the sweep beside it never looked at.
+///
+/// 🔴🔴 THE DEFECT THIS INCREMENT FOUND, AND IT IS A THIRD SHAPE OF VACUOUS
+/// PASS — not "the guideline inspected nothing" ([expectContrastHadSubjects])
+/// and not "it inspected a transparent ground" ([expectOpaqueGround]), but "it
+/// inspected two of this screen's thirty-odd strings and NEITHER BELONGED TO THE
+/// CONTROL THE SCREEN IS MADE OF".
+///
+/// MEASURED 2026-08-21 on `HomeScreen` in this rig, both brightnesses: the
+/// container resolves **12** seeded subscriptions, **5** `RowCard`s are built,
+/// and `contrastSubjects` is **2** — `Calendar` and `Upcoming renewals`. Not one
+/// row title, subtitle or figure. 📌 THE CAUSE IS STRUCTURAL, NOT A THIN SEED,
+/// so seeding more rows cannot fix it:
+/// `MinimumTextContrastGuideline._evaluateNode` finds a node's element with
+/// `find.text(data.label)` (accessibility.dart:370), i.e. it can only measure a
+/// string that is BOTH a whole semantics node's label AND a whole `Text`
+/// widget's `data`. `RowCard` ends in `MergeSemantics`
+/// (`features/shared/widgets.dart:306`) — deliberately, so a reader hears one
+/// row instead of four fragments — so its node's label is the composite
+/// `"Spotify\nDue today\n$11.99 per month"`, which matches no `Text` anywhere,
+/// `elements` comes back empty, and the node leaves before a pixel is read.
+///
+/// 🔴 SO THE SWEEP BESIDE THIS CALL COULD NOT HAVE CAUGHT THE NEAR-BLACK ROW
+/// TITLE (`features/shared/widgets.dart:213-229` records the fix) AND CANNOT
+/// CATCH THE NEXT ONE. Every merged control in the app is invisible to it by
+/// construction, and the subscription row is the app's commonest control.
+///
+/// This limb is the half that CAN see them, and it is a TOKEN measurement for
+/// the same reason the scheme audit at the bottom of this group is: it reads
+/// what was CHOSEN off the real pumped tree, so it has no paint bounds, no 4px
+/// inflate and no naive light/dark partition to be fooled by — the three things
+/// FALSIFIER D proves will let 1.00:1 text through the rasterising sweep.
+///
+/// [except] names a string that is KNOWN to fail and says why, and the exemption
+/// is asserted to be STILL NEEDED — the day the underlying fix lands, the case
+/// goes red and the entry has to be deleted. Same shape as the check-inbox
+/// tap-target exception a group above: an exception that cannot outlive its
+/// reason.
+void expectRowCardsLegible(
+  WidgetTester tester,
+  String screen, {
+  Map<String, String> except = const <String, String>{},
+}) {
+  final List<RowCard> cards = tester
+      .widgetList<RowCard>(find.byType(RowCard))
+      .toList();
+  expect(
+    cards,
+    isNotEmpty,
+    reason:
+        'COVERAGE LOST — not one RowCard was BUILT on $screen, so this limb '
+        'ranged over the empty set and the contrast family is back to the two '
+        'labels it started with. Home renders rows only when the subscription '
+        'seed resolves; the fault would be in the pump, not in this assertion.',
+  );
+  final List<_CardText> texts = _rowCardTexts(tester);
+  final Set<String> measurable = texts
+      .where((_CardText t) => t.ground != null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  final Set<String> ownGround = texts
+      .where((_CardText t) => t.ground == null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  // 🔴 THE SUBJECT CHECK, AND IT IS PER ROW RATHER THAN A FLOOR. Every RowCard
+  // has a title, the title is on the card fill by construction, and the title is
+  // the string the near-black defect was in — so "this limb lost the row" and
+  // "this row is legible" cannot be mistaken for each other, which is precisely
+  // what `subjects >= 1` allowed one helper up.
+  for (final RowCard card in cards) {
+    expect(
+      measurable,
+      contains(card.title),
+      reason:
+          'COVERAGE LOST — the row titled "${card.title}" on $screen '
+          'contributed no measurable string. Either the walk stopped reaching '
+          'RowCard\'s `Material` fill, or the title moved onto a decoration of '
+          'its own — either way this limb has stopped covering the app\'s '
+          'commonest control, which is the whole reason it exists.\n'
+          '  on the card fill: $measurable\n'
+          '  on a ground of their own: $ownGround',
+    );
+  }
+  for (final _CardText t in texts) {
+    final Color? ground = t.ground;
+    if (ground == null) {
+      continue;
+    }
+    // `_ratio` goes through `Color.computeLuminance()`, WHICH IGNORES ALPHA — a
+    // translucent colour would be scored as if it were opaque and the number
+    // would be fiction, the same trap [expectOpaqueGround] catches one family
+    // over. Both ends are checked, not just the text.
+    expect(
+      <double>[t.color.a, ground.a],
+      everyElement(1.0),
+      reason:
+          '"${t.text}" on $screen is ${t.color} on $ground and one of them is '
+          'TRANSLUCENT. `Color.computeLuminance()` ignores alpha, so any ratio '
+          'below would be fiction — blend it against what is really behind it '
+          'before measuring, or give this string the same ground-of-its-own '
+          'treatment the glyph tiles get.',
+    );
+    final double ratio = _ratio(t.color, ground);
+    // The framework's own bar, read from the framework, so this limb and the
+    // sweep beside it cannot disagree about what 1.4.3 asks of a given size.
+    final double target = const MinimumTextContrastGuideline()
+        .targetContrastRatio(t.fontSize, bold: t.bold);
+    final String? why = except[t.text];
+    if (why != null) {
+      expect(
+        ratio,
+        lessThan(target),
+        reason:
+            'THE EXEMPTION HAS EXPIRED — "${t.text}" on $screen now measures '
+            '$ratio:1 against a $target bar, so "$why" has been fixed. DELETE '
+            'the `except:` entry rather than leaving a named hole that no '
+            'longer covers anything.',
+      );
+      continue;
+    }
+    expect(
+      ratio,
+      greaterThanOrEqualTo(target),
+      reason:
+          '"${t.text}" on $screen is $ratio:1 — ${t.color} on $ground — against '
+          'WCAG 1.4.3 AA\'s $target for ${t.fontSize}px '
+          '${t.bold ? 'bold' : 'normal'} text. 📌 THE SWEEP BESIDE THIS CALL '
+          'PASSED, and it is not wrong to: `RowCard` merges its semantics, so '
+          'the guideline never measured this string at all. Fix the token, do '
+          'not relax this limb — and if it is a known open defect owned by '
+          'another file, name it in `except:` so the exemption expires the day '
+          'it is fixed.',
+    );
+  }
 }
 
 // ─── hosts ───────────────────────────────────────────────────────────────────
@@ -3349,11 +3637,18 @@ void main() {
   // bottom of this group is not redundant with the sweeps, and why the manual
   // screen-reader pass stays a recorded CUT (dod-register:134-141).
   //
-  // ── TWO FALSIFIERS PER CASE, AND THE SECOND ONE FOUND THE REAL DEFECT ────
+  // ── THREE FALSIFIERS PER CASE, AND EACH ONE FOUND A REAL DEFECT ─────────
   // Vacuity first, same shape as the tap-target family's: a guideline that
   // inspects NOTHING returns `Evaluation.pass()`, so every case runs
   // [expectContrastHadSubjects], which re-runs the SAME class at an impossible
   // target ratio and counts what reports itself.
+  //
+  // ⚠️ A COUNT WAS NOT ENOUGH, AND THE 2026-08-21 PASS PROVED IT ON THIS FILE'S
+  // OWN CASES. `subjects >= 1` cleared the home sweeps on TWO strings while the
+  // five `RowCard`s those screens are built out of went unmeasured, so
+  // [expectContrastHadSubjects] now takes a `covers:` list and asserts the named
+  // labels really were among the ones reported. A count says something was
+  // looked at; only the list says what.
   //
   // 🔴 THEN [expectOpaqueGround], WHICH IS THE ONE THIS INCREMENT WAS ACTUALLY
   // PAID FOR. On the first run, 74 nodes across five surfaces were scored
@@ -3364,6 +3659,20 @@ void main() {
   // pumps them standalone, so their text was painted onto nothing. The other two
   // families never noticed because they never read a pixel. See
   // [expectOpaqueGround] and [pumpScreen]'s `paintBackground:`.
+  //
+  // 🔴 AND THIRD, [expectRowCardsLegible] — THE ONE THE 2026-08-21 PASS WAS PAID
+  // FOR, AND THE LIMB THAT SAYS WHAT THIS FAMILY STRUCTURALLY CANNOT DO.
+  // `_evaluateNode` matches a node to its element by `find.text(data.label)`
+  // (accessibility.dart:370), so it can only ever measure a string that is BOTH
+  // a whole semantics node's label AND a whole `Text` widget's data. Every
+  // MERGED control is therefore invisible to it — and the app's commonest
+  // control, `RowCard`, is a `MergeSemantics` on purpose. MEASURED: home builds
+  // five of them over 12 seeded subscriptions and the sweep measures ZERO,
+  // reporting the screen clean off two pieces of chrome. So no case in this
+  // family could have caught the near-black row title, and none will catch its
+  // successor. [expectRowCardsLegible] reads those rows from the TOKENS the real
+  // pumped tree resolved — and it found `AppColors.warn` at 2.15:1 on the light
+  // card the first time it ran.
   group('contrast · flutter_test\'s own text-contrast sweep', () {
     // ── FALSIFIER A · THE FLAT CASE — the guideline DOES catch this ────────
     testWidgets('THE FALSIFIER · A — low-contrast text on a FLAT ground is caught', (
@@ -3549,7 +3858,11 @@ void main() {
         );
         // 5 subjects. AA passes; AAA does not — see the group header.
         await expectOpaqueGround(tester, 'insights');
-        await expectContrastHadSubjects(tester, 'insights');
+        await expectContrastHadSubjects(
+          tester,
+          'insights',
+          covers: const <String>['Insights', 'Where your money goes'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3566,7 +3879,11 @@ void main() {
         );
         // 3 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'budget');
-        await expectContrastHadSubjects(tester, 'budget');
+        await expectContrastHadSubjects(
+          tester,
+          'budget',
+          covers: const <String>['Budget & goals', 'By category'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3601,7 +3918,11 @@ void main() {
         // accent-as-text finding and got filed to the palette lane it did not
         // belong to.
         await expectOpaqueGround(tester, 'scan (results)');
-        await expectContrastHadSubjects(tester, 'scan (results)');
+        await expectContrastHadSubjects(
+          tester,
+          'scan (results)',
+          covers: const <String>['All set', 'Go to dashboard'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3618,7 +3939,11 @@ void main() {
         );
         // 34 subjects, joint-largest with settings. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'calendar');
-        await expectContrastHadSubjects(tester, 'calendar');
+        await expectContrastHadSubjects(
+          tester,
+          'calendar',
+          covers: const <String>['Renewal calendar', 'By date'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3634,7 +3959,11 @@ void main() {
         );
         // 5 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'detail');
-        await expectContrastHadSubjects(tester, 'detail');
+        await expectContrastHadSubjects(
+          tester,
+          'detail',
+          covers: const <String>['Netflix', 'Payment history', 'Cancel plan'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3649,7 +3978,11 @@ void main() {
         // already reports for the shell's other two families.
         // AA passes; AAA does not.
         await expectOpaqueGround(tester, 'the shell (landed on /home)');
-        await expectContrastHadSubjects(tester, 'the shell (landed on /home)');
+        await expectContrastHadSubjects(
+          tester,
+          'the shell (landed on /home)',
+          covers: const <String>['Home', 'Upcoming renewals'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3661,7 +3994,14 @@ void main() {
         await pumpScreen(tester, const VerifyEmailScreen(), theme: appTheme());
         // 6 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'verify-email');
-        await expectContrastHadSubjects(tester, 'verify-email');
+        await expectContrastHadSubjects(
+          tester,
+          'verify-email',
+          covers: const <String>[
+            'Confirm your email',
+            'I have confirmed my email',
+          ],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3677,7 +4017,11 @@ void main() {
         );
         // 5 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 're-accept terms');
-        await expectContrastHadSubjects(tester, 're-accept terms');
+        await expectContrastHadSubjects(
+          tester,
+          're-accept terms',
+          covers: const <String>['Our terms have changed', 'Sign out'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3689,7 +4033,11 @@ void main() {
         await pumpScreen(tester, const LoginScreen(), theme: appTheme());
         // 12 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'sign-in');
-        await expectContrastHadSubjects(tester, 'sign-in');
+        await expectContrastHadSubjects(
+          tester,
+          'sign-in',
+          covers: const <String>['Welcome back', 'Sign in'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3711,7 +4059,11 @@ void main() {
         );
         // 5 subjects on the second door. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'sign-in (sign-up arm)');
-        await expectContrastHadSubjects(tester, 'sign-in (sign-up arm)');
+        await expectContrastHadSubjects(
+          tester,
+          'sign-in (sign-up arm)',
+          covers: const <String>['Create account'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3723,7 +4075,14 @@ void main() {
         await pumpScreen(tester, const SignUpScreen(), theme: appTheme());
         // 4 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'sign-up');
-        await expectContrastHadSubjects(tester, 'sign-up');
+        await expectContrastHadSubjects(
+          tester,
+          'sign-up',
+          covers: const <String>[
+            'Create account',
+            'Already have an account? Sign in',
+          ],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3766,7 +4125,11 @@ void main() {
         );
         // 4 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'reset-password (the form)');
-        await expectContrastHadSubjects(tester, 'reset-password (the form)');
+        await expectContrastHadSubjects(
+          tester,
+          'reset-password (the form)',
+          covers: const <String>['Set a new password', 'Save new password'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3812,7 +4175,11 @@ void main() {
         );
         // 5 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'check-inbox');
-        await expectContrastHadSubjects(tester, 'check-inbox');
+        await expectContrastHadSubjects(
+          tester,
+          'check-inbox',
+          covers: const <String>['Check your inbox', 'Back to sign in'],
+        );
         final Evaluation e = await textContrastGuideline.evaluate(tester);
         expect(
           e.passed,
@@ -3836,10 +4203,40 @@ void main() {
           theme: appTheme(),
           paintBackground: true,
         );
-        // 2 subjects. AA passes; AAA does not.
+        // 2 subjects — `Calendar` and `Upcoming renewals`, and that is the WHOLE
+        // rasterised sweep on a screen built out of five `RowCard`s. Read
+        // [expectRowCardsLegible] for why a merged control is invisible to this
+        // guideline, and for the limb below that measures one anyway.
+        // AA passes; AAA does not.
         await expectOpaqueGround(tester, 'home');
-        await expectContrastHadSubjects(tester, 'home');
+        await expectContrastHadSubjects(
+          tester,
+          'home',
+          covers: const <String>['Calendar', 'Upcoming renewals'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
+        // 🔴 ONE NAMED EXEMPTION, AND IT IS AN OPEN DEFECT RATHER THAN A
+        // TOLERANCE — the first thing this limb found when it was pointed at a
+        // screen the rasterised sweep had been reporting clean.
+        // MEASURED 2026-08-21: the due badge paints `AppColors.warn` (#F59E0B)
+        // as 11px w700 TEXT — `features/shared/due.dart:24-27,48-50` hands that
+        // one literal to home, calendar and detail alike — and on the light card
+        // fill (#FFFFFF) that is **2.15:1** against a 4.5 bar. Same class as the
+        // `Calendar →` accent the DARK case below records: a FILL colour used as
+        // TEXT, which SC 1.4.3 governs at 4.5 rather than 1.4.11 at 3. The fix
+        // is a fork in `due.dart`, which this file does not own, so it is named
+        // here instead of silently tolerated — and the entry asserts the
+        // exemption is STILL NEEDED, so the day the fork lands this case goes
+        // red and the entry has to be deleted.
+        expectRowCardsLegible(
+          tester,
+          'home',
+          except: const <String, String>{
+            'Due today':
+                'AppColors.warn #F59E0B as 11px text on the white card fill, '
+                'from due.dart — measured 2.15:1 on 2026-08-21',
+          },
+        );
       });
     });
 
@@ -3856,7 +4253,11 @@ void main() {
         );
         // 34 subjects, joint-largest with calendar. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'settings');
-        await expectContrastHadSubjects(tester, 'settings');
+        await expectContrastHadSubjects(
+          tester,
+          'settings',
+          covers: const <String>['Settings', 'Log out'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3873,7 +4274,11 @@ void main() {
         // 1 subject — the close button is the only string the guideline
         // reaches on a screen of cards. AA AND AAA both pass.
         await expectOpaqueGround(tester, 'notifications');
-        await expectContrastHadSubjects(tester, 'notifications');
+        await expectContrastHadSubjects(
+          tester,
+          'notifications',
+          covers: const <String>['Notifications'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3928,7 +4333,11 @@ void main() {
         );
         // 4 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'paywall (choosing)');
-        await expectContrastHadSubjects(tester, 'paywall (choosing)');
+        await expectContrastHadSubjects(
+          tester,
+          'paywall (choosing)',
+          covers: const <String>['Unlock the full experience', 'Upgrade'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3955,7 +4364,14 @@ void main() {
         );
         // 3 subjects. AA AND AAA both pass.
         await expectOpaqueGround(tester, 'manage-plan (pro)');
-        await expectContrastHadSubjects(tester, 'manage-plan (pro)');
+        await expectContrastHadSubjects(
+          tester,
+          'manage-plan (pro)',
+          covers: const <String>[
+            'Your subscription is active',
+            'Cancel subscription',
+          ],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3967,7 +4383,11 @@ void main() {
         await pumpScreen(tester, const OnboardingScreen(), theme: appTheme());
         // 11 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'onboarding');
-        await expectContrastHadSubjects(tester, 'onboarding');
+        await expectContrastHadSubjects(
+          tester,
+          'onboarding',
+          covers: const <String>['Every subscription, one clean board', 'Next'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -3994,7 +4414,11 @@ void main() {
         await tester.pumpAndSettle();
         // 17 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'the add sheet');
-        await expectContrastHadSubjects(tester, 'the add sheet');
+        await expectContrastHadSubjects(
+          tester,
+          'the add sheet',
+          covers: const <String>['Add subscription', 'POPULAR'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -4030,7 +4454,11 @@ void main() {
 
         // Step 0 — 4 subjects. AA passes; AAA does not.
         await expectOpaqueGround(tester, 'the cancel sheet (step 0)');
-        await expectContrastHadSubjects(tester, 'the cancel sheet (step 0)');
+        await expectContrastHadSubjects(
+          tester,
+          'the cancel sheet (step 0)',
+          covers: const <String>['Cancel Netflix?', 'Confirm cancel'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
 
         await tester.tap(find.text(l10n.confirmCancel));
@@ -4045,7 +4473,11 @@ void main() {
         // Step 1 — 3 subjects, a DIFFERENT TREE (the sheet swaps its whole
         // Column on `_step`). AA passes; AAA does not.
         await expectOpaqueGround(tester, 'the cancel sheet (step 1)');
-        await expectContrastHadSubjects(tester, 'the cancel sheet (step 1)');
+        await expectContrastHadSubjects(
+          tester,
+          'the cancel sheet (step 1)',
+          covers: const <String>['Cancelled', 'Done'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -4061,7 +4493,17 @@ void main() {
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );
-        // 2 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
+        // 2 subjects, AND BOTH OF THEM ARE CHROME. ⚠️ MEASURED 2026-08-21 in
+        // this exact pump: the container resolves 12 seeded subscriptions and 5
+        // `RowCard`s are BUILT — the rows were never missing — and the sweep
+        // measures NOT ONE of them, because `RowCard` ends in `MergeSemantics`
+        // and the guideline only ever matches a node to a whole `Text`. So this
+        // case could not have caught the near-black row title
+        // (`features/shared/widgets.dart:213-229`) and cannot catch its
+        // successor; [expectRowCardsLegible] below is the limb that can, and it
+        // is green here because that fix landed.
+        //
+        // ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
         // MEASURED THEN: the `Calendar →` jump was 3.78:1 — #6459F5 on #131318.
         // That was `AppColors.accent` painted UNCONDITIONALLY, i.e. the light
         // palette on the dark surface — the cost app.dart:70-77 names in prose
@@ -4070,8 +4512,13 @@ void main() {
         // FIXED by forking to `scheme.primary` in dark, which is the same seed
         // resolved for the ambient brightness rather than a second literal.
         await expectOpaqueGround(tester, 'home (dark)');
-        await expectContrastHadSubjects(tester, 'home (dark)');
+        await expectContrastHadSubjects(
+          tester,
+          'home (dark)',
+          covers: const <String>['Calendar', 'Upcoming renewals'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
+        expectRowCardsLegible(tester, 'home (dark)');
       });
     });
 
@@ -4101,7 +4548,11 @@ void main() {
         // last red nodes were `_LegalLink`s inside `PoweredByFooter`, whose
         // `onDark` flag means "on a dark hero", not "the app is in dark mode".
         await expectOpaqueGround(tester, 'settings (dark)');
-        await expectContrastHadSubjects(tester, 'settings (dark)');
+        await expectContrastHadSubjects(
+          tester,
+          'settings (dark)',
+          covers: const <String>['Settings', 'Log out'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });
@@ -4150,7 +4601,11 @@ void main() {
         // 3 subjects. AA AND AAA both pass — the paywall is the one dark
         // surface that paints from the scheme rather than from AppColors.
         await expectOpaqueGround(tester, 'paywall (choosing, dark)');
-        await expectContrastHadSubjects(tester, 'paywall (choosing, dark)');
+        await expectContrastHadSubjects(
+          tester,
+          'paywall (choosing, dark)',
+          covers: const <String>['Unlock the full experience', 'Upgrade'],
+        );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
     });

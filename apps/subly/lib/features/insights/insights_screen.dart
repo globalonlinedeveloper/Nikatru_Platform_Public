@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// `show ContentPane` and not a bare import: `core/theme/app_theme.dart` and
+// A `show` list and not a bare import: `core/theme/app_theme.dart` and
 // `app_colors.dart` below are re-export shims for this same package, so an
 // unrestricted import makes both of them redundant and the analyzer says so
 // (two `unnecessary_import` infos — the pair `settings_screen.dart` still
-// carries). `ContentPane` is the one symbol this file needs that the shims do
-// not re-export.
+// carries).
+//
+// 🔴 CORRECTED 2026-08-21 — THIS SAID `ContentPane` WAS "the one symbol this
+// file needs that the shims do not re-export". True until today; it is now two.
+// The two-column branch below reads `AppBreakpoints.large`, and
+// `app_theme.dart`'s shim re-exports `AppSpacing` and `AppRadius` but NOT
+// `AppBreakpoints`.
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show AppBreakpoints, ContentPane;
 
 import '../../core/format/currency.dart';
 import '../../core/format/sub_math.dart';
@@ -56,6 +61,92 @@ import '../shared/widgets.dart';
   );
 }
 
+/// The gap this page has always spent between its two cards.
+///
+/// Named rather than left as a bare `14` because the two-column layout below
+/// spends it on the HORIZONTAL axis too: one number, so the grid has one
+/// rhythm, and no new number enters the file to do it.
+const double _cardGap = 14;
+
+/// Whether a stack of [cardCount] cards should be laid out two-up in [width].
+///
+/// 🔴 THE SECOND CONDITION IS NOT DEFENSIVE PADDING. Width alone is not enough:
+/// one card in a two-column grid is a card beside a hole. On THIS screen that
+/// is the ordinary case rather than an edge one — the savings card is gated on
+/// `unused.isNotEmpty`, and nothing in this app ever sets `unused`, so every
+/// real user has exactly one card here and stays in one column at any width.
+///
+/// ⚠️ 1200 IS A BODY WIDTH, NOT A WINDOW WIDTH, AND THE TWO ARE 361px APART.
+/// `AppScaffold` hands the body `min(W - 361, 1280)` — the 360px drawer and its
+/// 1px divider are taken off the top first — so the second column appears at a
+/// WINDOW width of 1561, not 1200. That is the honest seam anyway: the question
+/// is how much room this screen was actually handed to divide, and the answer
+/// is its own incoming constraints, not the size of the display.
+bool _twoUp(double width, int cardCount) =>
+    width >= AppBreakpoints.large && cardCount >= 2;
+
+/// [cards] dealt into two equal columns, [gap] apart on both axes.
+///
+/// 🔴 ALTERNATING, NOT HALVED. Card 0 and card 1 are the first row read
+/// left-to-right, 2 and 3 the next. Dealing the first half of the list to the
+/// left column instead reads DOWN one column and back UP the other — a
+/// newspaper, not a card grid — and it puts the semantics tree in an order no
+/// sighted reader follows, because a screen reader walks the widget tree and
+/// would announce the whole left column before the top of the right one.
+///
+/// ⚠️ `CrossAxisAlignment.stretch` on each column is what keeps the cards
+/// looking as they do in one column: a `Container` with no width shrink-wraps
+/// its child, and it is only the `ListView`'s tight cross-axis constraint that
+/// makes today's cards full-bleed. Inside a `Row` that constraint is gone.
+///
+/// ⚠️ `MainAxisSize.min` on both columns and `CrossAxisAlignment.start` on the
+/// `Row`: this lives inside a `ListView`, so the incoming height is unbounded
+/// and the columns must shrink-wrap. The two columns are top-aligned and end
+/// wherever their own content does — they are not forced to equal heights,
+/// which would stretch whichever column has less in it.
+///
+/// ⚠️ Duplicated verbatim in `budget_screen.dart`, for the reason `_neutrals`
+/// records above it: each P4 file-group increment has to stay independently
+/// compilable, and the hoist into `features/shared/` belongs to the campaign's
+/// closing cleanup.
+Widget _twoColumnCards(List<Widget> cards, double gap) {
+  final List<Widget> left = <Widget>[];
+  final List<Widget> right = <Widget>[];
+  for (int i = 0; i < cards.length; i++) {
+    final List<Widget> column = i.isEven ? left : right;
+    if (column.isNotEmpty) column.add(SizedBox(height: gap));
+    column.add(cards[i]);
+  }
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Expanded(
+        child: Column(
+          // Keyed so a width test can measure a COLUMN and not only the
+          // pane. The pane's own width at a 1280 surface IS 1280, i.e. an
+          // assertion that cannot fail; a column's width is a number only
+          // this layout produces. The key sits on the `Column` and not on
+          // the `Expanded` because `Expanded` is a `ParentDataWidget` and
+          // owns no `RenderBox` of its own to read constraints off.
+          key: const Key('insights.cards.left'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: left,
+        ),
+      ),
+      SizedBox(width: gap),
+      Expanded(
+        child: Column(
+          key: const Key('insights.cards.right'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: right,
+        ),
+      ),
+    ],
+  );
+}
+
 class InsightsScreen extends ConsumerWidget {
   const InsightsScreen({super.key});
 
@@ -72,88 +163,136 @@ class InsightsScreen extends ConsumerWidget {
     final List<Subscription> unused = SubMath.unused(subs);
     final double savings = SubMath.savings(subs);
 
-    return ContentPane.reading(
-      // P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
+    // The page's card STACK, in reading order — built ONCE, then laid out in
+    // one column or two. Building it once is the whole trick: the commonest way
+    // a responsive branch rots is that one arm gains a card and the other does
+    // not, and nothing goes red because both arms still render something.
+    final List<Widget> cards = <Widget>[
+      _categoryCard(context, l10n, currency, cats, total),
+      // 🔴 THE SAVINGS CARD IS GATED ON THERE BEING SOMETHING TO SAVE.
+      // `SubMath.savings` sums rows carrying `unused == true`, and NOTHING in
+      // this app ever sets `unused` — the add sheet constructs every draft
+      // without it and the API never writes it back. So for every real user the
+      // figure is exactly 0.00, and the card rendered a green "money you could
+      // keep" Pill saying `0.00/mo` immediately above the line that says nothing
+      // is flagged. Two opposite claims, one screen.
       //
-      // Same defect and same fix as home's `ContentPane`. `AppScaffold` caps the
-      // body at `kMaxBodyWidth` only in its EXTRA-LARGE class (>=1600), so
-      // between 1200 and 1599 both cards took every pixel the drawer left them.
-      // Nothing overflows and nothing clips, so no existing assertion could
-      // fail — only a MEASUREMENT sees it, which is what
-      // `test/width_insights_test.dart` is.
+      // Gated rather than deleted: the arithmetic is correct and the surface
+      // becomes true the moment anything writes `unused`. Inventing a usage
+      // signal to populate it would be the other, worse repair.
       //
-      // 🔴 CORRECTED 2026-08-21 — THIS COMMENT CLAIMED "a 1550 px savings row"
-      // AND THAT WIDTH CANNOT OCCUR. `AppScaffold` hands the body
-      // `min(W - 361, 1280)`: the 360px drawer and its 1px divider are taken
-      // off the top before the body sees anything. So 1280 is the ceiling at
-      // ANY window width, and inside the LARGE class the body tops out at
-      // 1599-361 = 1238; at W=1500 the pane gets 1139, and at W=1440, 1079.
-      // Less the 18/18 page gutters and the card's 20/20 padding, the widest a
-      // savings row has ever been is ~1204 — still a glyph at one edge and a
-      // Cancel button at the other with most of the row empty between them, so
-      // the DEFECT was real and only the number was invented. The shipped
-      // pixels never depended on it.
-      //
-      // 🔴 `.reading` (720), NOT THE DEFAULT `kMaxBodyWidth` (1280) — and the
-      // default is what this file used to carry, on the stated grounds that it
-      // made `ContentPane` and `AppScaffold` "agree instead of agreeing only
-      // past 1600". That reasoning is void: agreeing on 1280 buys nothing when
-      // 1280 is also the most the body can ever be handed, so the cap NEVER
-      // BOUND and this page was a phone column that merely got wider. 720 is
-      // the design system's own width for a stack of cards read top to bottom,
-      // and that is exactly this page's shape — two cards, one column, no
-      // second pane to fill. It also keeps the donut row honest: at 720, less
-      // the gutters and card padding, the legend still gets ~500px beside the
-      // fixed 126px donut, against the ~155px it survives on at 375.
-      //
-      // ✅ POLICED by `test/width_insights_test.dart` — at 720 the 768, 1280
-      // AND 1920 cases all go red if this wrapper is deleted or re-widened,
-      // where the old 1280 cap left only 1920 falsifiable.
-      child: ListView(
-        // P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL (home's precedent).
-        // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers paid for the
-        // old shell: 58 cleared a status bar under a `Scaffold` with no app bar,
-        // 108 cleared `AppShell`'s floating pill bar plus its FAB. The chassis
-        // wraps the body in a `SafeArea` and puts navigation in
-        // `bottomNavigationBar`, so both insets would now be paid twice.
-        // 18 is `AppSpacing.gutterCompact`, the chassis's own page gutter.
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.gutterCompact,
-          AppSpacing.gutterCompact,
-          AppSpacing.gutterCompact,
-          AppSpacing.xl,
-        ),
-        children: <Widget>[
-          Text(
-            l10n.insightsTitle,
-            style: AppText.title.copyWith(fontSize: 26, color: neutral.ink),
+      // ⚠️ IT IS ALSO WHAT DECIDES THE COLUMN COUNT. With the gate closed there
+      // is ONE card, and `_twoUp` refuses a second column for one card — so the
+      // shape every real user sees is unchanged by the two-column work below.
+      if (unused.isNotEmpty)
+        _savingsCard(context, l10n, currency, unused, savings),
+    ];
+
+    // 🔴 THE `LayoutBuilder` SITS OUTSIDE THE PANE, AND THAT IS NOT STYLE.
+    // `app_spacing.dart`'s `pagePadding` tombstone records this exact trap: a
+    // `LayoutBuilder` INSIDE a `ContentPane` measures the PANE, so on a 1920
+    // window it reads 720 and every branch taken on it is confidently wrong
+    // with nothing to show for it. Out here it reads the body width the chassis
+    // handed down, which is the width there actually is to divide.
+    return LayoutBuilder(
+      builder: (BuildContext _, BoxConstraints constraints) {
+        // TWO COLUMNS FROM `AppBreakpoints.large` (1200) UP — see `_twoUp` for
+        // why the card count is half the condition and why 1200 of BODY is
+        // 1561 of WINDOW.
+        final bool twoUp = _twoUp(constraints.maxWidth, cards.length);
+
+        return _pane(
+          twoUp: twoUp,
+          child: ListView(
+            // P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL (home's
+            // precedent). Live was `fromLTRB(18, 58, 18, 108)`. Both odd
+            // numbers paid for the old shell: 58 cleared a status bar under a
+            // `Scaffold` with no app bar, 108 cleared `AppShell`'s floating
+            // pill bar plus its FAB. The chassis wraps the body in a `SafeArea`
+            // and puts navigation in `bottomNavigationBar`, so both insets
+            // would now be paid twice. 18 is `AppSpacing.gutterCompact`, the
+            // chassis's own page gutter.
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.gutterCompact,
+              AppSpacing.gutterCompact,
+              AppSpacing.gutterCompact,
+              AppSpacing.xl,
+            ),
+            children: <Widget>[
+              // The heading stays FULL WIDTH in both layouts. It is the page's
+              // one label, not a card, and splitting a title across a column
+              // boundary would make the grid look like two pages.
+              Text(
+                l10n.insightsTitle,
+                style: AppText.title.copyWith(fontSize: 26, color: neutral.ink),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.insightsSubtitle,
+                style: AppText.muted.copyWith(
+                  fontSize: 12,
+                  color: neutral.muted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (twoUp)
+                _twoColumnCards(cards, _cardGap)
+              else
+                for (int i = 0; i < cards.length; i++) ...<Widget>[
+                  if (i > 0) const SizedBox(height: _cardGap),
+                  cards[i],
+                ],
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            l10n.insightsSubtitle,
-            style: AppText.muted.copyWith(fontSize: 12, color: neutral.muted),
-          ),
-          const SizedBox(height: 16),
-          _categoryCard(context, l10n, currency, cats, total),
-          // 🔴 THE SAVINGS CARD IS GATED ON THERE BEING SOMETHING TO SAVE.
-          // `SubMath.savings` sums rows carrying `unused == true`, and NOTHING in
-          // this app ever sets `unused` — the add sheet constructs every draft
-          // without it and the API never writes it back. So for every real user
-          // the figure is exactly 0.00, and the card rendered a green
-          // "money you could keep" Pill saying `0.00/mo` immediately above the
-          // line that says nothing is flagged. Two opposite claims, one screen.
-          //
-          // Gated rather than deleted: the arithmetic is correct and the surface
-          // becomes true the moment anything writes `unused`. Inventing a usage
-          // signal to populate it would be the other, worse repair.
-          if (unused.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 14),
-            _savingsCard(context, l10n, currency, unused, savings),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
+
+  /// The pane that caps this page, and its cap MOVES WITH THE COLUMN COUNT.
+  ///
+  // P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
+  //
+  // Same defect and same fix as home's `ContentPane`. `AppScaffold` caps the
+  // body at `kMaxBodyWidth` only in its EXTRA-LARGE class (>=1600), so between
+  // 1200 and 1599 both cards took every pixel the drawer left them. Nothing
+  // overflows and nothing clips, so no existing assertion could fail — only a
+  // MEASUREMENT sees it, which is what `test/width_insights_test.dart` is.
+  //
+  // 🔴 CORRECTED 2026-08-21 — THIS COMMENT CLAIMED "a 1550 px savings row"
+  // AND THAT WIDTH CANNOT OCCUR. `AppScaffold` hands the body
+  // `min(W - 361, 1280)`: the 360px drawer and its 1px divider are taken off
+  // the top before the body sees anything. So 1280 is the ceiling at ANY
+  // window width, and inside the LARGE class the body tops out at
+  // 1599-361 = 1238; at W=1500 the pane gets 1139, and at W=1440, 1079.
+  // Less the 18/18 page gutters and the card's 20/20 padding, the widest a
+  // savings row has ever been is ~1204 — still a glyph at one edge and a
+  // Cancel button at the other with most of the row empty between them, so the
+  // DEFECT was real and only the number was invented. The shipped pixels never
+  // depended on it.
+  //
+  // 🔴 ONE COLUMN → `.reading` (720). This is the cap the file has carried
+  // since the P3 port and the reasoning is unchanged: 720 is the design
+  // system's own width for a stack of cards read top to bottom. It also keeps
+  // the donut row honest — at 720, less the gutters and card padding, the
+  // legend still gets ~500px beside the fixed 126px donut, against the ~155px
+  // it survives on at 375. (The `kMaxBodyWidth` default this file carried
+  // BEFORE the port was wrong for a different reason: 1280 is also the most
+  // the body can ever be handed, so that cap never bound at any real window.)
+  //
+  // 🔴 TWO COLUMNS → the default `kMaxBodyWidth` (1280), AND THAT IS NOT A
+  // REVERSAL OF THE LINE ABOVE. `reading` bounds a COLUMN of cards, and in the
+  // two-up layout there are two of them: 1280 less the 18/18 page gutters less
+  // the 14px column gap leaves 615 per column — comfortably inside `reading`,
+  // so the number that justifies 720 is still being honoured, once per column.
+  // Capping the two-up layout at 720 instead would give 353px columns, which is
+  // narrower than the 375px phone this page is designed for.
+  //
+  // ✅ POLICED by `test/width_insights_test.dart`, which measures the pane AND
+  // a column at each surface — the pane alone cannot fail at 1280, because
+  // 1280 is the surface.
+  Widget _pane({required bool twoUp, required Widget child}) =>
+      twoUp ? ContentPane(child: child) : ContentPane.reading(child: child);
 
   // 2026-07-27 - the six-month spending trend was REMOVED, not repaired.
   //

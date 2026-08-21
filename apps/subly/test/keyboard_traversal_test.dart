@@ -1,0 +1,515 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// KEYBOARD OPERABILITY — THE SWEEP `tooling/dod-register.json` ADOPTED AND
+// NEVER RAN.
+//
+// The register's `keyboard-no-exception` row (SC 2.1.3, Level AAA) has carried
+// `⬜ ADOPTED AND UNMET (unmeasured — no keyboard-operability sweep exists)`
+// since 2026-08-13, and its evidence sentence ended "That has never been
+// asserted: no keyboard-traversal test exists in the chassis suite". This file
+// is the first measurement. It does NOT discharge that row — see THE SCOPE
+// below — and the row has been corrected to say so rather than left to be read
+// as coverage.
+//
+// 🔴 THE CRITERION THIS FILE IS ACTUALLY ABOUT IS SC 2.1.1 KEYBOARD, LEVEL A.
+// Until 2026-08-21 the register carried 2.1.3 (AAA, optional, attached under
+// §5.3.2) and had NO ROW AT ALL for 2.1.1 — the Level A criterion that the
+// published claim "Accessible — WCAG 2.2 Level AA" REQUIRES by §5.2.1. That is
+// the §4-F defect the register was built to stop, arriving one level lower than
+// anybody was looking: a criterion in neither the required list nor the cut
+// list, under a claim that cannot be true without it. `insideTheClaim` in the
+// register is the row that was missing; this file is its evidence.
+//
+// ── WHAT IS MEASURED, AND WHY IT IS THE ORBIT AND NOT A WIDGET COUNT ─────────
+// The question SC 2.1.1 asks is "can a keyboard reach this control", and the
+// only honest answer is the one a keyboard produces. So [_sweep] presses REAL
+// Tab keys through the app's REAL `WidgetsApp` shortcut bindings and records
+// the ORBIT — the sequence of nodes `primaryFocus` actually visits, stopping
+// the moment it revisits one. Nothing here reads a `FocusNode` list directly;
+// a node that exists but no `Tab` press can land on is exactly the defect.
+//
+// A control is REACHABLE iff some orbit node's `Focus` element is an ancestor
+// of it, or it is an ancestor of that element. Both directions are needed and
+// each catches a different lie:
+//   · ancestor-of  — `TextButton` builds its own `GestureDetector` UNDER its
+//     `Focus`, so a one-directional test would report the framework's own
+//     buttons as keyboard-dead. 6 of login's 8 candidates are that shape.
+//   · descendant-of — an author `GestureDetector` wrapping a `ListTile` sits
+//     ABOVE the tile's focus node.
+// Element containment rather than rectangle overlap, deliberately: a focus ring
+// that happens to cover a control it cannot activate is not reachability, and
+// geometry cannot tell those apart.
+//
+// ⚠️ THE CANDIDATE SET IS `GestureDetector(onTap:) ∪ InkWell(onTap:) ∪
+// EditableText`, reduced to the OUTERMOST of any nested run. That set is not a
+// guess: `a11y_semantics_test.dart`'s header records the measured baseline —
+// "every control in the app is a hand-rolled `GestureDetector` or `InkWell` (23
+// of them)", ZERO `IconButton`s. The outermost reduction is what stops one
+// control being counted twice when an `InkWell` builds a `GestureDetector`
+// inside itself.
+//
+// ── THE SURFACE IS 1079×2400, AND BOTH NUMBERS ARE LOAD-BEARING ─────────────
+// 1079 is the width `AppScaffold` hands a branch on a maximised 1440 px desktop
+// — `min(1440 - 361, 1280)`, measured 2026-08-21, and already named `kShell` in
+// `width_settings_test.dart`. A keyboard sweep belongs at a DESKTOP width
+// because a desktop is where a keyboard-only user is.
+//
+// 2400 tall is what makes the sweep COMPLETE rather than merely long. A
+// `ListView` culls what is off-screen, and a culled control is neither
+// reachable nor unreachable — it does not exist, so a sweep run in a short
+// viewport measures the viewport instead of the screen and silently
+// under-reports. Every group below therefore opens with [_everythingIsLaidOut],
+// which asserts `maxScrollExtent == 0`: nothing was culled, so the inventory is
+// the whole screen. Delete that case and every count in this file becomes a
+// number about a window rather than about a product.
+//
+// ── 🔴 WHAT THE SWEEP FOUND, 2026-08-21. IT IS NOT A PASS. ──────────────────
+// login 4 of 8 · settings 9 of 27 · home 17 of 20 — 55 interactive controls
+// across the three screens, 30 reachable by Tab, 25 keyboard-DEAD. Traversal
+// itself is clean everywhere it exists: every orbit closes, retraces under
+// Shift-Tab and runs down the page. The failure is not the ORDER of the
+// traversal, it is what the traversal never visits.
+//
+// The dead ones are the app's hand-rolled `Semantics(button:
+// true)` + `GestureDetector` pairs — the same shape `a11y_semantics_test.dart`
+// found announcing as prose. `Semantics(button: true)` tells a screen reader
+// what a thing IS; it creates no `FocusNode`, so it does nothing whatever for a
+// keyboard, and the two defects have been mistaken for one another before.
+//
+// The worst single instance is on the screen every signed-out visitor is routed
+// to: login's "New here? Create account" band, which `login_screen.dart:562`
+// already documents as "the ONLY control that reaches registration from the
+// screen every signed-out visitor is routed to" — and `:553` as "the only way
+// to reach sign-up". A keyboard-only user cannot register.
+//
+// ⚠️ THESE CASES ARE THEREFORE PINS, NOT PASSES. Each dead-control case asserts
+// an EXACT count and prints the labels when it moves. It goes red when a
+// control is added AND when one is fixed — the second is the point. A sweep
+// that only fires on regression records today's failure as the standard.
+//
+// ── THE SCOPE, STATED SO IT CANNOT BE READ AS MORE ───────────────────────────
+// THREE screens — login, settings, home — of the register's 22. On apps/subly,
+// the frozen rail-prover, NOT on a fresh stamp of `tooling/bricks/app`. The
+// 2.1.3 guard the register specifies is "on a fresh stamp, EVERY declared
+// route"; this is neither, and the register's `guardStatus` says PARTLY BUILT
+// for exactly that reason.
+//
+// The three were chosen because their files are stable, and because between
+// them they cover the three control idioms the app has: a form (login), a
+// settings list of toggles and radios (settings), and a list of rows under
+// app-bar actions (home).
+// ─────────────────────────────────────────────────────────────────────────────
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:subly/features/auth/login_screen.dart';
+import 'package:subly/features/home/home_screen.dart';
+import 'package:subly/features/settings/settings_screen.dart';
+
+import 'support/width_harness.dart';
+
+/// The desktop shell width (see the header) at a viewport tall enough that no
+/// screen in the sweep scrolls. Both halves are asserted, not assumed:
+/// [_everythingIsLaidOut] fails if 2400 ever stops being enough.
+const Size kKeyboardSurface = Size(1079, 2400);
+
+/// True when [child] is [ancestor] or sits anywhere beneath it.
+///
+/// `visitAncestorElements` rather than a downward walk because the upward chain
+/// is O(depth) and the downward one is O(subtree) — and this runs once per
+/// candidate per orbit node.
+bool _isUnder(Element? child, Element? ancestor) {
+  if (child == null || ancestor == null) return false;
+  if (identical(child, ancestor)) return true;
+  bool found = false;
+  child.visitAncestorElements((Element a) {
+    if (identical(a, ancestor)) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+/// What a failure calls a control.
+///
+/// The nearest enclosing `Semantics` label first — that is what the app itself
+/// decided this control is called, and `a11y_semantics_test.dart` polices that
+/// every control has one. The first `Text` beneath it is the fallback for the
+/// handful that carry their name only as painted copy. The type name is the
+/// last resort and reads as one.
+///
+/// ⚠️ LOCALISED STRINGS ON PURPOSE. A failure message naming "$", "₹" and
+/// "Log out" is a sentence somebody can act on; an element hash is not. No
+/// ASSERTION compares these — only the COUNTS are pinned — so an .arb edit
+/// cannot turn this file red.
+String _label(Element e) {
+  String? semantic;
+  e.visitAncestorElements((Element a) {
+    final Widget w = a.widget;
+    if (w is Semantics && w.properties.label != null) {
+      semantic = w.properties.label;
+      return false;
+    }
+    return true;
+  });
+  if (semantic != null) return semantic!;
+  String? painted;
+  void down(Element c) {
+    if (painted != null) return;
+    final Widget w = c.widget;
+    if (w is Text && w.data != null) {
+      painted = w.data;
+      return;
+    }
+    c.visitChildren(down);
+  }
+
+  e.visitChildren(down);
+  return painted ?? e.widget.runtimeType.toString();
+}
+
+/// One screen's measurement.
+class _Sweep {
+  _Sweep(this.orbit, this.controls, this.dead);
+
+  /// The nodes `Tab` actually visited, in the order it visited them.
+  final List<FocusNode> orbit;
+
+  /// Every interactive control found on the screen (see the header's candidate
+  /// set), outermost-of-nest.
+  final List<Element> controls;
+
+  /// The subset of [controls] no orbit node covers — the keyboard-dead ones.
+  final List<Element> dead;
+
+  List<String> get deadLabels => dead.map(_label).toList();
+}
+
+/// Presses Tab from a cold start and records where focus goes.
+///
+/// 🔴 NO SEED NODE IS CHOSEN BY HAND. The first Tab is pressed with nothing
+/// focused, which is what `FocusTraversalPolicy` treats as "start at the
+/// beginning" — so orbit[0] IS the screen's first element as the framework
+/// defines it, not as this test would like to define it. Hand-picking a seed
+/// would make the reading-order case below assert an order this file had
+/// already chosen.
+///
+/// The loop stops the moment focus lands on a node it has already seen. WHICH
+/// node it lands on is the entire no-trap question and is asserted separately;
+/// this function only records.
+Future<_Sweep> _sweep(WidgetTester tester, Widget screen) async {
+  await pumpAt(tester, kKeyboardSurface, screen);
+  tester.binding.focusManager.primaryFocus?.unfocus();
+  await tester.pump();
+
+  final List<FocusNode> orbit = <FocusNode>[];
+  // The bound is the whole-screen control count with headroom, not a guess at
+  // the orbit length: a traversal that never repeats would otherwise spin here
+  // rather than fail, and a hung test reads as infrastructure trouble.
+  for (int i = 0; i < 200; i++) {
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    final FocusNode? pf = tester.binding.focusManager.primaryFocus;
+    if (pf == null || orbit.any((FocusNode n) => identical(n, pf))) break;
+    orbit.add(pf);
+  }
+
+  final List<Element> candidates = <Element>[
+    for (final Element e in find.byType(GestureDetector).evaluate())
+      if ((e.widget as GestureDetector).onTap != null) e,
+    for (final Element e in find.byType(InkWell).evaluate())
+      if ((e.widget as InkWell).onTap != null) e,
+    ...find.byType(EditableText).evaluate(),
+  ];
+  final List<Element> controls = candidates
+      .where(
+        (Element e) => !candidates.any(
+          (Element o) => !identical(o, e) && _isUnder(e, o),
+        ),
+      )
+      .toList();
+
+  final List<Element> dead = controls
+      .where(
+        (Element e) => !orbit.any(
+          (FocusNode n) =>
+              _isUnder(e, n.context as Element?) ||
+              _isUnder(n.context as Element?, e),
+        ),
+      )
+      .toList();
+
+  return _Sweep(orbit, controls, dead);
+}
+
+/// The completeness precondition every count in this file rests on. See the
+/// header: a culled control is invisible to the sweep, so a scrolling screen
+/// would under-report and never say so.
+void _everythingIsLaidOut(WidgetTester tester, String screen) {
+  for (final Element e in find.byType(Scrollable).evaluate()) {
+    final ScrollableState s = (e as StatefulElement).state as ScrollableState;
+    expect(
+      s.position.maxScrollExtent,
+      0.0,
+      reason:
+          '$screen scrolls at ${kKeyboardSurface.width}x'
+          '${kKeyboardSurface.height}, so its off-screen controls were culled '
+          'and every count in this group is about the viewport rather than '
+          'about the screen. Raise the surface height until this passes; do '
+          'NOT relax this assertion',
+    );
+  }
+}
+
+/// Reading order for a pair of focus rects, with no invented tolerance.
+///
+/// Two controls are on the SAME visual row iff their rects overlap vertically —
+/// which is a fact about the rects, where "within N pixels of each other" would
+/// have been a number with no source. Same row: left must not go backwards.
+/// Different rows: top must not go backwards.
+bool _followsInReadingOrder(Rect a, Rect b) {
+  final bool sameRow = b.top < a.bottom && a.top < b.bottom;
+  return sameRow ? b.left >= a.left : b.top >= a.top;
+}
+
+void main() {
+  /// The four cases every screen gets, in the order they must be read: the
+  /// inventory is complete, the traversal closes, it retraces, and it runs down
+  /// the page.
+  void traversalGroup(String name, Widget Function() build) {
+    group('$name · keyboard traversal', () {
+      testWidgets('the sweep sees the whole screen', (
+        WidgetTester tester,
+      ) async {
+        await _sweep(tester, build());
+        _everythingIsLaidOut(tester, name);
+      });
+
+      testWidgets('Tab closes a cycle back onto the first element', (
+        WidgetTester tester,
+      ) async {
+        final _Sweep s = await _sweep(tester, build());
+        expect(
+          s.orbit,
+          isNotEmpty,
+          reason:
+              'pressing Tab on $name focused nothing at all — the screen is '
+              'entirely keyboard-inoperable, which is SC 2.1.1 failed outright '
+              'rather than partially',
+        );
+        // Re-walk the cycle by hand: the sweep stopped ON the repeat, so this
+        // is the one press it did not record, and WHICH node it lands on is the
+        // difference between a closed cycle and a lasso — a traversal that runs
+        // into a sub-loop it cannot leave is a focus trap even though every
+        // node in that sub-loop is reachable from every other.
+        s.orbit.first.requestFocus();
+        await tester.pump();
+        for (int i = 0; i < s.orbit.length; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+        }
+        expect(
+          identical(tester.binding.focusManager.primaryFocus, s.orbit.first),
+          isTrue,
+          reason:
+              '${s.orbit.length} Tab presses from the first element of $name '
+              'did not come back to it. Focus entered a sub-cycle it cannot '
+              'leave — a keyboard trap (SC 2.1.2), reached from the very first '
+              'Tab press',
+        );
+      });
+
+      testWidgets('Shift-Tab retraces the same cycle backwards', (
+        WidgetTester tester,
+      ) async {
+        final _Sweep s = await _sweep(tester, build());
+        s.orbit.first.requestFocus();
+        await tester.pump();
+        // One press MORE than the orbit is long: the extra one proves the
+        // reverse cycle WRAPS rather than stopping dead at the first element,
+        // which is the backwards half of the trap question.
+        //
+        // ⚠️ `shiftLeft`, NOT `shift`. `LogicalKeyboardKey.shift` is a SYNONYM
+        // key; sending it down leaves `HardwareKeyboard.isShiftPressed` false,
+        // so `WidgetsApp`'s `SingleActivator(tab, shift: true)` never matches
+        // and every press below reads as a plain forward Tab. Measured
+        // 2026-08-21 — with `shift` the reverse walk returned the FORWARD
+        // order and this case failed pointing at the app instead of at itself.
+        for (int i = 0; i <= s.orbit.length; i++) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump();
+          final FocusNode want =
+              s.orbit[s.orbit.length - 1 - (i % s.orbit.length)];
+          expect(
+            identical(tester.binding.focusManager.primaryFocus, want),
+            isTrue,
+            reason:
+                'Shift-Tab #${i + 1} on $name left focus somewhere other than '
+                'the forward orbit reversed. A control reachable going one way '
+                'and not the other is a one-way trap: the user gets in and '
+                'cannot back out',
+          );
+        }
+      });
+
+      testWidgets('focus order follows visual order', (
+        WidgetTester tester,
+      ) async {
+        final _Sweep s = await _sweep(tester, build());
+        for (int i = 0; i + 1 < s.orbit.length; i++) {
+          final Rect a = s.orbit[i].rect;
+          final Rect b = s.orbit[i + 1].rect;
+          expect(
+            _followsInReadingOrder(a, b),
+            isTrue,
+            reason:
+                'on $name, Tab goes from '
+                '${_label(s.orbit[i].context! as Element)} at ${a.topLeft} to '
+                '${_label(s.orbit[i + 1].context! as Element)} at ${b.topLeft} '
+                '— backwards up the page, or leftwards along a row. SC 2.4.3 '
+                'asks focus order to preserve meaning, and the meaning of a '
+                'form is the order it is read in',
+          );
+        }
+      });
+    });
+  }
+
+  traversalGroup('login', () => const LoginScreen());
+  traversalGroup('settings', () => const SettingsScreen());
+  traversalGroup('home', () => const HomeScreen());
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // THE INVENTORY. Read the header's "WHAT THE SWEEP FOUND" before changing a
+  // number here: these are PINS ON A FAILING STATE, and each is meant to go red
+  // when the failure is FIXED as loudly as when it is widened.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('SC 2.1.1 · which controls a keyboard can and cannot reach', () {
+    Future<_Sweep> pin(
+      WidgetTester tester,
+      String name,
+      Widget screen, {
+      required int controls,
+      required int reachable,
+    }) async {
+      final _Sweep s = await _sweep(tester, screen);
+      _everythingIsLaidOut(tester, name);
+      expect(
+        s.controls.length,
+        controls,
+        reason:
+            'the interactive-control inventory for $name moved. That is not a '
+            'failure by itself — a screen may gain or lose a control — but the '
+            'reachable/dead split below is meaningless until this number is '
+            'reconciled, and the register cites it',
+      );
+      expect(
+        s.controls.length - s.dead.length,
+        reachable,
+        reason:
+            '$name: ${s.controls.length - s.dead.length} of '
+            '${s.controls.length} controls are reachable by Tab, not '
+            '$reachable. If this went UP, a keyboard-dead control was fixed — '
+            'update this number, and update the SC 2.1.1 row in '
+            'tooling/dod-register.json, which quotes it. Keyboard-dead today: '
+            '${s.deadLabels}',
+      );
+      return s;
+    }
+
+    testWidgets('login · 4 of 8, and the missing one is registration', (
+      WidgetTester tester,
+    ) async {
+      final _Sweep s = await pin(
+        tester,
+        'login',
+        const LoginScreen(),
+        controls: 8,
+        reachable: 4,
+      );
+      // 🔴 NAMED SEPARATELY BECAUSE THE COUNT DOES NOT CONVEY IT. Three of the
+      // four dead controls are the `PoweredByNikatru` legal links; the fourth
+      // is the sign-up toggle, which `login_screen.dart:562` records as the
+      // only control that reaches registration from the screen every
+      // signed-out visitor is routed to. A keyboard-only user cannot create an
+      // account.
+      expect(
+        s.deadLabels.where((String l) => l.contains('Create account')).length,
+        1,
+        reason:
+            'login keyboard-dead controls: ${s.deadLabels}. Expected the '
+            'sign-up toggle and the three PoweredByNikatru legal links. If the '
+            'toggle has become reachable this is the good failure — say so and '
+            'move the counts',
+      );
+    });
+
+    testWidgets('settings · 9 of 27', (WidgetTester tester) async {
+      // The nine the orbit visits, in order and by the labels the sweep read
+      // off them: System · Light · Dark · System · Reminders · Stop showing
+      // offers · Open-source licences · About · Log out. Every one is reached
+      // through a Material `InkWell` or `ListTile`; every one of the eighteen
+      // it does NOT visit is a hand-rolled `_Toggle`, `_LinkRow` or currency
+      // chip. That is the finding in one sentence — this screen is operable by
+      // keyboard exactly where it used Material and nowhere it did not.
+      await pin(
+        tester,
+        'settings',
+        const SettingsScreen(),
+        controls: 27,
+        reachable: 9,
+      );
+    });
+
+    testWidgets('home · 17 of 20', (WidgetTester tester) async {
+      // Home is the best of the three and the reason is instructive: its
+      // subscription rows are `InkWell`s, so they traverse for free. The three
+      // dead ones are the app-bar actions — notifications, settings, calendar —
+      // i.e. every route OUT of this screen. A keyboard-only user can read the
+      // list and leave by no door on it.
+      await pin(tester, 'home', const HomeScreen(), controls: 20, reachable: 17);
+    });
+
+    // ⚠️ NO FOURTH CASE SUMMING THE THREE. It was written, and it was deleted:
+    // 55 / 30 / 25 is the ARITHMETIC of the three pins above (8+27+20,
+    // 4+9+17), so a total can only fail where a part already has — an
+    // assertion that cannot fail on its own, which this repo treats as worse
+    // than none. It also could not be written honestly here: pumping three
+    // screens inside one `testWidgets` disposes each tree with the previous
+    // screen's riverpod scheduler timer still pending, and flutter_test fails
+    // the case on `!timersPending` rather than on anything about a keyboard.
+    // The register quotes the three rows, not the sum.
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // REACHABLE IS NOT OPERABLE. The register's guard says "reachable AND
+  // activatable", and the two come apart: a node can take focus and still do
+  // nothing on Enter. Asserted on ONE control rather than swept, because
+  // activating an arbitrary control navigates, and `pumpAt` hosts no router —
+  // a `context.go` from a settings row throws "no GoRouter found in context",
+  // which reads as a keyboard failure and is not one. Login's submit is the
+  // right single case: its empty-field guard answers IN PLACE, with a snackbar
+  // and no navigation.
+  // ───────────────────────────────────────────────────────────────────────────
+  testWidgets('Enter on the focused sign-in button submits the form', (
+    WidgetTester tester,
+  ) async {
+    final _Sweep s = await _sweep(tester, const LoginScreen());
+    s.orbit.last.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Enter your email and password.'),
+      findsOneWidget,
+      reason:
+          "the last node in login's orbit is the sign-in button. Enter on it "
+          'must reach `_submit` — which, with both fields empty, answers with '
+          'authEnterBoth. A button that accepts focus and ignores Enter is '
+          'reachable and inoperable, and only this half can tell them apart',
+    );
+  });
+}

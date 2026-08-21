@@ -40,6 +40,11 @@ import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
+// The `/sub/:id` screen, imported so it can be BUILT IN PLACE in the second
+// pane. It is still a route — `lib/core/router.dart` is untouched and a phone
+// still pushes it — this import only gives the wide layout a way to render the
+// same widget without a navigation.
+import '../detail/subscription_detail_screen.dart';
 import '../shared/due.dart';
 import '../shared/widgets.dart';
 
@@ -83,11 +88,37 @@ class HomeScreen extends ConsumerWidget {
 /// Subly's product dashboard — the live `home_screen.dart` body, docked as the
 /// Home destination. Everything below this line is the live file's own code and
 /// its own comments; the merge changed four things and each is marked `🔀`.
-class _HomeDashboard extends ConsumerWidget {
+///
+/// 🔴 STATEFUL SINCE 2026-08-21, AND THE STATE IS ONE NULLABLE STRING.
+/// [TwoPane] renders a detail beside the list and deliberately owns NEITHER
+/// selection nor routing — its class doc says both belong to the screen and the
+/// router respectively, because both outlive the layout. So this widget holds
+/// the selected subscription id, and that is the whole reason it stopped being a
+/// `ConsumerWidget`.
+///
+/// Screen state rather than a provider, deliberately: which row the second pane
+/// is showing is not a fact about the user's data, nothing else in the app reads
+/// it, and a provider would make it outlive the screen that owns it.
+class _HomeDashboard extends ConsumerStatefulWidget {
   const _HomeDashboard();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_HomeDashboard> createState() => _HomeDashboardState();
+}
+
+class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
+  /// The row whose detail is showing in the second pane, or null for "nothing
+  /// selected" — the state every cold start opens in.
+  ///
+  /// KEPT rather than cleared when the layout goes back to a single column: a
+  /// window dragged narrow and wide again returns to the row the user was
+  /// reading, and it costs nothing in the meantime, because [TwoPane] does not
+  /// BUILD its `detail` below [AppBreakpoints.expanded] — no `initState`, no
+  /// fetch and no analytics event for a pane nobody can see.
+  String? _selectedId;
+
+  @override
+  Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final Currency currency = ref.watch(currencyProvider);
     final core.AuthUser? user = ref.watch(authRepositoryProvider).currentUser;
@@ -97,6 +128,172 @@ class _HomeDashboard extends ConsumerWidget {
     final bool showUnused =
         ref.watch(settingsControllerProvider).prefs['unused'] ?? true;
     final DateTime now = DateTime.now();
+    final AsyncValue<List<Subscription>> subs = ref.watch(
+      subscriptionsControllerProvider,
+    );
+
+    // ── THE SECOND COLUMN, AND WHY THE MEASUREMENT IS TAKEN HERE ─────────────
+    // 🔴 IT MEASURES THE BOX, NOT THE WINDOW — the rule [TwoPane]'s header
+    // states, and it bites harder here than there. `AppShell`'s `AppScaffold`
+    // hands this body `min(W - 361, 1280)` (measured 2026-08-21), so "the window
+    // is 1200" and "this screen has 1200" are 361 px apart. Read from
+    // `MediaQuery` this `if` would open a second column inside a box that cannot
+    // hold one, and nothing would overflow to say so — the hero would simply be
+    // squeezed.
+    //
+    // 🔴 AND IT IS ABOVE THE TwoPane RATHER THAN INSIDE ITS `list`, WHICH IS THE
+    // ONLY PLACE IT CAN GO. `TwoPaneSplit` caps the list column at
+    // [AppBreakpoints.pane] (480) at every width from the split upward, and
+    // BELOW the split the whole pane is under [AppBreakpoints.expanded] (840).
+    // So `paneWidth >= large` asked anywhere inside `list` is an `if` that can
+    // never be true — dead code wearing a feature's clothes. Asked here it sees
+    // the whole body, which is the thing that actually has three columns in it.
+    //
+    // BOTH WIDTHS ARE EXISTING CONSTANTS. Neither is new:
+    //  · [AppBreakpoints.large] (1200) is the TRIGGER, and it is the correct
+    //    half of `AppBreakpoints` for this question. That class's own doc splits
+    //    its constants into "WHICH NAVIGATION?" (medium/expanded/large/
+    //    extraLarge) and "how wide may this CONTENT get?" (form/pane/reading).
+    //    "How many columns does this page have?" is the first kind — the same
+    //    reasoning the list pane's cap below uses to reach the OPPOSITE answer,
+    //    which is why both are written out rather than assumed.
+    //  · [AppBreakpoints.form] (420) is the COLUMN. The hero is one card — a
+    //    label, a figure, two pills and two stat boxes — i.e. exactly the
+    //    single-column shape `form` names, and it is the same floor [TwoPane]
+    //    gives its own list column, so a three-column home repeats one column
+    //    width rather than inventing a second.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // The stated trigger: at [AppBreakpoints.large] the page WANTS a second
+        // column (see above).
+        final bool wantsAside = constraints.maxWidth >= AppBreakpoints.large;
+
+        // 🔴 …AND THE FEASIBILITY CLAUSE, WITHOUT WHICH GETTING WIDER DELETES A
+        // PANE. Measured 2026-08-21 against the real widths, not reasoned about:
+        // the aside is paid for out of whatever [TwoPane] would otherwise have
+        // had, so at a body of 1200 the panes are left 1200 − 420 − 1 = 779,
+        // which is BELOW [AppBreakpoints.expanded] (840) and therefore not a
+        // split at all. A user at 1199 with a subscription open, dragging their
+        // window one pixel WIDER, would watch the detail pane vanish and the
+        // hero take its place. Growth has to be monotonic: a wider window may
+        // add a column, never remove one.
+        //
+        // 🔴 THE NUMBER IS NOT INVENTED, IT IS THE SUM OF THE THREE FLOORS —
+        // `form` (420) + `dividerWidth` (1) + `expanded` (840) = 1261, the
+        // narrowest body that can hold an aside AND a split. It is expressed as
+        // that arithmetic rather than as a literal 1261 so it cannot drift from
+        // the constants it is made of.
+        //
+        // ⚠️ SO `large` NEVER DECIDES THIS ON ITS OWN — 1261 > 1200, and that is
+        // an honest conflict between two requirements rather than a bug: "the
+        // hero sits beside the list from 1200" and "the detail sits beside the
+        // list from 840" cannot both hold in 1200…1260 with sourced widths. The
+        // detail wins that band, because it is the pane a user opened
+        // deliberately and the hero is the one they did not. `wantsAside` is
+        // kept as its own named clause anyway, because it is the POLICY and the
+        // second clause is the ARITHMETIC — collapsing them into one number
+        // would hide which of the two a future edit is changing.
+        //
+        // ⚠️ INSIDE THE CHASSIS THIS BAND IS NARROW AND IT IS NOT DEAD.
+        // `AppScaffold` hands the body `min(W − 361, 1280)`, so the aside opens
+        // at a window of 1622 and the body tops out at 1280 — an aside band of
+        // 1261…1280. Pumped without a shell (the width test, and any future
+        // re-parenting) it runs to whatever width the screen is given.
+        final bool aside =
+            wantsAside &&
+            constraints.maxWidth -
+                    AppBreakpoints.form -
+                    TwoPaneSplit.dividerWidth >=
+                AppBreakpoints.expanded;
+
+        final Widget panes = TwoPane(
+          // 🔴 THE `Builder` IS LOAD-BEARING, NOT TIDINESS.
+          // `TwoPane.isTwoPaneOf` is an `InheritedWidget` lookup, so it only
+          // answers for a context BELOW the TwoPane. `build`'s own context is
+          // above it and would read `false` at every width — which is precisely
+          // the "pushed route on top of a rendered detail pane" defect that
+          // lookup exists to prevent, reintroduced by reading it one line too
+          // high. Same class of mistake as reading `MediaQuery`, different
+          // mechanism.
+          list: Builder(
+            builder: (BuildContext listContext) => _listColumn(
+              listContext,
+              l10n,
+              currency,
+              user,
+              subs,
+              now,
+              showUnused,
+              heroInList: !aside,
+            ),
+          ),
+          // Null until a row is tapped, and below 840 never looked at: [TwoPane]
+          // does not build `detail` there, so a phone still pushes `/sub/:id`
+          // and still gets the detail as a full route over the shell.
+          detail: _selectedId == null
+              ? null
+              : SubscriptionDetailScreen(id: _selectedId!),
+          // ⬜ THE COPY IS AN EXISTING KEY AND NOT THE RIGHT ONE — DELIBERATE,
+          // AND NAMED SO IT IS NOT MISTAKEN FOR AN OVERSIGHT. What this column
+          // wants to say is "select a subscription to see its details", and no
+          // arb key says it; `app_en.arb` / `app_ta.arb` are not this
+          // increment's files to edit. A bare English literal here would render
+          // untranslated in `ta` — the exact regression `l10n_group_home_test`
+          // exists to catch — so the placeholder borrows the heading of the
+          // column its chevron points back at instead. Minting the real key is
+          // handed over rather than done in passing.
+          placeholder: TwoPanePlaceholder(message: l10n.allSubscriptions),
+        );
+
+        if (!aside) return panes;
+
+        return Row(
+          // `stretch`, so the rule between the aside and the panes is drawn at
+          // full height. Under the default `center` a `VerticalDivider` is
+          // handed LOOSE height constraints and collapses to nothing — an
+          // invisible divider that still reserves its width.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            SizedBox(
+              width: AppBreakpoints.form,
+              child: _asideColumn(l10n, currency, subs, now),
+            ),
+            // The SAME divider [TwoPane] draws between ITS two columns, at the
+            // same thickness and off the same constant, so a three-column home
+            // has one kind of seam rather than two that nearly match.
+            const VerticalDivider(
+              width: TwoPaneSplit.dividerWidth,
+              thickness: 1,
+            ),
+            Expanded(child: panes),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The MASTER column: the account header, then everything the subscription
+  /// list is made of. Below [AppBreakpoints.expanded] this is the ENTIRE screen,
+  /// which is what [TwoPane.list] requires of it.
+  ///
+  /// 🔴 [context] MUST COME FROM INSIDE THE TwoPane — see the `Builder` in
+  /// [build]. Passing `build`'s own context here compiles, renders identically,
+  /// and silently disables the whole master-detail behaviour.
+  Widget _listColumn(
+    BuildContext context,
+    AppLocalizations l10n,
+    Currency currency,
+    core.AuthUser? user,
+    AsyncValue<List<Subscription>> subs,
+    DateTime now,
+    bool showUnused, {
+    required bool heroInList,
+  }) {
+    // The decision [TwoPane] actually made, from the width [TwoPane] actually
+    // had. It is also a DEPENDENCY, so this column rebuilds when the pane
+    // crosses the breakpoint and cannot be left holding a stale answer after a
+    // resize.
+    final bool twoPane = TwoPane.isTwoPaneOf(context);
 
     // 🔀 MERGE CHANGE 1 of 4 — THE HEADER MOVED OUT OF `.when()`.
     //
@@ -155,20 +352,39 @@ class _HomeDashboard extends ConsumerWidget {
       //     other. Below 720 nothing changes (a `ConstrainedBox` may only
       //     tighten), so every phone and small tablet renders byte-identically.
       //
-      // ✅ POLICED SINCE #239 by `test/width_home_test.dart`. Deleting this
-      // wrapper fails all five of its cases (375 · 768 · 1280 · 1920 · 1500) on
-      // the harness's `inPane` guard; widening the cap back to `kMaxBodyWidth`
-      // fails the 768, 1280, 1920 and 1500 ones. 1500 is still the durable
-      // case — it sits in `AppScaffold`'s LARGE class, which caps nothing, so a
-      // green there is this pane's doing and nobody else's — but since the cap
-      // came down to 720, 768 is falsifiable too and is no longer only a
-      // no-op boundary.
+      // ⚠️ THIS PANE MOVED INTO THE LIST COLUMN ON 2026-08-21, SO THE BAND ITS
+      // CAP BINDS IN IS NARROWER THAN IT WAS — corrected here rather than
+      // deleted, because the 720 argument above is untouched and is still why
+      // the number is 720. What changed is who hands this pane its width:
+      // [TwoPane] gives the list column at most [AppBreakpoints.pane] (480) from
+      // 840 up, and above [AppBreakpoints.large] this screen gives that column
+      // `body - 421` before TwoPane splits it again. So `reading` is the BINDING
+      // cap only between 720 and the split; above the split it is a no-op in
+      // exactly the way it is already a no-op on a phone. KEPT, not removed: the
+      // band it governs is every tablet and small-desktop window, and there it
+      // is still the only thing standing between a `RowCard` and the full width
+      // in a tree where nothing above this screen caps anything.
       //
-      // ⚠️ FIVE, RE-MEASURED 2026-08-11, NOT COPIED. This sentence said "all
-      // three" — true when written, false once #289 added the 768 and 1280
-      // cases. Deleting the wrapper was re-run against the real tree: 5 of 5
-      // fail on `inPane`, with `flutter analyze` held at its 28-issue baseline
-      // so the red is an assertion rather than a compile error.
+      // ✅ POLICED SINCE #239 by `test/width_home_test.dart`.
+      // ⚠️ THE COUNT AND THE CASE LIST THAT STOOD HERE ARE NOW FALSE AND ARE
+      // CORRECTED, NOT DELETED. It read: "Deleting this wrapper fails all five
+      // of its cases (375 · 768 · 1280 · 1920 · 1500) on the harness's `inPane`
+      // guard; widening the cap back to `kMaxBodyWidth` fails the 768, 1280,
+      // 1920 and 1500 ones." True of the one-column screen; false of this one.
+      // At 1280/1920/1500 the list column is 420 or 480 wide and a 720 cap does
+      // not bind there at all, so widening it is invisible to those cases. The
+      // case that falsifies the CAP is now the band between 720 and the split —
+      // 768 and 839 in the test — while every case still falsifies the PANE,
+      // because they all resolve the `ListView` THROUGH this keyed pane via the
+      // harness's `inPaneOf`.
+      //
+      // 🔴 THE KEY IS NOT DECORATION. There are now up to three `ListView`s on
+      // this screen (aside · list · the detail screen's own), and
+      // `width_harness.dart`'s `inPane` resolves `.first` — "whichever the
+      // element tree happened to visit first", which is right by accident and
+      // wrong the day the columns are reordered. `inPaneOf(find.byKey(...), …)`
+      // exists for exactly this shape.
+      key: const Key('home-list-pane'),
       child: ListView(
         // 🔀 MERGE CHANGE 3 of 4 — PADDING RE-BASED FOR THE CHASSIS SHELL.
         // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers were paying for
@@ -187,42 +403,91 @@ class _HomeDashboard extends ConsumerWidget {
         children: <Widget>[
           _header(context, l10n, user),
           const SizedBox(height: 18),
-          ...ref
-              .watch(subscriptionsControllerProvider)
-              .when(
-                loading: () => const <Widget>[
-                  Padding(
-                    padding: EdgeInsets.only(top: 48),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                ],
-                // ⚠️ `couldNotLoad` INTERPOLATES THE RAW EXCEPTION, and the arb
-                // key preserves that verbatim rather than quietly improving it.
-                // Leaking a stack-adjacent string at a user is a real defect
-                // (WORKORDER §1 flags it), but it is a COPY decision and this is
-                // an l10n increment: changing what the sentence says here would
-                // hide the leak behind a translation commit instead of fixing it
-                // where it can be reviewed.
-                error: (Object e, _) => <Widget>[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 48),
-                    child: Center(
-                      // `AppText.of`, not the bare const: `AppText.muted`
-                      // bakes `AppColors.muted` and paints the same grey on a
-                      // dark scaffold. An error message is the one string that
-                      // must be readable when everything else has failed.
-                      child: Text(
-                        l10n.couldNotLoad('$e'),
-                        style: AppText.of(context).muted,
-                      ),
-                    ),
-                  ),
-                ],
-                data: (List<Subscription> subs) =>
-                    _dashboard(context, l10n, currency, subs, now, showUnused),
+          ...subs.when(
+            loading: () => const <Widget>[
+              Padding(
+                padding: EdgeInsets.only(top: 48),
+                child: Center(child: CircularProgressIndicator()),
               ),
+            ],
+            // ⚠️ `couldNotLoad` INTERPOLATES THE RAW EXCEPTION, and the arb
+            // key preserves that verbatim rather than quietly improving it.
+            // Leaking a stack-adjacent string at a user is a real defect
+            // (WORKORDER §1 flags it), but it is a COPY decision and this is
+            // an l10n increment: changing what the sentence says here would
+            // hide the leak behind a translation commit instead of fixing it
+            // where it can be reviewed.
+            error: (Object e, _) => <Widget>[
+              Padding(
+                padding: const EdgeInsets.only(top: 48),
+                child: Center(
+                  // `AppText.of`, not the bare const: `AppText.muted`
+                  // bakes `AppColors.muted` and paints the same grey on a
+                  // dark scaffold. An error message is the one string that
+                  // must be readable when everything else has failed.
+                  child: Text(
+                    l10n.couldNotLoad('$e'),
+                    style: AppText.of(context).muted,
+                  ),
+                ),
+              ),
+            ],
+            data: (List<Subscription> list) => _dashboard(
+              context,
+              l10n,
+              currency,
+              list,
+              now,
+              showUnused,
+              heroInList: heroInList,
+              twoPane: twoPane,
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  /// The hero, lifted out of the scroller and into a column of its own at
+  /// [AppBreakpoints.large] and above.
+  ///
+  /// 🔴 IT READS `valueOrNull` RATHER THAN `.when`, AND THAT IS NOT A SHORTCUT.
+  /// The spinner and the error sentence belong in exactly ONE place, and that
+  /// place is the list column — the one the user is reading. A second spinner
+  /// beside the first reports one fetch as two, and a second `couldNotLoad`
+  /// reports one failure as two. While the fetch is in flight this column is
+  /// therefore EMPTY, which is the honest state: there is no monthly total yet
+  /// to put in it.
+  Widget _asideColumn(
+    AppLocalizations l10n,
+    Currency currency,
+    AsyncValue<List<Subscription>> subs,
+    DateTime now,
+  ) {
+    final List<Subscription>? data = subs.valueOrNull;
+    return ListView(
+      key: const Key('home-aside'),
+      // The SAME gutter the list column uses, so the hero's top edge and the
+      // account header's top edge start on one line rather than a few pixels
+      // apart. A scroller, not a `Column`, because a short window must still be
+      // able to reach the bottom of the hero.
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.gutterCompact,
+        AppSpacing.gutterCompact,
+        AppSpacing.gutterCompact,
+        AppSpacing.xl,
+      ),
+      children: <Widget>[
+        if (data != null)
+          _heroCard(
+            l10n,
+            currency,
+            SubMath.totalMonthly(data),
+            data.length,
+            SubMath.dueWithin(data, now, 7),
+            SubMath.dueWithin(data, now, 30),
+          ),
+      ],
     );
   }
 
@@ -380,14 +645,21 @@ class _HomeDashboard extends ConsumerWidget {
 
   /// Everything that needs the subscription list. Returns a list so the header
   /// above can stay outside the async boundary.
+  ///
+  /// [heroInList] is false once the hero has its own column — see
+  /// [_asideColumn]. [twoPane] is [TwoPane.isTwoPaneOf] read inside the pane and
+  /// threaded down rather than re-derived, so every row on this screen decides
+  /// push-vs-select from the SAME measurement the layout used.
   List<Widget> _dashboard(
     BuildContext context,
     AppLocalizations l10n,
     Currency currency,
     List<Subscription> subs,
     DateTime now,
-    bool showUnused,
-  ) {
+    bool showUnused, {
+    required bool heroInList,
+    required bool twoPane,
+  }) {
     final double total = SubMath.totalMonthly(subs);
     final double dueSoon = SubMath.dueWithin(subs, now, 7);
     final List<Subscription> unused = SubMath.unused(subs);
@@ -396,15 +668,22 @@ class _HomeDashboard extends ConsumerWidget {
     final List<Subscription> all = SubMath.byMonthlyDesc(subs);
 
     return <Widget>[
-      _heroCard(
-        l10n,
-        currency,
-        total,
-        subs.length,
-        dueSoon,
-        SubMath.dueWithin(subs, now, 30),
-      ),
-      const SizedBox(height: 14),
+      // 🔴 THE HERO IS IN THIS COLUMN ONLY WHILE THERE IS NO COLUMN OF ITS OWN.
+      // At and above [AppBreakpoints.large] the same card is built by
+      // [_asideColumn]; building it in both places would put two hero cards on
+      // one screen, each quoting the same monthly total, which reads as a
+      // duplicated render rather than a layout.
+      if (heroInList) ...<Widget>[
+        _heroCard(
+          l10n,
+          currency,
+          total,
+          subs.length,
+          dueSoon,
+          SubMath.dueWithin(subs, now, 30),
+        ),
+        const SizedBox(height: 14),
+      ],
       if (showUnused && unused.isNotEmpty)
         RowCard(
           accentBar: AppColors.warn,
@@ -525,7 +804,15 @@ class _HomeDashboard extends ConsumerWidget {
       ...upcoming.map(
         (Subscription s) => Padding(
           padding: const EdgeInsets.only(bottom: 9),
-          child: _subTile(context, l10n, currency, s, now, showDue: true),
+          child: _subTile(
+            context,
+            l10n,
+            currency,
+            s,
+            now,
+            showDue: true,
+            twoPane: twoPane,
+          ),
         ),
       ),
       SectionHeader(
@@ -538,7 +825,15 @@ class _HomeDashboard extends ConsumerWidget {
       ...all.map(
         (Subscription s) => Padding(
           padding: const EdgeInsets.only(bottom: 9),
-          child: _subTile(context, l10n, currency, s, now, showDue: false),
+          child: _subTile(
+            context,
+            l10n,
+            currency,
+            s,
+            now,
+            showDue: false,
+            twoPane: twoPane,
+          ),
         ),
       ),
     ];
@@ -682,6 +977,7 @@ class _HomeDashboard extends ConsumerWidget {
     Subscription s,
     DateTime now, {
     required bool showDue,
+    required bool twoPane,
   }) {
     // [L1] `DueInfo.localized`, not `DueInfo.of` — this is one of the three call
     // sites the retained English-only factory is waiting on, and it also picks up
@@ -729,8 +1025,38 @@ class _HomeDashboard extends ConsumerWidget {
               : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional));
     final AppTextStyles text = AppText.of(context);
 
-    return RowCard(
-      onTap: () => context.push('/sub/${s.id}'),
+    // 🔴 PUSH OR SELECT, AND THE ANSWER COMES FROM THE LAYOUT ITSELF.
+    // [twoPane] is `TwoPane.isTwoPaneOf` read from inside the pane (see
+    // [_listColumn]) and threaded down. Re-deriving it here from `MediaQuery`
+    // would decide from the WINDOW while [TwoPane] decided from the BODY — 361
+    // px apart inside the chassis — and at the boundary that pushes a full
+    // route ON TOP of an already-rendered detail pane.
+    final bool selected = twoPane && s.id == _selectedId;
+
+    final Widget card = RowCard(
+      onTap: () {
+        if (twoPane) {
+          // No navigation at all: the detail is already on screen beside this
+          // row, and pushing would cover the list the user is comparing against
+          // — the loss [TwoPane]'s header opens by naming.
+          setState(() => _selectedId = s.id);
+        } else {
+          context.push('/sub/${s.id}');
+        }
+      },
+      // 🔴 THE SELECTION MARK IS `accentBar`, AN EXISTING `RowCard` PARAMETER,
+      // AND NOT A NEW DECORATION. A master-detail list has to say which row the
+      // pane on the right is about, `RowCard` has no `selected` API, and the
+      // alternative was a border or a fill invented in this file — a second
+      // private opinion about card state in a repo that already has one. It is
+      // the same 3 px rule the unused-plans card above draws, in
+      // `AppColors.accent` (the emphasis hue this screen already uses for the
+      // Calendar link) rather than `AppColors.warn`, so the two bars mean two
+      // different things and look it.
+      //
+      // Null below the split, because nothing is "selected" in a single column:
+      // the tap pushes a route and the user comes back.
+      accentBar: selected ? AppColors.accent : null,
       leading: GlyphTile(glyph: s.glyph, statusColor: showDue ? null : dot),
       title: s.name,
       subtitle: showDue
@@ -766,6 +1092,13 @@ class _HomeDashboard extends ConsumerWidget {
               style: text.fig.copyWith(fontSize: 16),
             ),
     );
+
+    // The `selected` flag ONLY where the layout has a selection. Annotating
+    // every row `selected: false` in a single column would announce a state
+    // this screen does not have there — the tap pushes a route and returns —
+    // and a screen reader would read "not selected" on twelve rows that can
+    // never be selected.
+    return twoPane ? Semantics(selected: selected, child: card) : card;
   }
 
   /// The bell and (via the same shape) any future header control.
