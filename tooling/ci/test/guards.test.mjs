@@ -4628,6 +4628,65 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     return fixture(name, files);
   };
 
+  // ── brand-seed-drives-paint LIMB (c) · THE THIRD LINK OF A THREE-LINK CHAIN ──
+  //
+  // The three original anchors assert the seed reaches both themes and that
+  // `AppThemeX.fromScheme` derives tokens from the scheme. All three were TRUE on
+  // the real tree while NOTHING SHIPPED READ THE TOKENS BACK OUT — measured
+  // 2026-08-21: 0 of 159 Dart files across 10 lib trees call
+  // `.extension<AppThemeX>()`, so the visible colour came from hardcoded
+  // `AppColors.*` and the stamp seed moved nothing a clone detector can see.
+  // A guard named for the whole chain was green on two links of it.
+  //
+  // Limb (c) MEASURES the third link and PRINTS — it must never fail, because
+  // resolving it is a brand-vs-seed judgement only the owner can make, and
+  // failing would block CI on owner work [CLAUDE.md C-6].
+  //
+  // Case (c) below is the one that matters: the real `apps/subly/lib` carries
+  // FOUR mentions of `extension<AppThemeX>` and ZERO calls, because every one of
+  // them sits in a doc comment ARGUING the code deliberately does not read it.
+  // A limb that grepped would have reported 4 and called the chain live.
+
+  test('limb (c) PRINTS the dead third link and does not fail the build', () => {
+    const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-ok') });
+    assert.equal(code, 0, 'an owner-gated gap prints; it must not block CI');
+    assert.match(out, /brand-seed-drives-paint limb \(c\): ZERO of/);
+  });
+
+  test('limb (c) counts a REAL read, and reports it as live', () => {
+    // Uses the STAMPED-APP fixture, not `build('sp-ok')`: the latter creates no
+    // `apps/*/lib` tree at all, so the limb would have nothing to scan and would
+    // report ZERO for the wrong reason — a green assertion measuring an absence.
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-reads-x', {
+        workspace: WS_WITH_PROBE,
+        extra: stampedApp('apps/probe', {
+          home: goodHome + '\nfinal x = Theme.of(context).extension<AppThemeX>()!.muted;\n',
+        }),
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /brand-seed limb \(c\) — \d+ of \d+ shipped lib file\(s\)/);
+  });
+
+  test('🔴 limb (c) counts CALLS, not mentions — a doc comment is still ZERO', () => {
+    // The case that separates a measurement from a grep, and the shape the REAL
+    // apps/subly/lib is in today: four mentions of `extension<AppThemeX>`, every
+    // one inside a doc comment ARGUING the code deliberately does not read it,
+    // and zero calls. A limb that grepped would have reported 4 and called the
+    // chain live.
+    const { code, out } = run('assert-stamp-properties.mjs', {
+      cwd: build('sp-mentions-x', {
+        workspace: WS_WITH_PROBE,
+        extra: stampedApp('apps/probe', {
+          home: goodHome + '\n/// `Theme.of(context).extension<AppThemeX>()` is NOT read here, on purpose.\n',
+        }),
+      }),
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /brand-seed-drives-paint limb \(c\): ZERO of/);
+  });
+
   test('passes when both properties are asserted and implemented', () => {
     const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-ok') });
     assert.equal(code, 0);

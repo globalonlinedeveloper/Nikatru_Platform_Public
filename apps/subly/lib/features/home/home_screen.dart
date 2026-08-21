@@ -117,6 +117,56 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
   /// fetch and no analytics event for a pane nobody can see.
   String? _selectedId;
 
+  /// The on-LIGHT tone for the unused-subs badge's `!`. **#956006, not
+  /// [AppColors.warn] #F59E0B — and not `due.dart`'s #9C6406 either.**
+  ///
+  /// 🔴 THE GROUND IS THE WASH, NOT THE CARD, AND THAT IS THE WHOLE REASON
+  /// THIS VALUE IS A THIRD ONE. The badge paints its glyph on
+  /// `Color.fromRGBO(245, 158, 11, 0.16)` composited over `RowCard`'s own
+  /// fill, so the legibility question is asked against the COMPOSITE. Measured
+  /// 2026-08-21, both sides, over the two grounds `RowCard` actually resolves:
+  ///   · LIGHT — 0.16 warn over #FFFFFF ⇒ **#FDEFD8**
+  ///       [AppColors.warn] #F59E0B ....... **1.89:1**  ❌
+  ///       `due.dart`'s `_warnOnLight` #9C6406 ... **4.37:1**  ❌ still short
+  ///       THIS VALUE #956006 .............. **4.68:1**  ✅
+  ///   · DARK — 0.16 warn over `scheme.surfaceContainerHighest` #35343A ⇒
+  ///     **#544533**: [AppColors.warn] **4.30:1**, and it is UNTOUCHED — the
+  ///     dark arm below still paints the shipped literal, so that branch
+  ///     repaints by zero pixels and cannot regress. (The 4.31 recorded on
+  ///     2026-08-21 and the 4.30 recomputed here are the same measurement one
+  ///     rounding step apart, in the composite's blue channel.)
+  ///
+  /// ⚠️ AND THE FORK IS LOAD-BEARING IN BOTH DIRECTIONS, so this is not a value
+  /// that could quietly replace the literal: #956006 on the DARK wash measures
+  /// **1.74:1**. Adopting it unbranched would trade a light failure for a
+  /// worse dark one — the same trap `app_colors.dart:101-104` measured for the
+  /// token itself, one composite deeper.
+  ///
+  /// 🔴 SO THE PALETTE'S OWN OWED STEP DOES NOT COVER THIS GLYPH, AND THAT IS
+  /// THE FINDING WORTH CARRYING UPSTREAM. `app_colors.dart:106-112` names the
+  /// status-trio fork it owes and gives warn's light text tone as #9C6406, "a
+  /// measured minimum step that clears every real ground" — but the grounds it
+  /// measured are the white card, [AppColors.bg] #F4F4F8 and the live scaffold
+  /// #FCF8FF. A 16 % warn wash over white is DARKER than all three (#FDEFD8),
+  /// and #9C6406 lands at 4.37 on it. The owed token is not wrong; its
+  /// enumeration of grounds is incomplete, and a badge is exactly the shape it
+  /// missed. When `warnText` lands, this call site does NOT simply adopt it.
+  ///
+  /// HOW THE VALUE WAS CHOSEN, so it is a step and not a taste: identical hue
+  /// and saturation to [AppColors.warn] (HSL 37.7° / 92 %), lightness stepped
+  /// down from 50.2 % to **30.5 %** — one notch past the 31.8 % `due.dart`
+  /// uses for the same hue on the lighter white card. It is a legibility step,
+  /// not a re-tint: the badge still reads as the same amber warning, which is
+  /// what keeps it one status treatment with the `accentBar` and the wash
+  /// around it.
+  ///
+  /// 📌 IT IS A LOCAL CONST FOR THE SAME REASON `due.dart`'s is: the slot it
+  /// belongs in (`warnText` on `AppThemeX`, resolved by brightness the way
+  /// `AppText.of` resolves prose) is `packages/design_system`'s to mint, and
+  /// that is a separate increment with a separate owner. This is the single
+  /// place the value is spelled and it has exactly one reader.
+  static const Color _warnGlyphOnWash = Color(0xFF956006);
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -695,30 +745,71 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           // uses — so they are FILLS carrying meaning, not prose that follows a
           // ground.
           //
-          // 🔴 AND A BRIGHTNESS FORK CANNOT FIX WHAT IS WRONG WITH THE `!`.
-          // Measured 2026-08-21 — `AppColors.warn` #F59E0B on this wash
-          // composited over `RowCard`'s own ground: LIGHT (0.16 warn over
-          // #FFFFFF ⇒ #FDEFD8) **1.90:1**; DARK (over #35343A ⇒ #544533)
-          // **4.31:1**. The failing side is the LIGHT one — the side every fork
-          // in this file leaves byte-identical on purpose. This is the
-          // status-trio defect `app_colors.dart` records at the token ("THE
-          // STATUS TRIO FAILS AA AS *TEXT* IN LIGHT AND NO VALUE HERE CAN FIX
-          // IT"), not a dark leak, so it belongs to whoever owns the palette.
+          // 🔴 THE `!` WAS ILLEGIBLE IN LIGHT, AND THE PARAGRAPH THAT STOOD
+          // HERE DIAGNOSED IT AND THEN DREW THE WRONG CONCLUSION. It read: "A
+          // BRIGHTNESS FORK CANNOT FIX WHAT IS WRONG WITH THE `!` … so it
+          // belongs to whoever owns the palette." CORRECTED 2026-08-21, not
+          // deleted, because the half that was TRUE is why the fix has the
+          // shape it has.
+          //
+          // TRUE: the failing side is the LIGHT one — the side every other fork
+          // in this file leaves byte-identical on purpose — so a fork whose
+          // light arm is the shipped literal is a no-op here, and forking that
+          // way would have shipped a dead `if` reporting healthy.
+          // FALSE: the conclusion. A fork fixes it fine; it just has to move
+          // the LIGHT arm, which is exactly what `due.dart`'s `_warnOnLight`
+          // already does for the due label on this same screen. That is a
+          // CALL-SITE change, not a token change: [AppColors.warn] does not
+          // move and must not — `app_colors.dart:76-78`'s "NO VALUE HERE CAN
+          // FIX IT" is a statement about the TOKEN, which has to serve the dark
+          // surfaces too, and warn is still the correct FILL for this wash and
+          // for the `accentBar` above.
+          //
+          // The numbers, the grounds they were taken against and why this value
+          // is not `due.dart`'s: [_warnGlyphOnWash].
+          //
+          // ⚠️ THE BAR THAT GOVERNS THIS GLYPH IS 3.0, NOT THE 4.5 THE DUE
+          // LABEL ANSWERS TO, and saying so is not a licence to relax anything.
+          // `MinimumTextContrastGuideline.targetContrastRatio(19, bold: true)`
+          // returns `kMinimumRatioLargeText` because 19 ≥ `kLargeTextMinimumSize`
+          // (18) — this is a large-text glyph, unlike the 11px w700 due label
+          // one method down. 1.89:1 failed even that, and the new light tone
+          // clears 4.5 anyway, so the fix is safe under either reading.
+          //
+          // ⬜ AND NOTHING IN `test/` MEASURES THIS GLYPH TODAY — it is a hole,
+          // named rather than assumed away. `a11y_semantics_test.dart`'s
+          // `_rowCardTexts` sets `ground = null` for any `Text` under a
+          // `DecoratedBox` that carries its own colour, and `_assertLegible`
+          // `continue`s on a null ground. The badge has a decorated ground by
+          // construction, so it is skipped — which is why 1.89:1 shipped green.
+          // Closing that hole means measuring the COMPOSITE (the helper's own
+          // translucency guard refuses to score alpha, correctly), and it lives
+          // in a test file this increment does not own.
           leading: Container(
             width: 40,
             height: 40,
             alignment: Alignment.center,
+            // UNCHANGED IN BOTH BRIGHTNESSES. Darkening the wash cannot help:
+            // with an amber glyph on it the ground would have to fall to a
+            // relative luminance of 0.059 to clear 4.5, and warn over a white
+            // card cannot reach that at ANY opacity — at 1.0 the ground IS
+            // warn, luminance 0.439. The glyph is the only end that can move.
             decoration: BoxDecoration(
               color: const Color.fromRGBO(245, 158, 11, 0.16),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
+            child: Text(
               '!',
               style: TextStyle(
                 fontFamily: 'Space Grotesk',
                 fontWeight: FontWeight.w700,
                 fontSize: 19,
-                color: AppColors.warn,
+                // THE ONE LINE THAT MOVES, AND IT MOVES ON THE LIGHT SIDE.
+                // Dark keeps the shipped literal, so that branch repaints by
+                // zero pixels and its 4.30:1 cannot regress.
+                color: Theme.of(context).brightness == Brightness.light
+                    ? _warnGlyphOnWash
+                    : AppColors.warn,
               ),
             ),
           ),

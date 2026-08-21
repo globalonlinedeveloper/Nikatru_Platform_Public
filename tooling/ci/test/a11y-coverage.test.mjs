@@ -270,7 +270,7 @@ describe('the guard says YES on the tree as it is', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
     assert.match(out, /19 reachable surface\(s\) \(17 routed screens, 2 modal sheets\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 109 case\(s\)/);
+    assert.match(out, /19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
     assert.match(out, /0 unswept and PRINTED/);
     // The per-family tally, pinned. It read `tap-target ×0` from the day this
     // guard was written until 2026-08-13, and a family that has never been
@@ -284,14 +284,14 @@ describe('the guard says YES on the tree as it is', () => {
     // ×0 to non-zero, so this line no longer records a limb that has never
     // fired.** If either returns to ×0, that is a sweep helper renamed out of
     // the parse, not progress.
-    assert.match(out, /sweep families used: naked-controls ×24, tap-target ×19, contrast ×23/);
+    assert.match(out, /sweep families used: naked-controls ×24, tap-target ×19, contrast ×24/);
   });
 
   test('the copied subject tree reproduces the real reading exactly', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
     assert.match(out, /19 reachable surface\(s\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 109 case\(s\)/);
+    assert.match(out, /19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);
   });
@@ -323,7 +323,7 @@ describe('the guard says YES on the tree as it is', () => {
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /FAIL /);
     assert.match(out, /20 reachable surface\(s\) \(17 routed screens, 3 modal sheets\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 109 case\(s\)/);
+    assert.match(out, /19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
     assert.match(out, /1 unswept and PRINTED/);
   });
 
@@ -355,7 +355,7 @@ describe('the guard says YES on the tree as it is', () => {
     );
     assert.deepEqual(sweptList(out).sort(), [...ALL_19_SWEPT, NEW_SHEET_SYMBOL].sort());
     assert.equal(printedUnswept(out).length, 0);
-    assert.match(out, /20 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
+    assert.match(out, /20 swept by 1 a11y test file\(s\) across 111 case\(s\)/);
     assert.match(out, /0 unswept and PRINTED/);
   });
 });
@@ -519,7 +519,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
   // 📌 A mutation named "not one sweep" must neuter EVERY family the guard
   // recognises, and it inherits a new one each time SWEEP_FAMILIES grows.
   // `contrast` needs no rename today only because it shares `meetsGuideline`.
-  test('M5 · every sweep helper is renamed — 109 cases, not one sweep', () => {
+  test('M5 · every sweep helper is renamed — 110 cases, not one sweep', () => {
     const root = tree();
     const src = readIn(root, SUITE)
       .replaceAll('expectNothingNaked', 'expectNothingBare')
@@ -534,7 +534,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     writeIn(root, SUITE, src);
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — 109 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s);
+    assert.match(out, /COVERAGE LOST — 110 a11y case\(s\) were parsed .* and NOT ONE of them calls a sweep/s);
     // Proof the mutation reached the limb it names rather than a neighbouring
     // one: with NO family running, nothing is attributed at all.
     assert.equal(sweptList(out).length, 0);
@@ -622,7 +622,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     }
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — only 105 a11y case\(s\) .* the checked-in floor is 109/s);
+    assert.match(out, /COVERAGE LOST — only 106 a11y case\(s\) .* the checked-in floor is 110/s);
     // Every set above is byte-identical — which is the point of the floor, and
     // it is also what catches a mutation that disabled the WRONG block: if one
     // of the four titles above ever drifts onto a sweeping case, its surface

@@ -78,12 +78,29 @@ ThemeData _themeFrom({
 
 /// The ORIGINAL Subly palette, pinned exactly.
 ///
-/// ⚠️ [pipeline C-11] This is deliberately NOT the chassis path. `apps/subly` was
-/// frozen as a legacy rail-prover (39-CHASSIS cut 1), so its colours must not
-/// move when the shared builder becomes seed-driven — and the way to guarantee
-/// that is to state them here explicitly rather than to leave app-specific
-/// constants wired into `buildAppTheme`, where they silently applied to every
-/// app in the portfolio.
+/// ⚠️ [pipeline C-11] This is deliberately NOT the chassis path. Subly's
+/// colours must not move when the shared builder becomes seed-driven — and the
+/// way to guarantee that is to state them here explicitly rather than to leave
+/// app-specific constants wired into `buildAppTheme`, where they silently
+/// applied to every app in the portfolio.
+///
+/// 📌 PREMISE CORRECTED 2026-08-21 — the paragraph above used to carry its
+/// warrant as *"`apps/subly` was frozen as a legacy rail-prover (39-CHASSIS
+/// cut 1)"*. THAT PREMISE IS DEAD, and it was already dead when this comment was
+/// written. `Private/decisions/036-subly-freeze-dissolved-by-owner-order.md`
+/// dissolves cut 1 by owner order of 2026-08-08: *"Subly stops being a frozen
+/// legacy rail-prover and becomes the active commercial product"*. Subly is the
+/// shipping product, live on the web — read nothing below as a freeze.
+///
+/// ONLY THE PREMISE CHANGED; THE PIN IS UNTOUCHED. Its real warrant is the token
+/// discipline restated above, which never depended on the freeze: an
+/// app-specific constant left in the chassis path paints the WHOLE portfolio,
+/// which is the store-survival problem the C-11 note at the top of this file
+/// measures. `Private/decisions/037-subly-is-re-stamped-not-retrofitted.md`
+/// reinforces it — that is the same escape clause's binding second half,
+/// *"re-stamp it from the brick; do not retrofit it"*. Retrofitting
+/// `buildAppTheme` to serve Subly is exactly the move both halves forbid, so
+/// these values stay here and stay pinned until the re-stamp replaces them.
 ///
 /// A new app must NEVER call this. `buildAppTheme(seed: …)` is the chassis path;
 /// reaching for these values is how the portfolio ends up looking like one app

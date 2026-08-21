@@ -717,6 +717,14 @@ const REQUIRED_COVERAGE = [
     // Anchored to the SEED REACHING THE BUILDER, in app.dart. The builder could
     // be perfect and the app still uniform if somebody drops the argument — and
     // `buildAppTheme(` alone would match the parameterless call in smoke_test.
+    //
+    // ⚠️ THESE THREE ANCHORS ARE TWO LINKS OF A THREE-LINK CHAIN. They prove the
+    // seed reaches both builders and that the tokens are derived; they do NOT
+    // prove any shipped widget READS those tokens back off the theme. The third
+    // link is measured — and printed, never failed — by
+    // `checkBrandSeedReachesPaint()` below, which says why the difference is an
+    // owner decision rather than a repair. Do not fold that limb in here: as a
+    // `source` anchor it would red CI on a judgement only the owner can make.
     sources: [
       // BOTH themes, not "at least one". The first version of this anchor was
       // /buildAppTheme\(\s*seed:/ — it survived deleting the seed from `theme:`
@@ -2053,6 +2061,180 @@ for (const root of roots) {
     if (p.gap) propertyGaps.add(`${p.key} — ${p.gap}`);
   }
 }
+
+// ── [pipeline C-11] `brand-seed-drives-paint` LIMB (c) · THE THIRD LINK ──────
+//
+// 🔴 THE PROPERTY IS NAMED FOR A CHAIN AND ITS ANCHORS PROVE TWO LINKS OF IT.
+// seed → `theme:`, seed → `darkTheme:`, tokens DERIVED rather than `const`: all
+// three are true today, and ALL THREE WOULD STILL BE TRUE of an app whose
+// visible colour never came from the seed at all. The missing link is the READ.
+// `packages/design_system/lib/src/theme/build_app_theme.dart:75` attaches the
+// derived tokens to the theme (`extensions: [tokens]`); if no shipped widget
+// calls `Theme.of(context).extension<AppThemeX>()` to get them back out, the
+// seed reaches a builder whose output nobody paints with, and the colour a user
+// sees comes from hardcoded `AppColors.*`. From outside the binary — which is
+// exactly where a store's clone detector stands — that is indistinguishable
+// from never having stamped a seed, which is the harm in this property's `why`.
+//
+// MEASURED 2026-08-21 by running this limb (re-derive it, do not trust this
+// line): 0 of 159 Dart files under the 10 shipped lib trees call it, and the two
+// files in the whole tree that DO are both the brick template's. The four
+// `extension<AppThemeX>` hits in `apps/subly/lib` are doc comments arguing that
+// the code deliberately does NOT read it — comments, so `stripDartComments`
+// removes them and they do not count. The stamped chassis is the opposite case:
+// the brick's `home_screen.dart` DOES read it, so every STAMPED app has the
+// whole chain and only the un-stamped `apps/subly` and the packages do not.
+//
+// ⚠️ WHY THIS PRINTS INSTEAD OF FAILING, AND IT IS NOT SOFTNESS. The repair is
+// not mechanical; it is a judgement about WHAT SUBLY'S INDIGO IS, and both
+// answers are legitimate:
+//   · a BRAND colour — deliberately constant across every build, the thing a
+//     returning user recognises — in which case hardcoding `AppColors.*` is
+//     CORRECT and this seam is simply the wrong tool for that app; or
+//   · merely a STAMP SEED — one dial in a portfolio of look-alike apps — in
+//     which case the painting widgets must read the extension and today do not.
+// Nobody but the owner can pick, so failing here would red CI over owner work:
+// "when a capability's on-switch is owner-gated, the guard must PRINT the gap on
+// every run rather than fail the build" [CLAUDE.md C-6]. The print is modelled
+// on assert-privacy-manifest.mjs's owner-gated `.xcprivacy` block, and carries
+// the count and the decision so it is actionable rather than a shrug.
+//
+// ⚠️ AND A ZERO MUST SAY WHETHER IT IS A MEASUREMENT. A pattern matching nothing
+// anywhere would report "0 readers" with the same confidence as a real count —
+// the dead-scanner shape this whole file exists to catch, one level up. So the
+// pattern is also run over the trees that DO read it (the brick's lib and the
+// audited property tests) and that WITNESS is printed beside the count; when the
+// witness is empty the print says the zero is unwitnessed instead of asserting
+// it. Why that is a caveat and not a `fail` is argued at the witness itself —
+// short version: a stale pattern here over-reports a gap rather than hiding one,
+// the class name is already hard-anchored by anchor 3, and the gate as first
+// written reddened a healthy fixture.
+//
+// NEGATIVE-TESTED 2026-08-21, all three branches, by pointing the guard at a
+// throwaway tree rather than by trusting the real one (a limb that has only ever
+// printed one branch is a limb whose other branches are unrun):
+//   · a two-file `apps/demo/lib` where ONE file calls it and one only MENTIONS
+//     it in a doc comment → `ok … 1 of 2`, so the comment-stripping is what
+//     makes the count a count;
+//   · the same tree with the call removed → the ⬜ print;
+//   · and with the witness's calls renamed away too → the same print carrying
+//     the UNWITNESSED caveat.
+const BRAND_TOKEN_READ_RE = /\.extension\s*<\s*AppThemeX\s*>\s*\(/;
+/** The trees whose `lib/` is compiled into something a user looks at. Derived
+ *  from the listing rather than typed out, so a new package that paints is
+ *  inside the measurement the day it lands. */
+const SHIP_TREES = ['apps', 'packages'];
+
+/** Files under `libDir` that actually CALL the brand-token read.
+ *
+ *  `blankStrings: true` on purpose: a mention is not a read. `apps/subly/lib`
+ *  holds four mentions and zero calls, and a scan that could not tell them apart
+ *  would report this property healthy on the strength of comments explaining
+ *  that it is not. */
+function brandTokenReaders(libDir) {
+  const hits = [];
+  for (const abs of dartFilesUnder(libDir)) {
+    let src;
+    try {
+      src = stripDartComments(readFileSync(abs, 'utf8'), { blankStrings: true });
+    } catch {
+      continue;
+    }
+    if (BRAND_TOKEN_READ_RE.test(src)) hits.push(abs.slice(repo.length + 1).split('\\').join('/'));
+  }
+  return hits;
+}
+
+function checkBrandSeedReachesPaint() {
+  const shipRoots = [];
+  for (const tree of SHIP_TREES) {
+    let entries;
+    try {
+      entries = listDir(join(repo, tree), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const abs = join(repo, tree, e.name, 'lib');
+      if (existsSync(abs)) shipRoots.push({ rel: `${tree}/${e.name}/lib`, abs });
+    }
+  }
+  if (shipRoots.length === 0) {
+    fail(
+      'COVERAGE LOST — no `apps/*/lib` or `packages/*/lib` exists under this root, so the brand-seed read ' +
+        'count ranges over no code at all. It would print 0 whatever the tree contained, and 0 is the ' +
+        'answer this limb exists to interpret.',
+    );
+    return;
+  }
+
+  const shipHits = shipRoots.flatMap((r) => brandTokenReaders(r.abs));
+  const scanned = shipRoots.reduce((n, r) => n + dartFilesUnder(r.abs).length, 0);
+
+  // The blindness witness: the trees KNOWN to read the tokens today. Deliberately
+  // NOT part of the count — a template is not a shipped app and a test is not
+  // paint — but it is what tells a reader whether a zero above is a fact about
+  // the shipped code or a fact about this regex having gone stale.
+  const witness = brandTokenReaders(join(repo, BRICK, 'lib'));
+  for (const root of roots) {
+    try {
+      const src = stripDartComments(readFileSync(join(repo, root, PROP_TEST), 'utf8'), { blankStrings: true });
+      if (BRAND_TOKEN_READ_RE.test(src)) witness.push(`${root}/${PROP_TEST}`);
+    } catch { /* a missing property test has already failed hard above */ }
+  }
+
+  // ⚠️ THE WITNESS IS A CAVEAT IN THE PRINT, NOT A GATE — and the first version
+  // of this limb got that wrong. It `fail`ed when the pattern matched nothing
+  // anywhere, and that reddened guards.test.mjs's `sp-ok` fixture immediately
+  // (MEASURED 2026-08-21: `1 !== 0` at guards.test.mjs:6520). That fixture is
+  // healthy: it carries a real `app_theme_x.dart` with the factory, so anchor 3
+  // above passes, and 11 shipped lib files none of which read the extension.
+  // A minimal tree with no reader is a legitimate tree, not a broken scanner.
+  //
+  // And the gate was wrong on the REAL tree too, for two reasons worth keeping:
+  //  · a blind pattern here fails LOUD, not quiet — it would print "ZERO
+  //    readers" while readers existed, an OVER-report. The direction that
+  //    inflates apparent coverage is a pattern matching too MUCH and printing
+  //    `ok`, and that branch is witnessed by the hits it prints;
+  //  · the only realistic way this pattern goes stale is the class being
+  //    renamed, and `factory\s+AppThemeX\.fromScheme` — anchor 3 above — is a
+  //    HARD failure on exactly that, in the same property. `.extension<T>()` is
+  //    Flutter's own `ThemeData` API and is not a shape this repo can drift.
+  // So an unwitnessed zero is REPORTED IN THE PRINT, where a reader can weigh
+  // it, rather than reddening a build over it.
+
+  if (shipHits.length > 0) {
+    ok(
+      `brand-seed limb (c) — ${shipHits.length} of ${scanned} shipped lib file(s) across ${shipRoots.length} ` +
+        `tree(s) READ the derived tokens (${shipHits.join(', ')}); the seed reaches PAINT, not merely a builder`,
+    );
+    return;
+  }
+
+  console.log('   ── printed, not failed (owner decision: brand colour vs stamp seed) ──');
+  console.log(
+    `   ⬜ brand-seed-drives-paint limb (c): ZERO of ${scanned} Dart file(s) under ${shipRoots.length} shipped ` +
+      `lib tree(s) (${shipRoots.map((r) => r.rel).join(', ')}) call \`.extension<AppThemeX>()\`. The three ` +
+      'anchors above are TRUE — the seed reaches both themes and the tokens are derived from the scheme — but ' +
+      'nothing shipped reads those tokens back out, so the colour a user sees comes from hardcoded ' +
+      '`AppColors.*` and the stamp seed moves nothing a store\'s clone detector can see. ' +
+      (witness.length
+        ? `${witness.length} file(s) OUTSIDE those trees DO read them (${witness.join(', ')}), which is how ` +
+          'this pattern is proven live and why the zero is a measurement rather than a blind one. '
+        : 'CAVEAT — nothing in this tree reads them at all, not even the brick template, so the pattern ' +
+          'has no live witness here and this zero is UNWITNESSED. Not failed on that account: a stale ' +
+          'pattern would over-report a gap rather than hide one, and the class name itself is hard-anchored ' +
+          'by `factory AppThemeX.fromScheme` above. ') +
+      'RESOLVING IT IS AN OWNER DECISION and ' +
+      'both answers are legitimate: if Subly\'s indigo is a BRAND colour — constant on purpose — then ' +
+      'hardcoding is CORRECT, this property is the wrong tool for that app, and the exemption should be ' +
+      'recorded here by name; if it is merely a STAMP SEED, the painting widgets must read the extension. ' +
+      'Failing would block CI on a judgement only the owner can make [CLAUDE.md C-6].',
+  );
+}
+
+checkBrandSeedReachesPaint();
 
 // ── "EVERY" — the domain check. ─────────────────────────────────────────────
 // Deliberately BRICK-ONLY, and that is not an oversight: COVERED_BY/UNASSERTED

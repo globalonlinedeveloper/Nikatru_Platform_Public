@@ -891,7 +891,7 @@ const REQUIRED_COVERAGE = {
   // is the signal that one of the two parses has drifted from the other. If you
   // change one, RE-MEASURE the other rather than mirroring the edit.
   surfaces: 19,
-  cases: 109,
+  cases: 110,
 };
 if (reachable.size > 0 && reachable.size < REQUIRED_COVERAGE.surfaces) {
   coverageLost(
