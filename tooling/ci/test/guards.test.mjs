@@ -6429,6 +6429,323 @@ onTap: () => _openUrl(AppConfig.refundUrl),
     });
   });
 
+  // ── 2026-08-21 · SOURCE ANCHORS ARE READ COMMENT-STRIPPED ─────────────────
+  //
+  // 🔴 THE HOLE. `assert-stamp-properties.mjs` strips comments before every
+  // scan it makes — seven call sites — EXCEPT the one that read a source anchor
+  // file, which was raw. So an anchor regex could be satisfied by a `///` line,
+  // which is the "assert on parsed structure, never by grepping prose" rule
+  // failing inside the guard that exists to enforce it.
+  //
+  // NOT HYPOTHETICAL, and the real-tree case is what these fixtures encode:
+  // `apps/subly/lib/state/providers.dart:158` is a doc comment quoting
+  // "`contentPack: 'https://packs…/latest'`" while that app's real config reads
+  // `contentPack: null` on :172. MEASURED 2026-08-21 by running every anchor of
+  // every property over both roots raw and stripped and diffing: exactly ONE
+  // result flips, that one. It was latent rather than live only because
+  // `apps/subly` is in EXEMPT_APPS — dropping the exemption on a copy of the
+  // guard printed 9 FAIL lines with the raw read and 10 with the stripped one.
+  //
+  // MUTATION-TESTED, which is the only thing that makes these cases tests:
+  // reverting the read in assert-stamp-properties.mjs to a bare
+  // `readFileSync(join(repo, path), 'utf8')` turns the three prose cases below
+  // GREEN (exit 0). Re-run that mutation before trusting them again.
+  describe('source anchors are read COMMENT-STRIPPED', () => {
+    // The `///` form — the shape the real tree is in.
+    test('🔴 a DOC COMMENT cannot satisfy a source anchor', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-prose', {
+          packRail: goodPackRail.replace(
+            "contentPack: 'https://packs.nikatru.com/${AppConfig.appId}/latest',",
+            "contentPack: null,\n  /// A live app would read `contentPack: 'https://packs.example.com/x/latest',` here.",
+          ),
+        }),
+      });
+      assert.equal(code, 1, out);
+      assert.match(out, /'content-pack-consumed' is asserted but its IMPLEMENTATION is gone/);
+      assert.match(out, /the brick must NAME a pack/);
+    });
+
+    // The `/* */` form, separately: the stripper walks the two comment kinds
+    // down different branches, and a case that only ever drove one of them
+    // would leave the other unproven.
+    test('🔴 a BLOCK COMMENT cannot satisfy a source anchor either', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-block-prose', {
+          packRail: goodPackRail.replace(
+            "contentPack: 'https://packs.nikatru.com/${AppConfig.appId}/latest',",
+            "contentPack: null,\n  /* was contentPack: 'https://packs.example.com/x/latest', until the pointer was pulled */",
+          ),
+        }),
+      });
+      assert.equal(code, 1, out);
+      assert.match(out, /'content-pack-consumed' is asserted but its IMPLEMENTATION is gone/);
+    });
+
+    // 🔴 THE HTML FORM, which `stripDartComments` alone CANNOT see — hence
+    // `stripAnchorComments`. Also not hypothetical: `apps/subly/web/index.html:11`
+    // reproduces the exact `<meta name="viewport" … content="…width=device-width…"`
+    // shape inside an `<!-- -->` block while explaining the tag, so the one
+    // anchor whose own comment says "Matched on the TAG, never on prose" was
+    // satisfiable by prose. (The real tag is on :20 there, so what this would
+    // have hidden is its deletion.)
+    test('🔴 an HTML COMMENT cannot satisfy the viewport anchor', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-viewport-prose', {
+          extra: {
+            [BRICK_WEB_INDEX]:
+              '<!DOCTYPE html><html><head>\n' +
+              '<!-- The shell must carry <meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+              '     or a mobile browser lays the app out at ~980px. -->\n' +
+              '<title>x</title></head><body></body></html>\n',
+          },
+        }),
+      });
+      assert.equal(code, 1, out);
+      assert.match(out, /'ui-invariants-inherited' is asserted but its IMPLEMENTATION is gone/);
+      assert.match(out, /device-width viewport/);
+    });
+
+    // 🔴 THE OTHER DIRECTION, and it is the one an over-eager fix breaks.
+    // `blankStrings` must stay OFF for this read: many anchors ARE string
+    // literals. MEASURED 2026-08-21 on the real brick — turning it on breaks
+    // SIXTEEN anchors, including these three. A stripper that erased string
+    // contents would make every one of them unsatisfiable and the guard would
+    // fail the healthy tree, so this case is what keeps the fix from becoming
+    // its own outage.
+    test('string literals SURVIVE the strip — route paths, event names and the ARB locale still anchor', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-strings-live') });
+      assert.equal(code, 0, out);
+      assert.match(out, /'sessionless-signup-reaches-check-inbox' asserted and implemented/);
+      assert.match(out, /'locale-actually-switches' asserted and implemented/);
+      assert.match(out, /'analytics-lifecycle-complete' asserted and implemented/);
+      assert.match(out, /'ui-invariants-inherited' asserted and implemented/);
+    });
+  });
+
+  // ── `content-pack-consumed` LIMB (d) · THE RAIL NOTHING SHIPPED READS ─────
+  //
+  // The property is named "consumed" and its third anchor's `what` says
+  // "something must actually ASK for a pack". All three anchors are TRUE on the
+  // real brick — and the `.load(expectPackId:)` call they find is the body of
+  // `contentPackProvider`, a LAZY Riverpod FutureProvider that runs only when
+  // something watches it. MEASURED 2026-08-21: `contentPackProvider` has ELEVEN
+  // occurrences tree-wide — two declarations, three comment mentions, and six
+  // ref-reads, every one of the six inside a `chassis_properties_test.dart`.
+  // Zero shipped consumers. (The mentions are why the count must discriminate:
+  // a grep would report eleven consumers of a rail with none.)
+  //
+  // The limb MEASURES and PRINTS. It must never fail the build, because the
+  // repair is a brick-template widget edit. It reads BOTH owner gates rather
+  // than the one it was pointed at: OWNER_QUEUE S-3's KEY half is OPEN (a key
+  // is pinned), but the SHELF — an `r2_buckets` binding in the Worker — is
+  // SHUT, so no pack has ever been published. Measuring one gate and concluding
+  // about both was the first draft's mistake and is what these cases pin.
+  describe('content-pack-consumed limb (d)', () => {
+    const PACK_KEYS = 'packages/core/lib/src/content/pack_verifier.dart';
+    /** A `kContentPackPublicKeys` map with `n` pinned keys, in the real shape. */
+    const keyMap = (n) =>
+      'const Map<String, String> kContentPackPublicKeys = <String, String>{\n' +
+      Array.from({ length: n }, (_, i) => `  'k${i + 1}': 'zcrBolFZjWixE+0UF0Qbd6T2jUKGkWgAWtJVmYdK6dQ=',\n`).join('') +
+      '};\n';
+
+    test('limb (d) PRINTS the unconsumed rail and does not fail the build', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-ok') });
+      assert.equal(code, 0, 'a dead rail is reported, never used to red CI');
+      assert.match(out, /content-pack-consumed limb \(d\): ZERO of \d+ Dart file\(s\)/);
+    });
+
+    test('limb (d) counts a REAL read and reports the rail consumed', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-read', {
+          workspace: WS_WITH_PROBE,
+          extra: stampedApp('apps/probe', {
+            home: goodHome + '\nfinal pack = ref.watch(contentPackProvider).valueOrNull;\n',
+          }),
+        }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /content-pack limb \(d\) — 1 of \d+ app lib file\(s\)/);
+      assert.match(out, /apps\/probe\/lib\/features\/home\/home_screen\.dart/);
+    });
+
+    // 🔴 The case that separates a measurement from a grep, and the shape the
+    // real tree is in: the brick's own providers file MENTIONS
+    // `contentPackProvider` in a doc comment three lines above declaring it.
+    test('🔴 limb (d) counts READS, not mentions — a doc comment is still ZERO', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-mention', {
+          workspace: WS_WITH_PROBE,
+          extra: stampedApp('apps/probe', {
+            home: goodHome + '\n/// `ref.watch(contentPackProvider)` is deliberately NOT called here.\n',
+          }),
+        }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /content-pack-consumed limb \(d\): ZERO of/);
+    });
+
+    // 🔴 …and the DECLARATION must not count as a read. `final
+    // FutureProvider<core.ContentPack?> contentPackProvider =` is the line that
+    // CREATES the rail; a scan that counted it would report every tree
+    // consuming the pack, which is this limb's failure mode written backwards.
+    // The fixture already carries that declaration in both providers files, so
+    // the ZERO the first case asserts IS this assertion — pinned here by name
+    // so a future widening of PACK_READ_RE cannot quietly swallow it.
+    test('🔴 limb (d) does not mistake the DECLARATION for a consumer', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-decl-only', { workspace: WS_WITH_PROBE, extra: stampedApp('apps/probe') }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /content-pack-consumed limb \(d\): ZERO of/);
+    });
+
+    // ── THE TWO OWNER GATES, each in all three of its states. ────────────────
+    //
+    // 🔴 TWO, not one, and the first draft of this limb measured only the first
+    // and concluded about both — a claim about EVERY gate derived from ONE
+    // measurement. OWNER_QUEUE S-3's KEY half is OPEN (a key is pinned); the
+    // SHELF — an `r2_buckets` binding in the Worker — is SHUT, so no pack has
+    // ever been published. Getting either wrong is a lie about who owes the
+    // work: calling an open gate shut blames the owner for agent work, and
+    // calling an UNREAD gate shut blames them for a failed read.
+    const PACK_SHELF = 'services/platform/wrangler.jsonc';
+    /** A wrangler config whose `r2_buckets` array holds `n` bindings. */
+    const shelfWith = (n) =>
+      '{\n  "name": "platform",\n  "r2_buckets": [\n' +
+      Array.from({ length: n }, (_, i) => `    { "binding": "PACKS${i}", "bucket_name": "nikatru-packs" },\n`).join('') +
+      '  ]\n}\n';
+
+    test('limb (d) reports the KEY gate OPEN when a key is pinned', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-key-open', { extra: { [PACK_KEYS]: keyMap(1) } }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /OWNER_QUEUE S-3's KEY half IS OPEN — 1 production pack-signing key\(s\) pinned/);
+    });
+
+    test('limb (d) reports the KEY gate SHUT when no key is pinned', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-key-shut', { extra: { [PACK_KEYS]: keyMap(0) } }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /OWNER_QUEUE S-3's KEY half IS STILL SHUT: 0 production pack-signing key\(s\)/);
+    });
+
+    // 🔴 …and the KEY gate's own prose trap, which is the same act as the shelf's
+    // and needs the same kind of input to be a test at all: the real
+    // pack_verifier.dart carries a long doc comment ABOUT the key map, and a
+    // commented-out example map placed above the live one is what an unstripped
+    // parse would read instead — `.match` takes the FIRST hit. Reported as one
+    // pinned key over a build that pins none, which is a false OPEN in the
+    // direction that blames nobody and lets a dead rail look ready.
+    // MUTATION-PROVEN: without the blanking in `pinnedPackKeys` this case
+    // reports the key gate OPEN.
+    test('🔴 limb (d) reads the KEY gate as structure — a commented-out example map is still SHUT', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-key-prose', {
+          extra: {
+            [PACK_KEYS]:
+              "/// When S-3 lands this becomes, for example:\n" +
+              "///   const Map<String, String> kContentPackPublicKeys = <String, String>{\n" +
+              "///     'k1': 'zcrBolFZjWixE+0UF0Qbd6T2jUKGkWgAWtJVmYdK6dQ=',\n" +
+              '///   };\n' +
+              keyMap(0),
+          },
+        }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /OWNER_QUEUE S-3's KEY half IS STILL SHUT: 0 production pack-signing key\(s\)/);
+      assert.doesNotMatch(out, /KEY half IS OPEN/);
+    });
+
+    // 🔴 null IS NOT ZERO. An unreadable gate must report as unread, never as
+    // shut — `sp-ok` carries no pack_verifier.dart at all, which is exactly
+    // that input.
+    test('🔴 limb (d) reports an UNREAD key gate as unread, not as shut', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-ok') });
+      assert.equal(code, 0, out);
+      assert.match(out, /KEY gate could NOT be read/);
+      assert.doesNotMatch(out, /KEY half IS STILL SHUT/);
+      assert.doesNotMatch(out, /KEY half IS OPEN/);
+    });
+
+    test('limb (d) reports the SHELF OPEN when a bucket is bound — then nothing is owner work', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-shelf-open', { extra: { [PACK_KEYS]: keyMap(1), [PACK_SHELF]: shelfWith(1) } }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /SHELF IS OPEN: 1 R2 bucket\(s\) bound/);
+      assert.match(out, /missing consumer, which is\s+agent work/);
+    });
+
+    // 🔴 THE PROSE TRAP — and the FIRST VERSION OF THIS CASE COULD NOT FAIL,
+    // which is worth recording because it is the exact defect this whole change
+    // is about. It fixtured the real file's closing sentence `NO "r2_buckets"
+    // YET`, asserted SHUT, and passed. MUTATION-TESTED by stripping the
+    // comment-blanking out of `boundPackBuckets`: STILL GREEN. Of course it was
+    // — the anchor is `"r2_buckets"` followed by `:` and `[`, and that sentence
+    // has neither, so the structural regex alone rejects it and the strip was
+    // doing nothing. An assertion that cannot fail inflates apparent coverage.
+    //
+    // The input that makes the strip load-bearing is the OTHER shape the real
+    // file's comment is one edit away from: a COMMENTED-OUT EXAMPLE BINDING.
+    // wrangler.jsonc already says "WHEN one is needed: create ONE portfolio
+    // bucket and bind it HERE" — the day someone pastes the snippet in as a
+    // comment, an unstripped read finds a complete `"r2_buckets": [ { … } ]`
+    // and reports the shelf OPEN over a Worker that binds nothing. Now
+    // mutation-proven: without the blanking this case reports 1 bucket.
+    test('🔴 limb (d) reads the SHELF as structure — a commented-out example binding is still SHUT', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-shelf-prose', {
+          extra: {
+            [PACK_KEYS]: keyMap(1),
+            [PACK_SHELF]:
+              '{\n  "name": "platform",\n' +
+              '  // NO "r2_buckets" YET. WHEN one is needed it goes here, like this:\n' +
+              '  //   "r2_buckets": [ { "binding": "PACKS", "bucket_name": "nikatru-packs" } ]\n' +
+              '  "compatibility_date": "2026-08-01"\n}\n',
+          },
+        }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /SHELF IS SHUT: services\/platform\/wrangler\.jsonc binds 0 R2 bucket\(s\)/);
+      assert.doesNotMatch(out, /SHELF IS OPEN/);
+    });
+
+    // …and a declared-but-empty array is shut too. A binding list nobody filled
+    // in is not a shelf, and this is the input a "the key exists" check passes.
+    test('limb (d) reads an EMPTY r2_buckets array as a shut shelf', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('sp-pack-shelf-empty', { extra: { [PACK_KEYS]: keyMap(1), [PACK_SHELF]: shelfWith(0) } }),
+      });
+      assert.equal(code, 0, out);
+      assert.match(out, /SHELF IS SHUT: services\/platform\/wrangler\.jsonc binds 0 R2 bucket\(s\)/);
+    });
+
+    // The shelf's own null-is-not-zero case: `sp-ok` carries no wrangler.jsonc.
+    test('🔴 limb (d) reports an UNREAD shelf as unread, not as shut', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', { cwd: build('sp-ok') });
+      assert.equal(code, 0, out);
+      assert.match(out, /SHELF gate could NOT be read/);
+      assert.doesNotMatch(out, /SHELF IS SHUT/);
+      assert.doesNotMatch(out, /SHELF IS OPEN/);
+    });
+
+    // The dead-scanner case, one level up: a count taken over no files at all
+    // would print ZERO with the same confidence as a real measurement, and ZERO
+    // is the answer this limb exists to interpret. Built with `fixture` rather
+    // than `build` because `build` always writes a brick `lib/`, so this input
+    // is unreachable through it.
+    test('COVERAGE LOST when there is no app lib tree to count over', () => {
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: fixture('sp-pack-nolib', { [PROP]: goodTest }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST — no brick `lib\/` and no `apps\/\*\/lib` exists/);
+    });
+  });
+
   // ── [research/44 §7 rung 3] — the PROMO CARD, whose off state and whose dead
   //    state are the same collapsed `SizedBox.shrink()`. ──────────────────────
   //

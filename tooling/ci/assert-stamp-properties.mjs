@@ -148,6 +148,17 @@ const SHARED_PREFIX = /^(packages|services|tooling)\//;
 // extraction drifted, and that is fixed BEFORE the subly number is read as
 // anything at all. Restore the exemption afterwards.
 //
+// 🔴 THE EXPECTED NUMBER IS NOW **TEN**, AND THE 2026-08-13 RECORD ABOVE IS LEFT
+// AS WRITTEN because it was true of the guard as it stood that day. MEASURED
+// 2026-08-21, both ways, on a copy of this file with the exemption dropped:
+// with the anchor read RAW (as it was until today) — **9**; with the anchor read
+// COMMENT-STRIPPED (as it is now, see the read at the top of the anchor loop) —
+// **10**. The tenth is `content-pack-consumed`, whose first anchor was matching
+// a `///` line in `apps/subly/lib/state/providers.dart:158` while that app's
+// real config reads `contentPack: null` on :172. It is CLASS D below. So a
+// maintainer reproducing this against today's guard should expect 10, and
+// getting 9 now means the comment-stripping has been undone.
+//
 // A · THREE PROPERTY GROUPS ARE ABSENT from apps/subly/test/chassis_properties_test.dart
 //     (it declares 23 `group('property: …')` markers; the brick declares 26):
 //       · password-recovery-routes
@@ -197,6 +208,25 @@ const SHARED_PREFIX = /^(packages|services|tooling)\//;
 // also anchors `notes.taps.add(` inside PROP_TEST itself, so it arrives and leaves
 // with group A-2. Port that group and this anchor closes with it — which is why
 // 13 problems are NOT 13 pieces of work.
+//
+// D · ONE ANCHOR WAS NOT MEASURING SUBLY AT ALL — it was reading a sentence.
+//     (Added 2026-08-21 with the comment-stripping fix; it is the whole reason
+//     the reproduction number moved from 9 to 10.)
+//       · content-pack-consumed / PROVIDERS  `/contentPack:\s*'https:\/\//` —
+//         the ONLY match in `apps/subly/lib/state/providers.dart` is :158, a
+//         `///` line reading "The chassis template's `features: {}` +
+//         `contentPack: 'https://packs…/latest'` would put the client and the
+//         server into disagreement". The app's real config is `contentPack:
+//         null` on :172.
+//     🔴 THIS IS NOT CLASS B. B and C are anchors pointed at the wrong SPELLING
+//     or the wrong FILE for a behaviour Subly HAS, and the repair is to widen or
+//     re-point. Here the behaviour is genuinely ABSENT — the pointer is null —
+//     so the correct outcome is the FAIL, and widening anything would be the
+//     silencing this file exists to prevent. Recorded as its own class so nobody
+//     later reads "10 anchor problems" as "10 regexes to relax".
+//     It stayed invisible because it needed BOTH holes at once: `apps/subly` is
+//     exempt, AND the anchor read was raw. Closing the read is what makes the
+//     exemption the only thing still hiding it.
 //
 // 🔴 AND THE FIXTURE IS THE OTHER HALF OF THE ACT. `tooling/ci/test/guards.test.mjs`
 // builds EVERY assert-stamp-properties case over a workspace that LISTS
@@ -1681,6 +1711,35 @@ function stripDartComments(src, { blankStrings = false } = {}) {
   return out;
 }
 
+// ── comment-strip ONE SOURCE ANCHOR FILE, by what kind of file it is ─────────
+// The anchor loop reads `.dart`, `.ts`, `.mjs`, `.arb`, `.json` and `.html`, and
+// `stripDartComments` above only knows `//` and `/* */`. That is exactly right
+// for Dart and for the TypeScript/JS anchors — same two comment forms — and it
+// is a no-op on JSON and `.arb`, which have no comment form at all (MEASURED
+// 2026-08-21: `lib/l10n/app_ta.arb` comes back byte-identical). HTML is the one
+// type with a comment form it cannot see, and that is not hypothetical here:
+//
+// 🔴 MEASURED 2026-08-21 — `apps/subly/web/index.html:11` reproduces the exact
+// `<meta name="viewport" … content="…width=device-width…"` shape INSIDE an
+// `<!-- -->` block, while explaining the tag. So `ui-invariants-inherited`'s
+// viewport anchor — the one whose own comment says "Matched on the TAG, never on
+// prose" — is satisfiable by prose in a real file in this tree. It is latent
+// rather than live twice over: `apps/subly` is in `EXEMPT_APPS`, and the real
+// tag is on :20 anyway, so deleting the tag is what this would have hidden. The
+// brick's own shell is clean — its :27 prose says "with no viewport meta", which
+// the tag-shaped anchor does not match — which is why nothing was red.
+//
+// Stripping HTML comments FIRST, then running the C-style pass, is deliberate:
+// the C-style pass still has work to do inside `<style>` and `<script>`, where a
+// `/* … */` or `//` comment is a comment. MEASURED on both shells: no anchor
+// result changes, and the only lines the pass touches are comments.
+function stripAnchorComments(path, src) {
+  const html = /\.html?$/i.test(path);
+  // Blanked, not deleted — offsets and line numbers stay usable for any future
+  // caller that wants to report WHERE a match landed.
+  return stripDartComments(html ? src.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' ')) : src);
+}
+
 // ── [pipeline 13]T-4 · THE BOOT PATH NEVER SPENDS THE OS PERMISSION ASK ──────
 //
 // THE SENTENCE: *"Notification permission is never requested on the launch
@@ -2034,7 +2093,44 @@ for (const root of roots) {
       const path = resolveSource(root, s.file);
       let src = '';
       try {
-        src = readFileSync(join(repo, path), 'utf8');
+        // 🔴 2026-08-21 · THIS WAS THE ONE RAW READ IN THIS FILE. Every other
+        // read here goes through `stripDartComments` — 7 sites — and this one
+        // did not, so a source anchor could be satisfied by a DOC COMMENT.
+        // "Assert on parsed structure, never by grepping prose" [CLAUDE.md],
+        // failing inside the guard that exists to enforce it.
+        //
+        // MEASURED by running EVERY anchor of EVERY property over both roots
+        // raw and stripped and diffing the two — 116 anchors resolve per root,
+        // 232 comparisons (re-derive it; do not trust this line): exactly ONE
+        // anchor result flips, and it is in apps/subly, not the brick (the
+        // brick flips ZERO, which is what validates the method rather than the
+        // finding). It is `content-pack-consumed` anchor 1,
+        // `/contentPack:\s*'https:\/\//`, in
+        // `apps/subly/lib/state/providers.dart`, whose only match in the whole
+        // file is :158, a `///` line reading "The chassis template's
+        // `features: {}` + `contentPack: 'https://packs…/latest'` would put the
+        // client and the server into disagreement". apps/subly's real config is
+        // `contentPack: null` (:172), so the implementation is genuinely ABSENT
+        // and the anchor was green on a sentence ABOUT the file that has it.
+        // Not re-anchored, therefore: there is nothing to re-anchor to.
+        //
+        // ⚠️ AND IT CHANGES NOTHING TODAY'S RUN LOOKS AT — say it rather than
+        // let the fix imply a save. `apps/subly` is in `EXEMPT_APPS`, so `roots`
+        // is the brick alone and the brick's match is real code at :49. This
+        // closes a LATENT hole, which is the only kind [N-4 clause 7] leaves:
+        // that clause exists so the NEXT stamped app is audited, and the first
+        // one carrying a doc comment about a feature it has not built would
+        // have inherited a green anchor for it.
+        //
+        // ⚠️ `blankStrings` STAYS OFF, and that is measured too: turning it on
+        // breaks NINETEEN of the brick's 116 anchors (and 16 of apps/subly's,
+        // counted the same way) — route paths (`path: '/check-inbox'`),
+        // analytics event names (`'app_open'`), the ARB `"@@locale": "ta"`, the
+        // viewport meta — because those anchors match STRING LITERALS. The
+        // sibling read of the property test itself (grep `test =
+        // stripDartComments`, never a line number — this file gets edited) is
+        // off for exactly the same reason: `group('property: …')` is a string.
+        src = stripAnchorComments(path, readFileSync(join(repo, path), 'utf8'));
       } catch {
         fail(`${root}: property '${p.key}': ${path} could not be read`);
         anchored = false;
@@ -2235,6 +2331,258 @@ function checkBrandSeedReachesPaint() {
 }
 
 checkBrandSeedReachesPaint();
+
+// ── `content-pack-consumed` LIMB (d) · THE PROPERTY IS NAMED "CONSUMED" AND ──
+//    NOTHING SHIPPED CONSUMES IT. ───────────────────────────────────────────
+//
+// 🔴 THE SHAPE. The three anchors above assert a pack is NAMED, a
+// `ContentPackLoader` is CONSTRUCTED, and `.load(expectPackId:)` is CALLED. All
+// three are true in the brick today. But that `.load` call site is the body of
+// `contentPackProvider`, a Riverpod `FutureProvider`, and a provider body is
+// LAZY: it runs when something watches or reads the provider, and never
+// otherwise. So the third anchor proves a call site EXISTS, not that anything
+// ever reaches it — and anchor 3's own `what` says "something must actually ASK
+// for a pack". Nothing shipped does.
+//
+// MEASURED 2026-08-21 (re-derive it, do not trust this line): `grep -rn
+// contentPackProvider --include=*.dart` returns ELEVEN hits, and the split is
+// the finding — TWO declarations (the brick's `lib/state/providers.dart:201`
+// and apps/subly's :336), THREE mentions inside comments, and SIX reads through
+// a ref, EVERY ONE of them inside a `chassis_properties_test.dart`. Zero
+// non-test readers anywhere in the tree. `assert-seams-wired.mjs`'s
+// `pack_verifier` row records the same thing from the seam side, and says in as
+// many words that its `.load(expectPackId:)` need "is satisfied by a
+// DECLARATION nothing runs".
+//
+// ⚠️ SO IS IT A DEAD RAIL OR AN OWNER-GATED ONE? IT IS BOTH, AND THE FIRST
+// ANSWER WRITTEN HERE WAS HALF-RIGHT — recorded rather than quietly replaced,
+// because the mistake is the instructive part. The brief named OWNER_QUEUE S-3
+// (generate the pack-signing keypair) as the gate to check before invoking it.
+// CHECKED, and it does NOT apply: `kContentPackPublicKeys` in packages/core
+// carries ONE pinned key today (`'k1'`), and `assert-seams-wired.mjs` prints
+// `1 production key(s) pinned` on the same tree. That was written up as "so
+// nothing here is owner-gated" — which is a claim about EVERY gate derived from
+// measuring ONE, the same over-reach this file exists to catch.
+//
+// 🔴 THE SECOND GATE IS THE SHELF, and it IS shut: `services/platform/
+// wrangler.jsonc` binds no `r2_buckets`, so the bucket, the packs.nikatru.com
+// binding and `latest.json` hosting do not exist, no pack has ever been
+// published, and a consumer built today could only ever render the fallback.
+// MEASURED 2026-08-21 by reading the file: its only occurrence of the key name
+// is the closing comment `NO "r2_buckets" YET`. So the honest verdict is: the
+// rail is DEAD (zero shipped readers, and that is ours), and building its reader
+// is currently blocked upstream on owner infrastructure. Both halves are printed
+// on every run, each from its own measurement, so neither can go stale silently.
+//
+// ⚠️ THIS OVERLAPS `assert-seams-wired.mjs`'s PACK CONSUMER LIMB (c) — say so
+// rather than let two guards print the same finding as if independently. That
+// limb asks the same question from the SEAM side, over a wider domain (all
+// shipped non-test Dart), and it GATES: it fails once a bucket is bound and the
+// rail still has no reader. This one is scoped to the trees a STAMPED app's
+// consumer could live in — the brick's `lib` plus `apps/*/lib` — because that is
+// what a chassis property can speak for, so the two denominators differ ON
+// PURPOSE and a reader comparing them is not looking at a contradiction.
+//
+// ⚠️ AND WHY THIS ONE ONLY PRINTS. `brand-seed-drives-paint` limb (c) prints
+// because the repair is a judgement only the owner can make [CLAUDE.md C-6].
+// This limb has a weaker reason and is stated as the weaker thing it is: the
+// repair lands in the brick template's WIDGETS — files this change does not own
+// — and it is blocked on the shelf besides. The moment the shelf opens, the
+// excuse expires; the seam-side limb is the one that turns that into a failure,
+// which is why this one does not duplicate the gate as well as the measurement.
+//
+// ⚠️ AND A ZERO MUST SAY WHETHER IT IS A MEASUREMENT — the same discipline limb
+// (c) argues at length. The reader pattern is also run over the property tests,
+// which DO read the provider, and that WITNESS is printed beside the count.
+// With no witness the print says the zero is unwitnessed rather than asserting
+// it, for limb (c)'s reason: a stale pattern here OVER-reports a gap, and the
+// direction that inflates apparent coverage is a pattern matching too much.
+
+/** A READ of the pack rail, never its declaration. `final FutureProvider<…>
+ *  contentPackProvider =` is the declaration and must not count — a scan that
+ *  counted it would report the rail consumed by the very line that creates it,
+ *  which is this limb's failure mode written backwards. Riverpod's three read
+ *  verbs are the whole surface: `watch`, `read`, `listen`. */
+const PACK_READ_RE = /\b(?:watch|read|listen)\(\s*contentPackProvider\b/;
+/** Where the OWNER GATE's state is readable. Parsed as a MAP below, never
+ *  grepped: the doc comment around it discusses keys at length, so a text
+ *  search would "find" keys the map does not contain — the same trap
+ *  assert-seams-wired.mjs:701 names at its own copy of this parse. */
+const PACK_KEYS_FILE = 'packages/core/lib/src/content/pack_verifier.dart';
+/** Where the OTHER gate's state is readable — the object store a published pack
+ *  would sit in. See `boundPackBuckets` for why this is parsed, not grepped. */
+const PACK_SHELF_FILE = 'services/platform/wrangler.jsonc';
+
+/** Files under `libDir` that READ the pack provider.
+ *
+ *  `blankStrings: true` for limb (c)'s reason: a mention is not a read, and this
+ *  rail's own providers file carries a doc comment naming `contentPackProvider`
+ *  three lines above the declaration. */
+function contentPackReaders(libDir) {
+  const hits = [];
+  for (const abs of dartFilesUnder(libDir)) {
+    let src;
+    try {
+      src = stripDartComments(readFileSync(abs, 'utf8'), { blankStrings: true });
+    } catch {
+      continue;
+    }
+    if (PACK_READ_RE.test(src)) hits.push(abs.slice(repo.length + 1).split('\\').join('/'));
+  }
+  return hits;
+}
+
+/** Pinned production pack-signing keys, or `null` when the count could NOT be
+ *  taken (unreadable file, or a map shape this parse does not recognise).
+ *
+ *  🔴 null IS NOT ZERO, and the distinction is the whole point: reporting an
+ *  owner gate as SHUT on the strength of a failed read would let this limb
+ *  blame the owner for a gap that is ours. assert-seams-wired.mjs:679 hoists its
+ *  own count for the same stated reason. */
+function pinnedPackKeys() {
+  try {
+    const src = stripDartComments(readFileSync(join(repo, PACK_KEYS_FILE), 'utf8'));
+    const body = src.match(/kContentPackPublicKeys\s*=\s*<String,\s*String>\{([\s\S]*?)\}/)?.[1];
+    if (body === undefined) return null;
+    return (body.match(/['"][^'"]+['"]\s*:/g) ?? []).length;
+  } catch {
+    return null;
+  }
+}
+
+/** THE SECOND GATE — the SHELF. A pinned key lets a pack be VERIFIED; it does
+ *  not make one exist. Nothing has ever been published because the Worker binds
+ *  no object storage, so a consumer built today could only render the fallback.
+ *
+ *  🔴 READ AS STRUCTURE, NOT PROSE, and this one is not theoretical: the file's
+ *  closing comment is the literal sentence `NO "r2_buckets" YET`, quotes and
+ *  all. A grep for the key name FINDS IT and concludes the shelf exists — the
+ *  exact prose-match failure the read at the top of the anchor loop was fixed
+ *  for, in a different file type. Comments are blanked first and the array BODY
+ *  is counted, so an empty `"r2_buckets": []` reads as shut too.
+ *
+ *  Same `null`-is-not-zero rule as `pinnedPackKeys`.
+ *
+ *  ⚠️ `assert-seams-wired.mjs`'s PACK CONSUMER LIMB (c) reads the same shelf and
+ *  is the limb that GATES on it — it fails once a bucket is bound and the rail
+ *  still has no reader. This one only REPORTS, because the property's own job is
+ *  to say what the stamped app can and cannot prove about itself. Cited by name
+ *  rather than by line: that file is under active edit. */
+function boundPackBuckets() {
+  try {
+    const src = stripDartComments(readFileSync(join(repo, PACK_SHELF_FILE), 'utf8'));
+    const body = src.match(/"r2_buckets"\s*:\s*\[([\s\S]*?)\]/)?.[1];
+    if (body === undefined) return 0; // the key is absent entirely — a measured shut, not an unread one
+    return (body.match(/\{/g) ?? []).length;
+  } catch {
+    return null;
+  }
+}
+
+/** The trees a pack CONSUMER could live in: the brick's `lib` — where a consumer
+ *  belongs, so every stamped app inherits it, exactly as the brick's
+ *  `home_screen.dart` is what gives every stamped app the brand-token read —
+ *  plus every `apps/*\/lib`, because an exempt app still SHIPS. `packages/` is
+ *  deliberately OUT: `contentPackProvider` is declared per app, so a package
+ *  file structurally cannot read it and including them would only inflate the
+ *  denominator. */
+function packConsumerTrees() {
+  const out = [];
+  const brickLib = join(repo, BRICK, 'lib');
+  if (existsSync(brickLib)) out.push({ rel: `${BRICK}/lib`, abs: brickLib });
+  let entries = [];
+  try {
+    entries = listDir(join(repo, 'apps'), { withFileTypes: true });
+  } catch { /* no apps tree on a clean checkout; the brick alone is legitimate */ }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const abs = join(repo, 'apps', e.name, 'lib');
+    if (existsSync(abs)) out.push({ rel: `apps/${e.name}/lib`, abs });
+  }
+  return out;
+}
+
+function checkContentPackIsConsumed() {
+  const trees = packConsumerTrees();
+  if (trees.length === 0) {
+    fail(
+      'COVERAGE LOST — no brick `lib/` and no `apps/*/lib` exists under this root, so the content-pack ' +
+        'consumer count ranges over no code at all. It would print 0 whatever the tree contained, and 0 is ' +
+        'the answer this limb exists to interpret.',
+    );
+    return;
+  }
+
+  const hits = trees.flatMap((t) => contentPackReaders(t.abs));
+  const scanned = trees.reduce((n, t) => n + dartFilesUnder(t.abs).length, 0);
+
+  // The blindness witness: the property tests, which DO read the provider.
+  // Deliberately NOT part of the count — a test is not a shipped consumer — but
+  // it is what tells a reader whether a zero above is a fact about the code or a
+  // fact about `PACK_READ_RE` having gone stale.
+  const witness = [];
+  for (const root of roots) {
+    try {
+      const src = stripDartComments(readFileSync(join(repo, root, PROP_TEST), 'utf8'), { blankStrings: true });
+      if (PACK_READ_RE.test(src)) witness.push(`${root}/${PROP_TEST}`);
+    } catch { /* a missing property test has already failed hard above */ }
+  }
+
+  if (hits.length > 0) {
+    ok(
+      `content-pack limb (d) — ${hits.length} of ${scanned} app lib file(s) across ${trees.length} tree(s) ` +
+        `READ \`contentPackProvider\` (${hits.join(', ')}); the rail has a shipped consumer, so the ` +
+        '`.load(expectPackId:)` anchor is a call something reaches rather than a lazy body nothing runs',
+    );
+    return;
+  }
+
+  const keys = pinnedPackKeys();
+  const keyGate =
+    keys === null
+      ? `The KEY gate could NOT be read (${PACK_KEYS_FILE} is missing, or its \`kContentPackPublicKeys\` ` +
+        'map has a shape this parse does not recognise), so this limb says NOTHING about whether ' +
+        'OWNER_QUEUE S-3 is open — an unread gate is not a shut one.'
+      : keys === 0
+        ? "OWNER_QUEUE S-3's KEY half IS STILL SHUT: 0 production pack-signing key(s) are pinned in " +
+          `${PACK_KEYS_FILE}, so every remote pack fails closed and a consumer today would be handed ` +
+          'nothing it could verify. That half is owner work [CLAUDE.md C-6].'
+        : `OWNER_QUEUE S-3's KEY half IS OPEN — ${keys} production pack-signing key(s) pinned in ` +
+          `${PACK_KEYS_FILE} — so the keypair is NOT what is holding this rail shut.`;
+  const shelf = boundPackBuckets();
+  const shelfGate =
+    shelf === null
+      ? `The SHELF gate could NOT be read (${PACK_SHELF_FILE} is missing or unparseable), so this limb ` +
+        'claims nothing about it either.'
+      : shelf === 0
+        ? `But the SHELF IS SHUT: ${PACK_SHELF_FILE} binds 0 R2 bucket(s), so no pack has ever been ` +
+          'published and a consumer built today could only ever render the fallback. THAT is the gate ' +
+          "this gap is really behind, and it is the owner's infrastructure, not the keypair."
+        : `And the SHELF IS OPEN: ${shelf} R2 bucket(s) bound in ${PACK_SHELF_FILE}. With both gates ` +
+          'open, NOTHING about this gap is owner work any more — it is a missing consumer, which is ' +
+          'agent work, and it should stop being printed and start being built.';
+  const gate = `${keyGate} ${shelfGate}`;
+
+  console.log('   ── printed, not failed (the repair is a brick-template widget edit, not this branch\'s) ──');
+  console.log(
+    `   ⬜ content-pack-consumed limb (d): ZERO of ${scanned} Dart file(s) under ${trees.length} app lib ` +
+      `tree(s) (${trees.map((t) => t.rel).join(', ')}) READ \`contentPackProvider\`. The three anchors above ` +
+      'are TRUE — a pack is named, the loader is constructed, `.load(expectPackId:)` is called — but that ' +
+      'call is the body of a LAZY Riverpod FutureProvider, so a property named "consumed" is green on a ' +
+      'rail nothing consumes. ' +
+      (witness.length
+        ? `${witness.length} file(s) OUTSIDE those trees DO read it (${witness.join(', ')}), which is how ` +
+          'this pattern is proven live and why the zero is a measurement rather than a blind one — and it ' +
+          'is also the finding: every reader the rail has is a test. '
+        : 'CAVEAT — nothing in this tree reads it at all, not even the property tests that are supposed to, ' +
+          'so the pattern has no live witness here and this zero is UNWITNESSED. Not failed on that ' +
+          'account: a stale pattern over-reports a gap rather than hiding one, and `contentPackProvider` ' +
+          'is hard-anchored as a construct by anchors 2 and 3 above. ') +
+      gate,
+  );
+}
+
+checkContentPackIsConsumed();
 
 // ── "EVERY" — the domain check. ─────────────────────────────────────────────
 // Deliberately BRICK-ONLY, and that is not an oversight: COVERED_BY/UNASSERTED
