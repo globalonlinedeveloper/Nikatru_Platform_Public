@@ -837,7 +837,7 @@
     },
     "deletionRequestSupported": {
       "answer": true,
-      "webDeletionUrl": "https://nikatru.com/delete-account.html",
+      "webDeletionUrl": "https://nikatru.com/delete-account",
       "sitePage": "sites/nikatru/delete-account.html",
       "inAppControl": "apps/subly/lib/features/settings/settings_screen.dart",
       "guards": ["tooling/ci/assert-deletion-control.mjs", "tooling/ci/assert-erasure-reach.mjs"],

@@ -17,10 +17,11 @@
 ## Key pages
 - Home: https://nikatru.com/
 - Apps: https://nikatru.com/apps/ — the catalogue hub, one page per app
-- Privacy Policy: https://nikatru.com/privacy.html
-- Terms of Service: https://nikatru.com/terms.html
-- Refund & Cancellation Policy: https://nikatru.com/refund.html
-- Contact: https://nikatru.com/contact.html
+- Privacy Policy: https://nikatru.com/privacy
+- Terms of Service: https://nikatru.com/terms
+- Refund & Cancellation Policy: https://nikatru.com/refund
+- Contact: https://nikatru.com/contact
+- FullShot Privacy Policy: https://nikatru.com/fullshot/privacy — the browser extension; all capture is processed locally and nothing is transmitted
 - Developer site: https://rajasekarselvam.com/
 
 ## Contact

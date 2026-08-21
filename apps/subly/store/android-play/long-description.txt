@@ -27,6 +27,6 @@ just do not get reminders.
 PRIVACY
 Subly does not sell your data and does not show ads. Analytics are off until
 you turn them on, and you can delete your account and its data from inside
-the app. Full policy: https://nikatru.com/privacy.html
+the app. Full policy: https://nikatru.com/privacy
 
-Subly is made by Nikatru. Questions: https://nikatru.com/contact.html
+Subly is made by Nikatru. Questions: https://nikatru.com/contact

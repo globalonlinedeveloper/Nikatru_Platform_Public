@@ -13,6 +13,6 @@ WHAT YOU GET
 
 PRIVACY
 {{{short_name}}} does not sell your data and does not show advertising. The
-full policy is at https://nikatru.com/privacy.html.
+full policy is at https://nikatru.com/privacy.
 
-Made by Nikatru. Questions: https://nikatru.com/contact.html
+Made by Nikatru. Questions: https://nikatru.com/contact

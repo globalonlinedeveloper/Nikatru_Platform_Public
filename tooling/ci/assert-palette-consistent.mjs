@@ -153,17 +153,23 @@ const MUST_COMPARE = [
  *  legitimately deleted these must be lowered deliberately, in a diff a reviewer
  *  sees — which is the whole trade: the alternative is a count nothing states,
  *  and a subject that can halve in silence. */
-/** Tracked `.html`/`.css` under `sites/`, dated snapshots removed. Today 17 —
- *  15 pages, plus `assets/base.css` (which declares no `:root` and is in the set
+/** Tracked `.html`/`.css` under `sites/`, dated snapshots removed. Today 18 —
+ *  16 pages, plus `assets/base.css` (which declares no `:root` and is in the set
  *  because "a stylesheet under sites/" is the honest subject, not "the ones that
  *  happen to declare something today") and `assets/tokens.css`. EXACT, because
- *  the page set is what this guard is a comparison ACROSS. */
-const MIN_PAGES = 17;
+ *  the page set is what this guard is a comparison ACROSS.
+ *  17 -> 18 on 2026-08-21: `sites/nikatru/fullshot/privacy.html`, the hosted
+ *  FullShot policy. It arrived carrying its own greys and was the only dissenting
+ *  declaration of --ink, --muted and --line on either root, which is precisely
+ *  what this guard is for — it caught the page on the run that added it. */
+const MIN_PAGES = 18;
 /** What the exclusion must still match. */
 const MIN_SNAPSHOTS = 3;
-/** `:root` blocks across every source. Today 31. EXACT: a block is a page's
- *  whole light or dark palette, so losing one is never incidental. */
-const MIN_ROOT_BLOCKS = 31;
+/** `:root` blocks across every source. Today 32. EXACT: a block is a page's
+ *  whole light or dark palette, so losing one is never incidental.
+ *  31 -> 32 with MIN_PAGES above; the new page declares a light palette and no
+ *  dark override, so it contributes exactly one block. */
+const MIN_ROOT_BLOCKS = 32;
 /** Declarations inside those blocks. Today 265, floored SLACK on purpose. The
  *  three exact floors already fence the subject; this one exists for the single
  *  failure they cannot see — a reducer that blanks one character too many and

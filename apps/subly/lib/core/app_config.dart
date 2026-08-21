@@ -255,9 +255,9 @@ class AppConfig {
   // brick declared TWO while the site publishes FOUR, so every stamped app
   // shipped a legal surface silently omitting the refund policy — the one page a
   // store reviewer opens when a purchase is disputed.
-  static const String privacyUrl = 'https://nikatru.com/privacy.html';
-  static const String termsUrl = 'https://nikatru.com/terms.html';
-  static const String refundUrl = 'https://nikatru.com/refund.html';
+  static const String privacyUrl = 'https://nikatru.com/privacy';
+  static const String termsUrl = 'https://nikatru.com/terms';
+  static const String refundUrl = 'https://nikatru.com/refund';
 
   /// The SUPPORT page — deliberately NOT one of the three above.
   ///
@@ -270,7 +270,7 @@ class AppConfig {
   /// `storeMetadataContract.portfolioUrls._why`). That guard reads the brick
   /// only, so declaring it HERE is safe; the store listings get the same URL
   /// from the register's `portfolioUrls.supportUrl`.
-  static const String contactUrl = 'https://nikatru.com/contact.html';
+  static const String contactUrl = 'https://nikatru.com/contact';
 
   static const String _phSupabaseUrl = 'https://YOUR_PROJECT.supabase.co';
 

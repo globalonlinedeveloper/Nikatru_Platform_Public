@@ -416,3 +416,75 @@ describe('assert-web-cache-policy', () => {
     assert.equal(code, 0, out);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The Pages-Function limb. `_headers` structurally cannot reach a Function, so
+// nothing above this line has ever had an opinion about the one route on the
+// origin that accepts a POST body.
+describe('assert-web-cache-policy · Pages Function security headers', () => {
+  const FN_HEADERS =
+    '      "x-content-type-options": "nosniff",\n' +
+    '      "x-frame-options": "DENY",\n' +
+    '      "referrer-policy": "strict-origin-when-cross-origin",\n' +
+    '      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",\n' +
+    '      "content-security-policy": "default-src \'none\'; frame-ancestors \'none\'",\n';
+
+  const fn = (headers) =>
+    'export async function onRequestPost() {\n' +
+    '  return new Response(JSON.stringify({ ok: true }), {\n' +
+    '    headers: {\n' +
+    '      "content-type": "application/json; charset=utf-8",\n' +
+    `${headers}` +
+    '    },\n' +
+    '  });\n' +
+    '}\n';
+
+  const withFn = (body) =>
+    fixture({ sites: { nikatru: GOOD_SITE }, siteFiles: { 'functions/api/subscribe.js': body } });
+
+  test('passes when the one Response carries the whole security set', () => {
+    const { code, out } = run(withFn(fn(FN_HEADERS)));
+    assert.equal(code, 0, out);
+    assert.match(out, /Pages Functions — 1 file\(s\) building a Response/);
+  });
+
+  test('FAILS when a header is missing, and NAMES the missing one', () => {
+    const { code, out } = run(withFn(fn(FN_HEADERS.replace(/ *"x-content-type-options".*\n/, ''))));
+    assert.equal(code, 1);
+    assert.match(out, /builds a Response without x-content-type-options/);
+  });
+
+  test('FAILS on a SECOND construction site — the way this regresses', () => {
+    // A bare early-return added next to a correct helper. The helper still reads
+    // right; the new Response ships with nothing.
+    const { code, out } = run(withFn(`${fn(FN_HEADERS)}\nexport const oops = () => new Response("bare");\n`));
+    assert.equal(code, 1);
+    assert.match(out, /constructs a Response 2 times/);
+  });
+
+  test('🔴 a COMMENT naming `new Response(...)` is not a construction site', () => {
+    // The first version of this limb counted the warning comment inside
+    // subscribe.js — the one telling the next reader not to add a second
+    // Response — and failed the build on its own prose.
+    const commented = `// a second new Response(...) added later is the way this regresses\n${fn(FN_HEADERS)}` +
+      '/* block comment mentioning new Response( too */\n';
+    const { code, out } = run(withFn(commented));
+    assert.equal(code, 0, out);
+  });
+
+  test('a site with NO functions/ directory is not asked to invent one', () => {
+    const { code, out } = run(fixture({ sites: { nikatru: GOOD_SITE } }));
+    assert.equal(code, 0, out);
+    assert.match(out, /Pages Functions — 0 file\(s\)/);
+  });
+
+  test('🔴 COVERAGE LOST when a functions/ directory exists and the limb reads nothing', () => {
+    // The floor. A functions/ directory the walk enters and returns from empty
+    // is the shape that reports "clean" about the endpoint _headers cannot cover.
+    const { code, out } = run(
+      fixture({ sites: { nikatru: GOOD_SITE }, siteFiles: { 'functions/api/notes.md': 'not code\n' } }),
+    );
+    assert.equal(code, 1);
+    assert.match(out, /director\(ies\) exist and the Pages-Function limb evaluated ZERO files/);
+  });
+});

@@ -304,10 +304,20 @@ function checkLegalLinkSet() {
   let declared;
   try {
     const src = readFileSync(brickConfig, 'utf8');
-    // Only `nikatru.com/<page>.html` constants count. `companyUrl` is the site
-    // root and is not a legal document; `apiBaseUrl` is not a page at all.
-    declared = [...src.matchAll(/static\s+const\s+String\s+(\w+)\s*=\s*'https:\/\/nikatru\.com\/([\w-]+\.html)'/g)].map(
-      (m) => ({ name: m[1], page: m[2] }),
+    // Only `nikatru.com/<page>` constants count. `companyUrl` is the site root
+    // and is not a legal document; `apiBaseUrl` is not a page at all.
+    //
+    // 🔴 THE URL FORM WENT EXTENSIONLESS ON 2026-08-21 AND THIS PATTERN MOVED
+    // WITH IT. It matched `([\w-]+\.html)` — the form the site no longer
+    // publishes — so left alone it would have matched ZERO constants and this
+    // guard would have gone on printing a count while grading nothing.
+    //
+    // `LEGAL_PAGES` in check-site-integrity.mjs stays `.html`: those are the
+    // FILENAMES on disk, not the URLs. This is the one seam where the two
+    // spellings legitimately differ, so the page token is normalised to the
+    // filename here and nowhere else.
+    declared = [...src.matchAll(/static\s+const\s+String\s+(\w+)\s*=\s*'https:\/\/nikatru\.com\/([\w-]+)'/g)].map(
+      (m) => ({ name: m[1], page: `${m[2]}.html` }),
     );
   } catch (e) {
     fail(`COVERAGE LOST — ${BRICK}/${APP_CONFIG} unreadable: ${e.message}`);
@@ -320,6 +330,24 @@ function checkLegalLinkSet() {
       `COVERAGE LOST — every published legal page is on the link-exemption list, so the ` +
         `set equality below ranges over nothing. An exemption list that has eaten its own domain ` +
         `is the self-disabling shape this guard exists to catch.`,
+    );
+    return;
+  }
+
+  // The published half has its floor immediately above; this is the in-app half's.
+  // ORDER MATTERS AND IS DELIBERATE: it sits AFTER `mustLink`, because the
+  // `legal-all-exempt` case deliberately empties the chassis in order to reach
+  // that floor, and a check for an empty `declared` placed first would intercept
+  // it and the older floor would stop being exercised.
+  //
+  // An empty `declared` does not fail vacuously today — the loop below reports
+  // every published page as missing its constant — but that is a property of code
+  // further down, and this pattern has already had to move once, when the site's
+  // URL form went extension-less on 2026-08-21.
+  if (declared.length === 0) {
+    fail(
+      `COVERAGE LOST — no \`https://nikatru.com/<page>\` constant parsed out of ${BRICK}/${APP_CONFIG}, ` +
+        `so the in-app half of the set equality below is EMPTY.`,
     );
     return;
   }

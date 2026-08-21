@@ -168,7 +168,7 @@ column to type into the console.
   (research/44 §3 V3). Today it answers **no**, and
   `assert-ads-declarations.mjs` prints `DOMAIN EMPTY` with the counts that make
   that a measurement rather than a silence.
-- ✅ **Account deletion URL** — `https://nikatru.com/delete-account.html`, carried
+- ✅ **Account deletion URL** — `https://nikatru.com/delete-account`, carried
   in `data-safety.json` → `dataSecurity.deletionRequestSupported` and checked to
   resolve to a page this repo actually serves. Play requires **both** halves and
   Subly has both: the in-app control (`assert-deletion-control.mjs`) and the web

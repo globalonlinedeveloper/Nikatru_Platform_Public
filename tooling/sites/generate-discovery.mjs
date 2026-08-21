@@ -115,7 +115,7 @@ export const RAIL_CONFIG = 'services/platform/src/app-config-data.json';
  *  actually on this deploy root, because check-site-integrity.mjs fails a link
  *  to a page the root does not ship, and rightly. */
 export const PRICING_PAGE = `${DEPLOY_ROOT}/pricing.html`;
-export const PRICING_HREF = '/pricing.html';
+export const PRICING_HREF = '/pricing';
 
 /** 🔴 THE CANONICAL HUB URL, DECLARED EXACTLY ONCE IN THIS REPOSITORY.
  *
@@ -295,7 +295,7 @@ const NAV = (backHref, backLabel) => `<nav>
 </nav>`;
 
 const FOOTER = `<footer>
-  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/refund.html">Refunds</a> &middot; <a href="/delete-account.html">Delete account</a> &middot; <a href="/contact.html">Contact</a><br><br>
+  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/contact">Contact</a><br><br>
   &copy; 2026 Nikatru&trade; &middot; Chennai, Tamil Nadu, India
 </footer>`;
 
@@ -480,7 +480,7 @@ export function storeLede(repoRoot, slug) {
 
 function landingHtml(app, ctx, problems) {
   const live = app.status === 'live';
-  const url = `${ORIGIN}apps/${app.slug}.html`;
+  const url = urlForPage(`apps/${app.slug}.html`);
   const names = platformNames(app, problems);
   const platformSentence = names.length
     ? `Available on ${names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`}.`
@@ -657,10 +657,10 @@ ${featureSection}${pricingSection}
         <b>The four pages that govern using and buying ${esc(app.name)}</b>
         <p>These apply to every purchase, and they are the same documents a store reviewer opens.</p>
         <ul>
-          <li><a href="/privacy.html">Privacy Policy</a> &mdash; what ${esc(app.name)} collects and why.</li>
-          <li><a href="/terms.html">Terms of Service</a> &mdash; who you are contracting with.</li>
-          <li><a href="/refund.html">Refund &amp; Cancellation Policy</a> &mdash; cancelling, and what is refundable.</li>
-          <li><a href="/delete-account.html">Delete your account</a> &mdash; how to have your data removed.</li>
+          <li><a href="/privacy">Privacy Policy</a> &mdash; what ${esc(app.name)} collects and why.</li>
+          <li><a href="/terms">Terms of Service</a> &mdash; who you are contracting with.</li>
+          <li><a href="/refund">Refund &amp; Cancellation Policy</a> &mdash; cancelling, and what is refundable.</li>
+          <li><a href="/delete-account">Delete your account</a> &mdash; how to have your data removed.</li>
         </ul>
       </div>
     </div>
@@ -680,7 +680,7 @@ function hubHtml(liveApps) {
 ${liveApps
   .map(
     (a) => `        <div class="card">
-          <h3><a href="/apps/${a.slug}.html">${esc(a.name)}</a></h3>
+          <h3><a href="/apps/${a.slug}">${esc(a.name)}</a></h3>
           <p>${esc(a.tagline)}</p>
         </div>`,
   )
@@ -786,7 +786,7 @@ const isNoindex = (html) => /<meta[^>]+name\s*=\s*["']robots["'][^>]*>/i.test(ht
 export function urlForPage(page) {
   if (page === 'index.html') return ORIGIN;
   if (page.endsWith('/index.html')) return ORIGIN + page.slice(0, -'index.html'.length);
-  return ORIGIN + page;
+  return ORIGIN + page.replace(/\.html$/i, '');
 }
 
 /** Every `.html` under the deploy root, repo-relative and POSIX-separated. */

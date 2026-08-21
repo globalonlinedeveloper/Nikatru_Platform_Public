@@ -231,9 +231,9 @@ describe('the generator', () => {
     generate(root);
     const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
     assert.doesNotMatch(html, /noindex/);
-    assert.match(html, /<link rel="canonical" href="https:\/\/nikatru\.com\/apps\/subly\.html">/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/nikatru\.com\/apps\/subly">/);
     const sitemap = readFileSync(p(root, 'sitemap.xml'), 'utf8');
-    assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/apps\/subly\.html<\/loc>/);
+    assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/apps\/subly<\/loc>/);
     assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/apps\/<\/loc>/);
     // The homepage <loc> that was already there survives untouched.
     assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/<\/loc>/);
@@ -310,7 +310,7 @@ describe('the generator', () => {
   test('urlForPage is the one canonical form — index.html is the bare directory', () => {
     assert.equal(urlForPage('index.html'), 'https://nikatru.com/');
     assert.equal(urlForPage('apps/index.html'), 'https://nikatru.com/apps/');
-    assert.equal(urlForPage('privacy.html'), 'https://nikatru.com/privacy.html');
+    assert.equal(urlForPage('privacy.html'), 'https://nikatru.com/privacy');
   });
 
   test('🔴 the sitemap is the WHOLE page set now, not just the /apps/ blocks', () => {
@@ -322,7 +322,7 @@ describe('the generator', () => {
     writeFileSync(p(root, 'privacy.html'), '<html><head><link rel="canonical" href="x"></head><body>p</body></html>\n');
     generate(root);
     const sitemap = readFileSync(p(root, 'sitemap.xml'), 'utf8');
-    assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/privacy\.html<\/loc>/);
+    assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/privacy<\/loc>/);
     // …and a noindex page is excluded BY ITS OWN DECLARATION, never by name.
     // `_template.html` is the live proof: it is served and must stay unlisted.
     assert.doesNotMatch(sitemap, /_template/);
@@ -540,12 +540,12 @@ describe('the generator', () => {
       pricingPage: true,
     });
     generate(withPage);
-    assert.match(readFileSync(p(withPage, 'apps', 'subly.html'), 'utf8'), /href="\/pricing\.html\?app=subly"/);
+    assert.match(readFileSync(p(withPage, 'apps', 'subly.html'), 'utf8'), /href="\/pricing\?app=subly"/);
 
     const without = tree([SUBLY], { rail: rail({ subly: { paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }) });
     generate(without);
     const html = readFileSync(p(without, 'apps', 'subly.html'), 'utf8');
-    assert.doesNotMatch(html, /pricing\.html/);
+    assert.doesNotMatch(html, /href="\/pricing/);
     assert.match(html, /\$4\.99/); // the summary still renders; only the link is withheld
   });
 
@@ -560,7 +560,7 @@ describe('the generator', () => {
     const root = tree([SUBLY]);
     generate(root);
     const html = readFileSync(p(root, 'apps', 'subly.html'), 'utf8');
-    for (const page of ['/privacy.html', '/terms.html', '/refund.html', '/delete-account.html']) {
+    for (const page of ['/privacy', '/terms', '/refund', '/delete-account']) {
       assert.ok(html.includes(`href="${page}"`), `the landing must link ${page}`);
     }
   });
@@ -681,7 +681,7 @@ describe('the drift limb (W-9)', () => {
     // no longer feeding bad input to. Exactly the shape F-10 exists to catch,
     // caught here only because the guard then returned 0 where 1 was asserted.
     const before = readFileSync(f, 'utf8');
-    const after = before.replace(/[ \t]*<url>\s*<loc>https:\/\/nikatru\.com\/apps\/subly\.html<\/loc>[\s\S]*?<\/url>\n/, '');
+    const after = before.replace(/[ \t]*<url>\s*<loc>https:\/\/nikatru\.com\/apps\/subly<\/loc>[\s\S]*?<\/url>\n/, '');
     assert.notEqual(after, before, 'the mutation must actually remove the block, or this test asserts nothing');
     writeFileSync(f, after);
     const r = guard(root);
@@ -815,7 +815,7 @@ describe('the structured-data limb', () => {
     const f = p(root, 'apps', 'subly.html');
     writeFileSync(
       f,
-      readFileSync(f, 'utf8').replace('"url": "https://nikatru.com/apps/subly.html"', '"url": "https://nikatru.com/apps/subly"'),
+      readFileSync(f, 'utf8').replace('"url": "https://nikatru.com/apps/subly"', '"url": "https://nikatru.com/apps/subly.html"'),
     );
     const r = guard(root);
     assert.equal(r.code, 1);
