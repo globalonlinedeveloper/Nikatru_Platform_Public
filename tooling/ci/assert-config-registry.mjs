@@ -59,9 +59,14 @@
 // Usage:  node tooling/ci/assert-config-registry.mjs [repoRoot]
 // Exit:   0 = the served set is data and complete · 1 = one of the eight above.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { stripSourceComments } from './text-reductions.mjs';
+// 🔴 EVERY directory listing in tooling/ci goes through `listDir`, and
+// assert-walks-bounded.mjs enforces that on every run — it is the one place
+// that knows which trees a guard may not leave. The reader-scan below was
+// written with a bare `readdirSync` and CI caught it immediately.
+import { listDir } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 
@@ -385,7 +390,7 @@ const slugSet = new Set(slugs.filter(Boolean));
   const dartUnder = (dir, out) => {
     let entries;
     try {
-      entries = readdirSync(join(ROOT, dir), { withFileTypes: true });
+      entries = listDir(join(ROOT, dir), { withFileTypes: true });
     } catch {
       return out;
     }
