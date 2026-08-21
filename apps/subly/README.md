@@ -58,7 +58,7 @@ lib/
 ├── core/
 │   ├── app_config.dart               per-app identity + --dart-define config (moved P2.5, [ADR 037])
 │   ├── theme/                        colors + text styles from the design
-│   ├── format/                       Currency (with demo FX) + SubMath derivations
+│   ├── format/                       Currency (re-symbols only, NO FX) + SubMath derivations
 │   └── router.dart                   go_router: onboarding→login→scan→shell + overlays (moved P2.5, [ADR 037])
 ├── data/
 │   ├── auth/                         AuthRepository (abstract) · Supabase · Mock

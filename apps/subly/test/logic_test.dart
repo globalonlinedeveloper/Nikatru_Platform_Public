@@ -11,9 +11,25 @@ void main() {
       expect(const Currency(r'$').fmt(10), r'$10.00');
       expect(const Currency(r'$').fmt0(1234), r'$1,234');
     });
-    test('other symbols apply the demo FX conversion', () {
-      expect(const Currency('€').fmt(10), '€9.20'); // 10 * 0.92
-      expect(const Currency('₹').fmt(1), '₹83.00'); // 1 * 83
+    test('other symbols RE-SYMBOL the stored number, never convert it', () {
+      expect(const Currency('€').fmt(10), '€10.00');
+      expect(const Currency('₹').fmt(1), '₹1.00');
+      // The measured bug this replaces: a ₹499 plan entered as 499 rendered
+      // as ₹41,417, because a hardcoded FX table multiplied by 83.
+      expect(const Currency('₹').fmt0(499), '₹499');
+    });
+    test('the same number under two symbols differs ONLY by the glyph', () {
+      // The per-symbol expectations above are not what catches a rate table:
+      // whoever adds one just updates them to match. The relationship BETWEEN
+      // symbols is the assertion that cannot be satisfied by any conversion,
+      // so it is the one that would have caught the original bug.
+      const Currency usd = Currency(r'$');
+      final String tail2 = usd.fmt(499).substring(1);
+      final String tail0 = usd.fmt0(1234).substring(1);
+      for (final String s in const <String>['€', '£', '₹']) {
+        expect(Currency(s).fmt(499), '$s$tail2');
+        expect(Currency(s).fmt0(1234), '$s$tail0');
+      }
     });
   });
 

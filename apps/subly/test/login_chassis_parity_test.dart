@@ -1,11 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// THE TWO BEHAVIOURS SUBLY'S LOGIN SCREEN LOST BY BEING A FORK.
+// THE THREE BEHAVIOURS SUBLY'S LOGIN SCREEN LOST BY BEING A FORK.
+//
+// *(Said TWO until 2026-08-21, when the third — §3, the keyboard and the
+// browser — was found and fixed. The count is corrected rather than left
+// standing: a header that undercounts its own file reads as "everything below
+// is the whole story", which is the sentence that stops the next reader
+// looking.)*
 //
 // `apps/subly/lib/features/auth/login_screen.dart` (617 lines) and the chassis
 // `tooling/bricks/app/__brick__/…/features/auth/sign_in_screen.dart` (154) are
 // the same screen written twice. Every stamped app inherits the brick's
-// version; Subly predates it and carries its own. Two of the differences were
-// defects, and NEITHER of them throws, clips, or changes a rendered string on
+// version; Subly predates it and carries its own. Three of the differences were
+// defects, and NONE of them throws, clips, or changes a rendered string on
 // the path any existing test walks — which is why 492 green tests said nothing.
 //
 // 1 · THE FORGOT-PASSWORD BUTTON. It read the email field, sent whatever was
@@ -46,6 +52,36 @@
 //     two groups below now pin the two conditions SEPARATELY — a platform that
 //     cannot redirect, and a server that will not honour the provider — so
 //     neither can silently stand in for the other again.
+//
+// 3 · THE KEYBOARD AND THE BROWSER. The brick's two `TextField`s carry
+//     `autofillHints` and an `onSubmitted` that signs in; this fork's carried
+//     neither. Consequences, both on the web build, which is the one every
+//     signed-out visitor lands on: the engine emitted `<input>` elements with
+//     no `autocomplete` attribute, so no saved credential was ever offered by
+//     the browser or by a password manager; and Enter in the password box did
+//     nothing whatsoever, so the only way to submit was to leave the keyboard
+//     and find the button.
+//
+//     ⚠️ NOTHING RENDERS DIFFERENTLY EITHER WAY, which is the whole reason this
+//     survived a 628-test suite: `autofillHints` is a property handed to the
+//     platform text-input plugin, and a missing `onSubmitted` is an action that
+//     does not happen. The group below therefore reads the properties OFF the
+//     `TextField`s AND drives the real Enter through
+//     `tester.testTextInput.receiveAction` — the property check alone would
+//     pass against a screen that declares `done` and wires it to nothing.
+//
+//     ⚠️ AND THE HINT IS PINNED AS `password`, NOT `newPassword`. This widget is
+//     the sign-IN box that `_signUp` re-labels in place, so `newPassword` —
+//     which asks the browser to offer a generated secret and to suppress the
+//     stored one — would sabotage the dominant path on this screen. The
+//     assertion names the wrong value explicitly, so a "but it is also a
+//     sign-up form" edit goes red instead of quietly landing.
+//
+//     ⚠️ THE EMAIL BOX GOES BEYOND THE BRICK, deliberately: the brick sets no
+//     `textInputAction` at all, so Enter there submits a form whose password
+//     field is by definition still empty — an "enter both" snack every time.
+//     `.next` + a focus hop is the behaviour the brick should grow; it is not
+//     a fork divergence to be reconciled back.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,6 +121,39 @@ class _ResetAuth extends core.AuthRepository {
   Future<void> sendPasswordReset(String email) async {
     sentTo.add(email);
     if (refusal != null) throw refusal!;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A repository that RECORDS the sign-in attempt and then REFUSES it.
+///
+/// 🔴 THE REFUSAL IS NOT INCIDENTAL. `_submit` ends a SUCCESSFUL sign-in with
+/// `context.go('/scan')`, and `pumpAt` hosts the screen on a bare `MaterialApp`
+/// with no router on purpose (see `support/width_harness.dart`), so a double
+/// that succeeded would end the Enter case in a GoRouter lookup failure instead
+/// of in its assertion. Refusing keeps the whole flow on the screen's own error
+/// path — and the proof is unaffected either way, because it is [attempts]:
+/// the seam was handed these credentials, so Enter really did reach it.
+class _SignInAuth extends core.AuthRepository {
+  /// `email/password` per attempt, in order.
+  final List<String> attempts = <String>[];
+
+  @override
+  core.AuthUser? get currentUser => null;
+
+  @override
+  Stream<core.AuthUser?> authStateChanges() =>
+      const Stream<core.AuthUser?>.empty();
+
+  @override
+  Future<core.AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    attempts.add('$email/$password');
+    throw core.AuthFailure('invalid_credentials');
   }
 
   @override
@@ -344,6 +413,131 @@ void main() {
         isFalse,
         reason: 'no federated provider is enabled, so the whole limb is hidden',
       );
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // §3 — see the header. Properties AND behaviour, because either alone passes
+  // against a screen that is still broken in the other half.
+  group('the sign-in form answers the keyboard and the browser', () {
+    TextField fieldOf(WidgetTester tester, Key key) =>
+        tester.widget<TextField>(find.byKey(key));
+
+    testWidgets('the email box is autofillable, and Enter ADVANCES', (
+      WidgetTester tester,
+    ) async {
+      final _SignInAuth auth = _SignInAuth();
+      await pumpLogin(tester, auth: auth);
+
+      final TextField email = fieldOf(tester, E2EKeys.loginEmail);
+      expect(
+        email.autofillHints,
+        <String>[AutofillHints.email],
+        reason:
+            'THE DEFECT: with no hints the web engine emits an <input> with no '
+            'autocomplete attribute, so the saved credential for this site is '
+            'never offered — on the screen every signed-out visitor lands on',
+      );
+      expect(email.textInputAction, TextInputAction.next);
+
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), 'a@b.test');
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pump();
+
+      expect(
+        auth.attempts,
+        isEmpty,
+        reason:
+            'submitting from the email box can only ever be the "enter both" '
+            'snack — the password box is by definition still empty',
+      );
+      expect(find.text(en.authEnterBoth), findsNothing);
+      expect(
+        fieldOf(tester, E2EKeys.loginPassword).focusNode?.hasFocus,
+        isTrue,
+        reason:
+            'Enter moved the caret to the password box, which is the only '
+            'thing that makes .next worth declaring',
+      );
+    });
+
+    testWidgets('the password box declares `password`, NOT `newPassword`', (
+      WidgetTester tester,
+    ) async {
+      await pumpLogin(tester, auth: _SignInAuth());
+
+      final TextField password = fieldOf(tester, E2EKeys.loginPassword);
+      expect(password.autofillHints, <String>[AutofillHints.password]);
+      expect(
+        password.autofillHints,
+        isNot(contains(AutofillHints.newPassword)),
+        reason:
+            'newPassword asks the browser to offer a GENERATED secret and to '
+            'suppress the stored one. This widget is the sign-IN box that '
+            '_signUp re-labels in place, so that setting would break the '
+            'dominant path on the screen; sign_up_screen.dart is where the '
+            'newPassword hint belongs',
+      );
+      expect(password.textInputAction, TextInputAction.done);
+    });
+
+    testWidgets('the sign-UP arm keeps the same hint', (
+      WidgetTester tester,
+    ) async {
+      await pumpLogin(tester, auth: _SignInAuth());
+      await tester.tap(find.text(en.newHerePrompt));
+      await tester.pump();
+
+      // The SUBTITLE, not the title: `signUpTitle` and `signUp` are the same
+      // string ("Create account"), so the heading and the submit button both
+      // match it on this arm and `findsOneWidget` fails for a reason that has
+      // nothing to do with the toggle.
+      expect(
+        find.text(en.signUpSubtitle),
+        findsOneWidget,
+        reason:
+            'the toggle really did flip — otherwise this case tests the '
+            'sign-in arm twice and cannot fail',
+      );
+      expect(
+        fieldOf(tester, E2EKeys.loginPassword).autofillHints,
+        <String>[AutofillHints.password],
+        reason:
+            'the hint is read when the input connection opens, so a value '
+            'chosen for the arm the user MIGHT toggle to is the value the '
+            'returning user\'s password manager sees first',
+      );
+    });
+
+    testWidgets('Enter in the password box actually submits', (
+      WidgetTester tester,
+    ) async {
+      final _SignInAuth auth = _SignInAuth();
+      await pumpLogin(tester, auth: auth);
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), 'a@b.test');
+      await tester.enterText(find.byKey(E2EKeys.loginPassword), 'hunter2!!');
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        auth.attempts,
+        <String>['a@b.test/hunter2!!'],
+        reason:
+            'THE DEFECT: with no onSubmitted, Enter did nothing at all and the '
+            'button was the only way in. The assertion is on the SEAM because '
+            'a declared textInputAction wired to nothing looks identical from '
+            'the widget tree',
+      );
+      expect(
+        find.text(en.authIncorrect),
+        findsOneWidget,
+        reason:
+            'Enter went through _submit, which owns the guards and the error '
+            'mapping — it is the same door as the button, not a second one',
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 }

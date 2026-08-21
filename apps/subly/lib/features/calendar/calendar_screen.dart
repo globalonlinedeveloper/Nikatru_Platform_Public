@@ -155,21 +155,40 @@ class CalendarScreen extends ConsumerWidget {
 
     // P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
     //
-    // Default `ContentPane` (`kMaxBodyWidth`, 1280), the same cap settings and
-    // manage-plan carry. This is a page of MIXED content — a month-grid card
-    // above a list of renewal rows — and those rows are the same shape as
-    // home's, which cap at 1280. `.reading` (720) was considered because a
-    // seven-column month grid gains nothing from 1246 px, but two caps on one
-    // scroll column would leave the grid card narrower than the rows beneath
-    // it. One page, one cap; the grid's own height problem is fixed by the
-    // delegate below, not by the pane.
+    // 🔴 CORRECTED 2026-08-21 — THE DEFAULT CAP NEVER BOUND, SO IT WAS NOT A
+    // DECISION. The paragraph that stood here chose the default `ContentPane`
+    // (`kMaxBodyWidth`, 1280) and argued the rows "are the same shape as home's,
+    // which cap at 1280". Measured against the live shell, that reasoning had no
+    // effect: `AppScaffold` hands the body `min(W - 361, 1280)` because a 360 px
+    // drawer plus its 1 px divider take the width first, so at a 1440 px window
+    // the body is 1079 and at 1920 it is 1280 only on the very widest desktop
+    // anybody runs. For every real desktop width between 839 and 1280 the cap
+    // was a no-op and this screen was a phone column that had simply been made
+    // wider — the defect the pane was added to fix, still shipping.
+    //
+    // `.reading` (720), and it is the design system's OWN answer for this shape
+    // rather than a number picked here. Two measurements decide it:
+    //   · THE MONTH GRID. `crossAxisCount: 7` is semantic, so extra width goes
+    //     into cell WIDTH while `mainAxisExtent: 44` holds the height fixed. At
+    //     720 a cell is (720 - 36 gutter - 32 card padding - 18 spacing) / 7 ≈
+    //     91 × 44 — already a 2:1 letterbox around a 12 pt numeral. At 960 it is
+    //     ≈ 125 × 44 and at the old 1280 ≈ 171 × 44. The grid does not merely
+    //     "gain nothing" from width; every pixel of it makes the card worse.
+    //   · THE RENEWAL ROWS. 44 px date column + 3 px rule + name/due + price.
+    //     At 720 the price still sits within an eye movement of the name; the
+    //     840–960 that suits a denser row list buys this row nothing, because it
+    //     carries four fields, not eight.
+    // The old note's objection — that two caps on one scroll column would leave
+    // the grid card narrower than the rows beneath it — is answered by taking
+    // ONE cap for the page, the narrower of the two candidates. One page, one
+    // cap, and it is now a cap that binds.
     //
     // 🔴 NO `padding:` ON THE PANE — the same rule the stamped settings screen
     // records. `test/width_calendar_test.dart` asserts the ListView is OFFERED
-    // exactly 375 at phone width and exactly `AppBreakpoints.kMaxBodyWidth` at
-    // 1920; a pane inset would subtract from both. The gutters stay where they
+    // exactly 375 at phone width and exactly `AppBreakpoints.reading` from 768
+    // upward; a pane inset would subtract from both. The gutters stay where they
     // always were: inside the ListView.
-    return ContentPane(
+    return ContentPane.reading(
       child: ListView(
         // PADDING RE-BASED FOR THE CHASSIS SHELL (the landed home precedent,
         // `home_screen.dart` MERGE CHANGE 3). Live was
@@ -246,93 +265,145 @@ class CalendarScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  // 🔴 THE SQ-GRID DEFECT, FIXED. Without a `mainAxisExtent` this
-                  // delegate inherits `childAspectRatio: 1.0` — every day cell is
-                  // a SQUARE, so its height scales linearly with viewport width.
-                  // Measured: ≈41 px per cell at 375 (the designed look), ≈97 at
-                  // 768, ≈170 once the pane caps at 1280 — a month card of ~1035
-                  // px of mostly-empty tinted squares around 12 pt numerals that
-                  // do not scale. Nothing overflows and nothing throws; it is
-                  // visible only to a measurement, which is what
-                  // `test/width_calendar_test.dart` now is.
-                  //
-                  // 44 ≈ the cell's intrinsic content (12 pt numeral + 2 gap +
-                  // 4 px dot + breathing room) and is within 3 px of today's
-                  // phone rendering, so 375 is visually unchanged while 1280
-                  // collapses the card to ≈279 px (6×44 + 5×3). `mainAxisExtent`
-                  // takes precedence over `childAspectRatio`, so no other
-                  // delegate field needs touching.
-                  //
-                  // `crossAxisCount: 7` STAYS. A week has seven days: this is the
-                  // one grid in the app where a `MaxCrossAxisExtent` delegate
-                  // would be wrong, because the column count is semantic rather
-                  // than responsive.
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 7,
-                    mainAxisSpacing: 3,
-                    crossAxisSpacing: 3,
-                    mainAxisExtent: 44,
-                  ),
-                  itemCount: firstOffset + dim,
-                  itemBuilder: (BuildContext context, int i) {
-                    if (i < firstOffset) return const SizedBox.shrink();
-                    final int day = i - firstOffset + 1;
-                    final bool today = day == now.day;
-                    final bool has = byDay.containsKey(day);
-                    return Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(11),
-                        gradient: today ? AppColors.brandGradient : null,
-                        // The has-renewal wash is the brand accent at 10%, and
-                        // it is deliberately NOT a neutral: it reads against
-                        // both the white card and the dark
-                        // surfaceContainerHighest one, because it is a tint of
-                        // the brand rather than a shade of the surface.
-                        color: today
-                            ? null
-                            : (has
-                                  ? const Color.fromRGBO(100, 89, 245, 0.1)
-                                  : Colors.transparent),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            dayFmt.format(DateTime(y, m, day)),
-                            style: AppText.fig.copyWith(
-                              fontSize: 12,
-                              // ✅ `Colors.white` STAYS on the today branch. It
-                              // is painted on `AppColors.brandGradient`, not on
-                              // the card, so it is an ON-GRADIENT colour: it
-                              // must not follow the scheme, because the surface
-                              // underneath it does not either. Only the
-                              // off-gradient branch is a neutral, and that is
-                              // the branch that was invisible in dark.
-                              color: today ? Colors.white : neutral.ink,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          if (has)
-                            Container(
-                              width: 4,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                // Same on-gradient rule for the dot; the
-                                // off-gradient branch is the brand accent,
-                                // which is legible on either card.
-                                color: today ? Colors.white : AppColors.accent,
+                // 🔴 THE 44 px CELL *DID* CLIP AT LARGE TEXT — BUT NOT WHERE THE
+                // AUDIT SAID, AND NOT FOR THE REASON IT GAVE. The flag read
+                // "`mainAxisExtent: 44` may clip at large text scale … it will
+                // overflow at 1.3". Measured on a 375 phone, the numeral's line
+                // box is 12.0 px at 1.0 and 16.0 at 1.3, so the column needs 22
+                // of its 44 and there is 22 px of HEADROOM at 1.3 — the stated
+                // threshold is clean, and a purely vertical argument stays clean
+                // until the numeral box passes 38 px, i.e. past 3.1×.
+                //
+                // The real failure is HORIZONTAL and it starts at ≈1.8×.
+                // A cell on a 375 phone is 41.3 px wide. A TWO-DIGIT day (10–31,
+                // i.e. 22 of the month's cells) at a scaled 12 pt outgrows that
+                // width, WRAPS to two lines, and two lines plus the 2 px gap and
+                // the 4 px dot is 54 px in a 44 px box. Measured, per scale, at
+                // 375: 1.0/1.3/1.5 clean · 2.0 → 22 cells overflow by 10.0 px ·
+                // 3.5 → 31 cells (the single-digit ones join in). So the flag was
+                // right that the number bites and wrong about both the mechanism
+                // and the threshold — which is the whole reason it was measured
+                // instead of patched.
+                //
+                // ✅ THE FIX IS A CLAMP ON THE CELL'S TEXT SCALE, NOT A BIGGER
+                // BOX, and the clamp is what makes 44 PROVABLE rather than
+                // lucky. At 1.5× the numeral is 18 px, so even the worst case —
+                // a narrow 320 px phone where two digits still wrap — is
+                // 2×18 + 2 + 4 = 42 ≤ 44. There is no scale factor and no phone
+                // width at which this cell can now overflow, which a larger
+                // fixed extent could not have promised.
+                //
+                // ⚠️ AND IT COSTS THE USER NOTHING, which is the only reason to
+                // clamp anything. This grid is a GLANCEABLE SUMMARY — a numeral
+                // and a 4 px dot — and every fact in it is repeated in full,
+                // unclamped, scaling text in the by-date list directly below
+                // (day, month, name, due phrase, price). A reader at 200% text
+                // loses no information; they read the list, which is the shape
+                // that scales. Clamping the LIST would be the unacceptable
+                // version of this change.
+                //
+                // 📌 AND THE PRECEDENT IS THE SAME WIDGET IN THE FRAMEWORK.
+                // Material's own `CalendarDatePicker` wraps its day-picker
+                // `GridView` in exactly this call
+                // (`calendar_date_picker.dart:1171`), for exactly this reason,
+                // with `_kDayPickerGridPortraitMaxScaleFactor = 2.0` and
+                // `…LandscapeMaxScaleFactor = 1.5`. 1.5 here is the framework's
+                // tighter number, and deliberately so: its day cells get a full
+                // 48 px box, ours get 44.
+                MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 1.5,
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    // 🔴 THE SQ-GRID DEFECT, FIXED. Without a `mainAxisExtent`
+                    // this delegate inherits `childAspectRatio: 1.0` — every day
+                    // cell is a SQUARE, so its height scales linearly with
+                    // viewport width. Measured: ≈41 px per cell at 375 (the
+                    // designed look), ≈97 at 768, ≈170 at the 1280 the pane used
+                    // to allow — a month card of ~1035 px of mostly-empty tinted
+                    // squares around 12 pt numerals that do not scale. Nothing
+                    // overflows and nothing throws; it is visible only to a
+                    // measurement, which is what `test/width_calendar_test.dart`
+                    // now is.
+                    //
+                    // 44 ≈ the cell's intrinsic content (12 pt numeral + 2 gap +
+                    // 4 px dot + breathing room) and is within 3 px of today's
+                    // phone rendering, so 375 is visually unchanged while any
+                    // wider surface collapses the card to ≈279 px (6×44 + 5×3).
+                    // `mainAxisExtent` takes precedence over `childAspectRatio`,
+                    // so no other delegate field needs touching.
+                    //
+                    // `crossAxisCount: 7` STAYS. A week has seven days: this is
+                    // the one grid in the app where a `MaxCrossAxisExtent`
+                    // delegate would be wrong, because the column count is
+                    // semantic rather than responsive.
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 7,
+                          mainAxisSpacing: 3,
+                          crossAxisSpacing: 3,
+                          mainAxisExtent: 44,
+                        ),
+                    itemCount: firstOffset + dim,
+                    itemBuilder: (BuildContext context, int i) {
+                      if (i < firstOffset) return const SizedBox.shrink();
+                      final int day = i - firstOffset + 1;
+                      final bool today = day == now.day;
+                      final bool has = byDay.containsKey(day);
+                      return Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(11),
+                          gradient: today ? AppColors.brandGradient : null,
+                          // The has-renewal wash is the brand accent at 10%, and
+                          // it is deliberately NOT a neutral: it reads against
+                          // both the white card and the dark
+                          // surfaceContainerHighest one, because it is a tint of
+                          // the brand rather than a shade of the surface.
+                          color: today
+                              ? null
+                              : (has
+                                    ? const Color.fromRGBO(100, 89, 245, 0.1)
+                                    : Colors.transparent),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Text(
+                              dayFmt.format(DateTime(y, m, day)),
+                              style: AppText.fig.copyWith(
+                                fontSize: 12,
+                                // ✅ `Colors.white` STAYS on the today branch. It
+                                // is painted on `AppColors.brandGradient`, not on
+                                // the card, so it is an ON-GRADIENT colour: it
+                                // must not follow the scheme, because the surface
+                                // underneath it does not either. Only the
+                                // off-gradient branch is a neutral, and that is
+                                // the branch that was invisible in dark.
+                                color: today ? Colors.white : neutral.ink,
                               ),
-                            )
-                          else
-                            const SizedBox(height: 4),
-                        ],
-                      ),
-                    );
-                  },
+                            ),
+                            const SizedBox(height: 2),
+                            if (has)
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  // Same on-gradient rule for the dot; the
+                                  // off-gradient branch is the brand accent,
+                                  // which is legible on either card.
+                                  color: today
+                                      ? Colors.white
+                                      : AppColors.accent,
+                                ),
+                              )
+                            else
+                              const SizedBox(height: 4),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),

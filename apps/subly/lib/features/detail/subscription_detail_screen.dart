@@ -90,8 +90,15 @@ class SubscriptionDetailScreen extends ConsumerWidget {
           // a hero that reads as a mis-sized image rather than a header. So the
           // `Container` keeps taking the whole surface (the enclosing `Column`
           // is `stretch`), and a `ContentPane` INSIDE it caps the back button,
-          // the glyph tile and the title at the same `kMaxBodyWidth` the body
-          // `ListView` below uses.
+          // the glyph tile and the title at the same `AppBreakpoints.reading`
+          // the body `ListView` below uses.
+          //
+          // ⚠️ THAT SENTENCE SAID `kMaxBodyWidth` UNTIL 2026-08-21 AND WAS
+          // CORRECTED, NOT DELETED — the two panes must agree, and what they
+          // agree ON moved when the body cap did (see the body pane's note).
+          // The pairing is the load-bearing half: an edit that re-caps one pane
+          // and not the other misaligns the title against the mini-cards, and
+          // `test/width_detail_test.dart` pins both numbers for that reason.
           //
           // ⚠️ THE 18/18 INSET IS INSIDE THE CAP, not outside it, and that is
           // the whole point of the pane split. `ContentPane` applies `padding`
@@ -116,7 +123,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
             decoration: const BoxDecoration(gradient: AppColors.heroGradient),
             child: SafeArea(
               bottom: false,
-              child: ContentPane(
+              child: ContentPane.reading(
                 key: const Key('detail-header-pane'),
                 padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
                 child: Column(
@@ -191,18 +198,38 @@ class SubscriptionDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // The body is a PAGE (mini-cards, a meter, a history list), so it
-          // takes the default `kMaxBodyWidth` cap — the same one settings and
-          // home record. `.pane` (480) was considered and rejected: this is a
-          // full route pushed over the shell, not a side panel, and 480 would
-          // make it dramatically narrower than the screen that pushed it.
+          // 🔴 `AppBreakpoints.reading` (720), NOT THE DEFAULT `kMaxBodyWidth`
+          // (1280) THIS PANE CARRIED UNTIL 2026-08-21. The default never bound
+          // on any real desktop: `AppScaffold` hands its body
+          // `min(W - 361, 1280)` because a 360 px drawer and a 1 px divider
+          // take the width first, so at a 1440 px window the body is 1079 and a
+          // 1280 cap is arithmetic that never fires. The screen was therefore a
+          // phone column that simply got wider — a two-up mini-card row, a
+          // meter and a payment list stretched to 1079, which is the "looks
+          // stretched" report this change answers.
+          //
+          // WHY 720 AND NOT AN 840–960 ROW-LIST NUMBER. Both would bind, and a
+          // number that binds is the minimum bar, not the decision. 720 is
+          // `AppBreakpoints.reading` — a constant this design system already
+          // owns and already justifies for a stack of cards inside a page that
+          // is legitimately wide. Inventing 900 here would put a seventh
+          // uncommented literal in a repo whose `ContentPane` doc exists
+          // because six copies of a width used to drift apart with nothing red
+          // to say so. The body is a CARD STACK (two mini-cards, a meter card,
+          // a run of payment rows), which is exactly the shape `reading` names.
+          //
+          // `.pane` (480) was considered and rejected, and that reasoning still
+          // stands: this is a full route pushed over the shell, not a side
+          // panel, and 480 would make it dramatically narrower than the screen
+          // that pushed it. 720 sits between the two and is the one that is a
+          // named constant rather than a taste.
           //
           // The `ListView` keeps its OWN padding rather than handing it to the
           // pane: a scroll view's padding scrolls with the content and supplies
           // the bottom run-off, and moving it out would clip rows at the inset
           // edge instead.
           Expanded(
-            child: ContentPane(
+            child: ContentPane.reading(
               key: const Key('detail-body-pane'),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
@@ -237,6 +264,21 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  // 🔴 THE USAGE CARD IS GATED ON USAGE DATA EXISTING.
+                  // `unused` and `usedPct` are never collected: the add sheet
+                  // builds every draft without them and the API never writes
+                  // them back, so `unused` is always false and `usedPct` always
+                  // 0. Ungated, this card told every real user their
+                  // subscription was "Active" — with a 0% meter underneath it
+                  // — which is an assertion about behaviour the app has never
+                  // observed. Home carried the mirror image of the same defect
+                  // (everything permanently "Occasional") and was gated in the
+                  // same pass.
+                  //
+                  // Gated, not deleted: the moment anything writes usage the
+                  // card is correct as written. Inventing a signal to fill it
+                  // is the repair that would actually be wrong.
+                  if (s.unused || s.usedPct > 0) ...<Widget>[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -320,6 +362,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  ],
                   Padding(
                     padding: const EdgeInsets.fromLTRB(2, 18, 2, 10),
                     child: Text(
@@ -441,13 +484,38 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
-                      Text(
-                        rowDate.format(h.date),
-                        style: AppText.muted.copyWith(
-                          fontSize: 13,
-                          color: isLight
-                              ? AppColors.muted
-                              : scheme.onSurfaceVariant,
+                      // 🔴 `Flexible`, AND MEASURED BEFORE IT WAS ADDED. At the
+                      // 375 px surface the row gets 375 - 36 (ListView gutters)
+                      // - 28 (this card's horizontal padding) = 311 px. At
+                      // textScaler 1.3 an inflexible Row overflowed that by
+                      // **2.2 px in English** and by **19–36 px in Tamil**
+                      // (`DateFormat.yMMMd('ta')` writes the month out) — a
+                      // yellow-and-black stripe on the shipping accessibility
+                      // setting, on every payment row at once.
+                      //
+                      // Same shape and same reasoning as the usage-meter Row
+                      // above: `Flexible` and NOT `Expanded`, and only on the
+                      // LEADING child. Loose fit means the date takes its
+                      // intrinsic width whenever that fits, so the default
+                      // scale lays out byte-identically and `spaceBetween`
+                      // still distributes the same free space.
+                      //
+                      // ⚠️ AND DELIBERATELY NO `TextOverflow.ellipsis`. Flexible
+                      // alone lets the date WRAP to a second line, which costs
+                      // vertical space in a scroll view that has it. Ellipsis
+                      // would turn "15 ஜூன், 2026" into "15 ஜூன்…", i.e. hide the
+                      // YEAR — and the year is the one part of a payment-history
+                      // date a reader is scanning for. `test/width_detail_test.dart`
+                      // pins the no-overflow property in both locales.
+                      Flexible(
+                        child: Text(
+                          rowDate.format(h.date),
+                          style: AppText.muted.copyWith(
+                            fontSize: 13,
+                            color: isLight
+                                ? AppColors.muted
+                                : scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                       Text(

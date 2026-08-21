@@ -117,7 +117,7 @@ class _HomeDashboard extends ConsumerWidget {
     // Nothing in the header depends on the subscription list, so nothing is
     // being shown early or optimistically. Only the parts that need the data
     // wait for it.
-    return ContentPane(
+    return ContentPane.reading(
       // 🔀 MERGE CHANGE 2 of 4 — THE WIDTH DECISION THIS SCREEN NEVER HAD.
       //
       // Same defect and same fix as PR #210's three screens. `AppScaffold` caps
@@ -125,17 +125,44 @@ class _HomeDashboard extends ConsumerWidget {
       // between 1200 and 1599 the hero card and every `RowCard` grew to the full
       // window — a 1550 px row with a glyph at one edge and a price at the
       // other. Nothing overflowed, nothing clipped, no assertion existed to fail.
-      // `ContentPane`'s default IS `kMaxBodyWidth`, which is the same ceiling
-      // `AppScaffold` applies above 1600, so this makes the two agree instead of
-      // agreeing only past 1600 — the identical argument the stamped settings
-      // screen records at its own `ContentPane`.
       //
-      // ✅ POLICED SINCE #239 by `test/width_home_test.dart` — the file this
-      // comment used to ask for by name. Deleting this wrapper now fails all
-      // FIVE of its cases (375 · 768 · 1280 · 1920 · 1500) on the harness's
-      // `inPane` guard; widening the cap fails the 1920 and 1500 ones. 1500 is
-      // the durable case: it sits in `AppScaffold`'s LARGE class, which caps
-      // nothing, so a green there is this pane's doing and nobody else's.
+      // 🔴 720 (`AppBreakpoints.reading`), NOT 1280 — CORRECTED 2026-08-21,
+      // BECAUSE THE 1280 CAP NEVER ONCE BOUND ON A REAL DESKTOP.
+      //
+      // The paragraph that used to stand here said `ContentPane`'s default
+      // `kMaxBodyWidth` "makes the two agree instead of agreeing only past
+      // 1600". That was true of the NUMBER and false of the SCREEN, and it is
+      // corrected rather than deleted because the reasoning is what misled:
+      // `AppScaffold` hands its body `min(W - 361, 1280)` — a 360 px drawer and
+      // a 1 px divider are taken off the window first — so at a maximised 1440
+      // the body is 1079 and at 1920 it is 1559-capped-to-1280. Measured
+      // 2026-08-21: the 1280 cap DOES bind at 1920, and binds NOWHERE a real
+      // 1440p or 1600p desktop lives. Between 839 and 1280 this screen was a
+      // phone column that simply got wider — the exact defect the wrapper was
+      // added to prevent, surviving inside the fix for it.
+      //
+      // Why `reading` (720) and not a fresh 840–960:
+      //   · This body is ONE COLUMN OF CARDS — a hero card, then `RowCard`s
+      //     that put a 40 px glyph, two short lines and a price on one line.
+      //     `AppBreakpoints`' own doc splits its constants into "WHICH
+      //     NAVIGATION?" (medium/expanded/large/extraLarge) and "how wide may
+      //     this CONTENT get?" (form/pane/reading). 840 is `expanded`, a
+      //     NAVIGATION number; borrowing it as a content cap is precisely the
+      //     conflation that class exists to prevent, and a bare literal `900`
+      //     would be the sixth private copy of a width the chassis already owns.
+      //   · `reading` is the widest CONTENT width the design system has, and at
+      //     720 a RowCard's two intrinsic ends stay within an eye-span of each
+      //     other. Below 720 nothing changes (a `ConstrainedBox` may only
+      //     tighten), so every phone and small tablet renders byte-identically.
+      //
+      // ✅ POLICED SINCE #239 by `test/width_home_test.dart`. Deleting this
+      // wrapper fails all five of its cases (375 · 768 · 1280 · 1920 · 1500) on
+      // the harness's `inPane` guard; widening the cap back to `kMaxBodyWidth`
+      // fails the 768, 1280, 1920 and 1500 ones. 1500 is still the durable
+      // case — it sits in `AppScaffold`'s LARGE class, which caps nothing, so a
+      // green there is this pane's doing and nobody else's — but since the cap
+      // came down to 720, 768 is falsifiable too and is no longer only a
+      // no-op boundary.
       //
       // ⚠️ FIVE, RE-MEASURED 2026-08-11, NOT COPIED. This sentence said "all
       // three" — true when written, false once #289 added the 768 and 1280
@@ -180,9 +207,13 @@ class _HomeDashboard extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 48),
                     child: Center(
+                      // `AppText.of`, not the bare const: `AppText.muted`
+                      // bakes `AppColors.muted` and paints the same grey on a
+                      // dark scaffold. An error message is the one string that
+                      // must be readable when everything else has failed.
                       child: Text(
                         l10n.couldNotLoad('$e'),
-                        style: AppText.muted,
+                        style: AppText.of(context).muted,
                       ),
                     ),
                   ),
@@ -202,6 +233,16 @@ class _HomeDashboard extends ConsumerWidget {
     AppLocalizations l10n,
     core.AuthUser? user,
   ) {
+    // 🔴 `AppText.of(context)`, NOT THE BARE CONSTS — THE GREETING AND THE
+    // ACCOUNT NAME ARE THE FIRST TWO STRINGS THE APP EVER PAINTS.
+    //
+    // `AppText.title` / `.muted` bake `AppColors.ink` (#141420) and
+    // `AppColors.muted` into `const TextStyle`s, so they paint near-black
+    // whatever the ambient brightness is — the gap `dark_group_home_test.dart`
+    // names in its own header ("⬜ WHAT THIS INCREMENT DOES NOT FIX"). `of`
+    // returns THE SAME const objects in light (`identical`, by construction),
+    // so this repaints nothing for the owner's light build and only fixes dark.
+    final AppTextStyles text = AppText.of(context);
     return Row(
       children: <Widget>[
         Expanded(
@@ -210,7 +251,7 @@ class _HomeDashboard extends ConsumerWidget {
             children: <Widget>[
               Text(
                 _greeting(l10n, DateTime.now()),
-                style: AppText.muted.copyWith(fontSize: 12),
+                style: text.muted.copyWith(fontSize: 12),
               ),
               // 🔀 MERGE CHANGE 4 of 4 — THE SIGNED-OUT FALLBACK IS NOW THE
               // LOCALISED WELCOME.
@@ -228,7 +269,7 @@ class _HomeDashboard extends ConsumerWidget {
               // P2.5's de-duplication keeps. See MANIFEST.md · FINDING 2.
               Text(
                 user?.displayName ?? l10n.welcomeTo(AppConfig.appName),
-                style: AppText.title.copyWith(fontSize: 24),
+                style: text.title.copyWith(fontSize: 24),
               ),
             ],
           ),
@@ -391,9 +432,11 @@ class _HomeDashboard extends ConsumerWidget {
           // (Tamil: திட்டம் → திட்டங்கள்) is translating a sentence rather than
           // gluing a number onto a fixed word.
           title: l10n.markedUnusedCount(unused.length),
+          // `RowCard` is theme-aware (its ground is `cardDecoration(context)`),
+          // so a const `AppText.muted` here is near-grey prose on a dark card.
           subtitle: Text(
             l10n.cancelToSave(currency.fmt(savings)),
-            style: AppText.muted.copyWith(fontSize: 12),
+            style: AppText.of(context).muted.copyWith(fontSize: 12),
           ),
           trailing: const Icon(
             Icons.arrow_forward,
@@ -489,7 +532,7 @@ class _HomeDashboard extends ConsumerWidget {
         l10n.allSubscriptions,
         trailing: Text(
           '${subs.length}',
-          style: AppText.muted.copyWith(fontSize: 12),
+          style: AppText.of(context).muted.copyWith(fontSize: 12),
         ),
       ),
       ...all.map(
@@ -645,12 +688,46 @@ class _HomeDashboard extends ConsumerWidget {
     // the shipped plural bug on the way: `of` returned "In 1 days" from both its
     // live branches.
     final DueInfo due = DueInfo.localized(l10n, s, now);
-    final Color dot = s.unused
-        ? AppColors.warn
-        : (s.usedPct > 60 ? AppColors.positive : const Color(0xFFC9C9D2));
-    final String usage = s.unused
-        ? l10n.usageRarelyUsed
-        : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional);
+
+    // 🔴 THE USAGE BAND IS NOW CONDITIONAL, BECAUSE ITS INPUT IS NEVER
+    // COLLECTED AND ITS `else` ARM WAS THEREFORE A CONSTANT.
+    //
+    // `usedPct` and `unused` are set in exactly two places — `DemoData` and an
+    // `unused`/`used_pct` field an API would have to send — and NOTHING in the
+    // app writes either. So on real rows `usedPct` is its `0` default and
+    // `unused` is `false`, both ternaries fell through to their last arm, and
+    // every subscription a live user has ever added has been labelled
+    // "Occasional" with a grey status dot. That is not a weak signal, it is a
+    // fixed string dressed as a measurement — the same class of defect as the
+    // hero's old "VS LAST MONTH", which compared a real total against a typed
+    // number and is recorded a few methods up.
+    //
+    // Retired rather than replaced: there is no usage source to invent one
+    // from. `hasUsage` shows the band ONLY where the data actually exists, so
+    // the demo set and any API that starts sending `used_pct` keep all three
+    // bands, and a real row shows its category alone. Same rule for the status
+    // dot — `GlyphTile` already takes a null `statusColor` (that is the
+    // `showDue` branch), so "no data" draws no dot rather than the grey one,
+    // which read as a deliberate "inactive" verdict.
+    //
+    // ⚠️ The three arb keys STAY. `usageActive` / `usageRarelyUsed` are also
+    // read by `subscription_detail_screen.dart`, and `usageOccasional` is
+    // reachable here the moment a row carries usage — deleting it would make
+    // the band unrestorable without a new translation round.
+    final bool hasUsage = s.unused || s.usedPct > 0;
+    final Color? dot = !hasUsage
+        ? null
+        : (s.unused
+              ? AppColors.warn
+              : (s.usedPct > 60
+                    ? AppColors.positive
+                    : const Color(0xFFC9C9D2)));
+    final String? usage = !hasUsage
+        ? null
+        : (s.unused
+              ? l10n.usageRarelyUsed
+              : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional));
+    final AppTextStyles text = AppText.of(context);
 
     return RowCard(
       onTap: () => context.push('/sub/${s.id}'),
@@ -667,8 +744,8 @@ class _HomeDashboard extends ConsumerWidget {
               ),
             )
           : Text(
-              '${s.category} · $usage',
-              style: AppText.muted.copyWith(fontSize: 12),
+              usage == null ? s.category : '${s.category} · $usage',
+              style: text.muted.copyWith(fontSize: 12),
             ),
       trailing: showDue
           ? Column(
@@ -676,17 +753,17 @@ class _HomeDashboard extends ConsumerWidget {
               children: <Widget>[
                 Text(
                   currency.fmt(s.monthlyPrice),
-                  style: AppText.fig.copyWith(fontSize: 16),
+                  style: text.fig.copyWith(fontSize: 16),
                 ),
                 Text(
                   s.cycle == BillingCycle.yearly ? l10n.perYear : l10n.perMonth,
-                  style: AppText.muted.copyWith(fontSize: 10),
+                  style: text.muted.copyWith(fontSize: 10),
                 ),
               ],
             )
           : Text(
               currency.fmt(s.monthlyPrice),
-              style: AppText.fig.copyWith(fontSize: 16),
+              style: text.fig.copyWith(fontSize: 16),
             ),
     );
   }

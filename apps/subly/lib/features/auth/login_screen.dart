@@ -111,10 +111,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _acceptedTerms = false;
   bool _marketingEmail = false;
 
+  /// Where Enter goes from the email box — see the keyboard note on [_field].
+  ///
+  /// Held on the state rather than created inline because a `FocusNode` built
+  /// in `build` is a NEW node on every rebuild, and this screen rebuilds on
+  /// every keystroke of the toggle, every `_loading` flip and every tick box:
+  /// the node the email field asked to focus would already have been discarded.
+  final FocusNode _passwordFocus = FocusNode();
+
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -380,12 +389,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // same word, in sentence case, is now what the field ANNOUNCES
                 // (see [_field]), and a reader handed "E-M-A-I-L" is handed a
                 // layout compromise read out one letter at a time.
+                //
+                // 🔴 THE FIRST THING A WEB USER TOUCHES, AND IT ANSWERED
+                // NEITHER OF THE TWO THINGS A BROWSER TRIES. Without
+                // `autofillHints` the engine emits an `<input>` with no
+                // `autocomplete` attribute, so Chrome/Safari/1Password have
+                // nothing to match on and the saved credential for this site is
+                // never offered — on the ONE screen every signed-out visitor is
+                // routed to. And with no `textInputAction`/`onSubmitted`, Enter
+                // in the password box did nothing at all: the only way in was
+                // to leave the keyboard and hit the button.
                 _field(
                   l10n.email,
                   _email,
                   TextInputType.emailAddress,
                   fieldKey: E2EKeys.loginEmail,
                   hint: l10n.emailHint,
+                  autofillHints: const <String>[AutofillHints.email],
+                  // Enter here ADVANCES rather than submits — a submit from the
+                  // email box would always be the "enter both" snack, since the
+                  // password box is by definition still empty.
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: _passwordFocus.requestFocus,
                 ),
                 const SizedBox(height: 14),
                 _field(
@@ -395,6 +420,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   obscure: true,
                   fieldKey: E2EKeys.loginPassword,
                   hint: l10n.passwordHint,
+                  focusNode: _passwordFocus,
+                  // 🔴 `password`, NOT `newPassword`, ON BOTH ARMS OF THE
+                  // TOGGLE. `newPassword` tells the browser to offer a GENERATED
+                  // secret and to suppress the stored one — correct on a
+                  // dedicated registration form, wrong here, because this widget
+                  // is the sign-IN box that `_signUp` re-labels in place. The
+                  // hint is read when the input connection opens, so a value
+                  // chosen for the arm the user might toggle to would be the
+                  // value the returning user's password manager sees first, and
+                  // sign-in is the dominant path on this screen by a wide
+                  // margin. `sign_up_screen.dart` is the surface where
+                  // `newPassword` belongs.
+                  autofillHints: const <String>[AutofillHints.password],
+                  textInputAction: TextInputAction.done,
+                  // Enter is the SAME DOOR as the button, lock included: it
+                  // routes through `_submit`, which owns the empty-field, bad-
+                  // address, clickwrap and length guards and says which one
+                  // stopped it. Only `_loading` is re-stated here, because that
+                  // is the one the button expresses by going dead and a second
+                  // Enter would otherwise fire a second sign-in request.
+                  onSubmitted: _loading ? null : _submit,
                 ),
                 if (!_signUp)
                   Align(
@@ -596,6 +642,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// is annotated onto the field, where the merge makes label, role, value and
   /// tap action ONE node instead of a caption a reader meets on a separate
   /// swipe and can just as easily meet afterwards.
+  ///
+  /// ⚠️ THE KEYBOARD PARAMETERS ARE PASSED IN, NOT DEFAULTED HERE. `_field`
+  /// paints both boxes, and the two want opposite answers — the email box
+  /// advances, the password box submits — so a default on this helper would be
+  /// right for one caller and silently wrong for the other. They are also
+  /// exactly what `login_chassis_parity_test.dart` reads off the `TextField`,
+  /// so dropping one at a call site goes red rather than merely un-autofilling
+  /// the live form, which is how they were missing in the first place.
   Widget _field(
     String label,
     TextEditingController c,
@@ -603,6 +657,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     bool obscure = false,
     Key? fieldKey,
     String? hint,
+    FocusNode? focusNode,
+    List<String>? autofillHints,
+    TextInputAction? textInputAction,
+    VoidCallback? onSubmitted,
   }) {
     final _Tones t = _tones(context);
     return MergeSemantics(
@@ -621,8 +679,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: TextField(
               key: fieldKey,
               controller: c,
+              focusNode: focusNode,
               obscureText: obscure,
               keyboardType: type,
+              autofillHints: autofillHints,
+              textInputAction: textInputAction,
+              // `ValueChanged<String>` at the framework, `VoidCallback` at the
+              // call site: the submitted text is already in `c`, and taking it
+              // as an argument would invite a second, staler source of truth
+              // for what `_submit` reads.
+              onSubmitted: onSubmitted == null
+                  ? null
+                  : (String _) => onSubmitted(),
               style: AppText.body.copyWith(
                 fontWeight: FontWeight.w600,
                 color: t.ink,

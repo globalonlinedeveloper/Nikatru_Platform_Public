@@ -4,10 +4,23 @@
 // Insights was a bare `ListView(padding: fromLTRB(18, 58, 18, 108))`. It never
 // overflowed and never clipped, so no existing assertion could fail — but
 // between 1200 and 1599 `AppScaffold` does NOT cap the body (only its
-// extra-large class, >=1600, does), and both cards grew to the full window: a
-// 1550 px savings row with a glyph at one edge and a Cancel button at the other.
-// A defect with no exception and no red pixel is only visible to a MEASUREMENT,
-// which is what this file is.
+// extra-large class, >=1600, does), and both cards took every pixel the drawer
+// left them. A defect with no exception and no red pixel is only visible to a
+// MEASUREMENT, which is what this file is.
+//
+// 🔴 CORRECTED 2026-08-21 — THIS HEADER SAID "a 1550 px savings row" AND THAT
+// WIDTH CANNOT OCCUR. `AppScaffold` hands the body `min(W - 361, 1280)` (the
+// 360px drawer plus its 1px divider come off first), so 1280 is the ceiling at
+// any window width and 1238 is the ceiling inside the LARGE class. The widest
+// a savings row has ever been is ~1204 after the page gutters and card
+// padding. The defect was real; the number was invented.
+//
+// 🔴 THE CAP IS NOW `AppBreakpoints.reading` (720), NOT `kMaxBodyWidth` (1280),
+// and that is why the 768 and 1280 cases below changed from no-ops into real
+// assertions. A 1280 cap could never bind — the body cannot exceed 1280 in the
+// first place — so the old wrapper was measurable only at 1920 and did nothing
+// at any width a user has. `insights_screen.dart` carries the reasoning for
+// 720; this file only has to agree with it.
 //
 // Everything structural — why the assertion reads `constraints` and not `size`,
 // why every case pins the surface, why the falsifiable desktop case is 1920 and
@@ -26,8 +39,11 @@
 // the unconfigured chain resolves `SeedApiClient`. Seed ids 6/7/10 are
 // `unused: true` (`data/seed/demo_data.dart`), which is what makes the savings
 // card render its POPULATED branch — the widest content on the page (glyph +
-// two-line note + a 36 px gradient button, per row). An empty savings card has
+// two-line note + a 48 px gradient button, per row). An empty savings card has
 // no rows to stretch and nothing the cap is there to prevent.
+// (The button was 36 when this header was written; `insights_screen.dart`
+// raised it to 48 against androidTapTargetGuideline and the number here was
+// left behind. Corrected 2026-08-21.)
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,48 +105,54 @@ void main() {
       );
     });
 
-    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+    // 🔴 NO LONGER A NO-OP, AND THAT IS THE POINT OF THE NEW CAP. 768 is the
+    // first surface in this file where the pane actually takes width away:
+    // under the old `kMaxBodyWidth` default this case asserted 768 and was
+    // true with the wrapper deleted.
+    testWidgets('at 768 the cap binds', (WidgetTester tester) async {
       await pumpAt(tester, kTablet, const InsightsScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        768,
+        AppBreakpoints.reading,
         reason:
-            'a small tablet is still far below kMaxBodyWidth, so the pane must '
-            'hand the full surface through unchanged',
+            'a small tablet is already past `reading`, so the pane must hold '
+            'the column at 720 rather than hand the surface through',
       );
     });
 
-    testWidgets('at 1280 the body is at most kMaxBodyWidth', (
+    testWidgets('at 1280 the body is held at reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kDesktop, const InsightsScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
+        AppBreakpoints.reading,
         reason:
-            'the ordinary desktop window — kept to pin the no-op behaviour at '
-            'exactly the cap. See kWide below for the case that can go red',
+            'the ordinary desktop window. Under the old 1280 cap this case '
+            'could only assert `<= 1280`, which is true of the surface itself '
+            'and so could not fail; 720 is a number the wrapper alone produces',
       );
     });
 
-    // 🔴 THE FALSIFIABLE CASE. Delete the `ContentPane` from
-    // `insights_screen.dart` and this is the assertion that fails: `inPane`
-    // reports "this screen has no ContentPane at all"; restore it and the
-    // offered width comes back to 1280 on a 1920 px surface. Every case above
-    // is true with or without the wrapper.
-    testWidgets('at 1920 the body is capped at exactly kMaxBodyWidth', (
+    // 🔴 THE WIDEST CASE. Delete the `ContentPane` from `insights_screen.dart`
+    // and `inPane` reports "this screen has no ContentPane at all"; widen it
+    // back to the default and the offered width becomes 1280 instead of 720.
+    // Unlike before, the two cases above fail in the same edit.
+    testWidgets('at 1920 the body is capped at exactly reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, const InsightsScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'unconstrained, the savings rows ran the full 1920 px — a glyph at '
             'one edge and a Cancel button at the other, with a third of a '
             'screen of nothing between them',
       );
-      expect(AppBreakpoints.kMaxBodyWidth, 1280);
+      // Pinned so a change to the design system's own number is a red test
+      // here rather than a silent re-layout of this screen.
+      expect(AppBreakpoints.reading, 720);
     });
   });
 }

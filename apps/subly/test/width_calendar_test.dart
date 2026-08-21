@@ -30,8 +30,21 @@ import 'package:subly/features/calendar/calendar_screen.dart';
 import 'support/width_harness.dart';
 
 void main() {
-  // ── THE PAGE · default ContentPane (kMaxBodyWidth, 1280) ───────────────────
-  group('calendar is capped at the body width', () {
+  // ── THE PAGE · ContentPane.reading (AppBreakpoints.reading, 720) ───────────
+  //
+  // 🔴 THESE CASES WERE REWRITTEN 2026-08-21 BECAUSE THEY PINNED A CAP THAT
+  // COULD NOT BIND. They asserted `kMaxBodyWidth` (1280) — but `AppScaffold`
+  // gives the body `min(W - 361, 1280)`, so a 1440 px window offers 1079 and
+  // 1280 is unreachable short of a maximised ultra-wide. Three of the four
+  // cases were therefore green for a screen that stretched at every desktop
+  // width anybody has; only the 1920 one measured the pane at all, and it
+  // measured the one width where the old cap happened to be visible.
+  //
+  // With `.reading` the cap binds from 768 up, so the TABLET case — previously
+  // a hand-written restatement of "no cap here" — becomes a case that can go
+  // red. That is the point of the change: the assertion moved to where the
+  // defect lives.
+  group('calendar is capped at the reading width', () {
     testWidgets('at 375 the cap is a no-op and nothing overflows', (
       WidgetTester tester,
     ) async {
@@ -54,33 +67,45 @@ void main() {
       );
     });
 
-    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+    // 🔴 THE CASE THAT NOW CARRIES THE CHANGE. Under the old 1280 cap this read
+    // `expect(…, 768)` — the cap was a no-op and the tablet rendered as a wide
+    // phone. 720 is the first width at which the pane does anything at all, and
+    // it is a width real hardware ships at, unlike 1920.
+    testWidgets('at 768 the cap BINDS — the tablet is not a wide phone', (
+      WidgetTester tester,
+    ) async {
       await pumpAt(tester, kTablet, const CalendarScreen());
-      expect(offeredWidth(tester, inPane(ListView)), 768);
-    });
-
-    testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
-      await pumpAt(tester, kDesktop, const CalendarScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
+        AppBreakpoints.reading,
         reason:
-            'the ordinary desktop window — this pins the no-op boundary, it is '
-            'NOT the case that can fail (1280 <= 1280 holds with the pane '
-            'deleted). See the 1920 case.',
+            'a seven-column month grid puts every extra pixel into cell WIDTH '
+            'while mainAxisExtent holds the height at 44, so 768 would already '
+            'be a row of letterboxes around 12 pt numerals',
       );
     });
 
-    // 🔴 THE CASE THAT CAN ACTUALLY GO RED — a 1280 cap measured on a 1280
-    // surface is an assertion that cannot fail, so the pane needs a surface it
-    // is distinguishable from.
-    testWidgets('at 1920 the list stops at AppBreakpoints.kMaxBodyWidth', (
+    testWidgets('at 1280 the list is still at 720, not at the window', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kDesktop, const CalendarScreen());
+      expect(
+        offeredWidth(tester, inPane(ListView)),
+        AppBreakpoints.reading,
+        reason:
+            'the ordinary desktop window. Under the old default cap this was '
+            'the width at which the assertion could not fail (1280 <= 1280 '
+            'holds with the pane deleted); it is now 560 px of daylight.',
+      );
+    });
+
+    testWidgets('at 1920 the list stops at AppBreakpoints.reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, const CalendarScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'without the pane the month card and every renewal row stretch the '
             'full display: a 1900 px row with a day numeral at one edge and a '
@@ -115,6 +140,109 @@ void main() {
             'the 1280 cap that is a ~170 px cell and a ~1035 px month card of '
             'mostly-empty tinted boxes around 12 pt numerals that do not '
             'scale. mainAxisExtent: 44 is what unties the two.',
+      );
+    });
+
+    /// The day numeral inside the first BUILT cell.
+    ///
+    /// The dot is a `Container`, never a `Text`, so the first `Text` under the
+    /// `GridView` is the numeral. (The weekday letters are OUTSIDE the
+    /// `GridView` — they are a plain `Row` above it — so they cannot be picked
+    /// up here.)
+    Finder firstDayNumeral() => find
+        .descendant(of: find.byType(GridView), matching: find.byType(Text))
+        .first;
+
+    /// [CalendarScreen] under a pinned [TextScaler].
+    ///
+    /// `Builder` + `MediaQuery.of(c).copyWith` rather than a bare `MediaQuery`:
+    /// replacing the inherited data outright would drop the surface metrics that
+    /// [pumpAt] just pinned, and the screen would lay out at the flutter_test
+    /// default instead of at [kPhone].
+    Future<void> pumpScaled(WidgetTester tester, Size size, double s) => pumpAt(
+      tester,
+      size,
+      Builder(
+        builder: (BuildContext c) => MediaQuery(
+          data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(s)),
+          child: const CalendarScreen(),
+        ),
+      ),
+    );
+
+    // ── THE FIXED 44 px BOX vs TEXT THAT GROWS ────────────────────────────────
+    //
+    // 🔴 THE AUDIT SAID THIS CLIPS AT 1.3. IT DOES NOT — IT CLIPPED AT 2.0, AND
+    // SIDEWAYS. Measured on the phone before the clamp landed, per scale:
+    //   1.0 → numeral box 12.0 px, clean
+    //   1.3 → 16.0 px, clean (22 px of headroom in the 44 px cell)
+    //   1.5 → 18.0 px, clean
+    //   2.0 → 24.0 px, and 22 of the month's cells OVERFLOW BY 10.0 px
+    //   3.5 → 42.0 px, 31 cells overflow
+    // The mechanism is horizontal, which is why a vertical reading of the
+    // delegate missed it: a cell on a 375 phone is 41.3 px wide, a TWO-DIGIT day
+    // at a scaled 12 pt outgrows that width and WRAPS, and two lines + the 2 px
+    // gap + the 4 px dot is 54 px in a 44 px box. Single-digit days stay clean
+    // until 3.5, which is why the count jumps from 22 to 31 rather than from 0
+    // to 31 — that jump is the fingerprint of the wrap and is what identified
+    // it.
+    //
+    // 2.0 is inside what both platforms ship (Android's largest font size with
+    // the largest display size; iOS's accessibility sizes go further), so this
+    // was a live clip, not a theoretical one.
+    for (final double s in <double>[1.3, 2.0, 3.5]) {
+      testWidgets('at textScaler $s the day cell does not clip', (
+        WidgetTester tester,
+      ) async {
+        await pumpScaled(tester, kPhone, s);
+        expect(
+          tester.takeException(),
+          isNull,
+          reason:
+              'the cell is a fixed 44 px box around text that scales, so the '
+              'grid must be clamped (MediaQuery.withClampedTextScaling) rather '
+              'than merely tall enough for the scale somebody tested at. '
+              'Before the clamp this went red at 2.0 with 22 RenderFlex '
+              'overflows of 10.0 px each.',
+        );
+        expect(
+          tester.getSize(firstDayCell()).height,
+          44,
+          reason: 'the clamp must not be paid for by a taller cell',
+        );
+      });
+    }
+
+    // ⚠️ THE HALF THAT STOPS THE FIX BECOMING A FREEZE. Every assertion above is
+    // also satisfied by `TextScaler.noScaling`, i.e. by ignoring the user's text
+    // size outright — which is the cheap wrong fix and is invisible in a test
+    // that only checks for overflow. The clamp is at 1.5, so 1.3 must still
+    // GROW the numeral and 3.5 must land on exactly the 1.5 ceiling.
+    testWidgets('the clamp is a ceiling, not a freeze', (
+      WidgetTester tester,
+    ) async {
+      await pumpScaled(tester, kPhone, 1.0);
+      final double at1 = tester.getSize(firstDayNumeral()).height;
+      await pumpScaled(tester, kPhone, 1.3);
+      final double at13 = tester.getSize(firstDayNumeral()).height;
+      await pumpScaled(tester, kPhone, 3.5);
+      final double at35 = tester.getSize(firstDayNumeral()).height;
+
+      expect(
+        at13,
+        greaterThan(at1),
+        reason:
+            'below the 1.5 ceiling the numeral must follow the user setting '
+            'exactly as it did before — a clamp that starts clamping at 1.0 is '
+            'noScaling wearing a different name',
+      );
+      expect(
+        at35,
+        at1 * 1.5,
+        reason:
+            'above the ceiling it stops at 1.5×, which is the number the 44 px '
+            'box was proved against: even a two-line wrap on a narrow 320 px '
+            'phone is 2×18 + 2 + 4 = 42 <= 44',
       );
     });
 

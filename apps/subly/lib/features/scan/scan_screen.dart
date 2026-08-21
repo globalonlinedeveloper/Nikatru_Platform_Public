@@ -32,6 +32,23 @@ import '../shared/widgets.dart';
 /// above is about the COPY, and it travels with the key rather than being lost
 /// when the literal moved.)
 ///
+/// ✅ RE-MEASURED 2026-08-21 against `lib/l10n/app_en.arb:867-889`, because a
+/// work order arrived that still described the OLD copy as live. It is not:
+/// `scanStep1..5` read "Preparing your board" / "Loading your subscriptions" /
+/// "Building your renewal calendar" / "Working out your totals" / "Finalising",
+/// and `app_ta.arb:195-199` carries the same five. Every one of those is a
+/// thing this widget's own dependency graph actually does. The paragraph above
+/// is therefore a HISTORY of copy that was removed, not a description of copy
+/// that ships — kept verbatim because the honesty argument is the durable part
+/// and a dated record that gets renumbered stops being evidence.
+///
+/// ⬜ ONE CLAIM SURVIVES AND IT IS NOT IN THIS FILE'S GIFT: the busy CTA reads
+/// `scanningEllipsis` = "Scanning…" (`app_en.arb:911`), which is the last
+/// string on the surface that asserts a scan. Fixing it is an arb edit plus
+/// `test/dark_group_detail_test.dart:620`, which asserts that exact key renders
+/// in the busy phase — neither file is owned here, so it is reported rather
+/// than half-done.
+///
 /// 🔴 THE BRIGHTNESS RULE FOR THIS FILE is the one stated in full on
 /// [SubscriptionDetailScreen]: LIGHT keeps the literal token, byte-identical to
 /// the pre-dark screen; only the dark arm derives from the scheme. Here that
@@ -72,11 +89,44 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   Timer? _timer;
   int _step = 0;
   int _pct = 0;
-  bool _done = false;
+
+  /// 🔴 ABSENT IS NOT EMPTY — the defect `state/subscriptions_controller.dart`
+  /// names in full at its `addSubscription` guard, on the one screen where it
+  /// is a user-visible lie rather than a corrupted metric.
+  ///
+  /// This field used to be called `_done` and it was the WHOLE completion test:
+  /// the timer flipped it after 560 ms × 6 = 3.36 s no matter what the fetch was
+  /// doing, and the list underneath was read as `.valueOrNull ?? const []`. So a
+  /// fetch that was merely slow, and a fetch that had FAILED, both rendered the
+  /// identical congratulation — "All set", "0 subscriptions", "£0.00 per month",
+  /// and a live "Go to dashboard". A first-run user whose network dropped was
+  /// told, in the app's warmest voice, that they own nothing.
+  ///
+  /// The timer stays, but demoted to what it was always actually good for: a
+  /// MINIMUM DWELL. A fetch that returns in 40 ms would otherwise flash the ring
+  /// through five captions in under a frame, which reads as a glitch rather than
+  /// as setup. So the completion test is now the CONJUNCTION — this floor AND
+  /// the `AsyncValue` having reached data. See [build]; the failure arm is
+  /// [_failed].
+  bool _minDwellElapsed = false;
 
   @override
   void initState() {
     super.initState();
+    _startDwell();
+  }
+
+  /// (Re)starts the minimum-dwell animation from zero.
+  ///
+  /// Called again from the retry path so a second attempt gets the same
+  /// evidence-of-progress the first one did — after a failure `_pct` is parked
+  /// at 100 and the timer is cancelled, so without this reset a retry would sit
+  /// on a full ring and a full bar while nothing visibly changed.
+  void _startDwell() {
+    _timer?.cancel();
+    _step = 0;
+    _pct = 0;
+    _minDwellElapsed = false;
     _timer = Timer.periodic(const Duration(milliseconds: 560), (Timer t) {
       if (_step < _stepCount) {
         setState(() {
@@ -85,9 +135,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         });
       } else {
         t.cancel();
-        setState(() => _done = true);
+        setState(() => _minDwellElapsed = true);
       }
     });
+  }
+
+  /// Re-runs the fetch this screen is waiting on.
+  ///
+  /// `invalidate`, not a "check the network" probe: the only honest test of
+  /// whether the repository can be read is the read the screen wanted to make,
+  /// which is the same argument `_OfflineBanner` records in `app.dart`.
+  void _retry() {
+    setState(_startDwell);
+    ref.invalidate(subscriptionsControllerProvider);
   }
 
   @override
@@ -121,10 +181,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
     final currency = ref.watch(currencyProvider);
-    final List<Subscription> subs =
-        ref.watch(subscriptionsControllerProvider).valueOrNull ??
-        const <Subscription>[];
-    final double total = SubMath.totalMonthly(subs);
+    final AsyncValue<List<Subscription>> subsAsync = ref.watch(
+      subscriptionsControllerProvider,
+    );
+
+    // THE THREE PHASES, AND THEY ARE MUTUALLY EXCLUSIVE BY CONSTRUCTION.
+    //
+    // `hasValue && !hasError` rather than `hasValue` alone, for the reason
+    // `subscriptions_controller.dart` records at its own use of this pair:
+    // Riverpod KEEPS the previous data on an `AsyncError`, so a screen that
+    // asked only `hasValue` would call a stale list behind a failed refresh a
+    // successful load — which is this file's original bug wearing a different
+    // hat.
+    final bool failed = subsAsync.hasError;
+    final bool ready = _minDwellElapsed && subsAsync.hasValue && !failed;
 
     return Scaffold(
       body: SafeArea(
@@ -148,6 +218,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         // the live path — `router.dart` builds THIS file — so the width test
         // for this screen has always measured the screen that ships.
         //
+        // ✅ RE-MEASURED 2026-08-21, because a work order arrived asserting this
+        // screen was still handed the 1280 default and asking for a cap in the
+        // 840-960 band. It is not, and it does not need one. `AppBreakpoints
+        // .reading` is 720 (pinned by `width_scan_test.dart`'s third case), and
+        // 720 binds at EVERY body width above it — including the whole 839-1280
+        // band that work order named, and including the 1079 an `AppScaffold`
+        // hands the body at a 1440 window. A cap in the 840-960 band would be a
+        // LOOSENING of this screen's, not a fix, and it would part this screen
+        // from onboarding, its only sibling in the first-run role. 720 stands.
+        //
         // The `Padding(24)` this replaces moved INTO the pane, which is the
         // same box it always was: `ContentPane` applies its inset INSIDE the
         // cap (`content_pane.dart:43-46`), so at any width below 720 — every
@@ -166,30 +246,59 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                _done ? l10n.scanDoneTitle : l10n.scanBusyTitle,
+                ready ? l10n.scanDoneTitle : l10n.scanBusyTitle,
                 style: AppText.title.copyWith(
                   fontSize: 28,
                   color: isLight ? AppColors.ink : scheme.onSurface,
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                _done ? l10n.scanDoneSubtitle : l10n.scanBusySubtitle,
-                style: AppText.muted.copyWith(
-                  fontSize: 14,
-                  color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
+              // ⚠️ THE SUBTITLE IS DROPPED IN THE FAILURE ARM, and that is a
+              // deletion rather than a substitution on purpose. `scanBusyTitle`
+              // ("Setting up your board") stays true after a failed fetch —
+              // setting up is exactly what was attempted — but
+              // `scanBusySubtitle` is "This only takes a moment.", and printing
+              // a reassurance directly above "Could not load: …" is the same
+              // class of false statement this whole change removes, one line
+              // smaller. No replacement string is invented here: there is no
+              // error-subtitle key in `app_en.arb`, and inventing English copy
+              // in Dart on a fully localised screen would ship an untranslated
+              // sentence to every non-English user. The failure arm below says
+              // what happened.
+              if (!failed)
+                Text(
+                  ready ? l10n.scanDoneSubtitle : l10n.scanBusySubtitle,
+                  style: AppText.muted.copyWith(
+                    fontSize: 14,
+                    color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
               const SizedBox(height: 8),
               Expanded(
-                child: _done
-                    ? _results(context, l10n, currency, subs, total)
+                child: failed
+                    ? _failed(context, l10n, subsAsync.error)
+                    : ready
+                    ? _results(context, l10n, currency, subsAsync.requireValue)
                     : _scanning(context, l10n),
               ),
               const SizedBox(height: 12),
+              // THE ONE PRIMARY ACTION SLOT SERVES ALL THREE PHASES, so the
+              // failure arm does not stack a second full-width button under the
+              // one that is already here. Disabled while loading — that is the
+              // state `GradientButton` documents `enabled:` for — and the retry
+              // reuses `l10n.retry`, the key `_OfflineBanner` already uses, so
+              // this adds no copy and nothing to translate.
               GradientButton(
-                label: _done ? l10n.goToDashboard : l10n.scanningEllipsis,
-                onPressed: _done ? () => context.go('/home') : null,
+                label: failed
+                    ? l10n.retry
+                    : ready
+                    ? l10n.goToDashboard
+                    : l10n.scanningEllipsis,
+                onPressed: failed
+                    ? _retry
+                    : ready
+                    ? () => context.go('/home')
+                    : null,
               ),
             ],
           ),
@@ -295,13 +404,57 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     );
   }
 
+  /// The arm the screen never had — a fetch that FAILED, said so.
+  ///
+  /// Mirrors `home_screen.dart`'s `error:` limb deliberately, down to the key:
+  /// `l10n.couldNotLoad('$e')`. That key interpolates the raw exception, which
+  /// that file flags as a real defect (WORKORDER §1) and deliberately does not
+  /// paper over inside an l10n increment — the same reasoning applies here, and
+  /// diverging would leave the app with two different answers to one question.
+  /// When the leak is fixed it must be fixed in the key, once.
+  ///
+  /// The way OUT is the screen's existing primary CTA rather than a control
+  /// invented here; see the `GradientButton` in [build].
+  Widget _failed(BuildContext context, AppLocalizations l10n, Object? error) {
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
+    // Vertically centred for the same reason [_scanning] is, and stated there
+    // in full: this is the blocking phase of a first-run screen, the one shape
+    // `content_pane.dart:36-41` reserves vertical centring for.
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // No `semanticLabel`: an unlabelled `Icon` is silent, which is right
+          // here — the sentence below already carries the whole message, and
+          // announcing a decorative glyph beside it is the stutter `GlyphTile`
+          // records.
+          Icon(Icons.error_outline, size: 48, color: scheme.error),
+          const SizedBox(height: 16),
+          Text(
+            l10n.couldNotLoad('$error'),
+            textAlign: TextAlign.center,
+            style: AppText.muted.copyWith(
+              fontSize: 14,
+              // `AppText.muted` bare paints `AppColors.ink`-family literals, so
+              // it forks by brightness exactly like the two lines in [build].
+              color: isLight ? AppColors.muted : scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _results(
     BuildContext context,
     AppLocalizations l10n,
     Currency currency,
     List<Subscription> subs,
-    double total,
   ) {
+    final double total = SubMath.totalMonthly(subs);
     final ThemeData theme = Theme.of(context);
     final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
@@ -362,7 +515,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         Expanded(
           child: ListView.separated(
             itemCount: subs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 9),
+            // `(_, _)`, not `(_, __)`: the wildcard pattern, which the analyzer
+            // flags as `unnecessary_underscores` in the old spelling. Pre-dates
+            // this change and is fixed here only because a file this task must
+            // leave analyzing CLEAN cannot carry it. Same spelling as
+            // `subscriptions_controller.dart`'s `ref.listen(…, (_, _) {`.
+            separatorBuilder: (_, _) => const SizedBox(height: 9),
             itemBuilder: (BuildContext context, int i) {
               final Subscription s = subs[i];
               return RowCard(

@@ -263,7 +263,19 @@ class AppScaffold extends StatelessWidget {
   Widget _drawer({required bool capBodyWidth}) {
     final Widget content = capBodyWidth
         ? Align(
-            alignment: Alignment.topLeft,
+            // 🔴 topCenter, NOT topLeft. The cap only ever produces LEFTOVER
+            // width, and pinning left donated every pixel of it to one side.
+            // Measured 2026-08-21: the body is `min(W - 361, 1280)` — the 360px
+            // drawer and its 1px divider take the width first — so at 1920 the
+            // capped 1280 sat flush left behind 279px of dead gutter on the
+            // right. Centring splits the leftover, and it is what `ContentPane`
+            // has always done, so the chassis and the panes inside it no longer
+            // disagree about where a capped column belongs.
+            //
+            // `top`, never `Alignment.center`: vertical centring makes a body
+            // that grows (an error line appears under a form) push everything
+            // already on screen upward. Same reasoning as `ContentPane`'s.
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(
                 maxWidth: AppBreakpoints.kMaxBodyWidth,

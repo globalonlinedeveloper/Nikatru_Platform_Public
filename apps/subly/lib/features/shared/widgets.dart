@@ -157,7 +157,14 @@ class GlyphTile extends StatelessWidget {
   }
 }
 
-/// Soft white card row (subscription rows, list items).
+/// The soft card row (subscription rows, list items). **Theme-aware in all
+/// three of its colours — fill, edge and title.**
+///
+/// *(This read "Soft white card row" until 2026-08-21. It became false when the
+/// fill was dark-forked below and stayed false while the title was still
+/// near-black — the one line of prose describing this widget was the one place
+/// that still claimed it was white, which is how the remaining half of the leak
+/// read as finished.)*
 class RowCard extends StatelessWidget {
   const RowCard({
     super.key,
@@ -199,9 +206,26 @@ class RowCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              // 🔴 THE TITLE WAS THE LAST HALF OF THIS WIDGET STILL PAINTING A
+              // LIGHT LITERAL, AND IT WAS THE WORST ONE IN THE APP. The FILL
+              // below was dark-forked (`scheme.surfaceContainerHighest`) while
+              // this line kept the bare const `AppText.body`, which bakes
+              // [AppColors.ink] (0xFF141420) — so every subscription row in
+              // Subly, the app's commonest control, put near-black text on a
+              // dark card. Fixing the surface without the text on it is how a
+              // contrast leak survives a dark-mode pass looking finished.
+              //
+              // ✅ LIGHT IS UNCHANGED AND A REVIEWER DOES NOT HAVE TO DIFF
+              // SCREENSHOTS TO BELIEVE IT. `AppText.of(context)` returns the
+              // const objects THEMSELVES in light — `identical(…body,
+              // AppText.body)` is pinned in
+              // `packages/design_system/test/app_text_test.dart` — so this is
+              // the same `TextStyle` instance, and the same `copyWith` on it,
+              // that the pre-dark widget built. DARK is `scheme.onSurface`.
+              // Exactly the one-word migration [SectionHeader] below records.
               Text(
                 title,
-                style: AppText.body.copyWith(
+                style: AppText.of(context).body.copyWith(
                   fontWeight: FontWeight.w700,
                   fontSize: 15,
                 ),
