@@ -14,7 +14,12 @@
      -- so THIS COMMENT is the only thing joining the two copies. Edit the source
      first, then re-copy; never edit this file alone. -->
 <style>
-  :root { --ink:#1a1a1a; --muted:#555; --line:#e2e2e2; --accent:#1a73e8; }
+  /* Nikatru brand palette. The imported policy shipped its own greys
+     (#1a1a1a / #555 / #e2e2e2 / #1a73e8); assert-palette-consistent.mjs
+     caught them as the only dissenting declaration on the whole site. The
+     values below are the generated ones from sites/_shared/assets/tokens.css
+     -- edit packages/tokens/tokens/*.json, never this line. */
+  :root { --ink:#0B1220; --muted:#586275; --line:#E2E8F0; --accent:#2E6FF2; }
   * { box-sizing: border-box; }
   body { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px;
          font: 16px/1.65 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
