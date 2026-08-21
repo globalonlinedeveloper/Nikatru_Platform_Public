@@ -62,6 +62,7 @@ import {
   RAIL_CONFIG,
   REGISTRY,
 } from '../sites/generate-discovery.mjs';
+import { isChromePage, CHROME_EXCLUDED, REGIONS, openMarker, closeMarker, isCssRegion } from '../sites/chrome.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const selfDir = dirname(fileURLToPath(import.meta.url));
@@ -133,7 +134,7 @@ const REQUIRED_PACK_IDS = ['lingo'];
 const REQUIRED_PRICED_LANDINGS = ['subly'];
 
 // ── the plan ─────────────────────────────────────────────────────────────────
-const { files, registry, live, problems: registryProblems } = planDiscovery(ROOT);
+const { files, registry, live, problems: registryProblems, chromeOnly } = planDiscovery(ROOT);
 for (const p of registryProblems) problems.push(p);
 
 if (files.size === 0) {
@@ -202,7 +203,16 @@ const onDisk = new Set(
     .filter((f) => f.toLowerCase().endsWith('.html'))
     .filter((f) => f !== NOT_GENERATED),
 );
-const planned = new Set([...files.keys()].filter((r) => r.startsWith(`${APPS_DIR}/`)).map((r) => r.split('/').pop()));
+// 🔴 `chromeOnly` IS SUBTRACTED HERE, and leaving it in was a real regression
+// caught by the deleted-registry-entry test. A landing whose entry is removed
+// still sits on disk, still carries the sentinels the generator gave it, and is
+// therefore still spliced into `files` — so without this filter it re-entered
+// `planned` and this limb stopped being able to see an orphaned landing at all.
+const planned = new Set(
+  [...files.keys()]
+    .filter((r) => r.startsWith(`${APPS_DIR}/`) && !chromeOnly.has(r))
+    .map((r) => r.split('/').pop()),
+);
 for (const f of onDisk) {
   if (!planned.has(f)) {
     problems.push(
@@ -234,9 +244,22 @@ for (const f of onDisk) {
 // committed landing would produce only a DRIFT message, and the reader would
 // have to open the file to learn WHY the drift matters. (The planned bytes are
 // the fallback when the file is missing, which limb A has already reported.)
+// 🔴 `chromeOnly` PAGES ARE EXCLUDED FROM `served`, AND THE REASON IS THE WHOLE
+// DISTINCTION THIS GUARD RESTS ON. Limbs C and D below assert properties of a
+// page THIS GENERATOR AUTHORED — no unfilled bracketed slot survived into it, and
+// it carries the JSON-LD block the generator writes on every page it emits. A
+// hand-maintained document that merely receives the shared footer owes neither.
+// Grading the spliced pages against them produced twelve findings about pages
+// that were entirely correct: `index.html`'s `[type="email"]` and its keyword
+// array read as "unfilled slots", and seven legal/utility pages were faulted for
+// having no JSON-LD they were never supposed to have.
+//
+// The BYTE-DIFF in limb A still covers every spliced page in full — that is the
+// limb that catches a hand-edited footer, and it is not narrowed here.
 const served = new Map(
   [...files.keys()]
     .filter((rel) => rel.endsWith('.html'))
+    .filter((rel) => !chromeOnly.has(rel))
     .map((rel) => [rel, existsSync(abs(rel)) ? readFileSync(abs(rel), 'utf8') : files.get(rel)]),
 );
 
@@ -737,6 +760,112 @@ let offeringsCompared = 0;
   }
 }
 
+// ── E · EVERY CHROME PAGE STILL CARRIES ITS SENTINELS ───────────────────────
+//
+// Limb A byte-compares each spliced page against a fresh splice, so a hand-edited
+// footer is already caught there. This limb answers the question limb A cannot:
+// does the page still have the MARKERS at all? Delete them and the generator
+// throws, which planDiscovery turns into a problem — but "the generator threw" is
+// a much worse diagnosis than "this page lost this marker", and a reader hitting
+// it at 2am deserves the second one.
+//
+// The set is DERIVED (isChromePage over the deploy-root walk), so a page added
+// tomorrow is in the contract the moment it exists. CHROME_EXCLUDED is the only
+// way out and it costs a written reason.
+let chromePagesChecked = 0;
+{
+  const rootAbs = abs(DEPLOY_ROOT);
+  const found = [];
+  const stack = existsSync(rootAbs) ? [rootAbs] : [];
+  while (stack.length) {
+    const dir = stack.pop();
+    for (const e of listDir(dir, { withFileTypes: true })) {
+      const f = join(dir, e.name);
+      if (e.isDirectory()) { stack.push(f); continue; }
+      if (e.name.toLowerCase().endsWith('.html')) {
+        found.push(`${DEPLOY_ROOT}/${f.slice(rootAbs.length + 1).split(sep).join('/')}`);
+      }
+    }
+  }
+
+  for (const rel of found.filter(isChromePage)) {
+    chromePagesChecked++;
+    const html = readFileSync(abs(rel), 'utf8');
+    for (const region of REGIONS.keys()) {
+      const css = isCssRegion(region);
+      for (const [kind, marker] of [['opening', openMarker(region, css)], ['closing', closeMarker(region, css)]]) {
+        const n = html.split(marker).length - 1;
+        if (n !== 1) {
+          problems.push(
+            `${rel} carries ${n} ${kind} sentinel(s) for chrome region "${region}", expected exactly 1. ` +
+              "The splice replaces one span between one pair; any other count means part of this page's " +
+              'chrome is no longer maintained from tooling/sites/chrome.mjs while still being served.',
+          );
+        }
+      }
+    }
+  }
+
+  // An exemption that outlives its subject is an exemption nobody re-examines.
+  //
+  // Scoped to entries whose PARENT DIRECTORY exists, and that is not a softening.
+  // A tree with no `sites/nikatru/fullshot/` at all is a tree that does not model
+  // that area — every generator fixture in the suite is one — and faulting it for
+  // an absent exemption subject would be reporting on a page the tree never
+  // claimed to have. A missing file INSIDE a directory that does exist is the
+  // real case: the page was deleted and the exemption was not.
+  for (const rel of CHROME_EXCLUDED.keys()) {
+    if (!existsSync(dirname(abs(rel)))) continue;
+    if (!found.includes(rel)) {
+      problems.push(
+        `CHROME_EXCLUDED (tooling/sites/chrome.mjs) names ${rel}, which is not served from ${DEPLOY_ROOT}. ` +
+          'Delete the entry, or restore the page — a standing exemption for a file that no longer exists ' +
+          'is a hole waiting for a future page to be dropped into it.',
+      );
+    }
+  }
+
+  if (found.length > 0 && chromePagesChecked === 0) {
+    coverageLost([
+      `${found.length} .html file(s) are served from ${DEPLOY_ROOT} and NONE of them was treated as a chrome page.`,
+      'Either isChromePage stopped matching or CHROME_EXCLUDED has swallowed the whole root. Both leave every',
+      'page free to grow a footer of its own while this guard reports a clean run.',
+    ]);
+  }
+}
+
+// ── F · THE DATED SNAPSHOTS STAY INERT ──────────────────────────────────────
+// They are excluded from shared chrome because they are frozen consent records.
+// That exclusion is only safe while they stay self-contained: a snapshot that
+// grew a stylesheet or a script would start rendering with TODAY's chrome and
+// stop being a record of what was served on its date.
+let snapshotsChecked = 0;
+{
+  const legalAbs = abs(`${DEPLOY_ROOT}/legal`);
+  const stack = existsSync(legalAbs) ? [legalAbs] : [];
+  while (stack.length) {
+    const dir = stack.pop();
+    for (const e of listDir(dir, { withFileTypes: true })) {
+      const f = join(dir, e.name);
+      if (e.isDirectory()) { stack.push(f); continue; }
+      if (!e.name.toLowerCase().endsWith('.html')) continue;
+      snapshotsChecked++;
+      const rel = `${DEPLOY_ROOT}/${f.slice(abs(DEPLOY_ROOT).length + 1).split(sep).join('/')}`;
+      const html = readFileSync(f, 'utf8');
+      for (const [what, re] of [['<link rel="stylesheet">', /<link[^>]+rel\s*=\s*["']stylesheet["']/i], ['<script>', /<script\b/i]]) {
+        if (re.test(html)) {
+          problems.push(
+            `${rel} contains a ${what}. A dated policy snapshot is a record of what was SERVED on its date, ` +
+              'and it is excluded from the shared chrome for exactly that reason. An external stylesheet or ' +
+              'a script makes the record depend on files that keep changing, so the archive silently starts ' +
+              "showing today's site instead of that day's policy.",
+          );
+        }
+      }
+    }
+  }
+}
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ ${problems.length} discovery-surface problem(s):`);
@@ -749,7 +878,9 @@ console.log(
     `${compared} generated file(s) match a fresh run of tooling/sites/generate-discovery.mjs; ` +
     `${onDisk.size} landing/hub page(s) under ${APPS_DIR} ≡ the registry, plus ${NOT_GENERATED} (not generated, noindex, served); ` +
     `${slotsScanned} page(s) slot-scanned with the canary intact; ${ldChecked} JSON-LD block(s) carry no fabricated rating; ` +
-    `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares`,
+    `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares; ` +
+    `${chromePagesChecked} page(s) carry shared chrome from tooling/sites/chrome.mjs ` +
+    `(${CHROME_EXCLUDED.size} excluded by name, ${snapshotsChecked} dated snapshot(s) asserted inert)`,
 );
 
 if (prints.length) {

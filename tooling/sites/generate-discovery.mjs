@@ -88,6 +88,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'no
 import { join, dirname, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from '../ci/tree-walk.mjs';
+import { isChromePage, applyChrome, footer as chromeFooter, footerCss as chromeFooterCss, openMarker, closeMarker } from './chrome.mjs';
 import { lastmodFor } from './lastmod.mjs';
 
 /** The deploy root this generator owns. The mirror (`sites/rajasekarselvam`) is
@@ -275,9 +276,9 @@ const STYLE = `<style>
   .privacy p{color:var(--muted);font-size:15px;margin:6px 0 0}
   .privacy ul{margin:10px 0 0 20px}
   .privacy li{color:var(--muted);font-size:15px;margin-bottom:6px}
-  footer{background:#0B1220;color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px}
-  footer a{color:#B6C2D9;text-decoration:none;margin:0 7px}
-  footer a:hover{color:#fff}
+${openMarker('footer-css', true)}
+${chromeFooterCss()}
+${closeMarker('footer-css', true)}
 </style>`;
 
 const NAV = (backHref, backLabel) => `<nav>
@@ -294,10 +295,12 @@ const NAV = (backHref, backLabel) => `<nav>
   </div>
 </nav>`;
 
-const FOOTER = `<footer>
-  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/contact">Contact</a><br><br>
-  &copy; 2026 Nikatru&trade; &middot; Chennai, Tamil Nadu, India
-</footer>`;
+// 🔴 THE GENERATED PAGES CARRY THE SENTINELS TOO, and that is not decoration.
+// Without them these two pages would be the only ones whose footer came from a
+// different literal, which is precisely the shape that produced six footers. With
+// them, all eleven pages in CHROME_PAGES hold byte-identical chrome between
+// byte-identical markers, and a reader who greps `CHROME:footer` finds every copy.
+const FOOTER = [openMarker('footer', false), chromeFooter(), closeMarker('footer', false)].join('\n');
 
 const BANNER = `<!-- GENERATED FILE — do not hand-edit.
      Written by tooling/sites/generate-discovery.mjs from sites/_shared/_data/apps.json.
@@ -946,7 +949,38 @@ export function planDiscovery(repoRoot) {
   }
   files.set(`${APPS_DIR}/index.html`, hubHtml(live));
 
-  // ── the sitemap: every indexable page on this root, with a git-derived date ─
+  // ── SHARED CHROME ON THE HAND-MAINTAINED PAGES ────────────────────────────
+  //
+  // The two landings above are written whole by this generator. The other pages
+  // under the deploy root are hand-maintained 3-33 KB documents, and moving their
+  // bodies in here to obtain one shared footer would trade a small duplication
+  // for a very large one. They are SPLICED instead: this reads each page, replaces
+  // only what sits between the chrome sentinels, and puts the result in `files` —
+  // where limb A of assert-discovery-surface.mjs byte-compares it exactly as it
+  // already does for the generated pair. Page content stays hand-written; chrome
+  // stops being.
+  //
+  // The set is DERIVED from the same `htmlUnder` walk the sitemap uses, so a page
+  // added to the deploy root is in the chrome contract the moment it exists.
+  // `chrome.mjs`'s CHROME_EXCLUDED is the only way out, and it costs a written
+  // reason.
+  //
+  // 🔴 A PAGE THAT CANNOT BE SPLICED IS A PROBLEM, NOT A SKIP. `applyChrome`
+  // throws when a sentinel pair is missing, duplicated or reversed; catching it
+  // into `problems` turns it into a named build failure. Silently passing over
+  // such a page is the one way this design rots without anything going red —
+  // the page keeps serving stale chrome while the file count still includes it.
+  const chromeOnly = new Set();
+  for (const rel of htmlUnder(repoRoot, DEPLOY_ROOT)) {
+    if (!isChromePage(rel) || files.has(rel)) continue; // the generated pair already carries the regions
+    try {
+      files.set(rel, applyChrome(readFileSync(join(repoRoot, ...rel.split('/')), 'utf8')));
+      chromeOnly.add(rel);
+    } catch (e) {
+      problems.push(`${rel}: ${e.message}`);
+    }
+  }
+
   // The page set is the UNION of what is on disk and what this run plans, so a
   // brand-new landing joins the sitemap in the same run that creates it, and a
   // stale landing that no registry entry owns stays listed for exactly as long
@@ -994,7 +1028,13 @@ export function planDiscovery(repoRoot) {
     }
   }
 
-  return { files, registry, live, problems };
+  // `chromeOnly` is the set this generator SPLICES rather than writes whole. The
+  // distinction is load-bearing for assert-discovery-surface.mjs: limbs C and D
+  // assert properties of a page this generator AUTHORED (no unfilled slots, a
+  // JSON-LD block on every page). A hand-written 33 KB document that merely
+  // receives a shared footer owes neither, and grading it against them reported
+  // twelve problems about pages that were entirely correct.
+  return { files, registry, live, problems, chromeOnly };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────

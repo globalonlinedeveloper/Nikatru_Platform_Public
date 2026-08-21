@@ -127,6 +127,13 @@ const TOOLING_CLOSURE = [
   'tooling/sites/generate-landing-payload.mjs',
   'tooling/sites/generate-discovery.mjs',
   'tooling/sites/lastmod.mjs',
+  // Added 2026-08-21 with the shared-chrome splice: generate-discovery.mjs now
+  // imports it, so a tree without it cannot load the publisher at all. This list
+  // is hand-maintained and it DID fall behind on the commit that introduced the
+  // import — the two mutation cases below went red with a module-resolution
+  // error instead of the finding they exist to prove, which is the closure
+  // working: an incomplete one fails loudly rather than testing a smaller tree.
+  'tooling/sites/chrome.mjs',
 ];
 
 /**

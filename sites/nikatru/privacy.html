@@ -34,9 +34,12 @@
   ul{margin:0 0 12px 22px}
   a{color:var(--primary)}
   .note{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:14px 18px;font-size:14.5px;color:var(--muted);margin:18px 0}
-  footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px}
-  footer a{color:#B6C2D9;text-decoration:none;margin:0 7px}
+  /* CHROME:footer-css */
+  footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px;line-height:1.9}
+  footer b{color:#fff}
+  footer a{color:#B6C2D9;text-decoration:none;margin:0 7px;display:inline-block;padding:4px 0}
   footer a:hover{color:#fff}
+  /* /CHROME:footer-css */
   @media(max-width:640px){main{padding:28px 22px;margin:16px}}
 </style>
 </head>
@@ -198,9 +201,13 @@
   an app notice conflicts with this Policy, the app-specific notice governs for that app.</div>
 </main>
 
+<!-- CHROME:footer -->
 <footer>
-  <a href="/">Home</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/contact">Contact</a><br><br>
-  &copy; 2026 Nikatru&trade; &middot; Chennai, Tamil Nadu, India &middot; UDYAM-TN-02-0487004
+  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/contact">Contact</a><br><br>
+  <b>Nikatru&trade;</b> &middot; Chennai, Tamil Nadu, India &middot; Registered MSME UDYAM-TN-02-0487004<br>
+  Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><b>Rajasekar Selvam</b></a><br>
+  &copy; 2026 Nikatru. All rights reserved.
 </footer>
+<!-- /CHROME:footer -->
 </body>
 </html>
