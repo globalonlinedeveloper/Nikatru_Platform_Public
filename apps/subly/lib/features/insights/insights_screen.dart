@@ -61,6 +61,96 @@ import '../shared/widgets.dart';
   );
 }
 
+/// The on-LIGHT TEXT tone for the unused-plan usage note. **#9C6406, not
+/// [AppColors.warn] #F59E0B.**
+///
+/// 🔴 THE DEFECT THIS FIXES, MEASURED 2026-08-21 OFF THE REAL PUMPED TREE.
+/// `_savingsCard` paints each unused plan's `usageNote` ("Not opened in 47
+/// days.") at 11px w700 in [AppColors.warn], on the card fill under it — and
+/// that fill is opaque #FFFFFF in light (`cardDecoration`,
+/// `features/shared/widgets.dart:54-69`, light arm `:56-61`; the row's own
+/// `Container` carries a BORDER only, no colour, so it changes no pixel behind
+/// the text). #F59E0B on
+/// #FFFFFF is **2.15:1** against WCAG 2.1 SC 1.4.3 AA's 4.5:1 for normal-size
+/// text. 11px w700 is NOT large text — the framework's bar is >18px, or >14px
+/// when bold (`accessibility.dart`'s `targetContrastRatio`) — so 4.5 governs,
+/// not 3.
+///
+/// 📌 IT IS THE SAME DEFECT `due.dart` FIXED, BY A DIFFERENT ROUTE, AND THAT
+/// IS WHY THIS FILE NEEDED ITS OWN FIX: a FILL token used as TEXT on a light
+/// ground. But these strings never pass through `DueInfo` — they are this
+/// file's own literal — so forking `DueInfo._urgentText` moved nothing here.
+/// `a11y_semantics_test.dart` kept the two exemptions named separately for
+/// exactly that reason, and the split paid off: the due entries expired when
+/// home/calendar/detail migrated while insights' correctly SURVIVED that day —
+/// a shared reason would have been deleted with them and this defect would have
+/// gone quiet. Insights' entry then expired on its own, against this fix, and
+/// is deleted too; NEITHER exemption exists any more.
+///
+/// ⚠️ [AppColors.warn] ITSELF DOES NOT MOVE, and must not: it is correct as a
+/// fill (the savings pill beside it, badges, meters), `AppThemeX.fromScheme`
+/// deliberately refuses to re-hue the status trio, and the same literal is
+/// CORRECT as text on this screen's DARK card — 5.74:1 on
+/// `scheme.surfaceContainerHighest` #35343A, which is what `cardDecoration`
+/// paints in dark. What is wrong is the LIGHT ground, so the fork is by
+/// brightness and not a new value for the token.
+///
+/// 🔴 AND NO SINGLE COLOUR COULD SERVE BOTH — arithmetic, not taste. Text has
+/// to clear 4.5:1 on #FFFFFF (luminance 1.0) AND on #35343A (0.0352):
+///   · white   ⇒ luminance ≤ 1.05/4.5 − 0.05 = **0.1833**
+///   · #35343A ⇒ luminance ≥ 4.5·(0.0352+0.05) − 0.05 = **0.3333**
+/// 0.1833 < 0.3333, so the satisfying set is EMPTY at any hue or saturation.
+/// The same proof `due.dart:60-70` and
+/// `packages/design_system/lib/src/tokens/app_colors.dart:97-109` record.
+///
+/// 📌 THE VALUE IS REUSED, NOT REINVENTED. #9C6406 is the warn step
+/// `packages/design_system/lib/src/tokens/app_colors.dart:106-109` already
+/// named as the on-light tone owed to the status trio, and it is the literal
+/// `due.dart:56` picked for the IDENTICAL
+/// pair of grounds — this screen's cards are the same #FFFFFF and the same
+/// `surfaceContainerHighest` a `RowCard` is, because both come from
+/// `cardDecoration`. A second amber here would be a second thing to keep in
+/// step for no measured gain. Hue and saturation are untouched from
+/// [AppColors.warn] (HSL 38°/100%), so this is a legibility step, not a
+/// re-tint — the note still reads as the same amber warning.
+///
+/// ✅ MEASURED FOR THIS VALUE ON THE GROUNDS INSIGHTS ACTUALLY PAINTS, IN BOTH
+/// BRIGHTNESSES, BY AN ASSERTION RATHER THAN A CALCULATOR — so these numbers
+/// rot loudly instead of quietly. `a11y_semantics_test.dart`'s "every string
+/// on insights meets WCAG AA contrast" and its `— DARK` twin walk the real
+/// pumped tree and score every `Text` against the opaque ground the tree
+/// resolved for it:
+///   · light — this const on the #FFFFFF card fill ([AppColors.surface]) —
+///     **4.95:1**
+///   · dark  — [AppColors.warn] #F59E0B, UNMOVED, on
+///     `scheme.surfaceContainerHighest` #35343A — **5.74:1**
+/// Both clear the 4.5 bar `MinimumTextContrastGuideline.targetContrastRatio`
+/// sets for 11px w700, and the dark figure agrees with the independent one
+/// `…/app_colors.dart:104` recorded for warn on a dark card. Both were read
+/// off the run that EXPIRED the old `except:` entries on 2026-08-21: the
+/// exemptions went red — "THE EXEMPTION HAS EXPIRED … now measures 4.95:1" /
+/// "… 5.74:1" — and were deleted, which is what asserting that an exemption
+/// is still needed buys.
+///
+/// 📌 IT IS A LOCAL CONST FOR THE SAME TWO REASONS `due.dart`'s is. The right
+/// long-term home is a `warnText` slot on `AppThemeX` resolved by brightness,
+/// and `packages/design_system` is a separate increment with a separate owner;
+/// and `due.dart`'s copy is PRIVATE to its class, so there is nothing here to
+/// import even if the hoist had landed. Both copies die in the same cleanup.
+const Color _warnOnLight = Color(0xFF9C6406);
+
+/// [AppColors.warn] as TEXT, resolved for the ambient brightness — see
+/// [_warnOnLight].
+///
+/// Takes the [BuildContext] rather than a [Brightness] because every call site
+/// is inside this file's own build methods and already holds one, the same way
+/// [_neutrals] above does; `due.dart`'s twin takes a [Brightness] instead only
+/// because it is a context-free factory three other files call.
+Color _warnAsText(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.light
+    ? _warnOnLight
+    : AppColors.warn;
+
 /// The gap this page has always spent between its two cards.
 ///
 /// Named rather than left as a bare `14` because the two-column layout below
@@ -542,11 +632,17 @@ class InsightsScreen extends ConsumerWidget {
                             // subscription, so localizing it is the demo-data
                             // decision the workorder records as out of scope.
                             s.usageNote,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'Manrope',
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
-                              color: AppColors.warn,
+                              // 🔴 FORKED BY BRIGHTNESS, NOT A CONSTANT — the
+                              // literal here was [AppColors.warn], 2.15:1 as
+                              // 11px w700 on the light card; measured 4.95:1
+                              // light / 5.74:1 dark after the fork. See
+                              // [_warnOnLight] for both measurements and for
+                              // why the token itself does not move.
+                              color: _warnAsText(context),
                             ),
                           ),
                         ],

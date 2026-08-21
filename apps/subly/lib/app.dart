@@ -50,36 +50,95 @@ class SublyApp extends ConsumerWidget {
       // app never reads, which is the dead-control shape [pipeline C-6] exists
       // to catch.
       locale: ref.watch(localeProvider),
-      // 🔴 P2.6a THEME FORK — READ BEFORE MERGING. THIS REPAINTS SUBLY.
+      // 📌 P2.6a THEME FORK — POST-MERGE RECORD. THIS SHIPPED; NOTHING IS BLOCKED
+      // ON IT, AND THE REPAINT IT PREDICTED DID NOT HAPPEN.
       //
-      // The live app shipped `theme: AppTheme.light()` and NO darkTheme and NO
-      // themeMode. `AppTheme.light()` is documented in
-      // packages/design_system/lib/src/theme/build_app_theme.dart:79-90 as "the
-      // ORIGINAL Subly palette, pinned exactly … deliberately NOT the chassis
-      // path", because apps/subly is a frozen legacy rail-prover (39-CHASSIS
-      // cut 1) whose colours must not move when the shared builder became
-      // seed-driven. So these three lines are a DELIBERATE reversal of a
-      // written design-system decision, not a mechanical carry.
+      // ⚠️ This block was a PRE-MERGE WARNING and was left standing after the
+      // merge, so for two weeks it read as a decision still to be taken and as a
+      // repaint still to come. Rewritten 2026-08-21 from a read-only
+      // reconstruction of the tree; the numbers below replace the ones it
+      // carried. House rule: the false premise is CORRECTED and named, not
+      // silently dropped.
       //
-      // Two measured costs, neither of which any guard or test reports:
-      //  · `AppTheme.light()` pins primary/secondary/surface AND the const
-      //    `AppThemeX.light` tokens. `buildAppTheme(seed:)` derives all of them
-      //    from an M3 tonal palette, so `primary` stops being #6459F5 exactly
-      //    and the brand gradient + category ramp change. Every Subly screen
-      //    repaints.
-      //  · `themeMode` defaults to `ThemeMode.system` (ThemeModeController.build).
-      //    Supplying `darkTheme` therefore flips every user on a dark-mode OS to
-      //    dark ON THE FIRST LAUNCH AFTER THIS SHIPS — no switch touched. And
-      //    126 `AppColors.*` references across 17 files under apps/subly/lib
-      //    paint the LIGHT palette unconditionally (settings 16, home 13,
-      //    login 12, detail 11, add-sheet 10 …). Dark mode would render dark
-      //    chassis chrome under light-hardcoded screens.
+      // WHAT IS LIVE: the seeded chassis triplet on the three lines below, since
+      // the P2.6a release of 2026-08-08. The pre-P2.6a app shipped
+      // `theme: AppTheme.light()` with NO darkTheme and NO themeMode.
       //
-      // Anchored by assert-stamp-properties.mjs:582 / :597 / :598 — which
-      // apps/subly is EXEMPT from today (EXEMPT_APPS, :109) and stops being
-      // exempt in Phase 5. So this is schedulable: ./theme-fork.md carries the
-      // exact three-line replacement that ships the spine WITHOUT the repaint
-      // and lands the theme with the P2.6b screen merge instead.
+      // 🔴 THE PREMISE THE WARNING RESTED ON IS FALSE. It argued for reverting to
+      // `AppTheme.light()` because "apps/subly is a frozen legacy rail-prover
+      // (39-CHASSIS cut 1)". That freeze was DISSOLVED BY OWNER ORDER in ADR 036
+      // — "Subly is the active commercial product" — dated 2026-08-08, the same
+      // day as the P2.6a commit that wrote the warning. It cited an authority
+      // that had already been withdrawn. The same stale phrase is duplicated in
+      // `AppTheme`'s doc in `build_app_theme.dart` and in four Subly files; their
+      // BEHAVIOUR (pin the light literals, fork dark per site) is independently
+      // correct — only the justification is dead.
+      //
+      // THE MEASURED DIFF IS THREE ROLES, not a repaint: both paths call
+      // `ColorScheme.fromSeed` with this same seed and `AppTheme.light()` only
+      // OVERRIDES THREE SLOTS — primary #6459F5 vs #5B5891, secondary #8950FF vs
+      // #5E5C71, surface #FFFFFF vs #FCF8FF. Every other role (onPrimary, both
+      // container pairs, tertiary, onSurface, the surfaceContainer ramp,
+      // onSurfaceVariant, outline, error) is byte-identical between them.
+      //
+      // 🔴 AND THE THEME'S BRAND TOKENS REACH NO SUBLY USER AT ALL. `AppThemeX` —
+      // the extension carrying `brandGradient` and `categoryRamp`, the two tokens
+      // the warning named — is read ZERO times in apps/subly/lib; the only
+      // `extension<AppThemeX>()` hits in this app are doc comments explaining why
+      // the code deliberately does not read it. Subly paints `AppColors.*`
+      // directly: 228 occurrences on 211 lines across 17 files, of which
+      // `AppColors.brandGradient` 15 and `AppColors.accent` 28. (The warning's
+      // "126 references across 17 files … settings 16, home 13, login 12, detail
+      // 11, add-sheet 10" was stale in the total AND the ranking — measured today
+      // it is home 26, widgets 23, settings 19, detail 19, scan 18, and
+      // `widgets.dart` did not appear in the old list at all.) A theme extension
+      // attached and never read is the [pipeline C-6] dead-seam shape; it is
+      // filed as its own owner-visible item rather than repaired from here.
+      //
+      // WHAT SWITCHING WOULD COST TODAY — this is why the answer is DO NOT SWITCH:
+      //  · IT BREAKS DARK MODE. `AppTheme.light()` supplies no dark counterpart,
+      //    and `AppTheme.dark()` is not a usable one: it passes `const
+      //    AppThemeX.dark`, whose `muted` is the LIGHT #6F6F7B, measured at
+      //    3.74:1 on the dark scaffold #131318 and 2.49:1 on a dark
+      //    `surfaceContainerHighest` #35343A — both under the 4.5 bar.
+      //  · It invalidates the 2026-08-13 contrast pass, which tuned
+      //    `AppColors.muted` to #6F6F7B FOR #FCF8FF — the SEEDED surface below,
+      //    at 4.72:1 — and not for `AppColors.bg`.
+      //  · `themeMode: system` flipping dark-OS users is HISTORY, not a pending
+      //    risk: it landed with the 2026-08-08 release and the tree answered with
+      //    five dedicated dark test files and ~15 files carrying
+      //    `isLight`/`Brightness.dark` forks.
+      //  · The one real thing given up: `colorScheme.primary` is the desaturated
+      //    #5B5891 on 44 Material control occurrences across 16 files (filled and
+      //    outlined buttons, switches, checkboxes), sitting beside hand-painted
+      //    #6459F5. That inconsistency is real and visible today.
+      //
+      // 🔑 THE ONE QUESTION STILL GENUINELY OPEN, AND IT IS THE OWNER'S ALONE: is
+      // #6459F5 SUBLY'S BRAND COLOUR, or merely its STAMP SEED? Seed-derived
+      // means Subly's primary becomes #5B5891 and the 28 + 15 hand-painted sites
+      // migrate onto `scheme.primary` — a brand change to a published, live app,
+      // not a refactor. Nothing in this file may decide it.
+      //
+      // 📌 `./theme-fork.md` DOES NOT EXIST AND NEVER DID. The warning pointed at
+      // it for "the exact three-line replacement". It is absent from the working
+      // tree and from the whole of git history (`git rev-list --all --objects |
+      // grep -c theme-fork` → 0, measured 2026-08-21). Do not go looking for it:
+      // everything it was deferred to is reconstructed above, except the owner
+      // question, which no document in this repo could have answered.
+      //
+      // GUARDS, ANCHORED BY NAME RATHER THAN BY LINE. The old citations (:582 /
+      // :597 / :598) had drifted onto unrelated lines — the `ci.yml:NNNN` failure
+      // mode CLAUDE.md warns about, where a stale pointer still lands on a real
+      // line and so is accepted silently. In
+      // `tooling/ci/assert-stamp-properties.mjs`: the `REQUIRED_COVERAGE` entries
+      // keyed `theme-triplet-supplied` and `brand-seed-drives-paint` anchor on
+      // `lib/app.dart` and are enforced against the BRICK, which is not exempt —
+      // deleting `themeMode:` or either `seed:` reddens them. `apps/subly` is in
+      // that file's `EXEMPT_APPS` set, which excuses this app from carrying the
+      // inherited property TEST and nothing else. And note precisely what
+      // `brand-seed-drives-paint` proves: that `AppThemeX.fromScheme` EXISTS, not
+      // that anything reads it — which is how it stays green over the dead seam
+      // recorded above.
       theme: buildAppTheme(seed: const Color(0xFF6459F5)),
       darkTheme: buildAppTheme(
         seed: const Color(0xFF6459F5),

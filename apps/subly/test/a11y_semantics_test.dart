@@ -4028,28 +4028,45 @@ void main() {
           covers: const <String>['Insights', 'Where your money goes'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
-        // 🔴 32 strings, against the sweep above's 5 — and the three it fails
-        // on are three of the twenty-seven the sweep never saw. Insights builds
-        // NO `RowCard`; the unused-plans list is a hand-rolled twin
-        // (`insights_screen.dart:513-560`), which is exactly the merged shape
-        // the rasterising guideline cannot match to a `Text`.
-        // MEASURED 2026-08-21: each row's `usageNote` is painted
-        // `AppColors.warn` #F59E0B at 11px w700 on the white card
-        // (`insights_screen.dart:545-552`) — 2.15:1 against a 4.5 bar. Same
-        // class as the due badge and the same root cause (a FILL token used as
-        // TEXT on a light ground), but a DIFFERENT owner: this one is
-        // insights_screen.dart's own literal, not `due.dart`'s, so fixing the
-        // due fork does not move it. Named here rather than tolerated, and the
-        // entries assert they are STILL NEEDED.
+        // 🔴 32 strings, against the sweep above's 5 — and the three this limb
+        // exists for are three of the twenty-seven the sweep never saw.
+        // Insights builds NO `RowCard`; the unused-plans list is a hand-rolled
+        // twin (`insights_screen.dart:578-653`), which is exactly the merged
+        // shape the rasterising guideline cannot match to a `Text`.
+        //
+        // 📌 THE THREE `usageNote`s CARRIED AN `except:` ENTRY HERE UNTIL
+        // 2026-08-21, AND IT IS DELETED BECAUSE THE DEFECT IS FIXED — NOT
+        // BECAUSE THE STRINGS STOPPED BEING MEASURED. They were painted
+        // `AppColors.warn` #F59E0B at 11px w700 on the white card fill:
+        // **2.15:1** against a 4.5 bar, the same FILL-token-used-as-TEXT defect
+        // `due.dart` carried, but insights' OWN literal rather than one reached
+        // through `DueInfo` — which is why the due fork moved nothing here and
+        // why the two exemptions were named separately.
+        // `insights_screen.dart:606-621` now forks by brightness to
+        // `_warnOnLight` #9C6406, REUSING `due.dart:56`'s value rather than
+        // inventing a second amber, and this case measured the result:
+        //   · light — #9C6406 on the #FFFFFF card — **4.95:1**
+        //   · dark  — #F59E0B on `surfaceContainerHighest` #35343A, token
+        //     unmoved — **5.74:1** (the DARK twin of this case, below)
+        // Both numbers came out of `_assertLegible`'s own EXPIRED-exemption
+        // failure, i.e. they are what this rig measured, not what a calculator
+        // was asked. An exemption left standing over a fixed defect is a named
+        // hole that covers nothing, so it goes rather than being reworded.
+        //
+        // ⚠️ ONE OF THE THREE IS IN `covers:` NOW. Deleting an `except:` entry
+        // is only half the record — a string could also leave this limb by
+        // moving onto a gradient or a translucent fill, which reads as a clean
+        // pass. Naming it in `covers:` asserts it is still on an opaque ground
+        // and still being measured, so the fix cannot go quiet the way the
+        // defect did.
         expectScreenTextLegible(
           tester,
           'insights',
-          covers: const <String>['Insights', 'By category'],
-          except: const <String, String>{
-            'Not opened in 47 days.': _warnAsTextOnInsights,
-            'Not opened in 61 days.': _warnAsTextOnInsights,
-            '2 visits this month.': _warnAsTextOnInsights,
-          },
+          covers: const <String>[
+            'Insights',
+            'By category',
+            'Not opened in 47 days.',
+          ],
         );
       });
     });
@@ -4806,6 +4823,44 @@ void main() {
       });
     });
 
+    testWidgets('every string on insights meets WCAG AA contrast — DARK', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          const InsightsScreen(),
+          theme: appTheme(brightness: Brightness.dark),
+          paintBackground: true,
+        );
+        await expectOpaqueGround(tester, 'insights (dark)');
+        await expectContrastHadSubjects(
+          tester,
+          'insights (dark)',
+          covers: const <String>['Insights', 'Where your money goes'],
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        // 🔴 THIS IS THE HALF THAT PROVES THE FORK DID NOT TRADE ONE GROUND
+        // FOR THE OTHER. `insights_screen.dart` keeps [AppColors.warn] #F59E0B
+        // as the DARK arm — the token is correct as text there and does not
+        // move — and this case measures it on the dark card fill
+        // (`surfaceContainerHighest` #35343A): **5.74:1** on 2026-08-21,
+        // against the same 4.5 bar the light twin clears at 4.95:1. Without a
+        // dark measurement "fixed" would mean "fixed on the one ground I
+        // looked at", which is exactly how the FILL-token-as-TEXT defect got
+        // in.
+        expectScreenTextLegible(
+          tester,
+          'insights (dark)',
+          covers: const <String>[
+            'Insights',
+            'By category',
+            'Not opened in 47 days.',
+          ],
+        );
+      });
+    });
+
     testWidgets('every string on the paywall meets WCAG AA contrast — DARK', (
       WidgetTester tester,
     ) async {
@@ -5074,26 +5129,6 @@ void main() {
     }
   });
 }
-
-/// The ONE open defect three screens share, spelled once.
-///
-/// home, calendar and detail all read their urgency colour from `DueInfo`, so
-/// the same string fails on all three for the same reason and by the same
-/// number. Three copies of this sentence would be three things to update on the
-/// day the call sites migrate, and the exemption that gets missed is the one
-/// that turns into a permanent hole.
-/// Insights' own copy of the same mistake, and a DIFFERENT owner.
-///
-/// Named separately from the `due.dart` exemption on purpose — and the split
-/// PAID OFF on the day it was written. These strings do not come through
-/// `DueInfo` at all, so when home, calendar and detail started passing
-/// `brightness:` (2026-08-21) the three due exemptions expired and were deleted,
-/// while THIS one correctly survived. A shared reason would have been deleted
-/// with them and the insights defect would have gone quiet.
-const String _warnAsTextOnInsights =
-    'AppColors.warn #F59E0B as 11px w700 text on the white card fill, from '
-    'insights_screen.dart:545-552 (the row usageNote) — not via due.dart. '
-    'Measured 2.15:1 on 2026-08-21.';
 
 /// The WCAG contrast ratio between two OPAQUE colours, to 2dp.
 ///

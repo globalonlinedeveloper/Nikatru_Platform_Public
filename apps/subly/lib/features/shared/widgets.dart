@@ -19,12 +19,24 @@ const List<BoxShadow> kCardShadow = <BoxShadow>[
 /// The shared card surface. **Theme-aware — the light branch is pinned.**
 ///
 /// 🔴 THE LIGHT BRANCH IS BYTE-FOR-BYTE THE PRE-DARK DECORATION AND MUST STAY
-/// THAT WAY. `apps/subly` ships as a frozen legacy rail-prover and the owner
-/// eyeballs the light build; a "harmless" swap of [AppColors.surface] for
-/// `scheme.surface` would repaint every card on every screen at once, which is
-/// exactly the repaint `app.dart`'s theme-fork note exists to avoid.
-/// `test/dark_card_surface_test.dart` pins the resolved light colour to the
-/// literal token so that swap fails the build rather than shipping.
+/// THAT WAY. The owner eyeballs the light build; a "harmless" swap of
+/// [AppColors.surface] for `scheme.surface` would repaint every card on every
+/// screen at once, which is exactly the repaint `app.dart`'s theme-fork note
+/// exists to avoid. `test/dark_card_surface_test.dart` pins the resolved light
+/// colour to the literal token so that swap fails the build rather than
+/// shipping.
+///
+/// 📌 PREMISE CORRECTED 2026-08-21 — the paragraph above used to open
+/// *"`apps/subly` ships as a frozen legacy rail-prover"*. It does not, and did
+/// not when this comment was written:
+/// `Private/decisions/036-subly-freeze-dissolved-by-owner-order.md` dissolved
+/// that freeze by owner order on 2026-08-08 — *"Subly stops being a frozen
+/// legacy rail-prover and becomes the active commercial product"*. Subly is the
+/// shipping product, live on the web. THE PIN IS UNAFFECTED, because it never
+/// rested on the freeze: it rests on blast radius, and the blast radius GREW
+/// when the app stopped being parked. `test/dark_card_surface_test.dart:14`
+/// and `:82` still carry the old framing in their own words; the pin they
+/// enforce is correct either way.
 ///
 /// 🔴 DARK DROPS THE SHADOW AND GAINS A BORDER, and that is a correctness fix
 /// rather than a taste call: [kCardShadow] is two BLACK alphas (`0x0A141420`,

@@ -42,10 +42,20 @@ class AppTextStyles {
 ///
 /// 🔒 THE CONST STYLES DO NOT MOVE. They stay exactly as shipped — same fields,
 /// same literals, same `const`-ness — for two independent reasons:
-///   1. `apps/subly` is the frozen legacy rail-prover and the owner eyeballs the
-///      LIGHT build. Re-pointing `color:` at a scheme slot here would repaint
-///      every screen at once, which is the repaint `app.dart`'s theme-fork note
-///      exists to avoid.
+///   1. The owner eyeballs the LIGHT build, and re-pointing `color:` at a scheme
+///      slot here would repaint every screen at once — which is the repaint
+///      `app.dart`'s theme-fork note exists to avoid.
+///      📌 PREMISE CORRECTED 2026-08-21 — this reason used to open
+///      *"`apps/subly` is the frozen legacy rail-prover"*. It is not, and was
+///      not when this comment was written:
+///      `Private/decisions/036-subly-freeze-dissolved-by-owner-order.md` records
+///      the owner order of 2026-08-08 — *"Subly stops being a frozen legacy
+///      rail-prover and becomes the active commercial product"*. THE REASON
+///      OUTLIVES ITS PREMISE, AND GETS STRONGER: an at-once repaint of all 105
+///      call sites used to land on a parked rail-prover; it now lands on the
+///      shipping product, live on the web. These styles are pinned by BLAST
+///      RADIUS, never by a freeze — so "the freeze is gone" is not licence to
+///      re-point them, and reason 2 below never touched the freeze at all.
 ///   2. They are `const`, and 107 call sites depend on that. A non-const style
 ///      cannot be used in a `const` widget constructor, so "just make it a
 ///      getter" is a compile break across the whole tree.
