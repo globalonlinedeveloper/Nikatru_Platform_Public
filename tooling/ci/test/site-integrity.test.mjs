@@ -451,12 +451,12 @@ const KEYED_FN =
  */
 function urlTree(name, over = {}, opts = {}) {
   const files = {
-    'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy.html">Privacy</a>', '<script>const APPS = [\n];</script>'),
-    'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, POLICY_BODY),
+    'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy">Privacy</a>', '<script>const APPS = [\n];</script>'),
+    'sites/nikatru/privacy.html': page(`${ORIGIN}privacy`, POLICY_BODY),
     'sites/nikatru/404.html': '<meta name="robots" content="noindex"><html><body>gone</body></html>\n',
     'sites/nikatru/robots.txt': 'x\n',
     'sites/nikatru/_headers': 'x\n',
-    'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE]]),
+    'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, GIT_DATE]]),
     'sites/nikatru/functions/api/probe.js': KEYED_FN,
     'sites/b/index.html': '<html><body>brochure</body></html>\n',
     'sites/b/404.html': '<html></html>\n',
@@ -476,10 +476,10 @@ describe('check-site-integrity · one canonical URL form', () => {
 
   test('FAILS when a canonical is written in a second form', () => {
     const { code, out } = run(
-      urlTree('uf-form', { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy`, POLICY_BODY) }),
+      urlTree('uf-form', { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, POLICY_BODY) }),
     );
     assert.equal(code, 1);
-    assert.match(out, /canonical is "https:\/\/one\.test\/privacy", and the one form this site uses makes it "https:\/\/one\.test\/privacy\.html"/);
+    assert.match(out, /canonical is "https:\/\/one\.test\/privacy\.html", and the one form this site uses makes it "https:\/\/one\.test\/privacy"/);
   });
 
   test('FAILS when an indexable page declares no canonical at all', () => {
@@ -496,34 +496,103 @@ describe('check-site-integrity · one canonical URL form', () => {
     assert.match(out, /it must be the bare origin with a trailing slash/);
   });
 
-  test('FAILS on a document-relative page link, and on the extensionless one', () => {
-    const rel = run(urlTree('uf-rel', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="privacy.html">P</a>', '<script>const APPS = [\n];</script>') }));
+  test('FAILS on a document-relative page link, and on the `.html` one', () => {
+    // 🔴 INVERTED 2026-08-21 WITH THE LIMB. The second case used to assert that
+    // the EXTENSIONLESS link fails. That had the redirect backwards: Cloudflare
+    // Pages serves `/privacy` and 308s `/privacy.html` to it, so the form this
+    // suite was pinning was the one costing a redirect on every internal link.
+    const rel = run(urlTree('uf-rel', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="privacy">P</a>', '<script>const APPS = [\n];</script>') }));
     assert.equal(rel.code, 1);
-    assert.match(rel.out, /links "privacy\.html" document-relative/);
+    assert.match(rel.out, /links "privacy" document-relative/);
 
-    const ext = run(urlTree('uf-ext', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy">P</a>', '<script>const APPS = [\n];</script>') }));
+    const ext = run(urlTree('uf-ext', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy.html">P</a>', '<script>const APPS = [\n];</script>') }));
     assert.equal(ext.code, 1);
-    assert.match(ext.out, /the extensionless form of \/privacy\.html/);
+    assert.match(ext.out, /the `\.html` form of \/privacy/);
   });
 
   test('FAILS on a root-relative link to a page that does not exist', () => {
-    const { code, out } = run(urlTree('uf-dangling', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="/nope.html">N</a>', '<script>const APPS = [\n];</script>') }));
+    const { code, out } = run(urlTree('uf-dangling', { 'sites/nikatru/index.html': page(ORIGIN, '<a href="/nope">N</a>', '<script>const APPS = [\n];</script>') }));
     assert.equal(code, 1);
-    assert.match(out, /no such file exists on this deploy root/);
+    assert.match(out, /no page and no _redirects rule backs that URL on this deploy root/);
+  });
+
+  test('🔴 a link to a _redirects SOURCE resolves — and stops resolving when the rule goes', () => {
+    // The real link this was written for: checkout-return.html links `/subly`,
+    // the permanent commerce address, which is a redirect rule and not a file.
+    // Before the 2026-08-21 inversion nothing reached that link (it carries no
+    // `.html`), so the redirect map had never been verified by anything.
+    const linksSubly = page(ORIGIN, '<a href="/subly">Subly</a>', '<script>const APPS = [\n];</script>');
+
+    const withRule = run(
+      urlTree('rd-ok', {
+        'sites/nikatru/index.html': linksSubly,
+        'sites/nikatru/_redirects': '# comment line, ignored\n/subly /privacy 301\n',
+      }),
+    );
+    assert.equal(withRule.code, 0, withRule.out);
+
+    // The negative half. Same tree, same link, rule deleted — if this still
+    // passed, the limb would be accepting every extensionless link on sight.
+    const withoutRule = run(
+      urlTree('rd-gone', { 'sites/nikatru/index.html': linksSubly, 'sites/nikatru/_redirects': '# nothing\n' }),
+    );
+    assert.equal(withoutRule.code, 1);
+    assert.match(withoutRule.out, /links "\/subly", and no page and no _redirects rule backs that URL/);
+  });
+
+  test('🔴 the FORM half skips a noindex page; the RESOLVES half does not', () => {
+    // What keeps the limb off apps/_template.html and the three dated legal
+    // snapshots. Scope, not softening — so the dangling half is asserted to
+    // still reach the very same page.
+    const noindexHtmlLink =
+      '<meta name="robots" content="noindex"><html><body><a href="/privacy.html">P</a></body></html>\n';
+    const ok = run(urlTree('ni-form', { 'sites/nikatru/arch.html': noindexHtmlLink }));
+    assert.equal(ok.code, 0, ok.out);
+
+    // …and the same `.html` link on an INDEXABLE page is still a defect.
+    const indexable = run(
+      urlTree('ni-indexable', {
+        'sites/nikatru/index.html': page(ORIGIN, '<a href="/privacy.html">P</a>', '<script>const APPS = [\n];</script>'),
+      }),
+    );
+    assert.equal(indexable.code, 1);
+    assert.match(indexable.out, /the `\.html` form of \/privacy/);
+
+    // …and a DANGLING link on that same noindex page still fails.
+    const dangling = run(
+      urlTree('ni-dangling', {
+        'sites/nikatru/arch.html':
+          '<meta name="robots" content="noindex"><html><body><a href="/ghost">G</a></body></html>\n',
+      }),
+    );
+    assert.equal(dangling.code, 1);
+    assert.match(dangling.out, /links "\/ghost", and no page and no _redirects rule backs that URL/);
+  });
+
+  test('a placeholder slot is not judged as a link at all', () => {
+    // `_template.html` ships `<a href="[PLAY STORE URL]">`. A limb that scolds
+    // that for being document-relative is reporting on a token nobody meant as
+    // a URL — and it is the allowlisted, deliberately-served template.
+    const { code, out } = run(
+      urlTree('ph-slot', {
+        'sites/nikatru/index.html': page(ORIGIN, '<a href="[PLAY STORE URL]">Get it</a>', '<script>const APPS = [\n];</script>'),
+      }),
+    );
+    assert.equal(code, 0, out);
   });
 
   test('FAILS both ways when the sitemap and the pages disagree', () => {
     const missing = run(urlTree('uf-sm-missing', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE]]) }));
     assert.equal(missing.code, 1);
-    assert.match(missing.out, /does not list https:\/\/one\.test\/privacy\.html/);
+    assert.match(missing.out, /does not list https:\/\/one\.test\/privacy/);
 
     const extra = run(
       urlTree('uf-sm-extra', {
-        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE], [`${ORIGIN}ghost.html`, GIT_DATE]]),
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, GIT_DATE], [`${ORIGIN}ghost`, GIT_DATE]]),
       }),
     );
     assert.equal(extra.code, 1);
-    assert.match(extra.out, /lists https:\/\/one\.test\/ghost\.html, which is not the canonical URL of any indexable page/);
+    assert.match(extra.out, /lists https:\/\/one\.test\/ghost, which is not the canonical URL of any indexable page/);
   });
 
   test('FAILS when og:url disagrees with the canonical on the same page', () => {
@@ -545,11 +614,11 @@ describe('check-site-integrity · one canonical URL form', () => {
     const listed = run(
       urlTree('uf-noindex-listed', {
         'sites/nikatru/draft.html': '<meta name="robots" content="noindex"><html><body>draft</body></html>\n',
-        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE], [`${ORIGIN}draft.html`, GIT_DATE]]),
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, GIT_DATE], [`${ORIGIN}draft`, GIT_DATE]]),
       }),
     );
     assert.equal(listed.code, 1);
-    assert.match(listed.out, /lists https:\/\/one\.test\/draft\.html/);
+    assert.match(listed.out, /lists https:\/\/one\.test\/draft/);
   });
 
   test('a root that claims no canonical at all is out of scope, not failed', () => {
@@ -567,7 +636,7 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
     // The real defect: privacy.html said version 2026-07-26 while the sitemap
     // said the page last changed 2026-07-18.
     const { code, out } = run(
-      urlTree('pv-drift', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, '2026-01-01']]) }),
+      urlTree('pv-drift', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, '2026-01-01']]) }),
     );
     assert.equal(code, 1);
     assert.match(out, /declares data-policy-version="2026-03-04" and .*lastmod 2026-01-01/);
@@ -582,10 +651,10 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
     // assertion that only fires when the field is present is one a hand edit
     // escapes by deleting the field.
     const { code, out } = run(
-      urlTree('pv-none', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, null]]) }),
+      urlTree('pv-none', { 'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, null]]) }),
     );
     assert.equal(code, 1);
-    assert.match(out, /privacy\.html with no <lastmod>/);
+    assert.match(out, /privacy with no <lastmod>/);
   });
 
   test('a page with no policy version is still held to its GIT date', () => {
@@ -593,7 +662,7 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
     // version is not held to a VERSION. It is still held to the date its file
     // last changed — which is the whole of W-3a, and the reason five of the six
     // stale nikatru values could never have been caught by #34.
-    const noVersion = { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, '<p>' + 'policy sentence. '.repeat(80) + '</p>') };
+    const noVersion = { 'sites/nikatru/privacy.html': page(`${ORIGIN}privacy`, '<p>' + 'policy sentence. '.repeat(80) + '</p>') };
     const { code, out } = run(urlTree('pv-exempt', noVersion));
     assert.equal(code, 0, out);
     assert.match(out, /0 policy version\(s\) not ahead of their sitemap lastmod/);
@@ -601,7 +670,7 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
     const wrong = run(
       urlTree('pv-exempt-wrong', {
         ...noVersion,
-        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, '2026-01-01']]),
+        'sites/nikatru/sitemap.xml': sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, '2026-01-01']]),
       }),
     );
     assert.equal(wrong.code, 1);
@@ -616,7 +685,7 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
     // day it was published, which git can never catch up to.
     const { code, out } = run(
       urlTree('pv-postdated', {
-        'sites/nikatru/privacy.html': page(`${ORIGIN}privacy.html`, `<p data-policy-version="2099-01-01">${'policy sentence. '.repeat(80)}</p>`),
+        'sites/nikatru/privacy.html': page(`${ORIGIN}privacy`, `<p data-policy-version="2099-01-01">${'policy sentence. '.repeat(80)}</p>`),
       }),
     );
     assert.equal(code, 1);
@@ -624,7 +693,7 @@ describe('check-site-integrity · policy version vs sitemap lastmod', () => {
   });
 
   test('🔴 changefreq and priority are refused — Google ignores both', () => {
-    const withDead = sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy.html`, GIT_DATE]]).replace(
+    const withDead = sitemap([[ORIGIN, GIT_DATE], [`${ORIGIN}privacy`, GIT_DATE]]).replace(
       '</urlset>',
       '  <url><loc>x</loc><changefreq>weekly</changefreq></url>\n</urlset>',
     );
@@ -639,15 +708,15 @@ describe('check-site-integrity · store listings point at pages we serve', () =>
     urlTree(name, { 'apps/demo/store/ios-appstore/privacy-policy-url.txt': `${url}\n` });
 
   test('PASSES when the store URL is a canonical URL of an indexable page', () => {
-    const { code, out } = run(withStore('st-ok', `${ORIGIN}privacy.html`));
+    const { code, out } = run(withStore('st-ok', `${ORIGIN}privacy`));
     assert.equal(code, 0, out);
     assert.match(out, /1 store listing URL\(s\) matched to a page we serve/);
   });
 
   test('FAILS when the store URL is a second spelling of a real page', () => {
-    const { code, out } = run(withStore('st-form', `${ORIGIN}privacy`));
+    const { code, out } = run(withStore('st-form', `${ORIGIN}privacy.html`));
     assert.equal(code, 1);
-    assert.match(out, /points a store listing at https:\/\/one\.test\/privacy, which is not the canonical URL/);
+    assert.match(out, /points a store listing at https:\/\/one\.test\/privacy\.html, which is not the canonical URL/);
   });
 
   test('FAILS when the store URL points at a page this repo does not ship', () => {

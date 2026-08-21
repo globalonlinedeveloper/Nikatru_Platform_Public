@@ -4490,9 +4490,9 @@ class NotificationService {
 class AppConfig {
   static const String companyUrl = 'https://nikatru.com';
   static const String apiBaseUrl = 'https://api.nikatru.com';
-  static const String privacyUrl = 'https://nikatru.com/privacy.html';
-  static const String termsUrl = 'https://nikatru.com/terms.html';
-  static const String refundUrl = 'https://nikatru.com/refund.html';
+  static const String privacyUrl = 'https://nikatru.com/privacy';
+  static const String termsUrl = 'https://nikatru.com/terms';
+  static const String refundUrl = 'https://nikatru.com/refund';
   static const String updateUrl = String.fromEnvironment(
     'UPDATE_URL',
     defaultValue: companyUrl,
@@ -6528,7 +6528,7 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       const { code, out } = run('assert-stamp-properties.mjs', {
         cwd: build('legal-unlinked', {
           appConfig: goodAppConfig.replace(
-            "  static const String refundUrl = 'https://nikatru.com/refund.html';\n",
+            "  static const String refundUrl = 'https://nikatru.com/refund';\n",
             '',
           ),
         }),
@@ -6601,6 +6601,25 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       });
       assert.equal(code, 1);
       assert.match(out, /every published legal page is on the link-exemption list/);
+    });
+
+    test('🔴 COVERAGE LOST when the URL FORM drifts and no constant parses', () => {
+      // The exact regression this floor exists for. On 2026-08-21 the site's
+      // canonical form went extension-less and the pattern that reads these
+      // constants had to move with it. Had it not, it would have matched ZERO
+      // constants against a brick still full of them, and the in-app half of the
+      // set equality would have been silently empty while every line above it
+      // went on printing a result.
+      const { code, out } = run('assert-stamp-properties.mjs', {
+        cwd: build('legal-form-drift', {
+          appConfig: goodAppConfig
+            .replace("nikatru.com/privacy'", "nikatru.com/privacy.html'")
+            .replace("nikatru.com/terms'", "nikatru.com/terms.html'")
+            .replace("nikatru.com/refund'", "nikatru.com/refund.html'"),
+        }),
+      });
+      assert.equal(code, 1);
+      assert.match(out, /the in-app half of the set equality below is EMPTY/);
     });
 
     test('COVERAGE LOST when the published list is unreadable at all', () => {

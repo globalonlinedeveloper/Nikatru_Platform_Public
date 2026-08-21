@@ -11,5 +11,16 @@
 # file is public in the REPO but is never SERVED -- Cloudflare consumes _redirects and
 # assert-web-cache-policy.mjs:168 lists it NOT_SERVED. pricing.html, repaired the same
 # day, is the one whose comment shipped the stale gate id to every browser.
-/subly /apps/subly.html 301
-/subly/ /apps/subly.html 301
+# The target is the EXTENSIONLESS form deliberately. Measured 2026-08-20:
+# `/subly` -> 301 `/apps/subly.html` -> 308 `/apps/subly`, a double hop on the
+# permanent commerce address named above. The second hop is documented Cloudflare
+# behaviour, not a bug -- Pages "automatically redirects HTML files to
+# extension-less versions"
+# (developers.cloudflare.com/pages/configuration/serving-pages/, 2026-08-20), so
+# naming `.html` here BUYS a redirect. Pointing at `/apps/subly` serves 200 on the
+# first hop. The file itself stays at apps/subly.html because the generator owns
+# that path (tooling/sites/generate-discovery.mjs) and three limbs of
+# assert-discovery-surface.mjs model `apps/<slug>.html`; relocating it to
+# subly/index.html is the Phase 2 generator rework, not a redirect edit.
+/subly /apps/subly 301
+/subly/ /apps/subly 301

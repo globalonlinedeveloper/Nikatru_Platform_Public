@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FullShot — Privacy Policy</title>
+<link rel="canonical" href="https://nikatru.com/fullshot/privacy">
+<meta name="description" content="How FullShot handles your data: everything is processed locally on your device and nothing is transmitted.">
+<!-- PROVENANCE — this file is a SERVED COPY, and the source is in another repo.
+     Source of truth: Nikatru_Extensions_Public/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html
+     Placeholders filled 2026-08-21 (owner chose support@nikatru.com as the public
+     policy contact). No guard in either repo can see across the repository
+     boundary -- assert-enforcement-index prints "no row carries kind cross-repo"
+     -- so THIS COMMENT is the only thing joining the two copies. Edit the source
+     first, then re-copy; never edit this file alone. -->
+<style>
+  :root { --ink:#1a1a1a; --muted:#555; --line:#e2e2e2; --accent:#1a73e8; }
+  * { box-sizing: border-box; }
+  body { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px;
+         font: 16px/1.65 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: #fff; }
+  h1 { font-size: 30px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 34px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 20px 0 4px; }
+  p, li { color: var(--ink); }
+  .meta { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+  .lead { font-size: 17px; color: #333; }
+  ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  code { background: #f4f4f6; padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  .callout { background: #f0f6ff; border: 1px solid #cfe0fb; border-radius: 8px;
+             padding: 14px 16px; margin: 16px 0; }
+  .tag { display:inline-block; background:#e8f0fe; color:var(--accent);
+         border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>FullShot — Privacy Policy</h1>
+<p class="meta">Effective date: 2026-08-21 &nbsp;·&nbsp; Last updated: 2026-08-21 &nbsp;·&nbsp; Applies to: FullShot – Full Page Screen Capture, the browser extension for Google Chrome, Microsoft Edge, and Mozilla Firefox, version 1.10.1 and later.</p>
+
+<p class="lead">FullShot is a screenshot tool that runs entirely on your own computer. It does not have accounts, does not send your data anywhere, and does not track you. This policy explains exactly what that means.</p>
+
+<div class="callout">
+<span class="tag">In one line</span>
+<p style="margin:8px 0 0">Your screenshots and settings stay on your device. FullShot has no servers, collects no analytics, shows no ads, and never sells or transmits your data.</p>
+</div>
+
+<h2>1. Who we are</h2>
+<p>FullShot ("the extension", "we") is developed by Rajasekar Selvam. For any privacy question you can reach us at <a href="mailto:support@nikatru.com">support@nikatru.com</a>.</p>
+
+<h2>2. What FullShot does</h2>
+<p>FullShot captures screenshots of web pages you choose to capture — the full page, the visible area, a region you select, or an element you click — and lets you annotate, redact, beautify, and export them. Everything happens locally in your browser.</p>
+
+<h2>3. What data FullShot handles</h2>
+<p>Google classifies taking a screenshot as "handling user data," so we disclose it plainly even though nothing leaves your device.</p>
+
+<h3>a. Screenshots (website content)</h3>
+<ul>
+  <li><strong>What:</strong> When you start a capture, FullShot reads the content of the page in the active tab and produces an image of it. That image is <em>website content</em>.</li>
+  <li><strong>Where it goes:</strong> The screenshot is held in your browser's memory during capture and, if you keep it, saved to a local database (IndexedDB) on your device as your capture <em>History</em>. It is also saved to your <strong>Downloads</strong> folder or copied to your clipboard only when you choose to export or copy it.</li>
+  <li><strong>What we do <u>not</u> do:</strong> We do not upload, transmit, back up, share, or sell your screenshots. They never reach us or any third party. We cannot see them.</li>
+</ul>
+
+<h3>b. Settings</h3>
+<ul>
+  <li>Your preferences — image format, capture options, filename template, PDF options, and theme — are stored using your browser's extension settings storage (the <code>storage.sync</code> API). These are preference values only; <strong>no screenshots or page content are stored in settings.</strong></li>
+  <li>Because that API is the browser's own sync mechanism, if you are signed in with sync enabled these small preference values may sync across your own profiles of that browser — through Google in Chrome, Microsoft in Edge, or Mozilla in Firefox. It is the browser's mechanism, not ours; FullShot neither controls nor receives that sync, and it never includes your screenshots.</li>
+</ul>
+
+<h3>c. The last-failure note</h3>
+<ul>
+  <li><strong>What:</strong> When a capture fails, FullShot keeps a one-line note so the popup can tell you why the next time you open it. The note holds a short fixed sentence chosen from a list built into the extension, the <em>origin</em> of the page (scheme and host only — never the path, query string or any credentials in the address), which capture mode you tried, the tab number, and the time.</li>
+  <li><strong>Where it goes:</strong> the browser's <code>storage.session</code> API — deliberately not <code>storage.local</code> and not <code>storage.sync</code>. It lives in memory for the current browser session, is erased when you quit the browser, never syncs to any other device, and never leaves this machine.</li>
+  <li><strong>What it never holds:</strong> no screenshot, no page content, and no text written by the browser or by a website. Only sentences FullShot itself wrote.</li>
+</ul>
+
+<h3>d. Automatic PII redaction (optional, off by default)</h3>
+<p>If you turn on "Redact PII," FullShot scans the captured page's text <strong>on your device</strong> for patterns that look like emails, phone numbers, credit-card numbers, Social Security numbers, and API keys, and paints a solid opaque block over each match <strong>it finds</strong> in the image (a permanent block, not a reversible blur). This detection runs entirely locally. FullShot does not collect, store separately, index, or transmit the detected values — the feature exists to <em>cover</em> what it matched, not to gather it.</p>
+<p><strong>What it cannot do.</strong> The scan reads text that the page exposes <em>as text</em>, and it does not read all of that. Anything the page draws as pixels — a canvas-rendered editor such as Google Docs or Figma, an embedded image, a scanned document, a video frame — holds no text for the scan to read, so nothing is blocked there even with the feature switched on. Nor does it read what you have typed into a form field, or text held in an attribute, or a number split across styled fragments of a sentence, or text inside a frame it did not enter. It matches five shapes and no others: not names, not postal addresses, not dates of birth, not account nicknames, not free-form secrets.</p>
+<p><strong>FullShot reports what it covered; it cannot tell you whether the image is clean, because it never sees the image as a picture. Look at it before you share it.</strong> Before a screenshot and its description are copied for an AI assistant, FullShot shows you the exact image that is about to leave, with the blocks it covered marked on it, and asks you to confirm you have looked.</p>
+<p><strong>What this stores.</strong> To mark those blocks for you, FullShot stores — locally, on your device, alongside the screenshot and nowhere else — the position and size of each block it confirmed to be solid in the finished image. It stores no coordinates for anything it did not cover, and it never stores the matched text itself. Those positions are deleted with the screenshot, and are dropped entirely if the image is edited, beautified or clipped, because they would no longer describe it.</p>
+
+<h2>4. What FullShot does NOT collect</h2>
+<ul>
+  <li>No account, sign-in, name, or email is required or collected.</li>
+  <li>No analytics, telemetry, usage tracking, crash reporting, or advertising identifiers.</li>
+  <li>No browsing history. FullShot does not record the sites you visit; it only reads a page when you explicitly capture it.</li>
+  <li>No cookies set by the extension. No fingerprinting.</li>
+</ul>
+
+<h2>5. Data sharing and transmission</h2>
+<p>None. FullShot makes no network requests to any server, ours or a third party's. There is no cloud component. Because nothing is transmitted, there is nothing for us to share, sell, or hand over. (Files you deliberately save to Downloads or copy to the clipboard are then in your control, like any other file.)</p>
+
+<h2>6. Permissions and why they are used</h2>
+<ul>
+  <li><strong>activeTab</strong> — lets FullShot read the current tab only at the moment you start a capture. No standing access to any site.</li>
+  <li><strong>scripting</strong> — injects the capture engine into the active tab on demand to measure, scroll, and stitch the page.</li>
+  <li><strong>downloads</strong> — saves a finished screenshot or exported GIF/WebM to your Downloads folder when you choose to save.</li>
+  <li><strong>storage</strong> — stores your preferences (see §3b).</li>
+  <li><strong>unlimitedStorage</strong> — lets your local capture History hold large images without hitting the browser's small default storage quota. Local only.</li>
+  <li><strong>Optional broad site access (<code>&lt;all_urls&gt;</code>)</strong> — <em>not</em> requested at install. FullShot asks for it only if you switch on expanding scrollable cross-origin iframes or Batch URL capture, and your browser shows its own prompt. Decline and the rest of FullShot still works.</li>
+</ul>
+<p>FullShot contains no remotely hosted code; all code ships inside the extension (Manifest V3).</p>
+
+<h2>7. Data retention and how to delete your data</h2>
+<ul>
+  <li><strong>History:</strong> Screenshots you keep live in local IndexedDB until you remove them. Delete individual captures from the History page, or clear them all there. Removing the extension also removes its local storage.</li>
+  <li><strong>Settings:</strong> Stored until you change them or uninstall. If your browser's sync is on, clearing synced data is done through the browser.</li>
+  <li><strong>The last-failure note:</strong> Dismiss it from the popup, or quit the browser — <code>storage.session</code> does not survive a restart. A capture that succeeds also clears it.</li>
+  <li><strong>Downloaded / copied files:</strong> These are ordinary files under your control; delete them like any other file.</li>
+  <li>Because we hold none of your data, there is nothing to request from us to access, correct, or delete — you already have full local control.</li>
+</ul>
+
+<h2>8. Security</h2>
+<p>Your data stays on your device and is never transmitted by FullShot, which removes the main network exposure. Local data is protected by your operating system and the browser's per-extension storage isolation. We ship no remote code that could later change this behavior.</p>
+
+<h2>9. Children's privacy</h2>
+<p>FullShot is a general-purpose utility and is not directed to children. It collects no personal information from anyone, including children.</p>
+
+<h2>10. Limited Use disclosure</h2>
+<p class="meta">This section is required by the Chrome Web Store and is stated in the form it requires. The practices it describes are the same in every browser FullShot ships to.</p>
+<p>FullShot's use of information received from Chrome APIs adheres to the <a href="https://developer.chrome.com/docs/webstore/program-policies/limited-use" rel="nofollow">Chrome Web Store User Data Policy</a>, including the Limited Use requirements. Specifically: FullShot uses on-device data only to provide its single, user-facing purpose — capturing and working with screenshots you choose to take; it does not transfer that data except as part of a user-initiated save/export you perform; it does not use the data for advertising; and no human at FullShot reads your data (we have no access to it).</p>
+
+<h2>11. Changes to this policy</h2>
+<p>If our data practices ever change, we will update this policy and revise the "Last updated" date before the change takes effect, and — as required by Chrome Web Store policy — disclose material changes to users. Continued use after an update means you accept the revised policy.</p>
+
+<h2>12. Contact</h2>
+<p>Questions about this policy or FullShot's privacy practices: <a href="mailto:support@nikatru.com">support@nikatru.com</a>.</p>
+
+<footer>
+FullShot processes all data locally on your device and transmits nothing. FullShot is published by Rajasekar Selvam, trading as NIKATRU.
+</footer>
+
+</body>
+</html>

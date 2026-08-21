@@ -218,8 +218,8 @@
         "checked — `privacyUrl` must AGREE with every app_config that declares it, in both layouts — so",
         "moving the declaration bought reach without losing the tie to the code."
       ],
-      "privacyUrl": "https://nikatru.com/privacy.html",
-      "supportUrl": "https://nikatru.com/contact.html",
+      "privacyUrl": "https://nikatru.com/privacy",
+      "supportUrl": "https://nikatru.com/contact",
       "agreesWithAppConfigConst": {
         "privacyUrl": "privacyUrl"
       }

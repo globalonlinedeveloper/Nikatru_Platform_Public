@@ -183,7 +183,7 @@ const MIN_FUNCTIONS = 1;
  *  and both render identically from the site root — so the inconsistency was
  *  invisible until a page moves into a subdirectory and the relative form
  *  silently resolves somewhere else. */
-const CANONICAL_FORM = 'https://<host>/<page>.html (homepage: https://<host>/), linked as /<page>.html';
+const CANONICAL_FORM = 'https://<host>/<page> (homepage: https://<host>/), linked as /<page>';
 
 /** The client-IP header a Cloudflare Function reads. Named once: the limb below
  *  and its message both quote it. */
@@ -403,11 +403,23 @@ const isNoindex = (html) => {
 
 const posixRel = (root, abs) => relative(root, abs).split(sep).join('/');
 
-/** The one URL this page is allowed to call itself. */
+/** The one URL this page is allowed to call itself.
+ *
+ *  🔴 EXTENSIONLESS, and the `.html` form is now the defect. Cloudflare Pages
+ *  "automatically redirects HTML files to extension-less versions: for instance,
+ *  /contact.html will be redirected to /contact"
+ *  (developers.cloudflare.com/pages/configuration/serving-pages/, 2026-08-20).
+ *  So the `.html` spelling was never the served URL — it was a 308 TO the served
+ *  URL, and every canonical, sitemap <loc> and store listing naming it was
+ *  spending a redirect to reach the page it meant. Measured 2026-08-21 before
+ *  this changed: 7 canonicals and 7 sitemap <loc>s in the `.html` form, all 7
+ *  redirecting. Must stay identical to `urlForPage` in
+ *  tooling/sites/generate-discovery.mjs; the sitemap↔pages set equality below
+ *  is what makes a disagreement between the two loud. */
 function expectedUrl(origin, page) {
   if (page === 'index.html') return origin;
   if (page.endsWith('/index.html')) return origin + page.slice(0, -'index.html'.length);
-  return origin + page;
+  return origin + page.replace(/\.html$/i, '');
 }
 
 /** `<url>` blocks of a sitemap, parsed as blocks so a <loc> keeps its <lastmod>.
@@ -644,30 +656,84 @@ for (const root of siteRoots) {
   }
 
   // ── internal links: one form, and it resolves ─────────────────────────────
+  //
+  // 🔴 THIS LIMB WAS INVERTED ON 2026-08-21, and the inversion is the point.
+  // It used to require `.html` and report the extensionless form as the defect
+  // ("It resolves, which is the problem"). That had the redirect backwards:
+  // Cloudflare Pages SERVES the extension-less URL and 308s `.html` TO it, so the
+  // form the limb was enforcing was the one costing a redirect, on every internal
+  // link, on every page. The relationship it protects is unchanged — ONE form,
+  // and it resolves — only the form it names is now the served one.
+  //
+  // TWO SCOPE RULES, both of which the inversion forced and neither of which is
+  // a softening:
+  //
+  //  1. THE FORM HALF SKIPS `noindex` PAGES; THE RESOLVES HALF DOES NOT. The one
+  //     form exists to keep ONE canonical URL per page, and a noindex page is by
+  //     its own declaration outside that relationship — which is exactly how the
+  //     canonical and sitemap limbs above already treat it. Concretely this is
+  //     what keeps the limb off `apps/_template.html` (allowlisted by name in
+  //     assert-discovery-surface.mjs, deliberately served, deliberately noindex)
+  //     and off the three DATED legal snapshots under `legal/`, which are frozen
+  //     records: rewriting a link inside a published policy archive edits the
+  //     record. A DANGLING link is still a defect on any page, indexable or not,
+  //     so that half keeps its full scope.
+  //
+  //  2. A LINK TO A `_redirects` SOURCE RESOLVES. `checkout-return.html` links
+  //     `/subly`, which is not a file — it is the permanent commerce address,
+  //     declared in `_redirects`. Before the inversion nothing reached that link
+  //     (it has no `.html`), so the limb had never had an opinion about it and
+  //     the redirect map was unverified. Reading the map makes the link legal AND
+  //     puts every redirect source under the same "it resolves" rule as a file.
+  const redirectSources = (() => {
+    const f = join(root, '_redirects');
+    if (!existsSync(f)) return new Set();
+    return new Set(
+      readFileSync(f, 'utf8')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith('#'))
+        .map((l) => l.split(/\s+/)[0])
+        .filter((from) => from.startsWith('/')),
+    );
+  })();
+
+  /** A reference that is actually a path. `_template.html`'s placeholder slots
+   *  (`[WEB APP URL]`) are not links in any form, and a limb that scolds them for
+   *  being document-relative is reporting on a token nobody ever meant as a URL. */
+  const looksLikePath = (v) => /^[A-Za-z0-9._~\/-]+$/.test(v);
+
   for (const p of pages) {
+    const pageIsNoindex = isNoindex(p.html);
     for (const { raw, path } of sameSiteRefs(p.html)) {
       const last = path.split('/').pop() ?? '';
+      if (!looksLikePath(path)) continue;
+
       if (last.toLowerCase().endsWith('.html')) {
-        if (!path.startsWith('/')) {
+        if (pageIsNoindex) continue;
+        problems.push(
+          `sites/${name}/${p.page} links ${JSON.stringify(raw)}, the \`.html\` form of ${path.replace(/\.html$/i, '')}. Cloudflare Pages serves the extension-less URL and 308-redirects \`.html\` to it, so this link spends a redirect to reach the page it means, and is a second spelling of a URL only one form of which is canonical (${CANONICAL_FORM}).`,
+        );
+        continue;
+      }
+
+      if (path.startsWith('/') && last !== '' && !last.includes('.')) {
+        if (redirectSources.has(path)) continue;
+        if (!existsSync(join(root, `${path.slice(1).split('/').join(sep)}.html`))
+          && !existsSync(join(root, path.slice(1).split('/').join(sep), 'index.html'))) {
           problems.push(
-            `sites/${name}/${p.page} links ${JSON.stringify(raw)} document-relative. Same-site page links use the root-relative form (${CANONICAL_FORM}) — a relative link resolves against the directory it is written in, so the same footer means different things in / and in /apps/.`,
+            `sites/${name}/${p.page} links ${JSON.stringify(raw)}, and no page and no _redirects rule backs that URL on this deploy root.`,
           );
-          continue;
-        }
-        if (!existsSync(join(root, path.slice(1).split('/').join(sep)))) {
-          problems.push(`sites/${name}/${p.page} links ${JSON.stringify(raw)}, and no such file exists on this deploy root.`);
         }
         continue;
       }
-      // The extensionless variant of a page we DO ship. Not a 404 on Cloudflare
-      // Pages (it serves /privacy for /privacy.html), which is exactly why it
-      // rots quietly: it works, and it is a second URL for one page.
-      if (path.startsWith('/') && last !== '' && !last.includes('.')) {
-        if (existsSync(join(root, `${path.slice(1).split('/').join(sep)}.html`))) {
-          problems.push(
-            `sites/${name}/${p.page} links ${JSON.stringify(raw)}, the extensionless form of ${path}.html. It resolves, which is the problem — one page reachable at two URLs, only one of which is canonical (${CANONICAL_FORM}).`,
-          );
-        }
+
+      // A document-relative page link resolves against the directory it is
+      // written in, so the same footer means different things in / and /apps/.
+      if (!path.startsWith('/') && last !== '' && !last.includes('.') && !pageIsNoindex) {
+        problems.push(
+          `sites/${name}/${p.page} links ${JSON.stringify(raw)} document-relative. Same-site page links use the root-relative form (${CANONICAL_FORM}).`,
+        );
       }
     }
   }

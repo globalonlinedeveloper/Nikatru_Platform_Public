@@ -45,9 +45,9 @@ class AppConfig {
   // one a paying user needs. `assert-stamp-properties.mjs` now asserts the two
   // sets are equal in BOTH directions, so publishing a fourth page without
   // linking it, or dropping one of these, fails the build.
-  static const String privacyUrl = 'https://nikatru.com/privacy.html';
-  static const String termsUrl = 'https://nikatru.com/terms.html';
-  static const String refundUrl = 'https://nikatru.com/refund.html';
+  static const String privacyUrl = 'https://nikatru.com/privacy';
+  static const String termsUrl = 'https://nikatru.com/terms';
+  static const String refundUrl = 'https://nikatru.com/refund';
 
   // The API this app calls. Soft via CFG: the host can change with no app
   // release (API_BASE_URL --dart-define overrides the default).
