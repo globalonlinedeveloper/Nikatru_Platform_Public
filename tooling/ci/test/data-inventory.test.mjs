@@ -23,6 +23,48 @@
 // row whose writers set nothing keeps the record forever while printing NOTHING,
 // which is strictly worse than the `undecided` it replaced.
 //
+// 2026-08-21 — the two source reads in the guard that were still RAW (the
+// `writtenBy` mention read and the `expirationTtl` read) now strip comments
+// first, so PROSE about a store no longer counts as code that fills it. LATENT
+// when closed, not live: measured that day over the real register — 21 rows, 35
+// writer files, 19 of the 35 matched the store name inside comments as well as
+// code, and every one of the 19 still matched real code after the strip, so
+// nothing went red.
+//
+// Five cases below are the negative half: THREE that must bite (`.sql`, `.ts`,
+// `expirationTtl`) and TWO positive controls carrying the same files with real
+// code in them, so a red in the first three is attributable to the comment and
+// not to a fixture that was broken anyway.
+//
+// Verified the same day against a scratch copy of the guard with both reads put
+// back to RAW: 47 tests, 44 pass, 3 FAIL — and the three are exactly the three
+// negative cases, each returning 0 where it expects 1. The two controls pass
+// against either version, as controls should; they discriminate nothing and are
+// not counted as proof. (The first draft of this note claimed "5 of 5 failed to
+// bite". Measured false in the same run, and left recorded rather than quietly
+// swapped: a control is not evidence, and counting it as evidence is how a
+// negative half gets overstated.)
+//
+// ⚠️ THE `.sql` CASE IS NOT A DUPLICATE OF THE `.ts` ONE — it is the case that
+// pins WHICH STRIPPER IS WIRED. 21 of the real register's 35 writers are `.sql`
+// or `.jsonc`, and a stripper whose extension map covers only the JS/TS/Dart
+// family hands those files back VERBATIM. Measured 2026-08-21 against a second
+// scratch copy of the guard wired to exactly such a stripper: 47 tests, 46 pass,
+// 1 fail — the one failure being this `.sql` case, while the `.ts` and
+// `expirationTtl` cases stayed GREEN on a stripper that never touched 21 of the
+// 35 real reads. A negative half written only against `.ts` would have passed
+// there and asserted nothing. (That copy was wired to a second, JS/TS-only
+// stripper that existed in tooling/ci for part of 2026-08-21 and was deleted the
+// same day as a duplicate of text-reductions.mjs. The measurement stands; the
+// module it was taken against no longer exists, so it is named here by what its
+// extension map covered rather than by a path a reader could go and open.
+// 🔬 AND IT IS RE-TAKEABLE WITHOUT IT, which is what keeps this a measurement
+// rather than a story: 47/46/1 reproduces against ANY stripper whose map covers
+// the JS/TS/Dart family and not `.sql`/`.jsonc` — wrap `stripSourceComments` and
+// return the source unchanged for those two extensions. Confirmed 2026-08-21 by
+// two people independently, each with their own wrapper. The number does not
+// depend on the deleted module; only the anecdote does.)
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -291,6 +333,27 @@ describe('retention is declared, never invented', () => {
     const r = run(fixture({ stores, subscribe }));
     assert.equal(r.status, 0, out(r));
   });
+
+  // 🔴 AND THE CASE THE OTHER TWO CANNOT REACH: a comment is where an option gets
+  // EXPLAINED, so this limb was the likelier of the two raw reads to be satisfied
+  // by prose. In the real tree (measured 2026-08-21) subscribe.js names
+  // `expirationTtl` five times and only two are code; one of the three comments
+  // is a note about what happens when the option is ABSENT — which is the exact
+  // sentence that would have kept a store forever under a label saying it expires
+  // itself, while printing nothing.
+  test('`ttl` whose only `expirationTtl` is in a COMMENT still FAILS', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[3].retention = { kind: 'ttl', reason: 'the store expires it' };
+    const subscribe = `export async function onRequestPost({ env }) {
+  // No expirationTtl is set here; the key is written without one, deliberately.
+  /* An expirationTtl would go in a third argument. */
+  await env.SIGNUPS.put('sub:x', '{}');
+}
+`;
+    const r = run(fixture({ stores, subscribe }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declares retention `ttl` and not one of its `writtenBy` files sets an expiry/);
+  });
 });
 
 describe('a personal-data row quotes a sentence the notice still publishes', () => {
@@ -338,6 +401,83 @@ describe('a row stays attached to the code that fills it', () => {
     const r = run(fixture({ stores }));
     assert.equal(r.status, 1);
     assert.match(out(r), /names no `writtenBy`/);
+  });
+
+  // 🔴 A WRITER THAT ONLY TALKS ABOUT THE TABLE IS NOT A WRITER. Until 2026-08-21
+  // this read was raw, so a file whose sole mention of the store sat in a comment
+  // satisfied "still mentions the store they fill" — the same class of defect as
+  // the `grep '"r2_buckets"'` that matched the comment explaining there is no
+  // r2_buckets, and as the HTML-comment disclosure case above.
+  //
+  // Each case below is paired with the same file carrying REAL code, so a failure
+  // here is attributable to the comment and not to the fixture being broken.
+
+  test('a `.sql` writer that names the table only in a comment FAILS', () => {
+    // The `.sql` half is load-bearing: 16 of the real register's 35 writers are
+    // `.sql`, an extension a JS/TS-only stripper does not know and hands back
+    // unchanged. This case is red only if the guard uses a stripper whose map
+    // reads `--` comments; a `.ts`-only negative test would pass under either.
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[1].writtenBy = ['services/api/migrations/0002_people_notes.sql'];
+    const r = run(
+      fixture({
+        stores,
+        extraFiles: {
+          // No CREATE TABLE outside the comment, so this adds no store — the only
+          // thing under test is whether the word `people` counts.
+          'services/api/migrations/0002_people_notes.sql':
+            '-- Rows for people are inserted by the account route, not by this file.\nPRAGMA foreign_keys = ON;\n',
+        },
+      }),
+    );
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /never mentions "people"/);
+  });
+
+  test('the same `.sql` writer passes once it really names the table in code', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[1].writtenBy = ['services/api/migrations/0002_people_notes.sql'];
+    const r = run(
+      fixture({
+        stores,
+        extraFiles: {
+          'services/api/migrations/0002_people_notes.sql':
+            "-- Rows for people are inserted here.\nINSERT INTO people (id) VALUES ('seed');\n",
+        },
+      }),
+    );
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('a `.ts` writer that names the binding only in a comment FAILS', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[2].writtenBy = ['services/api/src/lib/cache.ts'];
+    const r = run(
+      fixture({
+        stores,
+        extraFiles: {
+          'services/api/src/lib/cache.ts':
+            '// CACHE_KV is bound in wrangler.jsonc.\n/* The CACHE_KV writes used to live here. */\nexport const noop = () => {};\n',
+        },
+      }),
+    );
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /never mentions "CACHE_KV"/);
+  });
+
+  test('the same `.ts` writer passes once it really names the binding in code', () => {
+    const stores = structuredClone(DEFAULT_STORES);
+    stores[2].writtenBy = ['services/api/src/lib/cache.ts'];
+    const r = run(
+      fixture({
+        stores,
+        extraFiles: {
+          'services/api/src/lib/cache.ts':
+            "// CACHE_KV is bound in wrangler.jsonc.\nexport const put = (env) => env.CACHE_KV.put('k', 'v');\n",
+        },
+      }),
+    );
+    assert.equal(r.status, 0, out(r));
   });
 });
 

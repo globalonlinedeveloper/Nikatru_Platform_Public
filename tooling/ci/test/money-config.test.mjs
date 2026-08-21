@@ -127,6 +127,102 @@ describe('[5]M-12', () => {
 });
 `;
 
+// ── FIXTURES FOR THE COMMENT-STRIPPING NEGATIVE HALF (added 2026-08-21) ──────
+// Until 2026-08-21 three of this guard's source reads were RAW: the MOR_VERIFIERS
+// registry, the adapter `secretEnvVar`, and every test file in limb 5. A FOURTH,
+// limb 2's scan of the deployed config, used a home-grown line-strip that saw only
+// WHOLE-LINE `//` comments. Nothing in the real tree exploited any of them —
+// measured that day, the registry match, the adapter's sole PATTERN match
+// (services/platform/src/lib/mor/paddle.ts:422 — the bare token occurs five times
+// in services/, it is the guard's `secretEnvVar: '…'` pattern that is unique) and
+// the `proven` block sets (8 on platform, 2 on subly-api) were IDENTICAL raw and
+// stripped, and neither deployed config carries a sandbox shape in any reading.
+// So these fixtures are not a regression net around a defect that fired; they are
+// the CONSTRUCTED input that shows why the raw reads had to go. Each one is EXIT 0
+// under the raw reads and EXIT 1 (or the reverse, where marked) under the stripped
+// ones, so this file bites the change rather than merely watching it.
+//
+// ⚠️ THE FIXTURES MUST USE REAL COMMENTS. `stripSourceComments` (text-reductions.mjs)
+// passes STRING AND TEMPLATE LITERALS THROUGH VERBATIM by design, so a fixture that
+// hid its tokens in a quoted string would still be counted after the fix, the test
+// would go green for entirely the wrong reason, and the "negative half" would prove
+// nothing. (This paragraph named a second, short-lived stripper module for part of
+// 2026-08-21. It was deleted the same day: text-reductions.mjs had been the shared
+// reduction since 2026-08-02, and two shared strippers is precisely the drift this
+// repository exists to prevent. Naming the deleted module here would be the same
+// defect one level up — a comment pointing at a file that is not there.)
+
+/** (B) FALSE GREEN, the direction that matters: the suite's ONLY `503` is prose.
+ *  `environment` and `expect(` are real code in the same block, so on RAW source
+ *  the three tokens co-occur and limb 5 declares the fail-closed branch EXERCISED
+ *  on the strength of a TODO describing the test nobody wrote. */
+const PROSE_ONLY_503_TEST_TS = `
+import { describe, it, expect } from 'vitest';
+describe('[5]M-12', () => {
+  it('a live environment answers 200', async () => {
+    // TODO(nobody): the refusal case still has to be written —
+    //   const res = await send({ environment: undefined });
+    //   expect(res.status).toBe(503);
+    const res = await send({ environment: 'live' });
+    expect(res.status).toBe(200);
+  });
+});
+`;
+
+/** The SAME fixture with the prose promoted to code. The positive control: if
+ *  PROSE_ONLY_503_TEST_TS ever fails for a reason unrelated to comment-stripping,
+ *  this one fails too and the pair stops agreeing. */
+const REAL_503_TEST_TS = PROSE_ONLY_503_TEST_TS.replace(
+  `    // TODO(nobody): the refusal case still has to be written —
+    //   const res = await send({ environment: undefined });
+    //   expect(res.status).toBe(503);`,
+  `    const absent = await send({ environment: undefined });
+    expect(absent.status).toBe(503);`,
+);
+
+/** (B) FALSE RED, the opposite direction: a REAL, firing suite that merely
+ *  MENTIONS `describe.skip(` in a review note. On raw source the mention drops the
+ *  whole file from the scan and the guard reds a door that is properly proven. */
+const SKIP_MENTIONED_IN_PROSE_TEST_TS = `import { describe, it, expect } from 'vitest';
+// ⚠️ Do NOT reach for describe.skip( ) to get a red build green — [5]M-12 reds
+// because the door stopped refusing, not because the test is inconvenient.
+${MONEY_TEST_TS}`;
+
+/** (A) the adapter read: a stale doc comment above the declaration quoting the
+ *  name this secret USED to have. The regex takes the FIRST match, so on raw
+ *  source the guard derives the OLD name — and then checks the deployed config for
+ *  the wrong key, while the real secret sits committed in a PUBLIC repo. */
+const PADDLE_TS_STALE_DOC = `
+/**
+ * The Paddle verifier.
+ *   secretEnvVar: 'PADDLE_WEBHOOK_SECRET'   // renamed 2026-08; kept here as prose
+ */
+export const paddleVerifier: MoRWebhookVerifier = {
+  provider: 'paddle',
+  secretEnvVar: 'PADDLE_NOTIFICATION_SECRET',
+};
+`;
+
+/** (C) the registry read, same shape one level up: a stale doc comment quoting the
+ *  ONE-rail declaration sits above the real TWO-rail one. Raw, the guard enumerates
+ *  only paddle and never learns the second rail HAS a destination secret. */
+const SECOND_ADAPTER_TS = `
+export const secondVerifier: MoRWebhookVerifier = {
+  provider: 'second',
+  secretEnvVar: 'SECOND_RAIL_SECRET',
+};
+`;
+
+const REGISTRY_TS_STALE_DOC = `
+import { paddleVerifier } from './paddle';
+import { secondVerifier } from './second';
+/**
+ * Until the second rail landed this read:
+ *   export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier];
+ */
+export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, secondVerifier];
+`;
+
 function write(root, rel, body) {
   const p = join(root, rel);
   mkdirSync(dirname(p), { recursive: true });
@@ -161,6 +257,7 @@ function run(o = {}) {
   if (o.sublyWrangler !== null) write(root, 'services/subly-api/wrangler.jsonc', o.sublyWrangler ?? SUBLY_WRANGLER);
   write(root, 'services/platform/src/lib/mor/registry.ts', o.registry ?? REGISTRY_TS);
   write(root, 'services/platform/src/lib/mor/paddle.ts', o.paddle ?? PADDLE_TS);
+  if (o.second) write(root, 'services/platform/src/lib/mor/second.ts', o.second);
   if (o.route !== null) write(root, 'services/platform/src/routes/money.ts', o.route ?? ROUTE_TS);
   write(root, 'services/platform/test/money.test.ts', o.moneyTest ?? MONEY_TEST_TS);
   if (o.sublySrc) write(root, 'services/subly-api/src/routes/webhooks.ts', o.sublySrc);
@@ -334,5 +431,93 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     const r = run({ route: null });
     assert.equal(r.code, 1);
     assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/routes\/money\.ts does not exist/);
+  });
+
+  // ── THE COMMENT CANNOT BE THE EVIDENCE (added 2026-08-21) ─────────────────
+  // Every case below EXITS 0 under the guard's pre-2026-08-21 raw reads except
+  // the false-RED ones, which exit 1. They are the negative half of routing
+  // limb 3's two reads, limb 5's test read and limb 2's config scan through
+  // `stripSourceComments` from `text-reductions.mjs`.
+
+  test('🔴 a test suite whose ONLY 503 is in a COMMENT does not prove the fail-closed branch', () => {
+    // THE FALSE-GREEN DIRECTION, and the reason this change was worth making.
+    // `environment` and `expect(` are real code in that block; only `503` is
+    // prose. Read raw, the three co-occur and limb 5 calls the branch fired.
+    const r = run({ moneyTest: PROSE_ONLY_503_TEST_TS });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NO SINGLE test block asserts that an absent or unrecognised money environment yields 503/);
+  });
+
+  test('...and the SAME suite with that comment promoted to real code DOES prove it', () => {
+    // The positive control for the case above. Without it, a fixture that broke
+    // for some unrelated reason would still look like a passing negative half.
+    const r = run({ moneyTest: REAL_503_TEST_TS });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}money config/);
+  });
+
+  test('a suite that merely MENTIONS describe.skip( in prose is still scanned', () => {
+    // THE FALSE-RED DIRECTION. Read raw, this one review note dropped the whole
+    // file from limb 5 and the guard reddened a door that does refuse. It fails
+    // loudly, so it is the less dangerous half — but it is the same defect.
+    const r = run({ moneyTest: SKIP_MENTIONED_IN_PROSE_TEST_TS });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}money config/);
+  });
+
+  test('🔴 a STALE doc comment above `secretEnvVar` cannot shadow the real declaration', () => {
+    // The adapter regex takes the FIRST match. Read raw, the guard derives the
+    // OLD name, checks the deployed config for a key nobody commits, and the
+    // secret that IS committed goes unreported — in a PUBLIC repository.
+    const r = run({
+      paddle: PADDLE_TS_STALE_DOC,
+      platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', `"PADDLE_NOTIFICATION_SECRET": "${NTF_SECRET}",`),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares PADDLE_NOTIFICATION_SECRET as a committed `vars` entry/);
+  });
+
+  test('🔴 a STALE doc comment above MOR_VERIFIERS cannot hide a second registered rail', () => {
+    // Same defect one level up, and the one the brief undercounted: the registry
+    // read was raw too. Read raw, the comment's one-rail declaration wins, the
+    // second rail's destination secret is never derived, and limb 3 says ok over
+    // a committed SECOND_RAIL_SECRET.
+    const r = run({
+      registry: REGISTRY_TS_STALE_DOC,
+      second: SECOND_ADAPTER_TS,
+      platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', `"SECOND_RAIL_SECRET": "${NTF_SECRET}",`),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares SECOND_RAIL_SECRET as a committed `vars` entry/);
+  });
+
+  // Limb 2's own reader. The whole-line case above ('a sandbox host named ONLY
+  // IN A COMMENT does not fail the build') passed under the home-grown
+  // `/^\s*\/\/.*$/gm` strip too; these two are the shapes it could not see, and
+  // they are the FALSE RED direction — the build stops on a sentence.
+  test('a sandbox host in a TRAILING comment in a deployed config does not fail the build', () => {
+    const r = run({
+      platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', '"APP_ID": "platform", // never a sandbox-api.paddle.com value'),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}money config/);
+  });
+
+  test('a sandbox host in a /* BLOCK */ comment in a deployed config does not fail the build', () => {
+    const r = run({
+      platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', '"APP_ID": "platform", /* not sandbox-api.paddle.com, and never was */'),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}money config/);
+  });
+
+  test('...and the same host as a REAL VALUE beside a trailing comment still fails', () => {
+    // The positive control for the pair above. Without it, a stripper that ate
+    // the whole line — or the whole file — would look like a passing pair.
+    const r = run({
+      platformWrangler: PLATFORM_WRANGLER.replace('"APP_ID": "platform",', '"PADDLE_API": "https://sandbox-api.paddle.com", // set by the deploy'),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the Paddle SANDBOX API base URL/);
   });
 });

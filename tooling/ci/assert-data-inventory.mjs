@@ -49,7 +49,7 @@
 // Usage:  node tooling/ci/assert-data-inventory.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve, relative, sep } from 'node:path';
+import { join, resolve, relative, sep, extname } from 'node:path';
 import { visibleText, normaliseForMatch, stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 
@@ -588,7 +588,55 @@ for (const s of stores) {
       continue;
     }
     writersChecked++;
-    const src = readFileSync(abs, 'utf8');
+    // 🔴 THIS READ WAS RAW UNTIL 2026-08-21, so a writer could satisfy the
+    // sentence above with PROSE — a file that only DISCUSSES the table passed as
+    // a file that fills it. The SQL reader (`.sql`) and the Pages-Function reader
+    // (`.js`) higher up in this file already strip; this read and the
+    // `expirationTtl` read below were the two source reads here that never did.
+    //
+    // LATENT, NOT LIVE — measured 2026-08-21 across every (row, writer) pair the
+    // register declares: 21 rows, 35 writer files, 0 missing. NINETEEN of the 35
+    // match the store name inside comments as well as code (15 distinct rows, 11
+    // of them d1-tables); in all nineteen real code still matches once the
+    // comments are blanked, so 35 of 35 pairs still anchor on code and this
+    // change turned nothing red. It closes a hole rather than reporting one.
+    // Thinnest survivors, worth knowing before either statement is moved into
+    // prose: `revocation_reasons` rests on a single writer,
+    // services/platform/migrations/0004_money_rail.sql, raw 3 hits / stripped 2,
+    // anchored on `CREATE TABLE IF NOT EXISTS revocation_reasons (`;
+    // `rollup_state` in services/platform/src/scheduled.ts is raw 4 / stripped 3.
+    //
+    // ⚠️ `.sql` (16) and `.jsonc` (5) are 21 of those 35 writers, so THE
+    // REQUIREMENT ON THE STRIPPER IS THAT ITS EXTENSION MAP COVER `.sql` AND
+    // `.jsonc`. A stripper that knows only the JS/TS/Dart family hands an unmapped
+    // extension back VERBATIM, which would leave 21 of these 35 reads exactly as
+    // raw as they were before this change while the comment above claimed they
+    // were stripped. text-reductions' COMMENT_STYLES has both, which is why this
+    // calls the stripper already imported at the top of this file.
+    //
+    // WHAT THIS DOES NOT CATCH. (a) That same map also returns an UNKNOWN
+    // extension unchanged and says nothing, so a future row naming a `.json`,
+    // `.toml` or `.md` writer quietly gets a raw read back and nothing prints —
+    // the trap text-reductions.mjs records against `.kts`. (b) String literals
+    // pass through by design, and they MUST: composing `stripStringLiterals` (same
+    // module) on top of this read takes 2 of the 14 .ts/.js pairs RED —
+    // `rollup_state` in services/platform/src/scheduled.ts and `budget_categories`
+    // in services/subly-api/src/routes/budget.ts — because the anchors here are
+    // SQL inside quoted strings. That regex handles '…' and "…" and does NOT touch
+    // backticks; a stripper that also blanked template literals would take 10 of
+    // the 14 red. Both numbers re-measured 2026-08-21. ⚠️ CORRECTED THE SAME DAY:
+    // this clause read "every surviving .ts/.js anchor lives inside a template
+    // literal … so blanking strings would take all 14 .ts/.js pairs red at once".
+    // Both halves are false — 2, not 14, and the anchors that survive the string
+    // blanker are the ones in template literals, which it cannot reach. The
+    // deterrent is real; the number was not. (c) A MENTION is still not a WRITE:
+    // scheduled.ts's THREE surviving `rollup_state` hits are a SELECT at :630 and
+    // INSERTs at :742 and :767, and this limb accepts the SELECT exactly as it
+    // accepts the INSERTs. (This read "scheduled.ts's surviving `rollup_state` hit
+    // is a SELECT" until 2026-08-21; there are three, and two of them are writes.)
+    // This limb proves the row still points at code that names the store, which is
+    // exactly what it says and no more.
+    const src = stripSourceComments(readFileSync(abs, 'utf8'), extname(w).toLowerCase());
     const needle = s.kind === 'd1-table' ? s.name : s.name;
     if (!src.includes(needle)) {
       problems.push(
@@ -615,7 +663,18 @@ for (const s of stores) {
   if (s.retention?.kind === 'ttl') {
     const setsExpiry = writers.some((w) => {
       const abs = join(repoRoot, ...w.split('/'));
-      return existsSync(abs) && readFileSync(abs, 'utf8').includes('expirationTtl');
+      if (!existsSync(abs)) return false;
+      // Stripped 2026-08-21 for the same reason as the writer read above, and
+      // this limb needed it more: a comment is where an option gets EXPLAINED.
+      // Measured that day — sites/nikatru/functions/api/subscribe.js names
+      // `expirationTtl` five times raw and twice after the strip. The two that
+      // survive are the real `put` options (lines 245 and 301); of the three that
+      // do not, one is a note about what happens when the option is ABSENT. So
+      // the old raw read would have kept saying "an expiry is set" off a sentence
+      // describing the case where none is. LATENT, not live: 1 of 1 `ttl` rows
+      // still sets an expiry in code, so this stayed green.
+      const src = stripSourceComments(readFileSync(abs, 'utf8'), extname(w).toLowerCase());
+      return src.includes('expirationTtl');
     });
     if (!setsExpiry) {
       problems.push(

@@ -52,6 +52,21 @@ import { execFileSync } from 'node:child_process';
 // NO boundary-crossing call site in this file, and no dated exemption comment below, because writing
 // one would claim a crossing that does not happen — prose satisfying a rule instead of code obeying it.
 import { listDir } from './tree-walk.mjs';
+// 2026-08-21: LIMB 1b matched its regex against RAW source and so counted prose ABOUT `gh repo list`
+// as an execution of it. `stripSourceComments` blanks comment spans to spaces, newlines kept, so
+// offsets and line numbers survive; string literals pass through VERBATIM, which is load-bearing here
+// and is argued at the call site. Nothing else in this file reads source text, so this import has
+// exactly one consumer by design.
+// ⚠️ CORRECTED THE SAME DAY, and recorded rather than quietly swapped: this line first imported
+// a differently-shaped strip helper from a SECOND stripper module written earlier in this same
+// session. Neither the module nor its export is named here, and the export is the half that was
+// missed on the first correction: a symbol that exists nowhere is as dangling as a filename. That module
+// has been DELETED, and is not named here because a comment naming a module that does not exist is
+// worse than no comment. text-reductions.mjs had been this corpus's shared stripper since 2026-08-02
+// and covers more extensions (.sql, .jsonc, .kts among them, which the deleted one returned
+// verbatim); keeping both would have left TWO shared strippers to drift apart, which is the
+// duplication this repository names as its cardinal defect. Same properties, one home.
+import { stripSourceComments } from './text-reductions.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const NAME = 'assert-github-matrix';
@@ -341,18 +356,100 @@ for (const [i, e] of pinsUnobservable.entries()) {
     // put another repository's .mjs files in range of that statement.
     // ⚠️ HONESTLY: at THIS call site the exclusion is not currently load-bearing. The loop is one level
     // deep and takes `f.isFile()` only, so a nested checkout — always a DIRECTORY — is dropped by that
-    // filter whether or not listDir dropped it first; the scanned count is identical either way
-    // (measured 2026-08-18: 145 scanned, 1 querier, before and after this swap). It is written as
-    // `listDir` because the rule is that no guard enumerates a directory itself, and because the day
-    // this loop learns to recurse — or to look at directory entries — is the day the property starts
-    // mattering, silently, with nobody re-deriving it.
+    // filter whether or not listDir dropped it first; the scanned count is identical either way. It is
+    // written as `listDir` because the rule is that no guard enumerates a directory itself, and because
+    // the day this loop learns to recurse — or to look at directory entries — is the day the property
+    // starts mattering, silently, with nobody re-deriving it.
+    // THE DATED RECORD, AND IT HAS MOVED — kept rather than replaced, because a measurement that
+    // changed is worth more than the number alone:
+    //   measured 2026-08-18: 145 scanned, 1 querier, before and after the listDir swap.
+    //   measured 2026-08-21: 152 scanned, 6 raw queriers against 1 after the comment strip below.
+    //     THE ARITHMETIC, written out because the first attempt to reconcile these two numbers was
+    //     OFF BY ONE: `scanned` is not a directory listing — SELF is skipped four lines below. Today
+    //     tooling/ci holds 144 top-level .mjs (144 of them tracked) and tooling/scripts holds 9, so
+    //     scanned = 144 - 1 + 9 = 152, which is what this limb prints. So 145 cannot be "exactly
+    //     today's tooling/ci count" under either reading: the listing is 144 and the scanned-from-
+    //     tooling/ci figure is 143. What the 2026-08-18 record actually counted cannot be settled
+    //     from here, and this line claims nothing about it beyond that it does not reconcile.
+    //   ⚠️ 152, not the 153 an earlier pass of this comment recorded, and 6 raw, not 7: both were
+    //     measured while tooling/ci still held an untracked, since-deleted stripper module. The
+    //     older numbers are kept here because a measurement that moved for a known reason is worth
+    //     more than the number alone.
+    //   The listDir property is still not load-bearing at this call site, before or after the swap.
+    //   Both numbers are DERIVED, so both move: a .mjs added to either directory changes the first
+    //   and can change the second. They are recorded to be re-derived, not to be trusted.
     for (const f of listDir(d, { withFileTypes: true })) {
       if (!f.isFile() || !f.name.endsWith('.mjs')) continue;
       const abs = join(d, f.name);
       if (abs === SELF) continue; // this file reads github.org by construction
-      let src;
-      try { src = readFileSync(abs, 'utf8'); } catch { continue; }
+      let raw;
+      try { raw = readFileSync(abs, 'utf8'); } catch { continue; }
       scannedFiles++;
+      // ═══ 🔴 MATCH CODE, NOT PROSE ABOUT CODE. LIVE DEFECT, FOUND AND FIXED 2026-08-21. ═══════════
+      // This limb read RAW source until today, so all three matches below — GH_LIST, READS_REGISTRY,
+      // and the ORG literal — could be satisfied by a COMMENT rather than by code. A file that only
+      // MENTIONS `github.org` no longer counts as reading it, and one that only mentions the org in
+      // prose no longer counts as spelling it; both of those are tightenings this change makes too.
+      // That is not a hypothetical in a corpus written in this house style,
+      // where prose about code sits next to the code:
+      //
+      //   MEASURED 2026-08-21 over the 152 scanned files — 6 matched GH_LIST raw, 1 matched after
+      //   stripping. The one is assert-store-matrix.mjs, which really does
+      //   `execFileSync('gh', ['repo', 'list', ...])`. All five false ones carry ONE shared comment
+      //   paragraph advising a reader to verify a repo name with that command; `git log -S` on that
+      //   sentence dates it to cc19a3a, 2026-08-20.
+      //   ⚠️ AN EARLIER PASS OF THIS COMMENT SAID 7 raw, and a still earlier one asserted 8. Neither
+      //   reproduces now. 7 was measured while an untracked second stripper module — written and
+      //   deleted in this same session — sat in tooling/ci quoting the command in its header while
+      //   never spelling the org; 8 was a transient
+      //   reading that also caught assert-guard-coverage.mjs while it briefly carried the command
+      //   inside a quoted description string (see the string-literal note below). Re-measured on the
+      //   settled tree: 6 raw, 1 stripped.
+      //
+      // WHAT WAS LIVE ABOUT IT: THE COUNT PRINTED AT THE FOOT OF THIS LIMB COULD NOT FALL. Six files
+      // matched raw while exactly one queried, and the six could not drop below five while that
+      // shared paragraph stood. So the one signal the count exists to give — "nothing queries GitHub
+      // any more, i.e. the scan stopped reaching the tree" — could never be observed. An assertion
+      // that cannot fail, exactly the shape CLAUDE.md names.
+      //
+      // ⚠️ AND WHAT WAS NOT LIVE. CORRECTED 2026-08-21, hours after it was written, because a wrong
+      // claim about this file's own subject is that subject one level up. A previous pass of this
+      // comment said the raw read "MANUFACTURED A FALSE RED", citing an --offline run that exited 1
+      // with one finding. That run happened — but the sole finding was against that same UNTRACKED
+      // stripper module, created earlier in this same session and since deleted, so the red was
+      // SELF-INFLICTED and never existed on the committed tree at all. Re-simulated
+      // 2026-08-21 with the raw branch over today's tree: 6 NOTE(duplicated) and ZERO findings. The
+      // unfallable count above is the whole of the live defect; there was no second one.
+      //
+      // 🔴 STRING LITERALS MUST SURVIVE, AND THAT IS WHY THIS READ IS `stripSourceComments` ALONE.
+      // text-reductions.mjs also exports `stripStringLiterals`, the separate composable tool for
+      // callers that need literals gone. This limb is not one of them, and composing it here would
+      // DELETE THE LIMB SILENTLY: the only real querier matches on STRING LITERALS —
+      // assert-store-matrix.mjs:642 is a single execFileSync argv carrying both its GH_LIST match AND
+      // its sole copy of the org literal. Measured 2026-08-21, composing stripStringLiterals on top of
+      // the comment strip takes the querier count 1 -> 0 and that file stops containing ORG, so the
+      // limb would go blind while still printing a confident, green "0 of them query".
+      // stripSourceComments does not blank string literals. That is the behaviour this limb needs.
+      //
+      // ⚠️ WHAT THIS DOES NOT CATCH, stated because an overclaiming comment here is worse than none:
+      // prose living inside a STRING literal, which strings-verbatim cannot touch and must not. A file
+      // that merely NAMES this command inside a quoted string — a description, an error message, a
+      // manifest blurb — still lands in the branches below though it queries nothing.
+      // This is not theoretical: OBSERVED 2026-08-21, mid-session, assert-guard-coverage.mjs briefly
+      // carried the command inside a quoted description string and was reported by exactly that path.
+      // It was gone by the time this comment was written (re-measured on the settled tree: 6 raw, 1
+      // stripped, no string-literal case remaining), which is precisely why the limitation is recorded
+      // here rather than left to be rediscovered. The repair for such a case belongs in the OTHER
+      // file — do not spell the command literally in prose — never in teaching this one to blank
+      // strings, for the reason directly above.
+      //
+      // The extension is passed as a LITERAL '.mjs' rather than derived, because the filter four lines
+      // above admits nothing else. That matters: text-reductions returns an unknown extension VERBATIM
+      // and says nothing, so a loop that could see other extensions would owe a check that the
+      // reduction actually reduced (assert-no-do-alarms.mjs and assert-android-target-sdk.mjs carry
+      // one). This one cannot, and '.mjs' is in COMMENT_STYLES.
+      // ═════════════════════════════════════════════════════════════════════════════════════════════
+      const src = stripSourceComments(raw, '.mjs');
       if (!GH_LIST.test(src)) continue;
       queriers++;
       if (READS_REGISTRY.test(src)) continue;

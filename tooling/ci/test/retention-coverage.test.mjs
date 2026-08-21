@@ -87,6 +87,51 @@
 // angle except the one that matters, which is whether any assertion ranges over
 // it. The list that drives `it.each` is the coverage; the map is only data.
 //
+// ⚠️ AND THE ANCHOR ITSELF, 2026-08-21. The `ttl` limb read the anchor RAW, so a
+// COMMENT mentioning `expirationTtl` — or a commented-out `ttlSource` line —
+// satisfied a rule whose own failure text says that reading the code is the only
+// thing making it a rule rather than an intention. It is routed through
+// `stripSourceComments` from tooling/ci/text-reductions.mjs now (comments blanked to
+// spaces, newlines and length kept, string literals passed through verbatim).
+// ~~An earlier draft of this paragraph named a SECOND stripper module instead~~ — one
+// written and deleted the same day (2026-08-21) as a duplicate of the reduction above.
+// The name is corrected rather than left pointing at a file that does not exist, and it
+// is not repeated: a dead module named in prose is the drift this pass exists to remove.
+//
+// 🔴 THIS ONE WAS LATENT, NOT LIVE, and the distinction is the whole honest claim.
+// Measured 2026-08-21: sites/nikatru/functions/api/subscribe.js — the anchor BOTH
+// `ttl` rows share — carries `expirationTtl` in COMMENTS at 204, 231, 315 and in
+// CODE at 245, 301, with both `ttlSource` strings in code (`const
+// SIGNUP_RETENTION_DAYS = 400;` at 225, `expirationTtl: RATE_WINDOW_SECONDS` at
+// 301). The guard was EXIT 0 before the change and EXIT 0 after it, with
+// byte-identical output. No false pass was ever taken by this tree. What the change
+// buys is that the limb can FAIL for the right reason — and R11–R13 are FIXTURES,
+// not real-tree mutations, each of which PASSED against the raw read:
+//
+//   R11 the only `expirationTtl` is in a LINE comment   -> "contains no `expirationTtl`"
+//   R12 the only `expirationTtl` is in a BLOCK comment  -> same
+//   R13 `ttlSource` survives only as a comment while a  -> "does not contain that text"
+//       SIBLING row's real put supplies `expirationTtl`    (the two-rows-one-anchor
+//                                                           case, one level down)
+//   3/3 red now, 3/3 green before. The opposite half is held too: real code wrapped
+//   in prose about it stays GREEN, because a repair that reddens working code is
+//   just a different blindness. The string-literal gap is PINNED, not claimed
+//   closed — string CONTENTS are left verbatim by design (other guards match on
+//   them), so a log line that spells out the declared `ttlSource` satisfies BOTH
+//   limbs, and a test asserts that openly.
+//   ~~That sentence read "still satisfies the first limb" until 2026-08-21~~, and the
+//   fixture under it supplied `expirationTtl` as REAL CODE on a second line — so both
+//   limbs were satisfied by code, the literal was inert, and the test passed against a
+//   raw-read guard as readily as against this one. It pinned nothing. Re-measured and
+//   replaced with the string-ONLY shape; see the KNOWN GAP case below.
+//
+// ⚠️ AND A NEW LIMB, 2026-08-21: the reduction dispatches on EXTENSION and returns an
+// UNKNOWN one VERBATIM, saying nothing. An anchor's extension is REGISTER DATA, so a
+// `ttl` row pointed at a `.md` or a `.py` would quietly get the raw-read semantics
+// R11–R13 exist to end. The guard now probes the reduction per anchor and fails
+// instead. Both real anchors are `.js`, so the tree is unaffected — R14 below is the
+// fixture, and it is red against a guard without that probe.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -404,6 +449,127 @@ describe('assert-retention-coverage — a `ttl` rule is read from the CODE, not 
     });
     const r = run(root);
     assert.equal(r.code, 0, r.out);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 THE NEGATIVE HALF OF "READ FROM THE CODE" (added 2026-08-21). Every test
+  // above passed against a guard that read the anchor RAW, so `src.includes(...)`
+  // was satisfied by any occurrence — including one inside a comment. The limb's
+  // own failure text says "reading the code is the only thing that makes it a
+  // rule rather than an intention", and prose is not code.
+  //
+  // MEASURED, NOT ASSUMED (2026-08-21). In the real anchor both `ttl` rows share,
+  // sites/nikatru/functions/api/subscribe.js, `expirationTtl` sits in COMMENTS at
+  // lines 204, 231, 315 and in CODE at 245, 301; both `ttlSource` strings resolve
+  // to code (225 and 301). So the false pass was LATENT, NOT LIVE — the real tree
+  // never took it, the guard was green before the fix and green after it. These
+  // fixtures are what makes the limb able to fail for the right reason: each one
+  // PASSED against the raw read and is RED now.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('expirationTtl in a LINE COMMENT does not satisfy the rule', () => {
+    const root = makeRepo((s, r) => {
+      withSub('// the put used to carry { expirationTtl: 600 } here\nawait env.KV.put(key, value);\n')(s, r);
+      s.rows.push(ttlRow());
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /contains no `expirationTtl`/);
+  });
+
+  test('expirationTtl in a BLOCK COMMENT does not satisfy it either', () => {
+    const root = makeRepo((s, r) => {
+      withSub('/*\n * TODO: put this back —\n *   { expirationTtl: 600 }\n */\nawait env.KV.put(key, value);\n')(s, r);
+      s.rows.push(ttlRow());
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /contains no `expirationTtl`/);
+  });
+
+  // The one with teeth: this is the two-rows-one-anchor case the `ttlSource`
+  // field exists for, reopened ONE LEVEL DOWN. The sibling's REAL put satisfies
+  // the first limb, so the row reaches the second — and under a raw read a
+  // COMMENTED-OUT period satisfied that one too, which is the register claiming
+  // a retention period the code does not implement.
+  test('a ttlSource that survives only as a COMMENT is a period the code no longer writes', () => {
+    const root = makeRepo((s, r) => {
+      withSub(
+        'await env.KV.put(rl, "1", { expirationTtl: RATE_WINDOW_SECONDS });\n' +
+          '// const SIGNUP_RETENTION_DAYS = 400;   <- reverted, see the ADR\n' +
+          'await env.KV.put(sub, rec);\n',
+      )(s, r);
+      s.rows.push(ttlRow({ mechanism: { ttlSource: 'const SIGNUP_RETENTION_DAYS = 400;' } }));
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /does not contain that text/);
+    assert.match(r.out, /still asserting the old period/);
+  });
+
+  // …and the other direction, which is the half that stops the repair from being
+  // a way to make the guard blind: real code SURROUNDED by prose about it stays
+  // green. A stripper that over-reached would redden this and the real tree.
+  test('real code still passes when comments discuss it — stripping must not blind the limb', () => {
+    const root = makeRepo((s, r) => {
+      withSub(
+        '// every signup key carries expirationTtl; see expirationTtl below\n' +
+          'await env.KV.put(key, value, { expirationTtl: 600 }); // expirationTtl\n' +
+          '/* expirationTtl, again, in prose */\n',
+      )(s, r);
+      s.rows.push(ttlRow());
+    });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  // 📌 A KNOWN GAP, PINNED RATHER THAN CLAIMED CLOSED. `stripSourceComments` blanks
+  // COMMENTS, not STRING CONTENTS (`stripStringLiterals` is the separate, composable
+  // tool and is deliberately NOT composed in the guard — other guards match on string
+  // contents). So a log line satisfies the FIRST limb, and when it spells the declared
+  // `ttlSource` out it satisfies the SECOND one too — which is the limb that makes the
+  // check row-specific at all. This fixture is therefore string-ONLY: the anchor's sole
+  // occurrence of `expirationTtl` AND of the row's `ttlSource` ("expirationTtl: 600",
+  // ttlRow()'s default) is inside a console.log, and the put below it carries no expiry.
+  // A register row can thus declare a retention period whose only trace in the code is a
+  // log message, and this guard prints ok.
+  //
+  // ~~This fixture used to log the bare word "expirationTtl" and then perform a REAL
+  // `{ expirationTtl: 600 }` put on the next line~~ — under which both limbs were
+  // satisfied by CODE and the literal was inert, so the case passed against a raw-read
+  // guard, against this one, and against one that blanked strings. It discriminated
+  // nothing. Corrected 2026-08-21 after that was measured, not argued.
+  //
+  // 🔴 IF STRING BLANKING IS EVER COMPOSED INTO THAT READ, THIS TEST GOES RED ON ITS
+  // OWN and the fixture becomes a genuine failure case — flip it to expect 1 THEN, on
+  // the evidence of the run, and do not delete it.
+  test('KNOWN GAP: a ttlSource that exists only inside a STRING LITERAL still satisfies BOTH limbs', () => {
+    const root = makeRepo((s, r) => {
+      withSub('console.log("expirationTtl: 600");\nawait env.KV.put(key, value);\n')(s, r);
+      s.rows.push(ttlRow());
+    });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  // R14 — THE REDUCTION MUST ACTUALLY REDUCE. text-reductions.mjs dispatches on
+  // EXTENSION and returns an unknown one VERBATIM, saying nothing; an anchor's
+  // extension comes from the REGISTER, so nothing about the tree stops a row naming a
+  // `.md` or a `.py`. Without the guard's probe such a row reads its own COMMENTS as
+  // code — the raw-read semantics the three tests above exist to end, restored silently
+  // by a filename. Note this fixture's `expirationTtl` and `ttlSource` are BOTH inside a
+  // comment: against a guard with no probe it passes (prose satisfies both limbs), which
+  // is exactly what makes it discriminating.
+  test('a ttl anchor whose extension the reduction does not know FAILS instead of reverting to a raw read', () => {
+    const root = makeRepo((s, r) => {
+      mkdirSync(join(r, 'functions'), { recursive: true });
+      writeFileSync(join(r, 'functions/sub.py'), '# await put(key, value, { expirationTtl: 600 })\nput(key, value)\n');
+      s.requiredIds = ['retention.kv.external'];
+      s.rows.push(ttlRow({ mechanism: { anchor: 'functions/sub.py' } }));
+    });
+    const r = run(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /whose extension `\.py` is one text-reductions\.mjs does not know/);
+    assert.match(r.out, /returns an unknown extension VERBATIM/);
   });
 });
 

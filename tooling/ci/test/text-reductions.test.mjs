@@ -38,6 +38,11 @@ import {
   stripSourceComments,
   stripStringLiterals,
 } from '../text-reductions.mjs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { execFile, execSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join, dirname, resolve, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 describe('text-reductions.mjs — HTML to what a reader saw', () => {
   test('a commented-out promise is not page text', () => {
@@ -269,5 +274,139 @@ describe('stripStringLiterals — a name inside a string is not a declaration', 
     const out = stripStringLiterals(sql);
     assert.ok(!out.includes('card_number'));
     assert.ok(out.includes('CREATE TABLE t'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TWO REAL-TREE CONTROLS, added 2026-08-21.
+//
+// Everything above is a fixture somebody wrote, and a fixture encodes the same
+// misunderstanding as the code it tests. These two run over the whole corpus.
+//
+// They arrived by an embarrassing route worth recording, because the lesson is
+// the same one this module exists to serve. On 2026-08-21 a session set out to
+// fix six guards that matched regexes against RAW source, decided the corpus
+// needed "the ONE comment-stripper", and wrote a new module — without opening
+// text-reductions.mjs, which had been exactly that since 2026-08-02, with wider
+// language coverage (.sql, .jsonc, .kts, .yaml) than the new one. The duplicate
+// was deleted. What survived is the pair of controls written for it, because
+// they caught FOUR real bugs in that implementation in their first run —
+// bugs its author had not found by reading it — and this module, which nine-plus
+// guards' correctness passes through, had no equivalent.
+//
+// The bug they caught, as a description of what they are FOR: a template literal
+// whose `${…}` interpolation contains ANOTHER template literal. Scanning to the
+// next backtick ends the outer literal on the inner one's opening quote, so
+// `https://…` lands back in code position, the `//` reads as a line comment, and
+// the rest of the line is blanked. LIVE CODE, deleted, silently — the exact
+// failure mode this module's header calls the one it must never have.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+/** Tracked files of a kind, from git rather than a walk — enumerating the tree
+ *  is tree-walk.mjs's guarded concern and not this test's. */
+function tracked(...globs) {
+  return execSync(`git ls-files ${globs.map((g) => `"${g}"`).join(' ')}`, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+    .trim()
+    .split('\n')
+    .filter(Boolean);
+}
+
+describe('text-reductions · REAL TREE · stripping must never break the parse', () => {
+  const files = tracked('*.mjs', '*.js');
+
+  test('there is a corpus to check', () => {
+    assert.ok(files.length > 300, `only ${files.length} tracked .mjs/.js — the control lost its subject`);
+  });
+
+  test('no file that parsed before parses worse after, and offsets are preserved', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'text-reductions-'));
+    let probe = 0;
+    // `node --check` is the parser. There is no in-process way to syntax-check an
+    // ES module without executing it, and executing a guard RUNS it — so the cost
+    // is one process per check, which is why they go 16 at a time. Sequentially
+    // this took 60s, and a slow control is a control somebody deletes.
+    const parses = (text, ext) =>
+      new Promise((done) => {
+        const p = join(dir, `probe${probe++}${ext}`);
+        writeFileSync(p, text);
+        execFile(process.execPath, ['--check', p], (err) => done(!err));
+      });
+
+    const lengthChanges = [];
+    const jobs = [];
+    for (const f of files) {
+      const src = readFileSync(join(REPO_ROOT, f), 'utf8');
+      const out = stripSourceComments(src, extname(f));
+      // "Replaced with spaces, never deleted, so byte offsets are unchanged" is
+      // a promise in this module's own header. Here it is as an assertion.
+      if (out.length !== src.length) lengthChanges.push(f);
+      jobs.push({ f, src, out, ext: f.endsWith('.mjs') ? '.mjs' : '.js' });
+    }
+    assert.deepEqual(lengthChanges, [], 'stripping must preserve byte offsets');
+
+    const regressions = [];
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: 16 }, async () => {
+        for (let k = next++; k < jobs.length; k = next++) {
+          const j = jobs[k];
+          // Only a file that parsed BEFORE can regress. One that never parsed
+          // (a fragment, a fixture) proves nothing either way.
+          if (!(await parses(j.out, j.ext)) && (await parses(j.src, j.ext))) regressions.push(j.f);
+        }
+      }),
+    );
+    assert.deepEqual(regressions.sort(), [], 'stripping blanked live code in these files');
+  });
+});
+
+describe('text-reductions · REAL TREE · Dart agrees with the independently proven stripper', () => {
+  const files = tracked('*.dart');
+
+  /** assert-stamp-properties.mjs's `stripDartComments` — string-aware, in service
+   *  since 2026-08-01, mutation-proven, and written by a different hand. Lifted
+   *  rather than imported because importing that guard RUNS it: it is a script
+   *  with top-level side effects, not a library. */
+  async function oracle() {
+    const guard = readFileSync(join(REPO_ROOT, 'tooling', 'ci', 'assert-stamp-properties.mjs'), 'utf8');
+    const at = guard.indexOf('function stripDartComments(src');
+    assert.notEqual(at, -1, 'the oracle has been renamed or removed — re-point this test');
+    const end = guard.indexOf('\n}\n', at);
+    assert.notEqual(end, -1, 'could not find the end of the oracle function');
+    const body = `${guard.slice(at, end + 3)}\nexport { stripDartComments };`;
+    return (await import(`data:text/javascript;base64,${Buffer.from(body).toString('base64')}`)).stripDartComments;
+  }
+
+  test('the oracle is a real stripper and not a pass-through', () => {
+    // Without this, "we agree on 311 files" would also be true of two functions
+    // that both return their argument.
+    assert.doesNotMatch(stripSourceComments('final a = 1; // gone\n', '.dart'), /gone/);
+  });
+
+  test('at most one tracked .dart file strips differently, and it is the known one', async () => {
+    const ref = await oracle();
+    const disagreements = [];
+    for (const f of files) {
+      const src = readFileSync(join(REPO_ROOT, f), 'utf8');
+      if (ref(src) !== stripSourceComments(src, '.dart')) disagreements.push(f);
+    }
+    // ⚠️ NOT asserted empty, and the reason is a REAL difference rather than a
+    // tolerance. Dart block comments NEST (the language spec says so) and this
+    // module's C-family scanner does not nest — so `/* a /* b */` ends here at
+    // the first close marker and continues in the oracle. Measured 2026-08-21:
+    // exactly ONE tracked file diverges, the Mason brick's app_config.dart, and
+    // it diverges in this module's DOCUMENTED direction of error — it KEEPS the
+    // text, so the worst case is a comment surviving and an `absent` check
+    // crying wolf, never code being deleted. Pinned to that one file so the day
+    // a second appears, somebody re-derives it instead of widening a tolerance.
+    assert.deepEqual(disagreements, [
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart',
+    ]);
   });
 });

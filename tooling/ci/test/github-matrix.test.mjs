@@ -46,11 +46,40 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSy
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// 2026-08-21: the LIMB 1b cases below assert on the guard's CODE, not on its prose — this file's
+// subject is a defect that was prose satisfying a code rule, so a case that could itself be
+// satisfied by a comment would be the same mistake one level up. The derivation of the guard's
+// SIBLING IMPORTS — ONE derivation, `GUARD_SIBLINGS`, deliberately not two, so the plants cannot
+// drift — reads the stripped source for the same reason: a commented-out or quoted `import`
+// line in the guard would otherwise inject a phantom sibling and make copyFileSync throw ENOENT,
+// which reads exactly like the case under test failing.
+// ⚠️ THIS LINE FIRST IMPORTED A SECOND, SESSION-LOCAL STRIPPER MODULE, since DELETED and not named
+// here because a comment naming a module that does not exist is worse than no comment.
+// text-reductions.mjs is this corpus's one shared stripper and has been since 2026-08-02.
+// `stripSourceComments` blanks comments only; `stripStringLiterals` is the separate composable tool,
+// used below ONLY to prove what would break if the guard ever reached for it.
+import { stripSourceComments, stripStringLiterals } from '../text-reductions.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 const GUARD = join(CI_DIR, 'assert-github-matrix.mjs');
 const REGISTRY = join(REPO, 'catalog', 'store-matrix.json');
+
+/** The guard's in-tree sibling imports, DERIVED from its source rather than typed. Two cases below
+ *  plant a hermetic copy of the guard and need every one of these beside it, or node dies at MODULE
+ *  RESOLUTION before a line of the guard runs.
+ *
+ *  🔴 IT READS THE STRIPPED SOURCE, and that is the same rule the cases themselves are about. Both
+ *  derivations used to run over RAW guard text, so a commented-out or quoted `import` line would have
+ *  injected a phantom sibling and made copyFileSync throw ENOENT — a failure that reads exactly like
+ *  the case under test failing. Derived ONCE here rather than twice, so the two plants cannot drift.
+ *  ⚠️ KNOWN NARROWNESS, stated rather than left to be discovered: this matches only a single-line
+ *  `'./name.mjs'` with SINGLE quotes at the start of a line. A double-quoted import, or one naming a
+ *  subdirectory, is silently missed and comes back as ERR_MODULE_NOT_FOUND in the planting cases.
+ *  As of 2026-08-21 the guard has exactly two, both in that form: tree-walk.mjs, text-reductions.mjs. */
+const GUARD_SIBLINGS = [
+  ...stripSourceComments(readFileSync(GUARD, 'utf8'), '.mjs').matchAll(/^import\s.*?from\s+'\.\/([\w.-]+\.mjs)';/gm),
+].map((m) => m[1]);
 
 /** The environment the guard must not inherit. `gh` reads GH_TOKEN/GITHUB_TOKEN,
  *  and a machine that happens to be authenticated would send the no-flag cases
@@ -290,7 +319,11 @@ describe('assert-github-matrix', () => {
       // That would have looked like this case still failing the guard while proving nothing about the
       // anchor. Copying the helper keeps the subject under test the ANCHOR WALK, which is what this
       // case is for. Same repair as guards-refuse-empty.test.mjs:236 and release-durable.test.mjs:100.
-      copyFileSync(join(CI_DIR, 'tree-walk.mjs'), join(base, 'tooling', 'ci', 'tree-walk.mjs'));
+      // 2026-08-21: AND IT HAPPENED AGAIN, exactly as recorded above — the guard gained a second
+      // relative import and this case went red with ERR_MODULE_NOT_FOUND, status 1 where 2 was
+      // expected, saying nothing whatever about the anchor. The list is now DERIVED from the guard's
+      // own relative imports rather than typed, so the next sibling does not cost a third red run.
+      for (const sib of GUARD_SIBLINGS) copyFileSync(join(CI_DIR, sib), join(base, 'tooling', 'ci', sib));
       writeFileSync(join(base, 'catalog', 'store-matrix.json'), readFileSync(REGISTRY, 'utf8'));
       const r = runRaw(copy, '--offline');
       assert.equal(r.status, 2, r.stdout + r.stderr);
@@ -464,6 +497,242 @@ describe('assert-github-matrix', () => {
       for (const verb of ['repo create', 'repo rename', 'repo delete', 'repo edit']) {
         assert.ok(!src.includes(verb), `assert-github-matrix.mjs must not contain \`${verb}\``);
       }
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LIMB 1b — PROSE ABOUT `gh repo list` IS NOT AN EXECUTION OF IT.
+  //
+  // 🔴 THE DEFECT THESE CASES RECORD. Until 2026-08-21 the org-literal limb
+  // matched its three tests — GH_LIST, READS_REGISTRY, the ORG literal — against
+  // RAW source, so a COMMENT could satisfy any of them. Re-measured on the settled
+  // live tree 2026-08-21: 152 files scanned, 6 matched GH_LIST raw, 1 after
+  // stripping comments. Five of the six were prose, all five carrying one shared
+  // paragraph. The count printed at the foot of that limb was therefore inflated
+  // AND could not fall while that paragraph stood, so "nothing queries GitHub any
+  // more" — the one signal the count exists to give — could never be observed.
+  // ⚠️ An earlier pass of this comment read 153/7; both were taken while an
+  // untracked, since-deleted second stripper module sat in tooling/ci. Kept as a
+  // record that the number moved, and why.
+  //
+  // ⚠️ AND THE OTHER HALF OF THAT PASS IS WITHDRAWN. It also claimed the raw read
+  // had manufactured a LIVE red. The one finding it cited was against that same
+  // untracked module, so the red was self-inflicted and the committed tree never
+  // had it: re-simulating the raw branch over today's tree gives 6 duplicated-org
+  // notes and ZERO findings. The unfallable count is the whole live defect.
+  //
+  // ⚠️ WHY THESE CASES ARE PLANTED RATHER THAN RUN AGAINST THIS REPO. A case
+  // asserting "the live tree has exactly one querier" goes red the day someone
+  // adds a script, for a reason having nothing to do with the behaviour under
+  // test — the same failure this file's own header records against a re-typed
+  // "1 of 1". The subject here is the CLASSIFIER, so the tree it classifies is
+  // constructed: three files it must scan and probes whose contents are the
+  // whole input.
+  //
+  // ⚠️ AND THE PRICE OF THAT: THE PROBE BODIES SPELL THE ARGV CONTIGUOUSLY INSIDE
+  // STRING LITERALS, so THIS FILE is itself a post-strip GH_LIST match (measured
+  // 2026-08-21: true raw and true stripped — strings pass through verbatim, which
+  // is exactly the property the limb needs). CHECKED, because it once broke a
+  // sibling suite: nothing that exists today reads this file that way. The guard's
+  // own scan is ONE level deep over tooling/ci and takes `f.isFile()`, so
+  // tooling/ci/test/ is never in its range; and the one real-tree assertion that
+  // did reach in here — a `git ls-files 'tooling/ci/*.mjs'` pathspec whose `*`
+  // CROSSES `/` — lived in a test file that has since been deleted. Measured now:
+  // that pathspec returns 288 paths, 144 of them under test/, against 144 for
+  // `:(glob)tooling/ci/*.mjs`. So the cost today is zero and the liability is
+  // latent: any future sweep pinning the stripped querier set must use the `:(glob)`
+  // form, or expect this file in its results. The repair is never to blank strings.
+  //
+  // 🔴 AND THEY ASSERT ON THE TEXT, NOT ON THE EXIT CODE ALONE. A planted tree
+  // has no slot directories, so the COVERAGE LOST floor is also firing in every
+  // case below; `--offline` exits 3 either way and a case reading only `status`
+  // would pass for the wrong reason and keep passing if this limb were deleted
+  // outright. Every case pins the finding text and the printed querier count.
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('the org-literal limb counts CODE, not comments about code', () => {
+    /** The guard's in-tree imports — the ONE derivation at the top of this file, not a second copy
+     *  of it. A typed list is a red run away from every new sibling, and the counts below depend on
+     *  exactly which files land in the planted tooling/ci. As of 2026-08-21: tree-walk.mjs,
+     *  text-reductions.mjs. */
+    const SIBLINGS = GUARD_SIBLINGS;
+
+    /** Plant a hermetic tooling/ci: the guard, the siblings it imports, and
+     *  the probes. Anything absent from `probes` is absent from the scan, so the
+     *  printed counts are fully determined here.
+     *
+     *  ⚠️ THE SIBLINGS ARE COPIED, AND THAT IS LOAD-BEARING. A planted copy whose
+     *  imports do not resolve dies at MODULE RESOLUTION — exit 1, before a line
+     *  of the guard runs — which reads exactly like the case under test failing.
+     *  That already happened once here with tree-walk.mjs — the dated comment and the copy loop, which
+ *  this file's own 2026-08-21 edits pushed down ~27 lines from where an earlier draft of this
+ *  sentence cited them. They are found by searching for GUARD_SIBLINGS, not by line number: a
+ *  pointer into a file other people edit is correct only until someone inserts above it, and
+ *  nothing recomputes it. The guard
+     *  gained a second relative import on 2026-08-21 — `./text-reductions.mjs` —
+     *  and it is copied for the same reason, not as a courtesy. */
+    const plant = (probes) => {
+      const base = join(TMP, `ghlimb-${seq++}`);
+      mkdirSync(join(base, 'tooling', 'ci'), { recursive: true });
+      mkdirSync(join(base, 'catalog'), { recursive: true });
+      const copy = join(base, 'tooling', 'ci', 'assert-github-matrix.mjs');
+      writeFileSync(copy, readFileSync(GUARD, 'utf8'));
+      for (const sib of SIBLINGS) copyFileSync(join(CI_DIR, sib), join(base, 'tooling', 'ci', sib));
+      writeFileSync(join(base, 'catalog', 'store-matrix.json'), readFileSync(REGISTRY, 'utf8'));
+      for (const [name, body] of Object.entries(probes)) {
+        writeFileSync(join(base, 'tooling', 'ci', name), `${body}\n`);
+      }
+      return copy;
+    };
+    const limbLine = (r) => {
+      const m = `${r.stdout}`.match(/org-literal limb: (\d+) tooling script\(s\) scanned, (\d+) of them query/);
+      assert.ok(m, `the org-literal limb printed no count at all:\n${r.stdout}`);
+      return { scanned: Number(m[1]), queriers: Number(m[2]) };
+    };
+    /** The siblings every plant carries, which the guard scans like any other
+     *  .mjs. Neither queries GitHub in CODE today — measured 2026-08-21, neither
+     *  tree-walk.mjs nor text-reductions.mjs matches GH_LIST even RAW — so they
+     *  contribute to `scanned` and not to `queriers`.
+     *  🔴 That second half is not assumed. If a sibling ever grew a real `gh`
+     *  call every querier count below would be off by one and the reason would be
+     *  invisible, so it is measured here, once, with the shared stripper. */
+    const CARRIED = SIBLINGS.length;
+    test('the carried siblings are scanned but query nothing — the baseline the counts rest on', () => {
+      assert.ok(CARRIED >= 2, `expected the guard to import its siblings relatively, derived: ${SIBLINGS.join(', ')}`);
+      for (const sib of SIBLINGS) {
+        const p = join(CI_DIR, sib);
+        const stripped = stripSourceComments(readFileSync(p, 'utf8'), '.mjs');
+        assert.doesNotMatch(
+          stripped,
+          /gh\s+repo\s+list|['"]repo['"]\s*,\s*['"]list['"]/,
+          `${sib} is planted into every fixture below; a real \`gh repo list\` in it would silently shift every querier count`,
+        );
+      }
+    });
+
+    // ── THE NEGATIVE HALF. This is the case the fix exists for. ─────────────
+    test('🔴 a file whose ONLY `gh repo list` is inside a COMMENT is not a querier, and does not fail', () => {
+      const copy = plant({
+        'probe-prose.mjs': [
+          '// This module talks to nothing. To confirm a repo name by hand, run `gh repo list`',
+          '// against the org and read the output yourself — never trust a name typed in a doc.',
+          'export const answer = 42;',
+        ].join('\n'),
+      });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      // The classification, which is the subject.
+      assert.deepEqual(limbLine(r), { scanned: CARRIED + 1, queriers: 0 });
+      // And the finding it must NOT have manufactured. Before 2026-08-21 this
+      // probe — no `gh`, no child_process, no org literal — was reported as a
+      // second copy of the org name that had DISAGREED with the registry.
+      assert.doesNotMatch(r.stderr, /DISAGREED/, r.stderr);
+      assert.doesNotMatch(r.stderr, /probe-prose\.mjs/, r.stderr);
+      assert.notEqual(r.status, 1, `${r.stdout}${r.stderr}`);
+    });
+
+    // ── AND THE HALF THAT MUST STILL BITE. Without it, the case above is
+    //    equally consistent with a limb that was simply switched off. ────────
+    test('🔴 a file that REALLY shells out, with no org and no registry read, still FAILS', () => {
+      const copy = plant({
+        'probe-real.mjs': [
+          "import { execFileSync } from 'node:child_process';",
+          "export const list = () => execFileSync('gh', ['repo', 'list', 'some-other-org', '--json', 'name']);",
+        ].join('\n'),
+      });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.deepEqual(limbLine(r), { scanned: CARRIED + 1, queriers: 1 });
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /probe-real\.mjs queries `gh repo list`/);
+      assert.match(r.stderr, /the two copies of the org name have DISAGREED/);
+    });
+
+    test('both probes at once: the prose one is invisible, the real one is the whole count', () => {
+      // Together in one tree, because "0 when alone" and "1 when alone" are also
+      // consistent with a limb that counts files rather than reading them.
+      const copy = plant({
+        'probe-prose.mjs': '// see `gh repo list` for how to check this by hand\nexport const a = 1;',
+        'probe-real.mjs': [
+          "import { execFileSync } from 'node:child_process';",
+          "export const list = () => execFileSync('gh', ['repo', 'list', 'some-other-org']);",
+        ].join('\n'),
+      });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.deepEqual(limbLine(r), { scanned: CARRIED + 2, queriers: 1 });
+      assert.match(r.stderr, /probe-real\.mjs/);
+      assert.doesNotMatch(r.stderr, /probe-prose\.mjs/, r.stderr);
+    });
+
+    test('a real querier that SPELLS the org is a NOTE, not a finding — the branch still works', () => {
+      // The middle branch. If stripping had broken the ORG test the file would
+      // fall through to `fail` instead, and the two cases above cannot tell the
+      // difference between "notes correctly" and "never reaches this line".
+      const copy = plant({
+        'probe-agrees.mjs': [
+          "import { execFileSync } from 'node:child_process';",
+          `export const list = () => execFileSync('gh', ['repo', 'list', '${ORG}', '--json', 'name']);`,
+        ].join('\n'),
+      });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.deepEqual(limbLine(r), { scanned: CARRIED + 1, queriers: 1 });
+      assert.notEqual(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /org name is DUPLICATED as a literal in tooling\/ci\/probe-agrees\.mjs/);
+    });
+
+    test('an ORG spelled only in a COMMENT does not excuse a real querier', () => {
+      // The same defect from the other side: before the strip, a file could
+      // satisfy "spells the declared org exactly" with a sentence mentioning it.
+      const copy = plant({
+        'probe-orgprose.mjs': [
+          "import { execFileSync } from 'node:child_process';",
+          `// The org is ${ORG}; this hardcoding is a known second copy of that fact.`,
+          "export const list = () => execFileSync('gh', ['repo', 'list', 'some-other-org']);",
+        ].join('\n'),
+      });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.deepEqual(limbLine(r), { scanned: CARRIED + 1, queriers: 1 });
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /probe-orgprose\.mjs queries `gh repo list`/);
+    });
+
+    test('a `github.org` read that is only a COMMENT does not excuse a real querier either', () => {
+      const copy = plant({
+        'probe-regprose.mjs': [
+          "import { execFileSync } from 'node:child_process';",
+          '// TODO: read `github.org` from catalog/store-matrix.json instead of hardcoding this.',
+          "export const list = () => execFileSync('gh', ['repo', 'list', 'some-other-org']);",
+        ].join('\n'),
+      });
+      const r = runRaw(copy, '--offline', '--projects', ANCHOR);
+      assert.deepEqual(limbLine(r), { scanned: CARRIED + 1, queriers: 1 });
+      assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /probe-regprose\.mjs queries `gh repo list`/);
+    });
+
+    // ── 🔴 THE KNOB THAT WOULD DELETE THIS LIMB SILENTLY. ───────────────────
+    test('the strip must NOT blank string literals — the only real querier lives in an argv', () => {
+      // Composing `stripStringLiterals` on top of the comment strip looks like a
+      // tightening and is the opposite: every real invocation of this command —
+      // the shell form inside a quoted command string, and the `['repo','list',…]`
+      // argv — is a STRING. Measured on the live tree 2026-08-21: with the string
+      // blanking composed in, the querier count goes 1 -> 0 and
+      // assert-store-matrix.mjs stops containing the org literal, because :642 is
+      // one execFileSync argv carrying both facts at once. The limb would go blind
+      // and still print a green count.
+      // This case is about the guard's SOURCE because the mistake would be made
+      // there, and nothing downstream of it can fail loudly enough to say so.
+      // 🔴 AND IT READS THE GUARD'S CODE, NOT ITS COMMENTS. The guard's margin
+      // ARGUES against blanking literals at length and names the function while
+      // doing it, so a raw `doesNotMatch(/stripStringLiterals/)` would go red
+      // against the very prose explaining why — prose satisfying a code rule, one
+      // level up, which is the defect this whole block is about.
+      const src = stripSourceComments(readFileSync(GUARD, 'utf8'), '.mjs');
+      assert.match(src, /stripSourceComments\(raw, '\.mjs'\)/, 'the org-literal limb must route its read through the shared stripper');
+      assert.doesNotMatch(src, /stripStringLiterals/, 'this guard must never compose the string-literal blanker onto that read');
+      // And the property that makes that non-negotiable, measured rather than asserted in prose.
+      const store = readFileSync(join(CI_DIR, 'assert-store-matrix.mjs'), 'utf8');
+      const bare = stripStringLiterals(stripSourceComments(store, '.mjs'));
+      assert.match(store, /['"]repo['"]\s*,\s*['"]list['"]/, 'assert-store-matrix.mjs is the real querier this limb exists to see');
+      assert.doesNotMatch(bare, /['"]repo['"]\s*,\s*['"]list['"]/, 'blanking strings would hide the one real querier');
+      assert.ok(!bare.includes(ORG), 'blanking strings would also hide its copy of the org literal');
     });
   });
 });
