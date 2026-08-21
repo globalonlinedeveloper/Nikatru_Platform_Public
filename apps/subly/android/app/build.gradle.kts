@@ -52,8 +52,24 @@ plugins {
 // fail loudly on the partial state, print nothing-configured as the expected
 // state, and only trust the fully-configured one.
 //
-// ⚠️ THE OPEN PATH IS WIRED BUT NOT YET PROVEN ON A REAL BUILD, and saying so is
-// the point. `hasReleaseSigning == true` becomes reachable the moment the four
+// ✅ THE OPEN PATH HAS NOW BEEN PROVEN ON A REAL BUILD — CI run 32451812894,
+// 2026-08-21, dispatched as a dry run. Three steps in order:
+//     Prepare the Android upload key .................. success
+//     Build the app bundle ........................... success
+//     .aab signed by the upload key, not the debug key  success
+// The four repository secrets exist (`gh secret list`: ANDROID_KEYSTORE_BASE64,
+// ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD), so
+// `hasReleaseSigning == true` is not merely reachable — it has been reached and
+// assert-artifact-signed.mjs read the signer back out of the produced bundle.
+//
+// 🔴 THIS PARAGRAPH SAID "NOT YET PROVEN" UNTIL 2026-08-21 AND WAS FALSE BY THEN.
+// A 49-agent audit read it, trusted it, and reported "release signing has never
+// run; the four secrets do not exist" as an OWNER BLOCKER. Both halves were
+// disproved by one `gh secret list` and one workflow run. Kept as a worked
+// example: a comment asserting the state of something OUTSIDE this file goes
+// stale silently, and it is believed precisely because it is emphatic.
+//
+// ⚠️ WHAT IS STILL TRUE, and must not be lost in the correction: `hasReleaseSigning == true` becomes reachable the moment the four
 // repository secrets exist (tooling/channel-register.json → android-play →
 // signing.ciSecrets). Until a CI run has them, the branch has still never
 // executed — Android cannot be built on the owner's box at all (CLAUDE.md:

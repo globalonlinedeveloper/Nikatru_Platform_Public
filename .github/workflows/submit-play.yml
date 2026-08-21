@@ -58,8 +58,21 @@ name: Google Play submission path
 # A gate whose only evidence is a line of YAML is a gate one edit from gone.
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔧 THE ENVIRONMENT DOES NOT EXIST YET. THESE ARE THE EXACT COMMANDS TO CREATE
-#    IT. They are a repo-admin act (ADR 031 class D — "account-level permission
+# ✅ THE ENVIRONMENT EXISTS. Verified live 2026-08-21:
+#      gh api repos/globalonlinedeveloper/Nikatru_Platform_Public/environments
+#      -> store-publish  protection: required_reviewers, branch_policy
+#    which is exactly what submit-play.mjs's PG-5 requires. THE COMMANDS BELOW
+#    ARE KEPT as the record of how it was created and how to recreate it.
+#
+#    🔴 THIS HEADER SAID "DOES NOT EXIST YET" UNTIL 2026-08-21 AND WAS FALSE.
+#    A 49-agent audit run that day read this comment, trusted it, and reported
+#    "create the store-publish environment" as an OWNER BLOCKER for the Play
+#    submission. It was one `gh api` call away from being disproved. A comment
+#    that describes MUTABLE EXTERNAL STATE is a claim with an expiry date, and
+#    this repository's own rule applies to it: verify against the thing, not
+#    against the note about the thing.
+#
+#    THE ORIGINAL COMMANDS, unchanged: They are a repo-admin act (ADR 031 class D — "account-level permission
 #    changes"), so they are written here for a human to run rather than executed
 #    by an agent. Source for the endpoint and its body:
 #    docs.github.com/en/rest/deployments/environments — "PUT /repos/{owner}/{repo}/
