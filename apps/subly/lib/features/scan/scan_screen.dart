@@ -356,6 +356,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   progress: _pct / 100,
                   // Brand hue, unforked — see the class doc.
                   color: AppColors.accent,
+                  // The UNFILLED remainder, branched for the same reason and to
+                  // the same slot as the bar's `backgroundColor` a few lines
+                  // down. `RingPainter` has no `BuildContext`, so the caller is
+                  // the only place this can be resolved.
+                  //
+                  // Measured on the dark scaffold (#131318): the baked
+                  // `AppColors.line` default this replaces read 15.74:1 against
+                  // a 3.78:1 arc — near the most contrast this screen can
+                  // produce, spent on the EMPTY part of the one shape a
+                  // first-run user watches while the CTA is disabled.
+                  // `scheme.outlineVariant` (#47464F) reads 1.99:1 and leaves
+                  // the arc 1.90:1 above it. Light is unchanged at 1.12:1.
+                  track: isLight ? AppColors.line : scheme.outlineVariant,
                   stroke: 14,
                 ),
                 child: Center(

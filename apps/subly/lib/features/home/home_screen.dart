@@ -688,6 +688,22 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         RowCard(
           accentBar: AppColors.warn,
           onTap: () => context.go('/insights'),
+          // ⬜ THE WARN BADGE AND ITS BAR STAY UNCONDITIONAL, AND THAT IS A
+          // DECISION RATHER THAN A MISS. The 3 px `accentBar`, the 16 % wash
+          // below and the `!` riding it are ONE deliberate status treatment in
+          // the brand's warn hue — the same hue the `unused` dot in [_subTile]
+          // uses — so they are FILLS carrying meaning, not prose that follows a
+          // ground.
+          //
+          // 🔴 AND A BRIGHTNESS FORK CANNOT FIX WHAT IS WRONG WITH THE `!`.
+          // Measured 2026-08-21 — `AppColors.warn` #F59E0B on this wash
+          // composited over `RowCard`'s own ground: LIGHT (0.16 warn over
+          // #FFFFFF ⇒ #FDEFD8) **1.90:1**; DARK (over #35343A ⇒ #544533)
+          // **4.31:1**. The failing side is the LIGHT one — the side every fork
+          // in this file leaves byte-identical on purpose. This is the
+          // status-trio defect `app_colors.dart` records at the token ("THE
+          // STATUS TRIO FAILS AA AS *TEXT* IN LIGHT AND NO VALUE HERE CAN FIX
+          // IT"), not a dark leak, so it belongs to whoever owns the palette.
           leading: Container(
             width: 40,
             height: 40,
@@ -717,9 +733,36 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
             l10n.cancelToSave(currency.fmt(savings)),
             style: AppText.of(context).muted.copyWith(fontSize: 12),
           ),
-          trailing: const Icon(
+          // 🔴 THE ONE GLYPH THE PROSE MIGRATION COULD NOT SEE, FIXED
+          // 2026-08-21. `RowCard`'s ground forks — `AppColors.surface` in
+          // light, `scheme.surfaceContainerHighest` in dark — and this `Icon`
+          // did not. `AppColors.muted` #6F6F7B is a grey chosen against WHITE
+          // (its own token doc says so), so on the dark card #35343A it
+          // measured **2.49:1**, under SC 1.4.11's 3:1 for a meaningful
+          // non-text glyph and it is the only arrow this row has.
+          //
+          // It survived the home sweep because it is NOT an `AppText` defect:
+          // the pattern that migrated every string here (`AppText.<style>` →
+          // `AppText.of(context)`) cannot match an `Icon`. It is named as
+          // outstanding in `dark_group_home_test.dart`'s header, which cites it
+          // by its pre-merge line ("home_screen.dart:443").
+          //
+          // `onSurfaceVariant` is THE SLOT, not a second literal: it is what
+          // `AppThemeX.fromScheme` already maps `muted` to, and what
+          // `AppText.of(context).muted` one line up already gives this row's
+          // own subtitle — so the arrow and the prose beside it resolve from
+          // the same place instead of drifting apart. Measured against
+          // `buildAppTheme(seed: 0xFF6459F5, brightness: dark)`, what
+          // `app.dart:84` actually supplies: #C8C5D0 on #35343A = **7.25:1**.
+          //
+          // LIGHT KEEPS THE LITERAL AND REPAINTS BY ZERO PIXELS — 4.96:1 on the
+          // white card, already AA. Same rule, same reason, as `cardDecoration`
+          // and `RowCard`'s own light branches.
+          trailing: Icon(
             Icons.arrow_forward,
-            color: AppColors.muted,
+            color: Theme.of(context).brightness == Brightness.light
+                ? AppColors.muted
+                : Theme.of(context).colorScheme.onSurfaceVariant,
             size: 20,
           ),
         ),
@@ -983,7 +1026,14 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // sites the retained English-only factory is waiting on, and it also picks up
     // the shipped plural bug on the way: `of` returned "In 1 days" from both its
     // live branches.
-    final DueInfo due = DueInfo.localized(l10n, s, now);
+    // `brightness:` is what ACTIVATES the light arm of the urgent-branch fork
+    // in due.dart. Without it the call takes the dark-safe default and paints
+    // AppColors.warn #F59E0B as small bold text on the white card — 2.15:1,
+    // against a 4.5 bar. The fork landed before these three call sites did, so
+    // a11y_semantics_test.dart carried a named exemption citing this exact line;
+    // passing brightness is what expires it.
+    final DueInfo due = DueInfo.localized(l10n, s, now,
+        brightness: Theme.of(context).brightness);
 
     // 🔴 THE USAGE BAND IS NOW CONDITIONAL, BECAUSE ITS INPUT IS NEVER
     // COLLECTED AND ITS `else` ARM WAS THEREFORE A CONSTANT.

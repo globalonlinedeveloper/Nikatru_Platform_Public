@@ -230,6 +230,23 @@ class BudgetScreen extends ConsumerWidget {
                 painter: RingPainter(
                   progress: pct,
                   color: over ? AppColors.danger : AppColors.accent,
+                  // The UNFILLED remainder of the ring is a neutral, so it has
+                  // to move with the surface — the same rule, and the same
+                  // value, as the category meters' `backgroundColor` at the
+                  // bottom of this file. `RingPainter` has no `BuildContext`,
+                  // so this is the only place the resolution can happen.
+                  //
+                  // Measured on the dark card (#35343A): the baked
+                  // `AppColors.line` default this replaces read 10.48:1 while
+                  // the arc it backs read 2.52:1 — the empty half of the gauge
+                  // was 4.16:1 BRIGHTER than the filled half, so the ring read
+                  // inside-out. `neutral.line` (#47464F) reads 1.32:1 and puts
+                  // the arc 1.90:1 above its own track (2.63:1 when `over`
+                  // paints it `danger` #EF4D6A).
+                  //
+                  // Light is byte-identical: `neutral.line` IS `AppColors.line`
+                  // there, still 1.18:1 on this card's #FFFFFF.
+                  track: neutral.line,
                 ),
                 child: Center(
                   child: Column(

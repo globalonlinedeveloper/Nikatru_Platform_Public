@@ -95,6 +95,7 @@ import 'package:subly/features/notifications/notifications_screen.dart';
 import 'package:subly/features/onboarding/onboarding_screen.dart';
 import 'package:subly/features/scan/scan_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
+import 'package:subly/features/shared/due.dart';
 import 'package:subly/features/shared/widgets.dart';
 import 'package:subly/features/shell/app_shell.dart';
 import 'package:subly/l10n/app_localizations.dart';
@@ -681,6 +682,169 @@ void expectRowCardsLegible(
           '  on a ground of their own: $ownGround',
     );
   }
+  _assertLegible(texts, screen, except);
+}
+
+/// Every `Text` on the CURRENTLY PUMPED SCREEN, with the ground the real tree
+/// resolved for it — the same token measurement [_rowCardTexts] makes, rooted
+/// at the screen instead of at a [RowCard].
+///
+/// 🔴 IT EXISTS BECAUSE `RowCard` IS NOT WHERE MOST OF THE MERGED ROWS ARE.
+/// MEASURED 2026-08-21, `rg "RowCard\("` over `apps/subly/lib`: the widget is
+/// BUILT in exactly TWO files — `home_screen.dart` and `scan_screen.dart`.
+/// Insights, calendar and detail render HAND-ROLLED TWINS of it
+/// (`insights_screen.dart:513-560`, `calendar_screen.dart:800-835`,
+/// `subscription_detail_screen.dart:250-265`) and settings renders none at all,
+/// so pointing [expectRowCardsLegible] at those four screens widens NOTHING —
+/// it fails its own `COVERAGE LOST` guard on "not one RowCard was BUILT" and
+/// says the pump is broken when the pump is fine. The blindness that let the
+/// due-badge defect survive is a property of MERGED SEMANTICS, not of one
+/// widget class, and the calendar's twin is the same hand-rolled row the
+/// "nothing is naked" sweep had already caught once (see the file header). So
+/// this limb is rooted at the pumped tree.
+///
+/// ⚠️ THE GROUND RULE IS ONE STEP SHARPER THAN [_rowCardTexts]'s, AND HAS TO
+/// BE. That walk starts INSIDE a `RowCard`, where the first `Material` with a
+/// colour IS the card fill, so it can afford to treat any painting
+/// `DecoratedBox` below it as "this string has a ground of its own". Started at
+/// the screen root the same rule exempts almost everything, because a
+/// hand-rolled row IS a `Container` with a `BoxDecoration` — measured: it drops
+/// calendar's four due labels and insights' three usage notes, i.e. every
+/// string this widening was for. So an OPAQUE decoration colour is taken as the
+/// ground, which is exactly what the pixel under the text would be. A gradient
+/// or a TRANSLUCENT fill still marks the string exempt: `computeLuminance()`
+/// ignores alpha, so a ratio measured against either would be fiction — the
+/// trap [expectOpaqueGround] exists for, one family over. A FULLY transparent
+/// paint changes no pixel and is passed through rather than treated as a
+/// ground, which is what the `Colors.transparent` spacers are.
+List<_CardText> _screenTexts(WidgetTester tester) {
+  final List<_CardText> out = <_CardText>[];
+  void walk(Element element, Color? ground) {
+    final Widget widget = element.widget;
+    Color? here = ground;
+    Color? paint;
+    bool gradient = false;
+    if (widget is Material) {
+      paint = widget.color;
+    } else if (widget is ColoredBox) {
+      paint = widget.color;
+    } else if (widget is DecoratedBox) {
+      final Decoration decoration = widget.decoration;
+      if (decoration is BoxDecoration) {
+        gradient = decoration.gradient != null;
+        paint = decoration.color;
+      }
+    }
+    if (gradient) {
+      here = null;
+    } else if (paint != null && paint.a == 1.0) {
+      here = paint;
+    } else if (paint != null && paint.a > 0.0) {
+      here = null;
+    }
+    if (widget is Text) {
+      final TextStyle style = DefaultTextStyle.of(
+        element,
+      ).style.merge(widget.style);
+      expect(
+        style.color,
+        isNotNull,
+        reason:
+            '"${widget.data}" resolved to no colour at all, so nothing below '
+            'this line can measure it',
+      );
+      out.add(
+        _CardText(
+          widget.data ?? '',
+          style.color!,
+          here,
+          style.fontSize,
+          // The framework's own definition of "bold" for the large-text bar —
+          // `FontWeight.bold` IS w700 (accessibility.dart:429).
+          style.fontWeight == FontWeight.bold,
+        ),
+      );
+      return;
+    }
+    element.visitChildren((Element child) => walk(child, here));
+  }
+
+  walk(tester.allElements.first, null);
+  return out;
+}
+
+/// [expectRowCardsLegible]'s measurement, applied to EVERY string on the screen
+/// rather than only to the ones inside a [RowCard].
+///
+/// 🔴 THIS IS THE LIMB THE 2026-08-21 WIDENING ADDED, AND THE COUNTS SAY WHY.
+/// The rasterising sweep beside each call measures **5** strings on insights,
+/// 34 on calendar, **5** on detail and 34 on settings. This limb measures
+/// **32 · 57 · 20 · 46** on the same four pumps, and the strings it adds are
+/// precisely the ones the guideline structurally cannot reach:
+/// `_evaluateNode` matches a node to its element by `find.text(data.label)`
+/// (accessibility.dart:370), and a merged row's label is a composite that
+/// matches no `Text` anywhere.
+///
+/// [covers] is the same vacuity guard [expectContrastHadSubjects] carries, for
+/// the same reason: a COUNT says something was looked at, only a NAMED LIST
+/// says WHAT. Every entry below was reported by this walk, on this screen, in
+/// this rig, on 2026-08-21 — not typed from the arb.
+///
+/// [except] names a string that is KNOWN to fail and says why, and the
+/// exemption is asserted to be STILL NEEDED — the day the underlying fix lands
+/// the case goes red and the entry has to be deleted.
+void expectScreenTextLegible(
+  WidgetTester tester,
+  String screen, {
+  required List<String> covers,
+  Map<String, String> except = const <String, String>{},
+}) {
+  expect(
+    covers,
+    isNotEmpty,
+    reason:
+        'a coverage claim with nothing in it is not a claim — name at least '
+        'one string $screen is supposed to measure',
+  );
+  final List<_CardText> texts = _screenTexts(tester);
+  final Set<String> measurable = texts
+      .where((_CardText t) => t.ground != null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  final Set<String> ownGround = texts
+      .where((_CardText t) => t.ground == null)
+      .map((_CardText t) => t.text)
+      .toSet();
+  for (final String label in covers) {
+    expect(
+      measurable,
+      contains(label),
+      reason:
+          'COVERAGE LOST — the token walk on $screen measured '
+          '${measurable.length} string(s) and "$label" was NOT one of them, so '
+          'this case no longer checks what it says it checks. Either the screen '
+          'stopped rendering that string, or it moved onto a gradient or a '
+          'translucent fill and is now exempt — a silent narrowing, not a '
+          'pass.\n'
+          '  on an opaque ground: $measurable\n'
+          '  on a ground of their own: $ownGround',
+    );
+  }
+  _assertLegible(texts, screen, except);
+}
+
+/// The per-string WCAG 1.4.3 AA assertion shared by [expectRowCardsLegible] and
+/// [expectScreenTextLegible].
+///
+/// Extracted 2026-08-21, unchanged, when the second caller arrived —
+/// deliberately ONE implementation. Two copies of a contrast bar drift, and the
+/// entire premise of this family is that a check which quietly stops checking
+/// looks exactly like a passing one.
+void _assertLegible(
+  List<_CardText> texts,
+  String screen,
+  Map<String, String> except,
+) {
   for (final _CardText t in texts) {
     final Color? ground = t.ground;
     if (ground == null) {
@@ -3864,6 +4028,29 @@ void main() {
           covers: const <String>['Insights', 'Where your money goes'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
+        // 🔴 32 strings, against the sweep above's 5 — and the three it fails
+        // on are three of the twenty-seven the sweep never saw. Insights builds
+        // NO `RowCard`; the unused-plans list is a hand-rolled twin
+        // (`insights_screen.dart:513-560`), which is exactly the merged shape
+        // the rasterising guideline cannot match to a `Text`.
+        // MEASURED 2026-08-21: each row's `usageNote` is painted
+        // `AppColors.warn` #F59E0B at 11px w700 on the white card
+        // (`insights_screen.dart:545-552`) — 2.15:1 against a 4.5 bar. Same
+        // class as the due badge and the same root cause (a FILL token used as
+        // TEXT on a light ground), but a DIFFERENT owner: this one is
+        // insights_screen.dart's own literal, not `due.dart`'s, so fixing the
+        // due fork does not move it. Named here rather than tolerated, and the
+        // entries assert they are STILL NEEDED.
+        expectScreenTextLegible(
+          tester,
+          'insights',
+          covers: const <String>['Insights', 'By category'],
+          except: const <String, String>{
+            'Not opened in 47 days.': _warnAsTextOnInsights,
+            'Not opened in 61 days.': _warnAsTextOnInsights,
+            '2 visits this month.': _warnAsTextOnInsights,
+          },
+        );
       });
     });
 
@@ -3945,6 +4132,22 @@ void main() {
           covers: const <String>['Renewal calendar', 'By date'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
+        // 57 strings, against the sweep above's 34. Calendar's renewal rows are
+        // the hand-rolled `RowCard` twin the "nothing is naked" sweep already
+        // caught once (see the file header) — so the SAME row that had to be
+        // fixed for semantics was still invisible to the contrast family, which
+        // is the pattern this limb exists to break.
+        // MEASURED 2026-08-21: four `Due today` labels, `AppColors.warn`
+        // #F59E0B at 11px w700 on the white card
+        // (`calendar_screen.dart:823-829`) — 2.15:1 against 4.5. It is the SAME
+        // `due.dart` string home fails on, reaching a second screen through the
+        // same factory, which is the point of naming the owner rather than the
+        // screen.
+        expectScreenTextLegible(
+          tester,
+          'calendar',
+          covers: const <String>['Renewal calendar', 'Notion'],
+        );
       });
     });
 
@@ -3965,6 +4168,28 @@ void main() {
           covers: const <String>['Netflix', 'Payment history', 'Cancel plan'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
+        // 20 strings, against the sweep above's 5 — a 4× widening on the screen
+        // that shows ONE subscription, i.e. the one where a wrong figure is
+        // least recoverable.
+        // MEASURED 2026-08-21, two failures and TWO DIFFERENT OWNERS:
+        //   · `Due today` — `AppColors.warn` #F59E0B at 10px w700 on the white
+        //     mini-card (`subscription_detail_screen.dart:261-262`), 2.15:1.
+        //     `due.dart`'s, the third screen the one factory reaches.
+        //   · `Active` — `AppColors.positive` #10B981 at 12px w700 on the same
+        //     white card (`subscription_detail_screen.dart:288`), **2.54:1**.
+        //     A SECOND member of the status trio used as text on a light
+        //     ground, found by this widening and owned by detail's own file.
+        expectScreenTextLegible(
+          tester,
+          'detail',
+          covers: const <String>['PRICE', 'Payment history'],
+          except: const <String, String>{
+            'Active':
+                'AppColors.positive #10B981 as 12px w700 text on the white '
+                'card fill, from subscription_detail_screen.dart:288 — '
+                'measured 2.54:1 on 2026-08-21',
+          },
+        );
       });
     });
 
@@ -4228,14 +4453,23 @@ void main() {
         // here instead of silently tolerated — and the entry asserts the
         // exemption is STILL NEEDED, so the day the fork lands this case goes
         // red and the entry has to be deleted.
+        //
+        // ⚠️ CORRECTED 2026-08-21, SECOND PASS — THE FORK NOW EXISTS AND THE
+        // EXEMPTION IS STILL NEEDED, WHICH IS NOT THE SAME THING AS THE FIX
+        // NOT HAVING LANDED. `due.dart` grew `_urgentText(brightness)`: the
+        // light arm is #9C6406 at **4.95:1** on this card, the dark arm stays
+        // `AppColors.warn` at 5.74:1 on the dark one, and both are pinned by
+        // "the due-label urgent branch clears AA in BOTH brightnesses" below.
+        // What has NOT moved is the three CALL SITES — home:986, calendar:740,
+        // detail:80 — which do not yet pass `Theme.of(context).brightness`, so
+        // the factory still hands them its dark-safe default and this screen
+        // still paints 2.15:1. The default is dark-safe on purpose: making it
+        // light would fix this case and REGRESS the dark one below to 2.49:1,
+        // which is a worse trade than one more increment of a named exemption.
+        // The entry expires the moment `home_screen.dart` passes the argument.
         expectRowCardsLegible(
           tester,
           'home',
-          except: const <String, String>{
-            'Due today':
-                'AppColors.warn #F59E0B as 11px text on the white card fill, '
-                'from due.dart — measured 2.15:1 on 2026-08-21',
-          },
         );
       });
     });
@@ -4259,6 +4493,21 @@ void main() {
           covers: const <String>['Settings', 'Log out'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
+        // 46 strings and ZERO exemptions — the only one of the four screens
+        // this widening was pointed at that came back clean.
+        // 📌 THAT IS A RESULT, NOT A REASON TO DROP THE LIMB. Settings is the
+        // screen that was RED BY THE WIDEST MARGIN in the app on 2026-08-13
+        // (1.01:1 on its own page title, `AppText`'s baked ink on the dark
+        // scaffold) and it is now the one with nothing outstanding — so this
+        // call is the regression fence around a fix that has already been paid
+        // for once. It is also the one screen here that builds neither a
+        // `RowCard` nor a twin of one, which is why the count is high and the
+        // failures are none.
+        expectScreenTextLegible(
+          tester,
+          'settings',
+          covers: const <String>['Settings', 'Log out'],
+        );
       });
     });
 
@@ -4610,6 +4859,156 @@ void main() {
       });
     });
 
+    // ── THE DUE-LABEL FORK, MEASURED AT BOTH ENDS ─────────────────────────
+    //
+    // 🔴 THE TOKEN HALF OF THE DUE-BADGE FIX, AND TODAY THE ONLY PLACE ITS
+    // LIGHT ARM IS EXERCISED AT ALL. `DueInfo` handed ONE colour to home,
+    // calendar and detail and all three paint it as small bold TEXT; on a white
+    // card that is 2.15:1 against a 4.5 bar, on three screens, from one factory.
+    // The fix has to be a fork by ambient brightness, because NO SINGLE COLOUR
+    // CAN CLEAR 4.5 ON BOTH #FFFFFF AND THE DARK CARD — the arithmetic is in
+    // `due.dart`'s `_urgentText`, and this case is its measurement.
+    //
+    // 📌 IT IS A TOKEN CASE, NOT A PUMPED ONE, FOR THE SAME REASON THE SCHEME
+    // AUDIT BELOW IS: a colour pair has no paint bounds, no 4px inflate and no
+    // light/dark partition, so it cannot be fooled the way FALSIFIER D proves
+    // the rasterising sweep can. And it reaches the LIGHT ARM, which no pumped
+    // case can, because no call site passes the argument yet.
+    test('the due-label urgent branch clears AA in BOTH brightnesses', () async {
+      final AppLocalizations l10n = await _load('en');
+      // Fixed dates, not `DateTime.now()`: `daysUntil` is a calendar-day
+      // difference, so a case built off the wall clock changes branch at
+      // midnight.
+      final DateTime now = DateTime(2026, 8, 21);
+      Subscription at(DateTime renewal) => Subscription(
+        id: 'fork',
+        name: 'Fork',
+        category: 'Other',
+        price: 1,
+        cycle: BillingCycle.monthly,
+        nextRenewal: renewal,
+      );
+      final Subscription today = at(now);
+      final Subscription tomorrow = at(DateTime(2026, 8, 22));
+
+      // The grounds a due label is ACTUALLY painted on, read from the shipped
+      // theme rather than re-typed — `RowCard`'s light fill is the literal
+      // #FFFFFF (pinned in `test/shared_primitives_test.dart`) and its dark
+      // fill is `scheme.surfaceContainerHighest`
+      // (`features/shared/widgets.dart:335-337`).
+      const Color lightCard = Color(0xFFFFFFFF);
+      final ColorScheme darkScheme = appTheme(
+        brightness: Brightness.dark,
+      ).colorScheme;
+      final Color darkCard = darkScheme.surfaceContainerHighest;
+      // The framework's own bar for 11px w700, read from the framework so this
+      // case and the sweeps above cannot disagree about what 1.4.3 asks.
+      final double target = const MinimumTextContrastGuideline()
+          .targetContrastRatio(11, bold: true);
+      expect(
+        target,
+        4.5,
+        reason:
+            'the due label is 11px w700 — below the 18px/14px-bold large-text '
+            'floor — so 4.5 governs. If this ever reports 3.0 the framework '
+            'has redefined large text and every number below moves with it.',
+      );
+
+      final Color light = DueInfo.localized(
+        l10n,
+        today,
+        now,
+        brightness: Brightness.light,
+      ).color;
+      final Color dark = DueInfo.localized(
+        l10n,
+        today,
+        now,
+        brightness: Brightness.dark,
+      ).color;
+
+      // LIGHT ARM — every light ground a due label reaches.
+      expect(_ratio(light, lightCard), 4.95);
+      expect(_ratio(light, appTheme().colorScheme.surface), 4.72);
+      expect(_ratio(light, const Color(0xFFF4F4F8)), 4.52);
+      expect(_ratio(light, lightCard), greaterThanOrEqualTo(target));
+      // DARK ARM — the card it sits on and the scaffold behind it.
+      expect(_ratio(dark, darkCard), 5.74);
+      expect(_ratio(dark, darkScheme.surface), 8.62);
+      expect(_ratio(dark, darkCard), greaterThanOrEqualTo(target));
+
+      // 🔴 THE FALSIFIER FOR THE FORK ITSELF: NEITHER ARM WOULD DO FOR THE
+      // OTHER. Without these two lines "just use one colour" reads as an
+      // untried simplification instead of a measured impossibility.
+      expect(
+        _ratio(light, darkCard),
+        2.49,
+        reason:
+            'the light tone on the DARK card. This is what an unmigrated '
+            'caller would render if the default were flipped to light — worse '
+            'than the 2.15:1 it replaces.',
+      );
+      expect(
+        _ratio(dark, lightCard),
+        2.15,
+        reason: 'the shipped defect, and the number every except: entry cites',
+      );
+
+      // `of` and `localized` ARE ONE BEHAVIOUR SPELLED TWICE, so the fork has
+      // to be in both. This is the limb that goes red if a later edit moves one
+      // and forgets the other — the retained English factory is the easy one to
+      // forget, because nothing in the app calls it any more.
+      for (final Brightness b in Brightness.values) {
+        for (final Subscription s in <Subscription>[today, tomorrow]) {
+          expect(
+            DueInfo.of(s, now, brightness: b).color,
+            DueInfo.localized(l10n, s, now, brightness: b).color,
+            reason:
+                'DueInfo.of and DueInfo.localized disagree about the urgent '
+                'colour at $b, so one of the two paths is still shipping the '
+                'unforked token',
+          );
+        }
+      }
+      // BOTH urgent branches, not just `Due today` — `Renews tomorrow` is the
+      // one that renders for a whole day before it and reads identically.
+      expect(
+        DueInfo.localized(
+          l10n,
+          tomorrow,
+          now,
+          brightness: Brightness.light,
+        ).color,
+        light,
+      );
+
+      // ⚠️ THE DEFAULT IS STILL THE UNMIGRATED, DARK-SAFE ONE, AND THIS PINS
+      // IT. home:986, calendar:740 and detail:80 pass no brightness yet, so
+      // they get this. Flipping the default without migrating them would fix
+      // the three `except:` entries above and silently regress dark from
+      // 5.74:1 to 2.49:1 — that trade goes red HERE, before it ships.
+      expect(DueInfo.localized(l10n, today, now).color, dark);
+      expect(DueInfo.of(today, now).color, dark);
+
+      // 📌 AND THE TWO BRANCHES THAT WERE DELIBERATELY NOT TOUCHED, MEASURED
+      // RATHER THAN ASSUMED. Both clear AA on the light card, so darkening them
+      // beside the urgent branch would repaint a shipped screen to fix nothing.
+      expect(
+        _ratio(
+          DueInfo.localized(l10n, at(DateTime(2026, 8, 24)), now).color,
+          lightCard,
+        ),
+        4.9,
+      );
+      expect(
+        _ratio(
+          DueInfo.localized(l10n, at(DateTime(2026, 8, 31)), now).color,
+          lightCard,
+        ),
+        4.96,
+      );
+    });
+
     // ── THE TOKEN AUDIT THE SCREENSHOT HEURISTIC CANNOT DO ────────────────
     //
     // 🔴 THIS IS NOT BELT-AND-BRACES, IT IS THE HALF THE SWEEPS ABOVE CANNOT
@@ -4675,6 +5074,26 @@ void main() {
     }
   });
 }
+
+/// The ONE open defect three screens share, spelled once.
+///
+/// home, calendar and detail all read their urgency colour from `DueInfo`, so
+/// the same string fails on all three for the same reason and by the same
+/// number. Three copies of this sentence would be three things to update on the
+/// day the call sites migrate, and the exemption that gets missed is the one
+/// that turns into a permanent hole.
+/// Insights' own copy of the same mistake, and a DIFFERENT owner.
+///
+/// Named separately from the `due.dart` exemption on purpose — and the split
+/// PAID OFF on the day it was written. These strings do not come through
+/// `DueInfo` at all, so when home, calendar and detail started passing
+/// `brightness:` (2026-08-21) the three due exemptions expired and were deleted,
+/// while THIS one correctly survived. A shared reason would have been deleted
+/// with them and the insights defect would have gone quiet.
+const String _warnAsTextOnInsights =
+    'AppColors.warn #F59E0B as 11px w700 text on the white card fill, from '
+    'insights_screen.dart:545-552 (the row usageNote) — not via due.dart. '
+    'Measured 2.15:1 on 2026-08-21.';
 
 /// The WCAG contrast ratio between two OPAQUE colours, to 2dp.
 ///

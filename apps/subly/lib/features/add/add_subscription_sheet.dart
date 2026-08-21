@@ -157,6 +157,13 @@ const String _fieldLabelCategoryPendingArb = 'CATEGORY';
 Future<void> showAddSubscriptionSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
+    // Load-bearing for short viewports, not just for the keyboard inset: it
+    // removes `showModalBottomSheet`'s default 9/16-of-window height cap, which
+    // is the cap the cancel sheet was clipping against until 2026-08-21. Together
+    // with the `SingleChildScrollView` in `_AddSheetState.build` it is why this
+    // sheet measured clean where that one did not — the measurement, and the
+    // rule against "fixing" it by copying the cancel sheet's shape, are recorded
+    // at the action row in `build`.
     isScrollControlled: true,
     // The only caller is AppShell's FAB, whose context sits ABOVE the branch
     // navigators — so this sheet already mounted on the root navigator, by
@@ -511,6 +518,46 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               const SizedBox(height: 6),
               _categoryField(),
               const SizedBox(height: 20),
+              // ✅ MEASURED CLEAN 2026-08-21 — THE CANCEL SHEET'S CLIPPED-BUTTON
+              // DEFECT DOES NOT EXIST HERE. `cancel_sheet.dart` was repaired the
+              // same day and its note calls this file "the sibling modal built
+              // the same way, already carrying a fixed-height submit button".
+              // It is NOT built the same way, and the lead was measured rather
+              // than inherited. Six windows, `takeException()` null in every one
+              // and no line of the row squeezed:
+              //   740×360 @1.3 — sheet 309.6 tall, content 807.4, scrolls 533.8
+              //   740×360 @2.0 — sheet 309.6 tall, scrolls 766.6
+              //   375×812 @1.0 — sheet 698.3 tall, scrolls 97.9
+              //   375×812 @1.3 · @2.0 and 320×568 @1.3 · @2.0 — same, all clean
+              // The row is 52 px tall at EVERY scale (both buttons carry their
+              // own `SizedBox` height, 50 and 52) and after `ensureVisible` it
+              // lands at y 284–336 inside the 360-tall window — wholly on
+              // screen. Horizontally it never overflowed either: at 320 @2.0,
+              // the narrowest case, 'Cancel' takes 192.6 px and the `Expanded`
+              // submit the remaining 81.4.
+              //
+              // THE TWO THINGS THE CANCEL SHEET LACKED, THIS SHEET HAS HAD ALL
+              // ALONG, which is the whole reason the numbers differ:
+              // `showAddSubscriptionSheet` already passes
+              // `isScrollControlled: true`, so there is no 9/16-of-window cap to
+              // run out of; and the WHOLE column — this row included — sits
+              // inside the `SingleChildScrollView` in `build`. Height that runs
+              // out therefore becomes scroll, not clip.
+              //
+              // ⚠️ SO DO NOT HOIST THIS ROW OUT OF THE SCROLL VIEW to match the
+              // cancel sheet's shape. That sheet keeps its buttons outside for a
+              // reason that does not apply here — `MinimumTapTargetGuideline`
+              // skips targets under an implicitly-scrolling ancestor — and
+              // `a11y_semantics_test.dart`'s 48×48 sweep of this sheet records
+              // 6 subjects as it stands, so nothing is going uninspected.
+              //
+              // ⚠️ AND PINNING `setSurfaceSize` ALONE WOULD HAVE MEASURED
+              // NOTHING: it moves layout constraints but not `MediaQuery`, and
+              // the cap above is `MediaQuery…size.height * 0.86` — the first run
+              // of this measurement read a 516 px sheet at every window because
+              // the view stayed 800×600. The numbers above come from
+              // `tester.view.physicalSize`. Same trap `width_add_sheet_test.dart`
+              // records in its header.
               Row(
                 children: <Widget>[
                   SoftButton(

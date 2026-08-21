@@ -112,6 +112,15 @@ class SettingsScreen extends ConsumerWidget {
     // `Provider` over config, so this is a synchronous read with no loading
     // state to render around — see the row for why it is gated at all.
     final PurchaseRail rail = ref.watch(purchaseRailProvider);
+    // The two surfaces this screen still painted with unconditional light
+    // literals — the currency chips and the preference-card dividers — resolve
+    // through these. Same fork, same slots and the same reason as
+    // `cardDecoration`, `login_screen`'s `_tones` and `detail`'s history rows:
+    // in LIGHT the pinned token is returned byte-for-byte so nothing repaints;
+    // in DARK the scheme answers, so a white block stops landing on #131318.
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
 
     final List<List<String>> toggles = <List<String>>[
       <String>['alerts', l10n.prefRenewalAlerts, l10n.prefRenewalAlertsDesc],
@@ -377,21 +386,72 @@ class SettingsScreen extends ConsumerWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             alignment: Alignment.center,
+                            // 🔴 THE OFF CHIP WAS A PINNED WHITE BLOCK, AND IN
+                            // DARK IT WAS THE BRIGHTEST THING ON THE SCREEN.
+                            // Measured against `buildAppTheme(seed: 0xFF6459F5,
+                            // brightness: dark)` — what `app.dart:84` supplies —
+                            // on 2026-08-21: #FFFFFF on the scaffold #131318 is
+                            // **18.52:1**, i.e. three white slabs glaring out of
+                            // a dark screen, with an #ECECF2 hairline round each
+                            // at **15.74:1**. Not a legibility failure — the ink
+                            // on that white still measures 18.25:1 — but the
+                            // dark build reading as a light one in four places.
+                            //
+                            // `surfaceContainerHighest` is the slot
+                            // `cardDecoration`, `RowCard` and `login_screen`'s
+                            // `_tones` already chose, so the chip is made of the
+                            // same material as every other raised surface in the
+                            // app: #35343A, **1.50:1** off the scaffold, with an
+                            // `outlineVariant` edge at **1.99:1** and
+                            // `onSurface` on it at **9.55:1** (AA, and AAA).
+                            //
+                            // ⚠️ THOSE TWO SEPARATION NUMBERS LOOK LOW AND ARE
+                            // STILL A GAIN: the SHIPPING LIGHT chip is white on
+                            // the light scaffold #FCF8FF at **1.05:1** with a
+                            // 1.12:1 border. Dark now separates its chip from
+                            // its ground BETTER than light does. Neither reaches
+                            // 1.4.11's 3:1, and 1.4.11 is not what identifies
+                            // these chips anyway — `selected:` on the `Semantics`
+                            // above and the gradient below are.
                             decoration: BoxDecoration(
                               gradient: sel ? AppColors.brandGradient : null,
-                              color: sel ? null : AppColors.surface,
+                              color: sel
+                                  ? null
+                                  : (isLight
+                                        ? AppColors.surface
+                                        : scheme.surfaceContainerHighest),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: sel
                                     ? Colors.transparent
-                                    : AppColors.line,
+                                    : (isLight
+                                          ? AppColors.line
+                                          : scheme.outlineVariant),
                               ),
                             ),
+                            // The SELECTED chip keeps `Colors.white`
+                            // unconditionally and deliberately: it rides
+                            // `brandGradient`, and an on-gradient colour must not
+                            // follow the scheme because the surface under it does
+                            // not. `AppColors.accent2`'s doc records the
+                            // measurement that pins it — white on the gradient's
+                            // far end is 4.51:1, its accent end 4.90:1, in both
+                            // brightnesses.
+                            //
+                            // The OFF branch is written out rather than left to
+                            // `copyWith(color: null)` because the ternary has to
+                            // supply both arms anyway; `ink → onSurface` is
+                            // exactly the mapping `AppText.of` already applies to
+                            // `fig`, so the two cannot disagree.
                             child: Text(
                               sym,
-                              style: AppText.fig.copyWith(
+                              style: AppText.of(context).fig.copyWith(
                                 fontSize: 16,
-                                color: sel ? Colors.white : AppColors.ink,
+                                color: sel
+                                    ? Colors.white
+                                    : (isLight
+                                          ? AppColors.ink
+                                          : scheme.onSurface),
                               ),
                             ),
                           ),
@@ -412,12 +472,30 @@ class SettingsScreen extends ConsumerWidget {
                 children: <Widget>[
                   for (int i = 0; i < toggles.length; i++)
                     Container(
+                      // The hairline BETWEEN preference rows, inside the card
+                      // `cardDecoration` just painted. It has to follow that
+                      // card: in dark the card is `surfaceContainerHighest`
+                      // #35343A, and #ECECF2 on it measures **10.48:1** — a
+                      // near-white grid ruled across a dark card, louder than
+                      // the labels it separates. `outlineVariant` #47464F is
+                      // **1.32:1** on the same card: a seam you see only when
+                      // you look for one, which is what a divider is for.
+                      //
+                      // NOT a re-derivation — `buildAppTheme`, the path
+                      // `app.dart:84` takes, hands `_themeFrom` `divider:
+                      // scheme.outlineVariant`, so this is the
+                      // row agreeing with the theme's own divider rather than
+                      // inventing a second answer. (`scheme.outline` #928F99
+                      // would measure 3.88:1 and draw a LOUDER line in dark than
+                      // #ECECF2 draws in light, at 1.18:1 — the wrong direction.)
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
                             color: i == toggles.length - 1
                                 ? Colors.transparent
-                                : AppColors.line,
+                                : (isLight
+                                      ? AppColors.line
+                                      : scheme.outlineVariant),
                           ),
                         ),
                       ),
@@ -1283,8 +1361,31 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      // 🔴 THE SAME PIN AND THE SAME LEAK AS THE DELETE DIALOG — see
+      // [_DeleteAccountDialogState._ground] for the full measurement; this
+      // dialog is the second of the two it names, and it was still
+      // unconditional. It sets NO `titleTextStyle` and there is no
+      // `dialogTheme` in `build_app_theme.dart`, so under `ThemeMode.dark` M3
+      // resolved `headlineSmall` — `displayColor: ink = scheme.onSurface`
+      // #E5E1E9 — onto a pinned #FFFFFF card: **1.29:1**, an invisible heading.
+      // The `TextField` below rode `bodyLarge`, same ink, same **1.29:1**, so
+      // the name being edited could not be read while it was typed; its
+      // `labelText` rode `onSurfaceVariant` #C8C5D0 at **1.70:1** and both
+      // buttons `colorScheme.primary` #C4C0FF at **1.70:1**.
+      //
+      // Handing the dialog the scheme's own ground in dark fixes all four at
+      // once: on `surfaceContainerHigh` #2A292F the title measures **11.18:1**,
+      // the label **8.48:1** and the buttons **8.47:1**.
+      //
+      // ✅ LIGHT REPAINTS BY ZERO PIXELS — the pin stays exactly where it was
+      // for `Brightness.light`, because the light `surfaceContainerHigh` is
+      // #EBE7EF and dropping the pin outright would visibly tint the dialog in
+      // the build the owner eyeballs.
+      backgroundColor: theme.brightness == Brightness.light
+          ? AppColors.surface
+          : null,
       title: Text(widget.l10n.editProfile),
       content: TextField(
         key: const Key('editProfileName'),
@@ -1611,10 +1712,23 @@ class _LinkRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? sub = subtitle;
+    final ThemeData theme = Theme.of(context);
     return Container(
+      // Every `_LinkRow` sits inside a `cardDecoration` card, so the hairline
+      // between rows follows that card exactly as the preference rows' does —
+      // see the note there for the measurement (#ECECF2 on the dark card
+      // #35343A is **10.48:1**, `outlineVariant` is **1.32:1**) and for why
+      // `outlineVariant` is the theme's own `dividerColor` rather than a choice
+      // made here.
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: last ? Colors.transparent : AppColors.line),
+          bottom: BorderSide(
+            color: last
+                ? Colors.transparent
+                : (theme.brightness == Brightness.light
+                      ? AppColors.line
+                      : theme.colorScheme.outlineVariant),
+          ),
         ),
       ),
       // ⚠️ `button:` IS CONDITIONAL, AND THAT IS THE HONEST HALF. This class's

@@ -87,11 +87,38 @@
 # is what makes `immutable` correct for them. `icon-16/32/192/512.png`,
 # `apple-touch-icon.png` and `og-image.png` do NOT: replacing the brand mark
 # under one of those names would not reach a returning visitor for a year.
-# Left as-is DELIBERATELY — these are the page's heaviest bytes and re-cutting
-# them is a brand decision, so the call is the owner's. Nothing here has gone
-# quiet about it: assert-web-cache-policy.mjs prints the stable-named
-# `immutable` paths on every run rather than failing the build, so the gap
-# cannot become permanent by being invisible.
+#
+# 🔴 CORRECTED 2026-08-21 — THE REASON RECORDED HERE UNTIL TODAY WAS WRONG, AND
+# THE WRONG REASON IS WHY THIS DEFERRAL WAS NEVER REVISITED. It read: "these are
+# the page's heaviest bytes and re-cutting them is a brand decision, so the call
+# is the owner's." Re-cutting the ARTWORK is a brand decision — that half is
+# true. But re-cutting is not what was asked for. The website research brief
+# asked only to RENAME the existing files so the name carries a version token
+# (`icon-192-v1.png`), which changes NOT ONE PIXEL. Two different acts were
+# filed under one owner-gate, and the cheap one inherited the expensive one's
+# veto.
+#
+# THE REAL TRADE-OFF, so the next reader weighs the right thing:
+#   · THE ICONS — renaming is not a brand act at all. Its whole cost is a
+#     mechanical edit: measured 2026-08-21, `icon-16/32/192/512.png` and
+#     `apple-touch-icon.png` are named in 16 files under sites/nikatru/
+#     (15 × .html plus site.webmanifest), and all of them must change in the
+#     same commit or the icons 404.
+#   · `og-image.png` — renaming this one DOES carry a genuine cost, and it is
+#     still not a brand cost. Social platforms cache the card they scraped from
+#     the OLD URL; every link already shared points at that URL, and it would
+#     404 until each platform re-scrapes. That is a real cost to weigh against
+#     a year of unfixable staleness — not a veto, and not the same question as
+#     the icons.
+#
+# THE RENAME IS STILL UNDONE, DELIBERATELY: it cannot be done from this file.
+# The names live in index.html, site.webmanifest and apps/*.html, which this
+# pass does not own. What changed today is the RECORD, not the policy — no
+# Cache-Control value in this file was touched.
+#
+# Nothing here has gone quiet about it: assert-web-cache-policy.mjs prints the
+# stable-named `immutable` paths on every run rather than failing the build, so
+# the gap cannot become permanent by being invisible.
 /*.png
   Cache-Control: public, max-age=31536000, immutable
 /*.jpg
