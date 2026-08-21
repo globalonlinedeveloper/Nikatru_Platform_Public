@@ -160,12 +160,12 @@
   .notify-msg.err{color:#FF9BA6}
 
   /* Footer */
-  footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:34px 24px;font-size:13.5px}
-  footer b{color:#fff}
-  footer a{color:#B6C2D9;text-decoration:none}
+  /* CHROME:footer-css */
+  footer{background:var(--ink);color:#8FA0BC;text-align:center;padding:28px 24px;font-size:13px;line-height:1.9}
+  footer .foot-em{color:#fff}
+  footer a{color:#B6C2D9;text-decoration:none;margin:0 7px;display:inline-block;padding:4px 0}
   footer a:hover{color:#fff}
-  .foot-links{margin:0 0 18px;display:flex;gap:8px 20px;flex-wrap:wrap;justify-content:center}
-  .foot-dev{display:inline-block;margin-top:14px}
+  /* /CHROME:footer-css */
 
   @media(max-width:720px){
     .nav-toggle{display:flex}
@@ -291,11 +291,12 @@
     <p class="eyebrow">Nikatru&trade;</p>
     <h1>Apps for <span class="grad">every screen</span>.</h1>
     <p class="sub">Nikatru is an independent app studio in Chennai, India &mdash; building polished,
-    privacy-first apps for iOS, Android, Windows, macOS, Linux and the web. Our first releases are on the way.</p>
+    privacy-first apps for iOS, Android, Windows, macOS, Linux and the web. Subly, our subscription
+    tracker, is live on the web &mdash; the other platforms are on the way.</p>
     <p class="trust">
       Est. 2021 <span class="sep" aria-hidden="true">&middot;</span>
       Registered MSME <span class="sep" aria-hidden="true">&middot;</span>
-      6 platforms <span class="sep" aria-hidden="true">&middot;</span>
+      Built for 6 platforms <span class="sep" aria-hidden="true">&middot;</span>
       Privacy-first
     </p>
     <form id="hero-form" class="notify-form hero-form" action="/api/subscribe" method="POST" novalidate>
@@ -428,23 +429,14 @@
 
 </main>
 
+<!-- CHROME:footer -->
 <footer>
-  <div class="wrap">
-    <div class="foot-links">
-      <a href="/">Home</a>
-      <a href="/pricing">Pricing</a>
-      <a href="/privacy">Privacy Policy</a>
-      <a href="/terms">Terms</a>
-      <a href="/refund">Refunds</a>
-      <a href="/delete-account">Delete account</a>
-      <a href="/contact">Contact</a>
-    </div>
-    <b>Nikatru&trade;</b> &middot; Chennai, Tamil Nadu, India<br>
-    Registered MSME &middot; UDYAM-TN-02-0487004<br>
-    <span class="foot-dev">Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><b>Rajasekar Selvam</b></a></span><br>
-    &copy; 2026 Nikatru. All rights reserved.
-  </div>
+  <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/delete-account">Delete account</a> &middot; <a href="/contact">Contact</a><br><br>
+  <span class="foot-em">Nikatru&trade;</span> &middot; Chennai, Tamil Nadu, India &middot; Registered MSME UDYAM-TN-02-0487004<br>
+  Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><span class="foot-em">Rajasekar Selvam</span></a><br>
+  &copy; 2026 Nikatru. All rights reserved.
 </footer>
+<!-- /CHROME:footer -->
 
 <script>
 /* ============================================================
@@ -468,7 +460,21 @@
    }
    ============================================================ */
 const APPS = [
-  // add your first app here
+  // Kept in step with catalog/apps.json, which check-site-integrity.mjs compares
+  // against this array BY NAME in both directions: an app here that the registry
+  // does not call live FAILS, and an app the registry calls live that is missing
+  // here is PRINTED as UNANNOUNCED on every run. Announced 2026-08-21 by owner
+  // decision, after https://subly.nikatru.com was measured answering 200.
+  // Only `web` is listed because only web is live; an absent key renders nothing,
+  // which is why no vendor store badge is drawn for a listing that does not exist.
+  {
+    name: "Subly",
+    tagline: "Track every subscription in one place",
+    icon: "&#128179;",
+    links: {
+      web: "https://subly.nikatru.com"
+    }
+  }
 ];
 
 const STORE_LABELS = {

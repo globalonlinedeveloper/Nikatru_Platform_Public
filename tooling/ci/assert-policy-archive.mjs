@@ -198,12 +198,33 @@ if (!currentSnaps || currentSnaps.size === 0) {
       'while they are still the live page.',
   );
 } else {
-  const live = visibleText(liveSrc);
+  // 🔴 THE SHARED FOOTER IS STRIPPED FROM BOTH SIDES BEFORE COMPARING, and this is
+  // a FOURTH tolerated difference in the same family as the three named above —
+  // not a loosening of what the archive protects.
+  //
+  // Since 2026-08-21 the live pages take their footer from tooling/sites/chrome.mjs,
+  // and the dated snapshots deliberately do NOT (they are frozen records; splicing
+  // today's chrome into them would make an archive of what was served on its date
+  // start showing today's site). So every future footer change would otherwise
+  // report the policy TEXT as edited, on a day nobody touched a word of it — and
+  // the honest response to that report would be a version bump, which would tell
+  // users the policy changed when it had not. That is a worse outcome than the
+  // one this guard exists to prevent.
+  //
+  // Measured on the first run after the footer landed: with the footer included
+  // the two documents differed; with it stripped they are IDENTICAL — so the
+  // policy body had not moved at all.
+  //
+  // What is still compared is everything a reader would call the policy. A test
+  // asserts that an edit to the actual policy TEXT is still caught, because a
+  // reduction that removed the subject would pass this guard and mean nothing.
+  const withoutChrome = (html) => html.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+  const live = visibleText(withoutChrome(liveSrc));
   for (const [locale, snap] of currentSnaps) {
     // Only the notice the live page IS can be compared to it. Other locales are
     // translations; K-14 owns whether they exist and whether they are reviewed.
     if (locale !== 'en') continue;
-    if (visibleText(snap.src) !== live) {
+    if (visibleText(withoutChrome(snap.src)) !== live) {
       problems.push(
         `${rel(snap.file)} and ${LIVE_POLICY} do not carry the same text, and both claim version ${published}. ` +
           'One of them was edited without a version bump, so the "exact text the user consented to" is now two ' +

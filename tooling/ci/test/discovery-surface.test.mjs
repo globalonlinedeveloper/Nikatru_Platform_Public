@@ -150,7 +150,7 @@ function tree(entries, opts = {}) {
     typeof entries === 'string' ? entries : JSON.stringify(entries, null, 2),
   );
   writeFileSync(join(root, 'sites', 'nikatru', 'sitemap.xml'), opts.sitemap ?? SITEMAP_BASE);
-  writeFileSync(join(root, 'sites', 'nikatru', 'index.html'), '<html><body>home</body></html>\n');
+  writeFileSync(join(root, 'sites', 'nikatru', 'index.html'), chromed('home'));
   if (opts.template !== false) writeFileSync(join(root, 'sites', 'nikatru', 'apps', '_template.html'), opts.template ?? TEMPLATE);
   // Content packs, for limb F's trigger watcher. `at` is a repo-relative
   // directory so a case can put the same pack somewhere the walk must PRUNE
@@ -175,7 +175,7 @@ function tree(entries, opts = {}) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'long-description.txt'), text);
   }
-  if (opts.pricingPage) writeFileSync(join(root, 'sites', 'nikatru', 'pricing.html'), '<html><body><h1>Pricing</h1></body></html>\n');
+  if (opts.pricingPage) writeFileSync(join(root, 'sites', 'nikatru', 'pricing.html'), chromed('<h1>Pricing</h1>'));
   return root;
 }
 
@@ -209,6 +209,18 @@ const SUBLY = {
   platforms: ['web'],
   status: 'live',
 };
+
+/** A fixture page carrying the chrome sentinels, exactly as every served page
+ *  under the deploy root must. The chrome set is DERIVED from the tree, so any
+ *  .html a fixture writes under sites/nikatru is in the contract - a stub without
+ *  markers is not a smaller fixture, it is an invalid page, and the generator
+ *  correctly refuses it. */
+const chromed = (body) =>
+  '<html><head><style>\n' +
+  '  /* CHROME:footer-css */\n  /* /CHROME:footer-css */\n' +
+  '</style></head><body>' +
+  body +
+  '\n<!-- CHROME:footer -->\n<!-- /CHROME:footer -->\n</body></html>\n';
 
 const p = (root, ...rel) => join(root, 'sites', 'nikatru', ...rel);
 
@@ -319,7 +331,7 @@ describe('the generator', () => {
     // it had drifted on the real tree: six URLs claiming 2026-08-01/03 while
     // every page last changed 2026-08-04.
     const root = tree([SUBLY]);
-    writeFileSync(p(root, 'privacy.html'), '<html><head><link rel="canonical" href="x"></head><body>p</body></html>\n');
+    writeFileSync(p(root, 'privacy.html'), chromed('p'));
     generate(root);
     const sitemap = readFileSync(p(root, 'sitemap.xml'), 'utf8');
     assert.match(sitemap, /<loc>https:\/\/nikatru\.com\/privacy<\/loc>/);
@@ -545,7 +557,9 @@ describe('the generator', () => {
     const without = tree([SUBLY], { rail: rail({ subly: { paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }) });
     generate(without);
     const html = readFileSync(p(without, 'apps', 'subly.html'), 'utf8');
-    assert.doesNotMatch(html, /href="\/pricing/);
+    // The shared footer links /pricing on every page as site navigation; what is
+    // conditional is the CTA, which carries the ?app= query string.
+    assert.doesNotMatch(html, /href="\/pricing\?app=/);
     assert.match(html, /\$4\.99/); // the summary still renders; only the link is withheld
   });
 
@@ -866,14 +880,36 @@ describe('the real repository', () => {
     assert.match(r.out, /generated file\(s\) match a fresh run/);
   });
 
-  test('🔴 THE D-12 OWNER PRINT SURVIVES — the generator does not touch the homepage APPS array', () => {
+  test('🔴 THE HOMEPAGE APPS ARRAY IS HAND-MAINTAINED, AND THE SPLICE DOES NOT TOUCH IT', () => {
+    // This test used to pin the OPPOSITE state: an empty array and a standing
+    // UNANNOUNCED print, because the owner decision had not been taken. It was
+    // taken on 2026-08-21 - announce Subly, which was measured answering 200 at
+    // https://subly.nikatru.com - so the assertions move with the decision.
+    //
+    // What did NOT change, and is the half worth keeping: the generator does not
+    // own this array. index.html is now spliced for shared chrome, so the risk is
+    // new and specific - a splice that disturbed the body would rewrite 33 KB of
+    // hand-written homepage, this array included.
     const home = readFileSync(join(REPO, 'sites', 'nikatru', 'index.html'), 'utf8');
-    assert.match(home, /const APPS = \[\n\s*\/\/ add your first app here\n\];/);
-    // ...and check-site-integrity.mjs still prints the unannounced gap, which is
-    // the owner-reserved decision this increment deliberately did not take.
+    assert.match(home, /const APPS = \[\n/);
+    assert.match(home, /name: "Subly"/);
+    assert.match(home, /https:\/\/subly\.nikatru\.com/);
+
+    // The registry and the homepage now agree, so the print is gone. Its absence
+    // is the assertion: a print that never clears is a print nobody reads.
     const site = spawnSync(process.execPath, [join(CI_DIR, 'check-site-integrity.mjs'), REPO], { encoding: 'utf8' });
     assert.equal(site.status, 0, site.stdout + site.stderr);
-    assert.match(site.stdout, /UNANNOUNCED: catalog\/apps\.json marks "Subly" status "live"/);
+    assert.doesNotMatch(site.stdout, /UNANNOUNCED/);
+  });
+
+  test('🔴 re-running the generator leaves the hand-written homepage byte-identical', () => {
+    // The splice's core bargain, asserted against the REAL 33 KB page rather than
+    // a fixture: chrome is regenerated, everything else is untouched.
+    const before = readFileSync(join(REPO, 'sites', 'nikatru', 'index.html'), 'utf8');
+    const { files } = planDiscovery(REPO);
+    const after = files.get('sites/nikatru/index.html');
+    assert.equal(typeof after, 'string', 'the homepage must be in the planned set');
+    assert.equal(after, before);
   });
 
   test('the deferred stage-12 triggers are MEASURED and printed, not asserted from prose', () => {
@@ -1002,5 +1038,85 @@ describe('the deferred stage-12 trigger watcher', () => {
     for (const id of ['W-4', 'W-5', 'W-6', 'W-8']) {
       assert.match(lineFor(r.out, id), /🔔 TRIGGER FIRED/, `${id} must be reported`);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The shared-chrome limbs. The mechanism's safety property is that it CANNOT
+// quietly do nothing, so every way it could go silent has a case here.
+describe('the shared chrome relationship', () => {
+  test('a tree whose pages carry their sentinels passes, and reports the count', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /page\(s\) carry shared chrome from tooling\/sites\/chrome\.mjs/);
+  });
+
+  test('🔴 a page that LOSES a sentinel fails, naming the page', () => {
+    // The silent-rot case. Without this the page keeps serving whatever chrome
+    // it last had while every file count above still includes it.
+    const root = tree([SUBLY]);
+    generate(root);
+    const home = readFileSync(p(root, 'index.html'), 'utf8');
+    writeFileSync(p(root, 'index.html'), home.replace('<!-- /CHROME:footer -->', ''));
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /index\.html/);
+    assert.match(r.out, /sentinel|chrome region/);
+  });
+
+  test('🔴 a DUPLICATED pair fails - the second copy would be left stale and served', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    const home = readFileSync(p(root, 'index.html'), 'utf8');
+    writeFileSync(p(root, 'index.html'), home + home);
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /sentinel|chrome region/);
+  });
+
+  test('🔴 a NEW page is in the contract the moment it exists', () => {
+    // The property a hardcoded page list could not give: a page nobody
+    // classified is exactly how a site grows a second footer.
+    const root = tree([SUBLY]);
+    generate(root);
+    writeFileSync(p(root, 'about.html'), '<html><body>about</body></html>\n');
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /about\.html/);
+  });
+
+  test('a dated snapshot is NOT asked for chrome - it is a record, not a page', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    mkdirSync(p(root, 'legal', '2026-08-10', 'en'), { recursive: true });
+    writeFileSync(p(root, 'legal', '2026-08-10', 'en', 'privacy.html'),
+      '<meta name="robots" content="noindex"><html><body>frozen policy</body></html>\n');
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('🔴 a snapshot that grows a <script> FAILS - the record would start moving', () => {
+    const root = tree([SUBLY]);
+    generate(root);
+    mkdirSync(p(root, 'legal', '2026-08-10', 'en'), { recursive: true });
+    writeFileSync(p(root, 'legal', '2026-08-10', 'en', 'privacy.html'),
+      '<meta name="robots" content="noindex"><html><body>f<script>x()</scr' + 'ipt></body></html>\n');
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /contains a <script>/);
+  });
+
+  test('🔴 an exemption that outlived its subject FAILS, in a directory that exists', () => {
+    // A standing exemption for a file that is gone is a hole waiting for a
+    // future page to be dropped into it. Scoped to directories the tree models,
+    // so a fixture that never had the area is not faulted for its absence.
+    const root = tree([SUBLY]);
+    generate(root);
+    mkdirSync(p(root, 'fullshot'), { recursive: true });
+    const r = guard(root);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /not served from/);
   });
 });
