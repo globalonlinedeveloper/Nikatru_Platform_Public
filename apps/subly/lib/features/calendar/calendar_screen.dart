@@ -737,7 +737,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // `test/shared_primitives_test.dart`); the label now comes from the arb,
     // which also fixes a SHIPPED English bug: both live branches of `of` read
     // `In $d days`, so a one-day horizon rendered "In 1 days".
-    final DueInfo due = DueInfo.localized(l10n, s, now);
+    // `brightness:` is what ACTIVATES the light arm of the urgent-branch fork
+    // in due.dart. Without it the call takes the dark-safe default and paints
+    // AppColors.warn #F59E0B as small bold text on the white card — 2.15:1,
+    // against a 4.5 bar. The fork landed before these three call sites did, so
+    // a11y_semantics_test.dart carried a named exemption citing this exact line;
+    // passing brightness is what expires it.
+    final DueInfo due = DueInfo.localized(l10n, s, now,
+        brightness: Theme.of(context).brightness);
     final ({Color ink, Color muted}) neutral = _neutrals(context);
     // ⚠️ THIS ROW IS RowCard's TWIN AND HAS TO BE FIXED SEPARATELY, which is
     // annoying and is the point of saying so. It hand-rolls the same

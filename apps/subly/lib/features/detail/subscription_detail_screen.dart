@@ -77,7 +77,14 @@ class SubscriptionDetailScreen extends ConsumerWidget {
       );
     }
     final Subscription s = sub;
-    final DueInfo due = DueInfo.localized(l10n, s, DateTime.now());
+    // `brightness:` is what ACTIVATES the light arm of the urgent-branch fork
+    // in due.dart. Without it the call takes the dark-safe default and paints
+    // AppColors.warn #F59E0B as small bold text on the white card — 2.15:1,
+    // against a 4.5 bar. The fork landed before these three call sites did, so
+    // a11y_semantics_test.dart carried a named exemption citing this exact line;
+    // passing brightness is what expires it.
+    final DueInfo due = DueInfo.localized(l10n, s, DateTime.now(),
+        brightness: Theme.of(context).brightness);
 
     return Scaffold(
       body: Column(
