@@ -3,9 +3,16 @@
 //
 // [pipeline 4]B-2. The guard's sentence is "the set of apps the shared config
 // service serves is DATA; adding an app needs no Worker source edit", and the
-// seven observations that make it false are enumerated in the guard's header.
+// eight observations that make it false are enumerated in the guard's header.
 // Each has a case below, and each case differs from the PASSING fixture in
 // exactly one dimension — a fixture that differs in two proves neither.
+//
+// Observation 8 (a served `features` key that is ON and unread) joined on
+// 2026-08-21 and brought two new surfaces into the fixture: a Dart tree and
+// tooling/sites/generate-discovery.mjs. Its cases are LAST in this file, and its
+// real-tree proof is recorded beside them — the four mutations were made to
+// services/platform/src/app-config-data.json in the working tree, run, and the
+// file restored byte-identical (sha256 b00e6a2e…16a7fac before and after).
 //
 // ⚠️ THESE FIXTURES ARE NOT THE PROOF, AND THIS REPO HAS THE SCAR TO SAY SO.
 // assert-seams-wired.mjs shipped with all six of its fixture tests green
@@ -116,7 +123,47 @@ const preGen = (base = 'https://platform.nikatru.com/v1') => `void run(HookConte
 }
 `;
 
-function tree({ catalogue = CATALOGUE, data = DATA, configTs = CONFIG_TS, typesTs = TYPES_TS, hook = preGen(), omit = null } = {}) {
+/** The landing-page generator, reduced to the one thing limb 8 reads: the
+ *  FEATURE_NAMES map that gives a served feature key a reader-facing name.
+ *
+ *  🔴 ITS HEADER COMMENT NAMES A KEY THAT IS NOT IN THE MAP, ON PURPOSE — the
+ *  same trap CONFIG_TS carries one limb over. A raw-text scan would accept
+ *  `teleport` as "named by the generator" because the prose explaining that it
+ *  is NOT named mentions it, and would then report the exact opposite of the
+ *  truth for the one key the limb exists to catch. */
+const DISCOVERY_MJS = `// The bullets on each app landing page. A key with no entry here (teleport,
+// say) has no reader-facing name and gets no bullet.
+const FEATURE_NAMES = new Map([
+  ['renewals', ['Renewal reminders', 'You are told what renews, and when.']],
+]);
+export const RAIL_CONFIG = 'services/platform/src/app-config-data.json';
+`;
+
+/** Shipped Dart, in the shape the real tree has it: the key is a `const String`
+ *  in ONE file and the `feature(` call is in ANOTHER. A single-pass scan
+ *  resolves that or not depending on directory order, so the fixture pins the
+ *  two-pass behaviour rather than trusting it. */
+const DART = {
+  'packages/core/lib/src/config/app_config.dart': `class AppConfig {\n  bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;\n}\n`,
+  'apps/subly/lib/state/providers.dart': `const String kPromoCardFeature = 'promo_card_enabled';\n`,
+  'apps/subly/lib/features/home/home_screen.dart': `Widget build() {\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n`,
+  // 🔴 A TEST THAT READS A KEY MUST NOT COUNT AS A READER. This file asks for
+  // `renewals` — the one key the passing fixture serves — so if the `/test/`
+  // filter ever stops filtering, the ARMED-and-unread case below goes GREEN and
+  // the limb quietly stops catching the class it was written for.
+  'packages/core/test/config_test.dart': `void main() {\n  expect(c.feature('renewals'), isTrue);\n}\n`,
+};
+
+function tree({
+  catalogue = CATALOGUE,
+  data = DATA,
+  configTs = CONFIG_TS,
+  typesTs = TYPES_TS,
+  hook = preGen(),
+  discovery = DISCOVERY_MJS,
+  dart = DART,
+  omit = null,
+} = {}) {
   const root = join(TMP, `t${seq++}`);
   const files = {
     'catalog/apps.json': JSON.stringify(catalogue, null, 2),
@@ -124,6 +171,8 @@ function tree({ catalogue = CATALOGUE, data = DATA, configTs = CONFIG_TS, typesT
     'services/platform/src/config.ts': configTs,
     'services/platform/src/types.ts': typesTs,
     'tooling/bricks/app/hooks/pre_gen.dart': hook,
+    'tooling/sites/generate-discovery.mjs': discovery,
+    ...dart,
   };
   for (const [rel, body] of Object.entries(files)) {
     if (rel === omit) continue;
@@ -165,6 +214,7 @@ describe('assert-config-registry — COVERAGE', () => {
     'services/platform/src/app-config-data.json',
     'services/platform/src/types.ts',
     'tooling/bricks/app/hooks/pre_gen.dart',
+    'tooling/sites/generate-discovery.mjs',
   ]) {
     test(`a missing ${rel} is COVERAGE LOST, not a pass`, () => {
       const r = run(tree({ omit: rel }));
@@ -284,5 +334,136 @@ describe('assert-config-registry — the seven observations', () => {
     const r = run(tree({ hook: "void run() { vars['api_base_url'] = someFunction(); }\n" }));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*pre_gen/);
+  });
+});
+
+
+describe('assert-config-registry — 8 · a served feature key nobody reads', () => {
+  // 🔴 WHY THIS LIMB EXISTS, AND WHY IT IS NOT A ONE-LANGUAGE SCAN.
+  // The real tree serves `apps.subly.features = {renewals, budgets, exports}`
+  // and 185 non-test Dart files read none of them; the only `.feature(` call in
+  // shipped Dart asks for `promo_card_enabled`, which the document does not
+  // serve. On that evidence the three keys are dead and the next move is to
+  // delete them. They are not dead: tooling/sites/generate-discovery.mjs names
+  // all three in FEATURE_NAMES and renders them as the three "What you get"
+  // bullets on sites/nikatru/apps/subly.html, which Cloudflare Pages serves out
+  // of this repo. The union of the two surfaces IS the limb.
+  const withFeatures = (features) => ({ ...DATA, apps: { subly: { features } } });
+
+  test('a key read by the site generator is not dead — the passing fixture', () => {
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 served feature key\(s\) have a non-test reader/);
+  });
+
+  test('8 · a key served TRUE that neither surface reads FAILS', () => {
+    const r = run(tree({ data: withFeatures({ renewals: true, teleport: true }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /features\.teleport is served TRUE and NOTHING reads it/);
+  });
+
+  test('8b · the SAME key served FALSE is PRINTED, not failed — the disarmed lever', () => {
+    // `max_promos_per_week`'s shape one field over: served at its inert value,
+    // read by nothing, changing nothing when its reader lands. Failing here
+    // would make "declare the switch before the code" impossible to do at all.
+    const r = run(tree({ data: withFeatures({ renewals: true, teleport: false }) }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /DISARMED FEATURE LEVER\(S\)[\s\S]*apps\.subly\.features\.teleport/);
+  });
+
+  test('8c · a NON-BOOLEAN value fails — _boolMap drops it and the generator skips it', () => {
+    const r = run(tree({ data: withFeatures({ renewals: true, teleport: 1 }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /features\.teleport = 1, which is not a boolean/);
+  });
+
+  test('8d · a key read only from DART is alive too — the union has two halves', () => {
+    const r = run(tree({ data: withFeatures({ renewals: true, promo_card_enabled: true }) }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 served feature key\(s\) have a non-test reader/);
+  });
+
+  test('8e · …and the Dart half resolves a `const String` from ANOTHER file', () => {
+    // The const lives in providers.dart, the call in home_screen.dart. Delete
+    // the declaration and the call can no longer be resolved, which is COVERAGE
+    // LOST rather than "promo_card_enabled has no reader".
+    const dart = { ...DART };
+    delete dart['apps/subly/lib/state/providers.dart'];
+    const r = run(tree({ dart }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST[\s\S]*cannot resolve the key read by/);
+  });
+
+  test('8f · `defaults.features` is in the domain too, not just per-app', () => {
+    const r = run(tree({ data: { ...DATA, defaults: { ...DATA.defaults, features: { teleport: true } } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /defaults\.features\.teleport is served TRUE/);
+  });
+
+  test('8g · a key named ONLY in the generator’s prose is not a reader', () => {
+    // DISCOVERY_MJS's header comment mentions `teleport` while FEATURE_NAMES
+    // does not carry it. A raw-text scan passes here and is reporting the
+    // opposite of the truth — this repo has shipped that exact defect once
+    // (a `grep '"r2_buckets"'` that matched the comment saying there is none).
+    const r = run(tree({ data: withFeatures({ renewals: true, teleport: true }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /features\.teleport is served TRUE/);
+  });
+
+  test('8h · a key read ONLY by a test is not a reader', () => {
+    // packages/core/test/config_test.dart reads `renewals`. Take the site
+    // generator's name for it away — RENAMED, not deleted, so FEATURE_NAMES
+    // stays non-empty and this is the reader limb answering rather than the
+    // COVERAGE one — and the key must go red, because the only remaining reader
+    // is under a `test/` path.
+    const r = run(tree({ discovery: DISCOVERY_MJS.replace("'renewals'", "'budgets'") }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /features\.renewals is served TRUE and NOTHING reads it/);
+  });
+
+  test('8i · a key shipped code READS but nothing serves is PRINTED, not failed', () => {
+    // `promo_card_enabled` is read at two call sites and served nowhere, so it
+    // resolves to `feature()`'s `orElse: false` and the promo card is dark.
+    // That is deliberate and owner-gated (arming it makes the app a promotional
+    // surface and re-derives the Play ads declaration), so the guard says so
+    // every run rather than blocking CI on a decision only the owner can take.
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /READ BUT UNSERVED — promo_card_enabled \(1 call site\(s\)\)/);
+  });
+
+  test('8j · COVERAGE — FEATURE_NAMES unparseable is not "the site reads nothing"', () => {
+    const r = run(tree({ discovery: "export const RAIL_CONFIG = 'x';\n" }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST[\s\S]*FEATURE_NAMES could not be parsed/);
+  });
+
+  test('8k · COVERAGE — an EMPTY FEATURE_NAMES map is COVERAGE LOST', () => {
+    const r = run(tree({ discovery: 'const FEATURE_NAMES = new Map([]);\n' }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST[\s\S]*parsed to ZERO keys/);
+  });
+
+  test('8l · COVERAGE — zero `feature(` call sites means the scan moved, not the tree', () => {
+    const dart = { ...DART };
+    delete dart['apps/subly/lib/features/home/home_screen.dart'];
+    const r = run(tree({ dart }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST[\s\S]*ZERO `feature\(` call sites/);
+  });
+
+  test('8m · a tree whose only non-test Dart is the brick hook reports honestly', () => {
+    // 🔴 THE CASE THAT DELETED A LIMB. It was written to prove a
+    // `dartFiles.length === 0` COVERAGE branch and instead proved that branch
+    // UNREACHABLE: `tooling/bricks/app/hooks/pre_gen.dart` is in
+    // REQUIRED_COVERAGE, it is Dart, and it sits under a DART_ROOT — so by the
+    // time limb 8 runs the count is never 0, and a missing hook has already
+    // exited at limb 0. The branch was removed from the guard rather than kept
+    // "for safety". What survives is the honest answer for this tree: no
+    // `feature(` call site anywhere, so "no Dart reader" is a fact about the
+    // scan and says so.
+    const r = run(tree({ dart: { 'packages/core/test/config_test.dart': DART['packages/core/test/config_test.dart'] } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST[\s\S]*ZERO `feature\(` call sites/);
   });
 });

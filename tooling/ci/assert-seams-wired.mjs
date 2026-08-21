@@ -285,10 +285,20 @@ const REQUIRED_COVERAGE = [
     // The half the old check could not see is the half that matters: a verifier
     // nobody reaches verifies nothing.
     //
-    // The key-pinning half stays in `checkPackVerifier()` below, still PRINTING
-    // rather than failing, because generating the production signing keypair is
-    // owner-gated (OWNER_QUEUE S-3) and a guard on owner-only work must not
-    // block every CI run.
+    // CORRECTED 2026-08-21 - THIS PARAGRAPH HAD GONE FALSE IN BOTH HALVES.
+    // It read: "The key-pinning half stays in `checkPackVerifier()` below, still
+    // PRINTING rather than failing, because generating the production signing
+    // keypair is owner-gated (OWNER_QUEUE S-3)." Neither clause survives.
+    // (1) There is no `checkPackVerifier()`; the key-pinning half is the inline
+    //     `try` block under "the pack verifier" below.
+    // (2) S-3 LANDED on 2026-07-27: `k1` is pinned in pack_verifier.dart, so that
+    //     block now takes its `ok` branch ("1 production key(s) pinned") and its
+    //     owner-gated print is not what runs. MEASURED by running this guard.
+    // Kept rather than deleted because the REASONING is still the house rule and
+    // still governs PACK CONSUMER LIMB (c) below: a guard on owner-only work must
+    // print rather than block every CI run. What limb (c) prints on is the one
+    // pack gate still shut - the SHELF ([4]B-18, no `r2_buckets` bound), not the
+    // key.
     //
     // TWO needs, because the seam has two separable halves and deleting either
     // one silently re-breaks the rail: the loader must be CONSTRUCTED with a
@@ -311,6 +321,26 @@ const REQUIRED_COVERAGE = [
         re: /\.load\(\s*\n?\s*expectPackId:/,
         declares: /Future<Result<ContentPack>>\s+load\(/,
         scope: BRICK_APP,
+        // WARNING - THIS LABEL OVERSTATES WHAT THE ANCHOR PROVES, and the label
+        // text is pinned byte-for-byte by guards.test.mjs (:3374, :3389), a file
+        // this change does not own, so it is CORRECTED HERE rather than rewritten.
+        //
+        // What the anchor actually proves is that a `.load(expectPackId:)` CALL
+        // SITE EXISTS in the stamped chassis. In the real tree that call site is
+        // the body of `contentPackProvider`, a Riverpod `FutureProvider` - and a
+        // provider body is LAZY: it runs when something watches or reads the
+        // provider, and never otherwise. MEASURED 2026-08-21 (re-derive it, do
+        // not trust this line): `contentPackProvider` has ZERO readers in any
+        // shipped `lib/` anywhere in this tree; its only readers are
+        // `chassis_properties_test.dart` in the brick and in apps/subly. Every
+        // other occurrence of the whole pack rail sits inside the one
+        // `state/providers.dart` that declares it.
+        //
+        // So this need is satisfied by a DECLARATION nothing runs - the same
+        // "dead capability that reports healthy" shape this guard exists for,
+        // one level up from where it was looking. The seam's `what` above claims
+        // "a real consumer"; this anchor does not check that. PACK CONSUMER LIMB
+        // (c), below the pack-verifier block, is what asks the missing question.
         label: 'something that actually asks the loader for a pack',
       },
     ],
@@ -652,6 +682,13 @@ for (const t of EXCLUSIVE_TRIGGERS) {
 const VERIFIER_IMPL = 'packages/core/lib/src/content/ed25519_pack_verifier.dart';
 const CORE_BARREL = 'packages/core/lib/nikatru_core.dart';
 const KEYS_FILE = 'packages/core/lib/src/content/pack_verifier.dart';
+// Hoisted out of the try below so PACK CONSUMER LIMB (c) can MEASURE the key
+// gate instead of asserting it from memory. The limb's print says the S-3 keypair
+// gate is closed and the SHELF is the gate still shut; a hardcoded sentence saying
+// so would go stale the moment the map changed - "never invent a number" - so the
+// print reads the count taken here. `null` means the count could not be taken at
+// all (the read threw), deliberately NOT the same value as a measured zero.
+let packKeysPinned = null;
 try {
   const impl = readFileSync(join(repo, VERIFIER_IMPL), 'utf8');
   const barrel = readFileSync(join(repo, CORE_BARREL), 'utf8');
@@ -676,6 +713,7 @@ try {
   // does not contain.
   const mapBody = keys.match(/kContentPackPublicKeys\s*=\s*<String,\s*String>\{([\s\S]*?)\}/)?.[1] ?? '';
   const pinnedCount = (mapBody.match(/['"][^'"]+['"]\s*:/g) ?? []).length;
+  packKeysPinned = pinnedCount;
   if (pinnedCount === 0) {
     console.log('--   pack_verifier — 0 production keys pinned: packs CANNOT load in production yet. OWNER-GATED (OWNER_QUEUE S-3, generate the signing keypair). The implementation is proven against a test keypair.');
   } else {
@@ -684,6 +722,232 @@ try {
 } catch (e) {
   fail(`pack_verifier check could not run: ${e.message}`);
 }
+
+// ── PACK CONSUMER LIMB (c) · DOES ANYTHING SHIPPED ACTUALLY ASK FOR A PACK? ──
+//
+// 🔴 THE SEAM'S `what` CLAIMED MORE THAN ITS ANCHORS MEASURED. `pack_verifier`
+// reads "content packs cannot load without a real impl AND a real consumer".
+// Halves (a) and (b) above genuinely check the impl: a non-rejecting
+// implementation, exported from the barrel, with a key pinned. The CONSUMER half
+// was carried entirely by the `.load(expectPackId:)` anchor in `needs` — and in
+// the real tree that anchor matches the BODY OF `contentPackProvider`, a Riverpod
+// `FutureProvider`.
+//
+// A provider body is a DECLARATION, not a call. Riverpod is lazy by contract:
+// the body runs the first time something watches, reads or listens to the
+// provider, and never otherwise. So the entire rail — the source, the verifier,
+// the pack-id binding, and the emergency-takedown story [8]K-9 rests on — can
+// sit in a shipped `lib/`, print two `ok`s here, and never execute one byte in
+// the app. That is this guard's own subject ("a fail-closed seam with no proven
+// open path is a dead feature that reports healthy") one level up from where it
+// was looking, and it is the same shape as the 2026-08-03 finding this seam was
+// wired for: back then `ContentPackLoader` was a complete exported capability
+// nothing CONSTRUCTED; today it is a complete constructed capability nothing RUNS.
+//
+// MEASURED 2026-08-21 by running this limb (re-derive it, do not trust this
+// line): 0 of 600 shipped non-test Dart files read `contentPackProvider`. The
+// only readers in the whole tree are `chassis_properties_test.dart` in the brick
+// and in apps/subly; every other mention of the rail is inside the single
+// `state/providers.dart` that declares it. "A seam whose only caller is a test is
+// a dead capability" is this file's own sentence, printed at every other seam.
+//
+// ⚠️ MATCH THE READ, NEVER THE IDENTIFIER — the rule this file has already paid
+// for twice. `contentPackProvider` occurs in its own declaration, so a bare
+// identifier match is green against a tree with zero readers AND against one with
+// ten: an assertion that cannot fail. The anchor is therefore the read THROUGH A
+// REF, which a declaration cannot satisfy. `.overrideWith(` cannot satisfy it
+// either, and should not: an override SUPPLIES a value, it does not consume one,
+// and the two property tests do exactly that.
+//
+// ⚠️ AND A ZERO MUST SAY WHETHER IT IS A MEASUREMENT. A pattern that matched
+// nothing anywhere would report "0 readers" with the same confidence as a real
+// count — the dead-scanner shape one level up again. So the same pattern is run
+// over the TEST trees this scan deliberately excludes, and that WITNESS is
+// printed beside the count; when the witness is empty the print says the zero is
+// UNWITNESSED rather than asserting it. A caveat and not a gate, for the reason
+// the brand-seed limb records: a stale pattern here OVER-reports a gap rather
+// than hiding one, and the direction that inflates apparent coverage is a pattern
+// matching too much and printing `ok`.
+//
+// ⚠️ WHICH OWNER GATE, AND WHY IT IS NOT THE KEY. The comment on the seam row
+// above says the pack half is owner-gated on OWNER_QUEUE S-3, the signing
+// keypair. THAT GATE IS CLOSED and has been since 2026-07-27 — `k1` is pinned in
+// pack_verifier.dart and half (b) above prints `1 production key(s) pinned`, not
+// its owner-gated branch. Failing on the key count would therefore fail on the
+// real tree today, which is why this limb does not GATE on it - it only reports
+// the measured count, so this paragraph cannot quietly go stale. The gate that IS
+// still shut is the SHELF: `services/platform/wrangler.jsonc` declares no
+// `r2_buckets`, so the bucket, the `packs.nikatru.com` binding, the cache policy
+// and `latest.json` hosting do not exist ([4]B-18; `assert-publish-gate.mjs`
+// prints the same blockage, and tooling/content_pipeline `publish` refuses before
+// it would need one). With no shelf, no pack has ever been published, so a
+// consumer built today could only ever render the fallback — building it is work
+// the owner's infrastructure gates, and "when a capability's on-switch is
+// owner-gated, the guard must PRINT the gap on every run rather than fail the
+// build" [CLAUDE.md C-6].
+//
+// The moment a bucket IS bound the gate lifts, the missing consumer stops being
+// owner work and becomes agent work, and a rail with no reader has no excuse
+// left — so this limb FAILS in that state. That branch is deliberate: a limb that
+// can only ever print is exactly the vacuous assertion this file exists to
+// reject. A wrangler file that cannot be read at all leaves the gate UNKNOWN and
+// prints — an unreadable file must never be mistaken for a measured shelf.
+//
+// 🔴 AND THE SHELF MUST BE READ AS STRUCTURE, NOT PROSE — this one is not
+// theoretical. wrangler.jsonc's closing comment is the literal sentence
+// `NO "r2_buckets" YET`, quotes and all. A grep for the key name finds it and
+// concludes the shelf exists, flipping this limb from its correct print to a
+// false FAIL on the real tree. Comments are blanked before the key is looked for,
+// and the array BODY is what is counted, so an empty `"r2_buckets": []` is a
+// shut gate too.
+//
+// NEGATIVE-TESTED 2026-08-21, every branch, against throwaway trees rather than
+// by trusting the real one — see tooling/ci/test/seams-wired.test.mjs.
+const PACK_CONSUMER_RE = /\.(?:watch|read|listen)\s*\(\s*\n?\s*contentPackProvider\b/;
+const PACK_SHELF_FILE = 'services/platform/wrangler.jsonc';
+
+/** Blank `//` and block comments in JSONC, leaving string literals alone.
+ *
+ *  Purpose-built rather than reusing `stripDart` above: that one also treats a
+ *  bare `r` before a quote as a Dart raw-string prefix, which is a Dart shape
+ *  and not a JSON one. Six lines is cheaper than reasoning about whether the
+ *  borrowed one misreads a config file. */
+function stripJsonc(src) {
+  let out = '';
+  for (let i = 0; i < src.length; ) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '"') {
+      out += c; i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
+        out += src[i];
+        if (src[i] === '"') { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    if (c === '/' && c2 === '/') { while (i < src.length && src[i] !== '\n') { out += ' '; i++; } continue; }
+    if (c === '/' && c2 === '*') {
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) { out += src[i] === '\n' ? '\n' : ' '; i++; }
+      out += '  '; i += 2;
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
+/** How many object-storage bindings the platform Worker declares — i.e. whether
+ *  the pack SHELF exists at all. `null` when the file cannot be read, which is
+ *  deliberately not the same value as a measured zero. */
+function packShelfBindings() {
+  let raw;
+  try { raw = readFileSync(join(repo, PACK_SHELF_FILE), 'utf8'); } catch { return null; }
+  const body = stripJsonc(raw).match(/"r2_buckets"\s*:\s*\[([\s\S]*?)\]/)?.[1];
+  if (body === undefined) return 0;
+  return (body.match(/"bucket_name"\s*:/g) ?? []).length;
+}
+
+/** Dart files under SCAN_ROOTS that this guard's scan deliberately DROPS — the
+ *  `test/` and `integration_test/` trees. Not part of the count: a test is not a
+ *  consumer, which is the whole premise of this file. They are the blindness
+ *  witness only, so a zero above can be told apart from a dead pattern. */
+function excludedTestDart(dir, out = []) {
+  let entries;
+  try { entries = listDir(dir); } catch { return out; }
+  for (const e of entries) {
+    const p = join(dir, e);
+    let s;
+    try { s = statSync(p); } catch { continue; }
+    if (s.isDirectory()) {
+      if (e !== 'build' && e !== '.dart_tool' && e !== 'node_modules') excludedTestDart(p, out);
+    } else if (e.endsWith('.dart')) {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function checkPackHasAShippedConsumer() {
+  // The denominator is `bodies`, the same set every seam above is judged on, so
+  // this limb cannot range over a different (or empty) tree than the `ok`s it
+  // sits beside. MIN_FILES at the top of this file already fails hard on an
+  // empty scan, which is what stops the zero below being vacuous.
+  const shipped = hits(PACK_CONSUMER_RE);
+  const chassis = shipped.filter((r) => r.startsWith(BRICK_APP));
+
+  const scanned = new Set(files);
+  const witness = SCAN_ROOTS.flatMap((r) => excludedTestDart(join(repo, r)))
+    .filter((f) => !scanned.has(f))
+    .filter((f) => !SKIP_PATH.some((skip) => f.startsWith(join(repo, skip) + sep)))
+    .filter((f) => {
+      try { return PACK_CONSUMER_RE.test(stripDart(readFileSync(f, 'utf8'))); } catch { return false; }
+    })
+    .map(rel);
+
+  // Scoped to the brick for the reason every `needs` row above is: this is the
+  // CHASSIS's pack rail, inherited by every app the factory stamps. A reader in
+  // apps/ would say nothing about that and would keep this green with the
+  // template's own consumer deleted — the "assertion that cannot fail in a wider
+  // costume" this file names at `hits()`. Readers outside the chassis are still
+  // REPORTED, because a reader in one app is a fact worth seeing.
+  if (chassis.length > 0) {
+    ok(
+      `pack_verifier limb (c) — ${chassis.length} shipped chassis file(s) READ \`contentPackProvider\` ` +
+        `(${chassis.join(', ')})` +
+        `${shipped.length > chassis.length ? `, plus ${shipped.length - chassis.length} outside the chassis` : ''}; ` +
+        'the pack rail has a consumer that RUNS, not merely a provider declaration',
+    );
+    return;
+  }
+
+  const shelf = packShelfBindings();
+  const gate =
+    shelf === null
+      ? `${PACK_SHELF_FILE} could not be read, so the shelf gate is UNKNOWN`
+      : shelf === 0
+        ? `${PACK_SHELF_FILE} declares NO r2_buckets, so the pack shelf does not exist ([4]B-18: no bucket, no packs.nikatru.com binding, no latest.json) and no pack has ever been published — a consumer built today could only ever render the fallback`
+        : `${PACK_SHELF_FILE} declares ${shelf} object-storage binding(s), so the pack shelf EXISTS`;
+
+  if (shelf !== null && shelf > 0) {
+    fail(
+      `pack_verifier limb (c) — ${gate}, and NOTHING under ${BRICK_APP} reads \`contentPackProvider\`. ` +
+        `${shipped.length} of ${files.length} shipped non-test file(s) read it anywhere in the tree` +
+        `${shipped.length ? ` (${shipped.join(', ')}) — none in the chassis, so no stamped app inherits a consumer` : ''}. ` +
+        'The owner gate that justified printing this gap is LIFTED; the pack rail is a live capability that ' +
+        'nothing runs, which is agent work now, not owner work. The `.load(expectPackId:)` anchor above proves ' +
+        'only that the call site EXISTS inside a lazy Riverpod provider body — a declaration, not a call.' +
+        (witness.length
+          ? ` The pattern is live: ${witness.length} excluded test file(s) do read it (${witness.join(', ')}).`
+          : ' CAVEAT — no file in this tree reads it at all, not even a test, so this zero is UNWITNESSED.'),
+    );
+    return;
+  }
+
+  console.log('   ── printed, not failed (owner-gated: [4]B-18, the pack shelf) ──');
+  console.log(
+    `   ⬜ pack_verifier limb (c): ZERO of ${files.length} shipped non-test Dart file(s) under ` +
+      `${SCAN_ROOTS.join(', ')} read \`contentPackProvider\`, so nothing in any shipped app ever ASKS for a ` +
+      'pack. Riverpod provider bodies are LAZY — the `.load(expectPackId:)` anchor above proves the call site ' +
+      'EXISTS inside that body, not that anything runs it — so this seam\'s claim of "a real consumer" is, ' +
+      'today, satisfied by a declaration. ' +
+      (witness.length
+        ? `${witness.length} file(s) in the EXCLUDED test trees do read it (${witness.join(', ')}), which is how ` +
+          'this pattern is proven live and why the zero is a measurement rather than a blind one — and it is ' +
+          'also the finding itself: the pack rail\'s only readers are tests. '
+        : 'CAVEAT — nothing in this tree reads it at all, not even a test, so the pattern has no live witness ' +
+          'here and this zero is UNWITNESSED. Not failed on that account: a stale pattern would over-report a ' +
+          'gap rather than hide one. ') +
+      `PRINTED RATHER THAN FAILED because ${gate}. Note this is NOT the S-3 key gate: ` +
+      `${packKeysPinned === null ? 'the pinned-key count could not be read' : `${packKeysPinned} signing key(s) are pinned`}` +
+      `${typeof packKeysPinned === 'number' && packKeysPinned > 0 ? ', so that gate is CLOSED' : ''}. ` +
+      'When a bucket is bound this limb FAILS instead: at that point the on-switch is no longer ' +
+      'owner-gated and a rail with no reader has no excuse left [CLAUDE.md C-6].',
+  );
+}
+
+checkPackHasAShippedConsumer();
 
 // ── the policy-version pin ──────────────────────────────────────────────────
 const POLICY_HTML = 'sites/nikatru/privacy.html';

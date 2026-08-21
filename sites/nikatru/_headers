@@ -81,46 +81,91 @@
 /*.js
   Cache-Control: public, max-age=0, must-revalidate
 
-# Long-cache immutable static assets.
-# ⚠️ RECORDED GAP — this is not a claim that these are content-addressed.
-# `founder-v4.jpg` / `founder-v4.webp` carry their version IN THE NAME, which
-# is what makes `immutable` correct for them. `icon-16/32/192/512.png`,
-# `apple-touch-icon.png` and `og-image.png` do NOT: replacing the brand mark
-# under one of those names would not reach a returning visitor for a year.
+# Long-cache immutable static assets — but ONLY names that carry a version.
+# `founder-v4.jpg` / `founder-v4.webp` carry theirs IN THE NAME, which is what
+# makes `immutable` correct for them: a new cut gets a new name, so no cached
+# copy can ever be the wrong one.
 #
-# 🔴 CORRECTED 2026-08-21 — THE REASON RECORDED HERE UNTIL TODAY WAS WRONG, AND
-# THE WRONG REASON IS WHY THIS DEFERRAL WAS NEVER REVISITED. It read: "these are
-# the page's heaviest bytes and re-cutting them is a brand decision, so the call
-# is the owner's." Re-cutting the ARTWORK is a brand decision — that half is
-# true. But re-cutting is not what was asked for. The website research brief
-# asked only to RENAME the existing files so the name carries a version token
-# (`icon-192-v1.png`), which changes NOT ONE PIXEL. Two different acts were
-# filed under one owner-gate, and the cheap one inherited the expensive one's
-# veto.
+# 🔴 FIXED 2026-08-21 — `/*.png` NO LONGER SAYS `immutable`. THIS IS THE SECOND
+# CORRECTION TO THIS BLOCK IN ONE DAY, and both earlier records are kept below
+# rather than deleted: each names a DIFFERENT wrong reason, and the wrong
+# reasons are the whole story of why this gap stood as long as it did.
 #
-# THE REAL TRADE-OFF, so the next reader weighs the right thing:
-#   · THE ICONS — renaming is not a brand act at all. Its whole cost is a
-#     mechanical edit: measured 2026-08-21, `icon-16/32/192/512.png` and
-#     `apple-touch-icon.png` are named in 16 files under sites/nikatru/
-#     (15 × .html plus site.webmanifest), and all of them must change in the
-#     same commit or the icons 404.
-#   · `og-image.png` — renaming this one DOES carry a genuine cost, and it is
-#     still not a brand cost. Social platforms cache the card they scraped from
-#     the OLD URL; every link already shared points at that URL, and it would
-#     404 until each platform re-scrapes. That is a real cost to weigh against
-#     a year of unfixable staleness — not a veto, and not the same question as
-#     the icons.
+# THE FACTS THAT DID NOT CHANGE: `icon-16/32/192/512.png`,
+# `apple-touch-icon.png` and `og-image.png` are STABLE names with CHANGING
+# content. Nothing in those names moves when their bytes do. Under `immutable`,
+# replacing the brand mark under one of them would not reach a returning
+# visitor for a year — and not even on an explicit reload, because `immutable`
+# suppresses revalidation rather than merely extending freshness.
 #
-# THE RENAME IS STILL UNDONE, DELIBERATELY: it cannot be done from this file.
-# The names live in index.html, site.webmanifest and apps/*.html, which this
-# pass does not own. What changed today is the RECORD, not the policy — no
-# Cache-Control value in this file was touched.
+# ── WRONG REASON #1, recorded here until this morning ────────────────────────
+# "These are the page's heaviest bytes and re-cutting them is a brand decision,
+# so the call is the owner's." Re-cutting the ARTWORK is a brand decision — that
+# half was true and still is. But re-cutting was never what this gap needed. Two
+# different acts were filed under one owner-gate, and the cheap one inherited
+# the expensive one's veto.
 #
-# Nothing here has gone quiet about it: assert-web-cache-policy.mjs prints the
-# stable-named `immutable` paths on every run rather than failing the build, so
-# the gap cannot become permanent by being invisible.
+# ── WRONG REASON #2, recorded here this morning, MEASURED FALSE this afternoon ─
+# The morning's correction said the fix was to RENAME the files so the name
+# carries a version token (`icon-192-v1.png`), and called that "not a brand act
+# at all — its whole cost is a mechanical edit" across the 16 files under
+# sites/nikatru/ that name them. THE COUNT WAS RIGHT; THE CONCLUSION WAS WRONG.
+# Re-measured 2026-08-21 (main loop), those 16 files are not 16 mechanical edits:
+#   · THREE are the DATED LEGAL SNAPSHOTS — legal/2026-07-26/en/privacy.html,
+#     legal/2026-08-01/en/privacy.html and legal/2026-08-10/en/privacy.html.
+#     Those are FROZEN CONSENT RECORDS: what a user agreed to on that date, kept
+#     unedited on purpose, and the DO-NOT list forbids editing them beyond head
+#     tags. The same rule is encoded one tree over — check-site-integrity.mjs
+#     keeps its link-rewriting limb off them because "rewriting a link inside a
+#     published policy archive edits the record". So a rename leaves exactly two
+#     outcomes: the icon 404s on three published policy pages, or a consent
+#     record is edited to keep a favicon working. Neither is available, and no
+#     amount of care makes it available.
+#   · TWO are GENERATED — apps/subly.html and apps/index.html, written by
+#     tooling/sites/generate-discovery.mjs and diffed in CI.
+#   · ONE is apps/_template.html, which no pass here owns.
+# THE RENAME IS THEREFORE DEAD, NOT DEFERRED AND NOT OWNER-GATED. Do not
+# re-propose it; the blocker is a frozen legal record, which no decision unfreezes.
+#
+# ── THE FIX THIS FILE WAS ALREADY ARGUING FOR, a few rules above ─────────────
+# See "WHY REVALIDATE AND NOT `immutable`" over the .css/.js rules: STABLE names
+# with CHANGING content take the one-round-trip revalidating bargain, precisely
+# so that a fix reaches someone who has already visited. That is the icons'
+# situation exactly — the same sentence, about a different extension. The file
+# held the answer the whole time while the png rule sat under a deferral about
+# artwork.
+#
+# 🔴 AND THIS IS WHY IT NEEDED NO OWNER AT ALL: a Cache-Control value is not a
+# re-cut and not a rename. It changes not one pixel and not one filename, so
+# there is no brand question in it to defer. The owner-gate was real, but it was
+# attached to a different act than the one performed here.
+#
+# THE COST, stated so it is weighed and not discovered later: a returning
+# visitor now spends ONE conditional request per icon instead of zero, and the
+# bytes still come from the local cache on the 304. That is the identical
+# bargain /*.css and /*.js take above, and the one apps/subly/web/_headers takes
+# for its entry points.
+#
+# ⚠️ `og-image.png` IS COVERED BY THIS RULE TOO, and deliberately. A RENAME was
+# the one fix that carried a genuine cost for this file — social platforms cache
+# the card they scraped from the OLD URL, every link already shared points at
+# it, and it would 404 until each platform re-scraped. A header change has no
+# such cost: the URL never moves. The expensive fix is not needed for the cheap
+# problem.
+#
+# ⚠️ NOT TOUCHED, and why: /*.jpg, /*.webp and /*.svg keep `immutable`. jpg and
+# webp are founder-v4's, whose name carries its version. No .svg is served here
+# today, so that line is a class declared before its first file arrives — same
+# reasoning as /*.css above. If a STABLE-named .jpg/.webp/.svg ever lands here,
+# this same argument applies to it unchanged, and assert-web-cache-policy.mjs
+# names such a file on every run rather than failing the build.
+#
+# Nothing here has gone quiet: that guard still prints every stable name left
+# under `immutable`, so the remaining instance of this defect — the identical
+# `/*.png` rule on sites/rajasekarselvam, which this pass does not own — stays
+# visible on every run instead of becoming permanent by being invisible.
 /*.png
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=0, must-revalidate
 /*.jpg
   Cache-Control: public, max-age=31536000, immutable
 /*.webp
