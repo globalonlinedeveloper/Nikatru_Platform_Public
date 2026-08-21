@@ -72,22 +72,43 @@ class InsightsScreen extends ConsumerWidget {
     final List<Subscription> unused = SubMath.unused(subs);
     final double savings = SubMath.savings(subs);
 
-    return ContentPane(
+    return ContentPane.reading(
       // P3 PORT — THE WIDTH DECISION THIS SCREEN NEVER HAD.
       //
       // Same defect and same fix as home's `ContentPane`. `AppScaffold` caps the
       // body at `kMaxBodyWidth` only in its EXTRA-LARGE class (>=1600), so
-      // between 1200 and 1599 both cards grew to the full window — a 1550 px
-      // savings row with a glyph at one edge and a Cancel button at the other.
+      // between 1200 and 1599 both cards took every pixel the drawer left them.
       // Nothing overflows and nothing clips, so no existing assertion could
-      // fail. `ContentPane`'s DEFAULT cap IS `kMaxBodyWidth`, the same ceiling
-      // `AppScaffold` applies above 1600, so this makes the two agree instead of
-      // agreeing only past 1600. Default rather than `.reading`/`.pane`: two
-      // cards on a scrolling page is home's and settings' shape, and a narrower
-      // cap here would make insights the odd page out for no stated reason.
+      // fail — only a MEASUREMENT sees it, which is what
+      // `test/width_insights_test.dart` is.
       //
-      // ✅ POLICED by `test/width_insights_test.dart` — the 1920 case is the one
-      // that goes red if this wrapper is deleted.
+      // 🔴 CORRECTED 2026-08-21 — THIS COMMENT CLAIMED "a 1550 px savings row"
+      // AND THAT WIDTH CANNOT OCCUR. `AppScaffold` hands the body
+      // `min(W - 361, 1280)`: the 360px drawer and its 1px divider are taken
+      // off the top before the body sees anything. So 1280 is the ceiling at
+      // ANY window width, and inside the LARGE class the body tops out at
+      // 1599-361 = 1238; at W=1500 the pane gets 1139, and at W=1440, 1079.
+      // Less the 18/18 page gutters and the card's 20/20 padding, the widest a
+      // savings row has ever been is ~1204 — still a glyph at one edge and a
+      // Cancel button at the other with most of the row empty between them, so
+      // the DEFECT was real and only the number was invented. The shipped
+      // pixels never depended on it.
+      //
+      // 🔴 `.reading` (720), NOT THE DEFAULT `kMaxBodyWidth` (1280) — and the
+      // default is what this file used to carry, on the stated grounds that it
+      // made `ContentPane` and `AppScaffold` "agree instead of agreeing only
+      // past 1600". That reasoning is void: agreeing on 1280 buys nothing when
+      // 1280 is also the most the body can ever be handed, so the cap NEVER
+      // BOUND and this page was a phone column that merely got wider. 720 is
+      // the design system's own width for a stack of cards read top to bottom,
+      // and that is exactly this page's shape — two cards, one column, no
+      // second pane to fill. It also keeps the donut row honest: at 720, less
+      // the gutters and card padding, the legend still gets ~500px beside the
+      // fixed 126px donut, against the ~155px it survives on at 375.
+      //
+      // ✅ POLICED by `test/width_insights_test.dart` — at 720 the 768, 1280
+      // AND 1920 cases all go red if this wrapper is deleted or re-widened,
+      // where the old 1280 cap left only 1920 falsifiable.
       child: ListView(
         // P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL (home's precedent).
         // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers paid for the
@@ -114,8 +135,21 @@ class InsightsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           _categoryCard(context, l10n, currency, cats, total),
-          const SizedBox(height: 14),
-          _savingsCard(context, l10n, currency, unused, savings),
+          // 🔴 THE SAVINGS CARD IS GATED ON THERE BEING SOMETHING TO SAVE.
+          // `SubMath.savings` sums rows carrying `unused == true`, and NOTHING in
+          // this app ever sets `unused` — the add sheet constructs every draft
+          // without it and the API never writes it back. So for every real user
+          // the figure is exactly 0.00, and the card rendered a green
+          // "money you could keep" Pill saying `0.00/mo` immediately above the
+          // line that says nothing is flagged. Two opposite claims, one screen.
+          //
+          // Gated rather than deleted: the arithmetic is correct and the surface
+          // becomes true the moment anything writes `unused`. Inventing a usage
+          // signal to populate it would be the other, worse repair.
+          if (unused.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 14),
+            _savingsCard(context, l10n, currency, unused, savings),
+          ],
         ],
       ),
     );

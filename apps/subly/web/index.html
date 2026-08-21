@@ -5,6 +5,18 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Subly — a cross-platform subscription tracker by Nikatru.">
+  <!--
+    🔴 DO NOT RESHAPE THIS TAG. `assert-stamp-properties.mjs:824` anchors the
+    `ui-invariants-inherited` property on the literal
+    `<meta name="viewport" … content="…width=device-width…"` shape of this line.
+    (The engine REPLACES this tag at runtime — `FullPageEmbeddingStrategy.
+    _applyViewportMeta`, flutter_web_sdk/lib/_engine/engine/view_embedder/
+    embedding_strategy/full_page_embedding_strategy.dart:66-95 — and prints a
+    "this tag will be replaced" warning in debug. That is expected, not a defect:
+    the tag has to be in the DOCUMENT for the browser's first layout, which
+    happens long before any Dart runs, and that first layout is what decides the
+    window class every responsive decision is resolved from.)
+  -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -13,8 +25,210 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
   <title>Subly — Subscription Tracker</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    ── BOOTSTRAP LOADER ──────────────────────────────────────────────────────
+    🔴 THE PROBLEM THIS SOLVES: until this existed, a cold visitor to
+    https://subly.nikatru.com got a BLANK WHITE PAGE for the whole engine boot,
+    with nothing on screen saying the page was alive. That window is not small
+    on this channel and it is not going to shrink on its own: deploy-web.yml
+    builds with `--pwa-strategy=none` ([ADR 023], LOCKED 2026-07-31), so there
+    is no service worker and therefore no warm cache on a first visit —
+    CanvasKit, the engine and main.dart.js are all fetched cold — and
+    `web/_headers` deliberately makes every stable-named entry point revalidate
+    on every return visit. A blank white page is indistinguishable from a dead
+    site, and the visitor's only available action is to close the tab.
+
+    ⚠️ EVERYTHING BELOW IS INLINE AND SAME-ORIGIN — no CDN font, script or
+    stylesheet, and no image request either. Two reasons, and the second is the
+    one that would survive a policy change: (1) a webfont or CDN script sits on
+    the critical path of the FIRST PAINT, which is the exact thing this markup
+    exists to make fast; (2) it would put a third party on the boot path of the
+    only channel this factory serves.
+    📌 MEASURED 2026-08-21 — `apps/subly/web/_headers` declares NO
+    Content-Security-Policy at all; CSP is declared only for `sites/nikatru` and
+    `sites/rajasekarselvam`. So an external reference here would NOT be blocked
+    loudly or quietly; it would simply become a dependency nobody chose. Do not
+    read the absence of a CSP as permission.
+
+    ⚠️ THE LOADER MUST REMOVE ITSELF, AND IT MUST OUTRANK THE FLUTTER VIEW UNTIL
+    IT DOES. `FullPageEmbeddingStrategy` takes over <body> by APPENDING to it —
+    it never clears it (contrast `CustomElementEmbeddingStrategy`, which calls
+    `hostElement.clearChildren()`). The view root it appends is
+    `position:absolute` with all four insets at 0 and lands AFTER this element
+    in DOM order, so without the z-index below Flutter paints straight over a
+    loader that is still there, and without the removal in the script the loader
+    sits on top of a fully-booted app forever.
+  -->
+  <style>
+    /* The colours are the app's real scaffold backgrounds, not approximations —
+       packages/design_system/lib/src/theme/build_app_theme.dart:104 and :119.
+         LIGHT  scaffoldBackground = AppColors.bg        #F4F4F8
+         DARK   scaffoldBackground = AppColors.onboardBg #12111C
+       Painting one of those HERE is what turns a white-then-dark flash into a
+       single continuous surface: the browser paints the <html> background
+       before it has parsed anything else, and by the time Flutter's first frame
+       lands it draws the colour that is already on screen.
+
+       ⚠️ `prefers-color-scheme` is the correct query here and not a guess:
+       apps/subly/lib/app.dart:93 passes `themeModeProvider`, which defaults to
+       `ThemeMode.system`, so on a cold load — before any stored preference has
+       been read back — the OS scheme IS what Flutter is about to paint. A user
+       who has pinned light or dark in Settings against their OS can still get
+       one frame of the other scheme. That is a mismatch of one frame traded
+       against a mismatch lasting the entire boot, and it is deliberate. */
+    :root {
+      color-scheme: light dark;
+      --boot-bg: #F4F4F8;
+      --boot-ink: #141420;    /* AppColors.ink   */
+      --boot-muted: #6F6F7B;  /* AppColors.muted */
+      --boot-track: #ECECF2;  /* AppColors.line  */
+      --boot-accent: #6459F5; /* AppColors.accent — AppTheme.light() primary */
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --boot-bg: #12111C;
+        --boot-ink: #F4F4F8;   /* AppTheme.dark()'s ink literal */
+        --boot-muted: #9A9AA8;
+        --boot-track: #2A2A38; /* AppTheme.dark()'s divider */
+        /* AppTheme.dark() sets `primary: AppColors.accent2`, so the dark
+           spinner is accent2 and not accent. #6459F5 on #12111C would be the
+           one colour on this screen the app never actually shows. */
+        --boot-accent: #8950FF;
+      }
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--boot-bg);
+    }
+
+    #boot {
+      position: fixed;
+      inset: 0;
+      /* Outranks the Flutter view root for the whole overlap window. See the
+         DOM-order note above — this is load-bearing, not decorative. */
+      z-index: 2147483000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background: var(--boot-bg);
+      /* No webfont, by the policy above. This stack resolves to a face already
+         resident on every target OS, so the wordmark paints in the first frame
+         the browser produces rather than after a font round trip. */
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      /* The fade is on the way OUT only, driven by the script. Fading IN would
+         reintroduce the empty-screen moment this element exists to remove. */
+      opacity: 1;
+      transition: opacity 180ms ease-out;
+    }
+    #boot[data-leaving="1"] { opacity: 0; }
+
+    #boot-mark {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      color: var(--boot-ink);
+    }
+
+    #boot-spinner {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 3px solid var(--boot-track);
+      border-top-color: var(--boot-accent);
+      animation: boot-spin 900ms linear infinite;
+    }
+    @keyframes boot-spin { to { transform: rotate(360deg); } }
+    @keyframes boot-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+    /* A boot indicator is the last thing that should ignore this preference:
+       the visitor cannot navigate away from it and cannot stop it. Motion is
+       replaced with a slow opacity pulse rather than dropped altogether, so the
+       screen still reads as "working" instead of "stuck". */
+    @media (prefers-reduced-motion: reduce) {
+      #boot-spinner {
+        animation: boot-pulse 1.6s ease-in-out infinite;
+        border-color: transparent;
+        background: var(--boot-accent);
+      }
+      #boot { transition: none; }
+    }
+
+    #boot-noscript {
+      max-width: 32ch;
+      margin: 0;
+      text-align: center;
+      line-height: 1.5;
+      font-size: 14px;
+      color: var(--boot-muted);
+    }
+  </style>
 </head>
 <body>
+  <div id="boot" role="status" aria-live="polite" aria-label="Loading Subly">
+    <div id="boot-mark">Subly</div>
+    <div id="boot-spinner"></div>
+    <noscript>
+      <p id="boot-noscript">Subly needs JavaScript to run. Please enable it and reload this page.</p>
+    </noscript>
+  </div>
+
+  <script>
+    // ⚠️ THIS SCRIPT MUST STAY ABOVE THE flutter_bootstrap.js TAG. That tag is
+    // `async`, so the engine may begin executing the instant its bytes arrive —
+    // but a script element cannot run before the parser has REACHED it, which
+    // means everything above it has already run. That ordering is the entire
+    // guarantee that this listener is registered before the engine can dispatch
+    // the event it waits for. Moving this below the bootstrap tag reintroduces
+    // a race that only loses on a warm cache — i.e. never on the machine of
+    // whoever is testing the change.
+    (function () {
+      var boot = document.getElementById('boot');
+      if (!boot) return;
+      var done = false;
+
+      function dismiss() {
+        if (done) return;
+        done = true;
+        boot.setAttribute('data-leaving', '1');
+        // Outlives the 180ms CSS transition. `remove()` rather than
+        // `display:none` because this is a `role="status"` live region: left in
+        // the tree it keeps announcing "Loading Subly" to a screen reader over
+        // an app that has finished loading.
+        window.setTimeout(function () {
+          if (boot.parentNode) boot.parentNode.removeChild(boot);
+        }, 220);
+      }
+
+      // The engine's own signal — not a heuristic, not a timer:
+      // `domWindow.dispatchEvent(createDomEvent('Event', 'flutter-first-frame'))`
+      // at flutter_web_sdk/lib/_engine/engine/platform_dispatcher.dart:560,
+      // Flutter 3.44.9 / engine b9499e4c25. It fires once, after the first frame
+      // has actually been rendered, which is exactly the moment there is
+      // something underneath this overlay worth uncovering.
+      window.addEventListener('flutter-first-frame', dismiss);
+
+      // 🔴 FAILSAFE, AND IT IS NOT BELT-AND-BRACES — IT IS THE DIFFERENCE
+      // BETWEEN THIS BEING AN IMPROVEMENT AND A REGRESSION. If the engine never
+      // reaches a first frame (CanvasKit fetch fails, the wasm is rejected, a
+      // future engine renames the event), a full-viewport overlay with a
+      // near-maximal z-index does not degrade to the old blank page — it HIDES
+      // a possibly-working app behind a spinner that never stops. Removing
+      // itself returns the visitor to the scaffold-coloured page they would
+      // have had anyway, which is the worst case this change is allowed to
+      // have. 20s is chosen against the thing being waited on: far past a cold
+      // CanvasKit fetch on a slow connection, so a healthy-but-slow boot is
+      // never cut off by it.
+      window.setTimeout(dismiss, 20000);
+    })();
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

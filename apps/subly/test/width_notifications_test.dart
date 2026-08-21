@@ -35,8 +35,18 @@ import 'package:subly/features/notifications/notifications_screen.dart';
 import 'support/width_harness.dart';
 
 void main() {
-  // ── NOTIFICATIONS · ContentPane (kMaxBodyWidth, 1280) ───────────────────────
-  group('notifications is capped at the body width', () {
+  // ── NOTIFICATIONS · ContentPane.reading (AppBreakpoints.reading, 720) ───────
+  //
+  // 🔴 REWRITTEN 2026-08-21. These cases pinned `kMaxBodyWidth` (1280), and 1280
+  // is a width the product does not reach: `AppScaffold` hands the body
+  // `min(W - 361, 1280)` after a 360 px drawer and a 1 px divider, so a 1440 px
+  // window offers 1079. Three of the five cases were consequently green for a
+  // screen that was still a stretched phone column at every desktop width
+  // anybody runs, and the fourth measured the single width where the old cap
+  // showed up at all. Under `.reading` the cap binds from 768 up, which is where
+  // the defect actually lived — see the screen's own note for why a two-line
+  // card stack reaches its natural width at 720 rather than at 840–960.
+  group('notifications is capped at the reading width', () {
     testWidgets('at 375 the cap is a no-op and nothing overflows', (
       WidgetTester tester,
     ) async {
@@ -63,28 +73,46 @@ void main() {
       );
     });
 
-    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+    // 🔴 THE CASE THE REWRITE IS FOR. This read `expect(…, 768)` — a
+    // hand-written restatement that the cap did nothing here. 720 is the first
+    // width at which the pane has any effect, and unlike 1920 it is a width real
+    // hardware ships at, so this is now the case most likely to catch a
+    // regression.
+    testWidgets('at 768 the cap BINDS — the tablet is not a wide phone', (
+      WidgetTester tester,
+    ) async {
       await pumpAt(tester, kTablet, const NotificationsScreen());
-      expect(offeredWidth(tester, inPane(ListView)), 768);
-    });
-
-    testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
-      await pumpAt(tester, kDesktop, const NotificationsScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
+        AppBreakpoints.reading,
+        reason:
+            'a notification card is a 40 px glyph beside two wrapping '
+            'sentences; past ~720 the sentence stops well short of the card '
+            'edge and the glyph is stranded at the far left',
       );
     });
 
-    // 🔴 THE CASE THAT CAN ACTUALLY GO RED — see the harness header. At 1280 the
-    // assertion above holds with the pane deleted; this one does not.
-    testWidgets('at 1920 the list stops at AppBreakpoints.kMaxBodyWidth', (
+    testWidgets('at 1280 the list is still at 720, not at the window', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kDesktop, const NotificationsScreen());
+      expect(
+        offeredWidth(tester, inPane(ListView)),
+        AppBreakpoints.reading,
+        reason:
+            'the ordinary desktop window. Under the old default cap this width '
+            'was the one where the assertion could not fail (1280 <= 1280 '
+            'holds with the pane deleted); it is now 560 px of daylight.',
+      );
+    });
+
+    testWidgets('at 1920 the list stops at AppBreakpoints.reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, const NotificationsScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'without the pane every notification card stretches the full '
             'display: a 40px icon at one edge and a sentence that stops a '
@@ -102,7 +130,7 @@ void main() {
       await pumpAt(tester, kWide, const NotificationsScreen());
       expect(
         offeredWidth(tester, inPane(Column)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'the pane must contain the header row and the divider as well as '
             'the list; moving it inside the Expanded would pass every '

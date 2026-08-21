@@ -113,6 +113,28 @@ void main() {
       // 1400px wide is genuinely hard to read.
       expect(tester.getSize(find.text('BODY')).width,
           lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth));
+
+      // 🔴 AND IT IS CENTRED, NOT PINNED LEFT. This half was missing until
+      // 2026-08-21 and its absence was the whole defect: the body was
+      // `Alignment.topLeft`, so at 1920 the capped 1280 box sat hard against
+      // the drawer with 279px of dead gutter on the right — and NOTHING here
+      // asserted a position, so the suite stayed green while every app in the
+      // factory rendered off-centre on a maximised window.
+      //
+      // Asserted on the capped BOX, not on the text: the harness pumps
+      // `Center(child: Text('BODY'))`, so measuring the text's edges would
+      // measure the inner `Center` and pass under either alignment — which is
+      // exactly the shape of assertion this repository calls worse than none.
+      final double bodyLeft = tester.getTopLeft(find.byType(NavigationDrawer)).dx +
+          tester.getSize(find.byType(NavigationDrawer)).width;
+      final double textCentre = tester.getCenter(find.text('BODY')).dx;
+      final double regionCentre = bodyLeft + (2000 - bodyLeft) / 2;
+      expect(
+        textCentre,
+        closeTo(regionCentre, 2.0),
+        reason: 'the capped body must sit in the middle of the space left of '
+            'the drawer, not against its edge',
+      );
     });
   });
 

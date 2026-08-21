@@ -32,6 +32,10 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart';
+// For `PurchaseRail` — the Upgrade row asks it whether a checkout is possible
+// before it offers one. Same package `home_screen.dart` imports for the promo
+// card's `offerings`, so this adds no dependency.
+import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // ⚠️ THE STAMP'S PATH, NOT THE LIVE ONE. P2.5 keeps `lib/core/app_config.dart`
@@ -56,6 +60,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/auth/auth_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/analytics_providers.dart';
+import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../shared/widgets.dart';
@@ -102,6 +107,11 @@ class SettingsScreen extends ConsumerWidget {
     final core.AuthUser? user = ref.watch(authUserProvider).valueOrNull;
     final String runningVersion =
         ref.watch(packageVersionProvider).valueOrNull ?? AppConfig.appVersion;
+    // The purchase capability, read here so the Upgrade row below can ask the
+    // same object the paywall screen asks. `purchaseRailProvider` is a plain
+    // `Provider` over config, so this is a synchronous read with no loading
+    // state to render around — see the row for why it is gated at all.
+    final PurchaseRail rail = ref.watch(purchaseRailProvider);
 
     final List<List<String>> toggles = <List<String>>[
       <String>['alerts', l10n.prefRenewalAlerts, l10n.prefRenewalAlertsDesc],
@@ -118,7 +128,7 @@ class SettingsScreen extends ConsumerWidget {
     // 🔴 A `Scaffold`, BUT TRANSPARENT AND WITHOUT AN `AppBar`, and both halves
     // of that are deliberate.
     //
-    // The Scaffold is REQUIRED: `test/responsive_width_test.dart` pumps this
+    // The Scaffold is REQUIRED: `test/width_settings_test.dart` pumps this
     // screen as `MaterialApp.home` with nothing around it, and every `ListTile`,
     // `SwitchListTile`, `RadioListTile`, `SegmentedButton` and `AboutListTile`
     // below asserts on a `Material` ancestor. The stamped file got one for free
@@ -141,11 +151,38 @@ class SettingsScreen extends ConsumerWidget {
     // claim went stale.
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // 🔴 NO `padding:` ON THE PANE. `responsive_width_test` asserts the
-      // ListView is OFFERED exactly 375 at phone width and exactly
-      // `AppBreakpoints.kMaxBodyWidth` at 1920; a pane inset would subtract from
+      // 🔴 NO `padding:` ON THE PANE. `test/width_settings_test.dart` asserts
+      // the ListView is OFFERED exactly 375 at phone width and exactly
+      // `AppBreakpoints.reading` at 1920; a pane inset would subtract from
       // both. The gutters stay where they always were — inside the ListView.
-      body: ContentPane(
+      //
+      // ⚠️ CORRECTED 2026-08-21. This sentence said `responsive_width_test`
+      // and `AppBreakpoints.kMaxBodyWidth`; both halves moved with the cap
+      // below, and a comment that names the wrong constant is how the next
+      // reader "restores" the wrong one.
+      //
+      // 🔴 `.reading` (720) AND NOT THE DEFAULT 1280 — MEASURED 2026-08-21.
+      // The default cap was a decision on paper only: `AppScaffold` hands its
+      // body `min(W - 361, 1280)` because a 360 px drawer plus its 1 px divider
+      // take the width first, so a maximised 1440 desktop offers this screen
+      // 1079 and the 1280 cap NEVER engages at any real desktop size. What
+      // shipped was a phone column that simply got wider.
+      //
+      // 720 rather than the 840–960 an eyeball would also accept, for a reason
+      // that is about this SHAPE and not about taste. Every row here is a
+      // glyph, a label, and a control pinned to the FAR edge — `_LinkRow`'s
+      // chevron, `_Toggle`, a `RadioListTile`'s radio. There is no second
+      // column for extra width to go to, so widening the pane only widens the
+      // gap between a label and the thing that acts on it: at 1079 the eye
+      // travels the better part of 1000 px from "Upgrade" to its chevron. That
+      // is [AppBreakpoints.reading]'s own argument one level up — it stops a
+      // PARAGRAPH sprawling, and a row list sprawls the same way for the same
+      // reason.
+      //
+      // And it is a name the design system already owns. 840 or 960 would each
+      // be a NEW constant, and `AppBreakpoints`' own header records what this
+      // repo paid for six private copies of `420`.
+      body: ContentPane.reading(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 58, 18, 108),
           children: <Widget>[
@@ -562,12 +599,41 @@ class SettingsScreen extends ConsumerWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: <Widget>[
-                    _LinkRow(
-                      icon: '★',
-                      label: l10n.paywallUpgrade,
-                      last: false,
-                      onTap: () => context.go('/paywall'),
-                    ),
+                    // 🔴 THE UPGRADE ROW IS GATED ON THE SAME ANSWER THE
+                    // PAYWALL ITSELF READS — added 2026-08-21.
+                    //
+                    // `paywall_screen.dart:228` refuses its choosing phase on
+                    // `!rail.canStartCheckout || rail.offerings.isEmpty` and
+                    // draws `l10n.paywallUnavailable` instead. Today that is
+                    // the ONLY thing `/paywall` can render on any platform:
+                    // `canStartCheckout` is `_capabilities.canStartCheckout &&
+                    // _config.canCheckout`, the config half is false while
+                    // OWNER_QUEUE A-1 (the merchant-of-record seller account)
+                    // is pending, and the capability half is false on Android
+                    // because the hosted rail is not Play Billing. So the row
+                    // took a paying-intent tap and answered "Purchases are not
+                    // available here."
+                    //
+                    // Asking the RAIL rather than re-deriving the answer is the
+                    // point: a second expression that happens to agree today is
+                    // two decisions, and the first one to be updated leaves the
+                    // other pointing at a dead end with nothing red to say so.
+                    // This is the same expression, evaluated one screen earlier.
+                    //
+                    // ⚠️ IT DOES NOT WEAKEN THE ROSCA PAIRING ABOVE. The rule is
+                    // that cancelling must be no HARDER than subscribing;
+                    // hiding a subscribe path that cannot subscribe leaves
+                    // cancel where it was and can only widen the gap in the
+                    // permitted direction. `assert-purchase-path.mjs` reads
+                    // this file for the `context.go('/paywall')` literal, which
+                    // is still here — it moved inside an `if`, it did not go.
+                    if (rail.canStartCheckout && rail.offerings.isNotEmpty)
+                      _LinkRow(
+                        icon: '★',
+                        label: l10n.paywallUpgrade,
+                        last: false,
+                        onTap: () => context.go('/paywall'),
+                      ),
                     _LinkRow(
                       icon: '≡',
                       label: l10n.managePlanTitle,
@@ -1318,18 +1384,62 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
     return PopScope(canPop: !_busy, child: _form(context));
   }
 
+  /// The dialog's ground: the pinned white in light, the SCHEME'S own dialog
+  /// surface in dark.
+  ///
+  /// 🔴 THE PIN USED TO BE UNCONDITIONAL, AND THE LEAK IT CAUSED WAS BIGGER
+  /// THAN THE ONE ANYBODY WAS LOOKING FOR. `AppColors.surface` is a `const`
+  /// #FFFFFF, so under `ThemeMode.dark` these two dialogs painted a WHITE card
+  /// in a dark app — and every descendant that takes its colour from the THEME
+  /// rather than from an `AppColors` literal then followed the DARK scheme onto
+  /// that white. Measured against `buildAppTheme(seed: 0xFF6459F5, brightness:
+  /// dark)` — what `app.dart:84` actually supplies — on 2026-08-21:
+  ///
+  ///   · the TITLE. Neither `AlertDialog` sets `titleTextStyle`, and there is
+  ///     no `dialogTheme` anywhere in `build_app_theme.dart`, so M3 resolves
+  ///     `textTheme.headlineSmall`. `_themeFrom` applies `displayColor: ink =
+  ///     scheme.onSurface` = **#E5E1E9**, which on #FFFFFF is **1.29:1**. The
+  ///     heading of the most destructive dialog in the app, invisible.
+  ///   · the PASSWORD FIELD. Its text style is `textTheme.bodyLarge`, same ink,
+  ///     same **1.29:1** — the obscured dots the user types to confirm
+  ///     deletion could not be seen either. Its `labelText` rides
+  ///     `onSurfaceVariant` #C8C5D0 at **1.70:1**.
+  ///   · CANCEL / CLOSE. `TextButton`'s foreground is `colorScheme.primary`
+  ///     #C4C0FF — **1.70:1**. The only way out of the dialog.
+  ///
+  /// Patching those four foregrounds would be four new decisions, each one a
+  /// literal that has to be kept in step with a theme it does not read. Handing
+  /// the dialog the scheme's own ground in dark is ONE, and it fixes the
+  /// buttons and the field along with the title: `onSurface` on
+  /// `surfaceContainerHigh` measures **11.18:1**.
+  ///
+  /// ✅ LIGHT REPAINTS BY ZERO PIXELS, which is why this is a branch and not a
+  /// deletion. The light `surfaceContainerHigh` is **#EBE7EF**, not white, so
+  /// dropping the pin outright would visibly tint the dialog in the build the
+  /// owner eyeballs — the repaint `app.dart`'s theme-fork note exists to avoid.
+  /// The pin stays exactly where it was for `Brightness.light`.
+  Color? _ground(ThemeData theme) =>
+      theme.brightness == Brightness.light ? AppColors.surface : null;
+
   Widget _form(BuildContext context) {
     final AppLocalizations l10n = widget.l10n;
+    final ThemeData theme = Theme.of(context);
+    // The ground is now theme-dependent, so the prose on it must be too.
+    // `AppText.resolve` is `AppText.of` for a caller that already holds the
+    // theme, and in LIGHT it returns the very const objects that were written
+    // here before — `identical(AppText.resolve(light).body, AppText.body)` is
+    // true — so this is byte-identical in light and legible in dark.
+    final AppTextStyles t = AppText.resolve(theme);
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: _ground(theme),
       title: Text(l10n.deleteAccountConfirmTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(l10n.deleteAccountConfirmBody, style: AppText.body),
+          Text(l10n.deleteAccountConfirmBody, style: t.body),
           const SizedBox(height: 14),
-          Text(l10n.deleteAccountReauthHint, style: AppText.muted),
+          Text(l10n.deleteAccountReauthHint, style: t.muted),
           const SizedBox(height: 8),
           TextField(
             key: E2EKeys.deleteAccountPassword,
@@ -1366,8 +1476,11 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   /// why this is `plainMessage` and not the l10n mapping.
   Widget _result(BuildContext context, core.AccountDeletionOutcome outcome) {
     final AppLocalizations l10n = widget.l10n;
+    // Same ground and the same reason as `_form` — see [_ground].
+    final ThemeData theme = Theme.of(context);
+    final AppTextStyles t = AppText.resolve(theme);
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: _ground(theme),
       title: Text(
         outcome.accountIsGone
             ? l10n.deleteAccountResultGone
@@ -1381,7 +1494,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           Text(
             outcome.plainMessage,
             key: E2EKeys.deleteAccountResult,
-            style: AppText.body,
+            style: t.body,
           ),
           // 🔴 THE EMAIL ROUTE ON EVERY FAILURE, INCLUDING reauthFailed — and
           // that inclusion is not tidiness. Re-auth is `signInWithEmail`, and an
@@ -1396,7 +1509,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             // No turnaround time is stated here because none is published.
             Text(
               l10n.deleteAccountEmailRoute(AppConfig.supportEmail),
-              style: AppText.muted,
+              style: t.muted,
             ),
           ],
         ],

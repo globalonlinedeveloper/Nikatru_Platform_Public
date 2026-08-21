@@ -85,14 +85,35 @@ class BudgetScreen extends ConsumerWidget {
     //
     // Same defect and same fix as home's `ContentPane` (home_screen.dart:119).
     // `AppScaffold` caps the body at `kMaxBodyWidth` only in its EXTRA-LARGE
-    // class (>=1600), so between 1200 and 1599 every category bar grew to the
-    // full window — a 1550 px progress meter with a name at one edge and a
-    // figure at the other. Nothing overflowed and nothing clipped, so no
+    // class (>=1600), so between 1200 and 1599 every category bar took every
+    // pixel the drawer left it. Nothing overflowed and nothing clipped, so no
     // assertion could fail; only a MEASUREMENT sees it, which is what
-    // `test/width_budget_test.dart` is. `ContentPane`'s default IS
-    // `kMaxBodyWidth`, so this makes the two agree instead of agreeing only
-    // past 1600.
-    return ContentPane(
+    // `test/width_budget_test.dart` is.
+    //
+    // 🔴 CORRECTED 2026-08-21 — THIS COMMENT CLAIMED "a 1550 px progress meter"
+    // AND ALSO THAT THE BAR GREW TO "THE FULL WINDOW". Both are impossible.
+    // `AppScaffold` hands the body `min(W - 361, 1280)` — the 360px drawer and
+    // its 1px divider come off the top first, so the body is NEVER the window —
+    // which makes 1280 the ceiling at any width, and 1599-361 = 1238 the
+    // ceiling inside the LARGE class. At W=1500 the pane gets 1139; at W=1440,
+    // 1079. Less the 18/18 page gutters and the bar card's 15/15 padding, the
+    // widest a meter has ever been is ~1214: still a name at one edge and a
+    // figure at the other with a third of a screen of nothing between them, so
+    // the DEFECT was real and only the number was invented. The shipped pixels
+    // never depended on it.
+    //
+    // 🔴 `.reading` (720), NOT THE DEFAULT `kMaxBodyWidth` (1280) — and the
+    // default is what this file used to carry, to "make the two agree instead
+    // of agreeing only past 1600". That reasoning is void: agreeing on 1280
+    // buys nothing when 1280 is also the most the body can ever be handed, so
+    // the cap NEVER BOUND at a real desktop size and this page stayed a phone
+    // column that merely got wider. 720 is the design system's own width for a
+    // stack of cards read top to bottom, which is this page exactly — a ring
+    // card and then one card per category, one column, no second pane to fill.
+    // A progress meter is also the element that degrades WORST when stretched:
+    // it is a length the eye has to judge against a track, and past ~800 px a
+    // 3% overspend and a 6% one look identical.
+    return ContentPane.reading(
       child: ListView(
         // 🔀 P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL.
         // Live was `fromLTRB(18, 58, 18, 108)`. Both odd numbers were paying

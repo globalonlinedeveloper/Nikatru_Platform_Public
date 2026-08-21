@@ -27,6 +27,24 @@ class NotificationsScreen extends ConsumerWidget {
     final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
 
+    // 🔴 THE TEXT ON THIS SCREEN WAS NEAR-BLACK IN DARK MODE, AND IT WAS THE
+    // ONLY THING LEFT THAT WAS. Every surface here already forks on `isLight`
+    // — the scaffold, the close button, the divider, the card — but the three
+    // `Text` styles did not, and a bare `AppText.<style>` const bakes
+    // `AppColors.ink` (#141420) or `AppColors.muted` regardless of theme. So the
+    // fix above (dark scaffold) made the defect WORSE: near-black titles on a
+    // near-black sheet that had previously been near-black on white.
+    //
+    // `AppText.of(context)` is the additive seam for exactly this. In LIGHT it
+    // returns the const objects THEMSELVES — `identical(AppText.of(c).title,
+    // AppText.title)` — so the light build this app is eyeballed in is
+    // byte-identical; in dark it re-points ink at `scheme.onSurface` and muted
+    // at `scheme.onSurfaceVariant`, derived from the seed rather than pinned.
+    // Resolved once here rather than per `Text`: `_card` takes its own, because
+    // it is a separate method and re-reading `Theme.of` there is cheaper than
+    // threading a parameter through a private builder.
+    final AppTextStyles text = AppText.of(context);
+
     // 🔴 D/M/Y WAS HARDCODED, and it was wrong for most of the world rather than
     // merely untranslated. The line read
     // `'${x.nextRenewal.day}/${x.nextRenewal.month}/${x.nextRenewal.year}'`,
@@ -127,13 +145,36 @@ class NotificationsScreen extends ConsumerWidget {
         // other, ~1850px apart, and every notification card became a 1900px
         // band with a 40px glyph at the left and two lines of text beside it.
         //
-        // The DEFAULT cap (`AppBreakpoints.kMaxBodyWidth`) rather than
+        // 🔴 CORRECTED 2026-08-21 — THE CAP CHOSEN HERE NEVER BOUND. This read
+        // "the DEFAULT cap (`AppBreakpoints.kMaxBodyWidth`) rather than
         // `.reading`: these are cards in a list, the same shape home caps, not
-        // continuous prose. The pane wraps the WHOLE column — header, rule and
-        // list together — because capping only the list would leave the title
-        // and the close button hanging off the edges of a centred list, which is
-        // worse than not capping at all.
-        child: ContentPane(
+        // continuous prose." Two things were wrong with it. First, 1280 is not
+        // reachable on the desktops people actually use: `AppScaffold` hands the
+        // body `min(W - 361, 1280)` — a 360 px drawer plus a 1 px divider —
+        // so a 1440 px window offers 1079 and the cap is a no-op everywhere
+        // between 839 and 1280. (This screen is pushed OVER the shell on its own
+        // `Scaffold`, so it does see the raw window; the point is that the
+        // number was picked to match a sibling cap that itself does not bind.)
+        // Second, the card CONTENT is prose: `notifRenewsInDays` and
+        // `notifCancellingSaves` are whole sentences, and the Tamil arms are
+        // longer than the English. A 1280 px band puts a 40 px glyph at one edge
+        // and a sentence that stops a third of the way across.
+        //
+        // `.reading` (720) is the design system's own number for exactly that —
+        // 45–75 characters before the eye loses the line return — and it is the
+        // narrower of the two candidates the audit offered (840–960 suits a
+        // DENSE row list; this is a two-line card stack with one glyph, so it
+        // reaches its natural width sooner). At 720 a card is 720 less two 18 px
+        // gutters = 684, of which the glyph and its gap take 52, leaving 632 for
+        // the sentence — about 70 characters at 13–14 pt, which is the top of
+        // that range rather than past it.
+        //
+        // The pane still wraps the WHOLE column — header, rule and list together
+        // — because capping only the list would leave the title and the close
+        // button hanging off the edges of a centred list, which is worse than
+        // not capping at all. `test/width_notifications_test.dart` pins both
+        // halves.
+        child: ContentPane.reading(
           child: Column(
             children: <Widget>[
               Padding(
@@ -148,7 +189,7 @@ class NotificationsScreen extends ConsumerWidget {
                   children: <Widget>[
                     Text(
                       l10n.notifications,
-                      style: AppText.title.copyWith(fontSize: 22),
+                      style: text.title.copyWith(fontSize: 22),
                     ),
                     Semantics(
                       button: true,
@@ -193,9 +234,16 @@ class NotificationsScreen extends ConsumerWidget {
                           child: Text(
                             l10n.notifNothingDue,
                             textAlign: TextAlign.center,
-                            style: AppText.body.copyWith(
-                              color: AppColors.muted,
-                            ),
+                            // ⚠️ THIS ONE CARRIED A `color:` AND WAS STILL THE
+                            // SAME BUG. `AppColors.muted` is a light-mode
+                            // literal, so the empty state was mid-grey on a dark
+                            // sheet whichever way the theme went. `body` +
+                            // `AppColors.muted` and `muted` are the SAME
+                            // TextStyle by value — Manrope, w500, muted — so
+                            // naming the muted style instead of re-colouring the
+                            // body one changes no pixel in light and picks up
+                            // `scheme.onSurfaceVariant` in dark.
+                            style: text.muted,
                           ),
                         ),
                       )
@@ -212,7 +260,7 @@ class NotificationsScreen extends ConsumerWidget {
                           AppSpacing.xl,
                         ),
                         itemCount: items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (BuildContext context, int i) =>
                             _card(context, items[i]),
                       ),
@@ -228,6 +276,11 @@ class NotificationsScreen extends ConsumerWidget {
     final ThemeData theme = Theme.of(context);
     final bool isLight = theme.brightness == Brightness.light;
     final ColorScheme scheme = theme.colorScheme;
+    // Same seam as `build`'s; see the note there for why light is
+    // byte-identical. Resolved from `theme` rather than `context` so the
+    // brightness fork above and the text below provably read the same
+    // `ThemeData` — `AppText.resolve` exists for precisely this.
+    final AppTextStyles text = AppText.resolve(theme);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -270,7 +323,7 @@ class NotificationsScreen extends ConsumerWidget {
               children: <Widget>[
                 Text(
                   n.title,
-                  style: AppText.body.copyWith(
+                  style: text.body.copyWith(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
                   ),
@@ -278,7 +331,7 @@ class NotificationsScreen extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   n.body,
-                  style: AppText.muted.copyWith(fontSize: 13, height: 1.45),
+                  style: text.muted.copyWith(fontSize: 13, height: 1.45),
                 ),
                 // 🔴 A THIRD `Text` LIVED HERE AND RENDERED NOTHING, for as long
                 // as this screen has been data-driven. It was

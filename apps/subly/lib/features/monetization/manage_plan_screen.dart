@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
@@ -91,7 +92,48 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     final bool isPro = ent.valueOrNull?.isProAt(DateTime.now()) ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.managePlanTitle)),
+      // 🔴 THE `leading:` IS THE ONLY WAY OFF THIS SCREEN, AND UNTIL NOW THERE
+      // WAS NONE. Measured 2026-08-21: this file contained no navigation call
+      // of any kind, and both entries (`settings_screen.dart:575` and
+      // `home_screen.dart:1111`) arrive by `context.go('/manage-plan')` onto a
+      // `parentNavigatorKey: rootNavigatorKey` route — so `go` replaces the
+      // stack with a single match, the shell and its bottom nav bar are gone,
+      // and `Navigator` has nothing to pop. A bare `AppBar` then renders NO
+      // implicit back button (Flutter only synthesises one when the route can
+      // pop). On Android the system back gesture found nothing either; on
+      // desktop and web there is no system gesture at all. The screen the app
+      // must be able to reach in one tap was a screen you could not leave.
+      //
+      // ⚠️ A BACK CONTROL, DELIBERATELY NOT A BOTTOM NAV BAR. `core/router.dart`
+      // puts this route above the shell on the recorded ground that "a purchase
+      // flow with a bottom nav bar underneath it is a way out of a funnel
+      // mid-transaction". One labelled exit that lands on the surface the user
+      // came through keeps the funnel; five branch tabs dissolve it.
+      //
+      // `canPop` first, `/settings` second: nothing pushes this route today, so
+      // the fallback is the live arm — and `/settings` rather than `/home`
+      // because Settings is the parent this screen's own ROSCA step count is
+      // measured from (Settings → Manage → Cancel → confirm), and
+      // `assert-purchase-path.mjs` derives that count from the same
+      // `/settings` → `/manage-plan` hop. Sending the user anywhere else would
+      // make the way out disagree with the way in that the guard counts.
+      appBar: AppBar(
+        title: Text(l10n.managePlanTitle),
+        leading: IconButton(
+          // 🔴 `semanticLabel` ON THE ICON, NOT ONLY `tooltip` ON THE BUTTON.
+          // Measured: with `tooltip:` alone, `a11y_semantics_test.dart`'s
+          // manage-plan sweep reported `«» NO NAME` — the tooltip's label sits
+          // on its own node and does not merge into the tappable button node,
+          // so a screen reader announces the only exit from this screen as
+          // nothing at all. The `Icon`'s label does merge. `tooltip:` stays
+          // because it is also the desktop hover affordance, which the icon
+          // label is not.
+          icon: Icon(Icons.arrow_back, semanticLabel: l10n.back),
+          tooltip: l10n.back,
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/settings'),
+        ),
+      ),
       // Bare `Scaffold` + `ListView` before this, the same shape as settings —
       // and this is the WORSE of the two to leave unconstrained. The screen
       // whose only job is "cancel must be no harder than subscribe" was, on a
@@ -99,9 +141,18 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       // that identifies it. ROSCA is a rule about the difficulty of finding the
       // control, and layout is part of how hard something is to find.
       //
-      // Same default cap as settings, for the same reason: a page of controls,
-      // agreeing with the ceiling `AppScaffold` already applies.
-      body: ContentPane(
+      // Same cap as settings, for the same reason: a page of controls. Settings
+      // moved from the bare 1280 default to `reading` (720) on 2026-08-21 because
+      // the default NEVER BOUND — `AppScaffold` hands the body min(W-361, 1280),
+      // so at 1440 it is already 1079 and the "ceiling" was decorative. This
+      // screen was left bare in that pass and this comment went false with it:
+      // it claimed parity with settings while being 560px wider.
+      //
+      // ROSCA argues for the tighter cap rather than against it. The rule is
+      // about how hard the cancel control is to FIND, and a 1280px row whose
+      // label sits a window away from its icon is harder to find than a 720px
+      // one, not easier.
+      body: ContentPane.reading(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: <Widget>[

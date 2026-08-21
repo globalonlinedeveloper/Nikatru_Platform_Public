@@ -12,11 +12,28 @@
 // shared rig").
 //
 // Everything structural — why the assertion is on incoming `BoxConstraints`
-// rather than on `getSize`, why every case pins the surface, why 1920 is the
-// desktop case for a `kMaxBodyWidth` screen — lives in the harness header. Read
-// it before adding a case here.
+// rather than on `getSize`, why every case pins the surface — lives in the
+// harness header. Read it before adding a case here.
+//
+// 🔴 THE CAP THIS FILE POLICES CAME DOWN TO `AppBreakpoints.reading` (720) ON
+// 2026-08-21, AND THAT CHANGED WHICH CASES CAN GO RED.
+//
+// Home's `ContentPane` was the default `kMaxBodyWidth` (1280). Measured against
+// the real chassis that day: `AppScaffold` hands its body `min(W - 361, 1280)`
+// — a 360 px drawer plus a 1 px divider come off the window first — so a
+// maximised 1440p desktop offers this screen 1079 and the 1280 cap never
+// engaged there at all. Home is one column of cards, so it took the design
+// system's own widest CONTENT width rather than a fresh literal; the argument
+// is written out at the `ContentPane.reading(` in `home_screen.dart`.
+// The consequence HERE is that 768 stopped being a no-op boundary and became a
+// falsifiable case — see the note above the 768 test.
 //
 // 🔴 THE DRAFT'S ONE STALE SENTENCE, CORRECTED BY MEASUREMENT.
+// (⚠️ DATED RECORD — measured 2026-08-09, when the cap was still 1280. Left
+// unrenumbered: the mutations and their reds are what happened, and rewriting
+// the numbers to match today's 720 would falsify a record rather than repair
+// it. The shape of the argument survives the cap change; only the literals in
+// the two failure messages would now read 720.)
 // §4 says the 1920 case "alone would pass with the pane deleted", because
 // `AppScaffold` applies its own 1280 cap in the extra-large class. That was true
 // of the STAMPED home, which owned an `AppScaffold`. Variant B ([ADR 037],
@@ -47,14 +64,23 @@
 // extra-large: at 1500 nothing above this screen ever caps anything, at any
 // point in any tree it may be mounted in.
 //
-// ⚠️ THE 768 AND 1280 CASES CANNOT GO RED WITH THE PANE DELETED, and they are
-// here anyway. 768 is below the cap and 1280 is exactly on it, so both hold
-// either way — they pin the NO-OP BOUNDARY, i.e. that the cap never engages
-// early and never tightens a window it was not meant to. The falsifiable pair
-// is 1920 and 1500 above. This file shipped with neither of them, and the
-// coverage guard could not see the hole because it only asked whether a width
-// test existed, not which windows it pumped; `assert-responsive-coverage.mjs`
-// now reads the widths themselves.
+// ⚠️ THIS PARAGRAPH SAID "THE 768 AND 1280 CASES CANNOT GO RED WITH THE PANE
+// DELETED", and half of it stopped being true when the cap came down to 720.
+// It read: "768 is below the cap and 1280 is exactly on it, so both hold either
+// way — they pin the NO-OP BOUNDARY … the falsifiable pair is 1920 and 1500".
+// True at a 1280 cap. At 720, **768 is ABOVE the cap**, so it is now a fourth
+// falsifiable case and its `expect` carries a hard number instead of a
+// pass-through. 1280 is likewise no longer "exactly on" anything; it is simply
+// another window the cap binds in, and it is kept because it is the width the
+// stamped chassis reasons about everywhere else.
+//
+// The NO-OP boundary is now carried by 375 alone, which is correct and is why
+// that case still asserts equality with the surface rather than with the cap.
+//
+// This file shipped with neither falsifiable case, and the coverage guard could
+// not see the hole because it only asked whether a width test existed, not
+// which windows it pumped; `assert-responsive-coverage.mjs` now reads the
+// widths themselves.
 //
 // ⚠️ `pumpAt` PINS LAYOUT CONSTRAINTS, NOT `MediaQuery` — see its doc. Every
 // assertion in this file is constraint-derived (`offeredWidth`) and
@@ -80,7 +106,7 @@ import 'package:subly/features/home/home_screen.dart';
 import 'support/width_harness.dart';
 
 void main() {
-  // ── HOME · ContentPane (kMaxBodyWidth, 1280) ───────────────────────────────
+  // ── HOME · ContentPane.reading (AppBreakpoints.reading, 720) ───────────────
   //
   // Home was NOT in `responsive_width_test.dart`'s original three because before
   // the P2.6b merge it was the chassis placeholder — a centred Column that
@@ -113,33 +139,58 @@ void main() {
       );
     });
 
-    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+    // 🔴 WAS 'at 768 the cap is still a no-op', asserting 768. FALSIFIABLE
+    // SINCE THE CAP CAME DOWN TO 720: a tablet is the FIRST surface where this
+    // screen stops being a phone column that just gets wider, and 48 px is a
+    // small enough margin that an off-by-one cap (say `pane`, 480, or a
+    // re-widened `kMaxBodyWidth`) is caught here rather than only at 1920.
+    testWidgets('at 768 the cap engages — this is the first width it binds at', (
+      WidgetTester tester,
+    ) async {
       await pumpAt(tester, kTablet, const HomeScreen());
-      expect(offeredWidth(tester, inPane(ListView)), 768);
+      expect(
+        offeredWidth(tester, inPane(ListView)),
+        AppBreakpoints.reading,
+        reason:
+            '768 is 48px above the reading cap, so a tablet is where the pane '
+            'first does anything at all. Restoring the kMaxBodyWidth default '
+            'renders 768 here and turns this red',
+      );
     });
 
     testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
       await pumpAt(tester, kDesktop, const HomeScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
+        AppBreakpoints.reading,
+        reason:
+            'a hard number, not lessThanOrEqualTo(kMaxBodyWidth): at a 1280 '
+            'cap this window sat exactly ON the ceiling, so the old '
+            'pass-through held whatever the pane did. It does not any more',
       );
     });
 
     // 🔴 A CASE THAT CAN ACTUALLY GO RED — see the file header for why the
     // draft expected this one to be a no-op and why, under variant B, it is not.
-    testWidgets('at 1920 the list stops at AppBreakpoints.kMaxBodyWidth', (
+    testWidgets('at 1920 the list stops at AppBreakpoints.reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, const HomeScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'an ultra-wide window is where an uncapped dashboard is at its '
             'worst: one hero card 1920px across, and RowCards with the glyph '
             'at one edge and the price at the other',
       );
+      // Both numbers pinned, because the point of the 2026-08-21 correction is
+      // the DISTANCE between them: `kMaxBodyWidth` is what this pane used to
+      // cap at, and 1280 is a width no real desktop ever offered this screen
+      // (`AppScaffold` hands its body `min(W - 361, 1280)`, so a maximised 1440
+      // gives 1079). A future edit that quietly re-points the pane at the
+      // chassis ceiling fails the expect above naming 1280.
+      expect(AppBreakpoints.reading, 720);
       expect(AppBreakpoints.kMaxBodyWidth, 1280);
     });
 
@@ -156,11 +207,13 @@ void main() {
       await pumpAt(tester, const Size(1500, 1000), const HomeScreen());
       expect(
         offeredWidth(tester, inPane(ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
+        AppBreakpoints.reading,
         reason:
             '1500 sits in AppScaffold\'s LARGE class, which applies no body '
             'cap at all — so a green here is the pane\'s doing and nobody '
-            'else\'s',
+            'else\'s. A hard number, not lessThanOrEqualTo: the old form '
+            'passed for ANY cap at or under 1280, including the 1280 that '
+            'never bound on a real desktop',
       );
     });
   });

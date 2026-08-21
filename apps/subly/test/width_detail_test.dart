@@ -26,11 +26,28 @@
 // Everything else — why the assertion is on `constraints` and not `size`, why
 // every case pins the surface, and why the desktop case that can actually fail
 // is 1920 and not 1280 — is in `support/width_harness.dart`'s header.
+//
+// 🔴 THE NUMBER CHANGED ON 2026-08-21: BOTH PANES ARE `AppBreakpoints.reading`
+// (720), NOT `kMaxBodyWidth` (1280). The old cases below asserted 1280 and were
+// UPDATED rather than deleted, because what they were pinning was wrong, not
+// pointless. `AppScaffold` hands its body `min(W - 361, 1280)` — a 360 px
+// drawer and a 1 px divider take the width first — so at a 1440 px window the
+// body is 1079 and a 1280 cap never fires on any real desktop. The screen was
+// capped by a number that could not bind; the assertion passed at 1920 only
+// because `kWide` is wider than any window the app is used in. The screen's own
+// comment carries why 720 and not an 840–960 row-list number.
+//
+// ⚠️ AND `at 768 the cap is still a no-op` IS NOW A CAP CASE. 720 < 768, so the
+// small tablet is the FIRST width at which this screen's cap does something —
+// which is the point of moving it, and is why that case is renamed rather than
+// left with a title that contradicts its own expectation.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subly/features/detail/subscription_detail_screen.dart';
+import 'package:subly/l10n/app_localizations.dart';
 
 import 'support/width_harness.dart';
 
@@ -67,28 +84,41 @@ void main() {
       );
     });
 
-    testWidgets('at 768 the cap is still a no-op', (WidgetTester tester) async {
+    // 🔴 THE SMALLEST WIDTH AT WHICH THE CAP DOES ANYTHING. It read
+    // `expect(…, 768)` under the old 1280 cap. 768 is the first surface in the
+    // harness's ladder that exceeds 720, so this is now the cheapest case that
+    // goes red if the pane is dropped back to the default — cheaper than 1920,
+    // and it fails on a window class people actually use.
+    testWidgets('at 768 the cap binds', (WidgetTester tester) async {
       await pumpAt(tester, kTablet, screen);
-      expect(offeredWidth(tester, inPaneOf(bodyPane(), ListView)), 768);
+      expect(
+        offeredWidth(tester, inPaneOf(bodyPane(), ListView)),
+        AppBreakpoints.reading,
+        reason:
+            'a small tablet already exceeds the card-stack width, so this is '
+            'where a reverted cap first shows',
+      );
     });
 
+    // ⚠️ `AppScaffold` hands its body `min(W - 361, 1280)`, so the widest body
+    // a 1280 px window ever produces is 919 — which is why the OLD version of
+    // this case (`lessThanOrEqualTo(kMaxBodyWidth)`) could not fail: 1280 on a
+    // 1280 surface is true with the pane deleted. It is an equality now.
     testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
       await pumpAt(tester, kDesktop, screen);
       expect(
         offeredWidth(tester, inPaneOf(bodyPane(), ListView)),
-        lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth),
+        AppBreakpoints.reading,
       );
     });
 
-    // 🔴 THE CASE THAT CAN ACTUALLY GO RED — 1280 is the cap itself, so it is
-    // true with or without the pane. See the harness header.
-    testWidgets('at 1920 the list stops at AppBreakpoints.kMaxBodyWidth', (
+    testWidgets('at 1920 the list stops at AppBreakpoints.reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, screen);
       expect(
         offeredWidth(tester, inPaneOf(bodyPane(), ListView)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'without the body pane the price/next-charge pair, the usage meter '
             'and every payment row stretch the whole display',
@@ -97,7 +127,7 @@ void main() {
   });
 
   group('detail header content is capped while the gradient stays full-bleed', () {
-    testWidgets('at 1920 the header pane caps its content at kMaxBodyWidth', (
+    testWidgets('at 1920 the header pane caps its content at reading', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kWide, screen);
@@ -107,24 +137,24 @@ void main() {
       // to the body assertion above.
       expect(
         offeredWidth(tester, inPaneOf(headerPane(), Padding)),
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         reason:
             'the back button, the glyph tile and the title must stop at the '
-            'same 1280 the body below stops at, or the header spans a display '
+            'same 720 the body below stops at, or the header spans a display '
             'the body does not',
       );
 
       // ⚠️ AND THE `Column` INSIDE IT IS THE CAP LESS THE 18/18 INSET, not the
       // cap. `ContentPane` applies `padding` INSIDE `maxWidth` (see its class
-      // doc), so the header's content box is 1280 - 36 — which is precisely
+      // doc), so the header's content box is 720 - 36 — which is precisely
       // what makes the title's left edge land on the mini-cards' left edge,
       // because the body `ListView` takes its identical 18/18 out of the same
-      // 1280. Asserting `== kMaxBodyWidth` here would be asserting the padding
-      // had been hoisted OUTSIDE the cap, i.e. the misalignment this port
-      // exists to prevent.
+      // 720. Asserting `== reading` here would be asserting the padding had
+      // been hoisted OUTSIDE the cap, i.e. the misalignment this port exists to
+      // prevent.
       expect(
         offeredWidth(tester, inPaneOf(headerPane(), Column)),
-        AppBreakpoints.kMaxBodyWidth - 36,
+        AppBreakpoints.reading - 36,
         reason:
             'the header inset comes out of the cap, not out of the surface — '
             'the same 18/18 the body ListView applies within the same 1280',
@@ -147,7 +177,7 @@ void main() {
             'image rather than a header',
       );
       expect(
-        AppBreakpoints.kMaxBodyWidth,
+        AppBreakpoints.reading,
         lessThan(1920),
         reason:
             'if this ever stopped holding the assertion above would pass for '
@@ -155,5 +185,78 @@ void main() {
             'cap it is being distinguished from',
       );
     });
+  });
+
+  // ═══ PAYMENT HISTORY · textScaler 1.3 ══════════════════════════════════════
+  // 🔴 AUDITED BECAUSE IT WAS ONLY SUSPECTED, AND KEPT BECAUSE THE SUSPICION IS
+  // CHEAP TO RE-RAISE. The history row is a `spaceBetween` `Row` of a localized
+  // date and a formatted amount with no flex on either child — the exact shape
+  // that answers a too-long string with a yellow-and-black overflow stripe,
+  // and the same shape the usage-meter Row above it already had to fix with a
+  // `Flexible` when Tamil arrived.
+  //
+  // ⚠️ THE HARNESS'S `pumpAt` CANNOT EXPRESS THIS. `setSurfaceSize` moves the
+  // incoming constraints and nothing else; the text scale lives in
+  // `MediaQuery`, which `pumpAt` never touches. So this group builds its own
+  // host — same overrides, same 12 pumps, plus a `builder:` that re-wraps the
+  // subtree's `MediaQuery`. Wrapping the SCREEN instead of using `builder:`
+  // would leave the `MaterialApp`'s own MediaQuery upstream and the scale would
+  // not reach anything the app inserts above `home:`.
+  //
+  // Both locales, because the date is `DateFormat.yMMMd(localeName)` and Tamil
+  // is the longer of the two renderings — an English-only case would pass on a
+  // string the shipping app does not always show.
+  group('payment history survives a large text scale', () {
+    Future<void> pumpScaled(
+      WidgetTester tester,
+      Size size,
+      double scale,
+      Locale locale,
+    ) async {
+      await setSurface(tester, size);
+      final ProviderContainer c = ProviderContainer(
+        overrides: defaultWidthOverrides(),
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(
+            locale: locale,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (BuildContext context, Widget? child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: screen,
+          ),
+        ),
+      );
+      for (int i = 0; i < 12; i++) {
+        await tester.pump();
+      }
+    }
+
+    for (final Locale locale in const <Locale>[Locale('en'), Locale('ta')]) {
+      testWidgets(
+        '[${locale.languageCode}] at 375 and textScaler 1.3 nothing overflows',
+        (WidgetTester tester) async {
+          // 375 — the narrowest surface the app ships on, so the history row
+          // gets 375 - 36 (ListView gutters) - 28 (row padding) = 311 px for a
+          // date and an amount that are both ~30% wider than designed.
+          await pumpScaled(tester, kPhone, 1.3, locale);
+          expect(
+            tester.takeException(),
+            isNull,
+            reason:
+                'a RenderFlex overflow in the history Row is reported as a '
+                'FlutterError, not as a red pixel a test would otherwise miss',
+          );
+        },
+      );
+    }
   });
 }
