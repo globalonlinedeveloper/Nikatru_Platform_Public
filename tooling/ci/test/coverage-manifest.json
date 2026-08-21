@@ -86,7 +86,7 @@
   "platform-proof-fresh.test.mjs": 66,
   "platform-register.test.mjs": 39,
   "play-declarations.test.mjs": 95,
-  "play-device-coverage.test.mjs": 18,
+  "play-device-coverage.test.mjs": 23,
   "play-submission.test.mjs": 76,
   "policy-archive.test.mjs": 31,
   "policy-claims.test.mjs": 34,

@@ -6,13 +6,28 @@
 // wrong on three screens at once. Three separate properties are pinned here
 // because all three live in that directory, and each is falsifiable on its own:
 //
-//   1. ROWCARD IN BOTH BRIGHTNESSES. RowCard is `cardDecoration`'s deferred
-//      sibling — same file, same defect, explicitly named in W0's report as NOT
-//      fixed there. The pair reads exactly like `dark_card_surface_test.dart`:
-//      the LIGHT half is a PIN against the LITERAL `AppColors.surface` (asserting
-//      against `scheme.surface` would let the natural regression — "tidying" the
-//      light branch to a scheme slot — pass, because both sides of the
-//      comparison would move together), and the DARK half is the FALSIFIER.
+//   1. ROWCARD IN BOTH BRIGHTNESSES — GROUND *AND* TITLE. RowCard is
+//      `cardDecoration`'s deferred sibling — same file, same defect, explicitly
+//      named in W0's report as NOT fixed there. The pair reads exactly like
+//      `dark_card_surface_test.dart`: the LIGHT half is a PIN against the
+//      LITERAL `AppColors.surface` (asserting against `scheme.surface` would let
+//      the natural regression — "tidying" the light branch to a scheme slot —
+//      pass, because both sides of the comparison would move together), and the
+//      DARK half is the FALSIFIER.
+//      🔴 THE TITLE HALF WAS MISSING UNTIL 2026-08-21 and that gap had already
+//      been paid for: every assertion here was about the GROUND, so the row
+//      shipped `AppColors.ink` on `surfaceContainerHighest` — near-black prose
+//      on the app's commonest control — with this group green throughout. A fix
+//      that is one word wide needs an assertion, or the revert is silent.
+//
+//   5. ROWCARD IS POINTER-AWARE: a tighter row and a hover state on desktop.
+//      Neither is keyed off a width. Density comes from `theme.visualDensity`,
+//      which `ThemeData` derives from the platform, and the FIRST case in that
+//      group asserts that derivation directly — `buildAppTheme` configures
+//      neither `platform` nor `visualDensity`, so that default is the only thing
+//      holding the seam open and nothing else in the suite would notice it
+//      closing. Hover comes from hover itself, the one signal that reports the
+//      pointer rather than the platform.
 //
 //   2. `DueInfo.localized` RETURNS ARB STRINGS. Asserted in EN *and* TA. The
 //      English half alone would be tautological: `l10n.dueToday` is "Due today",
@@ -34,6 +49,8 @@
 //      separately at package level in
 //      `packages/design_system/test/app_text_test.dart`.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -58,23 +75,49 @@ Subscription _dueIn(int days, DateTime now) => Subscription(
   nextRenewal: now.add(Duration(days: days)),
 );
 
-/// Mounts a bare [RowCard] under [mode] and hands back the two widgets that
-/// carry the surface: the outer Container (shadow / border) and the Material
-/// (fill — it has to be the Material so the InkWell splash clips to it).
-Future<({BoxDecoration decoration, Material material})> _pumpRow(
+/// Everything a mounted [RowCard] actually resolves, read off the widgets that
+/// carry it rather than off the arguments it was handed:
+///   · [decoration] — the outer Container (shadow in light / border in dark);
+///   · [material]   — the fill. It has to be the Material so the InkWell splash
+///                    clips to it, and it is where the hover wash lands too;
+///   · [padding]    — the inset that carries the desktop density;
+///   · [title]      — the style the title [Text] RENDERS with. Nothing read this
+///                    until 2026-08-21, which is how the row spent the dark pass
+///                    painting `AppColors.ink` on a dark card with every other
+///                    assertion in this group green.
+typedef _Row = ({
+  BoxDecoration decoration,
+  Material material,
+  EdgeInsets padding,
+  TextStyle title,
+});
+
+/// Mounts a bare [RowCard] under [mode]. [onTap] is needed by the hover cases —
+/// an inert row deliberately does not respond to a pointer, so a hover test
+/// against the default would pass for the wrong reason.
+Future<_Row> _pumpRow(
   WidgetTester tester,
-  ThemeMode mode,
-) async {
+  ThemeMode mode, {
+  VoidCallback? onTap,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: buildAppTheme(seed: kSublySeed),
       darkTheme: buildAppTheme(seed: kSublySeed, brightness: Brightness.dark),
       themeMode: mode,
-      home: const Scaffold(
-        body: Center(child: RowCard(title: 'Netflix')),
+      home: Scaffold(
+        body: Center(child: RowCard(title: 'Netflix', onTap: onTap)),
       ),
     ),
   );
+  await tester.pumpAndSettle();
+  return _readRow(tester);
+}
+
+/// [_Row] for whatever [RowCard] is currently mounted — split out of [_pumpRow]
+/// so the hover cases can re-read the SAME element after the pointer moves,
+/// rather than pumping a second widget and comparing two different rows.
+_Row _readRow(WidgetTester tester) {
   final Container container = tester.widget<Container>(
     find
         .descendant(of: find.byType(RowCard), matching: find.byType(Container))
@@ -85,10 +128,60 @@ Future<({BoxDecoration decoration, Material material})> _pumpRow(
         .descendant(of: find.byType(RowCard), matching: find.byType(Material))
         .first,
   );
+  // ⚠️ The density inset is found by walking UP from the title, not by taking
+  // the first Padding under RowCard: `Material` inserts an EdgeInsets.zero
+  // Padding of its own above the InkWell (measured 2026-08-21 — the naive
+  // descendant finder returned EdgeInsets.zero and reported the tightening as
+  // total). `find.ancestor` orders from the closest ancestor outwards, and
+  // nothing sits between the title and the row's own Padding.
+  final Padding padding = tester.widget<Padding>(
+    find.ancestor(of: find.text('Netflix'), matching: find.byType(Padding)).first,
+  );
+  final Text title = tester.widget<Text>(
+    find.descendant(of: find.byType(RowCard), matching: find.byType(Text)).first,
+  );
   return (
     decoration: container.decoration! as BoxDecoration,
     material: material,
+    padding: padding.padding as EdgeInsets,
+    title: title.style!,
   );
+}
+
+/// Runs [body] with `defaultTargetPlatform` pinned to [platform] — the same
+/// thing a real desktop or mobile build reports — and resets it before the test
+/// ends.
+///
+/// ⚠️ NOT `addTearDown`, which is the obvious spelling and does not work:
+/// `flutter_test` runs `debugAssertAllFoundationVarsUnset` inside
+/// `_verifyInvariants` BEFORE the tear-downs fire, so a reset parked in a
+/// tear-down fails every test that sets the override with "The value of a
+/// foundation debug variable was changed by the test" (measured 2026-08-21).
+/// `finally` is what puts the reset inside the body.
+Future<void> _onPlatform(TargetPlatform platform, AsyncCallback body) async {
+  debugDefaultTargetPlatformOverride = platform;
+  try {
+    await body();
+  } finally {
+    debugDefaultTargetPlatformOverride = null;
+  }
+}
+
+/// Parks a MOUSE pointer over the centre of the mounted [RowCard].
+///
+/// ⚠️ `kind: PointerDeviceKind.mouse` is the whole point, not boilerplate:
+/// hover is the one signal that reports the POINTER rather than the platform,
+/// and a touch pointer must not produce it. `addPointer` first at a location
+/// outside the row, so `moveTo` is a real enter event rather than a pointer that
+/// materialises already inside.
+Future<void> _hover(WidgetTester tester) async {
+  final TestGesture gesture = await tester.createGesture(
+    kind: PointerDeviceKind.mouse,
+  );
+  await gesture.addPointer(location: Offset.zero);
+  addTearDown(gesture.removePointer);
+  await gesture.moveTo(tester.getCenter(find.byType(RowCard)));
+  await tester.pumpAndSettle();
 }
 
 /// Mounts [PoweredByNikatru] with the real delegates in [locale].
@@ -116,8 +209,7 @@ void main() {
     testWidgets('LIGHT is pixel-identical to the pre-dark row', (
       WidgetTester tester,
     ) async {
-      final ({BoxDecoration decoration, Material material}) row =
-          await _pumpRow(tester, ThemeMode.light);
+      final _Row row = await _pumpRow(tester, ThemeMode.light);
 
       expect(
         row.material.color,
@@ -144,8 +236,7 @@ void main() {
     testWidgets('DARK derives its fill from the scheme, not the token', (
       WidgetTester tester,
     ) async {
-      final ({BoxDecoration decoration, Material material}) row =
-          await _pumpRow(tester, ThemeMode.dark);
+      final _Row row = await _pumpRow(tester, ThemeMode.dark);
 
       expect(
         row.material.color,
@@ -167,8 +258,7 @@ void main() {
     testWidgets('DARK carries an edge affordance instead of the shadow', (
       WidgetTester tester,
     ) async {
-      final ({BoxDecoration decoration, Material material}) row =
-          await _pumpRow(tester, ThemeMode.dark);
+      final _Row row = await _pumpRow(tester, ThemeMode.dark);
 
       // kCardShadow is two BLACK alphas (0x0A141420, 0x24141420). On a dark
       // scaffold they paint nothing a user can see, so the row would have no
@@ -191,6 +281,264 @@ void main() {
             "The hairline is the scheme's own divider slot, not an invented "
             'colour.',
       );
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔴 THE TITLE, WHICH NOTHING IN THIS FILE READ UNTIL 2026-08-21. Every
+    // assertion above is about the GROUND — fill, shadow, border — so the row
+    // could paint, and for a while did paint, `AppColors.ink` (#141420) on
+    // `surfaceContainerHighest` with this whole group green. The fix (routing
+    // the title through `AppText.of(context)`) is one word and can be reverted
+    // by one word; these two cases are what makes that revert loud.
+    //
+    // Same pair shape as everything else here: LIGHT pins the LITERAL token so
+    // that "tidying" it to a scheme slot goes red instead of repainting the
+    // build the owner eyeballs, DARK is the falsifier.
+    // ─────────────────────────────────────────────────────────────────────────
+    testWidgets('LIGHT paints the title the literal AppColors.ink', (
+      WidgetTester tester,
+    ) async {
+      final _Row row = await _pumpRow(tester, ThemeMode.light);
+
+      expect(
+        row.title.color,
+        AppColors.ink,
+        reason:
+            'In light, AppText.of returns the const objects THEMSELVES '
+            '(identical(…body, AppText.body) is pinned in '
+            'packages/design_system/test/app_text_test.dart), so the title is '
+            'byte-identical to the pre-dark row. Asserting the literal — not '
+            'AppText.of(light).body.color — is what makes a swap to a scheme '
+            'slot fail here instead of following itself.',
+      );
+      // Still AppText.body underneath with the call-site copyWith on top, not a
+      // TextStyle rebuilt by hand: a rebuild would silently drop the family.
+      expect(row.title.fontFamily, 'Manrope');
+      expect(row.title.fontWeight, FontWeight.w700);
+      expect(row.title.fontSize, 15);
+    });
+
+    testWidgets('DARK resolves the title through the AppText seam', (
+      WidgetTester tester,
+    ) async {
+      final _Row row = await _pumpRow(tester, ThemeMode.dark);
+
+      expect(
+        row.title.color,
+        isNot(AppColors.ink),
+        reason:
+            'THE REGRESSION THIS PINS: #141420 prose on a dark card. RowCard is '
+            "the app's commonest control — every subscription row on home and "
+            'scan — so reverting the title to the const AppText.body puts '
+            'near-black text on every row in the app. This is the assertion '
+            'that turns red when it does.',
+      );
+      expect(
+        row.title.color,
+        dark.onSurface,
+        reason:
+            "The seam maps the ink styles onto the scheme's prose slot, the "
+            'same one SectionHeader resolves to below.',
+      );
+      // copyWith, not a rebuild — weight and size must survive the dark branch.
+      expect(row.title.fontFamily, 'Manrope');
+      expect(row.title.fontWeight, FontWeight.w700);
+      expect(row.title.fontSize, 15);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🖥 THE DESKTOP ROW. RowCard is sized for a thumb, and the signal that says
+  // otherwise is deliberately NOT a width: a phone in landscape is 900px and
+  // still wants the thumb row, a half-screen desktop window is 700px and still
+  // wants the mouse row, so an AppBreakpoints test would be wrong in BOTH
+  // directions. The signal is `theme.visualDensity`, which ThemeData already
+  // derives from the platform.
+  //
+  // 🔴 THE FIRST CASE IS THE ONE THAT MATTERS, and it is here because this repo
+  // has shipped four seams that reported healthy with no open path. It proves
+  // the density arrives WITHOUT anyone configuring it — `buildAppTheme` sets
+  // neither `platform` nor `visualDensity`, so if Flutter ever stopped defaulting
+  // `visualDensity` from the platform, the desktop row would silently go back to
+  // thumb height and every other assertion below would still pass.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('RowCard is pointer-aware', () {
+    testWidgets('a DESKTOP build already carries compact density, unconfigured', (
+      WidgetTester tester,
+    ) async {
+      await _onPlatform(TargetPlatform.macOS, () async {
+        expect(
+          buildAppTheme(seed: kSublySeed).visualDensity,
+          VisualDensity.compact,
+          reason:
+              'ThemeData defaults visualDensity to '
+              'defaultDensityForPlatform(platform) (theme_data.dart:412), which '
+              'is compact on macOS/Windows/Linux. buildAppTheme passes neither, '
+              'so the seam RowCard reads is open on the desktop targets with no '
+              'app change. If this goes red the desktop row is DEAD, not just '
+              'less tight, and nothing else in the suite would say so.',
+        );
+      });
+    });
+
+    testWidgets('a MOBILE build stays at standard density', (
+      WidgetTester tester,
+    ) async {
+      await _onPlatform(TargetPlatform.android, () async {
+        expect(
+          buildAppTheme(seed: kSublySeed).visualDensity,
+          VisualDensity.standard,
+          reason:
+              'THE OTHER HALF: the tightening must not reach a phone. A row '
+              'sized for a thumb is not a defect on Android.',
+        );
+      });
+    });
+
+    testWidgets('DESKTOP tightens the row vertically and ONLY vertically', (
+      WidgetTester tester,
+    ) async {
+      await _onPlatform(TargetPlatform.macOS, () async {
+        final _Row row = await _pumpRow(tester, ThemeMode.light);
+
+        // compact is (-2, -2) and baseSizeAdjustment is density × 4 logical px
+        // (theme_data.dart:3225, :3307-3314), so dy is -8 — a TOTAL adjustment,
+        // hence -4 per edge against the default padding of 14.
+        expect(
+          row.padding.top,
+          10,
+          reason:
+              "The number is the framework's own arithmetic, not a taste value: "
+              "14 + (-8 / 2). Home's 44px GlyphTile row goes 72 → 64.",
+        );
+        expect(row.padding.bottom, 10);
+        expect(
+          row.padding.left,
+          14,
+          reason:
+              "HORIZONTAL IS UNCHANGED ON PURPOSE. It sets this row's text "
+              'rhythm against the cardDecoration cards beside it on home and '
+              'insights, which are not RowCards and do not tighten — moving it '
+              "leaves a mixed screen's left edge ragged on desktop and flush on "
+              'mobile. Material reads density the same way for chips '
+              '(theme_data.dart:3159).',
+        );
+        expect(row.padding.right, 14);
+      });
+    });
+
+    testWidgets('MOBILE keeps the full thumb-sized inset on all four edges', (
+      WidgetTester tester,
+    ) async {
+      await _onPlatform(TargetPlatform.android, () async {
+        final _Row row = await _pumpRow(tester, ThemeMode.light);
+
+        expect(
+          row.padding,
+          const EdgeInsets.all(14),
+          reason:
+              'THE FALSIFIER FOR THE DENSITY WORK: an unconditional tightening '
+              '— or one keyed off a width that a landscape phone also satisfies '
+              '— shrinks the touch target on the device this app mostly runs on.',
+        );
+      });
+    });
+
+    testWidgets('HOVER lifts the fill by the theme\'s own hover token', (
+      WidgetTester tester,
+    ) async {
+      final _Row rest = await _pumpRow(
+        tester,
+        ThemeMode.light,
+        onTap: () {},
+      );
+      expect(rest.material.color, AppColors.surface, reason: 'the rest state');
+
+      await _hover(tester);
+      final _Row hovered = _readRow(tester);
+
+      // The wash is ThemeData.hoverColor (black at 0.04 in light — the default
+      // at theme_data.dart:468, untouched by buildAppTheme), composited onto the
+      // resting fill. Asserting the composite rather than "some other colour"
+      // is what stops a future hand-picked alpha from passing.
+      expect(
+        hovered.material.color,
+        Color.alphaBlend(
+          buildAppTheme(seed: kSublySeed).hoverColor,
+          AppColors.surface,
+        ),
+        reason:
+            'RowCard composites the framework hover token onto Material.color '
+            'so the state is readable here at all. Deleting the composite (and '
+            'leaving hover to the ink layer) turns this red.',
+      );
+      expect(hovered.material.color, isNot(AppColors.surface));
+    });
+
+    testWidgets('HOVER steps the dark hairline outlineVariant → outline', (
+      WidgetTester tester,
+    ) async {
+      final _Row rest = await _pumpRow(tester, ThemeMode.dark, onTap: () {});
+      expect((rest.decoration.border! as Border).top.color, dark.outlineVariant);
+
+      await _hover(tester);
+      final _Row hovered = _readRow(tester);
+
+      expect(
+        (hovered.decoration.border! as Border).top.color,
+        dark.outline,
+        reason:
+            "The two divider weights are both the scheme's own, so nothing is "
+            'invented — and it is a colour change on a border that already '
+            'exists at rest, so the row does not move under the cursor. (Light '
+            'gets the wash only: Border.all insets its child, so adding one on '
+            'hover would shift the title 1px as the pointer arrived.)',
+      );
+      expect(hovered.material.color, isNot(dark.surfaceContainerHighest));
+    });
+
+    testWidgets('an INERT row does not react to the pointer', (
+      WidgetTester tester,
+    ) async {
+      // RowCard is used inertly — a plain list row with nothing behind it. The
+      // same reason `Semantics(button:)` is conditional: a row that does nothing
+      // when clicked must not advertise that it can be.
+      final _Row rest = await _pumpRow(tester, ThemeMode.dark);
+      await _hover(tester);
+      final _Row hovered = _readRow(tester);
+
+      expect(hovered.material.color, rest.material.color);
+      expect(
+        (hovered.decoration.border! as Border).top.color,
+        dark.outlineVariant,
+      );
+    });
+
+    testWidgets('a row that STOPS being tappable while hovered drops the hover', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRow(tester, ThemeMode.dark, onTap: () {});
+      await _hover(tester);
+      expect(
+        _readRow(tester).material.color,
+        isNot(dark.surfaceContainerHighest),
+        reason: 'precondition: the row is lit',
+      );
+
+      // Same pointer, same position, same State object — only the callback goes
+      // away. `InkWell` cannot help here: the pointer never left, so no
+      // `onHover(false)` is ever sent, and `onHover` is null on the new widget
+      // anyway. Without the `widget.onTap != null` re-check in `build` the row
+      // stays lit while no longer being a control at all.
+      //
+      // 🔴 THIS CASE EXISTS BECAUSE THE MUTATION SAID IT HAD TO. Deleting the
+      // re-check on its own changed NO test outcome (measured 2026-08-21) —
+      // InkWell already declines to fire `onHover` while disabled, so the
+      // conditional wiring beside it is belt-and-braces. This is the one path
+      // where the re-check is load-bearing rather than decorative, so it is the
+      // one that keeps it out of the dead-code pile.
+      await _pumpRow(tester, ThemeMode.dark);
+      expect(_readRow(tester).material.color, dark.surfaceContainerHighest);
     });
   });
 

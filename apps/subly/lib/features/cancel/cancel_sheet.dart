@@ -126,6 +126,35 @@ Future<void> showCancelSheet(BuildContext context, Subscription sub) {
     // pop exactly the sheet. That is asserted, not argued: see the two
     // mount-level cases in `test/width_cancel_sheet_test.dart`.
     useRootNavigator: true,
+    // 🔴 THE SHEET CLIPPED ITS OWN BUTTONS ON A SHORT VIEWPORT — AND THE BUTTON
+    // ROW IS NOT THE CAUSE. Measured 2026-08-21 at textScaler 1.3 on a 740×360
+    // landscape phone: the step-0 `Column` overflowed by 137 px on the BOTTOM,
+    // and the button row laid out at y 416.5–466.5 — wholly below a 360 px
+    // screen, so 'Keep it' and 'Confirm cancel' were unreachable. The row is two
+    // `Expanded`s and cannot overflow horizontally at any scale; what ran out
+    // was HEIGHT. With the default `isScrollControlled: false`,
+    // `showModalBottomSheet` caps the sheet at 9/16 of the window — 202.5 px
+    // there, against ~340 px of content.
+    //
+    // This lets the sheet ask for the height it needs. It is not enough on its
+    // own — measured with this line alone and no scroll view, a 375×667 phone at
+    // scale 2.0 still overflowed by 80 px and 740×360 at 2.0 by 152 px, because
+    // the content is then taller than the WHOLE window rather than taller than
+    // 9/16 of it. That is what the `Flexible` + `SingleChildScrollView` around
+    // the COPY in `build` is for; read the comment there for why the buttons are
+    // deliberately outside it. Both halves are mutation-tested in
+    // `sheet_failure_surface_test.dart` — each has a case the other's does not
+    // catch.
+    //
+    // Nothing moves at ordinary sizes: `SingleChildScrollView` sizes itself to
+    // its child within the incoming constraints, so the sheet still shrink-wraps
+    // — 375×812 at 1.3 threw nothing before this change and is 339 px tall
+    // either way.
+    isScrollControlled: true,
+    // With the 9/16 cap gone, a sheet tall enough to fill the window would run
+    // under the status bar. This insets it by the real `MediaQuery` padding —
+    // no number of ours.
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _CancelSheet(sub: sub),
   );
@@ -204,47 +233,77 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Container(
-                  width: 64,
-                  height: 64,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color.fromRGBO(239, 77, 106, 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Icon(
-                    Icons.close,
-                    color: AppColors.danger,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  l10n.cancelSubscriptionTitle(s.name),
-                  style: AppText.title.copyWith(fontSize: 22, color: p.ink),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text.rich(
-                  TextSpan(
-                    style: AppText.muted.copyWith(
-                      fontSize: 14,
-                      height: 1.55,
-                      color: p.muted,
+                // 🔴 THE COPY SCROLLS; THE ACTION ROW DOES NOT MOVE. Wrapping the
+                // WHOLE sheet in one scroll view fixed the clip and cost something
+                // that is not worth it: `MinimumTapTargetGuideline` skips any target
+                // under an ancestor with `hasImplicitScrolling`
+                // (`_accessibility_evaluations.dart:132`), so with the buttons inside
+                // the viewport `a11y_semantics_test.dart`'s 48×48 sweep of this sheet
+                // went from 2 inspected nodes to 0 — a guard that passes because it
+                // looked at nothing, which is the failure mode this repo has been
+                // bitten by most. Measured both ways on 2026-08-21.
+                //
+                // Scrolling only the copy keeps the two buttons out of the viewport,
+                // so they stay inspectable AND stay on screen: a destructive
+                // confirmation whose 'Keep it' can be scrolled out of reach is worse
+                // than one whose reason can.
+                //
+                // `Flexible` (loose fit) is what makes it shrink ONLY when it has to.
+                // With room to spare the scroll view still sizes to its child, so the
+                // sheet's height and every rect in it are unchanged.
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Container(
+                          width: 64,
+                          height: 64,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color.fromRGBO(239, 77, 106, 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: AppColors.danger,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          l10n.cancelSubscriptionTitle(s.name),
+                          style: AppText.title.copyWith(
+                            fontSize: 22,
+                            color: p.ink,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text.rich(
+                          TextSpan(
+                            style: AppText.muted.copyWith(
+                              fontSize: 14,
+                              height: 1.55,
+                              color: p.muted,
+                            ),
+                            // ONE message, three placeholders — not the three fragments
+                            // this used to concatenate. The Tamil value reads
+                            // "நீங்கள் மாதம் {monthly} · ஆண்டுக்கு {yearly}
+                            // சேமிப்பீர்கள். {date} வரை அணுகல் தொடரும்.": the verb
+                            // lands at the END of the first clause and the "/mo" the
+                            // English glues to the amount is a WORD BEFORE it. Neither
+                            // is reachable by translating a fragment.
+                            children: _emphasiseAmount(
+                              l10n.cancelStep1Body(_amountSlot, yearly, until),
+                              monthly,
+                            ),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                    // ONE message, three placeholders — not the three fragments
-                    // this used to concatenate. The Tamil value reads
-                    // "நீங்கள் மாதம் {monthly} · ஆண்டுக்கு {yearly}
-                    // சேமிப்பீர்கள். {date} வரை அணுகல் தொடரும்.": the verb
-                    // lands at the END of the first clause and the "/mo" the
-                    // English glues to the amount is a WORD BEFORE it. Neither
-                    // is reachable by translating a fragment.
-                    children: _emphasiseAmount(
-                      l10n.cancelStep1Body(_amountSlot, yearly, until),
-                      monthly,
-                    ),
                   ),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 22),
                 Row(
@@ -297,39 +356,53 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Container(
-                  width: 70,
-                  height: 70,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color.fromRGBO(16, 185, 129, 0.14),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: AppColors.positive,
-                    size: 34,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  l10n.cancelledHeading,
-                  style: AppText.title.copyWith(fontSize: 23, color: p.ink),
-                ),
-                const SizedBox(height: 8),
-                Text.rich(
-                  TextSpan(
-                    style: AppText.muted.copyWith(
-                      fontSize: 14,
-                      height: 1.55,
-                      color: p.muted,
+                // Same shape as step 0, and for the same two reasons: 'Done' is the
+                // only way out of this step, and it is the only tap target on it.
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Container(
+                          width: 70,
+                          height: 70,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color.fromRGBO(16, 185, 129, 0.14),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: AppColors.positive,
+                            size: 34,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          l10n.cancelledHeading,
+                          style: AppText.title.copyWith(
+                            fontSize: 23,
+                            color: p.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text.rich(
+                          TextSpan(
+                            style: AppText.muted.copyWith(
+                              fontSize: 14,
+                              height: 1.55,
+                              color: p.muted,
+                            ),
+                            children: _emphasiseAmount(
+                              l10n.cancelStep2Body(_amountSlot),
+                              monthly,
+                            ),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                    children: _emphasiseAmount(
-                      l10n.cancelStep2Body(_amountSlot),
-                      monthly,
-                    ),
                   ),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
                 SizedBox(

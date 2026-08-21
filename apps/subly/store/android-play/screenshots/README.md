@@ -88,12 +88,23 @@ without a `source` **fails the build** rather than being applied.
   icon (1024KB) and for Android XR (*"up to 8 MB each"*) and **none** for phone
   screenshots. The widely-repeated "8MB" is the XR number wearing a phone's
   clothes, so no limit is enforced and none is written down.
-- **Whether phone screenshots alone satisfy *"across different device types"*.**
-  The strict reading (≥ 2 in this set) is enforced, because the loose one can
-  only accept a listing Play might refuse.
-- **Tablet / Chromebook / Wear / TV / Automotive / XR sets.** Documented on the
-  same page; this app declares none of those form factors, so no expectation is
-  recorded. Add the row in the same increment that adds the form factor.
+- ~~**Whether phone screenshots alone satisfy *"across different device types"*.**~~
+  ✅ **RESOLVED 2026-08-20, and the strict reading was right.** Play's minimum is
+  a count of device TYPES, not of files: four phone frames satisfied `minCount`
+  while failing the requirement outright. `assert-play-device-coverage.mjs`
+  enforces `minDistinctTypes: 2`.
+- ~~**Tablet / Chromebook / Wear / TV / Automotive / XR sets.**~~
+  ✅ **TABLET DECLARED 2026-08-21**, in the increment that added its dimension
+  rule and a re-fetched source — which is exactly what the old bullet said to do.
+  See `tooling/channel-register.json` → `android-play` → `…deviceTypeCoverage.sets.tablet`
+  and `../screenshots-tablet/README.md`. **The pixels do not exist yet**: the
+  shared lane prints the shortfall and the submission lane refuses.
+  Wear / TV / Automotive / XR remain undeclared, and the rule is unchanged — add
+  the row in the same increment that adds the form factor.
+
+  *(Both bullets are struck through rather than deleted. They were correct when
+  written and the reasoning in them is why the strict reading was enforced; a
+  reader who finds only the answer cannot tell whether it was ever in doubt.)*
 
 🔴 The rule that keeps this table honest: **an invented limit fires on correct
 input.** A made-up *"120 characters or fewer"* once rejected this repo's own

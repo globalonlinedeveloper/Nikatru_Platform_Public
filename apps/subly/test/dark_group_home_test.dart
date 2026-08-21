@@ -33,13 +33,48 @@
 // So the hero is pinned white in both brightnesses, on purpose.
 //
 // ⬜ WHAT THIS INCREMENT DOES **NOT** FIX, stated so the gap is not mistaken for
-// coverage: `AppText.title/body/muted/fig/label` hardcode `AppColors.ink` /
-// `AppColors.muted` inside `packages/design_system`. Every dark surface this
-// campaign has created — W0's 17 cards, L1's rows, and the three here — carries
-// near-black prose on it. That is ONE chassis-level increment (the token class
-// has to grow a brightness), not five per-screen branches; fixing it per screen
-// would have to be un-picked to do it properly. Named here because a reader who
-// sees dark surfaces passing tests could reasonably assume dark mode is done.
+// coverage.
+//
+// 🔴 CORRECTED 2026-08-21 — THE PARAGRAPH THAT STOOD HERE IS NOW FALSE AND IS
+// REWRITTEN RATHER THAN DELETED, because the gap it named was real and the shape
+// of the note is what a later reader needs. It read: "`AppText.title/body/muted/
+// fig/label` hardcode `AppColors.ink` / `AppColors.muted` inside
+// `packages/design_system`. Every dark surface this campaign has created — W0's
+// 17 cards, L1's rows, and the three here — carries near-black prose on it. That
+// is ONE chassis-level increment (the token class has to grow a brightness), not
+// five per-screen branches."
+//
+// ✅ THAT CHASSIS INCREMENT LANDED, and it landed the way the note asked for.
+// The const styles did NOT move (107 call sites depend on their `const`-ness);
+// `AppText.of(context)` / `AppText.resolve(theme)` were added beside them and
+// return the const objects THEMSELVES in light — `identical(…title,
+// AppText.title)` is pinned in `packages/design_system/test/app_text_test.dart`.
+// Home was migrated to it, and so were the two shared primitives home is built
+// from: `SectionHeader` and `RowCard`'s title, in `features/shared/widgets.dart`.
+// So the sentence "near-black prose on every dark surface" is no longer true of
+// home, of the three widgets below, or — measured across `apps/subly/lib` on
+// 2026-08-21 — of ANY code site: every remaining bare `AppText.<style>` either
+// resolves through the seam or carries its own `copyWith(color:)`.
+//
+// ⬜ WHAT IS ACTUALLY STILL OUTSTANDING is a DIFFERENT class, and naming it is
+// the whole point of keeping this block: light `AppColors.*` literals painted
+// UNCONDITIONALLY on things that are not text. Measured 2026-08-21:
+//   · `settings_screen.dart` — the one screen still outstanding as a screen:
+//     the currency chips (`:382` fill `AppColors.surface`, `:387`/`:420` borders
+//     `AppColors.line`, `:394` label `AppColors.ink`), the edit-profile
+//     `AlertDialog` (`:1287` `backgroundColor: AppColors.surface`) and the row
+//     divider at `:1617` (`AppColors.line`).
+//   · `home_screen.dart:443` — the forward-arrow `Icon` on the unused-subs row
+//     is a `const Icon(color: AppColors.muted)`. Home's PROSE is migrated; this
+//     one glyph is not, and it is not an `AppText` defect.
+//   · `features/shared/painters.dart:49` — `RingPainter.track` defaults to
+//     `AppColors.line` (#ECECF2) and neither caller overrides it, so the budget
+//     and scan rings draw a near-white track on a dark screen.
+//   · `features/shared/due.dart:28`/`:51` — the far-due label resolves to
+//     `AppColors.muted`, which every `RowCard` subtitle on home and detail then
+//     renders on a dark card.
+// Named here for the same reason as before: a reader who sees dark surfaces
+// passing tests could reasonably assume dark mode is done.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

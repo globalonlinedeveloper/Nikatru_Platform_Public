@@ -41,6 +41,7 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `feature-graphic.png` | Feature graphic (1024×500) | **generated** from `assets/icon/app_icon_{foreground,background}.svg` by `tooling/store/render-play-graphics.mjs` | ✅ `assert-listing-assets.mjs` — exact size + **no** alpha |
 | `store-icon-512.png` | App icon (512×512) | **generated** from `assets/icon/app_icon_1024.png` — the same master the launcher icons use | ✅ `assert-listing-assets.mjs` — exact size + **with** alpha + ≤ 1024KB |
 | `screenshots/` | Phone screenshots | **captured** from a LIVE build by `tooling/store/capture-play-screenshots.mjs` | ✅ count, dimensions, aspect, format **and recorded posture** |
+| `screenshots-tablet/` | Tablet screenshots | **captured** from a LIVE build by `tooling/store/capture-play-screenshots.mjs` | ✅ count, dimensions, aspect, format **and recorded posture** |
 | `data-safety.json` | **Data safety form** | derived from the code — see below | ✅ `assert-play-declarations.mjs` |
 | `content-rating.json` | **Content rating questionnaire** | the app's own content — see below | ✅ `assert-play-declarations.mjs` |
 | `ads-declaration.json` | **App content → Ads** | derived from the shipped **format** — the widget tree and the served config, not the pubspec | ✅ `assert-ads-declarations.mjs` |

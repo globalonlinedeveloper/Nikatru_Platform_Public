@@ -158,14 +158,52 @@ class GlyphTile extends StatelessWidget {
 }
 
 /// The soft card row (subscription rows, list items). **Theme-aware in all
-/// three of its colours — fill, edge and title.**
+/// three of its colours — fill, edge and title — and POINTER-AWARE in its
+/// density and its hover state.**
 ///
 /// *(This read "Soft white card row" until 2026-08-21. It became false when the
 /// fill was dark-forked below and stayed false while the title was still
 /// near-black — the one line of prose describing this widget was the one place
 /// that still claimed it was white, which is how the remaining half of the leak
 /// read as finished.)*
-class RowCard extends StatelessWidget {
+///
+/// 🖥 DENSITY COMES FROM `theme.visualDensity`, NOT FROM A WIDTH, AND THAT IS THE
+/// WHOLE REASON THERE IS NO BREAKPOINT IN THIS FILE. Width is a bad proxy for
+/// the thing that actually decides how tall a row should be: a phone in
+/// landscape is 900px wide and still wants a thumb row, a desktop window docked
+/// to half a screen is 700px and still wants a mouse row. Any `AppBreakpoints`
+/// test would therefore be wrong in BOTH directions.
+///
+/// `ThemeData` already resolves the right signal for us:
+/// `visualDensity ??= VisualDensity.defaultDensityForPlatform(platform)`
+/// (`flutter/lib/src/material/theme_data.dart:412`), which is
+/// `VisualDensity.compact` on macOS/Windows/Linux and `standard` on
+/// Android/iOS/Fuchsia (`:3243-3246`). `buildAppTheme` sets NEITHER `platform`
+/// NOR `visualDensity` (measured 2026-08-21), so it inherits that default and
+/// **the seam is already open on the three desktop targets** — no change to the
+/// shared theme builder, no per-app switch to forget, and an app that wants to
+/// override it can, because it is a theme property and not a literal in here.
+///
+/// The arithmetic is the framework's, not a taste number: `compact` is
+/// `(-2, -2)` (`:3225`) and `baseSizeAdjustment` is density × 4 logical pixels
+/// (`:3307-3314`), so `dy` is **-8** — a TOTAL size adjustment, hence -4 per
+/// edge. The default `padding: 14` resolves to 10; home's 44px [GlyphTile] row
+/// goes **72 → 64**, and scan's 38px tile at `padding: 11` goes **60 → 52**.
+///
+/// ⚠️ VERTICAL ONLY, and that is Material's own reading rather than a shortcut:
+/// "for chips, it only affects the vertical size, not the horizontal size"
+/// (`:3159`) — components are expected to interpret the density themselves. The
+/// horizontal inset is left alone because it sets this row's text rhythm against
+/// the [cardDecoration] cards beside it on home and insights, which are NOT
+/// RowCards and do not tighten. Moving it would leave a mixed screen's left edge
+/// flush on mobile and ragged on desktop.
+///
+/// 🖱 HOVER IS DRIVEN BY ACTUAL HOVER, which is the only signal that reports the
+/// POINTER rather than the platform: a touch screen never fires it, so nothing
+/// has to be inferred and a tablet build needs no special case. It is
+/// deliberately NOT wired to the density above — a row that changed height under
+/// the cursor would shove every row below it as the pointer crossed the list.
+class RowCard extends StatefulWidget {
   const RowCard({
     super.key,
     this.leading,
@@ -186,21 +224,33 @@ class RowCard extends StatelessWidget {
   final double padding;
 
   @override
+  State<RowCard> createState() => _RowCardState();
+}
+
+class _RowCardState extends State<RowCard> {
+  /// Whether a hovering pointer is currently inside the row. Only ever set from
+  /// [InkWell.onHover], i.e. only by a device that hovers at all.
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final Widget row = Row(
       children: <Widget>[
-        if (accentBar != null) ...<Widget>[
+        if (widget.accentBar != null) ...<Widget>[
           Container(
             width: 3,
             height: 40,
             decoration: BoxDecoration(
-              color: accentBar,
+              color: widget.accentBar,
               borderRadius: BorderRadius.circular(3),
             ),
           ),
           const SizedBox(width: 11),
         ],
-        if (leading != null) ...<Widget>[leading!, const SizedBox(width: 12)],
+        if (widget.leading != null) ...<Widget>[
+          widget.leading!,
+          const SizedBox(width: 12),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,7 +274,7 @@ class RowCard extends StatelessWidget {
               // that the pre-dark widget built. DARK is `scheme.onSurface`.
               // Exactly the one-word migration [SectionHeader] below records.
               Text(
-                title,
+                widget.title,
                 style: AppText.of(context).body.copyWith(
                   fontWeight: FontWeight.w700,
                   fontSize: 15,
@@ -232,16 +282,41 @@ class RowCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (subtitle != null) ...<Widget>[
+              if (widget.subtitle != null) ...<Widget>[
                 const SizedBox(height: 2),
-                subtitle!,
+                widget.subtitle!,
               ],
             ],
           ),
         ),
-        if (trailing != null) ...<Widget>[const SizedBox(width: 8), trailing!],
+        if (widget.trailing != null) ...<Widget>[
+          const SizedBox(width: 8),
+          widget.trailing!,
+        ],
       ],
     );
+
+    final ThemeData theme = Theme.of(context);
+    final bool isLight = theme.brightness == Brightness.light;
+    final ColorScheme scheme = theme.colorScheme;
+
+    // `widget.onTap != null` is re-checked rather than trusted. `onHover` is
+    // only wired on the tappable branch below, but a rebuild can take `onTap`
+    // away while the pointer is still inside the row, and a row that has stopped
+    // being a control must not keep painting a control's hover.
+    final bool hovered = _hovered && widget.onTap != null;
+
+    // 🖥 THE DESKTOP ROW — see the class doc for why this reads the theme's
+    // density rather than a width. `baseSizeAdjustment.dy` is the TOTAL height
+    // adjustment (-8 for `compact`), so half of it applies per edge: 14 → 10.
+    // Clamped at zero because `VisualDensity` legitimately goes to -4 on both
+    // axes (`minimumDensity`, theme_data.dart:3195), which would take scan's
+    // `padding: 11` negative and assert inside EdgeInsets.
+    final double verticalPadding =
+        (widget.padding + theme.visualDensity.baseSizeAdjustment.dy / 2).clamp(
+          0.0,
+          double.infinity,
+        );
 
     // 🔴 THE SAME DEFECT AND THE SAME FIX AS [cardDecoration] — read its doc
     // comment first; this is its deferred sibling, named in W0's report.
@@ -257,9 +332,37 @@ class RowCard extends StatelessWidget {
     //   · DARK fills from `scheme.surfaceContainerHighest` and swaps the shadow
     //     for an `outlineVariant` hairline. kCardShadow is two BLACK alphas, so
     //     on a dark scaffold a row carrying only a shadow has no edge at all.
-    final ThemeData theme = Theme.of(context);
-    final bool isLight = theme.brightness == Brightness.light;
-    final ColorScheme scheme = theme.colorScheme;
+    final Color restFill = isLight
+        ? AppColors.surface
+        : scheme.surfaceContainerHighest;
+
+    // 🖱 THE HOVER WASH IS COMPOSITED ONTO THE `Material`'S OWN COLOUR RATHER
+    // THAN LEFT TO THE INK LAYER, AND THE COLOUR IS THE FRAMEWORK'S OWN TOKEN
+    // RATHER THAN AN ALPHA INVENTED HERE. `InkWell` already paints a hover
+    // highlight of `ThemeData.hoverColor` — white/black at 0.04, defaulted at
+    // `flutter/lib/src/material/theme_data.dart:468` and untouched by
+    // `buildAppTheme` — into the Material's ink layer. Compositing that SAME
+    // token here is the same pixels by the same arithmetic, but it lands on
+    // `Material.color`, the property the resting fill is already pinned on in
+    // `test/shared_primitives_test.dart`, instead of in an ink layer a test can
+    // only reach with a `paints` matcher. A hover state nothing can assert is
+    // how this widget lost its title colour in the first place.
+    //
+    // ⚠️ `hoverColor: Colors.transparent` below is therefore REQUIRED, not
+    // tidiness: without it the ink layer composites the same token a SECOND time
+    // on top of this one, so the row lifts by roughly twice the overlay the
+    // theme asks for.
+    final Color fill = hovered
+        ? Color.alphaBlend(theme.hoverColor, restFill)
+        : restFill;
+
+    // ⚠️ AND DARK GAINS AN EDGE STEP THE INK LAYER CANNOT GIVE IT: the hairline
+    // moves `outlineVariant` → `outline`, the scheme's own two divider weights,
+    // so nothing is invented. It is a colour change on a border that is ALREADY
+    // THERE at rest, so it costs no layout. Light gets the wash only — its row
+    // has no border at rest, and `Border.all` insets its child, so adding one on
+    // hover would shift the title 1px as the pointer arrived.
+    final Color edge = hovered ? scheme.outline : scheme.outlineVariant;
 
     final Widget card = Container(
       decoration: isLight
@@ -269,15 +372,38 @@ class RowCard extends StatelessWidget {
             )
           : BoxDecoration(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.outlineVariant),
+              border: Border.all(color: edge),
             ),
       child: Material(
-        color: isLight ? AppColors.surface : scheme.surfaceContainerHighest,
+        color: fill,
         borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: onTap,
-          child: Padding(padding: EdgeInsets.all(padding), child: row),
+          onTap: widget.onTap,
+          hoverColor: Colors.transparent,
+          // Wired only on the tappable branch: an inert RowCard (a plain list
+          // row with nothing behind it) must not light up under the pointer,
+          // for the same reason it does not announce as a button below.
+          //
+          // ⚠️ THIS CONDITIONAL IS BELT-AND-BRACES AND THE MEASUREMENT SAYS SO:
+          // wiring `onHover` unconditionally changed no test outcome (mutation
+          // run 2026-08-21), because `InkResponse` is `enabled` only when it has
+          // a callback and does not fire `onHover` while disabled. It is kept
+          // because it states the intent at the point of wiring — but the
+          // property is enforced by the `widget.onTap != null` re-check above,
+          // which IS load-bearing and has its own case in
+          // `test/shared_primitives_test.dart` ("STOPS being tappable while
+          // hovered").
+          onHover: widget.onTap == null
+              ? null
+              : (bool value) => setState(() => _hovered = value),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: widget.padding,
+              vertical: verticalPadding,
+            ),
+            child: row,
+          ),
         ),
       ),
     );
@@ -304,7 +430,7 @@ class RowCard extends StatelessWidget {
     // "button" for a row that does nothing when activated is the same lie one
     // size down.
     return MergeSemantics(
-      child: Semantics(button: onTap != null, child: card),
+      child: Semantics(button: widget.onTap != null, child: card),
     );
   }
 }
