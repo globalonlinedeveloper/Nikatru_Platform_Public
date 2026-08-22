@@ -45,6 +45,10 @@ import { deflateRawSync } from 'node:zlib';
 import {
   ROLE_ENV,
   WANTED,
+  ROW_ONLY_ENV,
+  expectedNames,
+  registerDrift,
+  homeRowOf,
   RELEASE_SIGNED,
   UNSIGNED_PROOF,
   secretSetLaw,
@@ -203,7 +207,16 @@ function makeZip(entries) {
 // ── fixture repository roots ─────────────────────────────────────────────────
 function makeRoot({
   channelIds = ['ios-appstore', 'macos-appstore'],
-  names = [...WANTED],
+  /** 🔴 PER ROW, NOT ONE LIST FOR BOTH — the two Apple rows do not declare the
+   *  same set. `null` (the default) makes every row declare exactly what the
+   *  script expects OF THAT ROW: the four shared names, plus
+   *  APPLE_INSTALLER_CERT_P12_BASE64 on macos-appstore. An ARRAY is applied to
+   *  every row, which is what the drift cases below want; `namesFor` overrides
+   *  a single row by id, which is how "the right name on the wrong row" is
+   *  built. A fixture that hardcoded one list for both rows is how the live red
+   *  of 2026-08-21 stayed invisible to this file. */
+  names = null,
+  namesFor = {},
   register = true,
   apps = [{ slug: 'subly' }],
   submissionWorkflow = SUBMIT_WF,
@@ -232,7 +245,7 @@ function makeRoot({
         served,
         lane,
         ...(rowOverrides[id] ?? {}),
-        signing: { ciSecrets: { names: [...names] } },
+        signing: { ciSecrets: { names: [...(namesFor[id] ?? names ?? expectedNames(id))] } },
       };
       if (submissionWorkflow !== null) row.submission = { workflow: submissionWorkflow };
       return row;
@@ -309,6 +322,95 @@ describe('apple-signing — the all-or-none law', () => {
       'APPLE_PROVISIONING_PROFILES_BASE64',
       'APPLE_TEAM_ID',
     ]);
+  });
+
+  test('🔴 the installer certificate is RECOGNISED but NOT wanted — the law must not range over it', () => {
+    // The distinction the fix rests on. The name is in the role map so the
+    // register may declare it; it is out of WANTED so the all-or-none law never
+    // sees it. Folding it in would turn "the four dist secrets are supplied" —
+    // the only state OWNER_QUEUE A-4 can ever produce first — into `partial`,
+    // which is fatal on every lane, and would reverse the deliberate decision
+    // recorded in this script's header to PRINT the installer gap, not fail on it.
+    assert.ok(Object.values(ROLE_ENV).includes('APPLE_INSTALLER_CERT_P12_BASE64'));
+    assert.ok(!WANTED.includes('APPLE_INSTALLER_CERT_P12_BASE64'));
+    const all = secretSetLaw(Object.fromEntries(WANTED.map((n) => [n, 'x'])));
+    assert.equal(all.kind, 'all', 'the four dist secrets alone must still be a COMPLETE set');
+  });
+});
+
+// ═════ the role map is scoped PER ROW ════════════════════════════════════════
+describe('apple-signing — the role map is compared per ROW, both directions', () => {
+  // 🔴 THE THIRD COPY OF THE NAME LIST, AND THE ONLY THING THAT KEEPS IT HONEST.
+  // apple-signing.mjs now enumerates the names three times — ROLE_ENV (5, the
+  // vocabulary), WANTED (4, the shared set the all-or-none law ranges over) and
+  // ROW_ONLY_ENV (1, scoped to macos-appstore) — and its own header calls "two
+  // copies of a list drift" the defect it exists to prevent. Nothing asserted
+  // that the last two PARTITION the first, so a sixth role could be added to
+  // ROLE_ENV and reach neither WANTED nor ROW_ONLY_ENV: `expectedNames()` would
+  // never expect it, `homeRowOf()` would return null for it, and a row that
+  // correctly declared it would be reported as drift. Measured 2026-08-21 in a
+  // scratch mirror with `notary: 'APPLE_NOTARY_PASSWORD_BASE64'` added to
+  // ROLE_ENV and declared on the ios row: `node tooling/ci/apple-signing.mjs
+  // --app subly` EXIT 1, "⚠️ APPLE_NOTARY_PASSWORD_BASE64 IS known here — but
+  // only on the null row". This test is the negative half of that.
+  test('🔴 WANTED and ROW_ONLY_ENV PARTITION ROLE_ENV — no role can be known but unreachable', () => {
+    assert.deepEqual(
+      [...WANTED, ...Object.values(ROW_ONLY_ENV).flat()].sort(),
+      Object.values(ROLE_ENV).sort(),
+      'every name in the role map must be either shared (WANTED) or scoped to exactly one row (ROW_ONLY_ENV), and nothing may be in both',
+    );
+  });
+
+  test('ios-appstore expects the four shared names and nothing else', () => {
+    assert.deepEqual(expectedNames('ios-appstore').sort(), [...WANTED].sort());
+  });
+
+  test('macos-appstore expects the four PLUS the installer certificate', () => {
+    assert.deepEqual(expectedNames('macos-appstore').sort(), [...WANTED, ROLE_ENV.installerP12].sort());
+  });
+
+  test('an exactly-matching row drifts in neither direction', () => {
+    for (const id of ['ios-appstore', 'macos-appstore']) {
+      const d = registerDrift(id, expectedNames(id));
+      assert.deepEqual(d.extra, [], id);
+      assert.deepEqual(d.absent, [], id);
+      assert.deepEqual(d.misplaced, [], id);
+    }
+  });
+
+  test('order does not matter — the comparison is on SETS', () => {
+    const d = registerDrift('macos-appstore', [...expectedNames('macos-appstore')].reverse());
+    assert.deepEqual(d.extra, []);
+    assert.deepEqual(d.absent, []);
+  });
+
+  test('a name declared and unknown here comes out as `extra`', () => {
+    const d = registerDrift('ios-appstore', [...WANTED, 'APPLE_NOTARY_PASSWORD_BASE64']);
+    assert.deepEqual(d.extra, ['APPLE_NOTARY_PASSWORD_BASE64']);
+    assert.deepEqual(d.misplaced, [], 'an unknown name is not a misplaced one');
+  });
+
+  test('a name expected here and dropped there comes out as `absent`', () => {
+    const d = registerDrift('macos-appstore', [...WANTED]);
+    assert.deepEqual(d.absent, [ROLE_ENV.installerP12]);
+    assert.deepEqual(d.extra, []);
+  });
+
+  test('the installer certificate on the ios row is `extra` AND `misplaced`, and names its home row', () => {
+    const d = registerDrift('ios-appstore', [...WANTED, ROLE_ENV.installerP12]);
+    assert.deepEqual(d.extra, [ROLE_ENV.installerP12]);
+    assert.deepEqual(d.misplaced, [ROLE_ENV.installerP12]);
+    assert.equal(homeRowOf(ROLE_ENV.installerP12), 'macos-appstore');
+    assert.equal(homeRowOf(ROLE_ENV.p12), null, 'a shared name has no single home row');
+  });
+
+  test('a channel this script does not scope gets the shared four, not a crash', () => {
+    assert.deepEqual(expectedNames('android-play').sort(), [...WANTED].sort());
+  });
+
+  test('a non-array `names` is treated as declaring NOTHING, never as agreeing', () => {
+    const d = registerDrift('ios-appstore', undefined);
+    assert.deepEqual(d.absent.sort(), [...WANTED].sort());
   });
 });
 
@@ -862,9 +964,63 @@ describe('apple-signing — coverage self-checks', () => {
   });
 
   test('COVERAGE LOST when the register declares an EXTRA signing secret nobody here handles', () => {
-    const { r } = runPrepare(makeRoot({ names: [...WANTED, 'APPLE_INSTALLER_CERT_P12_BASE64'] }), {});
+    // 🔴 THIS TEST USED TO USE APPLE_INSTALLER_CERT_P12_BASE64 AS ITS "UNKNOWN"
+    // NAME, AND THAT IS PRECISELY WHY IT COULD NOT SEE THE RED. 2d2f51b added
+    // that exact name to the real macos-appstore row on 2026-08-20; this file
+    // went on asserting the name was unknown, agreed with the script, and
+    // stayed green while `node tooling/ci/apple-signing.mjs --app subly` EXITED
+    // 1 in CI. The example is now a name THE REGISTER DECLARES NOWHERE — measured
+    // 2026-08-21, `grep -rn APPLE_NOTARY_PASSWORD_BASE64` over the worktree
+    // (excluding .git/.bundles/node_modules) returns 6 hits and every one is in
+    // THIS FILE, as fixture text; tooling/channel-register.json and
+    // .github/workflows/ have none. So it cannot repeat the 2d2f51b trap.
+    // (An earlier draft of this line said "exists nowhere in the tree", which
+    // its own file falsifies. The distinction is the whole point of the case:
+    // what must be absent is a REGISTER DECLARATION, not the string.)
+    // The installer certificate has its own two cases below.
+    const { r } = runPrepare(makeRoot({ names: [...WANTED, 'APPLE_NOTARY_PASSWORD_BASE64'] }), {});
     assert.equal(r.status, 1, out(r));
-    assert.match(out(r), /APPLE_INSTALLER_CERT_P12_BASE64/);
+    assert.match(out(r), /APPLE_NOTARY_PASSWORD_BASE64/);
+  });
+
+  test('🔴 the installer certificate on macos-appstore is ACCEPTED — the case that was red on 2026-08-21', () => {
+    // The positive control for the whole row-scoping change. Without it every
+    // negative result here is consistent with a script that refuses the name
+    // everywhere, which is the state this increment repaired. The fixture is
+    // asserted to actually CARRY the name first — a default that quietly went
+    // back to four names would make this pass while proving nothing.
+    const root = makeRoot();
+    const reg = JSON.parse(readFileSync(join(root, 'tooling', 'channel-register.json'), 'utf8'));
+    const mac = reg.channels.find((c) => c.id === 'macos-appstore');
+    assert.ok(mac.signing.ciSecrets.names.includes(ROLE_ENV.installerP12), 'the fixture must declare the name it is testing');
+    const { r } = runPrepare(root, {});
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /UNSIGNED-BUILD-PROOF/);
+  });
+
+  test('COVERAGE LOST when the installer certificate is copied onto the ios-appstore row', () => {
+    // The register's own `why` says it in capitals: macOS ONLY, do not copy it
+    // onto ios-appstore, because an .ipa needs no installer certificate and the
+    // iOS lane could never use one. Row scoping that accepted the name anywhere
+    // would be four names checked twice again, under a new spelling.
+    const { r } = runPrepare(
+      makeRoot({ namesFor: { 'ios-appstore': [...WANTED, ROLE_ENV.installerP12] } }),
+      {},
+    );
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /ios-appstore row and this script disagree/);
+    assert.match(out(r), /IS known here — but only on the macos-appstore row/);
+  });
+
+  test('COVERAGE LOST when the macos-appstore row DROPS the installer certificate', () => {
+    // The other direction, and the one that makes this a bidirectional check
+    // rather than a permissive one: the register silently losing the name must
+    // be as loud as the register gaining one.
+    const { r } = runPrepare(makeRoot({ namesFor: { 'macos-appstore': [...WANTED] } }), {});
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /macos-appstore row and this script disagree/);
+    assert.match(out(r), /expected here and not declared in the register: APPLE_INSTALLER_CERT_P12_BASE64/);
   });
 
   test('COVERAGE LOST when apps.json is missing', () => {
@@ -903,6 +1059,71 @@ describe('apple-signing — against the REAL tooling/channel-register.json', () 
       return row;
     });
   };
+
+  // 🔴 THE CHECK THIS FILE DID NOT HAVE ON 2026-08-21, AND ITS ABSENCE IS WHY
+  // A RED RELEASE LANE WAS INVISIBLE FOR A DAY. Everything else in this describe
+  // block reads the real register for ARMING — `served` / `submittable` / `lane`
+  // — which is a different question from the one the runtime script fails on.
+  // apple-signing.mjs compares its role map to `signing.ciSecrets.names` on
+  // every run, per row, in both directions; nothing here compared the same two
+  // sets, so the register could gain or lose a name and this suite stayed green
+  // while `node tooling/ci/apple-signing.mjs --app subly` exited 1 in CI.
+  // Measured 2026-08-21 before the fix: that command EXIT 1, "COVERAGE LOST …
+  // declared in the register and unknown here: APPLE_INSTALLER_CERT_P12_BASE64";
+  // this file EXIT 0, 74 `test(` declarations / 78 runner cases, 0 failing.
+  // (Both numbers re-measured at HEAD 2026-08-21 in a scratch mirror, because
+  // the two DIFFER and an earlier draft of this line wrote the declaration
+  // count — the ratchet number, from the comment-stripped `^\s*(test|it)\s*\(`
+  // count coverage-manifest.json records — under the word "tests", which is the
+  // runner's word for cases. A parameterised loop declares once and runs many.)
+  //
+  // ⚠️ WHAT THESE TWO TESTS DO NOT DO: they do not run the script, so they
+  // cannot see a failure that lives anywhere else in it, and they say nothing
+  // about whether a declared secret is ever PASSED to the step (that is
+  // assert-channel-register.mjs §8's subject, which prints rather than fails).
+  // They pin exactly the two sets that drifted.
+  test('🔴 the REAL register and the role map agree in BOTH directions, per row', () => {
+    for (const row of realRows()) {
+      const declared = row.signing?.ciSecrets?.names;
+      assert.ok(
+        Array.isArray(declared) && declared.length > 0,
+        `${row.id} declares no signing.ciSecrets.names — this comparison would range over nothing and print ok`,
+      );
+      const d = registerDrift(row.id, declared);
+      assert.deepEqual(
+        d.extra,
+        [],
+        `${row.id} declares ${d.extra.join(', ')}, which tooling/ci/apple-signing.mjs does not recognise. ` +
+          'Teach ROLE_ENV the name and its role — the script EXITS 1 on this today, and build-platforms.yml ' +
+          'runs it with no `if:` guard, so the `apple` job and the `release` job that needs it are both dead.',
+      );
+      assert.deepEqual(
+        d.absent,
+        [],
+        `${row.id} no longer declares ${d.absent.join(', ')}, which apple-signing.mjs expects of that row ` +
+          'and would read from an environment nobody declares.',
+      );
+    }
+  });
+
+  test('🔴 the two rows are ASYMMETRIC, and the register says which name is macOS-only', () => {
+    // Pinned separately from the agreement above, because the agreement would
+    // also hold if both rows declared five names — and the register's own `why`
+    // for APPLE_INSTALLER_CERT_P12_BASE64 forbids exactly that: an .ipa needs no
+    // installer certificate, so naming it on ios-appstore would declare a
+    // credential that lane can never use.
+    const [ios, macos] = realRows();
+    const iosNames = ios.signing.ciSecrets.names;
+    const macNames = macos.signing.ciSecrets.names;
+    assert.ok(!iosNames.includes(ROLE_ENV.installerP12), 'ios-appstore must NOT declare the installer certificate');
+    assert.ok(macNames.includes(ROLE_ENV.installerP12), 'macos-appstore must declare the installer certificate');
+    assert.deepEqual(
+      macNames.filter((n) => !iosNames.includes(n)),
+      [...ROW_ONLY_ENV['macos-appstore']],
+      'the ONLY difference between the two rows is the row-only set this script scopes',
+    );
+    assert.deepEqual(iosNames.filter((n) => !macNames.includes(n)), [], 'ios declares nothing macOS does not');
+  });
 
   test('🔴 BOTH Apple rows are STILL UNARMED — the day either is not, a tag stops being survivable without the enrolment', () => {
     for (const row of realRows()) {
