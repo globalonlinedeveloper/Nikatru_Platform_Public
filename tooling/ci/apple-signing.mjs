@@ -70,8 +70,10 @@
 // profile set, one is a 10-character team identifier, and they are validated
 // and used in four completely different ways. A role map is therefore declared
 // below, and the register's declared set is COMPARED TO IT on every run, in
-// both directions, on both rows. Two copies of a list drift; two copies that
-// are compared cannot drift silently. Renaming a secret in the register without
+// both directions, PER ROW — the two rows do NOT declare the same set, and
+// comparing one list against both is the defect the role map's own header
+// records and dates. Two copies of a list drift; two copies that are compared
+// cannot drift silently. Renaming a secret in the register without
 // teaching this file fails HERE, loudly, instead of producing an unsigned build
 // from a run that looked like a signing run.
 //
@@ -86,8 +88,8 @@
 // ── THE KEYCHAIN PASSWORD IS GENERATED PER RUN AND IS NOT A SECRET ───────────
 // `security create-keychain -p` needs a password. It is `randomBytes(24)`,
 // generated here, never printed, never exported, and never stored. Making it a
-// repository secret would be worse in every direction: it would be a fifth
-// name to keep in step, a fifth rotation obligation, and a long-lived value
+// repository secret would be worse in every direction: it would be one more
+// name to keep in step, one more rotation obligation, and a long-lived value
 // protecting a keychain that exists for the length of one job in a directory
 // the runner destroys — while the credential it guards is already in that job's
 // environment. A per-run random value cannot leak from a previous run because
@@ -97,19 +99,23 @@
 // A Mac App Store `.pkg` needs TWO certificates: an application certificate
 // (Apple Distribution / 3rd Party Mac Developer Application) to sign the .app,
 // and an INSTALLER certificate (Mac Installer Distribution / 3rd Party Mac
-// Developer Installer) to sign the package `productbuild` produces. The
-// register declares ONE — `APPLE_DIST_CERT_P12_BASE64` — so the macos-appstore
-// `.pkg` intent below can be planned but not fully signed from the declared
-// secret set. That is printed on every run rather than failing the build,
-// because the missing item is an owner action on an account that does not exist
-// yet (OWNER_QUEUE A-4) and a guard that blocks CI on work only the owner can do
-// blocks every merge in the repository.
+// Developer Installer) to sign the package `productbuild` produces. Since
+// 2026-08-20 the register declares BOTH — `APPLE_DIST_CERT_P12_BASE64` on both
+// Apple rows and `APPLE_INSTALLER_CERT_P12_BASE64` on macos-appstore alone — so
+// what is missing is no longer the NAME, it is the certificate: nothing can
+// issue one until the account exists. The macos-appstore `.pkg` intent below is
+// therefore planned and printed rather than run, and nothing in this file
+// imports an installer identity into the keychain. That is printed on every run
+// rather than failing the build, because the missing item is an owner action on
+// an account that does not exist yet (OWNER_QUEUE A-4) and a guard that blocks
+// CI on work only the owner can do blocks every merge in the repository.
 //
 // Usage:
 //   node tooling/ci/apple-signing.mjs [--app <slug>] [--out <dir>]
 //                                     [--repo-root <path>] [--github-env <path>]
 //                                     [--method <app-store-connect|…>]
-// Env in:  the four names the register declares (see ROLE_ENV below)
+// Env in:  the four names WANTED below (the register declares them on both Apple
+//          rows; the fifth, row-only name is recognised and never read here)
 //          GITHUB_REF, GITHUB_WORKFLOW_REF — read to DERIVE whether this is a
 //          release lane. There is deliberately no flag a workflow can set or
 //          forget; see the derivation block.
@@ -128,24 +134,119 @@ import { armedFatalLines, releaseGapVerdict, unarmedGapLines } from './channel-a
 
 export const APPS = 'catalog/apps.json';
 export const REGISTER = 'tooling/channel-register.json';
-/** BOTH Apple rows. One Apple Developer account, one distribution identity, two
- *  App Store Connect records — so the two rows must declare the SAME secret set
- *  and a disagreement between them is a record fault, not a choice. */
+/** BOTH Apple rows. One Apple Developer account and one distribution identity
+ *  serve two App Store Connect records, so the two rows share the four names
+ *  `WANTED` below — but they are NOT required to declare the same set, and
+ *  saying they were is what broke this file (see the role map). macos-appstore
+ *  carries one name iOS cannot use; the comparison is therefore per row. */
 export const CHANNEL_IDS = ['ios-appstore', 'macos-appstore'];
 
 export const POSTURE_ENV = 'APPLE_SIGNING_POSTURE';
 export const RELEASE_SIGNED = 'release-signed';
 export const UNSIGNED_PROOF = 'unsigned-build-proof';
 
-/** The role map. Every name here must appear in the register's declared set and
- *  vice versa — checked on every run, both directions, both rows. */
+/**
+ * The role map. Every name here must appear in the declared set of the row it
+ * belongs to, and vice versa — checked on every run, both directions, per row.
+ *
+ * 🔴 THE DEFECT THIS SHAPE CLOSES, AND IT WAS LIVE, NOT LATENT. Until
+ * 2026-08-21 this map held FOUR names and `main()` compared the same four
+ * against BOTH rows. Commit 2d2f51b (2026-08-20) added a FIFTH name —
+ * `APPLE_INSTALLER_CERT_P12_BASE64` — to the macos-appstore row ALONE, and the
+ * comparison had no way to say "this row, not that one", so it read a correct
+ * declaration as drift. Measured on a clean tree 2026-08-21:
+ * `node tooling/ci/apple-signing.mjs --app subly` → EXIT 1, "FAIL COVERAGE LOST
+ * — …macos-appstore row and this script disagree… declared in the register and
+ * unknown here: APPLE_INSTALLER_CERT_P12_BASE64". The `apple` job's only
+ * invocation of this script — search `build-platforms.yml` for the line
+ * `run: node tooling/ci/apple-signing.mjs --app`, which was :942 on 2026-08-21;
+ * the anchor is the text, not the number — carries no `if:` guard, and
+ * `continue-on-error:` is set on no job and no step in this repository
+ * (measured 2026-08-21 over `.github/workflows/`: the literal string occurs
+ * exactly twice, both inside `#` comments in deploy-web.yml — so zero
+ * occurrences as a key), so the `apple` job failed on EVERY lane and the
+ * `release` job that `needs:` it could not run — tag or no tag.
+ *
+ * ⚠️ THE TWO ROWS DO NOT DECLARE THE SAME SET, AND THAT IS THE RECORD RATHER
+ * THAN A CONVENIENCE. The register's own `why` for the fifth name says it in
+ * capitals: macOS only, do not copy it onto ios-appstore, because iOS ships an
+ * .ipa and needs no installer certificate at all — declaring it there would name
+ * a credential that lane can never use. So `ROW_ONLY_ENV` below is scoped, and a
+ * name appearing on the wrong row is still COVERAGE LOST.
+ *
+ * ⚠️ WHAT THIS DOES NOT CATCH — said plainly, because an overclaiming comment
+ * here would be worse than none:
+ *   · the installer certificate is RECOGNISED, never ARRANGED. It is deliberately
+ *     outside `WANTED`, so the all-or-none law does not range over it, nothing
+ *     reads it from the environment, and supplying the other four still resolves
+ *     to `release-signed`. The `productbuild` step stays a printed intent.
+ *   · nothing here compares the register to the WORKFLOW. "A secret is declared
+ *     and no lane names it" is assert-channel-register.mjs §8's subject, and §8
+ *     prints that case rather than failing it.
+ *   · a name on the wrong ROW is caught; a name given the wrong ROLE is not. The
+ *     keys below are this file's own vocabulary and the register does not carry
+ *     them, so swapping `p12` and `profiles` would pass this comparison and fail
+ *     later, at a byte validator.
+ */
 export const ROLE_ENV = Object.freeze({
   p12: 'APPLE_DIST_CERT_P12_BASE64',
   p12Password: 'APPLE_DIST_CERT_PASSWORD',
   profiles: 'APPLE_PROVISIONING_PROFILES_BASE64',
   teamId: 'APPLE_TEAM_ID',
+  installerP12: 'APPLE_INSTALLER_CERT_P12_BASE64',
 });
-export const WANTED = Object.freeze(Object.values(ROLE_ENV));
+
+/** The names this script READS FROM THE ENVIRONMENT and arranges into a keychain.
+ *  Both Apple rows declare exactly these, and the all-or-none law ranges over
+ *  exactly these. A name that arrives here starts being required of every row. */
+export const WANTED = Object.freeze([ROLE_ENV.p12, ROLE_ENV.p12Password, ROLE_ENV.profiles, ROLE_ENV.teamId]);
+
+/** Names one row declares and the other must not, keyed by that row's channel id.
+ *
+ *  🔴 `WANTED` AND THIS MAP MUST PARTITION `ROLE_ENV`, AND A TEST SAYS SO. These
+ *  are the file's second and third enumerations of the same names; a role added
+ *  to `ROLE_ENV` alone would be KNOWN and yet reachable from neither, so
+ *  `expectedNames()` would never expect it and `homeRowOf()` would return null
+ *  for it while the printed message insisted it had a home row. The pin is the
+ *  test named `WANTED and ROW_ONLY_ENV PARTITION ROLE_ENV` in
+ *  test/apple-signing.test.mjs — added 2026-08-21, and it goes red on a sixth
+ *  role that reaches neither list, or on a name that reaches both. */
+export const ROW_ONLY_ENV = Object.freeze({
+  'macos-appstore': Object.freeze([ROLE_ENV.installerP12]),
+});
+
+/** The exact set a given row must declare: the shared four plus its own. */
+export function expectedNames(channelId) {
+  return [...WANTED, ...(ROW_ONLY_ENV[channelId] ?? [])];
+}
+
+/**
+ * The bidirectional comparison, for ONE row.
+ *   extra     — declared there, unknown here. A new credential nobody taught
+ *               this file about, so it cannot be validated or used at all.
+ *   absent    — expected here, not declared there. It would be read from an
+ *               environment nobody declared.
+ *   misplaced — the sharp subset of `extra`: a name this file DOES know, sitting
+ *               on a row it does not belong to. That reads as a copy-paste
+ *               between two adjacent rows rather than as a new secret, so it is
+ *               named separately with the row it actually belongs to.
+ */
+export function registerDrift(channelId, declared) {
+  const expected = expectedNames(channelId);
+  const known = Object.values(ROLE_ENV);
+  const list = Array.isArray(declared) ? declared : [];
+  const extra = list.filter((n) => !expected.includes(n)).sort();
+  return {
+    extra,
+    absent: expected.filter((n) => !list.includes(n)).sort(),
+    misplaced: extra.filter((n) => known.includes(n)),
+  };
+}
+
+/** Which row a row-only name belongs to, so a misplacement can say where it goes. */
+export function homeRowOf(name) {
+  return Object.entries(ROW_ONLY_ENV).find(([, names]) => names.includes(name))?.[0] ?? null;
+}
 
 /** The owner item behind the absent account, named in full so the printed gap
  *  is actionable without opening another file. */
@@ -161,8 +262,21 @@ export const OWNER_GAP = 'Apple Developer account (OWNER_QUEUE A-4)';
 // could not be tested anywhere the authors work, and an untested branch in a
 // signing seam is the thing this file exists to prevent. So the decisions are
 // separated from the doing: the laws below are unit-tested with fixtures on any
-// platform, and only the four `security` invocations are gated on
+// platform, and only the `security` invocations are gated on
 // `process.platform === 'darwin'`.
+//
+// 🔴 CORRECTED 2026-08-21 — THIS LINE SAID "the FOUR `security` invocations" AND
+// THE NUMBER WAS FALSE. Re-measured today by importing this module and calling
+// the function: `keychainPlan()` returns SIX steps and `argv[0] === 'security'`
+// on all six — create-keychain, set-keychain-settings, unlock-keychain, import,
+// set-key-partition-list, list-keychains. Their identity and ORDER are pinned by
+// the test named `the keychain is created, unlocked and imported into — in that
+// order`, so this prose is no longer the only copy of the count. A SEVENTH
+// `security` call sits on the same darwin-gated path and is not part of the
+// plan: `existingUserKeychains()` reads the current user search list so the
+// sixth step can EXTEND it instead of replacing it. The test file's header
+// already said "six"; this box was the copy that drifted — which is the whole
+// argument for pinning a count in a test rather than in a sentence.
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -696,13 +810,17 @@ function main() {
         'would fall back to the copy below, which is the drift it exists to catch.',
       ]);
     }
-    const extra = declared.filter((n) => !WANTED.includes(n)).sort();
-    const absent = WANTED.filter((n) => !declared.includes(n)).sort();
+    const { extra, absent, misplaced } = registerDrift(row.id, declared);
     if (extra.length || absent.length) {
       coverageLost([
         `${REGISTER}'s ${row.id} row and this script disagree about which secrets sign an Apple build.`,
         extra.length ? `     declared in the register and unknown here: ${extra.join(', ')}` : '',
         absent.length ? `     expected here and not declared in the register: ${absent.join(', ')}` : '',
+        ...misplaced.map(
+          (n) =>
+            `     ⚠️ ${n} IS known here — but only on the ${homeRowOf(n)} row, and the ${row.id} lane can ` +
+            'never use it. This reads as a copy between two adjacent rows, not as a new credential.',
+        ),
         'Each name is validated and used differently — one is a PKCS#12, one its passphrase, one a profile',
         'set, one a team identifier — so a name this script does not recognise cannot be handled at all, and',
         'a name it expects that the register has dropped would be read from an environment nobody declared.',
