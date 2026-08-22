@@ -35,11 +35,15 @@
 // ⚠️ COMMENTS ARE STRIPPED HERE — the OPPOSITE of assert-channel-claims.mjs, and
 // both are right. There, the comment WAS the payload (a Flathub URL a human
 // copies). Here the hazard runs the other way: `deploy-web.yml` explains in prose
-// why it calls both scripts (`:46-49`, `:121-122`), so a raw text match would
-// report a lane as gated on the strength of a comment DESCRIBING the gate. This
+// why it calls both scripts — MEASURED 2026-08-21,
+// `grep -cE "assert-gate-passed|record-deployment" .github/workflows/deploy-web.yml`
+// prints 28 lines naming one of them and
+// `grep -cE "run: node tooling/ci/(assert-gate-passed|record-deployment)\.mjs"` on the
+// same file prints 2. Twenty-three of the twenty-eight are COMMENT lines, so a raw match
+// would report a lane as gated on the strength of a comment DESCRIBING the gate. This
 // repo has shipped that exact defect twice — the guard-coverage counter that
 // accepted a name in a comment ([pipeline F-10], fixed at dd30feb) and
-// `assert-stamp-platforms.mjs:37-42`, whose header records deleting the real
+// `assert-stamp-platforms.mjs:41-46`, whose header records deleting the real
 // build step and staying green because the comment above it said the words.
 //
 // ── ORDER IS THE WHOLE POINT, AND IT CROSSES JOBS ────────────────────────────
@@ -50,6 +54,132 @@
 // graph transitively. A guard that only understood line order would force every
 // workflow into one job to satisfy it.
 //
+// ── limb 4 (added 2026-08-21) AND WHAT IT DELIBERATELY DOES NOT CATCH ────────
+// limb 4 asserts that a job invoking a `--submit` verb declares an
+// `environment:` AND that the script it invokes performs a run-time read of a
+// deployment environment's protection rules. The two names are NOT compared —
+// the reasoning, and what that separation does and does not buy, is beside the
+// constants below.
+//
+// IT WAS LATENT, NOT LIVE. Measured on this tree 2026-08-21, before writing it:
+// exactly 2 jobs invoke `--submit` — submit-play.yml "submit" and
+// submit-snap.yml "submit". Both commands are FOLDED (`run: >` at :406 and :510,
+// the `node …` text on the next line), which is why the REPORTED line is the
+// `run:` key's and not the command's; both jobs declare
+// `environment: store-publish` (submit-play.yml:335 and submit-snap.yml:344); and
+// both scripts carry the run-time read. The limb was green
+// on its first run and fixed nothing. It is a regression guard, and the honest
+// claim for it is that a THIRD submit lane is covered the day it appears, without
+// anyone remembering to hand-write a third copy of PG-4.
+//
+// AND SAY HOW FAR AWAY THAT DAY IS, MEASURED 2026-08-21, because an earlier draft
+// of this line said submit-appstore.yml and submit-windows-store.yml "are one job
+// away from being one" and that understates it. Each of those two workflows does
+// declare a `gate` job and a `dry-run` job, and each dry-run job does call its own
+// script (submit-appstore.yml:142,:153 and submit-windows-store.yml:108). But
+// BOTH scripts PARSE `--submit` only to refuse it: submit-appstore.mjs:161 and
+// submit-windows-store.mjs:136 each print "FAIL --submit is NOT IMPLEMENTED, and
+// refusing is the implementation." So each lane is a submitting JOB *and* a real
+// `--submit` path away, not one job — and when both arrive, (b) is precisely what
+// those two scripts do not have today.
+//
+// ── CORRECTION 2026-08-21, same day, before merge ────────────────────────────
+// The fold sentence above claimed the fold was WHY these commands are visible to
+// this guard at all. That was never measured and it is false. What stood here,
+// verbatim, was:
+//     "which is why they are visible here at all"
+// RE-MEASURED by running this file's own SUBMIT_FLAG / SUBMIT_RUNNER /
+// SUBMIT_SCRIPT over RAW `job.lines` from parseAllWorkflows — that is, with
+// joinBlockScalars deliberately NOT applied — against this tree:
+//     RAW      submit-play.yml  submit  line=407  script=tooling/release/submit-play.mjs
+//     RAW      submit-snap.yml  submit  line=511  script=tooling/release/submit-snap.mjs
+//     LOGICAL  the same 2 jobs, the same 2 scripts, at :406 and :510
+//     jobs seen RAW=2 LOGICAL=2
+// A raw line-anchored scan finds the SAME two jobs and extracts the SAME two
+// script paths, because `--submit`, `node` and the `.mjs` path all sit on ONE
+// physical line (:407, :511). The fold moves only the reported line number
+// (407→406, 511→510). Using the shared parser is still right — it is the house
+// rule, and it is what makes the printed number the `run:` key's — but the
+// stronger claim that a hand-rolled line scanner "would have reported this
+// domain as empty and printed clean" is measurably wrong and is not to be
+// carried forward into anyone's notes.
+//
+// 🔴 WHAT IT DOES NOT CATCH, AND THIS IS A LIVE GAP, NOT A HYPOTHETICAL.
+// limb 4's domain is the `--submit` VERB. It is NOT limb 2's publish set. So it
+// says nothing about build-platforms.yml's `release` job, which — measured
+// 2026-08-21 — runs `gh release create` at :1292 on a PUBLIC repository, with no
+// `--draft` anywhere in the file (`grep -c -- "--draft"
+// .github/workflows/build-platforms.yml` prints 0), and declares
+// NO `environment:` at all — so NOTHING PAUSES for a human. What the job DOES
+// carry is a block-form `needs:` at :1174-1179 listing `gate, prepare,
+// linux_web_android, windows, apple`; that `- gate` entry at :1175 is exactly
+// why limbs 1 and 2 of this very guard pass on it. The edge proves the COMMIT
+// WAS GREEN. It does not prove a PERSON REVIEWED THE RELEASE, and those are
+// different claims. The `if: github.ref_type == 'tag'` lines at :1276 and :1307
+// are the tag condition on the `gh release create` step and on the
+// record-deployment step below it — a trigger filter, not a gate.
+//
+// SAY WHICH JOB, AND SAY IT WITH THE DOMAIN — an earlier draft of this paragraph
+// ended "that is the one job here that publishes to the open internet", which is
+// an unscoped absolute and is false: so do the three Cloudflare lanes. MEASURED
+// 2026-08-21 by printing limb 2's own classification over this tree, limb 2
+// counts FOUR publish jobs —
+//     build-platforms.yml  "release"     a GitHub Release publish
+//     deploy-web.yml       "deploy-web"  a Cloudflare deploy action
+//     deploy-workers.yml   "subly-api"   a Cloudflare deploy action
+//     deploy-workers.yml   "platform"    a Cloudflare deploy action
+// — and `release` is the only one of the four that hands over a DOWNLOADABLE,
+// IMMUTABLE artifact. The other three replace a running service, and replacing
+// it again is the rollback; a Release asset a third party has already fetched
+// has no rollback. That is the distinction the gap is about, and this limb steps
+// around it.
+//
+// ── CORRECTION 2026-08-21, same day, before merge ────────────────────────────
+// The paragraph above replaced one that UNDERSTATED the protection that exists
+// and therefore OVERSTATED the gap it was recording — in a file whose entire
+// discipline is "assert on the thing, not the note about it". What stood here,
+// verbatim, was:
+//     "and declares NO `environment:` at all; its
+//      only gate is a step-level `if: github.ref_type == 'tag'`."
+// Opened and read this session: build-platforms.yml:1174-1179 is the `needs:`
+// block, :1175 is `- gate`, and the job's only job-level keys are `name`,
+// `runs-on`, `timeout-minutes`, `needs`, `permissions`, `strategy`, `steps` —
+// no `environment:` among them. The missing approval PAUSE is real and is the
+// gap; "its only gate" was not.
+//
+// The scope stops there on purpose and the reason has to survive being read
+// aloud: an approval PAUSE is the right demand where the act is irreversible AND
+// no human act already stands in front of it. A store upload is both — dispatch
+// is a button any collaborator can press, and Play binds the upload certificate
+// permanently at the first upload. A Cloudflare deploy is neither: deploy-web
+// and deploy-workers ship on every push to main by design, and demanding an
+// approval there would be a false red on every merge. `gh release create` sits
+// between them — a tag push is a privileged human act, but it is not a REVIEWED
+// one, and a public release is fetched by third parties long before it can be
+// deleted. THAT IS A JUDGEMENT THIS FILE IS NOT ENTITLED TO MAKE SILENTLY: it is
+// recorded here as an open question, not settled by the scope line above, and
+// the fix — if the answer is yes — is a line in build-platforms.yml, not a
+// widening here.
+//
+// ── CORRECTION 2026-08-21, same day, before merge — THREE STALE CITATIONS ────
+// Three cross-file line citations in this header had stopped resolving to what
+// they name. Each was OPENED this session and replaced with a re-measured
+// command whose output can be re-taken, not with a new line number. Preserved so
+// a grep for the superseded text still lands here:
+//   · "`deploy-web.yml` explains in prose why it calls both scripts
+//      (`:46-49`, `:121-122`)" — :46-49 is the `paths:` filter rationale and
+//      :121-122 is the rollback note; neither names either script. The prose
+//      that does is at :57-61 and :267-275, and the count now stands in its
+//      place because the count is what the sentence is actually about.
+//   · "`assert-stamp-platforms.mjs:37-42`" — :37-38 is that file's
+//      `PLATFORM_DIRS` constant. The comment recording the green-on-a-comment
+//      mutation is :41-46. Repointed.
+//   · "`npx wrangler deploy --dry-run` at :55, :434 and :634" — ci.yml is 2428
+//      lines today and those three offsets are stale; the three command lines
+//      are :63, :1731 and :2225. The COUNT of three, which is what the paragraph
+//      argues from, did reproduce.
+// No code changed for any of the three.
+//
 // Usage:  node tooling/ci/assert-release-provenance.mjs [repoRoot]
 // Exit 0 = every release build is gated and every publish is recorded.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +187,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+// limb 4 reads a release SCRIPT's source, not a workflow's, and the hazard the
+// header already names for YAML runs the same way in .mjs. MEASURED 2026-08-21,
+// replacing an unmeasured "~30 lines of comment" that stood here: submit-play.mjs
+// names `protection_rules` or `/environments/` on 6 lines, and only 3 of them
+// survive `stripSourceComments` — the other 3 are PROSE ABOUT the read. Half the
+// evidence in that file is a description of the check, so a raw match would
+// credit a script that only DESCRIBES it. THE ONE shared stripper.
+import { stripSourceComments } from './text-reductions.mjs';
 // 🔴 THE WORKFLOW PARSE MOVED OUT OF THIS FILE ON 2026-08-03, unchanged, because
 // four guards now need it and four copies of a parser drift in the one way that
 // reports "clean": which lines it can see at all. Every recorded defect this
@@ -134,10 +272,12 @@ const PUBLISH = [
 /**
  * 🔴 A DRY RUN PUBLISHES NOTHING, AND MISSING THIS COST THE FIRST VERSION FIVE
  * FALSE FAILURES. `ci.yml` typechecks both Workers with `npx wrangler deploy
- * --dry-run` at :55, :434 and :634 — the word `deploy` is right there and not one
- * byte leaves the runner. Demanding a gate check and a deployment marker around
- * a dry run would have written three deployments that never happened into
- * [10]D-9's ledger. Checked against the actual lines before believing the guard,
+ * --dry-run` — RE-MEASURED 2026-08-21,
+ * `grep -cE "npx wrangler deploy --dry-run" .github/workflows/ci.yml` prints 3
+ * (:63, :1731 and :2225, the last inside the `run: |` block opened at :2222) — the
+ * word `deploy` is right there and not one byte leaves the runner. Demanding a
+ * gate check and a deployment marker around a dry run would have written three
+ * deployments that never happened into [10]D-9's ledger. Checked against the actual lines before believing the guard,
  * which is the only reason this is a comment and not a commit.
  *
  * Triage 2026-07-31 (mutation-proven): the exclusion then over-rotated — it
@@ -153,6 +293,75 @@ const shellSegments = (text) => text.split(/&&|\|\||[;|]/);
 /** A job-level `if:` containing either of these runs the job even when a job it
  *  `needs` has FAILED — which is precisely what disarms a `needs: gate` edge. */
 const NEUTRALIZING_IF = /\balways\s*\(|\bfailure\s*\(/;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// limb 4 — A `--submit` VERB IS TWO MECHANISMS, AND THE YAML HALF FAILS OPEN.
+//
+// A store upload is the one act in this repository that cannot be taken back:
+// Play binds the upload certificate at the first upload and Snap auto-updates
+// silently. [ADR 031:117-124] makes it owner-only per instance and names the
+// enforcement — "a GitHub environment with a required reviewer".
+//
+// 🔴 `environment:` ON ITS OWN FAILS OPEN, and that is not a worry, it is
+// documented GitHub behaviour quoted verbatim at submit-play.yml:32-40:
+// "Running a workflow that references an environment that does not exist will
+// create an environment with the referenced name" — with no protection rules,
+// and the run history then shows a deployment that reads exactly like an
+// approval. So a limb that asserted only the presence of the key would assert
+// the half that fails open, and would report clean on a lane with no gate.
+// Hence TWO assertions per submitting job:
+//   (a) the job declares a job-level `environment:` — the only thing that makes
+//       GitHub pause and record who approved, WHEN the environment is protected;
+//   (b) the script it invokes with `--submit` performs a RUN-TIME read of a
+//       deployment environment's `protection_rules` — what makes (a)'s absence
+//       loud instead of invisible.
+//
+// 🔴 WHAT (a) AND (b) DO NOT ASSERT, RECORDED 2026-08-21 SO NO MESSAGE IMPLIES
+// IT. The two are checked SEPARATELY and their environment NAMES are never
+// compared. Probed against a fixture tree with this guard as it stands:
+// `environment: totally-unprotected-other-env` in the YAML beside a script that
+// reads `store-publish` PASSES limb 4 clean, and `environment:` with its value
+// deleted — the key alone, which is also the block form's opening line —
+// satisfies (a). The names are not compared on purpose: the script resolves its
+// environment at run time from its own constant, and demanding a literal match
+// would false-red the first lane that computes the name instead of typing it.
+// This is why the ok() line at the foot of this file says "performs a run-time
+// protection-rules read" and NOT "reads THAT environment's protection rules" —
+// the second is a link the code does not make. It used to say the second.
+//
+// ── WHY THIS IS NOT A FIFTH COPY OF PG-4 ─────────────────────────────────────
+// submit-play.mjs:375 and submit-snap.mjs:408 each already refuse a job that
+// runs `--submit` without `environment:`. MEASURED 2026-08-21: that check exists
+// in 2 of the 4 scripts under tooling/release/ that carry a submit path —
+// `grep -rlE 'PUBLISH_ENVIRONMENT|protection_rules|/environments/' tooling/release/`
+// (`-E`, because with a plain `grep` those `|` are literal and the command prints
+// nothing) names submit-play.mjs and submit-snap.mjs and NOTHING else, while
+// `grep -rl -- --submit tooling/release/*.mjs` names four files. It is also SUBMIT-TIME ONLY: running
+// `submit-play.mjs --dry-run --app subly --allow-missing-artifact` this session
+// EXITED 0 and printed no `PG-` line at all, so the check ci.yml runs on every
+// push is not the check that reads the YAML. This limb is the CI-time, lane-
+// generic half: the day submit-appstore.yml or submit-windows-store.yml grows a
+// `--submit` job, it is covered here without anyone remembering to hand-write a
+// third PG-4 — and (b) is precisely the thing those two scripts do not have.
+//
+// A `node … --submit` invocation, matched per shell segment. The flag and the
+// script path are found SEPARATELY on purpose: `node --experimental-x s.mjs
+// --submit` puts a flag where a path-first pattern expects the path, and a
+// pattern that then matched nothing would drop a submitting job out of the
+// domain silently — the failure mode this whole file is written against. If the
+// verb is present and the script cannot be named, that is COVERAGE LOST below,
+// not a pass.
+const SUBMIT_FLAG = /(?:^|\s)--submit(?=\s|$)/;
+const SUBMIT_RUNNER = /\bnode\b/;
+const SUBMIT_SCRIPT = /\bnode\b[^\n]*?(\S+\.mjs)\b/;
+/** The run-time half, read out of the invoked script with comments stripped:
+ *  it must BUILD the environments API URL and READ the protection rules. Both,
+ *  because a script that fetches the environment and never looks at its rules
+ *  has confirmed only that the environment exists — which is the state
+ *  submit-play.yml:42-45 records measuring on this very repo, where all three
+ *  auto-created environments returned `"protection_rules": []`. */
+const ENV_API_READ = /\/environments\//;
+const ENV_PROTECTION_READ = /protection_rules/;
 
 // ── the two mechanisms must still exist ──────────────────────────────────────
 // Asserting call sites to a script that has been deleted proves nothing.
@@ -191,7 +400,15 @@ if (wfFiles.length === 0) coverageLost([`${WORKFLOWS} contains no workflow files
  * The parse itself lives in tooling/ci/workflow-scan.mjs — see the import note
  * at the top of this file. What stays here is what to DO with the parse.
  */
-const workflows = wfFiles.map((f) => parseWorkflow(ROOT, `${WORKFLOWS}/${f}`)).filter(Boolean);
+// 🔴 NO `.filter(Boolean)` HERE, AND ITS REMOVAL IS THE POINT — mutation sweep
+// 2026-08-22. It stood here and NO mutation could turn it red: `parseWorkflow`
+// returns null on exactly one condition, `!existsSync(abs)`, and every path in
+// `wfFiles` came from `listDir` on that same directory microseconds earlier. So
+// it was an unfalsifiable filter whose only reachable effect would be to DROP a
+// workflow this guard could not parse and carry on — silence reported as
+// success, which is the one outcome this file's header forbids. Without it an
+// unparseable workflow is a loud crash on the next line instead.
+const workflows = wfFiles.map((f) => parseWorkflow(ROOT, `${WORKFLOWS}/${f}`));
 
 // ── coverage self-check on the stripper ──────────────────────────────────────
 // A stripper that ate the file makes every "does this call X" question below run
@@ -246,9 +463,19 @@ function classifyPublishes(job) {
     }
     consumed.add(command.n);
     const cmd = `wrangler ${command.text}`;
-    const publishes = PUBLISH.some(
-      (p) => !p.viaCommand && shellSegments(cmd).some((s) => p.re.test(s) && !DRY_RUN.test(s)),
-    );
+    // 🔴 A `!p.viaCommand &&` CONJUNCT STOOD HERE AND WAS DELETED 2026-08-22,
+    // with a proof, after a fixture written to pin it PROVED IT UNFALSIFIABLE
+    // instead. It could only change the verdict if a `viaCommand` pattern
+    // matched the command this line just synthesized; there is exactly one such
+    // pattern, `/cloudflare\/wrangler-action/`, so the `command:` value would
+    // have to contain the literal string `cloudflare/wrangler-action` — and any
+    // line containing THAT is matched by this loop's own entry test above, is
+    // therefore read as a second wrangler-action step with no `command:` of its
+    // own, and is pushed as the action's DEFAULT deploy at the same line with
+    // the same label. MEASURED on such a tree: identical output, conjunct or
+    // not. The partition it expressed is held where it can fail — the generic
+    // pass's `if (p.viaCommand) continue;`, which the sweep turned RED.
+    const publishes = PUBLISH.some((p) => shellSegments(cmd).some((s) => p.re.test(s) && !DRY_RUN.test(s)));
     if (publishes) found.push({ n: command.n, what: 'a Cloudflare deploy action' });
   }
   for (const p of PUBLISH) {
@@ -269,6 +496,16 @@ for (const wf of workflows) {
     job.gateCall = has(job, /node\s+tooling\/ci\/assert-gate-passed\.mjs/);
     job.markerCall = has(job, /node\s+tooling\/ci\/record-deployment\.mjs/);
     job.publishes = classifyPublishes(job);
+    // limb 4's domain. `script` is null when the verb is there and no `.mjs`
+    // path can be read off the segment — carried through so the floor below can
+    // go COVERAGE LOST on it rather than treating an unreadable call as absent.
+    job.submitCalls = [];
+    for (const l of job.logical) {
+      for (const seg of shellSegments(l.text)) {
+        if (!SUBMIT_FLAG.test(seg) || !SUBMIT_RUNNER.test(seg)) continue;
+        job.submitCalls.push({ n: l.n, script: seg.match(SUBMIT_SCRIPT)?.[1] ?? null });
+      }
+    }
   }
 }
 
@@ -382,6 +619,20 @@ if (registerRaw !== null) {
 // ── assertions ───────────────────────────────────────────────────────────────
 let releaseJobs = 0;
 let publishJobs = 0;
+let submitJobs = 0;
+// 🔴 limb 4's OWN failure count, and it exists because an `ok` LINE IS AN
+// ASSERTION. MEASURED 2026-08-22 on a fixture tree under the scratchpad, with
+// the guard exactly as it stood: a submit job with NO `environment:` printed
+//     ok   1 job(s) invoke a `--submit` verb; each declares an `environment:` …
+// and, four lines below it,
+//     FAIL … job "submit" … declares no job-level `environment:`.
+// The success line asserted, in the present tense, the very thing the failure
+// line denied — on the same run, about the same job. Counting limb 4's own
+// problems (NOT `problems.length`, which a limb-1 red elsewhere would also
+// trip) is what lets the line below say only what held.
+let submitProblems = 0;
+const unnamedSubmitScripts = [];
+const submitScriptsChecked = new Set();
 
 for (const wf of workflows) {
   const isServedLane = servedLaneWorkflows.has(wf.rel);
@@ -453,10 +704,65 @@ for (const wf of workflows) {
       }
     }
 
+    // ── limb 4: a `--submit` job is gated on an environment, and something ──
+    // ──          reads a deployment environment's protection rules at run ──
+    // ──          time (the two names are not compared — see the constants) ──
+    // SCOPE, SAID OUT LOUD BECAUSE THE FAILURE TEXT HAS TO BE HONEST ABOUT IT:
+    // this limb ranges over jobs that invoke a `--submit` VERB, and over nothing
+    // else. It does NOT range over the publish set limb 2 uses. See the "WHAT
+    // THIS LIMB DOES NOT CATCH" block in this file's header, which names the one
+    // job that difference lets through today.
+    if (job.submitCalls.length > 0) {
+      submitJobs++;
+      const first = job.submitCalls[0];
+      // (a) the YAML half.
+      if (!job.lines.some((l) => /^ {4}environment:/.test(l.text))) {
+        submitProblems++;
+        problems.push(
+          `${wf.rel}: job "${job.name}" invokes a \`--submit\` verb at :${first.n} and declares no job-level \`environment:\`. ` +
+            '[ADR 031:117-124] makes promoting a release owner-only per instance and names the environment as the enforcement; a job without one runs the moment it is dispatched, ' +
+            'with no approval and no record of one. A store upload is not undoable — Play binds the upload certificate at the first upload and Snap auto-updates silently.',
+        );
+      }
+      // (b) the run-time half, without which (a) is decoration.
+      for (const call of job.submitCalls) {
+        if (call.script === null) {
+          unnamedSubmitScripts.push(`${wf.rel}:${call.n} (job "${job.name}")`);
+          continue;
+        }
+        const src = read(call.script);
+        if (src === null) {
+          unnamedSubmitScripts.push(`${wf.rel}:${call.n} → ${call.script} (not readable under ${ROOT})`);
+          continue;
+        }
+        submitScriptsChecked.add(call.script);
+        const code = stripSourceComments(src, '.mjs');
+        const reads = ENV_API_READ.test(code) && ENV_PROTECTION_READ.test(code);
+        if (!reads) {
+          submitProblems++;
+          problems.push(
+            `${wf.rel}: job "${job.name}" invokes \`${call.script} --submit\` at :${call.n}, and that script never reads the deployment environment's protection rules ` +
+              '(no `/environments/` API path AND `protection_rules` survives comment stripping in it). ' +
+              '`environment:` on its own FAILS OPEN — GitHub\'s own documentation, quoted at .github/workflows/submit-play.yml:32-40, says a workflow referencing an environment that does not exist CREATES it, unprotected, and runs. ' +
+              'The run history then shows a deployment that reads exactly like an approval. So the YAML line is the pause and this read is the proof the pause was real; a lane with only the first has a gate that a typo silently removes.',
+          );
+        }
+      }
+    }
+
     // ── limb 3: a SERVED channel's lane is held to the same bar ─────────────
     // Derived from the register, so the day a channel is served its lane is
     // covered without anyone remembering to add it here.
-    if (isServedLane && !buildsRelease && job.publishes.length === 0 && !findGate(wf, job).clean) {
+    // 🔴 A FOURTH CONJUNCT — `&& !findGate(wf, job).clean` — STOOD HERE AND WAS
+    // PROVABLY DEAD. Deleted 2026-08-22 by the exhaustive sweep, with a proof
+    // rather than a measurement, because no fixture CAN distinguish it:
+    // `clean` is assigned in exactly one place, inside `if (j.gateCall)`, so
+    // `clean` truthy implies some walked job carries a gate call, which implies
+    // `anyGated` below is true — and the only `problems.push` in this block is
+    // under `if (!anyGated)`. So on every path where the conjunct could matter
+    // it was already true. The other three conjuncts each DO change the
+    // verdict and each has a case below.
+    if (isServedLane && !buildsRelease && job.publishes.length === 0) {
       // Not every job in a served lane's workflow builds or publishes (a lint
       // job, say). Only complain if NO job in this workflow is gated at all.
       const anyGated = [...wf.jobs.values()].some((j) => j.gateCall);
@@ -484,6 +790,28 @@ if (publishJobs === 0) {
     'PUBLISH pattern set has stopped matching — and limb 2 would then be vacuously true forever.',
   ]);
 }
+// limb 4's floor. A zero here is not "no submit lanes exist" — MEASURED
+// 2026-08-21, two do (submit-play.yml's `submit` job runs `--submit` at :406,
+// submit-snap.yml's at :510) — so a zero means SUBMIT_FLAG/SUBMIT_RUNNER stopped
+// matching and limb 4 has been ranging over nothing while reporting clean.
+if (submitJobs === 0) {
+  coverageLost([
+    `ZERO jobs invoke a \`--submit\` verb across ${workflows.length} workflow file(s), ${totalJobs} job(s).`,
+    'Two do: .github/workflows/submit-play.yml and .github/workflows/submit-snap.yml each run one from their',
+    '`submit` job. A zero means the verb pattern has stopped matching and limb 4 is asserting nothing.',
+  ]);
+}
+// An unreadable call is not an absent one. If the verb was found and the script
+// could not be named or opened, half (b) was never asked — say so rather than
+// counting the job as checked.
+if (unnamedSubmitScripts.length > 0) {
+  coverageLost([
+    `${unnamedSubmitScripts.length} \`--submit\` invocation(s) whose script this guard could not read: ${unnamedSubmitScripts.join(', ')}.`,
+    'limb 4 (b) asserts that script performs the run-time environment-protection read. Unread, that assertion',
+    'was never made, and the job would otherwise pass on the strength of the `environment:` line alone — which',
+    'is exactly the half GitHub fails open on.',
+  ]);
+}
 if (servedLaneWorkflows.size === 0) {
   problems.push(
     `${REGISTER} declares no SERVED channel with a lane, so limb 3 has no subject. [9]R-5 requires at least one served channel; this guard should never see zero.`,
@@ -491,6 +819,27 @@ if (servedLaneWorkflows.size === 0) {
 }
 
 ok(`${workflows.length} workflow file(s), ${totalJobs} job(s); ${releaseJobs} build for release, ${publishJobs} publish`);
+ok(
+  // No "THAT environment": the guard never compares the name in the YAML with
+  // the name the script reads. Corrected 2026-08-21 — see the "WHAT (a) AND (b)
+  // DO NOT ASSERT" block beside the constants.
+  //
+  // ── CORRECTION 2026-08-22, before merge — AN `ok` LINE MAY NOT ASSERT WHAT
+  //    THE RUN JUST REFUTED. What stood here, verbatim, was the clause
+  //        "; each declares an `environment:` and its script performs a
+  //         run-time protection-rules read "
+  //    printed UNCONDITIONALLY, above the FAIL lines. It is now spoken only
+  //    when limb 4 raised nothing; otherwise the line says how many of the
+  //    jobs it counted FAILED. The census — the count and the scripts actually
+  //    opened — is a fact either way and stays on both branches, because it is
+  //    what a reader diagnoses from.
+  `${submitJobs} job(s) invoke a \`--submit\` verb; ${submitScriptsChecked.size} script(s) opened for the run-time half ` +
+    `(${[...submitScriptsChecked].sort().join(', ') || '(none)'})` +
+    (submitProblems === 0
+      ? '; each declares an `environment:` and its script performs a run-time protection-rules read'
+      : `; ${submitProblems} of those assertions FAILED — see the FAIL line(s) below`) +
+    `. The two environment names are NOT compared. limb 4 does NOT range over the ${publishJobs} publish job(s) — see the header.`,
+);
 ok(`${servedLaneWorkflows.size} served-channel lane(s) from ${REGISTER}: ${[...servedLaneWorkflows].join(', ') || '(none)'}`);
 
 if (problems.length) {

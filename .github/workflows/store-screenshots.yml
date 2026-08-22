@@ -1,7 +1,7 @@
 name: Store screenshots (live capture)
 
-# Captures the Google Play phone screenshot set from a LIVE build of Subly and
-# uploads it as an artifact for the owner to commit.
+# Captures the Google Play phone AND tablet screenshot sets from a LIVE build of
+# Subly, uploads them as an artifact and opens a pull request proposing the set.
 #
 # ── WHY THIS IS A WORKFLOW AND NOT A LOCAL SCRIPT ────────────────────────────
 # It is the one listing asset that cannot be produced on the owner's machine.
@@ -64,6 +64,43 @@ name: Store screenshots (live capture)
 # records at length. A green tick over an `echo` is how a capability goes dark
 # reporting success. tooling/ci/assert-green-means-ran.mjs enforces the shape:
 # the preflight exits non-zero and no step is `if:`-gated on its output.
+#
+# 🔴 THAT LAST SENTENCE IS PROSE CARRYING A CHECK, AND THE CHECK IS NOT THERE
+# FOR THIS FILE. Measured 2026-08-22, not read off the guard's name.
+# assert-green-means-ran.mjs section B finds a preflight by matching
+# `-z "$SECRET_NAME"` against the step's own `env:` bindings
+# (`testsEmptiness`). This preflight reads its four secrets through a loop and
+# tests `$v`, never a secret's own name, so the detector matches NOTHING here
+# and this workflow is not one of its subjects at all. PROVEN against a
+# scratchpad copy of the tree rather than argued, exit code on its own line:
+# with the `exit 1` DELETED from the preflight below, the guard still printed
+# `ok … 1 secret-presence check(s) fail closed` and EXIT 0. The one it counts
+# is e2e.yml, the only entry in its REQUIRED_SECRET_GATES.
+#
+# THE REPAIR IS TWO EDITS AND ONLY ONE OF THEM IS IN THIS FILE, WHICH IS WHY IT
+# IS NOT MADE HERE. Rewriting the loop as four tests by name does put this file
+# under section B — measured: the guard then reports `2 secret-presence
+# check(s)`, and deleting the `exit 1` FAILS it at EXIT 1 naming this file, this
+# job and all four secrets. But the same measurement turns
+# tooling/ci/test/green-means-ran.test.mjs:225 RED: that test asserts
+# `/1 secret-presence check\(s\) fail closed/` against the real workflow
+# directory, so it pins the count AT reality and forbids any second workflow
+# from ever gaining a fail-closed preflight. Measured with the rewrite in place:
+# the full suite went to tests 5308 / pass 5307 / FAIL 1, the one failure being
+# that assertion. The rewrite was therefore REVERTED rather than landed with a
+# red suite, and the count assertion was NOT weakened to accommodate it — that
+# file is not owned by this change, and a count pinned at reality is a finding
+# about the test, not a licence to edit it.
+#
+# ⚠️ SO, PLAINLY: THE PREFLIGHT BELOW IS CORRECT AND IS GUARDED BY NOTHING.
+# Its behaviour was measured directly instead. `[ … ] && …` under `set -e` is a
+# known footgun and GitHub runs a `run:` body as
+# `bash --noprofile --norc -eo pipefail {0}`, so it was executed under exactly
+# those flags 2026-08-22, each exit code captured on its own line: all four
+# secrets present -> EXIT 0 and the LIVE line; the FIRST absent -> EXIT 1 naming
+# SUPABASE_URL; the LAST absent -> EXIT 1 naming SUPABASE_SERVICE_ROLE_KEY. A
+# failing `[` inside an `&&` list does not trip errexit, which is why the loop
+# does not abort on the first secret that IS set.
 
 on:
   workflow_dispatch:
@@ -75,7 +112,51 @@ permissions:
 
 jobs:
   capture:
-    name: Capture the Play phone screenshot set (live)
+    # RENAMED 2026-08-21, and the header line at the top of this file with it.
+    # Both read "the Play PHONE screenshot set" while this job has driven TWO
+    # viewports since d9cc366 — the `Upload the screenshot set` step below says
+    # "BOTH device-type sets" in its own comment and lists two directories, and
+    # the pull-request step lists the same two. The file contradicted itself
+    # about the one thing a reader comes here to check, twenty-odd lines apart.
+    #
+    # LATENT, NOT LIVE, AND THE DIFFERENCE MATTERS. A job `name:` is display
+    # text; nothing resolves through it. Measured 2026-08-21: the job ID is
+    # still `capture`, and the ID is what every reference anchors on — FOUR rows
+    # in tooling/enforcement-index.json read
+    # `.github/workflows/store-screenshots.yml#capture`, and
+    # tooling/ops/register.json anchors the FILE, not the name. Also `gh run list
+    # --workflow store-screenshots.yml` prints the WORKFLOW name ("Store
+    # screenshots (live capture)"), never this one. So the stale name misled a
+    # human opening the run to decide whether the tablet set had been captured,
+    # which is the single remaining Play gate; it never changed what ran, and
+    # renaming it changes nothing that executes.
+    #
+    # APPENDED 2026-08-21, SAME SESSION, SECOND PASS — the rewrite above fixed
+    # one half of lines 3-4 and left the other half stale. The sentence still
+    # ended "uploads them as an artifact for the owner to commit", which the
+    # ⚠️ note beginning "IT UPLOADS *AND* OPENS A PULL REQUEST" and the step
+    # named "Propose the set for human review (pull request)" have both
+    # contradicted since that step landed. Line 4 now names the pull request as
+    # well. A summary line is the one line a reader trusts without reading
+    # further, so it is the worst place in the file to half-correct a sentence.
+    # The same pass corrected "Nothing here pushes" on the checkout step, which
+    # was false for the same reason.
+    #
+    # APPENDED 2026-08-21, THIRD PASS — A RENAME MUST NOT LAND ON TOP OF A RUN
+    # THAT IS IN FLIGHT, so it was checked rather than assumed:
+    # `gh run list --workflow store-screenshots.yml --limit 10` returns exactly
+    # ONE row, run 30922349590 of 2026-08-04, completed/success. Nothing is
+    # dispatched, and the tablet capture the owner may dispatch has not been run
+    # yet — that single run predates d9cc366 (2026-08-21), the commit that added
+    # the second viewport, which is why it produced the five phone frames the
+    # note above records and no tablet set at all.
+    #
+    # RE-CHECKED 2026-08-22, FOURTH PASS, BECAUSE "NOTHING IS DISPATCHED" IS A
+    # CLAIM WITH A CLOCK ON IT: `gh run list --workflow=store-screenshots.yml
+    # --limit 10` still returns exactly ONE row — run 30922349590, 2026-08-04,
+    # completed/success. The rename above still lands on no run in flight, and
+    # the tablet capture the owner may dispatch is still un-run.
+    name: Capture the Play phone and tablet screenshot sets (live)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # 🔴 THE NARROWEST SET THAT LETS THE CAPTURE OUTLIVE ITS RUN, and both halves
@@ -93,7 +174,13 @@ jobs:
         # GITHUB_TOKEN into .git/config and LEAVES it there for the whole job.
         # This job uploads an artifact, so a credential left in the workspace is
         # one `actions/upload-artifact` glob away from being downloadable on a
-        # public repo. Nothing here pushes. [zizmor artipacked]
+        # public repo. NOTHING USES THAT CREDENTIAL: the one step that pushes
+        # (`Propose the set for human review`) builds its own remote URL from
+        # `github.token` for that single command, so nothing needs the copy
+        # checkout would have left in .git/config. CORRECTED 2026-08-21 — this
+        # line read "Nothing here pushes", which stopped being true when the
+        # pull-request step landed and which the step's own comment below has
+        # contradicted since. [zizmor artipacked]
         with:
           persist-credentials: false
 

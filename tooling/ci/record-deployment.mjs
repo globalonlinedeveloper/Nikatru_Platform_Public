@@ -38,10 +38,118 @@
 // whose listing nobody can open is the second source of truth D-9 exists to
 // prevent: it says something shipped and gives no way to look at it.
 //
+// ── `--sha` · THE ROLLBACK CASE, ADDED 2026-08-21 (E18) ──────────────────────
+// GITHUB_SHA IS THE COMMIT THE RUN WAS DISPATCHED AGAINST, NOT THE ONE THAT WAS
+// BUILT. The two are the same on every `push`, and they part company the moment
+// a lane checks out something else — which is exactly what a rollback is:
+// deploy-web.yml now takes a `rollback_to` input, gives it to
+// `actions/checkout` as `ref:`, and ships the bundle built from THAT commit.
+// With GITHUB_SHA as the only source, such a run would have filed a record
+// naming the head of main: the ledger would say the bad commit is live while
+// the good one is serving, and every reader downstream — the daily provenance
+// monitor, check-prod-provenance.mjs, `readSubmissions` — would agree with it.
+// A ledger that is confidently wrong is worse than the hole it replaced.
+//
+// It is a FULL 40-character lowercase SHA or nothing. A short SHA records a
+// string no `deployments?sha=` query matches; a branch or tag records something
+// that is not a commit at all. And when it differs from GITHUB_SHA the
+// difference is PRINTED — a lane silently recording a commit other than its own
+// is the one shape this flag could turn into a new lie.
+//
+// 🔴 THE FLAG ONLY WORKS IF THE COPY THAT RUNS IS THIS ONE, AND ON A ROLLBACK
+// THAT IS NOT AUTOMATIC. A lane that checks out an older commit replaces this
+// file with that commit's version of it, and every version before 2026-08-21
+// SKIPS the flag rather than rejecting it — the positional loop above does
+// `if (argv[i].startsWith('--')) { i++; continue; }`, so `--sha <40-hex>` is
+// consumed and discarded and the record is filed against GITHUB_SHA on a GREEN
+// run. Measured that day against `git show HEAD:tooling/ci/record-deployment.mjs`
+// with GITHUB_SHA unset: `… --sha 4174c2ab…` still exits 1 with `GITHUB_SHA is
+// not set`, i.e. the flag supplied nothing at all.
+// deploy-web.yml closes this from its side: on a rollback it checks the
+// DISPATCHED commit out beside the target and runs the recorder from there, and
+// a step before the gate RUNS the copy that will run — handing it an invalid
+// `--sha` and requiring the 40-hex refusal below to come back — before anything
+// can ship. It does NOT grep this file's source for the flag: the first draft of
+// that step did, and this very paragraph defeated it, because a comment naming
+// the expression matched exactly as well as the statement that reads it
+// (measured 2026-08-21 on a copy whose live statement was replaced and whose
+// header was left alone — `grep -qF` still said yes). Any other lane that grows
+// a `ref:` must do the same — passing `--sha` to a checked-out older copy of
+// this script is indistinguishable, from the outside, from not passing it.
+//
+// ⚠️ WHICH OF THE FOUR NEW `--sha` CONDITIONS DECIDES PASS/FAIL, swept
+// 2026-08-21 by setting each one alone to `if (false)` in a scratch copy and
+// re-running the CLI — ALL FOUR, not a sample. Written down because two of them
+// are message quality, and a reader who counts four guards here would be
+// counting two decorations. Every run below is
+//   GH_TOKEN=tok GITHUB_REPOSITORY=o/r \
+//   GITHUB_SHA=e2ba7df9000000000000000000000000000000ab \
+//   node tooling/ci/record-deployment.mjs subly-web https://x --sha <input>
+// with a scratch `console.log('SHA_USED=' + sha)` added so the recorded SHA is
+// observable, and a deliberately invalid token so nothing can reach GitHub:
+//   · `shaOverride ?? process.env.GITHUB_SHA` — THE one that carries the fix.
+//     Reduced to `process.env.GITHUB_SHA`, input `--sha 4174c2ab7b40…a15`
+//     prints `SHA_USED=e2ba7df9…` (dispatched) instead of `SHA_USED=4174c2ab…`
+//     (built). Silent, and green on a runner with a real token.
+//   · the 40-hex refusal — REFUSES ON ITS OWN DOMAIN, and that domain is not
+//     covered by deployment-record.mjs's pre-existing hex check, which only
+//     tests `sha.slice(0, 8)`. Input `--sha 4174c2ab` (an 8-character short
+//     SHA — the plausible operator paste): intact, the one-line `✗ --sha
+//     "4174c2ab" is not a full 40-character…` and nothing else runs; as
+//     `if (false)`, that refusal is gone and the script goes on to POST with
+//     `ref` set to the 8-character string (`SHA_USED=4174c2ab`, then only the
+//     fake token's 401 stops it — so the exit code is 1 for a DIFFERENT reason
+//     and the code alone does not show the difference; the printed `ref` does).
+//     A 7-character or uppercase value is caught either way by the pre-existing
+//     check, so THIS is the input that proves the limb.
+//   · the OVERRIDE PRINT below — a print, not a refusal. Disabled, `SHA_USED`
+//     is unchanged and only the ⬜ line disappears. Its whole value is that an
+//     incident reader does not have to infer the substitution.
+//   · the try/catch around `flagValue` — shape, not pass/fail, and KEPT for a
+//     reason that is not "it looks tidy": it is the same try/catch the
+//     pre-existing `--state` / `--listing-url` reads already sit in, and that
+//     shape is PINNED BY THE SUITE — tooling/ci/test/deployment-record.test.mjs
+//     asserts `/--state was given with no value/` against the real CLI. Removed,
+//     a dangling `--sha` still exits 1, as an uncaught stack trace instead of
+//     the one-line `✗ --sha was given with no value`, so `--sha` alone would
+//     answer a dangling flag differently from every other flag on this script.
+//
+// ⚠️ COVERAGE, STATED RATHER THAN IMPLIED — AND THE STATEMENT GOT SHARPER ON
+// 2026-08-22, BECAUSE A CONJUNCT TURNED OUT TO BE PINNED AFTER ALL. The blunt
+// version ("the two refusals have no in-suite negative half") was true of the
+// ROLLBACK input and false of one half of one condition, so it is replaced
+// rather than repeated. Still true: nothing in tooling/ci/test/ passes `--sha`
+// to this script — re-measured after the last edit of this pass,
+// `grep -rn -- "--sha" tooling/ci/test/` returns 8 hits, every one of them in
+// release-durable.test.mjs and every one of them release-manifest.mjs's
+// unrelated flag. What a test CAN already kill, measured one condition at a
+// time against the real CLI:
+//   · `shaOverride !== null` — PINNED, and hard. Drop that conjunct and
+//     `/^[0-9a-f]{40}$/.test(null)` is false on every invocation that gives no
+//     `--sha` at all, so the script refuses `--sha "null"` on the PUSH path and
+//     ALL THREE `record-deployment (offline paths)` cases in
+//     tooling/ci/test/guards.test.mjs stop matching the message they assert
+//     (`no environment given`, `GITHUB_REPOSITORY`, `GITHUB_SHA`).
+//   · the 40-hex regex itself — NOT pinned. Only a `--sha` value can reach it
+//     and no test supplies one.
+//   · `if (!sha)`, whose message this change edited — PINNED, by that same
+//     file's "FAILS when there is no SHA to record". As `if (false)` the run
+//     still exits 1, but the line becomes `could not build the deployment
+//     record: sha ""…`, which does not contain GITHUB_SHA, and the assertion
+//     fails. An exit code alone would NOT have shown this.
+//   · the override print and the try/catch — neither pinned, and neither is a
+//     refusal; see the sweep above.
+// The test that pins the rollback half belongs to whoever next owns
+// tooling/ci/test/deployment-record.test.mjs. What DOES cover this script from
+// the suite is unchanged by `--sha`: deployment-record.test.mjs still asserts
+// that every `record-deployment.mjs <environment>` call site in every workflow
+// resolves against tooling/channel-register.json.
+//
 // Usage:
 //   node tooling/ci/record-deployment.mjs <environment> [environment-url]
 //   node tooling/ci/record-deployment.mjs <environment> [url] \
 //        --state <in_review|live|rejected|pulled> --listing-url <url>
+//   node tooling/ci/record-deployment.mjs <environment> [url] --sha <40-hex>
 //   env:  GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_SHA
 // ─────────────────────────────────────────────────────────────────────────────
 import { appendFileSync, readFileSync, existsSync } from 'node:fs';
@@ -170,12 +278,28 @@ async function main() {
   }
   const [environment, environmentUrl] = positional;
   const repo = process.env.GITHUB_REPOSITORY;
-  const sha = process.env.GITHUB_SHA;
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 
-  if (!environment) return fail('no environment given — usage: record-deployment.mjs <environment> [url] [--state <s>] [--listing-url <u>]');
+  // E18 — see the header block. Read BEFORE the checks below, because it is one
+  // of the two things that can supply the SHA those checks are about.
+  let shaOverride;
+  try {
+    shaOverride = flagValue(argv, 'sha');
+  } catch (err) {
+    return fail(err.message);
+  }
+  if (shaOverride !== null && !/^[0-9a-f]{40}$/.test(shaOverride)) {
+    return fail(
+      `--sha "${shaOverride}" is not a full 40-character lowercase commit SHA. A short SHA records a string ` +
+        'no `deployments?sha=` query matches, and a branch or tag records something that is not a commit — ' +
+        'either way the ledger stops answering the one question it exists for.',
+    );
+  }
+  const sha = shaOverride ?? process.env.GITHUB_SHA;
+
+  if (!environment) return fail('no environment given — usage: record-deployment.mjs <environment> [url] [--state <s>] [--listing-url <u>] [--sha <40-hex>]');
   if (!repo) return fail('GITHUB_REPOSITORY is not set');
-  if (!sha) return fail('GITHUB_SHA is not set');
+  if (!sha) return fail('GITHUB_SHA is not set and no --sha was given');
   if (!token) return fail('GH_TOKEN / GITHUB_TOKEN is not set — the job needs `permissions: deployments: write`');
 
   // ── [10]D-9: the record's SHAPE, resolved before anything is written ───────
@@ -240,6 +364,17 @@ async function main() {
     description = encodeDescription({ state, sha, listingUrl });
   } catch (err) {
     return fail(`could not build the deployment record: ${err.message}`);
+  }
+
+  // E18 — PRINTED, NEVER SILENT, and only when the two actually disagree. On
+  // every push `--sha` repeats GITHUB_SHA and this says nothing; the day it says
+  // something, a lane recorded a commit other than the one it was dispatched
+  // against, and that is a fact an incident reader must not have to infer.
+  if (shaOverride !== null && shaOverride !== process.env.GITHUB_SHA) {
+    console.log(
+      `⬜ --sha ${shaOverride} OVERRIDES GITHUB_SHA (${process.env.GITHUB_SHA ?? 'unset'}) — this run is ` +
+        'redeploying an earlier commit, so the record names what was BUILT, not what was dispatched.',
+    );
   }
 
   try {
