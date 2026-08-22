@@ -30,6 +30,7 @@ import {
   expectedReleaseFormats,
   missingReleaseFormats,
   originEnvironments,
+  signingPosture,
   renderManifest,
   parseManifest,
   verifyEntries,
@@ -59,8 +60,25 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 
 let seq = 0;
 
+/** The register's own word for "declared, but this identity does not exist yet".
+ *  Same field assert-channel-register.mjs's `6d. SIGNING-MATERIAL PINS` reads —
+ *  grep that, not "limb 6d"; the string is arbitrary and never matched on. */
+const SENTINEL = 'CERT-NOT-PURCHASED-IN-THIS-FIXTURE';
+const CONFIGURED_PIN = {
+  notYetConfiguredSentinel: SENTINEL,
+  sha256: 'a'.repeat(64),
+  subject: 'CN=Fixture, O=Fixture',
+  asOf: '2026-08-21',
+  source: 'invented for this fixture; the real one is transcribed from the issued certificate',
+};
+
 /** A register with one direct channel and one store channel — enough for the
- *  format derivation, limb 3 and originEnvironments to have real inputs. */
+ *  format derivation, limb 3 and originEnvironments to have real inputs.
+ *  🔴 THE DIRECT ROW CARRIES A CONFIGURED SIGNING PIN, and that is load-bearing
+ *  rather than decoration: since originEnvironments gates on `signingPosture`, a
+ *  fixture row with no signing block is 'undeclared' and is WITHHELD — so a
+ *  fixture without this would have quietly turned every positive case below into
+ *  a test of the omission path while still reading as a test of the match path. */
 const REGISTER = {
   channels: [
     {
@@ -83,9 +101,18 @@ const REGISTER = {
       served: false,
       artifactFormats: ['.msix', '.exe'],
       deploymentEnvironment: '{app}-windows-direct',
+      signing: { keyKind: 'code-signing-certificate', codeSigningCertificate: { ...CONFIGURED_PIN } },
     },
   ],
 };
+
+/** The same register with the direct row's pin pushed back onto its sentinel —
+ *  i.e. the state the REAL register is in today. `mutate` reaches the row. */
+function registerWith(mutate) {
+  const r = JSON.parse(JSON.stringify(REGISTER));
+  mutate(r.channels.find((c) => c.id === 'windows-direct'));
+  return r;
+}
 
 /** Every fixture root carries the real release-manifest.mjs, because the guard
  *  reads MANIFEST_NAME and the extension derivation OUT of it — that single
@@ -107,9 +134,15 @@ const run = (root, ...flags) => {
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
 
+// 🔴 `stdout` AND `stderr` ARE RETURNED SEPARATELY, NOT ONLY CONCATENATED.
+// build-platforms.yml:1313-1315 runs `for environment in $(… --emit-environments …)`,
+// so STDOUT is a word list fed straight to record-deployment.mjs and stderr is
+// not. A test asserting on `out` alone cannot tell an environment name from an
+// explanation, and the omission reason this increment adds would pass such a
+// test while being recorded as a deployment.
 const cli = (args) => {
   const r = spawnSync(process.execPath, [MANIFEST_SCRIPT, ...args], { encoding: 'utf8' });
-  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, stdout: r.stdout, stderr: r.stderr };
 };
 
 // ── workflow bodies ──────────────────────────────────────────────────────────
@@ -502,12 +535,19 @@ describe('release-manifest.mjs — the derivations', () => {
   });
 
   test('originEnvironments takes DIRECT channels only, and only when the release carries their format', () => {
-    assert.deepEqual(originEnvironments(REGISTER, 'subly', ['subly-v1-subly.msix']), ['subly-windows-direct']);
+    assert.deepEqual(originEnvironments(REGISTER, 'subly', ['subly-v1-subly.msix']).environments, ['subly-windows-direct']);
     // The .aab is carried, but android-play is a STORE row: a GitHub Release is
     // a download origin, never a submission.
-    assert.deepEqual(originEnvironments(REGISTER, 'subly', ['subly-v1-app-release.aab']), []);
+    assert.deepEqual(originEnvironments(REGISTER, 'subly', ['subly-v1-app-release.aab']).environments, []);
     // A direct row whose format is absent is not a channel this release served.
-    assert.deepEqual(originEnvironments(REGISTER, 'subly', ['subly-v1-notes.txt']), []);
+    assert.deepEqual(originEnvironments(REGISTER, 'subly', ['subly-v1-notes.txt']).environments, []);
+    // ...and none of those three is an OMISSION. A row that never matched is a
+    // different fact from a row that matched and was withheld, and the CLI
+    // branches on exactly that difference — an unmatched row must not leak into
+    // `omitted`, or the fail-closed `die` for "nothing matched" stops firing.
+    for (const names of [['subly-v1-subly.msix'], ['subly-v1-app-release.aab'], ['subly-v1-notes.txt']]) {
+      assert.deepEqual(originEnvironments(REGISTER, 'subly', names).omitted, [], names.join());
+    }
   });
 
   test('the manifest round-trips, and its header carries the gated commit', () => {
@@ -524,6 +564,421 @@ describe('release-manifest.mjs — the derivations', () => {
     assert.equal(meta.app, 'subly');
     assert.deepEqual(entries, [{ name: 'a.apk', hash: 'a'.repeat(64) }]);
     assert.match(text, /^# NIKATRU release manifest/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 9]E11 — a release does not record a deployment through an identity
+// that does not exist.
+//
+// THE DEFECT, MEASURED 2026-08-21 BY RUNNING THE RELEASE JOB'S OWN COMMAND over
+// a scratch directory holding two one-line fake files named `…-app-release.aab`
+// and `…-subly.msix`:
+//     node tooling/ci/release-manifest.mjs --emit-environments <dir> --app subly
+//       → EXIT 0, stdout `subly-windows-direct`
+// build-platforms.yml:1313-1315 pipes that stdout into record-deployment.mjs, so
+// the first tag writes a [10]D-9 record for a channel whose
+// `signing.codeSigningCertificate` still reads CODE-SIGNING-CERT-NOT-PURCHASED.
+// LATENT rather than live: `git tag` → 0 that day and the step is
+// `if: github.ref_type == 'tag'`, so it had never executed once.
+//
+// ⚠️ THE CASES BELOW ARE FIXTURES AND A FIXTURE PASSING IS NOT A GATE WORKING —
+// this file's own header says so. The load-bearing case is therefore the LAST
+// one in this block, which runs the CLI against the REAL tooling/channel-register.json
+// and asserts the real windows-direct row is withheld today. If somebody fills
+// that pin in, that test is the one that says so out loud.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('release-manifest.mjs — origin channels are gated on signing posture', () => {
+  test('signingPosture reads the register\'s own sentinel vocabulary, in all four states', () => {
+    // 'pinned' — a pin block with no field on the sentinel.
+    assert.equal(signingPosture(REGISTER.channels.find((c) => c.id === 'windows-direct')).state, 'pinned');
+
+    // 'sentinel' — every value field still the placeholder. This is the real
+    // register's state on both of its direct rows today.
+    assert.equal(
+      signingPosture({ signing: { keyKind: 'code-signing-certificate', codeSigningCertificate: { ...CONFIGURED_PIN, sha256: SENTINEL, subject: SENTINEL } } }).state,
+      'sentinel',
+    );
+
+    // 🔴 'sentinel' ON THE HALF-CONFIGURED BLOCK TOO, and this is the branch the
+    // ANY-not-ALL choice exists for: a real thumbprint beside a placeholder
+    // subject is the state that packages and ships under the wrong name.
+    const half = signingPosture({ signing: { keyKind: 'code-signing-certificate', codeSigningCertificate: { ...CONFIGURED_PIN, subject: SENTINEL } } });
+    assert.equal(half.state, 'sentinel');
+    assert.match(half.detail, /`subject`/);
+    assert.doesNotMatch(half.detail, /`sha256`/, 'the detail must name the fields that are UNFILLED, not every field');
+
+    // 'none' — the register's word for a channel that signs nothing of ours.
+    assert.equal(signingPosture({ signing: { keyKind: 'none', identity: null } }).state, 'none');
+
+    // 'undeclared' — a `signing` block whose every object LACKS a
+    // `notYetConfiguredSentinel` (here: no object at all under it); and the
+    // no-`signing`-block-whatsoever case. ⚠️ AND READ THAT AS THE LAST ARM OF A
+    // CASCADE, NOT AS A STANDALONE DESCRIPTION — measured 2026-08-22, `web`,
+    // `windows-store` and `linux-snap` all fit it word for word (two `signing.*`
+    // objects apiece, `restoreDrill` and `seam`, neither carrying a sentinel key)
+    // and all three classify 'none', because 'none' is tested first. Code order
+    // is sentinel → pinned → none → undeclared, and the assertion two lines down
+    // reaches 'undeclared' only because its `keyKind` is not `"none"`.
+    // ⚠️ NOT "pins nothing", which is what
+    // this line said until 2026-08-21 and what release-manifest.mjs's vocabulary
+    // note said with it: android-play carries the one fully configured pin in the
+    // real register and classifies 'undeclared', because that block has no
+    // sentinel key. The case titled "a `signing.*` object with no USABLE
+    // sentinel is not a pin block" below covers exactly that shape.
+    assert.equal(signingPosture({ signing: { keyKind: 'code-signing-certificate' } }).state, 'undeclared');
+    assert.equal(signingPosture({ id: 'x', kind: 'direct' }).state, 'undeclared');
+
+    // Every state carries a detail a human can act on. A withheld ledger row
+    // with an empty explanation is the silent omission this gate exists to stop.
+    for (const ch of [
+      REGISTER.channels.find((c) => c.id === 'windows-direct'),
+      { signing: { keyKind: 'none' } },
+      { signing: { keyKind: 'code-signing-certificate' } },
+      { signing: { keyKind: 'code-signing-certificate', codeSigningCertificate: { ...CONFIGURED_PIN, sha256: SENTINEL, subject: SENTINEL } } },
+    ]) {
+      assert.ok(signingPosture(ch).detail.length > 20, JSON.stringify(ch));
+    }
+  });
+
+  // 🔴 THE FOUR WAYS THE `signing` VALUE ITSELF IS UNREADABLE. Added 2026-08-22
+  // because the 2026-08-21 sweep that this block's comments cite mutated
+  // signingPosture's two compound `if`s AS WHOLES, and a clause-by-clause re-sweep
+  // found three of the four clauses on the first one surviving `if (false)` with
+  // this file at EXIT 0 / 81 pass / 0 fail: `channel?.`, `signing === null` and
+  // `Array.isArray(signing)`. Only `typeof signing !== 'object'` was held (by the
+  // no-`signing`-key row above). None of the three is dead — each changes the
+  // answer on an input the register can hold — and the array one changes it in the
+  // fail-OPEN direction, which is the one that writes a [10]D-9 row for an
+  // identity nothing could read. So they are pinned here rather than deleted; the
+  // two clauses that genuinely COULD NOT be pinned were deleted instead, and
+  // release-manifest.mjs's block guard records which and why.
+  test('an UNREADABLE `signing` value is UNDECLARED and withheld — null, an array, and no row at all', () => {
+    // `"signing": null` is legal JSON and `typeof null === 'object'`, so without
+    // the `signing === null` clause this reaches `Object.entries(null)` and the
+    // release job dies with a TypeError instead of withholding a ledger row.
+    assert.equal(signingPosture({ id: 'x', kind: 'direct', signing: null }).state, 'undeclared');
+
+    // 🔴 THE ARRAY IS THE DANGEROUS ONE. `typeof [] === 'object'` as well, so
+    // without `Array.isArray` the entries below are the array's INDICES, the
+    // pin-shaped element at index 0 counts as a pin block, and the row classifies
+    // 'pinned' — i.e. a release RECORDS a deployment through a `signing` value no
+    // reader in this repository can interpret.
+    const arrayRow = {
+      id: 'windows-direct',
+      kind: 'direct',
+      artifactFormats: ['.msix'],
+      deploymentEnvironment: '{app}-windows-direct',
+      signing: [{ ...CONFIGURED_PIN }],
+    };
+    assert.equal(signingPosture(arrayRow).state, 'undeclared', 'an array is not a `signing` block');
+    const r = originEnvironments({ channels: [arrayRow] }, 'subly', ['subly-v1-subly.msix']);
+    assert.deepEqual(r.environments, [], 'an unreadable posture must never reach the ledger');
+    assert.equal(r.omitted.length, 1);
+    assert.equal(r.omitted[0].state, 'undeclared');
+
+    // `signingPosture` is EXPORTED, so "no row at all" is an input it can be
+    // handed; `channel?.signing` is the only thing that makes it an answer rather
+    // than a TypeError.
+    assert.equal(signingPosture(undefined).state, 'undeclared');
+    assert.equal(signingPosture(null).state, 'undeclared');
+
+    // ...and the detail names the keyKind it could not use. `?? null` is what
+    // keeps an ABSENT keyKind readable here — without it this line reads
+    // "keyKind undefined", which is a JS spelling and not the register's.
+    assert.match(signingPosture({ signing: {} }).detail, /keyKind null and no signing-material block/);
+  });
+
+  // 🔴 SIX MORE CLAUSES THE 2026-08-21 SWEEP NEVER REACHED, because that sweep
+  // stopped at the conditions the signing-posture change ADDED and these are the
+  // ones it inherited in the same loop. Each survived `if (false)` with this file
+  // at EXIT 0 / 81 pass / 0 fail on 2026-08-22, and none is dead — the register is
+  // hand-written JSON and every shape below is one a human produces. The
+  // `{app}`-less template is the one that is dangerous rather than merely untidy:
+  // `tpl.replace('{app}', app)` is a no-op on it, so the row emits ONE environment
+  // name for EVERY app, and [10]D-9 records subly's release against dictoro's row.
+  test('a MALFORMED row is skipped, never fatal, and never silently renamed', () => {
+    const good = REGISTER.channels.find((c) => c.id === 'windows-direct');
+    const malformed = {
+      channels: [
+        // `null` is legal JSON in an array. `c?.kind` is what makes it a skip.
+        null,
+        // no `deploymentEnvironment` at all — `typeof tpl !== 'string'`.
+        { id: 'no-env', kind: 'direct', artifactFormats: ['.msix'] },
+        // a template that forgot `{app}` — `!tpl.includes('{app}')`.
+        { id: 'literal-env', kind: 'direct', artifactFormats: ['.msix'], deploymentEnvironment: 'windows-direct' },
+        // no `artifactFormats` key — `c.artifactFormats ?? []`.
+        { id: 'no-formats', kind: 'direct', deploymentEnvironment: '{app}-no-formats' },
+        // non-string entries beside the real one — `typeof f === 'string'`.
+        { id: 'junk-formats', kind: 'direct', artifactFormats: [42, null, '.msix'], deploymentEnvironment: '{app}-junk-formats' },
+        // no `id` — the omission line still has to name something.
+        { kind: 'direct', artifactFormats: ['.msix'], deploymentEnvironment: '{app}-unnamed' },
+        good,
+      ],
+    };
+    const r = originEnvironments(malformed, 'subly', ['subly-v1-subly.msix']);
+    // The one well-formed, pinned row still emits. A broken sibling must not cost
+    // the release its ledger row, and must not throw the release job either.
+    assert.deepEqual(r.environments, ['subly-windows-direct']);
+    // Exactly two rows got far enough to be WITHHELD: the junk-formats row (whose
+    // one real format matched) and the id-less row. Every other malformed row was
+    // skipped before posture was ever asked. `literal-env` appearing here is the
+    // `{app}` clause failing open; a bare `undefined` id is the `?? '(unnamed)'`
+    // clause failing open.
+    assert.deepEqual(r.omitted.map((o) => o.id), ['junk-formats', '(unnamed)']);
+    assert.deepEqual(r.omitted.map((o) => o.environment), ['subly-junk-formats', 'subly-unnamed']);
+
+    // A register with no `channels` key, and no register at all, are both empty
+    // answers rather than a crash in the middle of a release job.
+    assert.deepEqual(originEnvironments({}, 'subly', ['subly-v1-subly.msix']), { environments: [], omitted: [] });
+    assert.deepEqual(originEnvironments(undefined, 'subly', ['subly-v1-subly.msix']), { environments: [], omitted: [] });
+  });
+
+  // 🔴 THE `new Set(out)` DEDUPE HAD NOTHING HOLDING IT — pinned 2026-08-22 by the
+  // clause-by-clause sweep, which measured it surviving `if (false)` with this file
+  // EXIT 0 / 81 pass / 0 fail, because no two rows in any fixture or in the real
+  // register have ever shared a `deploymentEnvironment`. Losing it means
+  // `for environment in $(…)` calls record-deployment.mjs TWICE for one channel —
+  // a DUPLICATED [10]D-9 row, not a missing one — and two direct rows for one
+  // environment is simply how a channel gets a second artifact format.
+  // The two `.toLowerCase()` calls in the same expression were ALREADY held when
+  // this case was written (the MIXED fixture's `.AppImage` asset reddens both; that
+  // was mutated in the same sweep and measured, not assumed). They are covered here
+  // anyway on purpose: that hold is incidental to one fixture's filename casing, and
+  // the property — the register's declared extension and the built file's name may
+  // disagree in case — deserves a case that says so.
+  test('the extension match is case-insensitive BOTH ways, and one environment is recorded once', () => {
+    const nosign = { keyKind: 'none' };
+    const reg = {
+      channels: [
+        // format SHOUTED in the register, asset lowercase on disk.
+        { id: 'upper-fmt', kind: 'direct', artifactFormats: ['.MSIX'], deploymentEnvironment: '{app}-upper', signing: nosign },
+        // format lowercase, asset SHOUTED on disk — which is how several Windows
+        // and installer tools name what they emit.
+        { id: 'upper-asset', kind: 'direct', artifactFormats: ['.exe'], deploymentEnvironment: '{app}-lower', signing: nosign },
+        // two rows, one environment: it must be recorded once.
+        { id: 'dup-a', kind: 'direct', artifactFormats: ['.dmg'], deploymentEnvironment: '{app}-dup', signing: nosign },
+        { id: 'dup-b', kind: 'direct', artifactFormats: ['.dmg'], deploymentEnvironment: '{app}-dup', signing: nosign },
+      ],
+    };
+    const r = originEnvironments(reg, 'subly', ['subly-v1.msix', 'SUBLY-V1.EXE', 'subly-v1.dmg']);
+    assert.deepEqual(r.environments, ['subly-dup', 'subly-lower', 'subly-upper']);
+    assert.deepEqual(r.omitted, []);
+  });
+
+  test('--emit-environments without --app REFUSES — `{app}` would resolve to the string "undefined"', () => {
+    const root = fixture();
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subly-v1-subly.msix'), 'msix');
+    const r = cli(['--emit-environments', d, '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /--emit-environments needs --app/);
+    // 🔴 THE HALF THAT MATTERS: nothing may reach stdout. Without the `?? die`,
+    // `tpl.replace('{app}', undefined)` yields `undefined-windows-direct` and the
+    // release job hands THAT to record-deployment.mjs as a real environment.
+    assert.equal(r.stdout.trim(), '');
+  });
+
+  test('a direct row on its sentinel is OMITTED — with the reason, never silently', () => {
+    const onSentinel = registerWith((row) => {
+      row.signing.codeSigningCertificate.sha256 = SENTINEL;
+      row.signing.codeSigningCertificate.subject = SENTINEL;
+    });
+    const { environments, omitted } = originEnvironments(onSentinel, 'subly', ['subly-v1-subly.msix']);
+    assert.deepEqual(environments, [], 'a channel whose signing identity does not exist is not a channel this release deployed through');
+    assert.equal(omitted.length, 1);
+    assert.equal(omitted[0].environment, 'subly-windows-direct');
+    assert.equal(omitted[0].state, 'sentinel');
+    assert.match(omitted[0].detail, /codeSigningCertificate/);
+  });
+
+  test('an UNDECLARED posture is withheld too — an unreadable posture is not a good one', () => {
+    const noPin = registerWith((row) => { delete row.signing.codeSigningCertificate; });
+    const r = originEnvironments(noPin, 'subly', ['subly-v1-subly.msix']);
+    assert.deepEqual(r.environments, []);
+    assert.equal(r.omitted[0].state, 'undeclared');
+
+    // ...and `keyKind: "none"` is NOT withheld: there is no identity to be
+    // missing. Without this case the gate would be "withhold every direct row",
+    // which passes the test above for the wrong reason.
+    const keyless = registerWith((row) => { row.signing = { keyKind: 'none', identity: null }; });
+    const k = originEnvironments(keyless, 'subly', ['subly-v1-subly.msix']);
+    assert.deepEqual(k.environments, ['subly-windows-direct']);
+    assert.deepEqual(k.omitted, []);
+  });
+
+  // 🔴 THE THREE WAYS A `signing.*` OBJECT FAILS TO BE A PIN BLOCK. Added
+  // 2026-08-21 because an `if (false)` sweep of EVERY condition in
+  // release-manifest.mjs found exactly one survivor — the sentinel-key guard
+  //     if (typeof sentinel !== 'string' || sentinel.trim() === '') continue;
+  // neutered, this suite stayed EXIT 0 / 0 fail, i.e. nothing in the tree could
+  // tell a pin block from any other object hanging off `signing`. Neutered, every
+  // object below is counted as a pin, `pinBlocks` goes positive, no field can
+  // equal an absent-or-blank sentinel, and the row classifies 'pinned' and IS
+  // RECORDED. That is the deleted-sentinel-key hazard release-manifest.mjs's
+  // 'undeclared' vocabulary note warns the owner about, arriving as a green run.
+  test('a `signing.*` object with no USABLE sentinel is not a pin block — it is UNDECLARED, and withheld', () => {
+    for (const [label, mutate] of [
+      ['the key deleted — which is how the one configured pin in the real register (android-play) is written', (b) => { delete b.notYetConfiguredSentinel; }],
+      ['the key present but not a string', (b) => { b.notYetConfiguredSentinel = true; }],
+      ['the key present but blank', (b) => { b.notYetConfiguredSentinel = '   '; }],
+    ]) {
+      // The block KEEPS its real sha256/subject — this is a FILLED-IN pin whose
+      // sentinel line was tidied away, not an empty one.
+      const reg = registerWith((row) => mutate(row.signing.codeSigningCertificate));
+      assert.equal(signingPosture(reg.channels.find((c) => c.id === 'windows-direct')).state, 'undeclared', label);
+      const r = originEnvironments(reg, 'subly', ['subly-v1-subly.msix']);
+      assert.deepEqual(r.environments, [], label);
+      assert.equal(r.omitted.length, 1, label);
+      assert.equal(r.omitted[0].state, 'undeclared', label);
+    }
+  });
+
+  test('the omission reason goes to STDERR — stdout is a word list the release job expands', () => {
+    const root = fixture({
+      register: registerWith((row) => {
+        row.signing.codeSigningCertificate.sha256 = SENTINEL;
+        row.signing.codeSigningCertificate.subject = SENTINEL;
+      }),
+    });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subly-v1-subly.msix'), 'msix');
+    const r = cli(['--emit-environments', d, '--app', 'subly', '--repo-root', root]);
+    // EXIT 0, not 1: `gh release create` has already run by this point in the
+    // release job, so failing here would leave a real published release under a
+    // red run. The record is withheld; the release is not.
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout.trim(), '', 'nothing may reach stdout — every word there becomes an argument to record-deployment.mjs');
+    assert.match(r.stderr, /omitted {2}subly-windows-direct/);
+    assert.match(r.stderr, /SENTINEL/);
+    assert.match(r.stderr, /no \[10\]D-9 record for this release/);
+  });
+
+  test('a CONFIGURED pin still emits — the gate is on posture, not on being a direct row', () => {
+    const root = fixture();
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subly-v1-subly.msix'), 'msix');
+    const r = cli(['--emit-environments', d, '--app', 'subly', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout.trim(), 'subly-windows-direct');
+    assert.equal(r.stderr.trim(), '', 'nothing was withheld, so nothing is explained');
+  });
+
+  // 🔴 THE MIXED CASE — one direct row emits WHILE another is withheld, in the
+  // same run. Added 2026-08-21 after a refutation proved this suite was green
+  // against a broken variant: rewriting the omission loop in --emit-environments
+  // to
+  //     for (const o of (environments.length === 0 ? omitted : []))
+  // makes the reasons print ONLY when nothing at all emitted, i.e. silent
+  // whenever the release records anything — and the whole file still passed,
+  // because every case above has either one emitting row or one withheld row and
+  // never both. That mutation is the exact silent-omission failure the header of
+  // originEnvironments says this half exists to stop.
+  // UNREACHABLE WITH THE REGISTER AS IT STANDS (only one direct row can match a
+  // real release directory today), and free at fixture level. The day
+  // linux-appimage has a lane, mixed becomes the ORDINARY shape: one identity
+  // bought, the other still on its sentinel.
+  // (The appimage block's key names were `appimage-signing-key` /
+  // `appImageSigningKey` — invented — until 2026-08-22; the real row reads
+  // `own-signing-key` / `signingPublicKey`. The gate reads SHAPE and not name, so
+  // no outcome changed, but a fixture naming a key the register does not have
+  // invites the next reader to check the wrong thing.)
+  const mixedRegister = () => {
+    const r = JSON.parse(JSON.stringify(REGISTER));
+    r.channels.push({
+      id: 'linux-appimage',
+      kind: 'direct',
+      served: false,
+      artifactFormats: ['.AppImage'],
+      deploymentEnvironment: '{app}-linux-appimage',
+      signing: { keyKind: 'own-signing-key', signingPublicKey: { notYetConfiguredSentinel: SENTINEL, algorithm: 'ed25519', publicKeyBase64: SENTINEL } },
+    });
+    return r;
+  };
+  const MIXED_ASSETS = ['subly-v1-subly.msix', 'subly-v1-subly.AppImage'];
+
+  test('MIXED: one direct row emits and another is withheld IN THE SAME RUN — both halves are returned', () => {
+    const { environments, omitted } = originEnvironments(mixedRegister(), 'subly', MIXED_ASSETS);
+    assert.deepEqual(environments, ['subly-windows-direct'], 'the pinned row is still recorded');
+    assert.equal(omitted.length, 1, 'the sentinel row is still withheld — a non-empty emit list must not swallow it');
+    assert.equal(omitted[0].environment, 'subly-linux-appimage');
+    assert.equal(omitted[0].id, 'linux-appimage');
+    assert.equal(omitted[0].state, 'sentinel');
+    assert.match(omitted[0].detail, /signingPublicKey/);
+  });
+
+  test('MIXED, THROUGH THE CLI: the emitted name is on STDOUT and the withheld reason on STDERR, together', () => {
+    const root = fixture({ register: mixedRegister() });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    for (const n of MIXED_ASSETS) writeFileSync(join(d, n), n);
+    const r = cli(['--emit-environments', d, '--app', 'subly', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    // STDOUT is the word list `for environment in $(…)` expands: exactly the one
+    // recordable environment, and nothing else may join it.
+    assert.equal(r.stdout.trim(), 'subly-windows-direct');
+    // 🔴 THIS IS THE ASSERTION THE MUTATION ABOVE FAILS: something DID emit, and
+    // the withheld row must still be explained.
+    assert.match(r.stderr, /omitted {2}subly-linux-appimage/);
+    assert.match(r.stderr, /SENTINEL/, 'the reason must carry the register\'s own words, not just a name');
+    assert.doesNotMatch(r.stderr, /omitted {2}subly-windows-direct/, 'the pinned row was recorded, not withheld');
+    // ...and the "nothing was recorded at all" line belongs to the OTHER empty.
+    // Printing it here would tell the log a release recorded nothing while stdout
+    // was handing record-deployment.mjs an environment.
+    assert.doesNotMatch(r.stderr, /no \[10\]D-9 record for this release/);
+  });
+
+  test('MATCHED-AND-WITHHELD and MATCHED-NOTHING are different empties, and only one fails', () => {
+    const root = fixture({
+      register: registerWith((row) => {
+        row.signing.codeSigningCertificate.sha256 = SENTINEL;
+        row.signing.codeSigningCertificate.subject = SENTINEL;
+      }),
+    });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'notes.txt'), 'x');
+    const r = cli(['--emit-environments', d, '--app', 'subly', '--repo-root', root]);
+    // No direct row matched at all — the pre-existing fail-closed path, which
+    // this increment must not have swallowed into the new exit-0 branch.
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no `kind: "direct"` channel/);
+    assert.doesNotMatch(r.out, /omitted {2}/, 'a row that never matched is not a row that was withheld');
+  });
+
+  test('THE REAL REGISTER: both direct rows sit on their sentinels today, so a real release records nothing', () => {
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const direct = register.channels.filter((c) => c.kind === 'direct');
+    assert.ok(direct.length >= 1, 'this whole gate ranges over direct rows; none means it ranges over nothing');
+    // Not pinned to 2: the day a third direct channel is added this must keep
+    // measuring, not keep asserting a count taken in August.
+    for (const c of direct) {
+      const p = signingPosture(c);
+      assert.ok(['sentinel', 'pinned', 'none', 'undeclared'].includes(p.state), `${c.id} → ${p.state}`);
+    }
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subly-v1.0.0-subly.msix'), 'msix');
+    const r = cli(['--emit-environments', d, '--app', 'subly']);
+    const withheld = direct.filter((c) => signingPosture(c).state === 'sentinel').map((c) => c.id);
+    if (withheld.includes('windows-direct')) {
+      // 🔴 THIS IS THE STATE ON 2026-08-21 and the assertion is written so that
+      // FILLING THE PIN IN turns it into the other branch rather than into a
+      // silent pass: `signing.codeSigningCertificate` reads
+      // CODE-SIGNING-CERT-NOT-PURCHASED, so the release publishes the .msix and
+      // records no deployment for it.
+      assert.equal(r.code, 0, r.out);
+      assert.equal(r.stdout.trim(), '', 'the real register must not emit an environment for an identity that does not exist');
+      assert.match(r.stderr, /omitted {2}subly-windows-direct/);
+    } else {
+      // The certificate was purchased and the pin filled. The row is recordable
+      // again and this side of the branch is what proves the gate opens.
+      assert.equal(r.code, 0, r.out);
+      assert.equal(r.stdout.trim(), 'subly-windows-direct');
+    }
   });
 });
 
@@ -845,13 +1300,22 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     assert.match(r.out, /no `kind: "direct"` channel/);
   });
 
-  test('--emit-environments resolves the real register to a real environment', () => {
+  test('--emit-environments resolves the real register to a real environment NAME', () => {
     const d = join(TMP, `d${seq++}`);
     mkdirSync(d, { recursive: true });
     writeFileSync(join(d, 'subly-v1-subly.msix'), 'msix');
     const r = cli(['--emit-environments', d, '--app', 'subly']);
     assert.equal(r.code, 0, r.out);
-    assert.equal(r.out.trim(), 'subly-windows-direct');
+    // 🔴 `out`, NOT `stdout`, AND THAT IS THE WHOLE POINT OF THIS CASE. What it
+    // has always tested is the RESOLUTION — that the real register's
+    // `deploymentEnvironment` template plus `--app subly` produces the string
+    // `subly-windows-direct` rather than a `{app}` left unsubstituted. Since
+    // 2026-08-21 that row is withheld on signing posture, so the resolved name
+    // now appears on stderr in the omission line instead of on stdout. WHICH
+    // stream it lands on is asserted by the posture block above; this case must
+    // not silently become a second, weaker copy of that assertion.
+    assert.match(r.out, /subly-windows-direct/);
+    assert.doesNotMatch(r.out, /\{app\}/);
   });
 
   test('with no mode it refuses instead of doing something plausible', () => {

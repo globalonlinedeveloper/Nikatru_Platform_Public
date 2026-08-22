@@ -26,6 +26,44 @@
 // user their subscription is over. The three booleans are separate because they
 // are separately true.
 //
+// ── WHO COUNTS THE ROWS NOBODY DRAINS (added 2026-08-21) ─────────────────────
+// Recording without a drain is a queue that grows in silence, and until this
+// date nothing anywhere counted it. Measured on the tree that day: this INSERT
+// was the table's ONLY writer, and `executed_at` occurred in FIVE code sites in
+// the whole repository, NONE of them a reader — the INSERT below (grep
+// `requested_at, executed_at, not_executed_reason`, :168 as of 2026-08-22 and
+// :151 before the paragraph you are reading grew), three lines of
+// migrations/0005_cancellation_requests.sql (:20, :25, :59) and one
+// assertion at test/cancellation.test.ts:156. There was no UPDATE of the table
+// anywhere and nothing in tooling/ops listed a pending row. FIVE is the count
+// BEFORE this change, which adds ten of its own — five in ../scheduled.ts, four
+// in test/cancellation-drain.test.ts, one here — so the same repository-wide
+// grep run today returns FIFTEEN, not six.
+// ⚠️ CORRECTED 2026-08-22, NOT REWRITTEN: the FIFTEEN was re-taken today and is
+// now TWENTY.  `grep -ron executed_at .` (node_modules and .git excluded) —
+// test/cancellation-drain.test.ts 6, ../scheduled.ts 6, this file 4,
+// migrations/0005_cancellation_requests.sql 3, test/cancellation.test.ts 1. The
+// FIVE and the FIFTEEN above were both true when written; the 2026-08-22 pass
+// added two assertions naming the column to the new test and one grep recipe
+// to each of this file and ../scheduled.ts. The point is unchanged — a reader
+// must not read the count as evidence of readers at all, because the number of
+// CODE PATHS THAT READ the column is still ONE, the census in ../scheduled.ts.
+// The drain-census limb in ../scheduled.ts now writes the queue's depth to
+// `cron_heartbeat` under the job name `cancellation_drain` on every nightly cron
+// run. Its constant is named in words rather than spelt here on purpose:
+// `deriveWatchedJobs` (tooling/ops/check-heartbeats.mjs) decides whether a job
+// constant is USED by regex-matching its name over the RAW concatenated bytes of
+// services/platform/src, comments included, so a prose mention in this file
+// switches off the "declared and NEVER USED" limb for that constant. Measured
+// 2026-08-22 — see that constant's doc comment for the six-way before/after.
+//
+// ⚠️ IT CHANGES NOTHING ABOUT THIS ROUTE, and it drains nothing. The census
+// counts; executing is still owner-gated on the seller credential above, no
+// heartbeat goes red as the backlog grows, and on a healthy night the number is
+// only in the table — check-heartbeats.mjs prints a job's detail only when that
+// job is RED. It makes the depth a number instead of a silence, so the owner
+// half starts from a count rather than from an unknown.
+//
 // ── WHY THE SUBSCRIPTION IS RESOLVED FROM THE SESSION ────────────────────────
 // The body carries an app id and NOTHING ELSE. A route that accepted a
 // subscription id would let anyone cancel anyone's subscription — the id is not

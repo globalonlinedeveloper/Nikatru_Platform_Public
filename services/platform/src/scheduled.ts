@@ -423,6 +423,214 @@ export async function renewalsFanOut(env: Env): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 5]M-9 · THE CANCELLATION DRAIN CENSUS — A DEPTH, NOT A DRAIN.
+//
+// 🔴 THE DEFECT, RE-MEASURED ON THIS TREE 2026-08-21. `cancellation_requests`
+// had exactly ONE writer and NO reader outside the test suite. `executed_at`
+// occurred in FIVE code sites in the whole repository and NONE was a reader:
+// the INSERT in src/routes/cancellation.ts that binds it as the literal NULL
+// (grep `requested_at, executed_at, not_executed_reason` — :151 the day this
+// paragraph was written, :168 since that file's header grew on 2026-08-22, which
+// is why the anchor and not the number is the durable pointer), three lines of
+// migrations/0005_cancellation_requests.sql (:20, :25,
+// :59), and one assertion at test/cancellation.test.ts:156. There is no UPDATE
+// of the table anywhere in the tree, no cron limb touched it, and none of the
+// 16 files in tooling/ops/ listed a pending row. So every recorded request sat
+// at `executed_at IS NULL` for as long as it existed and NOTHING COUNTED THEM.
+//
+// LATENT, NOT LIVE, and that distinction is why this is a census and not an
+// alarm: the route answers 404 without an active entitlement and no
+// subscription has been sold, so the depth is zero today. What was live is the
+// depth being UNKNOWN — "nobody has drained this" was a silence, and a silence
+// gives the owner half no number to start from on the day the credential lands.
+//
+// ⚠️ IT DRAINS NOTHING. Executing against the merchant of record needs a seller
+// credential that does not exist (OWNER_QUEUE A-1) and is deliberately not
+// designed around here.
+//
+// ⚠️ AND `ok` STAYS 1 WHILE THE BACKLOG GROWS — [ADR 035] applied, not an
+// oversight. Nothing in this Worker can drain a row, so `ok = undrained === 0`
+// would go red on the first real cancellation and stay red every night until an
+// owner-gated credential landed: the muted-alarm shape `analytics_liveness`
+// already paid for once (its `ok` was `total > 0` for one day, 2026-08-06 →
+// 08-07). `ok` keeps answering the one question every writer's `ok` answers —
+// DID THE WORK SUCCEED, i.e. did the query run.
+//
+// ⚠️ WHAT THIS DOES NOT CATCH, said plainly because a census that reads as a
+// monitor is worse than no census:
+//   · NOTHING TURNS RED ON A GROWING BACKLOG, and nothing prints the number on
+//     a healthy night either. tooling/ops/check-heartbeats.mjs prints a job's
+//     `detail` only when that job is RED (main() logs `verdict.reason`, and the
+//     green reason names the occurrence, not the detail). So today the depth is
+//     read by querying `cron_heartbeat` — there is no judging reader for this
+//     job the way tooling/ops/check-analytics-liveness.mjs judges the liveness
+//     one, and writing one is the next increment, not this one.
+//   · NO PER-REASON SPLIT. `not_executed_reason` stays on the row for whoever
+//     drains it; putting that enum in this SQL would copy `NotExecutedReason`
+//     (src/routes/cancellation.ts) into a second place nothing keeps in step.
+//   · IT SAYS NOTHING ABOUT WHETHER A REQUEST SHOULD HAVE BEEN EXECUTED. Every
+//     row is undrained today for a reason the row itself records.
+//   · AND PART OF THE `detail` CONTRACT IS PINNED BY NO TEST. A 13-mutant sweep
+//     of this function against test/cancellation-drain.test.ts, 2026-08-21:
+//     FOUR go red — both `CASE WHEN ... IS NULL` limbs of the query below, the
+//     `Number.isFinite` branch, and `ok = false` in the catch. NINE survive.
+//     Deleting the ` oldest=${oldest}` token, and forcing either the
+//     `recorded === 0` or the `undrained === 0` prose limb, are all invisible:
+//     the test's helper parses every token, but its assertions read only
+//     `undrained`, `recorded` and `oldest_age_h`. Five more are normalisations
+//     no input in that file reaches (`?? 0`, `|| 0`, `== null`, the
+//     `oldest === null` guard, `Math.max(0, …)`) — kept, because a count that is
+//     correct by coincidence breaks the first time the shape moves, but nothing
+//     measures them. The ninth is the call site itself:
+//   · THE CALL SITE IS HELD BY NOTHING. No file in test/ imports the `scheduled`
+//     handler — every import from this module is of a named function or
+//     constant — so removing `await cancellationDrainCensus(env)` from the
+//     handler leaves test/cancellation-drain.test.ts at 6/6 green, and
+//     `deriveWatchedJobs` still passes because it only needs the drain job
+//     constant — 🔴 SPELT OUT HERE ON 2026-08-21 AND DE-SPELT ON 2026-08-22,
+//     because spelling it in a comment is itself what switched that check off;
+//     the constant's own doc below carries the measurement — to appear beside a
+//     `recordHeartbeat` call, which it does whether or not anything calls this
+//     function. NOT NEW, and not caused here: all five pre-existing cron limbs
+//     are wired exactly this way.
+//
+// ⚠️ THE TWO BULLETS ABOVE ARE THE 2026-08-21 MEASUREMENT AND ARE LEFT AS
+// WRITTEN — they were true that day and a dated record that is renumbered stops
+// being one. RE-MEASURED 2026-08-22, after SEVEN cases were added to
+// test/cancellation-drain.test.ts, they are no longer the state of the tree:
+//   · THE SWEEP IS NOW 20 MUTANTS, NOT 13 — the FOURTEEN mutation points in
+//     this function (every condition it contains, its two SQL `CASE` limbs, the
+//     catch's `ok = false`, and the ` oldest=` token), `recordHeartbeat`'s one
+//     row-count guard, the handler call site, and the four conditions the test
+//     file's own helper and stubs contain, each set to its `if (false)`
+//     equivalent ONE AT A TIME against a baseline of
+//     `vitest run test/cancellation-drain.test.ts` EXIT 0, 13 passed. 17 go red
+//     in vitest, 2 go red in `tsc --noEmit` (EXIT 2) and in no test, and ONE
+//     survives.
+//   · THE SURVIVOR IS NOT IN THIS FUNCTION: `if (rows.length === 0) return;` in
+//     `recordHeartbeat` above, which predates this change and which no limb here
+//     can reach — this census always passes exactly one row. Reported rather
+//     than deleted because it is not in a block this change touches.
+//   · THE NINE THE BULLET ABOVE NAMES ARE CLOSED. ` oldest=` is read by "carries
+//     the oldest UNDRAINED row verbatim"; `Math.max(0, …)` by "never reports a
+//     NEGATIVE age"; both `|| 0` fallbacks by the two "non-numeric" cases; the
+//     `row?.` chains and the `== null` guard by "survives first() returning
+//     null"; and BOTH zero-branches by "an empty table and a fully drained one
+//     are NOT the same sentence" — which grades the ENGLISH, because those two
+//     branches emit byte-identical tokens and no token assertion can ever tell
+//     them apart. The call site is read by "writes a cancellation_drain beat
+//     when the SCHEDULED HANDLER runs", the only test in the tree that runs the
+//     real handler; it also asserts the whole six-job set the register watches.
+//   · TWO WERE DELETED RATHER THAN PINNED: the `?? 0` that sat inside the
+//     `recorded` normalisation below, and an `i === -1` fallback in the test
+//     file's `prose` helper. Measured before deleting, on a green baseline:
+//     forcing either to `false` left the file at EXIT 0, 13 passed. No input
+//     distinguished either from its own absence, and the rule is pin or delete,
+//     never "obviously correct".
+//   · TWO ARE HELD BY THE TYPECHECKER AND BY NO TEST, SAID PLAINLY RATHER THAN
+//     COUNTED AS COVERAGE: `row?.oldest ?? null` and the `oldest === null`
+//     guard. Disabling either leaves the suite 13/13 green and exits
+//     `tsc --noEmit` 2, because `.first()` is typed `T | null` and `Date.parse`
+//     does not take one. They cannot be deleted — their absence does not
+//     compile — so "no test reddens" is a fact about them, not a hole.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The job name recorded in `cron_heartbeat` for the drain census.
+ *
+ *  ⚠️ Same load-bearing `<NAME>_JOB` spelling as the other five constants in
+ *  this file (grep `^export const [A-Z_]*_JOB`) — see the keep-alive one's doc
+ *  at the top for why. `duty.platform-cron.watchedJobs` in
+ *  tooling/ops/register.json names this literal, and the constant reaches
+ *  `recordHeartbeat` at a real call site below; `deriveWatchedJobs` fails both
+ *  directions without those two.
+ *
+ *  🔴 AND THE SYMBOL IS DELIBERATELY NOT SPELT ANYWHERE IN A COMMENT, HERE OR IN
+ *  routes/cancellation.ts. `deriveWatchedJobs` builds its "declared and NEVER
+ *  USED" limb by stripping the declaration out of the concatenated source and
+ *  regex-matching `\b<NAME>\b` over what is left — and `readSourceTree` in
+ *  tooling/ops/check-heartbeats.mjs concatenates RAW bytes, with no
+ *  `stripSourceComments`. So a comment that names the constant IS a usage to
+ *  that guard, and prose written to explain the check is what turns it off.
+ *  Measured 2026-08-22, driving the real `deriveWatchedJobs` over a copy of this
+ *  tree: with the names spelt out, replacing EVERY non-comment use of any ONE of
+ *  the six constants with a literal — 1, 1, 2, 1, 2 and 2 uses respectively, in
+ *  declaration order — left PROBLEMS=0 in all six cases. Six live limbs reading
+ *  as green. With the names de-spelt as they are now, the same six mutations
+ *  give PROBLEMS=1 each. Both directions this doc claims are real, same run:
+ *  removing "cancellation_drain" from `watchedJobs` gives JOBS=5 PROBLEMS=1
+ *  ("COVERAGE LOST"), and pointing the call site below at the bare literal gives
+ *  JOBS=6 PROBLEMS=1 ("declared … and NEVER USED"). Re-run both before writing
+ *  any of these constant names into a comment anywhere under src/. */
+export const CANCELLATION_DRAIN_JOB = 'cancellation_drain';
+
+/**
+ * ONE query, three aggregates, no row bodies — the same shape and the same
+ * reason as the liveness limb's GROUP BY: D1 Free bounds queries per
+ * invocation, and a census must never be the limb that costs the sweep its
+ * budget.
+ *
+ * 🔴 `recorded` IS COUNTED ALONGSIDE `undrained` ON PURPOSE. `undrained=0`
+ * alone is ambiguous in exactly the way an empty `events` table was: it reads
+ * identically for "every request was executed" and "nobody ever asked". Today
+ * the second is true, and the token pair is what will say so when it stops
+ * being.
+ *
+ * 🔴 `oldest` IS THE OLDEST UNDRAINED ROW, NOT THE OLDEST ROW. `MIN(requested_at)`
+ * over the whole table would be pinned by the first request ever made and would
+ * keep reporting a huge age after every request had been executed — an age that
+ * only ever grows is not a queue depth, it is a clock.
+ *
+ * A row is written UNCONDITIONALLY, including at zero. A detector that records
+ * only when it found something is silent in precisely the case it exists for.
+ */
+export async function cancellationDrainCensus(env: Env): Promise<void> {
+  let detail: string;
+  let ok = true;
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS recorded,
+              SUM(CASE WHEN executed_at IS NULL THEN 1 ELSE 0 END) AS undrained,
+              MIN(CASE WHEN executed_at IS NULL THEN requested_at END) AS oldest
+         FROM cancellation_requests`,
+    ).first<{ recorded: number | null; undrained: number | null; oldest: string | null }>();
+    // ⚠️ `?? 0` USED TO SIT INSIDE THIS `Number(…)` AND IS DELETED, 2026-08-22.
+    // No input could distinguish it: `Number(undefined)` is NaN and the `|| 0`
+    // already catches NaN, so the nullish arm and its absence produced the same
+    // byte on every path. It read as a guard and was not one. `|| 0` IS held —
+    // test/cancellation-drain.test.ts, "survives a non-numeric `recorded`".
+    const recorded = Number(row?.recorded) || 0;
+    // ⚠️ `SUM` over zero rows is NULL in SQLite, not 0. `Number(null)` happens
+    // to be 0, but a count that is correct by coincidence is a count that goes
+    // wrong the first time the shape changes, so it is normalised explicitly.
+    // The `row?.` chain is not decoration either: `.first()` is typed `T | null`
+    // and "survives first() returning null" goes red without it.
+    const undrained = row?.undrained == null ? 0 : Number(row.undrained) || 0;
+    const oldest = row?.oldest ?? null;
+    const oldestMs = oldest === null ? Number.NaN : Date.parse(oldest);
+    // `unknown`, never a silent 0. `requested_at` is written by `nowIso()` and
+    // is therefore parseable on every row this rail wrote — but the column is a
+    // bare TEXT with no CHECK, so an unparseable value is reachable, and an
+    // unparseable timestamp reported as `oldest_age_h=0` would read as "the
+    // queue is brand new" at exactly the moment nobody can tell how old it is.
+    const age = Number.isFinite(oldestMs)
+      ? Math.max(0, (Date.now() - oldestMs) / 3_600_000).toFixed(1)
+      : 'unknown';
+    detail =
+      recorded === 0
+        ? 'undrained=0 recorded=0 oldest=none oldest_age_h=0 — nothing has ever been recorded, so the queue depth is zero rather than unknown.'
+        : undrained === 0
+          ? `undrained=0 recorded=${recorded} oldest=none oldest_age_h=0 — every recorded request carries executed_at.`
+          : `undrained=${undrained} recorded=${recorded} oldest=${oldest} oldest_age_h=${age} — UNDRAINED: nothing here executes a cancellation; this falls only when a human acts. [5]M-9`;
+  } catch (err) {
+    // ok=0 means THE WORK FAILED. A query that could not run tells us nothing
+    // about the queue, and must never be recorded as "nothing is waiting".
+    ok = false;
+    detail = `undrained=unknown recorded=unknown oldest=none oldest_age_h=unknown — the drain census query FAILED: ${String(err)}`;
+  }
+  await recordHeartbeat(env, [{ target: '(portfolio)', ok, detail }], CANCELLATION_DRAIN_JOB);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // [pipeline 14]O-17 · THE RETENTION SWEEP — BUILT DORMANT, ARMED BY ONE VALUE.
 //
 // 🔴 THE STATE THIS REPLACES. tooling/ops/register.json carries two rows at
@@ -453,8 +661,8 @@ export async function renewalsFanOut(env: Env): Promise<void> {
 
 /** The job name recorded in `cron_heartbeat` for the retention sweep.
  *
- *  ⚠️ THE `<NAME>_JOB` SPELLING IS LOAD-BEARING — the same convention
- *  RENEWALS_JOB documents above. `deriveWatchedJobs` in
+ *  ⚠️ THE `<NAME>_JOB` SPELLING IS LOAD-BEARING — the same convention the
+ *  renewals constant documents above. `deriveWatchedJobs` in
  *  tooling/ops/check-heartbeats.mjs reads these declarations out of THIS source
  *  and fails BOTH directions: unless `duty.platform-cron.watchedJobs` names the
  *  literal, and unless the constant reaches `recordHeartbeat` at a REAL call
@@ -595,8 +803,11 @@ export function retentionCutoff(days: number | null, nowMs: number = Date.now())
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Heartbeat job name. Same `<NAME>_JOB` convention and same two-directional
- *  check by `deriveWatchedJobs` as RETENTION_SWEEP_JOB — it must also appear in
- *  `duty.platform-cron.watchedJobs` in tooling/ops/register.json. */
+ *  check by `deriveWatchedJobs` as the retention-sweep constant above — it must
+ *  also appear in `duty.platform-cron.watchedJobs` in tooling/ops/register.json.
+ *
+ *  ⚠️ The neighbouring constant is named in words, not spelt: see the drain
+ *  census constant's doc for the measurement that says why. */
 export const EVENTS_ROLLUP_JOB = 'events_rollup';
 
 /** The rollup's identity in `rollup_state`. One string, one place. */
@@ -1004,6 +1215,12 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, en
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
       await renewalsFanOut(env);
+      // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
+      // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
+      // retention.d1.platform_db.cancellation_requests) that the sweep below never
+      // touches. It sits ahead of the destructive limb only so a slow sweep cannot
+      // delay a census that costs one query.
+      await cancellationDrainCensus(env);
       // The rollup runs BEFORE the sweep so a day rolled up tonight is sweepable
       // tonight.
       //

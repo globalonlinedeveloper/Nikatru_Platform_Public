@@ -32,9 +32,12 @@
 //   · [3]S-7a  assert-catalog-reachable.mjs— CATALOGUE REACHABILITY (does it answer)
 //   · [1]F-9   check-site-integrity.mjs    — canonical form, sitemap↔page relation
 // In particular this file does NOT re-assert that an indexable page appears in
-// the sitemap: check-site-integrity.mjs:477-499 already owns that relationship,
-// in both directions, per deploy root. What this file owns is that the sitemap's
-// /apps/ blocks are the ones the generator would have written.
+// the sitemap: check-site-integrity.mjs already owns that relationship, in both
+// directions, per deploy root, under its `the sitemap must list exactly the
+// indexable pages, by canonical URL` banner. (Anchored, not numbered: this read
+// `:477-499` until 2026-08-21 and that section had moved.) What this file owns
+// is that the sitemap's /apps/ blocks are the ones the generator would have
+// written.
 //
 // ── NO FLOOR ANYWHERE, ON PURPOSE ────────────────────────────────────────────
 // W-9's original acceptance asked for a `REQUIRED_COVERAGE` floor of "at least
@@ -53,6 +56,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripInert } from './text-reductions.mjs';
 import {
   planDiscovery,
   APPS_DIR,
@@ -358,7 +362,8 @@ for (const [rel, expected] of served) {
   if ('offers' in ld) {
     problems.push(
       `${rel} JSON-LD carries an \`offers\` block. No price may be written here: [OWNER_QUEUE D-1] locks ` +
-        '$4.99/month and $19.99/year while apps/_template.html:76 says priceCurrency INR, and which ' +
+        '$4.99/month and $19.99/year while the JSON-LD block of apps/_template.html says priceCurrency ' +
+        'INR, and which ' +
         'currency the checkout actually charges is UNVERIFIED from this repository. ' +
         'assert-no-price-literals.mjs bans a price literal in shipping source for the same reason.',
     );
@@ -853,6 +858,7 @@ let chromePagesChecked = 0;
 // otherwise would report a clean run about a page it had barely read. What is
 // here is exactly what can be established by reading the file.
 let a11yChecked = 0;
+let boxChecked = 0;
 {
   const rootAbs = abs(DEPLOY_ROOT);
   const found = [];
@@ -872,11 +878,27 @@ let a11yChecked = 0;
     a11yChecked++;
     const html = readFileSync(abs(rel), 'utf8');
 
-    if (!/<html[^>]+\blang\s*=\s*["'][a-z]{2}/i.test(html)) {
+    // 🔴 `(?<![-\w:])`, NOT `\b` — 2026-08-22. `\b` is a boundary between any
+    // non-word character and `l`, so `\blang` fired on `data-lang="en"` and on
+    // `xml:lang="en"`, and a page carrying either while declaring NO `lang` was
+    // passed AND counted into the ok line's "page(s) carry lang + …". Measured
+    // that day against the real guard, not reasoned: a fixture whose <html>
+    // carried only `data-lang="en"` exited 0. The colon is in the class on
+    // purpose — `xml:lang` is a real XHTML attribute and it is not the one an
+    // HTML5 screen reader reads. Same repair, same day, as the `alt` limb below
+    // and the width/height limb further down; all three carried one `\b`.
+    if (!/<html[^>]+(?<![-\w:])lang\s*=\s*["'][a-z]{2}/i.test(html)) {
       problems.push(`${rel} has no <html lang="…">. A screen reader with no declared language reads the page in the user's default voice, which mispronounces every word of it.`);
     }
 
-    const mains = (html.match(/<main\b/gi) ?? []).length;
+    // `(?![-\w])`, NOT `\b`, for the third time in this limb and the same
+    // reason: a custom element name MUST contain a hyphen, and `\b` is a
+    // boundary before a hyphen, so `<main-nav>` counted as a <main> element and
+    // a page carrying one real <main> plus one such component was failed for
+    // having "2 <main> element(s)". Measured 2026-08-22: with `\b`, the fixture
+    // in the custom-element case of test/discovery-surface.test.mjs exits 1
+    // saying exactly that.
+    const mains = (html.match(/<main(?![-\w])/gi) ?? []).length;
     if (mains !== 1) {
       problems.push(
         `${rel} has ${mains} <main> element(s), expected exactly 1. Zero leaves a reader no way to skip the ` +
@@ -889,7 +911,14 @@ let a11yChecked = 0;
     const skip = html.match(/<a[^>]+class\s*=\s*["'][^"']*\bskip-link\b[^"']*["'][^>]*href\s*=\s*["']#([^"']+)["']/i);
     if (!skip) {
       problems.push(`${rel} has no skip link. Every page here opens with the same sticky nav, so without one a keyboard user tabs through all of it before reaching any content (WCAG 2.2 SC 2.4.1).`);
-    } else if (!new RegExp(`id\s*=\s*["']${skip[1]}["']`, 'i').test(html)) {
+    // 🔴 `\\s`, NOT `\s` — 2026-08-22. This is a TEMPLATE LITERAL, so `\s` is
+    // not an escape the parser knows and it collapses to a bare `s`: the
+    // pattern this actually built was `ids*=s*["']main["']`, printed from the
+    // built RegExp's own `.source` that day. Nothing was ever red, because
+    // `s*` also matches zero `s` and every id in this tree is written
+    // `id="main"` — but `id = "main"`, which is legal HTML, was reported as a
+    // skip link resolving to nothing, and `<div ids="main">` satisfied it.
+    } else if (!new RegExp(`id\\s*=\\s*["']${skip[1]}["']`, 'i').test(html)) {
       problems.push(
         `${rel} has a skip link pointing at #${skip[1]} and no element carries that id. It resolves to ` +
           'nothing, which is worse than having no skip link at all — the page looks like it solved the problem.',
@@ -900,20 +929,277 @@ let a11yChecked = 0;
       problems.push(`${rel} declares no :focus-visible rule. A keyboard user cannot see where they are (WCAG 2.2 SC 2.4.7).`);
     }
 
-    for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
-      if (!/\balt\s*=/i.test(tag)) {
+    // 🔴 `(?![-\w])`, NOT `\b` — 2026-08-22. `\b` is a boundary between `g` and
+    // ANY non-word character, and a custom element name must contain a hyphen,
+    // so `<img-comparison-slider first="a" second="b">` — a real published web
+    // component — matched, and this limb demanded an `alt` attribute on an
+    // element that is not an image. `(?![-\w])` rejects a following hyphen and
+    // a following word character both, so `<img src=…>`, `<img/>` and `<img>`
+    // still match and `<img-…>`, `<imgx…>` do not. Measured 2026-08-22 by
+    // restoring `\b` in a scratchpad copy and running the fixture: EXIT 1 with
+    // TWO problems over the one element — "no alt attribute" from here and "no
+    // integer width and no integer height attribute" from the box limb below,
+    // which carries the identical repair for the identical reason.
+    for (const tag of html.match(/<img(?![-\w])[^>]*>/gi) ?? []) {
+      // 🔴 `(?<![-\w])`, NOT `\b` — 2026-08-22, the same repair as the
+      // width/height limb below. `\balt` fires on `data-alt="…"`, so an <img>
+      // with no alt at all passed this limb AND was counted into the ok line's
+      // "alt on every <img>" — a compliance sentence printed over a tag that
+      // has none.
+      if (!/(?<![-\w])alt\s*=/i.test(tag)) {
         problems.push(`${rel} has an <img> with no alt attribute: ${tag.slice(0, 90)}. An absent alt is read aloud as the filename; alt="" is the correct way to say "decorative".`);
       }
     }
   }
 
-  if (found.length > 0 && a11yChecked === 0) {
-    coverageLost([
-      `${found.length} .html file(s) are served from ${DEPLOY_ROOT} and the accessibility limb examined NONE.`,
-      'This limb is the only accessibility assertion the web surface has — assert-a11y-coverage.mjs is',
-      'scoped to Flutter screens — so an empty run here means the pages are unpoliced again, silently.',
-    ])
+  // 🔴 NO COVERAGE EXIT HERE, AND THE ONE THAT STOOD HERE WAS DELETED
+  // 2026-08-22. It read `if (found.length > 0 && a11yChecked === 0)` and it
+  // could never fire. The chrome limb above computes `found` with a
+  // BYTE-IDENTICAL walk of the same DEPLOY_ROOT, filters it with the SAME
+  // `found.filter(isChromePage)`, and increments `chromePagesChecked` exactly
+  // where this block increments `a11yChecked` — so the two counters are always
+  // equal, its own `if (found.length > 0 && chromePagesChecked === 0)` is the
+  // same predicate, it runs FIRST, and `coverageLost` calls `process.exit(1)`.
+  // Any input that could reach this exit has already ended the process.
+  // MEASURED 2026-08-22, both ways: pinning `found.length > 0` here to FALSE
+  // left the whole committed suite green at 105 tests / 105 pass / 0 fail,
+  // EXIT 0; and a deploy root whose only served page is CHROME_EXCLUDED prints
+  // the CHROME limb's line and stops — that tree is the case named "a deploy
+  // root where NOTHING is a chrome page" in test/discovery-surface.test.mjs.
+  // The accessibility limb is NOT left uncovered by the deletion: it goes empty
+  // only when the chrome filter goes empty, and that is refused one block up,
+  // loudly, by name. A second copy of a refusal that can never be reached is
+  // not a backstop; it is a sentence that makes this limb look guarded twice.
+
+  // ── the box an <img> reserves before its bytes arrive ─────────────────────
+  // Added 2026-08-21. The loop above asserts `alt` and NOTHING about size, so a
+  // page could ship an image that pushes everything under it down the moment it
+  // decodes — the reflow half of the same problem, and the one a visitor on a
+  // slow connection actually feels (Core Web Vitals CLS).
+  //
+  // 🔴 THE MEASUREMENT, AND IT CORRECTS THE NOTE THAT ASKED FOR THIS. Swept
+  // 2026-08-21 across all 19 .html under sites/ (16 under this deploy root, 3
+  // under the mirror): a raw `<img` regex finds 8 tags, but only 5 of them are
+  // SERVED MARKUP — and all 5 already carry both attributes. The other 3 are not
+  // elements at all: _template.html:114 is an <img> inside an HTML COMMENT, and
+  // sites/nikatru/index.html:502 plus the mirror's project renderer are <img>
+  // strings inside <script>. So the gap this closes is ENFORCEMENT, not the
+  // tree: nothing asserted it, and the next image would have shipped unsized
+  // with every guard green. Under this deploy root the domain is 4 tags across
+  // 16 pages, printed on every run below so it cannot quietly become 0.
+  //
+  // WHY stripInert AND NOT A LOCAL REGEX: it is THE shared HTML reduction
+  // (tooling/ci/text-reductions.mjs, and the NOT_A_SCANNER entry that indexes
+  // it) — comments and <script>/<style> bodies blanked. Reading a `<script>`
+  // body as markup is how the same sweep first counted 8; a string in a program
+  // is not an element, and the guard cannot know whether it ever renders or
+  // under what CSS.
+  //
+  // WHY A DIGIT IS REQUIRED, not just the attribute: HTML's width/height on
+  // <img> are non-negative INTEGERS in CSS pixels. `width="100%"` parses as a
+  // presentational hint the browser discards, so a tag carrying it reserves
+  // exactly nothing while looking compliant to a presence-only check.
+  //
+  // WHAT THIS DOES NOT CATCH, stated because an overclaiming limb is worse than
+  // none: (1) whether the declared numbers match the image's real intrinsic
+  // size — nothing here opens the file; (1b) `<image src=…>`, the legacy alias
+  // an HTML parser coerces to <img>: this limb reads the literal element name
+  // and does not follow the coercion, stated here rather than discovered later;
+  // (2) an <img> built in JavaScript, e.g.
+  // sites/nikatru/index.html:502, whose box is instead pinned by CSS (`.app-icon`
+  // is 56x56 with `flex:none` at :110 and `.app-icon img{width:100%;height:100%}`
+  // at :111, measured 2026-08-21 — that tag shifts nothing today, which is why
+  // excluding it hides no defect); (3) <picture>/<source> and CSS background
+  // images; (4) the mirror sites/rajasekarselvam, which this whole file
+  // deliberately does not range over.
+  //
+  // NO FLOOR AND NO COVERAGE EXIT, consistent with this file's header: zero
+  // images on a deploy root is a legitimate state — measured 2026-08-21, 14 of
+  // the 16 pages here carry no served <img> at all, and only two do
+  // (index.html: 1, apps/_template.html: 3) — so a `checked === 0` exit would
+  // fire the day the founder photo is removed. The count is PRINTED instead.
+  for (const rel of found) {
+    // `(?![-\w])`, NOT `\b` — see the accessibility limb above for the
+    // measurement; a hyphen is a word boundary, so `\b` swept in every custom
+    // element whose name starts with "img" and demanded pixel attributes on it.
+    for (const tag of stripInert(readFileSync(abs(rel), 'utf8')).match(/<img(?![-\w])[^>]*>/gi) ?? []) {
+      boxChecked++;
+      // 🔴 THE WHOLE VALUE, NOT ITS FIRST CHARACTER. The first version of this
+      // matched `["']?\d` and passed `width="100%"` — the exact tag the limb
+      // exists to catch — because `100%` STARTS with a digit. Caught 2026-08-21
+      // by the percentage case in test/discovery-surface.test.mjs, which is why
+      // that case is in the suite rather than in this comment.
+      //
+      // 🔴 AND THE ATTRIBUTE NAME, NOT A SUFFIX OF IT — `(?<![-\w])`, NOT `\b`.
+      // Second defect of the same shape, caught 2026-08-21 by review after the
+      // value half was fixed: `\b` is a boundary between `-` (non-word) and `w`,
+      // so `/\bwidth\s*=\s*"\s*\d+\s*"/` FIRES ON `data-width="440"`. Measured
+      // that day against the real guard, not reasoned: a generated tree whose
+      // index.html carried `<img src="/x.png" alt="x" data-width="440"
+      // data-height="275">` and no real width/height exited 0 AND printed
+      // `1 served <img> tag(s) … reserve their box` — the limb did not merely
+      // miss the tag, it CERTIFIED it. `data-*` is valid author markup a real
+      // page could carry (a lazy-loader stashing intrinsic size for JS), so this
+      // was reachable, not exotic. `(?<![-\w])` rejects any preceding `-` or word
+      // character, so `data-width` and `x-width` stop being the attribute. Note
+      // it changes nothing for `srcwidth`, which `\b` ALREADY rejected (`c` and
+      // `w` are both word characters, so there is no boundary between them) —
+      // the hole was the HYPHEN, not any prefix. Pinned by the data-* case in
+      // test/discovery-surface.test.mjs; re-verified 2026-08-21 that the value
+      // half is unchanged by the swap: `100%`, `44px` and `1e3` still false;
+      // `width="440"`, bare `width=440` and `width=" 44 "` still true.
+      //
+      // ⚠️ REWRITTEN 2026-08-22, AND WHAT IT SAID IS KEPT SO THE RETIREMENT IS
+      // VISIBLE. It read: "STILL NOT CAUGHT … `width="0" height="0"` passes —
+      // 0 is a plain non-negative integer and a zero box reserves nothing. Left
+      // as-is because narrowing to `[1-9]\d*` is a behaviour change to a limb
+      // whose whole domain is 4 real tags, and no input in this tree reaches
+      // it. The alt limb at the top of this file has the identical `\balt\s*=`
+      // shape and the identical hole; it is not touched here because it makes
+      // no compliance claim in its ok line, which is what made this one worth
+      // fixing first."
+      //
+      // 🔴 THE LAST SENTENCE WAS FALSE ON THE FILE IT DESCRIBED. The ok line
+      // DOES make the alt claim — it reads "+ alt on every <img>" — so the alt
+      // limb had both the hole and the claim, and so did the `<html lang>`
+      // matcher, a third copy of the same `\b`. The alt matcher carries
+      // `(?<![-\w])` as of 2026-08-22 and the lang matcher `(?<![-\w:])` — the
+      // colon because `xml:lang` is not `lang` either — and each has its own
+      // evasion case in the suite.
+      //
+      // AND THE ZERO BOX IS CAUGHT NOW: the value halves below read `[1-9]\d*`,
+      // not `\d+`. The old argument for leaving it was that 4 real tags cannot
+      // reach it — but that is the argument for a cheap change, not against
+      // one, and `width="0"` was the last input for which this limb's own ok
+      // sentence was false. Measured 2026-08-22 before the change, by running
+      // this limb's own walk over the tracked .html of this deploy root: the 4
+      // served tags are apps/_template.html's three shots at 440x275 and
+      // index.html's founder photo at 150x192. None is 0, so the narrowing
+      // moves nothing in the tree and only removes an evasion.
+      const px = (re) => re.test(tag);
+      const missing = [
+        px(/(?<![-\w])width\s*=\s*(?:"\s*[1-9]\d*\s*"|'\s*[1-9]\d*\s*'|[1-9]\d*(?=[\s/>]))/i) ? null : 'width',
+        px(/(?<![-\w])height\s*=\s*(?:"\s*[1-9]\d*\s*"|'\s*[1-9]\d*\s*'|[1-9]\d*(?=[\s/>]))/i) ? null : 'height',
+      ].filter(Boolean);
+      if (missing.length) {
+        problems.push(
+          `${rel} has a served <img> with no integer ${missing.join(' and no integer ')} attribute: ` +
+            `${tag.replace(/\s+/g, ' ').slice(0, 110)}. Until the bytes arrive the browser reserves no box for ` +
+            'it, so every element below jumps when it decodes. Both attributes must be plain pixel integers — ' +
+            'a percentage is discarded and reserves nothing, and a `data-` prefixed copy is not the attribute ' +
+            'the browser reads.',
+        );
+      }
+    }
   }
+}
+
+// ── H · THE og:image BLOCK IS COMPLETE, AND ITS NUMBERS ARE THE FILE'S ──────
+// Added 2026-08-21 with the generator change that emits the block.
+//
+// THE DEFECT: every generated landing carried `og:image` and nothing else,
+// while the two HAND-WRITTEN homepages carried all four properties
+// (sites/nikatru/index.html:15-18, sites/rajasekarselvam/index.html:17-20) — so
+// the short pages were exactly the generated ones. LATENT, NOT LIVE: no link was
+// broken and nothing rendered wrongly; what was missing is the box a scraper
+// reserves for a card it will not fetch, and the alternative text a reader who
+// cannot see the card is given.
+//
+// 🔴 WHY THIS LIMB EXISTS AT ALL WHEN LIMB A ALREADY DIFFS THESE BYTES. Limb A
+// compares the committed page to a fresh generator run, so BOTH SIDES ARE THE
+// GENERATOR: a generator that declares 1200x630 for an 800x418 image agrees with
+// itself forever. That is M12, recorded verbatim in
+// tooling/ci/test/discovery-surface.test.mjs — limb G had exactly this bug and
+// printed `ok` over a page quoting $5.99 against a config saying 499. So this
+// limb parses the PNG's own IHDR and does its own comparison, against the page
+// as SERVED rather than against anything imported from the generator.
+//
+// MEASURED 2026-08-21: sites/nikatru/og-image.png is 1200 x 630, 118,197 bytes.
+// That number is NOT written here — it is read from the file on every run.
+//
+// WHAT THIS DOES NOT CATCH: that the URL resolves (nothing fetches it — the page
+// is compared to the file at DEPLOY_ROOT, which is only the same thing because
+// Cloudflare serves this tree with no build step); whether the alt sentence
+// DESCRIBES the artwork (prose, and not decidable here — it is asserted
+// non-empty and nothing more); a per-app card, which does not exist because one
+// site-wide image serves every landing; and the mirror deploy root.
+const OG_IMAGE_ASSET = `${DEPLOY_ROOT}/og-image.png`;
+let ogChecked = 0;
+let ogImagePx = null;
+{
+  const assetAbs = abs(OG_IMAGE_ASSET);
+  // The PNG signature is 8 bytes and IHDR is the mandatory FIRST chunk: 4-byte
+  // length, the literal `IHDR`, then width and height as big-endian uint32.
+  // Read as structure, never guessed from the filename.
+  if (existsSync(assetAbs)) {
+    const head = readFileSync(assetAbs).subarray(0, 24);
+    if (head.length === 24 && head.subarray(12, 16).toString('latin1') === 'IHDR') {
+      ogImagePx = { w: head.readUInt32BE(16), h: head.readUInt32BE(20) };
+    }
+  }
+
+  // ONE conjunct, not two. `&& rel.endsWith('.html')` stood here until
+  // 2026-08-22 and was DELETED rather than kept, because no input this guard
+  // can be handed makes it false: every key the plan puts under APPS_DIR comes
+  // from the two `files.set(...)` calls in tooling/sites/generate-discovery.mjs
+  // (search there for `${APPS_DIR}/index.html`) and both spell `.html` into the
+  // key themselves. MEASURED 2026-08-22 in a scratchpad copy of tooling/:
+  // pinned true, the committed suite stayed green — no test anywhere could tell
+  // it apart from nothing. A conjunct nothing can falsify makes this filter
+  // look narrower than it is; and if the generator ever does plan a non-.html
+  // under apps/, limb H now says so out loud ("declares no og:image at all")
+  // instead of skipping it in silence.
+  const landings = [...files.keys()].filter((rel) => rel.startsWith(`${APPS_DIR}/`));
+  if (!ogImagePx) {
+    problems.push(
+      `${OG_IMAGE_ASSET} is missing or is not a PNG whose IHDR can be read, and ${landings.length} generated ` +
+        'page(s) point every social card at it. The dimensions those pages declare cannot be checked against ' +
+        'anything, and the image itself is a 404 for every scraper that follows the URL.',
+    );
+  }
+
+  for (const rel of landings) {
+    if (!existsSync(abs(rel))) continue; // limb A already reported it MISSING
+    const html = readFileSync(abs(rel), 'utf8');
+    const prop = (name) => html.match(new RegExp(`<meta property="og:${name}" content="([^"]*)">`, 'i'))?.[1] ?? null;
+    const image = prop('image');
+    if (image === null) {
+      problems.push(`${rel} declares no og:image at all, so a shared link renders as a bare title with whatever picture the scraper scavenges.`);
+      continue;
+    }
+    ogChecked++;
+    const w = prop('image:width');
+    const h = prop('image:height');
+    const alt = prop('image:alt');
+    // All four or none is the point: three of four is the state this limb was
+    // written to make impossible, and it is what a template that grows one
+    // property at a time produces.
+    for (const [name, value] of [['og:image:width', w], ['og:image:height', h], ['og:image:alt', alt]]) {
+      if (value === null || value.trim() === '') {
+        problems.push(
+          `${rel} carries og:image but ${value === null ? 'no' : 'an empty'} ${name}. The four og:image ` +
+            'properties are emitted as ONE block by tooling/sites/generate-discovery.mjs precisely so a page ' +
+            'cannot ship three of four — width and height give a scraper the card\'s box without fetching the ' +
+            'bytes, and alt is the only description a reader who cannot see it gets.',
+        );
+      }
+    }
+    if (ogImagePx && w !== null && h !== null && (w !== String(ogImagePx.w) || h !== String(ogImagePx.h))) {
+      problems.push(
+        `${rel} declares og:image ${w}x${h} and ${OG_IMAGE_ASSET} is actually ${ogImagePx.w}x${ogImagePx.h}. ` +
+          'A declared box that disagrees with the image is worse than none: the scraper reserves the wrong ' +
+          'shape and the card reflows or crops. Re-read the file; never retype the number.',
+      );
+    }
+  }
+
+  // ⚠️ NO `ogChecked === 0` COVERAGE EXIT, for limb A's reason and for M12's.
+  // It could not fail on its own: `files.size === 0` already exited at the top,
+  // and every landing that declares no og:image pushed its own problem and
+  // `continue`d on the way past — so an empty count means those messages exist.
+  // Worse, coverageLost() calls process.exit(1) IMMEDIATELY, so adding it here
+  // would SWALLOW the per-page messages that say which pages lost the block —
+  // the exact shadowing M12 exposed in limb G. The count is printed instead.
 }
 
 // ── F · THE DATED SNAPSHOTS STAY INERT ──────────────────────────────────────
@@ -963,7 +1249,17 @@ console.log(
     `${offeringsCompared} rendered price(s) equal what ${RAIL_CONFIG} declares; ` +
     `${chromePagesChecked} page(s) carry shared chrome from tooling/sites/chrome.mjs ` +
     `(${CHROME_EXCLUDED.size} excluded by name, ${snapshotsChecked} dated snapshot(s) asserted inert); ` +
-    `${a11yChecked} page(s) carry lang + one <main> + a skip link that resolves + :focus-visible + alt on every <img>`,
+    `${a11yChecked} page(s) carry lang + one <main> + a skip link that resolves + :focus-visible + alt on every <img>; ` +
+    `${boxChecked} served <img> tag(s) across ${DEPLOY_ROOT} reserve their box with integer width+height ` +
+    '(tags inside comments and <script> are NOT elements and are not counted — the accessibility limb says why); ' +
+    `${ogChecked} generated page(s) carry all four og:image properties, sized ` +
+    // NO `ogImagePx ? … : '??'` HERE. The '??' arm was DELETED 2026-08-22
+    // rather than left standing: this line is only reached when `problems` is
+    // empty, and `if (!ogImagePx)` above pushes a problem, so a falsy
+    // `ogImagePx` cannot get this far. MEASURED that day in a scratchpad copy —
+    // pinned to this arm, the committed suite stayed green. A fallback no run
+    // can print reads like a handled case and is not one.
+    `${ogImagePx.w}x${ogImagePx.h} from the IHDR of ${OG_IMAGE_ASSET} itself`,
 );
 
 if (prints.length) {

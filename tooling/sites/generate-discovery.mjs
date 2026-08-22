@@ -35,7 +35,8 @@
 // exactly one number, in one file, and both surfaces are functions of it.
 //
 // The old objection is answered rather than ignored. It was that
-// `sites/nikatru/apps/_template.html:76` says `"priceCurrency": "INR"` while
+// `sites/nikatru/apps/_template.html`'s JSON-LD says `"priceCurrency": "INR"`
+// (cited as `:76` until 2026-08-21; that line is a `.privacy p` CSS rule) while
 // [OWNER_QUEUE D-1] locks USD, "and the two cannot both be right". They are not
 // two sources: `_template.html` is the hand-written placeholder file that this
 // same directory's guard scans for UNFILLED SLOTS — `[0 or price]` sits four
@@ -67,19 +68,45 @@
 //     because no code path here emits any store domain at all.
 //   · screenshots. Owner-supplied art that does not exist. The layout degrades
 //     to no screenshot block rather than shipping three broken <img> tags — the
-//     defect `_template.html:120-122` would have handed straight to every app.
+//     defect that `_template.html`'s three `/apps/shots/[SLUG]-N.webp` tags
+//     would have handed straight to every app. (Anchored, not numbered: this read
+//     `_template.html:120-122` until 2026-08-21, and those lines are the store
+//     buttons — the screenshot tags are 15 lines further down.)
 //   · `operatingSystem` is the entry's OWN `platforms` array, never the
-//     hardcoded six of `_template.html:71`.
+//     hardcoded six of `_template.html`'s JSON-LD line
+//     `"operatingSystem": "iOS, Android, Windows, macOS, Linux, Web"`. (Same
+//     correction, same day: this read `:71`, which is a `.shots img` CSS rule.)
 //
 // ── THE ONE THING IT DELIBERATELY DOES NOT TOUCH ─────────────────────────────
 // 🔴 `sites/nikatru/index.html`'s `const APPS = [` ARRAY. Whether a `live` app
 // is named on the public HOMEPAGE is an OWNER decision (soft launch vs
-// launched), which `check-site-integrity.mjs:574-660` deliberately refuses to
-// take and PRINTS every run instead. Making the homepage a function of the
-// registry would settle that question silently. It stays open, the PRINT stays
-// firing, and the hub this script generates is not linked from the homepage —
-// which the drift guard also prints, so the gap cannot become permanent by being
-// invisible.
+// launched), which `check-site-integrity.mjs` deliberately refuses to take and
+// PRINTS every run instead, in its bracket-depth scan from `const APPS = [`.
+// (Anchored, not numbered: this read `:574-660` until 2026-08-21, and those
+// lines are the sitemap `lastmod` limb, not the homepage one.) Making the
+// homepage a function of the registry would settle that question silently. It
+// stays open and the PRINT stays firing.
+//
+// ⚠️ THE TAIL OF THIS PARAGRAPH WAS STALE AND IS CORRECTED, NOT DELETED, so the
+// next reader knows the claim was retired rather than lost. It said "the hub
+// this script generates is not linked from the homepage — which the drift guard
+// also prints, so the gap cannot become permanent by being invisible." BOTH
+// HALVES MEASURED FALSE 2026-08-21: sites/nikatru/index.html:442 links /apps/
+// from the shared footer (tooling/sites/chrome.mjs emits it on all 11 CHROME
+// pages — 11 of the 16 served .html under sites/nikatru; the other five are the
+// three dated legal snapshots plus the two CHROME_EXCLUDED entries,
+// apps/_template.html and fullshot/privacy.html), and
+// assert-discovery-surface.mjs prints NOTHING of the kind — 0 lines of its full
+// output this run mention the homepage at all. A header sentence that describes
+// a gap somebody closed sends the next reader to fix a live surface.
+//   ⚠️ THAT PARENTHESIS ITSELF OVERREACHED WHEN FIRST WRITTEN THE SAME DAY and
+//   is corrected above rather than left: it said "so every page reaches the hub,
+//   not just the homepage". Re-measured 2026-08-21 by walking sites/nikatru and
+//   testing each file with `isChromePage` — 16 served .html, 11 chrome, 11
+//   carrying the footer marker. So EVERY CHROME PAGE reaches the hub; five pages
+//   do not, by the exclusions chrome.mjs names with a reason. Retiring one
+//   overclaim by writing a smaller one is how the next reader inherits the
+//   original mistake in a form that is harder to spot.
 //
 // Usage:  node tooling/sites/generate-discovery.mjs [repoRoot]   (writes)
 //         planDiscovery(repoRoot)                                (pure, for CI)
@@ -187,11 +214,12 @@ const FEATURE_NAMES = new Map([
 ]);
 
 /** The billing periods the rail sells, in the vocabulary the config already
- *  uses. `assert-purchase-path.mjs:271` maps the SAME three ids to day counts
- *  for [5]M-8's revocation bound, so this is not a second vocabulary — it is the
- *  human rendering of the one that exists. An unknown term FAILS: "term":
- *  "quarter" rendered as "/ quarter" would be a billing-frequency claim made by
- *  a fallback branch. */
+ *  uses. `assert-purchase-path.mjs`'s `PERIOD_DAYS` map (cited as `:271` until
+ *  2026-08-21; that line is a COVERAGE LOST push) maps the SAME three ids to
+ *  day counts for [5]M-8's revocation bound, so this is not a second
+ *  vocabulary — it is the human rendering of the one that exists. An unknown
+ *  term FAILS: "term": "quarter" rendered as "/ quarter" would be a
+ *  billing-frequency claim made by a fallback branch. */
 const TERM_NAMES = new Map([
   ['month', { unit: 'month', heading: 'Monthly', renews: 'Renews every month until you cancel.' }],
   ['year', { unit: 'year', heading: 'Yearly', renews: 'Renews every year until you cancel.' }],
@@ -239,6 +267,42 @@ const HEAD_CHROME = `<meta name="theme-color" content="#0B1220">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
 <link rel="manifest" href="/site.webmanifest">`;
+
+/** THE og:image BLOCK — ONE constant, both page templates below, so a page
+ *  cannot ship three of four ([pipeline 12]W step 14).
+ *
+ *  THE DEFECT, measured 2026-08-21: both templates emitted `og:image` and
+ *  nothing else, while the two HAND-WRITTEN homepages carried all four —
+ *  sites/nikatru/index.html:15-18 and sites/rajasekarselvam/index.html:17-20.
+ *  So the two short pages were exactly the two GENERATED ones, which is the
+ *  direction that matters: a hand-written page is fixed once, a template is the
+ *  shape every future app landing inherits. LATENT, NOT LIVE — nothing renders
+ *  wrongly and no link is broken; what was missing is what a scraper that will
+ *  not fetch the image bytes is handed (no box to reserve) and what a reader who
+ *  cannot see the card is handed (no alternative text).
+ *
+ *  THE NUMBERS ARE THE ASSET'S OWN, measured 2026-08-21 by reading the IHDR of
+ *  sites/nikatru/og-image.png — 1200 x 630, 118,197 bytes — the exact file the
+ *  URL on the line above resolves to. They are TYPED here and CHECKED against
+ *  that file by assert-discovery-surface.mjs limb H, which parses the PNG header
+ *  itself rather than importing anything from here. That separation is the M12
+ *  lesson recorded in tooling/ci/test/discovery-surface.test.mjs: a comparison
+ *  whose two sides were both computed by the generator agrees with a mutant.
+ *
+ *  THE ALT DESCRIBES THE IMAGE, NOT THE PAGE — that is what og:image:alt is for,
+ *  and every generated landing points at the same site-wide card — so it is the
+ *  sentence sites/nikatru/index.html:18 already publishes for this same file,
+ *  checked against the artwork this run (wordmark, "Apps for every screen.", the
+ *  six platform names, "Independent app studio · Chennai, India").
+ *
+ *  WHAT THIS DOES NOT CATCH: that the URL resolves at all (no limb anywhere
+ *  fetches it), that the card is per-app rather than site-wide (it is not — one
+ *  image serves every landing), and anything about twitter:* tags, which the
+ *  hand-written homepages carry and these templates deliberately still do not. */
+const OG_IMAGE = `<meta property="og:image" content="${ORIGIN}og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Nikatru &mdash; Apps for every screen. iOS, Android, Windows, macOS, Linux and Web.">`;
 
 const STYLE = `<style>
   :root{--ink:#0B1220;--primary:#2E6FF2;--teal:#17C3A2;--bg:#F6F8FC;--card:#FFFFFF;--text:#1E293B;--strong:#0B1220;--muted:#586275;--line:#E2E8F0;--soft:#F6F8FC;--radius:16px}
@@ -639,7 +703,7 @@ ${selfRefs}${HEAD_CHROME}
 <meta property="og:description" content="${esc(app.tagline)}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Nikatru">
-<meta property="og:image" content="${ORIGIN}og-image.png">
+${OG_IMAGE}
 ${STYLE}
 <script type="application/ld+json">
 ${jsonLd(ld)}
@@ -729,7 +793,7 @@ ${HEAD_CHROME}
 <meta property="og:description" content="Every released Nikatru app, with a page for each.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Nikatru">
-<meta property="og:image" content="${ORIGIN}og-image.png">
+${OG_IMAGE}
 ${STYLE}
 <script type="application/ld+json">
 ${jsonLd(ld)}
