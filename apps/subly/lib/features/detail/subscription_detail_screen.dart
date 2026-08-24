@@ -44,8 +44,56 @@ import '../shared/widgets.dart';
 ///     the correct ink on it in light mode and still the correct ink on it in
 ///     dark mode; forking them would break the light build to fix nothing.
 class SubscriptionDetailScreen extends ConsumerWidget {
-  const SubscriptionDetailScreen({super.key, required this.id});
+  const SubscriptionDetailScreen({super.key, required this.id, this.onClose});
   final String id;
+
+  /// How this screen goes away — supplied by whoever put it on screen.
+  ///
+  /// 🔴 THIS SCREEN IS MOUNTED TWO WAYS AND ONLY ONE OF THEM COULD BE POPPED.
+  /// GlitchTip SUBLY-9 / SUBLY-A (FATAL, 4+1 events, 2026-08-21 14:11–14:12Z,
+  /// release `subly@1.0.220+350bd7f`): `GoError: There is nothing to pop`,
+  /// thrown while handling a gesture, with the browser hash reading `#/home`
+  /// and a 1920-wide landscape window.
+  ///
+  ///   · AS A ROUTE — `/sub/:id`, `context.push`ed from home (single-column
+  ///     arm) and from calendar. There is something under it, so `pop` works.
+  ///   · AS A PANE — `home_screen.dart` hands this widget straight to
+  ///     `TwoPane.detail` once the body can split. NOTHING WAS PUSHED. The
+  ///     location is still `/home`, whose stack is one match deep, and every
+  ///     dismiss control on this screen called `context.pop()` unconditionally
+  ///     — so on any window wide enough to show the two-pane layout, the back
+  ///     arrow and "Edit plan" threw instead of doing anything. Four events in
+  ///     39 seconds is one user pressing back and trying again.
+  ///
+  /// Null means the route case, which [_dismiss] still guards — see there.
+  final VoidCallback? onClose;
+
+  /// The one way off this screen, for all three controls.
+  ///
+  /// 🔴 IT IS A METHOD AND NOT THREE CALL SITES ON PURPOSE. The defect above
+  /// was three independent `context.pop()`s that each looked correct in
+  /// isolation; the property "this screen knows how it was mounted" has to live
+  /// in one place or the next control added here reintroduces it.
+  ///
+  /// The `canPop` arm is NOT dead code for the route case, and that is the
+  /// second, quieter half of the same bug. Web is on the HASH strategy (see
+  /// `reset_password_screen.dart`), so `…/#/sub/abc` is a real, bookmarkable,
+  /// reloadable URL — and a reload restores that location with a ONE-ENTRY
+  /// stack. The back arrow of a freshly-loaded detail page therefore has
+  /// nothing under it either. `/home` is where `/` redirects, so it is the
+  /// same destination the browser's own back button would have reached.
+  void _dismiss(BuildContext context) {
+    final VoidCallback? close = onClose;
+    if (close != null) {
+      close();
+      return;
+    }
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go('/home');
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -142,7 +190,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                         _iconButton(
                           Icons.arrow_back,
                           l10n.back,
-                          () => context.pop(),
+                          () => _dismiss(context),
                         ),
                         // The `more_horiz` control is still a STUB — it opens
                         // nothing. Its label is localized anyway because a
@@ -389,7 +437,7 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       Expanded(
                         child: SoftButton(
                           label: l10n.editPlan,
-                          onPressed: () => context.pop(),
+                          onPressed: () => _dismiss(context),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -399,7 +447,14 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                           child: FilledButton(
                             onPressed: () async {
                               await showCancelSheet(context, s);
-                              if (context.mounted) context.pop();
+                              // `context.mounted` answers "is this element
+                              // still in the tree", NEVER "can the router
+                              // pop" — the two came apart in the pane case,
+                              // where the element is alive and the stack is
+                              // one deep. Both checks are needed, in this
+                              // order: the guard inside [_dismiss] cannot run
+                              // at all on a context torn down across the await.
+                              if (context.mounted) _dismiss(context);
                             },
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.danger,

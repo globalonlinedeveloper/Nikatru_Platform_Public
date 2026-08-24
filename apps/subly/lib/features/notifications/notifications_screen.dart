@@ -12,6 +12,31 @@ import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 
 class NotificationsScreen extends ConsumerWidget {
+  /// Closing this screen, guarded the way `subscription_detail_screen.dart`'s
+  /// [SubscriptionDetailScreen._dismiss] is guarded and for the second of the
+  /// two reasons recorded there.
+  ///
+  /// 🔴 THE CLOSE BUTTON ASSUMED IT HAD BEEN PUSHED. It is pushed from home
+  /// (`home_screen.dart`'s bell, `context.push('/notifications')`), and that is
+  /// the only in-app way here — so a bare `context.pop()` looks total. It is
+  /// not, because web is on the HASH url strategy (see
+  /// `reset_password_screen.dart`): `https://subly.nikatru.com/#/notifications`
+  /// is a real URL a user can bookmark, share, or simply RELOAD, and go_router
+  /// restores it with a ONE-ENTRY stack. Close then threw `GoError: There is
+  /// nothing to pop` — the same defect GlitchTip SUBLY-9 reported against the
+  /// detail screen, at the call site nothing has reported yet.
+  ///
+  /// ⚠️ NOT FIXED BY DELETING THE BUTTON on the reloaded case. A close control
+  /// that is absent on a reload is a screen with no way out; `/home` is where
+  /// `/` redirects, so it is the same place the browser's own back would land.
+  void _close(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go('/home');
+  }
+
   const NotificationsScreen({super.key});
 
   @override
@@ -195,7 +220,7 @@ class NotificationsScreen extends ConsumerWidget {
                       button: true,
                       label: l10n.close,
                       child: GestureDetector(
-                        onTap: () => context.pop(),
+                        onTap: () => _close(context),
                         child: Container(
                           width: 48,
                           height: 48,
