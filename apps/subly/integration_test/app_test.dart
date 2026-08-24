@@ -19,6 +19,8 @@
 //     --dart-define=API_BASE_URL=... \
 //     --dart-define=E2E_EMAIL=... --dart-define=E2E_PASSWORD=...
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,10 +62,106 @@ void main() {
   // The app animates forever in places (scan progress ring/timer, loaders), so
   // pumpAndSettle() would hang. Advance a fixed wall-clock slice instead — this
   // still lets real network futures resolve on the live binding.
+  //
+  // 🔴 AND THE SLICE IS BOUNDED BY THE TEST, NOT ONLY BY THE CLOCK — ADDED
+  // 2026-08-24 AFTER THREE RED NIGHTS (#362).
+  //
+  // 🔬 WHAT HAPPENED. Runs 32550453857 (08-22), 32616926238 (08-23) and
+  // 32688913917 (08-24) all failed identically, and both reported stacks pass
+  // through THIS loop: `app_test.dart 66:19` inside `app_test.dart 65:5
+  // pumpFor` called from `app_test.dart 995:11` — the 4s slice after the "Done"
+  // tap in leg 2's cancel flow. Test 2 reported `inTest is not true`
+  // (flutter_test binding.dart:2996, the assert at the top of
+  // LiveTestWidgetsFlutterBinding.pump) and test 3 reported `Guarded function
+  // conflict`, with the SAME frames named as "when the first function was
+  // called". One loop, two tests, two messages.
+  //
+  // 🔑 THE LOOP WAS AWAITED CORRECTLY AT EVERY CALL SITE; THAT WAS NEVER THE
+  // DEFECT. It was bounded by `DateTime.now()` alone, so its lifetime was tied
+  // to the wall clock and to nothing about the test that started it. When an
+  // error reaches the test zone's `handleUncaughtError`
+  // (binding.dart:1814-1832) the test COMPLETES IMMEDIATELY — the body's await
+  // chain is not unwound, it keeps running — so this loop went on calling
+  // `tester.pump()` into a finished test, and then into the NEXT one.
+  //
+  // 🔴 AND IT DESTROYED THE EVIDENCE, WHICH IS WHY THE CAUSE IS STILL UNNAMED.
+  // integration_test.dart:90 is `results[testDescription] = Failure(...)` — a
+  // Map keyed by the test's description, so the LAST exception reported for a
+  // test overwrites every earlier one. The real failure of leg 2 was reported
+  // first and then overwritten by this loop's `inTest is not true`. That is why
+  // three nights of CI name a helper and never name the app defect, and why the
+  // screenshots stop at `12-detail` with no assertion message to match.
+  //
+  // ⚠️ IT PARKS, IT DOES NOT `return`. Measured in a scratch
+  // LiveTestWidgetsFlutterBinding harness on 2026-08-24: returning early lets
+  // the abandoned body run its REMAINING statements — more taps, more
+  // screenshots, more expects — inside a completed test, which fails on
+  // `Zone.current == _parentZone` (binding.dart:1709) instead. Awaiting a future
+  // that never completes suspends the abandoned body where it stands, which is
+  // the only outcome that adds nothing to the run at all. The same harness
+  // measured pumps-issued-after-the-owning-test-ended: 1 before this change, 0
+  // after.
+  //
+  // ⚠️ THE TWO LIMBS ARE NOT REDUNDANT, AND EITHER CAN BE THE ONE THAT TRIPS.
+  // `binding.inTest` goes false in `postTest`, which flutter_test registers with
+  // `addTearDown` INSIDE the test body (widget_tester.dart:183) — so it is one
+  // teardown among several and its order relative to the `tearDown` below is not
+  // guaranteed. Limb 1 catches the binding leaving the test; limb 2 catches the
+  // case limb 1 structurally cannot see — the NEXT test has started, so
+  // `inTest` is true again and belongs to somebody else. That second case is
+  // precisely the `Guarded function conflict`.
+  //
+  // ⚬ WHAT THIS STILL CANNOT DO, STATED. A `tester.pump()` already IN FLIGHT
+  // when the test dies cannot be cancelled from here. On CI that window is not
+  // the failure being seen — `postTest` ran to completion on all three nights
+  // (it is what set `inTest` false, which is what the reported assert observed)
+  // — but on the VM binding the scratch harness does fail
+  // `_pendingFrame == null` in `postTest` from exactly that window, and this
+  // change does not close it.
+  final Future<void> untilTheIsolateEnds = Completer<void>().future;
+
+  // Bumped on BOTH sides of the boundary between two tests, so a loop that
+  // captured the old value sees the change at the earliest moment either hook
+  // runs, whichever the framework runs first.
+  int testEpoch = 0;
+  setUp(() {
+    testEpoch++;
+  });
+  tearDown(() {
+    testEpoch++;
+  });
+
+  /// One frame — unless the test that started the loop calling this is over,
+  /// in which case the caller is suspended here and never pumps again.
+  ///
+  /// [startedIn] is the value of [testEpoch] read when that loop began.
+  ///
+  /// 🔴 EVERY WALL-CLOCK LOOP IN THIS FILE GOES THROUGH HERE, NOT ONLY
+  /// `pumpFor`. `waitFor`, `waitGone` and `exportConsentAnonId` are the same
+  /// shape — `while (DateTime.now().isBefore(end)) { await tester.pump(); }` —
+  /// and carried the identical defect; `pumpFor` is merely the one the app
+  /// happened to die inside on 2026-08-22. Leaving the other three as they were
+  /// would have left the same three red nights available to the next app-side
+  /// crash, in a helper CI would then name instead.
+  Future<void> guardedPump(
+    WidgetTester tester,
+    int startedIn,
+    Duration step,
+  ) async {
+    // Limb 1 — the binding has left the test. The next `pump()` would be the
+    // `inTest is not true` that CI reported for leg 2.
+    if (!binding.inTest) await untilTheIsolateEnds;
+    // Limb 2 — a DIFFERENT test now owns the tester. The next `pump()` would
+    // be the `Guarded function conflict` that CI reported for leg 6.
+    if (testEpoch != startedIn) await untilTheIsolateEnds;
+    await tester.pump(step);
+  }
+
   Future<void> pumpFor(WidgetTester tester, Duration total) async {
+    final int startedIn = testEpoch;
     final DateTime end = DateTime.now().add(total);
     while (DateTime.now().isBefore(end)) {
-      await tester.pump(const Duration(milliseconds: 100));
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 100));
     }
   }
 
@@ -74,9 +172,10 @@ void main() {
     Finder f, {
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    final int startedIn = testEpoch;
     final DateTime end = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(end)) {
-      await tester.pump(const Duration(milliseconds: 200));
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
       if (f.evaluate().isNotEmpty) return true;
     }
     return false;
@@ -89,9 +188,10 @@ void main() {
     Finder f, {
     Duration timeout = const Duration(seconds: 8),
   }) async {
+    final int startedIn = testEpoch;
     final DateTime end = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(end)) {
-      await tester.pump(const Duration(milliseconds: 200));
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
       if (f.evaluate().isEmpty) return true;
     }
     return false;
@@ -420,11 +520,12 @@ void main() {
   }) async {
     final PrefsKeyValueStore store = await PrefsKeyValueStore.create();
     String? id;
+    final int startedIn = testEpoch;
     final DateTime end = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(end)) {
       id = await store.read(kInstallIdKey);
       if (id != null && id.isNotEmpty) break;
-      await tester.pump(const Duration(milliseconds: 200));
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
     }
     expect(
       id != null && id.isNotEmpty,
