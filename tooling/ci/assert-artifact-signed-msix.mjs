@@ -94,6 +94,49 @@ export const IDENTITY_FIELDS = Object.freeze([
   ['publisherDisplayName', 'publisherDisplayName', 'Package/Properties/PublisherDisplayName'],
 ]);
 
+/**
+ * Pure. Split argv into the `--repo-root` value and the positional package paths.
+ *
+ * 🔴 THIS IS A FUNCTION BECAUSE ITS ONE-LINE PREDECESSOR SHIPPED A BUG THAT NO
+ * TEST COULD REACH. It read:
+ *
+ *     const rootIdx = argv.indexOf('--repo-root');            // -1 when ABSENT
+ *     const packages = argv.filter((a, i) => !a.startsWith('--') && i !== rootIdx + 1);
+ *
+ * With `--repo-root` absent, `rootIdx` is -1, so `rootIdx + 1` is 0 and the
+ * filter dropped index 0 — the FIRST positional. CI passes exactly one
+ * positional and no `--repo-root` (build-platforms.yml, "The MSIX carries the
+ * identity the register declares"), so the only path it had was discarded and
+ * the guard reported COVERAGE LOST while the packaging step had done its job.
+ * Every test in the suite passed `--repo-root`, which is the shape that hides it.
+ *
+ * `rootFlagSeen` and `rootArg` are kept SEPARATE so "no flag" (use the default
+ * root) and "flag with nothing usable after it" (the caller asked for a root and
+ * named none) cannot collapse into the same answer.
+ */
+export function parseArgs(argv) {
+  const packages = [];
+  let rootFlagSeen = false;
+  let rootArg;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--repo-root') {
+      rootFlagSeen = true;
+      const next = argv[i + 1];
+      // A following flag is not a path. Consuming one would silently root the
+      // whole comparison at a string like "--verbose".
+      if (next !== undefined && !next.startsWith('--')) {
+        rootArg = next;
+        i++;
+      }
+      continue;
+    }
+    if (a.startsWith('--')) continue;
+    packages.push(a);
+  }
+  return { rootFlagSeen, rootArg, packages };
+}
+
 function coverageLost(first, ...more) {
   console.error(`✗ COVERAGE LOST — ${first}`);
   for (const m of more) console.error(`    ${m}`);
@@ -104,17 +147,33 @@ function coverageLost(first, ...more) {
 
 function main() {
   const argv = process.argv.slice(2);
-  const rootIdx = argv.indexOf('--repo-root');
-  const ROOT = resolve(rootIdx === -1 ? join(dirname(fileURLToPath(import.meta.url)), '..', '..') : argv[rootIdx + 1]);
-  const packages = argv.filter((a, i) => !a.startsWith('--') && i !== rootIdx + 1);
+  const { rootFlagSeen, rootArg, packages } = parseArgs(argv);
+  if (rootFlagSeen && rootArg === undefined) {
+    coverageLost(
+      '`--repo-root` was given with no path after it, so the root to compare against is unknown.',
+      `The ${argv.length} argument(s) received were: ${argv.map((a) => JSON.stringify(a)).join(' ')}.`,
+      'Falling back to the default root here would compare the package against a register the caller did',
+      'not choose, and report that as a verdict.',
+    );
+  }
+  const ROOT = resolve(rootArg === undefined ? join(dirname(fileURLToPath(import.meta.url)), '..', '..') : rootArg);
 
   // No package given is COVERAGE LOST, never a pass. The whole defect class
   // here is a check that ranged over nothing while printing a verdict.
   if (packages.length === 0) {
+    // 🔴 THIS MESSAGE PRINTS THE ARGV AND DIAGNOSES NOTHING ELSE. It used to say
+    // "the packaging step produced no path to hand over, which is itself the
+    // finding" — a false diagnosis that sent every reader upstream to a step
+    // this guard cannot see and which, on run 32699518559, had SUCCEEDED. What
+    // is observable at this line is the argument list and nothing more, so that
+    // is what it shows.
     coverageLost(
       'no .msix path was given, so this guard would certify the empty set.',
-      'It is invoked from build-platforms.yml after `Package MSIX`. Reaching this line means the packaging',
-      'step produced no path to hand over, which is itself the finding.',
+      `The ${argv.length} argument(s) this process received were: ${argv.length === 0 ? '(none)' : argv.map((a) => JSON.stringify(a)).join(' ')}.`,
+      'That list is the whole of what is observable here — this guard cannot see whether `Package MSIX`',
+      'succeeded, so it does not claim to. Read the list directly: if it ALREADY NAMES a .msix path then',
+      'the path arrived and argument parsing dropped it, which is a defect in this file; if it is empty or',
+      'flags-only, the caller in build-platforms.yml sent no path.',
     );
   }
 

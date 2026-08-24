@@ -14,7 +14,7 @@
   "appstore-submission.test.mjs": 37,
   "artifact-shape.test.mjs": 25,
   "artifact-signed-apple.test.mjs": 35,
-  "artifact-signed-msix.test.mjs": 20,
+  "artifact-signed-msix.test.mjs": 32,
   "assert-deploy-triggers-deploy.test.mjs": 11,
   "capability-register-seams.test.mjs": 27,
   "capability-register.test.mjs": 29,
