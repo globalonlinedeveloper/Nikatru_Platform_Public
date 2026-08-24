@@ -274,6 +274,98 @@
 //          already recorded and this pass had to learn a second time: a limb
 //          that was fixed once is not a limb that was checked.
 //
+//   M24  ADDED 2026-08-24 by the fourth pass, and it exists because M23's own
+//          closing claim was too strong. M23 says "TWELVE CONDITIONS CAME BACK
+//          GREEN … Every one is closed here", and a reader takes that for the
+//          whole set. It was not: M23 split the BOOLEANS of these limbs but
+//          treated each REGEX as one row, so every character class, every
+//          alternative and every lookaround member inside those regexes went
+//          uncounted. M24 is the same sweep done at the granularity the regexes
+//          actually have — one row per top-level alternative, per class member,
+//          per lookaround, per quantified pad.
+//
+//          METHOD, same discipline as M21-M23 and one addition. A scratchpad
+//          mirror of tooling/ + sites/ + .github/ + catalog/ + services/ +
+//          apps/subly/store (never the repo), its sites/ regenerated so the
+//          mirror starts from a reproduced baseline of 105 tests / 104 pass /
+//          1 fail — the single red is the `real repository` homepage case,
+//          which runs check-site-integrity.mjs and needs a git work tree the
+//          mirror is not. A driver applied one mutation, ran the WHOLE file,
+//          recorded the fail count AND the failing test names, then restored
+//          the pristine bytes; a find string that matched nothing was reported
+//          as a NO-OP rather than counted as green. The addition: the fail
+//          NAMES are compared, not just the count, so a mutation that happens
+//          to redden the mirror-only baseline case cannot read as a tripwire.
+//
+//          🔴 EIGHTY-FIVE MUTATIONS, TWENTY-FIVE GREEN, plus a SECOND WAVE of
+//          ten for the rows the first wave's mutations could not really
+//          neutralise, of which two more came back green. Three of the first
+//          twenty-five were the driver's fault rather than the guard's — `??
+//          []` rewritten as `|| []` is the same program — and each reddened at
+//          once when the second wave removed the fallback instead (68, 68 and
+//          4 fails). So TWENTY-FOUR real survivors, and every one is closed by
+//          a case in this file rather than by a deletion:
+//            · the <html lang> matcher: the `<html[^>]+` prefix, the `\w` member
+//              of `(?<![-\w:])`, the `\s*` padding and the `'` arm of `["']` —
+//              four. Closed by the `hreflang` case and the `lang = 'en'` case.
+//            · the skip-link TARGET pattern: the `'` arm of both `["']` — one.
+//              Closed by the `id='main'` case.
+//            · the three `(?![-\w])` element scans and the three `(?<![-\w])`
+//              attribute-name lookbehinds: the `\w` member of each — six.
+//              Closed by the `<image>`/`<mainheader>` case and the
+//              `xalt`/`naturalwidth`/`naturalheight` case.
+//            · the two box VALUE matchers: `[1-9]` in the single-quoted arm and
+//              in the unquoted arm of each — four — and three of the six
+//              members of the two `(?=[\s/>])` classes. Closed by the two new
+//              arms of the `width="0"` case and the two new arms of the
+//              value-forms case.
+//            · limb H: `.trim()` on the empty-property test, and the `[^"]`
+//              that bounds each `content="…"` capture — two. Closed by the
+//              spaces-only alt case and the minified-line case.
+//          Four singletons make up the twenty-four:
+//            · the `\s*` in `alt\s*=`, which nothing wrote spaced — closed by
+//              the `alt = ""` arm of the alt case.
+//            · the `>` that ends `<img(?![-\w])[^>]*>` in the ACCESSIBILITY
+//              scan. Its only consequence there is the tag the message quotes,
+//              so it is closed by asserting that the message quotes the whole
+//              tag. In the BOX scan the same `>` was already red, because the
+//              unquoted value arm's `(?=[\s/>])` needs it in the string at all.
+//            · `tag.replace(/\s+/g, ' ')` in the box message — every fixture
+//              wrote its tag on one line. Closed by the wrapped-tag arm.
+//            · the `continue` after `image === null` in limb H — without it a
+//              page carrying NO og:image also collects three "carries og:image
+//              but no …" problems, which are false about that page, and the
+//              case only ever asserted the true message was present. Closed by
+//              a doesNotMatch on the false one.
+//
+//          🔴 THE ONE THAT WOULD HAVE SHIPPED A FALSE SENTENCE: `width='0'` and
+//          `width=0`. The `width="0"` case added by M23 pins `[1-9]` in the
+//          DOUBLE-QUOTED arm only, and the other two arms still read `\d+` for
+//          anything this suite could see — so a zero box in the other two legal
+//          quotings was not merely missed, the ok line CERTIFIED it as a tag
+//          that reserves its box. That is the same defect M23 congratulated
+//          itself on fixing, surviving in two of the three places it lived.
+//          The lesson, for the fifth pass: a regex is not a condition. Every
+//          alternative in it is one, and a case that exercises one alternative
+//          says nothing whatever about its siblings.
+//
+//          EVERY ONE OF THE TWENTY-FOUR WAS RE-RUN AGAINST THE CASES ABOVE
+//          after they were written, in the same mirror with the same driver and
+//          a re-measured baseline of 112 tests / 111 pass / 1 fail. All
+//          twenty-four now redden, at 2 fails each — the baseline plus the case
+//          that closes them. Two of them did NOT on the first attempt, and the
+//          reason is written at the `<imgset>` case: the fixture there was
+//          `<image>`, which reads like the perfect near miss and never touches
+//          the pattern. A case is not evidence until the mutation it claims to
+//          catch has actually been run against it.
+//
+//          ONE ROW IS DELIBERATELY LEFT GREEN and is not in the twenty-four:
+//          the `.slice(0, 110)` that truncates the tag in the box limb's
+//          message. Deleting it prints MORE of the tag and cannot change any
+//          verdict, so there is nothing for a case to assert; it is a pure
+//          widening, MEASURED green 2026-08-24, and said so at the code site in
+//          assert-discovery-surface.mjs as well as here.
+//
 //   Also caught by writing the negative half BEFORE trusting the limb: the first
 //   width/height matcher was `/\bwidth\s*=\s*["']?\d/` and it PASSED
 //   `width="100%"` — the exact tag the limb exists to catch — because `100%`
@@ -1444,6 +1536,16 @@ describe('the web accessibility chrome', () => {
     const bad = mutate(root, (h) => h.replace('</main>', '<img src="/x.png"></main>'));
     assert.equal(bad.code, 1);
     assert.match(bad.out, /no alt attribute/);
+    // 🔴 AND THE QUOTED TAG IS THE WHOLE TAG. The scan is `<img(?![-\w])[^>]*>`
+    // and the trailing `>` is the only part of it with no other consequence —
+    // drop it and the limb quotes `<img src="/x.png"` at the reader, a misquote
+    // of the very element it is complaining about. MEASURED 2026-08-24 in a
+    // scratchpad mirror: dropping it left the suite at its 1-fail baseline, so
+    // this line is the only thing that can tell it from nothing. (In the box
+    // scan the same `>` has a second consequence and is already red there: the
+    // unquoted value arm ends `(?=[\s/>])`, which needs the `>` to be in the
+    // string at all.)
+    assert.match(bad.out, /no alt attribute: <img src="\/x\.png">/);
 
     // 🔴 THE DIMENSIONS ON THIS LINE ARE NOT DECORATION. They were added
     // 2026-08-21 with the width/height limb, and without them this "accepted"
@@ -1453,6 +1555,18 @@ describe('the web accessibility chrome', () => {
     const root2 = tree([SUBLY]); generate(root2);
     const ok = mutate(root2, (h) => h.replace('</main>', '<img src="/x.png" alt="" width="4" height="4"></main>'));
     assert.equal(ok.code, 0, ok.out);
+
+    // 🔴 AND `alt = ""` IS THE SAME DECLARATION. The matcher is `alt\s*=` and
+    // nothing here or in the real tree ever wrote it spaced, so the padding was
+    // unfalsifiable: MEASURED 2026-08-24 in a scratchpad mirror (same mirror
+    // and same 105 / 104 / 1 baseline as the `hreflang` case), deleting the
+    // `\s*` left the suite at that baseline. Spaces around `=` are legal HTML
+    // and a formatter emits them, so without this arm the limb was free to tell
+    // a compliant page that its image has no alternative text.
+    const root3 = tree([SUBLY]); generate(root3);
+    const spaced = mutate(root3, (h) => h.replace('</main>', '<img src="/x.png" alt = "" width="4" height="4"></main>'));
+    assert.equal(spaced.code, 0, spaced.out);
+    assert.match(spaced.out, /alt on every <img>/);
   });
   test('🔴 data-lang is NOT lang, and xml:lang is NOT lang — both FAIL', () => {
     // 🔴 THE `\b` HOLE, THIRD COPY. `/<html[^>]+\blang\s*=/` puts a word
@@ -1499,6 +1613,70 @@ describe('the web accessibility chrome', () => {
     assert.match(r.out, /page\(s\) carry lang \+ one <main> \+ a skip link that resolves/);
   });
 
+  test('🔴 `hreflang` is NOT `lang`, and a `lang` DEEPER IN THE PAGE is not the document language', () => {
+    // TWO conditions of one matcher that no case in this file could tell from
+    // nothing. MEASURED 2026-08-24 in a scratchpad mirror of tooling/ + sites/
+    // + .github/ + catalog/ + services/ + apps/subly/store (never the repo),
+    // against a reproduced baseline of 105 tests / 104 pass / 1 fail — the one
+    // red is the `real repository` homepage case, which needs a git work tree
+    // the mirror is not — with a driver that EXITS 2 on a no-op:
+    //   · `(?<![-\w:])` narrowed to `(?<![-:])`  -> 1 fail. GREEN.
+    //   · the `<html[^>]+` prefix deleted         -> 1 fail. GREEN.
+    // The `\w` member is not decoration. `\b`, which this matcher carried until
+    // 2026-08-22, ALREADY rejected a word character before `lang`, so the
+    // member is what keeps that property across the repair — and `hreflang` is
+    // a real HTML attribute, the one an author reaches for when they mean the
+    // language of the thing they are pointing at rather than of this page.
+    const href = tree([SUBLY]); generate(href);
+    const a = mutate(href, (h) => h.replace('<html lang="en">', '<html hreflang="en">'));
+    assert.equal(a.code, 1, a.out);
+    assert.match(a.out, /has no <html lang/);
+    assert.doesNotMatch(a.out, /page\(s\) carry lang \+ one <main>/);
+
+    // And the prefix. `[^>]+` cannot cross a `>`, so it is the only thing
+    // confining the match to the <html> START TAG. Without it any `lang`
+    // anywhere in the file answers for the document — including the one a page
+    // legitimately puts on a quoted foreign phrase, which declares that phrase
+    // and nothing else, while the screen reader is still guessing.
+    const deep = tree([SUBLY]); generate(deep);
+    const b = mutate(deep, (h) => h
+      .replace('<html lang="en">', '<html>')
+      .replace('</main>', '<p lang="fr">Bonjour</p></main>'));
+    assert.equal(b.code, 1, b.out);
+    assert.match(b.out, /has no <html lang/);
+  });
+
+  test("`<html lang = 'en'>` declares the same language — the spacing and quoting this matcher claims to allow", () => {
+    // The positive half, and the reason it is needed: every page in this file
+    // and all 16 under the real deploy root write `lang="en"` tight and
+    // double-quoted, so the `\s*` padding and the single-quote arm of `["']`
+    // had no input that could tell them from nothing. MEASURED 2026-08-24 in
+    // the same mirror: deleting the padding -> 1 fail (GREEN); deleting the `'`
+    // arm -> 1 fail (GREEN); deleting the `"` arm instead -> 29 fails, which is
+    // what a member this suite really exercises looks like. Both quoting forms
+    // are legal HTML a formatter emits, and a matcher that understands only one
+    // of them fails a compliant page — the false-positive direction of the
+    // `data-lang` hole, and just as wrong.
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.replace('<html lang="en">', "<html lang = 'en'>"));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /page\(s\) carry lang \+ one <main>/);
+  });
+
+  test("a skip target written id='main' RESOLVES — the other quoting form of the target pattern", () => {
+    // The target pattern is built as `id\\s*=\\s*["']${skip[1]}["']`, and every
+    // page here and in the real tree writes `id="main"`, so the single-quote
+    // arm of BOTH classes was unfalsifiable. MEASURED 2026-08-24 in the same
+    // mirror: narrowing both to `["]` -> 1 fail (GREEN); narrowing them to
+    // `[']` instead -> 29 fails. Without the arm, a page written by a formatter
+    // that prefers single quotes is told its skip link resolves to nothing —
+    // the message this limb reserves for a link that really is dead.
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.replace('id="main"', "id='main'"));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /a skip link that resolves/);
+  });
+
   test('🔴 data-alt is NOT alt — the tag has no alternative text and must not be CERTIFIED', () => {
     // 🔴 THE `\b` HOLE, SECOND COPY, in the limb whose ok line says "+ alt on
     // every <img>". `data-alt` is what a lightbox or a gallery script really
@@ -1542,6 +1720,37 @@ describe('the web accessibility chrome', () => {
     // nor as a second <main>
     assert.doesNotMatch(r.out, /<main> element\(s\)/);
   });
+
+  test('an element whose name only BEGINS with img or main is neither — `<imgset>` and a mistyped `<mainheader>`', () => {
+    // The case above pins the HYPHEN member of all three `(?![-\w])`
+    // lookaheads. This is the WORD member, and it was unfalsifiable on every
+    // one of them: MEASURED 2026-08-24 in a scratchpad mirror (same mirror and
+    // same 105 / 104 / 1 baseline as the `hreflang` case), narrowing each
+    // lookahead to `(?![-])` in turn — the <main> counter, the accessibility
+    // <img> scan and the box <img> scan — left the suite at that baseline.
+    // Three GREENs. `\b` already rejected a following word character, so these
+    // members are what keeps that property across the 2026-08-22 repair, and
+    // the guard's own comment names the shape it must keep rejecting: "`<img
+    // src=…>`, `<img/>` and `<img>` still match and `<img-…>`, `<imgx…>` do
+    // not".
+    //
+    // ⚠️ THE FIRST VERSION OF THIS CASE USED `<image src=…>` AND WAS A
+    // DECORATION, kept here because the mistake is instructive: `<image>` is
+    // the legacy alias an HTML parser coerces to <img>, so it reads like the
+    // perfect fixture — but it does not even share the four characters `<img`
+    // (`<ima…`), so it never reached either <img> lookahead at all. MEASURED
+    // the same day: with that fixture the two `<img` mutants stayed GREEN
+    // (1 fail, the baseline) while the `<main` one went red on `<mainheader>`
+    // alone — so the case looked like it said three things and said one. A
+    // near miss has to miss in the right place. With `<imgset>` all three go
+    // red, at 2 fails each, naming this case.
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, (h) => h.replace('</main>', '<imgset src="/a.png" srcset="/a.png 1x"></imgset><mainheader></mainheader></main>'));
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /with no alt attribute/);
+    assert.match(r.out, /0 served <img> tag\(s\)/);
+    assert.doesNotMatch(r.out, /<main> element\(s\)/);
+  });
 });
 
 // ── the box a served <img> reserves, and the og:image block ──────────────────
@@ -1579,6 +1788,19 @@ describe('a served <img> reserves its box before the bytes arrive', () => {
     const c = mutate(neither, withImg('<img src="/x.png" alt="x">'));
     assert.equal(c.code, 1);
     assert.match(c.out, /no integer width and no integer height attribute/);
+
+    // 🔴 AND THE QUOTED TAG IS ONE LINE. `[^>]` matches a newline too, so an
+    // <img> broken across lines — what a formatter does to a long tag — is
+    // matched whole, and without `tag.replace(/\s+/g, ' ')` the raw newlines
+    // and indentation go straight into a report that is one problem per line.
+    // MEASURED 2026-08-24 in a scratchpad mirror (same mirror and same
+    // 105 / 104 / 1 baseline as the `hreflang` case): deleting that collapse
+    // left the suite at that baseline, because every other fixture here writes
+    // its tag on a single line and could not tell it from nothing.
+    const wrapped = tree([SUBLY]); generate(wrapped);
+    const d = mutate(wrapped, withImg('<img\n  src="/x.png"\n  alt="x">'));
+    assert.equal(d.code, 1, d.out);
+    assert.match(d.out, /attribute: <img src="\/x\.png" alt="x">\. Until the bytes arrive/);
   });
 
   test('🔴 width="100%" FAILS — the attribute is present and reserves NOTHING', () => {
@@ -1609,6 +1831,28 @@ describe('a served <img> reserves its box before the bytes arrive', () => {
     assert.equal(z.code, 1, z.out);
     assert.match(z.out, /no integer width attribute/);
     assert.doesNotMatch(z.out, /no integer height/);
+
+    // 🔴 AND THE OTHER TWO QUOTING FORMS, because `[1-9]` appears THREE times
+    // in each matcher — once per alternative — and every arm above exercises
+    // only the double-quoted one. MEASURED 2026-08-24 in a scratchpad mirror
+    // (same mirror and same 105 / 104 / 1 baseline as the `hreflang` case):
+    // widening the single-quoted arm back to `\d+`, and widening the unquoted
+    // arm back to `\d+`, on the width matcher and again on the height matcher —
+    // four mutations — each left the suite at that baseline. Four GREENs, and
+    // the shape they let through is the one this case exists to refuse: a zero
+    // box written `width='0'` was not merely missed, it was CERTIFIED by the ok
+    // line as a tag that "reserve[s] [its] box with integer width+height".
+    const sq = tree([SUBLY]); generate(sq);
+    const s = mutate(sq, withImg("<img src=\"/x.png\" alt=\"x\" width='0' height='0'>"));
+    assert.equal(s.code, 1, s.out);
+    assert.match(s.out, /no integer width and no integer height attribute/);
+    assert.doesNotMatch(s.out, /1 served <img> tag\(s\) across sites\/nikatru reserve their box/);
+
+    const bare = tree([SUBLY]); generate(bare);
+    const u = mutate(bare, withImg('<img src="/x.png" alt="x" width=0 height=0>'));
+    assert.equal(u.code, 1, u.out);
+    assert.match(u.out, /no integer width and no integer height attribute/);
+    assert.doesNotMatch(u.out, /1 served <img> tag\(s\) across sites\/nikatru reserve their box/);
   });
   test('every value form HTML allows passes, on BOTH attributes, and a junk suffix does not', () => {
     // 🔴 PINS EVERY ALTERNATIVE INSIDE BOTH MATCHERS, ON BOTH ATTRIBUTES.
@@ -1659,6 +1903,51 @@ describe('a served <img> reserves its box before the bytes arrive', () => {
     assert.equal(e.code, 1, e.out);
     assert.match(e.out, /no integer height attribute/);
     assert.doesNotMatch(e.out, /no integer width/);
+
+    // 🔴 AND THE LOOKAHEAD IS A CLASS OF THREE, ON TWO MATCHERS — six members,
+    // and the arms above terminate an unquoted WIDTH only with a space and an
+    // unquoted HEIGHT only with a `/` or a `>`. MEASURED 2026-08-24 in the same
+    // scratchpad mirror: deleting `/` from the width class, `>` from the width
+    // class, and `\s` from the height class each left the suite at its 1-fail
+    // baseline — three GREENs — while deleting `\s` from the width class, or
+    // `/` or `>` from the height class, reddened this case, which is what a
+    // member the suite really exercises looks like. Attribute ORDER is what
+    // varies below, because the terminator of an unquoted value is whatever the
+    // author wrote next, and `<img … height=275 width=440>` is as ordinary as
+    // the reverse.
+    const gt = tree([SUBLY]); generate(gt);
+    const f = mutate(gt, withImg('<img src="/x.png" alt="x" height=275 width=440>'));
+    assert.equal(f.code, 0, f.out);
+    assert.match(f.out, /1 served <img> tag\(s\) across sites\/nikatru reserve their box/);
+
+    const sl = tree([SUBLY]); generate(sl);
+    const g = mutate(sl, withImg('<img src="/x.png" alt="x" height=275 width=440/>'));
+    assert.equal(g.code, 0, g.out);
+  });
+
+  test('🔴 an attribute whose name merely ENDS in the one we want is not it — `xalt`, `naturalwidth`, `naturalheight`', () => {
+    // The `data-` case below pins the HYPHEN member of the three `(?<![-\w])`
+    // lookbehinds — `alt` in the accessibility limb, `width` and `height` here.
+    // This is the WORD member of all three, and it was unfalsifiable: MEASURED
+    // 2026-08-24 in a scratchpad mirror (same mirror and same 105 / 104 / 1
+    // baseline as the `hreflang` case), narrowing each lookbehind to
+    // `(?<![-])` in turn left the suite at that baseline. Three GREENs.
+    //
+    // These three names are NEAR MISSES rather than shapes anybody ships, and
+    // that is exactly what makes the case necessary: `\b` — what all three
+    // matchers carried until 2026-08-22 — already rejected a word character
+    // before the name, and the guard's own comment says so ("it changes nothing
+    // for `srcwidth`, which `\b` ALREADY rejected"). Nothing checked that the
+    // swap to a lookbehind kept it. `naturalwidth`/`naturalheight` are the
+    // lowercase spelling of the DOM properties a lazy-loader copies intrinsic
+    // size out of, so the shape is at least the one a script would reach for.
+    const root = tree([SUBLY]); generate(root);
+    const r = mutate(root, withImg('<img src="/x.png" xalt="x" naturalwidth="440" naturalheight="275">'));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /has an <img> with no alt attribute/);
+    assert.match(r.out, /no integer width and no integer height attribute/);
+    assert.doesNotMatch(r.out, /1 served <img> tag\(s\) across sites\/nikatru reserve their box/);
+    assert.doesNotMatch(r.out, /alt on every <img>/);
   });
 
   test('🔴 data-width/data-height FAIL — a prefixed copy is not the attribute, and must not be CERTIFIED', () => {
@@ -1811,6 +2100,54 @@ describe('the og:image block is complete and its numbers are the file\'s', () =>
     assert.match(r.out, /an empty og:image:alt/);
   });
 
+  test('🔴 an og:image:alt of NOTHING BUT SPACES FAILS — the property is present and still says nothing', () => {
+    // The case above writes `content=""`, which `value === ''` catches as
+    // readily as `value.trim() === ''`, so the `.trim()` was unfalsifiable:
+    // MEASURED 2026-08-24 in a scratchpad mirror (same mirror and same
+    // 105 / 104 / 1 baseline as the `hreflang` case), replacing it with
+    // `value === ''` left the suite at that baseline. A run of spaces is what a
+    // template leaves when the slot was filled with a blank, and a screen
+    // reader announces exactly as much of it as it announces of `""`.
+    const root = tree([SUBLY]); generate(root);
+    const f = p(root, 'apps', 'subly.html');
+    writeFileSync(f, readFileSync(f, 'utf8').replace(/(<meta property="og:image:alt" content=")[^"]*/, '$1   '));
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /an empty og:image:alt/);
+  });
+
+  test('the four properties are read ONE AT A TIME even on ONE LINE — the minified shape', () => {
+    // `content="([^"]*)"` is what bounds each capture at the next quote.
+    // Replace the class with `.` and the capture runs greedily to the LAST
+    // `">` on the line — the same string only while every meta has a line to
+    // itself, which is true of everything the generator writes and of every
+    // other fixture here. MEASURED 2026-08-24 in a scratchpad mirror: with
+    // `(.*)` the suite stayed at its 1-fail baseline. A minifier in front of
+    // the deploy is all it takes to produce the line below, and then
+    // og:image:width reads as the whole rest of the tag soup and this limb
+    // reports the artwork is the wrong size.
+    //
+    // ⚠️ Limb A (DRIFT) co-fires on any edited generated page, so the exit code
+    // proves nothing here — the ABSENCE of limb H's messages is the assertion.
+    // Same reason as the three cases above it (M18).
+    const root = tree([SUBLY]); generate(root);
+    const f = p(root, 'apps', 'subly.html');
+    const html = readFileSync(f, 'utf8').replace(
+      /<meta property="og:image" content="([^"]*)">\n<meta property="og:image:width" content="([^"]*)">\n<meta property="og:image:height" content="([^"]*)">\n<meta property="og:image:alt" content="([^"]*)">/,
+      (_m, a, b, c, d) =>
+        `<meta property="og:image" content="${a}"><meta property="og:image:width" content="${b}">` +
+        `<meta property="og:image:height" content="${c}"><meta property="og:image:alt" content="${d}">`,
+    );
+    // The fixture has to actually BE minified, or this case is a second copy of
+    // the happy path wearing a different name.
+    assert.match(html, /content="630"><meta property="og:image:alt"/, 'the four properties must really share one line');
+    writeFileSync(f, html);
+    const r = guard(root);
+    assert.doesNotMatch(r.out, /carries og:image but/);
+    assert.doesNotMatch(r.out, /declares og:image .* is actually /);
+    assert.doesNotMatch(r.out, /declares no og:image at all/);
+  });
+
   test('🔴 losing og:image ALTOGETHER FAILS, and says the card is scavenged', () => {
     const root = tree([SUBLY]); generate(root);
     const f = p(root, 'apps', 'subly.html');
@@ -1818,6 +2155,16 @@ describe('the og:image block is complete and its numbers are the file\'s', () =>
     const r = guard(root);
     assert.equal(r.code, 1);
     assert.match(r.out, /declares no og:image at all/);
+    // 🔴 AND IT SAYS ONLY THAT. The `continue` on that branch is what stops the
+    // page being measured for the other three properties it also does not
+    // carry. Without it the same page collects "carries og:image but no
+    // og:image:width" three times over — a sentence that is FALSE about a page
+    // carrying no og:image at all, and it buries the one message that is true
+    // — and the page is counted into the ok line's tally on the way past.
+    // MEASURED 2026-08-24 in a scratchpad mirror (same mirror and same
+    // 105 / 104 / 1 baseline as the `hreflang` case): deleting the `continue`
+    // left the suite at that baseline.
+    assert.doesNotMatch(r.out, /carries og:image but/);
   });
 
   test('🔴 the ASSET missing FAILS, and says how many pages point at it', () => {

@@ -170,11 +170,20 @@ export const EXTRA_INSTALLABLE = new Map([
  * matches a channel against the LOOSE asset names, so the `windows-direct` row is
  * matched through its `.msix` and not through its `.exe`. An app that some day
  * emits a Windows bundle and no MSIX would MATCH NOTHING — and `--emit-environments`
- * FAILS when no direct row matches at all rather than recording nothing, so that
- * lands as a red release lane naming the gap, which is the fail-closed direction.
- * ⚠️ That is a different empty from the one `signingPosture` produces below: a row
- * that matched and was withheld for posture exits 0 with the reason on stderr.
- * The CLI distinguishes them explicitly and says why.
+ * EXITS 1 when no direct row matches at all rather than recording nothing, naming
+ * the gap on stderr.
+ * 🔴 THAT EXIT 1 DOES NOT REDDEN THE RELEASE LANE, AND THIS COMMENT SAID IT DID
+ * UNTIL 2026-08-24. build-platforms.yml:1314 spends this command inside
+ * `for environment in $(node … --emit-environments …)`. Measured 2026-08-24 with
+ * the step's own `set -euo pipefail`: a substitution that exits 1 in a `for` word
+ * list does NOT trip `set -e` — the loop iterates over nothing and the step
+ * continues to exit 0. So the honest statement is that the die PRINTS the gap and
+ * the lane stays GREEN. Making it fail closed means capturing the exit code in
+ * that step, which is build-platforms.yml's to do and not this file's.
+ * ⚠️ It is still a different empty from the one `signingPosture` produces below:
+ * a row that matched and was withheld for posture exits 0 with the reason on
+ * stderr. The CLI distinguishes them explicitly and says why — the distinction is
+ * what a reader of the log can act on, which is what survives the lane's silence.
  */
 export const BUNDLE_MEMBERS = new Map([
   [
@@ -365,6 +374,15 @@ export function signingPosture(channel) {
   // in release-durable.test.mjs.
   const signing = channel?.signing;
   if (signing === null || typeof signing !== 'object' || Array.isArray(signing)) {
+    // 🔴 THE DETAIL ON THIS LINE WAS THE ONE PIECE OF IT NOTHING HELD, found by
+    // the 2026-08-24 atom sweep and pinned the same day. The four CLAUSES above
+    // and the `state` on this line were all red; replacing this string alone
+    // left release-durable.test.mjs at EXIT 0 / 86 pass / 0 fail, because every
+    // case that reaches this branch asserted the state and stopped there. It is
+    // now asserted by EQUALITY in "an UNREADABLE `signing` value is UNDECLARED".
+    // It must not drift into the other 'undeclared' detail at the bottom of this
+    // function: that one says the block was READ and carried no pin, this one
+    // says the value could not be read at all, and they are opposite repairs.
     return { state: 'undeclared', detail: 'the row declares no readable `signing` block' };
   }
   const unfilled = [];
@@ -421,6 +439,37 @@ export function signingPosture(channel) {
     // re-sweep on 2026-08-22 found FOUR sub-clauses still surviving. Two were
     // unfalsifiable and went the way this paragraph describes (see the block guard
     // above); two were live-but-uncovered and were pinned with tests instead.
+    // 🔴 THE DETAIL IS THE ONLY REASON A HUMAN EVER SEES, and FIVE pieces of it
+    // were unheld until 2026-08-24 — measured, each surviving alone with
+    // release-durable.test.mjs at EXIT 0 / 85 pass / 0 fail. (This line said FOUR
+    // while listing five bullets and closing "All five"; corrected 2026-08-24 —
+    // the bullets and the closing line were right and the headline count was not.
+    // Re-swept clause by clause today at 86 pass: all five stay RED.)
+    //   · `k !== 'notYetConfiguredSentinel'` neutered to `true` — the sentinel
+    //     line names ITSELF as an unfilled field, which reads as one more thing to
+    //     go and fill in. (The `v === sentinel` clause beside it was already red.)
+    //   · `.map(([k]) => k)` and the backtick wrap — survived only in the sense
+    //     that one substring assertion checked one field name.
+    //   · `${JSON.stringify(sentinel)}` redacted — the owner is told a field is on
+    //     "a sentinel" without being told WHICH string to search the register for.
+    //   · `unfilled.join('; ')` sliced to its first element — a row with two
+    //     unfilled blocks sends the owner to fill one pin and leave the other.
+    //   · `${pinBlocks}` in the 'pinned' detail frozen to a literal — the only
+    //     assertion on that string was `.length > 20`, which a wrong count passes.
+    // All five are now pinned by EQUALITY on the whole detail, not by substring:
+    // see "signingPosture reads the register's own sentinel vocabulary".
+    // 🔴 THE `===` ON THE NEXT LINE IS AN ATOM OF ITS OWN, SEPARATELY FROM THE
+    // TWO OPERANDS EITHER SIDE OF IT — and it was the last unheld one in this
+    // function. Relaxed to `==` on 2026-08-24 with nothing else changed, the
+    // suite stayed EXIT 0 / 86 pass / 0 fail: no fixture had ever put a
+    // NON-STRING under a signing block, and `==` and `===` cannot differ on two
+    // strings. The register is `JSON.parse`d, so `"subject": ["THE-SENTINEL"]` is
+    // a value a human can write, and `['X'] == 'X'` is true by coercion. The two
+    // spellings then classify the SAME row differently — loose calls it still on
+    // its sentinel and WITHHOLDS the [10]D-9 row, strict calls the block
+    // configured and RECORDS it — so neither is a widening of the other and the
+    // shipped reading needed a case. Pinned in "signingPosture reads the
+    // register's own sentinel vocabulary".
     const onSentinel = Object.entries(block)
       .filter(([k, v]) => k !== 'notYetConfiguredSentinel' && v === sentinel)
       .map(([k]) => k);
@@ -428,6 +477,25 @@ export function signingPosture(channel) {
   }
   if (unfilled.length) return { state: 'sentinel', detail: unfilled.join('; ') };
   if (pinBlocks > 0) return { state: 'pinned', detail: `${pinBlocks} pinned signing-material block(s), none on a sentinel` };
+  // 🔴 THE `===` ON THE NEXT LINE IS AN ATOM OF ITS OWN, exactly as the one in
+  // `v === sentinel` above is — and it was the last unheld one in this function.
+  // Relaxed to `==` on 2026-08-24 with nothing else changed, release-durable.test.mjs
+  // stayed EXIT 0 / 86 pass / 0 fail: no fixture had ever put a NON-STRING under
+  // `keyKind`, and `==` and `===` cannot differ on two strings. The register is
+  // `JSON.parse`d, so `"keyKind": ["none"]` is a value a human can write, and
+  // `['none'] == 'none'` is TRUE by coercion while `['none'] === 'none'` is false.
+  // THE TWO SPELLINGS THEN GIVE THE SAME ROW OPPOSITE VERDICTS — measured, not
+  // argued, on `{ id: 'x', kind: 'direct', deploymentEnvironment: '{app}-x',
+  // artifactFormats: ['.msix'], signing: { keyKind: ['none'], identity: null } }`
+  // with a `.msix` in the release directory:
+  //   · `===` (shipped) → 'undeclared', and originEnvironments returns
+  //     `{ environments: [], omitted: [that row] }` — the [10]D-9 row is WITHHELD.
+  //   · `==`  (mutant)  → 'none', which IS in RECORDABLE_POSTURES, so
+  //     `{ environments: ['subly-x'], omitted: [] }` — the [10]D-9 row IS WRITTEN,
+  //     through a `keyKind` no reader in this repository can interpret.
+  // Neither spelling is a widening of the other, so the shipped reading needed a
+  // case rather than a note. Pinned in "signingPosture reads the register's own
+  // sentinel vocabulary".
   if (signing.keyKind === 'none') return { state: 'none', detail: 'keyKind "none" — this channel signs nothing of ours' };
   return { state: 'undeclared', detail: `keyKind ${JSON.stringify(signing.keyKind ?? null)} and no signing-material block carrying a \`notYetConfiguredSentinel\`` };
 }
@@ -480,7 +548,10 @@ const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
 export function originEnvironments(register, app, assetNames) {
   const out = [];
   const omitted = [];
-  // ⚠️ EVERY GUARD IN THIS LOOP IS FALSIFIABLE, AND SIX OF THEM WERE NOT UNTIL
+  // ⚠️ EVERY GUARD IN THIS LOOP IS FALSIFIABLE — READ TO THE END OF THIS BLOCK
+  // BEFORE BELIEVING THE NUMBER: this paragraph said SIX and was short by three,
+  // corrected 2026-08-24 at the bottom rather than overwritten.
+  // SIX OF THEM WERE NOT HELD UNTIL
   // 2026-08-22. The 2026-08-21 sweep this file's comments cite stopped at the
   // conditions the signing-posture change ADDED; a clause-by-clause re-sweep
   // measured exactly these six SURVIVING `if (false)` with release-durable.test.mjs
@@ -496,6 +567,30 @@ export function originEnvironments(register, app, assetNames) {
   // [10]D-9 row TWICE). All six are pinned rather than deleted — see "a MALFORMED
   // row is skipped, never fatal, and never silently renamed" and "the extension
   // match is case-insensitive BOTH ways" in release-durable.test.mjs.
+  // 🔴 AND THAT RE-SWEEP WAS STILL SHORT BY THREE. "EVERY GUARD IN THIS LOOP IS
+  // FALSIFIABLE" was FALSE when written: the 2026-08-22 pass split the compound
+  // `if`s but never mutated the two `.some(…)` BOUNDS or the extension predicate
+  // itself. A third sweep on 2026-08-24 measured three more surviving with
+  // release-durable.test.mjs at EXIT 0 / 85 pass / 0 fail:
+  //   · `f.startsWith('.')`   — every fixture format had always begun with a dot,
+  //                             so nothing saw the match degenerate to "the name
+  //                             ends with this word". `static-bundle` is the `web`
+  //                             row's real artifactFormat; a direct row carrying
+  //                             it is a register a human writes.
+  //   · `formats.some(…)`     — every fixture row matched on its FIRST format, so
+  //     stopping at [0]          the bound could stop there unseen. windows-direct
+  //                             declares ['.msix', '.exe'].
+  //   · `.endsWith(…)`        — relaxed to `.includes(…)`, still green: no fixture
+  //     as an ANCHOR             asset had ever carried a declared extension in the
+  //                             MIDDLE of its name. `…zip.sha256` does.
+  // All three are pinned now, in those same two cases. The two `.toLowerCase()`
+  // calls and the `assetNames.some(…)` bound were re-measured in the same sweep
+  // and are genuinely held.
+  // ⚠️ THE LESSON THIS COMMENT KEEPS RE-LEARNING, WRITTEN DOWN SO THE NEXT SWEEP
+  // DOES NOT: a `.some`/`.filter`/`for…of` BOUND is its own condition, separately
+  // from the predicate inside it, and a predicate like `endsWith` is its own
+  // condition separately from the operands it reads. Three passes have each
+  // mutated one grain coarser than the last and each claimed completeness.
   // 🔴 TWO `?.`s WERE DELETED IN THE SAME PASS, on lines 3 and 5 of this loop
   // (`c?.deploymentEnvironment`, `c?.artifactFormats`): once the line above has
   // `continue`d on a nullish `c`, nothing downstream can observe them, so no test
@@ -507,6 +602,14 @@ export function originEnvironments(register, app, assetNames) {
     const formats = (c.artifactFormats ?? []).filter((f) => typeof f === 'string' && f.startsWith('.'));
     const carried = formats.some((f) => assetNames.some((n) => n.toLowerCase().endsWith(f.toLowerCase())));
     if (!carried) continue;
+    // ⬜ DECLARED, NOT PINNED, and recorded here so the next sweep does not read
+    // it as a missed row: `.replace` substitutes the FIRST `{app}` only, and
+    // `.replaceAll` in its place is GREEN (release-durable.test.mjs EXIT 0 / 86
+    // pass / 0 fail, measured 2026-08-24). It is not a condition this branch adds
+    // — `git show main:tooling/ci/release-manifest.mjs` carries the identical
+    // expression at its :266 — and no register row spells `{app}` twice, so no
+    // input exists on which the two readings disagree about a name, an exit code
+    // or a pass/fail line.
     const environment = tpl.replace('{app}', app);
     const posture = signingPosture(c);
     if (!RECORDABLE_POSTURES.has(posture.state)) {
@@ -841,6 +944,38 @@ function main() {
     // 🔴 STDERR, NOT STDOUT. The release job reads this command as a word list
     // (`for environment in $(node … --emit-environments …)`), so a reason printed
     // on stdout becomes an argument to record-deployment.mjs.
+    // ⚠️ THE BOUND OF THIS LOOP AND OF THE ONE BELOW ARE CONDITIONS TOO, and
+    // neither had anything holding it until 2026-08-24: `.slice(0, 1)` on either
+    // left release-durable.test.mjs at EXIT 0 / 85 pass / 0 fail, because no CLI
+    // case had ever produced two omissions or two environments at once. Sliced,
+    // the release explains ONE of the rows it withheld, or records ONE of the
+    // ledger rows it owes, and the log reads complete either way. Pinned by "TWO
+    // of each: every recordable name reaches stdout and every withheld row is
+    // explained". The LINE's content — the id and the detail — was equally unheld
+    // and is pinned by "the omission reason goes to STDERR"; `/SENTINEL/` used to
+    // look like it held the detail and was matching `${o.state.toUpperCase()}`.
+    // 🔴 AND THAT PARAGRAPH CLAIMED TWO MORE THINGS THAN IT HELD, CORRECTED
+    // 2026-08-24 RATHER THAN OVERWRITTEN. It said the STATE and the COUNT below
+    // were pinned by that same case. Measured, each surviving alone with
+    // release-durable.test.mjs at EXIT 0 / 86 pass / 0 fail:
+    //   · `${o.state.toUpperCase()}` frozen to the literal `SENTINEL` — that case
+    //     withholds a row that IS on a sentinel, so the literal read true. An
+    //     UNDECLARED row then reports a placeholder VALUE to hunt for when the
+    //     defect is a missing sentinel KEY, and the two are opposite repairs.
+    //     Now pinned by the CLI half of "an UNDECLARED posture is withheld too".
+    //   · `all ${omitted.length}` frozen to `1` — only one case reached that line
+    //     and it withheld exactly one row. Now pinned by the second CLI run in
+    //     "TWO of each", which withholds two and records none.
+    // Both are asserted as WHOLE LINES — and the SECOND of them only became so on
+    // 2026-08-24, so read this as a correction rather than as a standing claim.
+    // `${o.state.toUpperCase()}` sits on the omission line below, which "the
+    // omission reason goes to STDERR" has asserted by EQUALITY all along.
+    // `all ${omitted.length}` sits on the "no [10]D-9 record" line printed further
+    // down, and until today that line was read by two SUBSTRING matches only — so
+    // its TAIL SENTENCE was unheld: replacing `The assets are published; nothing is
+    // recorded as deployed through an identity that does not exist.` with
+    // `MUTANT-TAIL.` alone left release-durable.test.mjs at EXIT 0 / 86 pass /
+    // 0 fail. It is now asserted whole in that same case, at `.filter(Boolean)[1]`.
     for (const o of omitted) {
       console.error(`omitted  ${o.environment} — channel "${o.id}" signing posture is ${o.state.toUpperCase()}: ${o.detail}.`);
     }
@@ -859,9 +994,25 @@ function main() {
     // MATCHED WAS OMITTED is a state the register declares out loud, on a row the
     // owner has not yet bought a certificate for — the same [pipeline C-6] shape
     // assert-channel-register.mjs uses when it PRINTS a deferred pin instead of
-    // failing. Exiting 1 here would fail the release job AFTER `gh release create`
-    // has already published, leaving a real release under a red run.
+    // failing.
+    // ⚠️ THE JUSTIFICATION THIS COMMENT CARRIED UNTIL 2026-08-24 WAS WRONG ABOUT
+    // THE LANE, and it is corrected rather than deleted because the DECISION it
+    // justified stands. It said "exiting 1 here would fail the release job AFTER
+    // `gh release create` has already published". Measured 2026-08-24: it would
+    // not. build-platforms.yml:1314 spends this command as
+    // `for environment in $(…)` under `set -euo pipefail`, and a substitution
+    // exiting 1 in a `for` word list does not trip `set -e` — the step exits 0
+    // either way. So neither exit code reddens that lane today; what differs is
+    // what the log says, and exit 0 with a printed reason is the honest reading of
+    // a state the register declares out loud. The `die` above keeps exit 1 for the
+    // undeclared gap for the same reason: it is the reading, not the lane.
     if (environments.length === 0) {
+      // ⬜ DECLARED WIDENING, not a hole: the leading `\n` is a blank SEPARATOR
+      // line, and dropping it leaves release-durable.test.mjs at EXIT 0 / 86 pass /
+      // 0 fail (measured 2026-08-24). It must — the assertion on this line is taken
+      // after `.trim()` and `.filter(Boolean)`, which exist to be blind to blank
+      // lines. It carries no verdict: no input exists on which its presence and its
+      // absence disagree about an exit code or about a pass/fail line.
       console.error(`\nno [10]D-9 record for this release: all ${omitted.length} matching direct channel(s) were omitted above. The assets are published; nothing is recorded as deployed through an identity that does not exist.`);
     }
     process.exit(0);

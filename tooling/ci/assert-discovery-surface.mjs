@@ -1082,6 +1082,14 @@ let boxChecked = 0;
         px(/(?<![-\w])height\s*=\s*(?:"\s*[1-9]\d*\s*"|'\s*[1-9]\d*\s*'|[1-9]\d*(?=[\s/>]))/i) ? null : 'height',
       ].filter(Boolean);
       if (missing.length) {
+        // The `.slice(0, 110)` below is the ONE thing in this limb that no test
+        // can redden, and it is kept deliberately: it is a message-length bound,
+        // so deleting it can only ever print MORE of the tag and can never
+        // change a verdict. MEASURED 2026-08-24 in a scratchpad mirror —
+        // deleting it left the suite green — and recorded here rather than
+        // quietly, because an unpinned line with no note reads like an
+        // oversight. The `.replace(/\s+/g, ' ')` beside it is NOT in that class
+        // and is pinned by the wrapped-tag arm of test/discovery-surface.test.mjs.
         problems.push(
           `${rel} has a served <img> with no integer ${missing.join(' and no integer ')} attribute: ` +
             `${tag.replace(/\s+/g, ' ').slice(0, 110)}. Until the bytes arrive the browser reserves no box for ` +

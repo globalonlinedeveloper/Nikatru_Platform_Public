@@ -885,6 +885,18 @@ const ALREADY_PRINTED_ELSEWHERE = [
           // (This read "keeps this limb under a second on the real tree" until
           // 2026-08-21. No such measurement was taken; the two numbers above
           // were, and they are of the guard, not of the limb alone.)
+          // ── 2026-08-24 · THE CLAIM ABOVE IS ABOUT THE WHOLE CONDITION, AND
+          // THE TWO OPERANDS ARE NOT THE SAME. Split and measured that day, one
+          // per run: `if (!anyKey.test(raw)) continue;` alone is RED (it drops
+          // any file that carries only the VALUE, which is every literal-echo
+          // site), and `if (!printable.some(…)) continue;` alone is RED (it
+          // drops any file that carries only the KEY). Only the CONJUNCTION is
+          // green, and it is green by construction rather than by omission.
+          // `anyKey`'s own `\b…\b` is inside the same claim: dropping them makes
+          // the pre-filter match more files, so it is a widening too, and it is
+          // safe only because the per-line match below keeps its boundaries —
+          // `a consumer that names only a LONGER key is not filed as a reader`
+          // is what holds that.
           if (!anyKey.test(raw) && !printable.some((k) => raw.includes(englishValue.get(k)))) continue;
           // 🔴 An extension `stripSourceComments` does not know comes back
           // VERBATIM AND SILENTLY. That bias runs one way here and it is the

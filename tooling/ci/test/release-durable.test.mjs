@@ -545,6 +545,12 @@ describe('release-manifest.mjs — the derivations', () => {
     // different fact from a row that matched and was withheld, and the CLI
     // branches on exactly that difference — an unmatched row must not leak into
     // `omitted`, or the fail-closed `die` for "nothing matched" stops firing.
+    // ⚠️ THIS BOUND AND THIS `assert.deepEqual` BOTH SURVIVE BEING NARROWED, and
+    // both are kept — see section A/C of the ledger above the next describe().
+    // Sliced to one element, or weakened to `assert.ok`, this file stayed at
+    // EXIT 0 / 86 pass / 0 fail on 2026-08-24: no subject atom is held by this
+    // case alone. A wider bound can only ADD a failure, never remove one, so
+    // widening is the free direction and it is the one taken.
     for (const names of [['subly-v1-subly.msix'], ['subly-v1-app-release.aab'], ['subly-v1-notes.txt']]) {
       assert.deepEqual(originEnvironments(REGISTER, 'subly', names).omitted, [], names.join());
     }
@@ -588,6 +594,86 @@ describe('release-manifest.mjs — the derivations', () => {
 // and asserts the real windows-direct row is withheld today. If somebody fills
 // that pin in, that test is the one that says so out loud.
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE ATOMS IN *THIS FILE* THAT NO INPUT DISTINGUISHES, LISTED RATHER THAN
+// LEFT TO BE FOUND. Four rounds of this sweep were failed by an OMITTED row, and
+// each round the omission got finer — a whole `(A || B)`, then a regex treated as
+// one condition, then a LOOP BOUND, then a single escaped dot. So on 2026-08-24
+// every atom the branch added to BOTH files was mutated ONE AT A TIME in a
+// scratch mirror: 83 mutations against release-manifest.mjs and 39 against this
+// file, then the whole set re-run after the last edit to either. Every atom
+// listed below stayed GREEN alone. Each is kept, and each is kept for a reason
+// that is stated, not assumed. Grep the anchor, not the line number.
+//
+// A. TEST-SIDE LOOP BOUNDS — kept because more iterations can only ADD failures.
+//    A bound that ranges wider cannot make a red case green, so narrowing it is
+//    the only risky direction and widening it is free. Sliced to their first
+//    element, each of these left this file at EXIT 0 / 86 pass / 0 fail:
+//      · `for (const names of [['subly-v1-subly.msix'], …]]` (the .omitted === []
+//        loop in 'originEnvironments takes DIRECT channels only')
+//      · `for (const [label, mutate] of [` in 'a `signing.*` object with no
+//        USABLE sentinel' — re-checked PAIRED with the two subject atoms that
+//        only that case catches (the `typeof sentinel !== 'string'` and
+//        `sentinel.trim() === ''` clauses): both still RED with the loop sliced,
+//        so the 2nd and 3rd labels are not carrying either of them.
+//    ⚠️ NOT every bound here is in this class. `for (const ch of [` and its
+//    `detail.length > 20` are LOAD-BEARING — see the note at that loop.
+//
+// B. REGEX ATOMS THAT ONLY EVER MATCH MORE — kept because loosening them cannot
+//    turn a failing assertion into a passing one for any output this CLI can
+//    produce, and they are what keeps the case portable off this machine:
+//      · `\r?` in every `split(/\r?\n/)` — node writes `\n`; the `\r?` is there
+//        for a console that does not.
+//      · `.filter(Boolean)` before `[0]` — after `.trim()` there is no leading
+//        blank line to drop. (The `[0]` INDEX is NOT in this class, and it was
+//        measured rather than reasoned about: moved to `[1]` at either of the two
+//        sites that spell `[0]`, the file goes to 85 pass / 1 fail, because `[1]`
+//        is the "no [10]D-9 record" line and not the omission line.)
+//        🔴 AND AT THE THIRD SITE — the `[1]` equality added 2026-08-24 in "the
+//        omission reason goes to STDERR" — `.filter(Boolean)` IS NOT IN THIS CLASS
+//        AT ALL; it is LOAD-BEARING, and dropping it there is 85 pass / 1 fail.
+//        release-manifest.mjs prints that line with a leading `\n`, so the raw
+//        split puts an empty string at `[1]`. Read this bullet as scoped to the
+//        two `[0]` sites, which is what it silently assumed before that index
+//        existed.
+//      · `omitted {2}` relaxed to `omitted\s+` in the SIX `assert.match` /
+//        `assert.doesNotMatch` calls that spell it. (It said FIVE until 2026-08-24.
+//        The CLASS claim was right — all six relaxed at once is EXIT 0 / 86 pass /
+//        0 fail — and only the number was wrong. Re-take it with a pattern that
+//        cannot match the line you are reading — the bare literal now occurs in
+//        this bullet too, so a plain count of it returns 7 and not 6:
+//        `grep -cE "assert.*omitted \{2\}"` = 6, and `grep -nE` names all six.)
+//        ⚠️ ONE member of this family
+//        is NOT loose-able: `/all 2 matching direct channel\(s\)/` relaxed to
+//        `all \d matching` unpins `all ${omitted.length}` in release-manifest.mjs
+//        — measured, that pair goes GREEN. The digit is the assertion.
+//      · the `\.` escapes in `/The release holds: README\.md, notes\.txt\./`.
+//        Unescaped, `.` matches the same characters here and nothing else.
+//
+// C. ASSERTIONS THAT ARE REDUNDANT WITH A STRONGER ONE BESIDE THEM — kept
+//    because each names a distinct failure in its message, which is what a
+//    reader gets when the case breaks. Weakened to `assert.ok(…)` each left the
+//    file green, and for every subject atom that ONLY their own case catches the
+//    weakened case still went red:
+//      · `assert.doesNotMatch(half.detail, /`sha256`/…)` and the
+//        `assert.equal(half.detail, …)` beside it (subsumed by each other)
+//      (`assert.match(r.stderr, /all 1 matching direct channel\(s\)…/)` stood in
+//        this list until 2026-08-24 and is now GONE rather than weakened. The
+//        reason given for keeping it — "the whole-line equality above it already
+//        holds that line" — was false: that equality holds the OMISSION line, a
+//        different line printed by a different `console.error`. This one and the
+//        `/no \[10\]D-9 record/` beside it were the ONLY readings of the
+//        "no [10]D-9 record" line, and being substring matches they left its tail
+//        sentence unheld. Both are replaced by one whole-line equality.)
+//      · `assert.deepEqual(r.omitted.map((o) => o.environment), …)` — the `.id`
+//        deepEqual above it is the one that is load-bearing (it is the only
+//        thing holding `c.id ?? '(unnamed)'`; measured, that pair goes GREEN)
+//      · `assert.doesNotMatch(r.out, /\{app\}/)` and `/subly-windows-direct/`
+//        relaxed to `/subly/` in the CLI block
+//
+// D. ONE BRANCH THIS TREE CANNOT REACH TODAY — the `else` of
+//    `if (withheld.includes('windows-direct'))`. See the note at that line.
+// ─────────────────────────────────────────────────────────────────────────────
 describe('release-manifest.mjs — origin channels are gated on signing posture', () => {
   test('signingPosture reads the register\'s own sentinel vocabulary, in all four states', () => {
     // 'pinned' — a pin block with no field on the sentinel.
@@ -608,8 +694,105 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     assert.match(half.detail, /`subject`/);
     assert.doesNotMatch(half.detail, /`sha256`/, 'the detail must name the fields that are UNFILLED, not every field');
 
+    // 🔴 `v === sentinel` IS STRICT, AND THE STRICTNESS IS ITS OWN ATOM — the
+    // `===` was NOT held by anything until 2026-08-24. Relaxed to `v == sentinel`
+    // and changed nowhere else, this file stayed EXIT 0 / 86 pass / 0 fail,
+    // because no fixture had ever put a NON-STRING value under a signing block.
+    // The register is `JSON.parse`d, so an array is a value a human can write,
+    // and `['X'] == 'X'` is TRUE by coercion while `['X'] === 'X'` is false — so
+    // the two spellings classify the SAME register differently and neither is a
+    // widening of the other in the verdict: loose reads the row as still on its
+    // sentinel and WITHHOLDS the [10]D-9 row, strict reads the block as
+    // configured and RECORDS it. Strict is what ships, so strict is what is
+    // asserted here rather than left to the next reader to discover.
+    assert.equal(
+      signingPosture({
+        signing: {
+          keyKind: 'code-signing-certificate',
+          codeSigningCertificate: { ...CONFIGURED_PIN, subject: [SENTINEL] },
+        },
+      }).state,
+      'pinned',
+      'a one-element array is not the sentinel STRING; only `==` would say it is',
+    );
+    // 🔴 AND THE WHOLE SENTENCE, NOT ONE FIELD NAME OUT OF IT. Measured
+    // 2026-08-24: the block name, the quoted sentinel VALUE
+    // (`${JSON.stringify(sentinel)}`) and the `k !== 'notYetConfiguredSentinel'`
+    // exclusion each survived `if (false)` / redaction at EXIT 0 / 85 pass /
+    // 0 fail, because every assertion on a detail was a substring match on one
+    // token. The detail is the only thing the CLI prints as the REASON a ledger
+    // row was withheld, so an equality here is what makes it a reason and not a
+    // label.
+    assert.equal(half.detail, `signing.codeSigningCertificate still reads ${JSON.stringify(SENTINEL)} at \`subject\``);
+
+    // 🔴 TWO UNFILLED BLOCKS ARE BOTH NAMED. `unfilled.join('; ')` survived
+    // `unfilled.slice(0, 1).join('; ')` on 2026-08-24 (EXIT 0 / 85 pass / 0 fail)
+    // — no fixture had ever put two pin blocks on their sentinels at once. The
+    // real register's windows-direct row carries SEVEN keys under `signing`, so a
+    // second block joining the first is one purchase away, and a detail that
+    // stops at the first would send the owner to fill one pin and leave the other.
+    const twoUnfilled = signingPosture({
+      signing: {
+        keyKind: 'code-signing-certificate',
+        codeSigningCertificate: { ...CONFIGURED_PIN, sha256: SENTINEL },
+        timestampCertificate: { ...CONFIGURED_PIN, subject: SENTINEL },
+      },
+    });
+    assert.equal(twoUnfilled.state, 'sentinel');
+    assert.equal(
+      twoUnfilled.detail,
+      `signing.codeSigningCertificate still reads ${JSON.stringify(SENTINEL)} at \`sha256\`; `
+      + `signing.timestampCertificate still reads ${JSON.stringify(SENTINEL)} at \`subject\``,
+    );
+
+    // 🔴 THE PINNED DETAIL COUNTS THE BLOCKS IT FOUND. `${pinBlocks}` survived
+    // being frozen to a literal `0` on 2026-08-24 at EXIT 0 / 85 pass / 0 fail:
+    // the only assertion on a 'pinned' detail was `.length > 20`, which a wrong
+    // number satisfies. The count is how a reader tells "one identity, configured"
+    // from "several, and all of them read".
+    assert.equal(
+      signingPosture(REGISTER.channels.find((c) => c.id === 'windows-direct')).detail,
+      '1 pinned signing-material block(s), none on a sentinel',
+    );
+    assert.equal(
+      signingPosture({ signing: { keyKind: 'k', a: { ...CONFIGURED_PIN }, b: { ...CONFIGURED_PIN } } }).detail,
+      '2 pinned signing-material block(s), none on a sentinel',
+    );
+
     // 'none' — the register's word for a channel that signs nothing of ours.
     assert.equal(signingPosture({ signing: { keyKind: 'none', identity: null } }).state, 'none');
+
+    // 🔴 ...AND THAT `===` IS STRICT, WHICH IS AN ATOM OF ITS OWN. Nothing
+    // held it until 2026-08-24: relaxed to `signing.keyKind == 'none'` in
+    // release-manifest.mjs and changed nowhere else, this file stayed EXIT 0 /
+    // 86 pass / 0 fail, because no fixture had ever put a NON-STRING under
+    // `keyKind` and the two operators cannot differ on two strings. The register
+    // is `JSON.parse`d, so `"keyKind": ["none"]` is a value a human can write,
+    // and `['none'] == 'none'` is TRUE by coercion while `['none'] === 'none'`
+    // is false. THE TWO SPELLINGS GIVE THIS ONE ROW OPPOSITE VERDICTS, which is
+    // why originEnvironments is asserted here and not the state alone: loose
+    // reads it as a channel that signs nothing and RECORDS a [10]D-9 row through
+    // a `keyKind` no reader in this repository can interpret; strict reads the
+    // posture as unreadable and WITHHOLDS the row. Strict is what ships.
+    // (The JSON round-trip below is a DECLARED no-op on this data and holds no
+    // verdict: it is there to say out loud that this row is a shape the register
+    // FILE can carry, not a JS object only a test can build. Arrays survive it
+    // unchanged, so removing it changes no answer here.)
+    const arrayKeyKind = JSON.parse(JSON.stringify({
+      id: 'array-keykind',
+      kind: 'direct',
+      deploymentEnvironment: '{app}-array-keykind',
+      artifactFormats: ['.msix'],
+      signing: { keyKind: ['none'], identity: null },
+    }));
+    assert.equal(
+      signingPosture(arrayKeyKind).state,
+      'undeclared',
+      'a one-element array is not the STRING "none"; only `==` would say it is',
+    );
+    const arrayKeyKindOrigin = originEnvironments({ channels: [arrayKeyKind] }, 'subly', ['subly-v1-subly.msix']);
+    assert.deepEqual(arrayKeyKindOrigin.environments, [], 'an unreadable keyKind may never reach the ledger');
+    assert.deepEqual(arrayKeyKindOrigin.omitted.map((o) => o.id), ['array-keykind']);
 
     // 'undeclared' — a `signing` block whose every object LACKS a
     // `notYetConfiguredSentinel` (here: no object at all under it); and the
@@ -631,6 +814,15 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
 
     // Every state carries a detail a human can act on. A withheld ledger row
     // with an empty explanation is the silent omission this gate exists to stop.
+    // 🔴 THIS BOUND AND THIS THRESHOLD ARE LOAD-BEARING, WHICH IS WHY THEY ARE
+    // NOT IN SECTION A OF THE LEDGER ABOVE. Measured 2026-08-24: they are the
+    // ONLY thing holding the `keyKind "none" — this channel signs nothing of
+    // ours` detail in release-manifest.mjs. Replacing that literal with a shorter
+    // string is red on the shipped file (85 pass / 1 fail); replace it AND slice
+    // this loop to its first element and the file goes back to 86 pass / 0 fail;
+    // replace it AND relax `> 20` to `>= 0` and it does the same. The 'none' row
+    // is the SECOND element of this list, and 20 is above the length of a stub —
+    // so narrowing either one silently drops the only reading of that sentence.
     for (const ch of [
       REGISTER.channels.find((c) => c.id === 'windows-direct'),
       { signing: { keyKind: 'none' } },
@@ -657,7 +849,18 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     // `"signing": null` is legal JSON and `typeof null === 'object'`, so without
     // the `signing === null` clause this reaches `Object.entries(null)` and the
     // release job dies with a TypeError instead of withholding a ledger row.
-    assert.equal(signingPosture({ id: 'x', kind: 'direct', signing: null }).state, 'undeclared');
+    const unreadable = signingPosture({ id: 'x', kind: 'direct', signing: null });
+    assert.equal(unreadable.state, 'undeclared');
+    // 🔴 AND THIS BRANCH'S DETAIL IS ITS OWN STRING, WHICH NOTHING HELD UNTIL
+    // 2026-08-24. Replacing that literal in release-manifest.mjs with any other
+    // text left this file at EXIT 0 / 86 pass / 0 fail: the `state` beside it was
+    // pinned and the only sentence a human ever reads was not. The two
+    // 'undeclared' details are NOT interchangeable and are repaired by opposite
+    // edits — this one says the `signing` VALUE could not be read at all, the one
+    // asserted at the bottom of this case says it was read fine and simply
+    // carried no pin block. (The four-channel `detail.length > 20` loop below
+    // does not reach it: none of those four rows has an unreadable `signing`.)
+    assert.equal(unreadable.detail, 'the row declares no readable `signing` block');
 
     // 🔴 THE ARRAY IS THE DANGEROUS ONE. `typeof [] === 'object'` as well, so
     // without `Array.isArray` the entries below are the array's INDICES, the
@@ -711,12 +914,22 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
         { id: 'no-formats', kind: 'direct', deploymentEnvironment: '{app}-no-formats' },
         // non-string entries beside the real one — `typeof f === 'string'`.
         { id: 'junk-formats', kind: 'direct', artifactFormats: [42, null, '.msix'], deploymentEnvironment: '{app}-junk-formats' },
+        // 🔴 A FORMAT WITH NO LEADING DOT — `f.startsWith('.')`, which survived
+        // `if (false)` with this file at EXIT 0 / 85 pass / 0 fail on 2026-08-24
+        // because every fixture format had always begun with one. `static-bundle`
+        // is not invented: it is the `web` row's declared artifactFormat in the
+        // real register today, so a hand-edit that gives a DIRECT row the same
+        // value is a register a human writes. Without the dot filter the match
+        // degenerates to "the asset name ends with this word", `keyKind: "none"`
+        // makes the row recordable, and the release writes a [10]D-9 row for a
+        // channel that declared no file extension at all.
+        { id: 'dotless-format', kind: 'direct', artifactFormats: ['static-bundle'], deploymentEnvironment: '{app}-dotless', signing: { keyKind: 'none' } },
         // no `id` — the omission line still has to name something.
         { kind: 'direct', artifactFormats: ['.msix'], deploymentEnvironment: '{app}-unnamed' },
         good,
       ],
     };
-    const r = originEnvironments(malformed, 'subly', ['subly-v1-subly.msix']);
+    const r = originEnvironments(malformed, 'subly', ['subly-v1-subly.msix', 'subly-v1-static-bundle']);
     // The one well-formed, pinned row still emits. A broken sibling must not cost
     // the release its ledger row, and must not throw the release job either.
     assert.deepEqual(r.environments, ['subly-windows-direct']);
@@ -759,10 +972,26 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
         // two rows, one environment: it must be recorded once.
         { id: 'dup-a', kind: 'direct', artifactFormats: ['.dmg'], deploymentEnvironment: '{app}-dup', signing: nosign },
         { id: 'dup-b', kind: 'direct', artifactFormats: ['.dmg'], deploymentEnvironment: '{app}-dup', signing: nosign },
+        // 🔴 THE SECOND DECLARED FORMAT MATCHES AND THE FIRST DOES NOT. The
+        // `formats.some(…)` BOUND had nothing holding it — it survived
+        // `formats.slice(0, 1).some(…)` on 2026-08-24 with this file at EXIT 0 /
+        // 85 pass / 0 fail, because every fixture row that matched matched on its
+        // FIRST format. windows-direct really declares `['.msix', '.exe']`, so a
+        // release carrying only the .exe is the ordinary shape of this row, and a
+        // bound that stops at the first format withholds its ledger row silently.
+        { id: 'second-format', kind: 'direct', artifactFormats: ['.msi', '.exe'], deploymentEnvironment: '{app}-second', signing: nosign },
+        // 🔴 THE EXTENSION IS A SUFFIX, NEVER A SUBSTRING. `endsWith` relaxed to
+        // `includes` survived on 2026-08-24 at EXIT 0 / 85 pass / 0 fail: no
+        // fixture asset had ever CARRIED a declared extension anywhere but at its
+        // end. A checksum sidecar does exactly that — `…zip.sha256` contains
+        // `.zip` and is not the artifact — so under `includes` this row matches a
+        // release that ships no .zip at all and the ledger records a channel the
+        // release never served.
+        { id: 'suffix-only', kind: 'direct', artifactFormats: ['.zip'], deploymentEnvironment: '{app}-zip', signing: nosign },
       ],
     };
-    const r = originEnvironments(reg, 'subly', ['subly-v1.msix', 'SUBLY-V1.EXE', 'subly-v1.dmg']);
-    assert.deepEqual(r.environments, ['subly-dup', 'subly-lower', 'subly-upper']);
+    const r = originEnvironments(reg, 'subly', ['subly-v1.msix', 'SUBLY-V1.EXE', 'subly-v1.dmg', 'subly-v1.zip.sha256']);
+    assert.deepEqual(r.environments, ['subly-dup', 'subly-lower', 'subly-second', 'subly-upper']);
     assert.deepEqual(r.omitted, []);
   });
 
@@ -806,6 +1035,31 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     const k = originEnvironments(keyless, 'subly', ['subly-v1-subly.msix']);
     assert.deepEqual(k.environments, ['subly-windows-direct']);
     assert.deepEqual(k.omitted, []);
+
+    // 🔴 AND THROUGH THE CLI THE LINE SAYS *UNDECLARED*, NOT "SENTINEL". The
+    // `${o.state.toUpperCase()}` in that line survived being FROZEN to the
+    // literal `SENTINEL` on 2026-08-24 with this file at EXIT 0 / 86 pass /
+    // 0 fail: every CLI case that read the omission line withheld a row whose
+    // state genuinely IS 'sentinel', so a frozen literal read true. Frozen, an
+    // undeclared row sends the owner hunting the register for a placeholder
+    // VALUE that is not there, when what actually happened is that the block
+    // carries no `notYetConfiguredSentinel` KEY at all — the two states are
+    // repaired by opposite edits, which is the whole reason the CLI names one.
+    // Asserted as the WHOLE line for the same reason the sentinel case is: a
+    // substring would be satisfied by any of the four tokens in it.
+    const undeclaredRoot = fixture({ register: noPin });
+    const ud = join(TMP, `d${seq++}`);
+    mkdirSync(ud, { recursive: true });
+    writeFileSync(join(ud, 'subly-v1-subly.msix'), 'msix');
+    const u = cli(['--emit-environments', ud, '--app', 'subly', '--repo-root', undeclaredRoot]);
+    assert.equal(u.code, 0, u.out);
+    assert.equal(u.stdout.trim(), '', 'an unreadable posture may not reach the word list either');
+    assert.equal(
+      u.stderr.trim().split(/\r?\n/).filter(Boolean)[0],
+      'omitted  subly-windows-direct — channel "windows-direct" signing posture is UNDECLARED: '
+      + 'keyKind "code-signing-certificate" and no signing-material block carrying a `notYetConfiguredSentinel`.',
+      u.stderr,
+    );
   });
 
   // 🔴 THE THREE WAYS A `signing.*` OBJECT FAILS TO BE A PIN BLOCK. Added
@@ -851,9 +1105,40 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     // red run. The record is withheld; the release is not.
     assert.equal(r.code, 0, r.out);
     assert.equal(r.stdout.trim(), '', 'nothing may reach stdout — every word there becomes an argument to record-deployment.mjs');
-    assert.match(r.stderr, /omitted {2}subly-windows-direct/);
-    assert.match(r.stderr, /SENTINEL/);
-    assert.match(r.stderr, /no \[10\]D-9 record for this release/);
+    // 🔴 THE WHOLE OMISSION LINE, NOT A TOKEN OUT OF IT. `/SENTINEL/` stood here
+    // until 2026-08-24 and was satisfied by `${o.state.toUpperCase()}` — the word
+    // "SENTINEL" the CLI prints for the STATE — not by the register's sentinel
+    // string at all. Measured that day: redacting `${o.id}`, redacting `${o.detail}`
+    // and freezing `all ${omitted.length}` to a literal each left this file at
+    // EXIT 0 / 85 pass / 0 fail. This line is the only place a human is told WHICH
+    // channel lost its ledger row and WHY, so it is asserted whole.
+    assert.equal(
+      r.stderr.trim().split(/\r?\n/).filter(Boolean)[0],
+      `omitted  subly-windows-direct — channel "windows-direct" signing posture is SENTINEL: `
+      + `signing.codeSigningCertificate still reads ${JSON.stringify(SENTINEL)} at \`sha256\`, \`subject\`.`,
+      r.stderr,
+    );
+    // 🔴 ...AND THE CLOSING LINE WHOLE, FOR THE SAME REASON THE OMISSION LINE
+    // IS WHOLE. Two SUBSTRING matches stood here until 2026-08-24 —
+    // `/all 1 matching direct channel\(s\) were omitted above/` and
+    // `/no \[10\]D-9 record for this release/` — and between them they read the
+    // head of this line and its COUNT and nothing else, so its TAIL SENTENCE was
+    // unheld: replacing `The assets are published; nothing is recorded as
+    // deployed through an identity that does not exist.` in release-manifest.mjs
+    // with `MUTANT-TAIL.` alone left this file at EXIT 0 / 86 pass / 0 fail. That
+    // sentence is the whole reason EXIT 0 is honest on this path rather than a
+    // shrug — it is what tells the reader the ARTIFACTS shipped and only the
+    // LEDGER ROW did not. The count keeps its own reading here too: a "1" frozen
+    // into the text would read the same on the day two channels are held back.
+    // ⚠ `.filter(Boolean)` IS LOAD-BEARING AT THIS INDEX and at no other in this
+    // file: release-manifest.mjs prints this line with a leading `\n`, so without
+    // the filter `[1]` is the empty string between the two lines.
+    assert.equal(
+      r.stderr.trim().split(/\r?\n/).filter(Boolean)[1],
+      'no [10]D-9 record for this release: all 1 matching direct channel(s) were omitted above.'
+      + ' The assets are published; nothing is recorded as deployed through an identity that does not exist.',
+      r.stderr,
+    );
   });
 
   test('a CONFIGURED pin still emits — the gate is on posture, not on being a direct row', () => {
@@ -923,12 +1208,86 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     // 🔴 THIS IS THE ASSERTION THE MUTATION ABOVE FAILS: something DID emit, and
     // the withheld row must still be explained.
     assert.match(r.stderr, /omitted {2}subly-linux-appimage/);
-    assert.match(r.stderr, /SENTINEL/, 'the reason must carry the register\'s own words, not just a name');
+    // 🔴 THE REGISTER'S OWN WORDS, WHICH IS WHAT `/SENTINEL/` HERE DID NOT CHECK.
+    // Until 2026-08-24 this asserted `/SENTINEL/` under a message saying exactly
+    // that — and `${o.state.toUpperCase()}` prints the literal word SENTINEL, so
+    // the assertion was satisfied by the state and could not see the detail at
+    // all. Redacting `${o.detail}` left it green (EXIT 0 / 85 pass / 0 fail).
+    assert.ok(
+      r.stderr.includes(`signing.signingPublicKey still reads ${JSON.stringify(SENTINEL)} at \`publicKeyBase64\``),
+      r.stderr,
+    );
+    assert.match(r.stderr, /channel "linux-appimage"/, 'the withheld row is named by its register id, not only by its environment');
     assert.doesNotMatch(r.stderr, /omitted {2}subly-windows-direct/, 'the pinned row was recorded, not withheld');
     // ...and the "nothing was recorded at all" line belongs to the OTHER empty.
     // Printing it here would tell the log a release recorded nothing while stdout
     // was handing record-deployment.mjs an environment.
     assert.doesNotMatch(r.stderr, /no \[10\]D-9 record for this release/);
+  });
+
+  // 🔴 BOTH CLI LOOPS RANGE OVER EVERY ROW, AND NEITHER BOUND HAD ANYTHING
+  // HOLDING IT until 2026-08-24. `for (const o of omitted)` and
+  // `for (const e of environments)` each survived `.slice(0, 1)` with this file
+  // at EXIT 0 / 85 pass / 0 fail, because no CLI case in the suite had ever
+  // produced two of either — every fixture above emits at most one name and
+  // withholds at most one row. Losing either bound is SILENT in the worst
+  // direction: the release records one of the two ledger rows it owes, or
+  // explains one of the two it withheld, and both the log and the suite read
+  // complete. (The MIXED cases above hold the two loops APART — that a non-empty
+  // emit list does not swallow the omissions — but not their LENGTHS.)
+  test('TWO of each: every recordable name reaches stdout and every withheld row is explained', () => {
+    const pinned = () => ({ keyKind: 'code-signing-certificate', codeSigningCertificate: { ...CONFIGURED_PIN } });
+    const onSentinel = () => ({ keyKind: 'code-signing-certificate', codeSigningCertificate: { ...CONFIGURED_PIN, sha256: SENTINEL } });
+    const register = {
+      channels: [
+        { id: 'ok-msix', kind: 'direct', artifactFormats: ['.msix'], deploymentEnvironment: '{app}-ok-msix', signing: pinned() },
+        { id: 'ok-exe', kind: 'direct', artifactFormats: ['.exe'], deploymentEnvironment: '{app}-ok-exe', signing: pinned() },
+        { id: 'held-dmg', kind: 'direct', artifactFormats: ['.dmg'], deploymentEnvironment: '{app}-held-dmg', signing: onSentinel() },
+        { id: 'held-appimage', kind: 'direct', artifactFormats: ['.AppImage'], deploymentEnvironment: '{app}-held-appimage', signing: onSentinel() },
+      ],
+    };
+    const root = fixture({ register });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    for (const n of ['subly-v1.msix', 'subly-v1.exe', 'subly-v1.dmg', 'subly-v1.AppImage']) writeFileSync(join(d, n), n);
+    const r = cli(['--emit-environments', d, '--app', 'subly', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    // BOTH names, one per line — this is the word list `for environment in $(…)`
+    // expands, so a dropped line is a [10]D-9 row that is simply never written.
+    // 🔴 DEEP-EQUAL ON BOTH LINES, NOT `includes` ON ONE. Measured 2026-08-24:
+    // weaken this to `assert.ok(r.stdout.includes('subly-ok-exe'))` and the
+    // `for (const e of environments)` bound in release-manifest.mjs stops being
+    // held — that pair goes GREEN at 86 pass / 0 fail, where the bound alone is
+    // red at 85/1. This assertion is the only reader of the SECOND name.
+    // (The `\r?` inside it is not load-bearing; see section B of the ledger.)
+    assert.deepEqual(r.stdout.trim().split(/\r?\n/), ['subly-ok-exe', 'subly-ok-msix'], r.out);
+    // BOTH reasons.
+    assert.match(r.stderr, /omitted {2}subly-held-dmg — channel "held-dmg"/, r.stderr);
+    assert.match(r.stderr, /omitted {2}subly-held-appimage — channel "held-appimage"/, r.stderr);
+    // Something WAS recorded, so the "nothing at all" line does not belong here.
+    assert.doesNotMatch(r.stderr, /no \[10\]D-9 record for this release/);
+
+    // 🔴 AND WHEN NOTHING IS RECORDED, THE CLOSING LINE COUNTS THE ROWS IT
+    // WITHHELD. `all ${omitted.length}` survived being frozen to the literal `1`
+    // on 2026-08-24 with this file at EXIT 0 / 86 pass / 0 fail: the only case
+    // that ever reached that line withheld exactly ONE row, so the literal read
+    // true. Staging ONLY the two withheld formats out of this same register
+    // empties stdout and leaves two omissions — a release that owed two [10]D-9
+    // rows and wrote none must not report it as one, or the reader stops looking
+    // after the first channel they fix.
+    const heldOnly = join(TMP, `d${seq++}`);
+    mkdirSync(heldOnly, { recursive: true });
+    for (const n of ['subly-v1.dmg', 'subly-v1.AppImage']) writeFileSync(join(heldOnly, n), n);
+    const h = cli(['--emit-environments', heldOnly, '--app', 'subly', '--repo-root', root]);
+    assert.equal(h.code, 0, h.out);
+    assert.equal(h.stdout.trim(), '', 'nothing was recordable, so nothing may reach the word list');
+    // 🔴 THE DIGIT `2` IS THE ASSERTION. Measured 2026-08-24: relax it to
+    // `all \d matching` and `all ${omitted.length}` in release-manifest.mjs stops
+    // being held — that pair goes GREEN at 86 pass / 0 fail, where freezing the
+    // count to a literal `1` alone is red at 85/1. This is the only case in the
+    // file that withholds more than one row, so it is the only place the count
+    // can be read at all.
+    assert.match(h.stderr, /all 2 matching direct channel\(s\) were omitted above/, h.stderr);
   });
 
   test('MATCHED-AND-WITHHELD and MATCHED-NOTHING are different empties, and only one fails', () => {
@@ -947,18 +1306,65 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no `kind: "direct"` channel/);
     assert.doesNotMatch(r.out, /omitted {2}/, 'a row that never matched is not a row that was withheld');
+    // The die names what the release DID hold, so the reader can see it was a
+    // .txt and not an empty stage.
+    assert.match(r.out, /The release holds: notes\.txt\./);
+
+    // ...and an EMPTY release directory reaches the same die by a different road.
+    // `${names.join(', ') || '(nothing)'}` — the `|| '(nothing)'` fallback is
+    // older than this change and survived `if (false)` on 2026-08-24 at EXIT 0 /
+    // 86 pass / 0 fail, because no case had ever run this mode over an empty
+    // directory. Without it the line reads "The release holds: ." and the one
+    // question the message exists to answer — what WAS staged — is answered with
+    // whitespace.
+    const empty = join(TMP, `d${seq++}`);
+    mkdirSync(empty, { recursive: true });
+    const e = cli(['--emit-environments', empty, '--app', 'subly', '--repo-root', root]);
+    assert.equal(e.code, 1, e.out);
+    assert.match(e.out, /The release holds: \(nothing\)\./);
+    assert.equal(e.stdout.trim(), '');
+
+    // ...and the join RANGES OVER EVERY STAGED FILE. `names.join(', ')` sliced to
+    // its first element survived on 2026-08-24 at EXIT 0 / 86 pass / 0 fail —
+    // both cases above stage at most one file, so a bound that stops at the first
+    // reads identically. The one question this message exists to answer is what
+    // WAS staged, and a real stage is never one file: answering it with the
+    // alphabetically-first asset is how a reader concludes the build produced
+    // nothing else. (Pre-existing text, not this change's — swept because it sits
+    // inside the CLI block this change rewrote and the comment there claims the
+    // block was swept whole.)
+    const two = join(TMP, `d${seq++}`);
+    mkdirSync(two, { recursive: true });
+    writeFileSync(join(two, 'notes.txt'), 'x');
+    writeFileSync(join(two, 'README.md'), 'x');
+    const t = cli(['--emit-environments', two, '--app', 'subly', '--repo-root', root]);
+    assert.equal(t.code, 1, t.out);
+    assert.match(t.out, /The release holds: README\.md, notes\.txt\./, t.out);
   });
 
-  test('THE REAL REGISTER: both direct rows sit on their sentinels today, so a real release records nothing', () => {
+  // 🔴 THE NAME BELOW SAID "both direct rows sit on their sentinels today" until
+  // 2026-08-24. That was TRUE when measured (windows-direct on
+  // CODE-SIGNING-CERT-NOT-PURCHASED, linux-appimage on
+  // APPIMAGE-SIGNING-KEY-NOT-GENERATED) but this case asserts it of NEITHER row —
+  // it measures `windows-direct` and branches. A name is prose, and prose may not
+  // carry a check the body does not hold, so the count came out of the name
+  // rather than an assertion going into the body: pinning "two rows, both on
+  // sentinels" is exactly the August fact the deleted block below explains this
+  // case must not freeze.
+  test('THE REAL REGISTER: a direct row on its sentinel keeps a real release from recording it', () => {
     const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
     const direct = register.channels.filter((c) => c.kind === 'direct');
     assert.ok(direct.length >= 1, 'this whole gate ranges over direct rows; none means it ranges over nothing');
-    // Not pinned to 2: the day a third direct channel is added this must keep
+    // ⛔ DELETED 2026-08-24 — an assertion that could not fail:
+    //     for (const c of direct) assert.ok(
+    //       ['sentinel', 'pinned', 'none', 'undeclared'].includes(signingPosture(c).state));
+    // signingPosture has exactly four `state:` literals and those were the four,
+    // so the loop asserted that a function returns one of the values it returns.
+    // It could not be pinned — no register a human can write reaches a fifth
+    // state — so it is removed rather than rewritten. What the row's posture
+    // ACTUALLY has to satisfy is the branch below, which is measured, not listed.
+    // Not pinned to 2 direct rows either: the day a third is added this must keep
     // measuring, not keep asserting a count taken in August.
-    for (const c of direct) {
-      const p = signingPosture(c);
-      assert.ok(['sentinel', 'pinned', 'none', 'undeclared'].includes(p.state), `${c.id} → ${p.state}`);
-    }
     const d = join(TMP, `d${seq++}`);
     mkdirSync(d, { recursive: true });
     writeFileSync(join(d, 'subly-v1.0.0-subly.msix'), 'msix');
@@ -976,6 +1382,17 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     } else {
       // The certificate was purchased and the pin filled. The row is recordable
       // again and this side of the branch is what proves the gate opens.
+      // 🔴 DISCLOSED, NOT HIDDEN: THIS ARM CANNOT RUN AGAINST TODAY'S TREE, and
+      // it is the one atom in this file that no input reaches. Measured
+      // 2026-08-24 — force the `if` to `true` and the file stays at 86 pass / 0
+      // fail (the live arm is this test's real one); force it to `false` and the
+      // file goes to 85 pass / 1 fail, i.e. these two assertions are WRONG about
+      // the register as it stands. It is kept rather than deleted because
+      // deleting it is what makes the day the pin is filled a SILENT pass: with
+      // only the sentinel arm written, `withheld` would simply go empty and the
+      // case would assert nothing at all. It is a live assertion about a future
+      // state, not an assertion that cannot fail — the day `signing` is filled in
+      // it runs, and if the gate does not open it fails.
       assert.equal(r.code, 0, r.out);
       assert.equal(r.stdout.trim(), 'subly-windows-direct');
     }
@@ -1314,6 +1731,14 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     // now appears on stderr in the omission line instead of on stdout. WHICH
     // stream it lands on is asserted by the posture block above; this case must
     // not silently become a second, weaker copy of that assertion.
+    // ⚠️ BOTH OF THE NEXT TWO LINES SURVIVE BEING LOOSENED and both are kept —
+    // section C of the ledger above the posture describe(). Measured 2026-08-24:
+    // `/subly-windows-direct/` relaxed to `/subly/`, and the `doesNotMatch`
+    // deleted outright, each left this file at EXIT 0 / 86 pass / 0 fail,
+    // because the posture block already asserts this line as a WHOLE STRING.
+    // They stay because this case is the one that reads the LIVE register rather
+    // than a fixture, and `{app}` unsubstituted is the failure it was written
+    // for; a stronger assertion here would be a second copy of a fixture case.
     assert.match(r.out, /subly-windows-direct/);
     assert.doesNotMatch(r.out, /\{app\}/);
   });

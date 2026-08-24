@@ -101,6 +101,17 @@ name: Store screenshots (live capture)
 # SUPABASE_URL; the LAST absent -> EXIT 1 naming SUPABASE_SERVICE_ROLE_KEY. A
 # failing `[` inside an `&&` list does not trip errexit, which is why the loop
 # does not abort on the first secret that IS set.
+#
+# RE-TAKEN 2026-08-24, FIFTH PASS, BECAUSE A BEHAVIOUR HELD BY MEASUREMENT ALONE
+# HAS TO BE RE-MEASURED OR IT IS HELD BY MEMORY. The `run:` body below was
+# extracted from this file verbatim (not retyped) and executed under
+# `env -i bash --noprofile --norc -eo pipefail`, exit code on its own line:
+#   · all four present   -> EXIT 0, "All four secrets present — the build will be LIVE."
+#   · FIRST absent       -> EXIT 1, "Missing secret(s): SUPABASE_URL"
+#   · LAST absent        -> EXIT 1, "Missing secret(s): SUPABASE_SERVICE_ROLE_KEY"
+#   · ALL FOUR absent    -> EXIT 1, all four named in order — a fourth case the
+#     2026-08-22 record did not take, added because "the loop does not abort on
+#     the first secret that IS set" is only half-shown by a run where three are.
 
 on:
   workflow_dispatch:
@@ -156,6 +167,13 @@ jobs:
     # --limit 10` still returns exactly ONE row — run 30922349590, 2026-08-04,
     # completed/success. The rename above still lands on no run in flight, and
     # the tablet capture the owner may dispatch is still un-run.
+    #
+    # RE-CHECKED 2026-08-24, FIFTH PASS, FOR THE SAME REASON THE FOURTH DID:
+    # `gh run list --workflow=store-screenshots.yml --limit 10` returns exactly
+    # ONE row — `completed  success  Store screenshots (live capture)  main
+    # workflow_dispatch  30922349590  4m9s  2026-08-04T15:05:35Z`. Nothing is
+    # dispatched, the rename landed on no run in flight, and the tablet capture
+    # is still un-run. Nothing in this file changed this pass except this note.
     name: Capture the Play phone and tablet screenshot sets (live)
     runs-on: ubuntu-24.04
     timeout-minutes: 30

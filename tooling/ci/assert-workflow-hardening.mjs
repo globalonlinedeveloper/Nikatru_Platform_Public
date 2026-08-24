@@ -121,7 +121,26 @@ const repoRoot = positional[0] ?? process.cwd();
  *  the `false` direction is open, and closing it needs the no-positional case
  *  the sentence above names — which is still a guards.test.mjs case, still not
  *  this change's file. The correction is that this is HALF uncovered, not
- *  uncovered, and half is the number a reader would have acted on. */
+ *  uncovered, and half is the number a reader would have acted on.
+ *
+ *  🔴 CLOSED 2026-08-24, FIFTH PASS — THE OTHER HALF IS HELD NOW, and the
+ *  premise both paragraphs above rest on ("every case in guards.test.mjs passes
+ *  a fixture root") is no longer true of the tree. guards.test.mjs gained
+ *  `treats NO positional root as the real repository, where the manifest must
+ *  be readable`: it runs this script with cwd set to a three-workflow fixture
+ *  and NO arguments, so `scanningRealRepo` is TRUE, `git ls-files` finds no
+ *  manifest under a temp dir, and the run must exit 1 saying
+ *  `returned no tracked workflow`. Re-measured in a scratchpad copy, exit code
+ *  on its own line, against a green baseline of SUITE EXIT 0 / 38 / 38 / 0:
+ *    · pinned `false` -> SUITE EXIT 1, tests 38 / pass 37 / FAIL 1
+ *      (without it the run falls through to the fallback floor, 3 workflows
+ *       clears 3, and a real repository with an unreadable manifest reads clean)
+ *    · pinned `true`  -> SUITE EXIT 1, tests 38 / pass 22 / FAIL 16
+ *  The same case holds `positional[0] ?? process.cwd()` in the direction the
+ *  thirty could not: with the fallback DROPPED, `repoRoot` is `undefined` and
+ *  the run dies before it can say `returned no tracked workflow` — SUITE EXIT 1,
+ *  38 / 37 / FAIL 1. Pinned to `process.cwd()` it was already held at 38 / 2 /
+ *  FAIL 36. */
 const scanningRealRepo = positional.length === 0;
 const wfDir = join(repoRoot, '.github', 'workflows');
 
@@ -649,7 +668,19 @@ function orphanWorkflows(live, scanned) {
     considered++;
     const base = path.slice(WF_PREFIX.length);
     if (!seen.has(base)) {
-      orphans.push({ base, id: w?.id ?? null, name: w?.name ?? '', state: w?.state ?? 'unknown' });
+      // 🔴 THE THREE `w?.` CHAINS ARE DELETED 2026-08-24 AND THE THREE `??`
+      // FALLBACKS ARE KEPT. They are not one row and they do not have the same
+      // answer. `const path = w.path;` above dereferences `w` with NO chain, so
+      // a nullish `w` has already thrown by the time this line runs and the
+      // short-circuit half of `w?.id` could never once have been taken — the
+      // identical unreachable-fallback the `path` ternary was deleted for one
+      // pass ago, and this file deletes those rather than keeping them for
+      // safety. The `??` halves DO have an input: `readLiveList` refuses only on
+      // a non-string `path`, so an entry with a path and no `id` reaches here.
+      // C14 below drives all three, and pinning any of them the other way (to
+      // the fallback) fires C2/C9. Measured, exit codes in the table on
+      // `liveLimbSelfTest`.
+      orphans.push({ base, id: w.id ?? null, name: w.name ?? '', state: w.state ?? 'unknown' });
     }
   }
   return { considered, orphans };
@@ -685,6 +716,21 @@ function orphanWorkflows(live, scanned) {
  *  fourth was a SKIP inside `orphanWorkflows` until this pass and a skip is how
  *  an orphan leaves a finding without leaving a trace. Six canaries drive them:
  *  C4-C7, C12 and C13. Re-measured, not remembered.
+ *
+ *  🔴 CORRECTED 2026-08-24, FIFTH PASS — THE GREP ABOVE NO LONGER RETURNS WHAT
+ *  IT SAYS, AND THE REASON IS THE GOOD ONE. `grep -rn "live-workflows"
+ *  --exclude-dir=.git --exclude-dir=.bundles --exclude-dir=node_modules .` now
+ *  returns TWELVE, not five: FIVE still in this file (:57, :79, :85, :673 —
+ *  this sentence's own paragraph — and :995), and SEVEN in
+ *  tooling/ci/test/guards.test.mjs, which is where every sentence above says
+ *  the count had to change before this limb's dispatch could be held. Still
+ *  zero in .github/workflows/ and zero in docs. The paragraphs above are left
+ *  as the dated third- and fourth-pass record of a tree where the flag had no
+ *  caller; that tree no longer exists.
+ *  NINE canary calls reach this function now, not six — C4, C5, C6, C7, C12a,
+ *  C12b, C13, and C15/C16 added this pass — and the count was taken by
+ *  `grep -c "= readLiveList(" ` (10, of which one is `liveVerdict`'s own call),
+ *  not remembered.
  *
  *  Returns `{ body }` or `{ refusal: [lines] }` — never both, never neither. */
 function readLiveList(label, raw) {
@@ -830,7 +876,13 @@ function liveVerdict(label, raw, scanned) {
  *  comparison this limb performs needs an input CI does not supply today, so
  *  without these canaries the detector would ship with nothing ever exercising
  *  its failing path. They run against every root this guard is ever pointed at,
- *  fixtures included — guards.test.mjs alone invokes this script THIRTY times
+ *  fixtures included — guards.test.mjs alone invokes this script THIRTY-SEVEN
+ *  times (`grep -c "run('assert-workflow-hardening.mjs'"` -> 37, re-measured
+ *  2026-08-24 after the last edit of BOTH files; it read THIRTY below until this
+ *  pass added seven live-list cases, and a count in prose that stops reproducing
+ *  is how three of this file's defects were found) — the older wording and its
+ *  own measurement are kept verbatim on the next two lines as the dated record:
+ *  guards.test.mjs alone invokes this script THIRTY times
  *  (`grep -c "run('assert-workflow-hardening.mjs'" tooling/ci/test/guards.test.mjs`
  *  -> 30, re-measured 2026-08-21 after the last edit of this file) —
  *  so a canary failure turns that file red many times over.
@@ -862,6 +914,8 @@ function liveVerdict(label, raw, scanned) {
  *      "live workflow list NOT CONSULTED". That one IS a silent false green, and
  *      it is the only uncovered condition on this limb that is. Closing it wants
  *      a guards.test.mjs case, a file this change does not own.
+ *      [SUPERSEDED 2026-08-24 — that case exists; see THE COUNT IS NOW ZERO at
+ *      the foot of this comment. The bullet is kept as the dated record.]
  *
  *  APPENDED 2026-08-21, SAME SESSION, THIRD PASS — THAT LIST WAS SHORT, AND THE
  *  CONDITION IT OMITTED WAS THE WORST ONE. Re-derived by walking every `if` on
@@ -982,13 +1036,78 @@ function liveVerdict(label, raw, scanned) {
  *  ONE THING CLOSES ALL FIVE: guards.test.mjs cases that invoke this script with
  *  `--live-workflows=<fixture>` and with a mistyped flag. That file is not owned
  *  by this change, and saying so is the only honest place to stop.
+ *  [SUPERSEDED 2026-08-24 — those cases were written; see THE COUNT IS NOW ZERO
+ *  below. Kept as the dated record of where the fourth pass stopped.]
  *
  *  RE-MEASURED 2026-08-22, FOURTH PASS, AND THE COUNT IS STILL FIVE — checked
  *  because this pass added a canary and a comment that adds one is how a count
  *  in prose stops reproducing. The condition the fourth pass repaired did NOT
  *  join this list: it lives inside `readLiveList`, where C12 reaches it on every
  *  invocation. All five above were re-run with the suite confirmed still at
- *  tests 30 / pass 30 / fail 0, and the three marked SILENT are still silent. */
+ *  tests 30 / pass 30 / fail 0, and the three marked SILENT are still silent.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  🔴 THE COUNT IS NOW ZERO. 2026-08-24, FIFTH PASS — THE LIST ABOVE IS CLOSED,
+ *  AND IT WAS CLOSED BY THE ONE THING IT SAID WOULD CLOSE IT. Every paragraph
+ *  above is left exactly as written, as the dated record of the tree it
+ *  described; what follows replaces its conclusion, not its history.
+ *
+ *  `tooling/ci/test/guards.test.mjs` gained a `limb 5 — the live workflow list`
+ *  block: eight cases that invoke this script through the flag rather than
+ *  around it. `grep -c "run('assert-workflow-hardening.mjs'"` -> 37 (was 30),
+ *  and the suite over this describe is tests 38 / pass 38 / fail 0, SUITE EXIT
+ *  0, re-measured after the last edit of both files.
+ *
+ *  EVERY ROW OF THE FIVE, RE-RUN AS A MUTATION AGAINST THAT SUITE in a copy of
+ *  tooling/ci under the scratchpad and never in the repository, one at a time,
+ *  `node --check`-clean, each anchor required to match exactly once, exit code
+ *  captured on its own line. Green baseline both ways: EXIT 0, 38/38/0.
+ *    · `if (unknownFlags.length)` -> `if (false)`  SUITE EXIT 1, pass 37 / FAIL 1
+ *      (the mistyped-flag case; it was EXIT 0 / 30 / 30 / 0 before this pass)
+ *    · `if (liveArg === null)` -> `if (true)`      SUITE EXIT 1, pass 33 / FAIL 5
+ *      …and -> `if (false)`                        SUITE EXIT 1, pass 19 / FAIL 19
+ *    · `if (verdict.stop)` -> `if (false)`         SUITE EXIT 1, pass 36 / FAIL 2
+ *    · `if (selfTestFailures.length)` -> `if (false)`
+ *                                                  SUITE EXIT 1, pass 37 / FAIL 1
+ *    · the `readFileSync` catch neutered           SUITE EXIT 1, pass 37 / FAIL 1
+ *  All five were SUITE EXIT 0 / 30 / 30 / 0 on the same mutations before this
+ *  pass — measured, not inferred: the fourth-pass sweep is in the same harness.
+ *
+ *  ⚠️ THE FOURTH ONE NEEDED A DIFFERENT KIND OF CASE AND IS WORTH NAMING. Every
+ *  canary in this function reaches the process through that single
+ *  `if (selfTestFailures.length)`, so disabling it turns all sixteen into
+ *  decoration and no ordinary case could tell. The case that holds it copies
+ *  THIS FILE and its two local imports into a temp dir, turns limb 5's prefix
+ *  filter — the line C3 holds, `orphanWorkflows`' early `continue` — into
+ *  `if (false)` in the copy, and asserts the copy exits 2 naming C3, with an
+ *  unmutated copy run first as the control so a broken copy mechanism cannot
+ *  make it pass. The repository is never mutated; the copy is built under the
+ *  test's own temp root.
+ *  ⚠️ AND IT FINDS THAT LINE THROUGH `stripSourceComments`, NOT THROUGH A RAW
+ *  SUBSTRING SEARCH, WHICH IS A DEFECT THIS FILE CAUSED AND MEASURED RATHER THAN
+ *  FORESAW. The first draft asserted the anchor appeared exactly once in the
+ *  bytes; the moment the paragraph above quoted the line it mutates, the count
+ *  became 2 and the case went red — SUITE EXIT 1, tests 384 / pass 383 / FAIL 1,
+ *  over the whole of guards.test.mjs. That is the loud failure the assertion was
+ *  written to produce, and the repair is that a QUOTATION IS NOT A SUBJECT: the
+ *  count and the offset are taken from the comment-blanked copy, the cut is made
+ *  in the real bytes at that same offset (the blanker preserves them), and this
+ *  paragraph may therefore say the line out loud. 384 / 384 / 0 after.
+ *
+ *  AND THE ARGUMENT VECTOR IS HELD TOO, which no pass before this one claimed.
+ *  Same harness, same baseline: the `find` predicate pinned false -> 33/FAIL 5;
+ *  dropping either conjunct of `unknownFlags` -> FAIL 5 and FAIL 37; the
+ *  `positional` predicate pinned true -> FAIL 1 (the case that passes the flag
+ *  BEFORE the root) and pinned false -> FAIL 36; `positional[0] ?? process.cwd()`
+ *  pinned to cwd -> FAIL 36 and with the fallback dropped -> FAIL 1;
+ *  `positional.length === 0` pinned false -> FAIL 1 (the no-positional case) and
+ *  pinned true -> FAIL 16.
+ *
+ *  WHAT IS STILL NOT HELD, so the list does not silently become an absolute:
+ *  the canaries' OWN `if`s. C14, C15 and C16 each set to `if (false)` alone ->
+ *  SUITE EXIT 0, 38/38/0, exactly as recorded for C12 and C13 above. That is the
+ *  negative half being switched off, not a subject going unguarded; what makes
+ *  each load-bearing is the subject mutation above that fires it. */
 function liveLimbSelfTest() {
   const failures = [];
   const scanned = ['a.yml', 'b.yml'];
@@ -1028,6 +1147,20 @@ function liveLimbSelfTest() {
   if (!(c3.considered === 2 && c3.orphans.length === 0)) {
     failures.push(`C3 NON-WORKFLOW PATH: a GitHub-generated entry outside ${WF_PREFIX} was counted — ${c3.considered} considered, ${c3.orphans.length} orphan(s). Every repo would report a false orphan.`);
   }
+
+  // C14 AN ORPHAN CARRYING NOTHING BUT A `path` -> still reported, and the three
+  // `??` fallbacks are what keep the operator's line readable. ADDED 2026-08-24
+  // in the same edit that deleted the three `w?.` chains beside them: the CHAINS
+  // were unreachable (a nullish `w` throws on `w.path` eleven lines earlier), the
+  // FALLBACKS are not — GitHub sends id/name/state on every entry, a `--jq`
+  // projection need not, and `readLiveList` refuses only on a non-string `path`.
+  // Without them the one line an operator acts on reads
+  // `ghost.yml (id undefined, "undefined", state \`undefined\`)`, so the three
+  // literals are the assertion, not the orphan count.
+  const c14 = orphanWorkflows([{ path: `${WF_PREFIX}ghost.yml` }], scanned);
+  if (!(c14.orphans.length === 1 && c14.orphans[0].id === null && c14.orphans[0].name === '' && c14.orphans[0].state === 'unknown')) {
+    failures.push(`C14 SPARSE ORPHAN: an entry with a \`path\` and no id/name/state produced ${JSON.stringify(c14.orphans)}. The finding line an operator pastes into \`gh api\` is built out of those three fields, and an absent one must read as null/""/unknown rather than as \`undefined\`.`);
+  }
   // C4-C7, C12 AND C13 DRIVE `readLiveList` — the refusals that decide whether
   // "zero orphans" is a finding or an accident, plus the control that stops it
   // refusing everything. (This line read "C4-C6" until 2026-08-21, third pass:
@@ -1038,9 +1171,16 @@ function liveLimbSelfTest() {
   // refusal's reach over a page with no numeric `total_count` at all; C13 holds
   // the fourth refusal, which is new this pass — an entry with no `path` used to
   // be silently skipped by `orphanWorkflows` instead. Both numbers in the lead
-  // line were re-derived by counting the calls, not remembered.) They
-  // are here and not in a test file because the flag that reaches them has no
-  // caller in the committed tree; see the note on `readLiveList`.
+  // line were re-derived by counting the calls, not remembered.
+  // CORRECTED A THIRD TIME 2026-08-24, FIFTH PASS: NINE canary calls reach
+  // `readLiveList` — C4, C5, C6, C7, C12a, C12b, C13, and C15/C16 added this
+  // pass for the two optional chains nothing drove. It still holds FOUR
+  // refusals. Counted with `grep -c "= readLiveList("` -> 10, one of which is
+  // `liveVerdict`'s own call.) They are here AND ALSO in a test file now: the
+  // flag that reaches the dispatch has eight callers in guards.test.mjs since
+  // this pass, and the canaries keep holding the pure engine behind it, which
+  // is a different job — see the note on `readLiveList` and the closing block
+  // on `liveLimbSelfTest`.
   const goodPage = JSON.stringify({ total_count: 2, workflows: agreeing });
 
   // C4 A WELL-FORMED PAGE -> no refusal, and the array comes back intact. The
@@ -1112,6 +1252,29 @@ function liveLimbSelfTest() {
   );
   if (!/entry 2 of 3 has no string `path`/.test(c13.refusal?.[0] ?? '')) {
     failures.push(`C13 PATHLESS ENTRY: a live entry with no \`path\` was not refused by index — got ${JSON.stringify(c13)}. An entry that cannot be matched against a file is dropped from the comparison, and one fewer entry considered is one fewer orphan.`);
+  }
+
+  // C15 A BODY THAT IS JSON `null` -> refused, not crashed. ADDED 2026-08-24
+  // because the `body?.` chain in the `workflows`-array refusal had no input:
+  // `null` is valid JSON, so `JSON.parse` hands it back and `body.workflows`
+  // would throw, while C6's body is an object and short-circuits the chain
+  // without ever exercising it. A chain nothing drives is a chain that can be
+  // deleted by accident, and the accident here is a TypeError where a refusal
+  // belongs.
+  const c15 = readLiveList('null.json', 'null');
+  if (!c15.refusal || !/workflows/.test(c15.refusal[0])) {
+    failures.push(`C15 NULL BODY: a page whose entire body is JSON \`null\` produced ${JSON.stringify(c15)} instead of a refusal naming \`workflows\`. A body that is not an object is not an empty list, and an empty list is zero orphans.`);
+  }
+
+  // C16 AN ENTRY THAT IS `null` -> refused BY INDEX, not crashed. ADDED
+  // 2026-08-24. C13's entry is an object missing `path`; this one is not an
+  // object at all, which is the only input that drives BOTH the `w?.path` chain
+  // in the finder and the `[pathless]?.path` chain in the message it prints.
+  // With either chain dropped this case became a TypeError, and a crash inside
+  // the canaries is not the refusal an operator needs to read.
+  const c16 = readLiveList('nullentry.json', '{"total_count":1,"workflows":[null]}');
+  if (!/entry 0 of 1 has no string `path` \(got undefined\)/.test(c16.refusal?.[0] ?? '')) {
+    failures.push(`C16 NULL ENTRY: a live entry that is \`null\` was not refused by index — got ${JSON.stringify(c16)}. An entry that cannot be matched against a file is dropped from the comparison, and one fewer entry considered is one fewer orphan.`);
   }
 
   // C8-C11 DRIVE `liveVerdict` — the ORPHAN VERDICT, which is a DIFFERENT
@@ -1196,9 +1359,15 @@ if (liveArg === null) {
   // ONE DISPATCH LINE, AND IT IS ALL THAT IS LEFT HERE. Reading the page,
   // comparing it against the scan, and choosing between the two stops all
   // happen inside `liveVerdict`, where C8-C11 drive them on every invocation.
-  // This line only TAKES the stop the verdict already decided on — and it is
-  // itself uncovered, which is stated on `liveLimbSelfTest` rather than implied
-  // away, because a hole moved is not a hole closed.
+  // This line only TAKES the stop the verdict already decided on.
+  // 🔴 IT WAS UNCOVERED UNTIL 2026-08-24 AND IT IS NOT ANY MORE, which is
+  // written here because the sentence this replaced said the opposite and a
+  // reader arrives at this line, not at the block that qualifies it. Set to
+  // `if (false)` it was the worst row on the limb: SUITE EXIT 0, 30 / 30 / 0,
+  // while a page carrying two real orphans printed `2 of them absent` in the ok
+  // block and exited 0. Measured again after the guards.test.mjs case landed:
+  // SUITE EXIT 1, tests 38 / pass 36 / FAIL 2. A hole moved is not a hole
+  // closed — this one was closed where it was moved to.
   const verdict = liveVerdict(liveArg, raw, files);
   if (verdict.stop) LIVE_STOPS[verdict.stop.kind](verdict.stop.lines);
   liveLine = verdict.liveLine;

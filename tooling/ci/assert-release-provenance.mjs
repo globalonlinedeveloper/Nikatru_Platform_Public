@@ -35,12 +35,17 @@
 // ⚠️ COMMENTS ARE STRIPPED HERE — the OPPOSITE of assert-channel-claims.mjs, and
 // both are right. There, the comment WAS the payload (a Flathub URL a human
 // copies). Here the hazard runs the other way: `deploy-web.yml` explains in prose
-// why it calls both scripts — MEASURED 2026-08-21,
-// `grep -cE "assert-gate-passed|record-deployment" .github/workflows/deploy-web.yml`
-// prints 28 lines naming one of them and
-// `grep -cE "run: node tooling/ci/(assert-gate-passed|record-deployment)\.mjs"` on the
-// same file prints 2. Twenty-three of the twenty-eight are COMMENT lines, so a raw match
-// would report a lane as gated on the strength of a comment DESCRIBING the gate. This
+// why it calls both scripts, on far more lines than it RUNS them on, so a raw
+// match would report a lane as gated on the strength of a comment DESCRIBING the
+// gate. NO COUNT IS FROZEN INTO THIS SENTENCE ANY MORE, and that is a repair:
+// what stood here was "prints 28 … Twenty-three of the twenty-eight are COMMENT
+// lines", measured 2026-08-21, and on 2026-08-24 the same command printed a
+// different number because a sibling is rewriting that file this round. A
+// comment may not carry a check. Re-take the pair instead of trusting a number:
+//   grep -cE "assert-gate-passed|record-deployment" .github/workflows/deploy-web.yml
+//   grep -cE "run: node tooling/ci/(assert-gate-passed|record-deployment)\.mjs" .github/workflows/deploy-web.yml
+// The first has always exceeded the second by a wide margin, and that gap — not
+// its width on any given day — is the whole argument. This
 // repo has shipped that exact defect twice — the guard-coverage counter that
 // accepted a name in a comment ([pipeline F-10], fixed at dd30feb) and
 // `assert-stamp-platforms.mjs:41-46`, whose header records deleting the real
@@ -134,6 +139,21 @@
 // has no rollback. That is the distinction the gap is about, and this limb steps
 // around it.
 //
+// ── RE-TAKEN 2026-08-24, because a reviewer reported this paragraph FALSE ────
+// It is not. Every offset and every count above was re-measured against the tree
+// that day and all of them reproduce: `gh release create` at :1292, inside the
+// `release` job (:1161, the LAST job in the file, which runs to :1316);
+// `grep -c -- "--draft"` prints 0; the ONLY `environment:` anywhere in that file
+// is :1191 and it is inside a comment, so the job declares none; the block-form
+// `needs:` is at :1174 with `- gate` at :1175 and the list ending at :1179; and
+// `grep -n "ref_type == 'tag'"` prints exactly :1276 and :1307. The four-row
+// publish census reproduces too, job for job, printed from limb 2's own
+// classification on a scratch copy. The one number worth reading carefully is
+// :1292 vs the :1281 the guard REPORTS for that publish — both are right and
+// they are different things: :1292 is the raw line carrying the command, :1281
+// is the `run:` key whose block scalar the shared parser joins, which is the
+// line this guard prints by design.
+//
 // ── CORRECTION 2026-08-21, same day, before merge ────────────────────────────
 // The paragraph above replaced one that UNDERSTATED the protection that exists
 // and therefore OVERSTATED the gap it was recording — in a file whose entire
@@ -168,9 +188,20 @@
 // a grep for the superseded text still lands here:
 //   · "`deploy-web.yml` explains in prose why it calls both scripts
 //      (`:46-49`, `:121-122`)" — :46-49 is the `paths:` filter rationale and
-//      :121-122 is the rollback note; neither names either script. The prose
-//      that does is at :57-61 and :267-275, and the count now stands in its
-//      place because the count is what the sentence is actually about.
+//      :121-122 is the rollback note; neither names either script. The count
+//      above now stands in its place, because the count is what the sentence is
+//      actually about.
+//      🔴 AND THE REPLACEMENT ITSELF CARRIED A CITATION THAT DID NOT RESOLVE.
+//      This line read "The prose that does is at :57-61 and :267-275" until
+//      2026-08-24. RE-MEASURED that day: :57-61 does name both scripts, but
+//      :267-275 is the `zizmor` least-privilege rationale and names NEITHER —
+//      the lines that do had already moved to :278-279. Two sentences above,
+//      this same block promises "a re-measured command … not a new line
+//      number", and then supplied two new line numbers. So the offsets go and
+//      the command stands in their place:
+//        grep -nE "checks: read. for assert-gate-passed" .github/workflows/deploy-web.yml
+//      printed 2 lines on 2026-08-24. deploy-web.yml is being rewritten by a
+//      sibling this round, which is exactly why this is a command.
 //   · "`assert-stamp-platforms.mjs:37-42`" — :37-38 is that file's
 //      `PLATFORM_DIRS` constant. The comment recording the green-on-a-comment
 //      mutation is :41-46. Repointed.
@@ -352,16 +383,126 @@ const NEUTRALIZING_IF = /\balways\s*\(|\bfailure\s*\(/;
 // verb is present and the script cannot be named, that is COVERAGE LOST below,
 // not a pass.
 const SUBMIT_FLAG = /(?:^|\s)--submit(?=\s|$)/;
+// 🔴 THE DASH MULTIPLICITY OF `--` IS A CONDITION, AND "IT CAN ONLY MATCH MORE"
+// IS NOT A REASON TO LEAVE IT FREE — MEASURED 2026-08-24, which is why it is
+// pinned rather than declared. `-{2,}submit` IS a strict superset of `--submit`
+// in the matching sense, and the verdict is still not monotone in it: on a tree
+// carrying a `---submit` lane that declares no `environment:`, the shipped guard
+// EXITS 0 and the widened one EXITS 1, inventing an (a)-half FAIL on a workflow
+// that submits nothing. A matcher that only ever matches MORE still flips an
+// exit code wherever what it feeds decides a FAIL. Held by 'a `---submit`
+// argument is not the verb — the DASH COUNT in SUBMIT_FLAG'. The NARROWING
+// direction is a different atom and was already red: `-submit`, one dash, takes
+// the domain to zero and the floor speaks (measured: EXIT 1).
+// 🔴 A REGEX IS NOT ONE CONDITION, AND TWO ROUNDS OF SWEEPING THIS FILE READ IT
+// AS ONE. Every boundary, alternative, class and quantifier below is its own
+// condition and has its OWN case in release-provenance.test.mjs; the earlier
+// rows "the word boundaries" and "the `node` prefix" each covered a pair, and a
+// pair only ever fails together. Named here so the next sweep cannot re-merge
+// them:
+//   SUBMIT_RUNNER  leading  `\b` → 'a left-attached `xnode` is not `node`'
+//   SUBMIT_RUNNER  trailing `\b` → '`nodemon` is not `node`'
+//   SUBMIT_SCRIPT  leading  `\b` → 'a decoy `.mjs` attached to an `xnode`'
+//   SUBMIT_SCRIPT  `node`'s `\b` → 'a decoy `.mjs` attached to a `nodemon`'
+//   SUBMIT_SCRIPT  `\S+`         → 'a bare `.mjs` is not a script path'
+//   SUBMIT_SCRIPT  trailing `\b` → 'a `.mjsx` path is not a `.mjs` script'
+//   SUBMIT_SCRIPT  `\.` escape   → 'a dotless `...mjs` argument before the script'
+//   SUBMIT_SCRIPT  `*` zero-arm  → 'a script name that begins where `node` ends'
+//   SUBMIT_SCRIPT  `\S+`'s GREED → 'a `.mjs.mjs` path is the WHOLE token'
+//   SUBMIT_SCRIPT  the `s` of mjs → 'a decoy `.mjx` before the script'
+//   SUBMIT_FLAG  the prefix GROUP → 'a `--submit` GLUED to the end of another token'
+//   SUBMIT_FLAG  the WORD submit  → '`--submitted` is not `--submit`'
+// THE THIRD PASS, 2026-08-24, added the last five, and ALL FIVE WERE GREEN
+// WITH 103 CASES PASSING. Naming a construct is not naming its members
+// either, and the fifth level down is where they were hiding: one escaped
+// character inside a literal (`\.`), one character of a literal (the `s` of
+// `mjs`), the ZERO-WIDTH arm of a quantifier as distinct from its laziness,
+// the GREED of `\S+` as distinct from its `+`, and the EXISTENCE of the
+// prefix group as distinct from its two alternatives. The rule that finds
+// them is mechanical: mutate one character of the pattern at a time, never
+// one named construct at a time.
 const SUBMIT_RUNNER = /\bnode\b/;
-const SUBMIT_SCRIPT = /\bnode\b[^\n]*?(\S+\.mjs)\b/;
+// 🔴 `[^\n]*?` STOOD BETWEEN `\bnode\b` AND THE CAPTURE UNTIL 2026-08-24 AND WAS
+// DELETED RATHER THAN PINNED, because it is a restriction that can never bite.
+// What this pattern is handed is a shell SEGMENT of a LOGICAL line, and
+// workflow-scan.mjs builds logical lines by `parts.join(' ')` / `parts.join(' ; ')`
+// over lines that were themselves produced by splitting the file on `\r?\n` — so
+// no logical line, hence no segment, can carry a newline. Swapped for `[\s\S]`
+// the suite stayed green in every case, which is the measurement, and the reason
+// is the proof: the two classes are the same set on every input reachable here.
+// A narrowing that cannot narrow is the same defect as an assertion that cannot
+// fail — it makes the pattern look guarded against something it never meets.
+const SUBMIT_SCRIPT = /\bnode\b[\s\S]*?(\S+\.mjs)\b/;
+// 🔴 THIS PATTERN'S CASE-SENSITIVITY IS A CONDITION TOO, and it was carried as a
+// "pure widening" until it was MEASURED on 2026-08-24. Adding `i` matches a
+// strict superset of strings and still flips an exit code, because the capture
+// is LAZY: an uppercase `.MJS` argument sitting between `node` and the real
+// script wins the race under `i` and loses it without, so the guard reads a file
+// that is not in the tree. Measured on one such tree: shipped EXIT 0 (the real
+// script is opened and passes), `/i` EXIT 1 (COVERAGE LOST). Held by 'an
+// uppercase `.MJS` argument is not the script — SUBMIT_SCRIPT is CASE-SENSITIVE'.
 /** The run-time half, read out of the invoked script with comments stripped:
  *  it must BUILD the environments API URL and READ the protection rules. Both,
  *  because a script that fetches the environment and never looks at its rules
  *  has confirmed only that the environment exists — which is the state
  *  submit-play.yml:42-45 records measuring on this very repo, where all three
- *  auto-created environments returned `"protection_rules": []`. */
+ *  auto-created environments returned `"protection_rules": []`.
+ *
+ *  🔴 THE TWO SLASHES ARE TWO CONDITIONS AND ARE NOW HELD SEPARATELY. Dropping
+ *  either one ALONE left every case green while dropping the pair did not —
+ *  which is exactly how one table row hid two. The LEADING slash is held by
+ *  'a bare `environments/` with no leading slash is not the API path'; the
+ *  TRAILING one by 'the environments LIST endpoint is not one environment's
+ *  rules', and that half is the materially live one:
+ *  `GET /repos/{owner}/{repo}/environments` enumerates WHICH environments
+ *  exist and never reads any one's protection_rules, so crediting it would
+ *  credit precisely the confirmation this docstring says is not enough.
+ *
+ *  THE WORD BETWEEN THE SLASHES IS A THIRD MEMBER and was green until
+ *  2026-08-24: widened to `/\/environment\w*\//` all 103 cases still
+ *  passed, because every fixture spelled the path correctly. The route is
+ *  `/repos/{owner}/{repo}/environments/{name}`, so a singular
+ *  `/environment/` GET fetches a 404 with no `protection_rules` in it and
+ *  would still buy the credit. Held by 'the SINGULAR `/environment/` path
+ *  is not the environments API'. */
 const ENV_API_READ = /\/environments\//;
+// 🔴 AND THE CASE OF THOSE LETTERS IS A CONDITION — MEASURED 2026-08-24, and it
+// is the DANGEROUS direction, not the loud one. Adding `i` matches strictly
+// more, and what it matches more of is scripts that DO NOT PERFORM THE READ: the
+// REST route is lower-case, so a script spelling `/ENVIRONMENTS/{name}` GETs a
+// 404 with no `protection_rules` in it and would be credited anyway. Measured on
+// such a script: shipped EXIT 1 (the (b) FAIL speaks), `/i` EXIT 0 — a silent
+// credit, which is the one outcome this file's header forbids. "It can only
+// match MORE" is therefore not a reason to leave it free here; matching more is
+// exactly how this half goes blind. Held by 'an UPPER-CASE `/ENVIRONMENTS/` is
+// not the API route'.
+// `protection_rules`, and the `_rules` half is a condition of its own: widened
+// to /protection/ the whole suite stayed green on 2026-08-24, because every
+// fixture that carried the word carried the whole token. That widening is not
+// inert — it credits a script that GETs the right endpoint and then reads some
+// OTHER `protection` field off it. Held by 'a `protection` field that is not
+// `protection_rules` is not the rules read'.
+// THE OTHER HALF IS ALSO A CONDITION and was green until 2026-08-24:
+// narrowed to /_rules/ all 103 cases still passed. A deployment-branch
+// policy read is `_rules` off the right endpoint and says nothing about
+// approval, so it would buy the credit for an unreviewed lane. Held by
+// 'a `_rules` field that is not `protection_rules` is not the rules read'.
+// SO ARE THE OTHER TWO MEMBERS OF THIS TOKEN, both green until 2026-08-24
+// with 109/111 cases passing: the UNDERSCORE (`protection.rules` matches a
+// script that merely says the two words in a runtime message, `.` being a
+// space) and the WORD `rules` (`protection_rule\w*` credits a read of the
+// singular `deployment_protection_rule`, a different GitHub object). Held
+// by 'the words `protection rules` in a message are not the
+// `protection_rules` field' and 'a SINGULAR `deployment_protection_rule` id
+// is not the `protection_rules` array'.
 const ENV_PROTECTION_READ = /protection_rules/;
+// 🔴 SAME FINDING ON THIS TOKEN, MEASURED 2026-08-24: its CASE is a condition and
+// the widening is the blind kind. `protection_rules` is the JSON key GitHub
+// returns; a script reading `PROTECTION_RULES` off that response reads
+// `undefined` and has performed no check at all. With `/i` it is credited:
+// measured, shipped EXIT 1 and `/i` EXIT 0 on a script that GETs the right
+// endpoint and then reads the wrong-case key. Held by 'a wrong-CASE
+// `PROTECTION_RULES` reads undefined and is not the rules read'.
 
 // ── the two mechanisms must still exist ──────────────────────────────────────
 // Asserting call sites to a script that has been deleted proves nothing.
@@ -463,18 +604,29 @@ function classifyPublishes(job) {
     }
     consumed.add(command.n);
     const cmd = `wrangler ${command.text}`;
-    // 🔴 A `!p.viaCommand &&` CONJUNCT STOOD HERE AND WAS DELETED 2026-08-22,
-    // with a proof, after a fixture written to pin it PROVED IT UNFALSIFIABLE
-    // instead. It could only change the verdict if a `viaCommand` pattern
-    // matched the command this line just synthesized; there is exactly one such
-    // pattern, `/cloudflare\/wrangler-action/`, so the `command:` value would
-    // have to contain the literal string `cloudflare/wrangler-action` — and any
-    // line containing THAT is matched by this loop's own entry test above, is
-    // therefore read as a second wrangler-action step with no `command:` of its
-    // own, and is pushed as the action's DEFAULT deploy at the same line with
-    // the same label. MEASURED on such a tree: identical output, conjunct or
-    // not. The partition it expressed is held where it can fail — the generic
-    // pass's `if (p.viaCommand) continue;`, which the sweep turned RED.
+    // 🔴 A `!p.viaCommand &&` CONJUNCT STOOD HERE AND WAS DELETED 2026-08-22.
+    // THE PROOF WRITTEN BESIDE THE DELETION WAS FALSE, AND I MEASURED IT FALSE
+    // ON 2026-08-24. What stood here, verbatim, was that the conjunct "could
+    // only change the verdict if a `viaCommand` pattern matched the command this
+    // line just synthesized", that any such line is re-entered by this loop and
+    // "pushed as the action's DEFAULT deploy at the same line with the same
+    // label", and so "MEASURED on such a tree: identical output, conjunct or
+    // not". A tree distinguishes them. A step whose `with: command:` value IS
+    // the literal `cloudflare/wrangler-action`, with a nested `command: deploy`
+    // below it, is re-entered as a second wrangler-action step that DOES find a
+    // `command:` — the nested one — so the two runs disagree about WHICH line
+    // carries the first publish, and limb 2's same-job order test flips on it.
+    // Measured on one such tree: shipped EXIT 1 ("calls assert-gate-passed.mjs
+    // at :12, AFTER its first publish at :11"), conjunct restored EXIT 0.
+    //
+    // THE DELETION STANDS, for the reason that is actually true rather than the
+    // one that was written: dropping the conjunct can only ADD a publish entry,
+    // never remove one, so nothing went blind — the guard got stricter on this
+    // shape, not blinder. And it is now HELD instead of argued: the case
+    // 'a `command:` naming the action ITSELF is a publish at its own line' in
+    // release-provenance.test.mjs goes RED the moment the conjunct comes back.
+    // The partition the conjunct expressed also survives where it can fail —
+    // the generic pass's `if (p.viaCommand) continue;`, which the sweep reddens.
     const publishes = PUBLISH.some((p) => shellSegments(cmd).some((s) => p.re.test(s) && !DRY_RUN.test(s)));
     if (publishes) found.push({ n: command.n, what: 'a Cloudflare deploy action' });
   }
@@ -502,6 +654,19 @@ for (const wf of workflows) {
     job.submitCalls = [];
     for (const l of job.logical) {
       for (const seg of shellSegments(l.text)) {
+        // 🔴 ALL THREE RECEIVERS BELOW ARE `seg`, NOT `l.text`, AND EACH IS A
+        // CONDITION OF ITS OWN. Two were pinned and the third was not
+        // enumerated at all until 2026-08-24: swapping SUBMIT_RUNNER's receiver
+        // to `l.text` left the whole 114-case suite green and still flipped a
+        // verdict — on a line whose first segment runs `node` and does not
+        // submit while its second submits with no runner, the shipped guard
+        // exits 0 and the swap exits 1 with COVERAGE LOST, naming a lane that
+        // invokes no `node … --submit` at all. The verb and the runner must be
+        // in the SAME segment, which is the same per-segment rule the dry-run
+        // exclusion pays for. Held by 'the `node` runner must be on the
+        // SUBMITTING segment, not merely on the line'; the other two by
+        // 'a `--submit` that OPENS a shell segment' and 'the script is read
+        // from the SUBMITTING segment, not from another one on the line'.
         if (!SUBMIT_FLAG.test(seg) || !SUBMIT_RUNNER.test(seg)) continue;
         job.submitCalls.push({ n: l.n, script: seg.match(SUBMIT_SCRIPT)?.[1] ?? null });
       }
@@ -714,8 +879,27 @@ for (const wf of workflows) {
     // job that difference lets through today.
     if (job.submitCalls.length > 0) {
       submitJobs++;
+      // `[0]`, not the last call: the (a) message points a reader at where the
+      // lane STARTS submitting. Held by 'the (a) FAIL names the FIRST `--submit`
+      // call in the job, not the last' — a job with two of them, where `[0]` and
+      // `[length - 1]` print different line numbers.
       const first = job.submitCalls[0];
       // (a) the YAML half.
+      //
+      // 🔴 `job.lines`, NOT `job.logical`, AND THE TWO ARE PROVABLY THE SAME SET
+      // FOR THIS PATTERN — stated because the sweep of 2026-08-24 found the swap
+      // GREEN and a green swap has to be explained, not left. `job.logical` is
+      // `job.lines` with block-scalar CONTINUATION lines folded into their
+      // `run:` key line, and joinBlockScalars only consumes lines indented
+      // DEEPER than that key. Inside a job a `run:` key sits at six spaces or
+      // more, so a four-space job-level key can never be swallowed; and the
+      // folded text keeps the `run:` line's own indent, so folding can never
+      // MANUFACTURE a `^ {4}environment:` either. The receiver is therefore not
+      // a condition that can change a verdict on well-formed YAML — it is a
+      // naming choice, and it is spelled the way PG-4 spells it at
+      // tooling/release/submit-play.mjs:375, so the two checks cannot drift.
+      // The predicate it feeds IS a condition and IS pinned: see
+      // 'FAILS when the submit job declares no environment:'.
       if (!job.lines.some((l) => /^ {4}environment:/.test(l.text))) {
         submitProblems++;
         problems.push(
@@ -725,6 +909,14 @@ for (const wf of workflows) {
         );
       }
       // (b) the run-time half, without which (a) is decoration.
+      //
+      // EVERY call, not `[0]`: a job may invoke a `--submit` verb more than
+      // once and the calls may name DIFFERENT scripts, so one clean script
+      // cannot vouch for the next. THE LOOP BOUND IS ITSELF A CONDITION and it
+      // is held by 'limb 4 (b) checks EVERY `--submit` call in the job, not
+      // just the first' — two calls, the first script performing the read and
+      // the second blind. Truncated to `.slice(0, 1)` the guard exits 0 on that
+      // fixture and prints an `ok` line saying each script performs the read.
       for (const call of job.submitCalls) {
         if (call.script === null) {
           unnamedSubmitScripts.push(`${wf.rel}:${call.n} (job "${job.name}")`);
@@ -832,9 +1024,44 @@ ok(
   //    when limb 4 raised nothing; otherwise the line says how many of the
   //    jobs it counted FAILED. The census — the count and the scripts actually
   //    opened — is a fact either way and stays on both branches, because it is
-  //    what a reader diagnoses from.
+  //    what a reader diagnoses from. BOTH HALVES OF THAT CENSUS ARE
+  //    CONDITIONS, and both were green until 2026-08-24 because every
+  //    fixture but one opens exactly ONE script, where a count cannot be
+  //    wrong by arithmetic and an order cannot be wrong at all: `size + 1`
+  //    and a join with the `.sort()` dropped each passed all 103 cases.
+  //    Held by 'the limb-4 `ok` line COUNTS the scripts it opened and names
+  //    them in a stable order', which opens two.
+  //
+  // ── DELETED 2026-08-24 — a `|| '(none)'` fallback stood on the join below and
+  //    was DEAD BY CONSTRUCTION, which is the same unfalsifiable shape this
+  //    round deleted `.filter(Boolean)` for. Reaching this line at all requires
+  //    `submitJobs > 0` (else the floor above calls coverageLost, which
+  //    `process.exit(1)`s) and `unnamedSubmitScripts.length === 0` (same). Every
+  //    call either lands in `unnamedSubmitScripts` or in `submitScriptsChecked`,
+  //    so those two together make the set non-empty here — the fallback could
+  //    never be taken. The sibling on the served-lane line below is NOT dead
+  //    (a zero-size set only pushes a problem there) and stays.
+  // ── DECLARED, NOT PINNED — TWO GREENS ON THE LINE BELOW, AND BOTH ARE REPORT
+  //    TEXT (2026-08-24). Neither can change an exit code, and each was measured
+  //    that way rather than argued:
+  //    · `${publishJobs}` in the tail. `${publishJobs + 1}` is green, and it is
+  //      green for a reason its two siblings on this line do not share: the job
+  //      count and `${submitScriptsChecked.size}` are limb 4's OWN census — they
+  //      are what the line ASSERTS about the scripts it opened, so they are
+  //      pinned. `publishJobs` is limb 2's number, quoted here only so a reader
+  //      can see the domain this limb does NOT range over. Nothing reads it back.
+  //      Measured on the base fixture: shipped and `+ 1` BOTH EXIT 0, the printed
+  //      sentence the only difference. Where `publishJobs` does decide something
+  //      it is held — the `publishJobs === 0` floor above.
+  //    · THE PROSE TAIL IS OUTSIDE THE ASSERTION'S REGEX, and the honest claim
+  //      for this line is "tight over the prefix a case matches", NOT
+  //      "byte-tight". The case that reads it stops at the closing `)` of the
+  //      script list, so everything from `. The two environment names` onwards
+  //      is unasserted: `NOT compared.` -> `NOT compared!` is green, measured,
+  //      both EXIT 0. It is prose about scope; building machinery to pin a
+  //      sentence would assert nothing this guard's verdict depends on.
   `${submitJobs} job(s) invoke a \`--submit\` verb; ${submitScriptsChecked.size} script(s) opened for the run-time half ` +
-    `(${[...submitScriptsChecked].sort().join(', ') || '(none)'})` +
+    `(${[...submitScriptsChecked].sort().join(', ')})` +
     (submitProblems === 0
       ? '; each declares an `environment:` and its script performs a run-time protection-rules read'
       : `; ${submitProblems} of those assertions FAILED — see the FAIL line(s) below`) +

@@ -130,6 +130,17 @@ function submitWorkflow({ environment = 'store-publish', step = SUBMIT_STEP, oth
   // Block form as well as scalar: `environment:\n      name: …` is legal YAML
   // GitHub honours, and a check anchored to the scalar spelling would false-red
   // a correctly-gated lane — the scalar-`needs:` lesson one key over.
+  //
+  // 🔴 THE `'block'` ARM IS A GREEN THAT IS DECLARED, NOT AN UNPINNED ONE —
+  // sweep 2026-08-24. Switched off, the arm falls through to the scalar spelling
+  // and every case still passes, and NO case can be written that would notice:
+  // the guard's anchor is `/^ {4}environment:/`, which matches the block form's
+  // opening line and the scalar line alike, by construction and on purpose (the
+  // guard's own constants block records probing that the bare key satisfies (a)).
+  // So this arm can only ever produce a line the anchor already accepts — no
+  // verdict can differ. It stays because a reader has to be able to see that the
+  // block spelling was tried; the condition the anchor DOES carry is held four
+  // ways: `^`, ` {4}`, `environment`, and the trailing `:`, each with its case.
   const env =
     environment === null
       ? ''
@@ -153,6 +164,13 @@ function tree({
   omitMarkerScript = false,
   submit = submitWorkflow(),
   submitScript = SUBMIT_SCRIPT_REAL,
+  // ADDED 2026-08-24 to pin limb 4 (b)'s LOOP BOUND. Every other two-call
+  // fixture in this file points both `--submit` calls at the SAME script, so
+  // the first call's verdict is the second call's verdict and truncating the
+  // loop changes nothing. `extraScript` writes a SECOND script somewhere else
+  // in the tree so the two calls can disagree. `{ path, body }`, path relative
+  // to the tree root.
+  extraScript = null,
   // ADDED 2026-08-22 by the exhaustive `if (false)` sweep — see the block at the
   // foot of this file. Three floors sit ABOVE the job parse and no case could
   // reach them, because every tree this helper built had a populated
@@ -179,6 +197,7 @@ function tree({
     mkdirSync(join(root, '.github/workflows'), { recursive: true });
   }
   if (submitScript !== null) write('tooling/release/submit-store.mjs', submitScript);
+  if (extraScript !== null) write(extraScript.path, extraScript.body);
   // The stub carries the real script's `GATE` declaration on purpose: the
   // guard DERIVES the gate check name from assert-gate-passed.mjs (single
   // declaration, [pipeline F-2]) and goes COVERAGE LOST when it cannot.
@@ -452,6 +471,22 @@ describe('assert-release-provenance — wrangler-action is classified from its c
     assert.doesNotMatch(out, /action\.yml/);
   });
 
+  test('the dry-run exclusion inside a `command:` is per SEGMENT too', () => {
+    // ADDED 2026-08-24. Pins `shellSegments(cmd)` in the ACTION pass. The generic
+    // pass has its own per-segment case ('`wrangler deploy --dry-run && wrangler
+    // deploy` IS a publish'); the SYNTHESIZED `wrangler <command:>` had none, so
+    // the split could be replaced by `[cmd]` with every case still green — and a
+    // `command:` whose first word is a dry run would then hide a real deploy
+    // standing beside it. That is the 2026-07-31 over-rotation this repo has
+    // already paid for once on plain `run:` lines, reappearing one classifier
+    // over.
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/action.yml'), action('deploy --dry-run && wrangler deploy'));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /action\.yml: job "worker" performs a Cloudflare deploy action/);
+  });
+
   test('`command: d1 migrations apply` is NOT a publish', () => {
     const root = tree();
     writeFileSync(join(root, '.github/workflows/action.yml'), action('d1 migrations apply APP_DB --remote', { gated: true }));
@@ -475,6 +510,39 @@ describe('assert-release-provenance — wrangler-action is classified from its c
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /action\.yml: job "worker" performs a Cloudflare deploy action/);
+  });
+
+  test('a `command:` naming the action ITSELF is a publish at its own line — the deleted `!p.viaCommand` conjunct is held', () => {
+    // ADDED 2026-08-24. The 2026-08-22 deletion of `!p.viaCommand &&` from the
+    // action pass shipped with a proof saying no fixture could distinguish the
+    // two, "MEASURED on such a tree: identical output, conjunct or not". This is
+    // that tree, and the outputs are not identical: the value
+    // `cloudflare/wrangler-action` on the `command:` line is itself matched by
+    // the viaCommand pattern, so WITHOUT the conjunct the first publish is that
+    // line (:10) and the gate call below it (:11) is late; WITH the conjunct the
+    // first publish moves down to the nested `command: deploy` (:13) and the run
+    // goes green. Restoring the conjunct turns this case RED, which is the point
+    // of writing it: the deletion is now held rather than argued.
+    const nested =
+      'name: W\n' + // 1
+      'on:\n' + // 2
+      '  workflow_dispatch:\n' + // 3
+      'jobs:\n' + // 4
+      '  worker:\n' + // 5
+      '    runs-on: ubuntu-24.04\n' + // 6
+      '    steps:\n' + // 7
+      '      - uses: cloudflare/wrangler-action@abc\n' + // 8
+      '        with:\n' + // 9
+      '          command: cloudflare/wrangler-action\n' + // 10
+      '          extraArgs: node tooling/ci/assert-gate-passed.mjs x\n' + // 11
+      '          env:\n' + // 12
+      '            command: deploy\n' + // 13
+      `${MARKER_STEP}\n`; // 14
+    const root = tree();
+    writeFileSync(join(root, '.github/workflows/nested.yml'), nested);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /nested\.yml: job "worker" calls tooling\/ci\/assert-gate-passed\.mjs at :11, AFTER its first publish at :10/);
   });
 });
 
@@ -536,6 +604,25 @@ describe('assert-release-provenance — quoted needs forms are the same edge', (
 // assert-guard-coverage counts statically and the runner counts executions.
 // FOUR numbers describe this one file and only two of them come from running it;
 // which one a sentence means has to be said, every time.
+// 🔴 THOSE FOUR NUMBERS ARE A DATED 2026-08-21 RECORD AND ARE NOT CURRENT — the
+// runner reports 90 tests in this file after the 2026-08-24 pass. They are left
+// unedited because renumbering a dated measurement falsifies it; read the count
+// from `node --test`, never from this paragraph.
+// 🔴 AND "Twelve mutations, ZERO survivors" DID NOT SURVIVE RE-MEASUREMENT. The
+// twelve ranged over limb 4's `if`s and conjuncts and over exactly two matcher
+// members (SUBMIT_FLAG's anchors as one unit, SUBMIT_SCRIPT's `node` prefix).
+// Sweeping the members ONE AT A TIME on 2026-08-24 found four more that survive
+// with the whole suite green — SUBMIT_FLAG's `^`, SUBMIT_RUNNER's `\b…\b`,
+// SUBMIT_SCRIPT's trailing `\b`, and ENV_API_READ's slashes. All four are pinned
+// at the foot of this suite; the full re-sweep is recorded below the limb-4
+// cases.
+// 🔴 AND "ALL FOUR ARE PINNED" HELD FOR TWO OF THEM. `\b…\b` is TWO boundaries
+// and "the slashes" is TWO slashes; both were swept as pairs, and a pair only
+// ever fails together. Re-swept 2026-08-24 with every member split out, each of
+// those four members stayed green on its own with the whole suite passing. They
+// have their own cases now — a left-attached `xnode`, a leading-slash-less
+// `environments/`, and the environments LIST endpoint — and the record is at the
+// foot of this file.
 //
 // ── CORRECTION 2026-08-21, same day, before merge ────────────────────────────
 // The block above replaced a sentence whose number did not reproduce. What
@@ -651,6 +738,23 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     assert.match(out, /never reads the deployment environment's protection rules/);
   });
 
+  test('a `protection` field that is not `protection_rules` is not the rules read', () => {
+    // Pins the `_rules` half of ENV_PROTECTION_READ, found GREEN by the sweep of
+    // 2026-08-24: widened to /protection/ the whole suite still passed, because
+    // every fixture that carries the word carries the whole token. It is not a
+    // widening that can only widen — it hands the run-time credit to a script
+    // that fetches the right endpoint and then reads a DIFFERENT field off it,
+    // which is the same "confirmed only that the environment exists" verdict the
+    // constants' docstring says is not enough. The script below GETs
+    // `/environments/store-publish` and never looks at `protection_rules`.
+    const nearMiss =
+      'const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+      'const gated = (await (await fetch(envUrl)).json()).protection === true;\n';
+    const { code, out } = run(tree({ submitScript: nearMiss }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
   // ── the domain floor, and the two ways it is not a pass ────────────────────
   test('COVERAGE LOST when no job invokes a --submit verb anywhere', () => {
     const { code, out } = run(tree({ submit: null }));
@@ -757,6 +861,597 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
     assert.match(out, /could not read/);
     assert.match(out, /\(job "submit"\)/);
   });
+
+  // ── ADDED 2026-08-24 — the four MATCHER conditions the 2026-08-22 sweep did
+  //    not enumerate. Each of these went GREEN under mutation with all 84 cases
+  //    passing; each mutation is named beside its case so it can be re-taken.
+
+  test('a `--submit` that OPENS a shell segment is in the domain — the `^` half of the anchor', () => {
+    // Pins the `^` alternative in SUBMIT_FLAG's `(?:^|\s)`. `String.split` on a
+    // shell separator leaves the next segment starting at index 0 when the
+    // separator is unpadded, so `…&&--submit node …` puts the verb where no
+    // preceding whitespace exists. Drop the `^` and this job leaves limb 4's
+    // domain entirely: the tree then reports `ZERO jobs invoke a --submit verb`
+    // instead of the (a)-half FAIL below — the floor is loud, but the ASSERTION
+    // is gone, and a narrower matcher is the direction that goes blind.
+    const step = '      - run: echo start&&--submit node tooling/release/submit-store.mjs';
+    const { code, out } = run(tree({ submit: submitWorkflow({ environment: null, step }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no job-level `environment:`/);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+  });
+
+  test('`nodemon` is not `node` — the runner word boundaries keep a look-alike out of the domain', () => {
+    // Pins the TRAILING `\b` in SUBMIT_RUNNER — that one only, which is the
+    // correction of 2026-08-24. `nodemon` has a word boundary on its LEFT, so
+    // this fixture cannot see the left `\b` go: dropping it alone left the whole
+    // suite green. 'a left-attached `xnode` is not `node`' below is that member's
+    // own case. Without the trailing boundary `/node\b/`… `/node/` matches inside
+    // `nodemon`, the job enters the domain, and — because SUBMIT_SCRIPT still
+    // wants a real `node` — it lands on the UNREADABLE floor instead. Both
+    // outcomes exit 1, so the discriminator is WHICH floor speaks.
+    const step = '      - run: nodemon tooling/release/submit-store.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ZERO jobs invoke a `--submit` verb/);
+    assert.doesNotMatch(out, /could not read/);
+  });
+
+  test('a `.mjsx` path is not a `.mjs` script — the capture does not truncate the extension', () => {
+    // Pins the trailing `\b` on SUBMIT_SCRIPT's `(\S+\.mjs)\b`. Drop it and
+    // `submit-store.mjsx` is captured as `submit-store.mjs` — a DIFFERENT file
+    // that this fixture happens to have on disk and that does perform the read,
+    // so the run goes green having checked a script the workflow never invokes.
+    const step = '      - run: node tooling/release/submit-store.mjsx --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /could not read/);
+    assert.match(out, /\(job "submit"\)/);
+  });
+
+  test('the word `environments` is not the `/environments/` API path', () => {
+    // Pins ENV_API_READ's two slashes AS A PAIR — and that is all it pins, which
+    // is the correction of 2026-08-24. This fixture carries no slash on either
+    // side of the word, so it goes red only when BOTH are dropped; each one
+    // ALONE survived it with the whole suite green. The two singles are held by
+    // the two cases immediately below, and the merged row is exactly the shape
+    // that let ten conditions hide behind forty-six table rows.
+    // `SUBMIT_SCRIPT_WRONG_ENDPOINT` above holds the other direction
+    // (protection_rules off the wrong endpoint); this is the one that made the
+    // slashes matter — a local identifier spelled `environments`, beside a real
+    // `protection_rules` read, buys the credit the moment the pattern stops
+    // demanding the path.
+    const submitScript = 'const environments = ["store-publish"];\nconst rules = Array.isArray(json.protection_rules) ? json.protection_rules : [];\n';
+    const { code, out } = run(tree({ submitScript }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  // ── ADDED 2026-08-24 — THE MEMBERS THE PREVIOUS TABLE MERGED ────────────────
+  // Each case below was built from ONE mutation that the suite could not see,
+  // and each mutation is named beside its case so it can be re-taken. They are
+  // members of rows an earlier enumeration wrote as single entries ("the word
+  // boundaries", "the `node` prefix", "the two slashes"), and a member of a
+  // merged row is invisible: a pair only ever fails together.
+
+  test('a bare `environments/` with no leading slash is not the API path', () => {
+    // Pins ENV_API_READ's LEADING `\/` on its own. A script that builds the path
+    // relative to a base URL never writes the leading slash, so dropping it from
+    // the pattern hands the run-time-read credit to any script that merely says
+    // the word before a slash.
+    const submitScript =
+      'const url = new URL(`environments/${name}`, `https://api.github.com/repos/${repo}/`);\n' +
+      'const rules = Array.isArray(json.protection_rules) ? json.protection_rules : [];\n';
+    const { code, out } = run(tree({ submitScript }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test("the environments LIST endpoint is not one environment's rules", () => {
+    // Pins ENV_API_READ's TRAILING `\/` on its own, and this is the materially
+    // live half. `GET /repos/{owner}/{repo}/environments` — no trailing segment
+    // — enumerates WHICH environments exist. It never fetches one, so it never
+    // sees the empty `protection_rules` that is the fail-open state this repo
+    // measured on itself (.github/workflows/submit-play.yml:42-45). Drop the
+    // trailing slash and that call buys the credit.
+    const submitScript =
+      'const res = await fetch(`https://api.github.com/repos/${repo}/environments`);\n' +
+      'const names = (await res.json()).environments.map((e) => e.name);\n' +
+      'const rules = names.length ? [] : json.protection_rules;\n';
+    const { code, out } = run(tree({ submitScript }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('a left-attached `xnode` is not `node` — SUBMIT_RUNNER\'s LEADING word boundary', () => {
+    // Pins the LEFT `\b` of SUBMIT_RUNNER. The `nodemon` case above holds the
+    // RIGHT one and nothing held this one: drop it and `xnode … --submit` enters
+    // limb 4's domain, where SUBMIT_SCRIPT — which still wants a real `\bnode\b`
+    // — can name no script, so the run lands on the unread-script floor. The
+    // base tree's real submit lane stays in place, so a green run here means the
+    // look-alike was ignored rather than that the domain went empty.
+    const root = tree();
+    writeFileSync(
+      join(root, '.github/workflows/lookalike.yml'),
+      submitWorkflow({ step: '      - run: xnode tooling/release/submit-store.mjs --submit --app subly' }),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /lookalike\.yml/);
+    assert.match(out, /1 job\(s\) invoke a `--submit` verb/);
+  });
+
+  test('a decoy `.mjs` attached to an `xnode` is not the script — SUBMIT_SCRIPT\'s LEADING `\\b`', () => {
+    // Pins the LEFT `\b` of SUBMIT_SCRIPT, which the `NODE_OPTIONS=--loader=…`
+    // case above does NOT reach: there the decoy sits before any `node`-like
+    // word at all. Here the decoy path itself contains `node` with a letter
+    // glued to its left, so without the boundary the pattern starts matching
+    // inside `xnode/` and captures `/shim.mjs` — a file that is not on disk, so
+    // half (b) is never asked of the script the workflow really invokes.
+    const step =
+      '      - run: NODE_OPTIONS=--require=/opt/xnode/shim.mjs node tooling/release/submit-store.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /tooling\/release\/submit-store\.mjs/);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+  });
+
+  test('a decoy `.mjs` attached to a `nodemon` is not the script — the `\\b` AFTER `node`', () => {
+    // Pins SUBMIT_SCRIPT's `\b` between `node` and the rest. The `nodemon` case
+    // above cannot reach it: there SUBMIT_RUNNER rejects the segment before
+    // SUBMIT_SCRIPT is ever consulted. Here a REAL `node` is on the same segment,
+    // so the segment is in the domain, and the only thing keeping the guard off
+    // `mon-dev.mjs` is that boundary. A single `&` is not a segment separator,
+    // which is what keeps both commands on one segment.
+    const step =
+      '      - run: npx nodemon-dev.mjs & node tooling/release/submit-store.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /tooling\/release\/submit-store\.mjs/);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+  });
+
+  test('a dotless `...mjs` argument before the script is not the script - SUBMIT_SCRIPT\'s ESCAPED `\\.`', () => {
+    // Pins the `\.` inside the capture. It is the one member of SUBMIT_SCRIPT
+    // that the four decoy cases around it leave free, because every decoy THEY
+    // build keeps a real dot in it. This decoy has no dot at all. Unescape the
+    // dot and `\S+` eats `/opt/hooks/loade`, the any-char takes the `r`, `mjs`
+    // closes the match - so the lazy `[\s\S]*?` stops on the LOADER and never
+    // reaches the script. The guard then tries to read a file that is not in the
+    // tree, the run lands on the COVERAGE LOST floor, and half (b) is never
+    // asked of the script that actually submits.
+    // MEASURED 2026-08-24 on a scratch mirror, before this case existed:
+    // `\.` -> `.` left the whole suite green, exit 0, 103 tests, 103 pass.
+    const step = '      - run: node /opt/hooks/loadermjs tooling/release/submit-store.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+    assert.match(out, /tooling\/release\/submit-store\.mjs/);
+  });
+
+  test('a decoy `.mjx` before the script is not the script - the `s` of `mjs`', () => {
+    // The extension literal has three characters and each is a member. `m`/`j`
+    // are held (shortened to `\.mj` the capture changes on every fixture and 86
+    // cases go red), and the `s` was held by nothing: MEASURED 2026-08-24 on a
+    // scratch mirror, `\.mjs` -> `\.mj\w` left the whole suite green, exit 0,
+    // 111 tests, 111 pass. It is the escaped dot's twin - one character in the
+    // literal doing all the narrowing - and it goes the same way: with the `s`
+    // free, the `.mjx` argument below wins the lazy race, the guard reads a file
+    // that is not in the tree, and half (b) is never asked of the real script.
+    const step =
+      '      - run: node tooling/release/decoy.mjx tooling/release/submit-store.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+    assert.match(out, /tooling\/release\/submit-store\.mjs/);
+  });
+
+  test('a script name that begins where `node` ends - SUBMIT_SCRIPT\'s `*`, not its laziness', () => {
+    // Pins the ZERO-WIDTH arm of `[\s\S]*?` against `[\s\S]+?`. That is a
+    // different member from the `?` that makes it lazy: the `?` is held by every
+    // decoy above (made greedy, they all go red), and nothing held the `*`,
+    // because no other fixture in this file puts the capture flush against
+    // `node`. MEASURED 2026-08-24 on a scratch mirror, before this case existed:
+    // `*?` -> `+?` left the whole suite green, exit 0, 103 tests, 103 pass.
+    // `./node-tools.mjs` carries a word boundary on each side of `node`, so the
+    // capture opens at `-tools.mjs`. That file is not in the tree, so the
+    // shipped guard FAILS CLOSED and names what it could not read. Forced to
+    // skip one character, the mutant captures `tools.mjs` instead - a DIFFERENT
+    // file, which this fixture puts in the tree fully compliant - so it exits 0
+    // having credited a script the workflow never invoked. The silent credit is
+    // the outcome being excluded here, not the fail-closed one.
+    const step = '      - run: ./node-tools.mjs --submit --app subly';
+    const { code, out } = run(
+      tree({ submit: submitWorkflow({ step }), extraScript: { path: 'tools.mjs', body: SUBMIT_SCRIPT_REAL } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /-tools\.mjs \(not readable under/);
+  });
+
+  test('a bare `.mjs` is not a script path — the `\\S+` inside the capture', () => {
+    // Pins `\S+` against `\S*`. Contrived on purpose and said so: an argument
+    // that is a bare extension with no stem is not something a human writes. It
+    // is still reachable — the guard reads whatever text a workflow carries —
+    // and `\S*` would capture `.mjs` as the script name. Both outcomes are
+    // COVERAGE LOST, so the discriminator is WHICH floor message speaks: the
+    // unnameable branch, or the unreadable one.
+    const { code, out } = run(tree({ submit: submitWorkflow({ step: '      - run: node --submit .mjs --app subly' }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /\(job "submit"\)/);
+    assert.doesNotMatch(out, /not readable under/);
+  });
+
+  test('a folded `run: >` whose `node` and `--submit` sit on DIFFERENT physical lines is ONE command', () => {
+    // Pins `job.logical` against `job.lines` in the submit-call scan. The guard's
+    // own header records that on the two REAL lanes the fold moves only the
+    // reported line number, because `node`, the path and `--submit` all land on
+    // one physical line there. That is a fact about today's two lanes, not about
+    // folding: split the same command across the fold and a raw line scan sees
+    // `node` on one line and `--submit` on another, matches neither, and reports
+    // the domain EMPTY.
+    const step = '      - run: >\n          node tooling/release/submit-store.mjs\n          --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 job\(s\) invoke a `--submit` verb/);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+  });
+
+  test('the script is read from the SUBMITTING segment, not from another one on the line', () => {
+    // Pins `seg.match(SUBMIT_SCRIPT)` against `l.text.match(…)`. The submitting
+    // segment names no `.mjs` at all; a second segment on the same line does.
+    // Read from the whole line, the guard checks a script the `--submit` command
+    // never invoked and reports clean — the per-segment rule the dry-run
+    // exclusion already pays for, one condition over.
+    const step = '      - run: node ./bin/wrapper --submit --app subly && node tooling/release/submit-store.mjs';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /\(job "submit"\)/);
+  });
+
+  test('the `node` runner must be on the SUBMITTING segment, not merely on the line', () => {
+    // Pins the RECEIVER of `SUBMIT_RUNNER.test(seg)` — the THIRD receiver on
+    // that line, and the one nothing held. MEASURED 2026-08-24 on a scratch
+    // mirror: `seg` -> `l.text` left the whole suite green, exit 0, 114 tests,
+    // 114 pass, 0 fail. Its two siblings ARE held — SUBMIT_FLAG's receiver by
+    // 'a `--submit` that OPENS a shell segment', and `seg.match(SUBMIT_SCRIPT)`
+    // by the case immediately above — so two of three were pinned and the third
+    // was not enumerated at all.
+    // It is not a widening: it FLIPS A VERDICT on the line below. One logical
+    // line, two shell segments — the first runs `node` and does not submit, the
+    // second submits and has no runner. Per SEGMENT nothing in this job invokes
+    // `node … --submit`, so the job is outside limb 4 and the run is clean. Read
+    // from the WHOLE LINE the runner counts as "present", the runner-less
+    // segment enters the domain, SUBMIT_SCRIPT can name no script on it, and the
+    // run dies on the unread-script floor — COVERAGE LOST on a lane that invokes
+    // no `node … --submit` at all. Measured both ways on the fixture below:
+    // shipped exit 0, receiver widened exit 1 naming `split-runner.yml`.
+    // The base tree's real submit lane stays in place, so a green run here means
+    // the runner-less segment was ignored rather than that the domain went empty.
+    const root = tree();
+    writeFileSync(
+      join(root, '.github/workflows/split-runner.yml'),
+      submitWorkflow({
+        environment: null,
+        step: '      - run: node tooling/release/submit-store.mjs --app subly && ./tooling/release/shipit.sh --submit',
+      }),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /split-runner\.yml/);
+    assert.match(out, /1 job\(s\) invoke a `--submit` verb/);
+  });
+
+  test('the (a) FAIL names the FIRST `--submit` call in the job, not the last', () => {
+    // Pins `job.submitCalls[0]`. The existing no-environment case asserts only
+    // `at :\d+`, so `[job.submitCalls.length - 1]` passed it: with one call the
+    // two indices are the same line. With two they are not, and the message
+    // should point at where the lane STARTS submitting.
+    const submit = submitWorkflow({
+      environment: null,
+      stepsBefore: '      - run: node tooling/release/submit-store.mjs --submit --app first\n',
+      step: '      - run: node tooling/release/submit-store.mjs --submit --app second',
+    });
+    const at = submit.split('\n').flatMap((l, i) => (l.includes('--submit') ? [i + 1] : []));
+    assert.equal(at.length, 2, submit);
+    assert.notEqual(at[0], at[1]);
+    const { code, out } = run(tree({ submit }));
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp('invokes a `--submit` verb at :' + at[0] + ' and declares no job-level'));
+  });
+
+  test('limb 4 (b) checks EVERY `--submit` call in the job, not just the first', () => {
+    // Pins the LOOP BOUND `for (const call of job.submitCalls)` — the iteration
+    // itself, not its body. MEASURED 2026-08-24 on a scratch copy:
+    // `job.submitCalls.slice(0, 1)` left this whole suite green (101 tests, 101
+    // pass, 0 fail, exit 0) before this case existed, because the case above is
+    // the only other two-call fixture and BOTH its calls name the same script.
+    // It is neither an equivalence nor a widening: the job below declares its
+    // `environment:`, its FIRST script performs the run-time protection-rules
+    // read, and its SECOND never looks at the environment at all. Truncated to
+    // one call the guard exits 0 and its `ok` line asserts that each script
+    // performs the read — a claim about a script it never opened.
+    const submit = submitWorkflow({
+      stepsBefore: '      - run: node tooling/release/submit-store.mjs --submit --app first\n',
+      step: '      - run: node tooling/release/submit-blind.mjs --submit --app second',
+    });
+    const { code, out } = run(
+      tree({ submit, extraScript: { path: 'tooling/release/submit-blind.mjs', body: SUBMIT_SCRIPT_BLIND } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /invokes `tooling\/release\/submit-blind\.mjs --submit` at :\d+/);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+    // The second script is READ, not merely unfound — otherwise the COVERAGE
+    // LOST floor would be speaking and the (b) assertion would never be made.
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+    // The FIRST call is clean, so only the loop's second iteration can have
+    // produced that FAIL.
+    assert.doesNotMatch(out, /invokes `tooling\/release\/submit-store\.mjs --submit`/);
+  });
+
+  test('a four-space key merely STARTING with `environment` is not the approval gate', () => {
+    // Pins the trailing `:` in `/^ {4}environment:/`. The ` {4}` case above holds
+    // the indent and nothing held the colon: drop it and any job-level key whose
+    // name begins with the word — `environment_url:` here — is read as the
+    // approval gate, which is the same false credit at a different offset.
+    const submit = submitWorkflow({ environment: null }).replace(
+      '    steps:',
+      '    environment_url: https://example.test/store\n    steps:',
+    );
+    const { code, out } = run(tree({ submit }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no job-level `environment:`/);
+  });
+
+  // -- ADDED 2026-08-24, THIRD PASS - THE MEMBERS THE SECOND PASS STILL MERGED
+  // Same finding one level finer: a row that names a construct hides the
+  // members of that construct. Each case below was built from ONE mutation
+  // that the 103-case suite could not see, measured on a scratch mirror with
+  // the repo tree never touched, and each mutation is named beside its case.
+
+  test('a `--submit` GLUED to the end of another token is not the verb - the `(?:^|\\s)` prefix ITSELF', () => {
+    // SUBMIT_FLAG's prefix group has THREE members, not two: the `^` arm, the
+    // `\s` arm, and the requirement that one of them hold at all. The two arms
+    // have their own cases above and each goes red alone. Dropping the WHOLE
+    // group left the suite green - MEASURED 2026-08-24 on a scratch mirror,
+    // exit 0, 103 tests, 103 pass - because no fixture here ever writes
+    // `--submit` glued to a preceding character. Unprefixed, `--app=x--submit`
+    // reads as the verb, and the lane below - which submits nothing and so
+    // declares no `environment:` - collects an invented (a)-half FAIL.
+    const root = tree();
+    writeFileSync(
+      join(root, '.github/workflows/glued.yml'),
+      submitWorkflow({
+        environment: null,
+        step: '      - run: node tooling/release/submit-store.mjs --app=nikatru--submit',
+      }),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /glued\.yml/);
+    assert.match(out, /1 job\(s\) invoke a `--submit` verb/);
+  });
+
+  test('`--submitted` is not `--submit` - the LITERAL inside SUBMIT_FLAG', () => {
+    // The flag has members too: the `--`, the word, and the lookahead. The `--`
+    // and the lookahead each go red alone; the WORD did not. MEASURED 2026-08-24
+    // on a scratch mirror: `--submit` -> `--subm\w*` left the whole suite green,
+    // exit 0, 111 tests, 111 pass, because nothing here writes a longer flag
+    // that starts the same way. Widened, a past-tense flag on a lane that
+    // submits nothing pulls that lane into limb 4 and collects an (a)-half FAIL
+    // it has no business collecting - a false red on a correct workflow, which
+    // is the failure this file's header says costs more than a miss.
+    const root = tree();
+    writeFileSync(
+      join(root, '.github/workflows/pasttense.yml'),
+      submitWorkflow({
+        environment: null,
+        step: '      - run: node tooling/release/submit-store.mjs --submitted',
+      }),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /pasttense\.yml/);
+    assert.match(out, /1 job\(s\) invoke a `--submit` verb/);
+  });
+
+  test('a SINGULAR `deployment_protection_rule` id is not the `protection_rules` array', () => {
+    // The third member of ENV_PROTECTION_READ, after the `protection` half and
+    // the underscore: the word `rules`. MEASURED 2026-08-24 on a scratch mirror,
+    // `protection_rules` -> `protection_rule\w*` left the whole suite green,
+    // exit 0, 111 tests, 111 pass. `deployment_protection_rule` is a REAL and
+    // DIFFERENT GitHub object - the custom deployment protection rule an app
+    // registers, which is also the name of a webhook event - and reading its id
+    // off a response says nothing about whether a human must approve. Note the
+    // near-miss has to break the word: `protection_ruleset` would still contain
+    // `protection_rules` and could not tell the two patterns apart.
+    const nearMiss =
+      'const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+      'const ruleId = (await (await fetch(envUrl)).json()).deployment_protection_rule_id;\n';
+    const { code, out } = run(tree({ submitScript: nearMiss }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('the SINGULAR `/environment/` path is not the environments API', () => {
+    // Pins the LITERAL `environments` inside ENV_API_READ - a third member
+    // beside the two slashes, which have their own cases above. Widened to
+    // `/\/environment\w*\//` the suite stayed green: MEASURED 2026-08-24 on a
+    // scratch mirror, exit 0, 103 tests, 103 pass, because every fixture that
+    // writes the path writes it correctly. It is not a widening that can only
+    // widen. The REST route is `/repos/{owner}/{repo}/environments/{name}`; a
+    // script that GETs `/environment/...` fetches a 404 whose body has no
+    // `protection_rules` in it at all, and would still buy the run-time credit.
+    const submitScript =
+      'const envUrl = `https://api.github.com/repos/${repo}/environment/store-publish`;\n' +
+      'const rules = Array.isArray(envJson.protection_rules) ? envJson.protection_rules : [];\n';
+    const { code, out } = run(tree({ submitScript }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('a `_rules` field that is not `protection_rules` is not the rules read', () => {
+    // The MIRROR of 'a `protection` field that is not `protection_rules`...'
+    // above, and the member that case does not hold: narrowed to `/_rules/`,
+    // ENV_PROTECTION_READ still passed the whole suite - MEASURED 2026-08-24 on
+    // a scratch mirror, exit 0, 103 tests, 103 pass. A deployment-branch policy
+    // is a different field on the same endpoint: it says which branches may
+    // deploy, never whether a human has to approve, so crediting it credits an
+    // unreviewed lane while the fixture reads the right endpoint.
+    const nearMiss =
+      'const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+      'const branchRules = (await (await fetch(envUrl)).json()).deployment_branch_policy_rules ?? [];\n';
+    const { code, out } = run(tree({ submitScript: nearMiss }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('a `.mjs.mjs` path is the WHOLE token - the GREED of `\\S+`', () => {
+    // `\S+` has two members: the class (held by 'a bare `.mjs` is not a script
+    // path', which swaps `+` for `*`) and its GREED, which nothing held.
+    // MEASURED 2026-08-24 on a scratch mirror: `\S+` -> `\S+?` left the whole
+    // suite green, exit 0, 109 tests, 109 pass, because no fixture here carries
+    // a token with TWO `.mjs` in it. A doubled extension is a real typo, and it
+    // is the only shape where the two differ: greedy takes the whole token, so
+    // the guard reads the path the workflow actually wrote and fails closed when
+    // it is not there; lazy stops at the FIRST `.mjs`, silently rewriting the
+    // path into a neighbouring file that does exist and crediting that instead.
+    const step = '      - run: node tooling/release/submit-store.mjs.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /submit-store\.mjs\.mjs \(not readable under/);
+  });
+
+  test('the words `protection rules` in a message are not the `protection_rules` field', () => {
+    // Pins the UNDERSCORE inside ENV_PROTECTION_READ - the same class of member
+    // as SUBMIT_SCRIPT's escaped dot, one character inside a literal that is
+    // doing all the narrowing. MEASURED 2026-08-24 on a scratch mirror:
+    // `protection_rules` -> `protection.rules` left the whole suite green, exit
+    // 0, 109 tests, 109 pass. It is not a widening that can only widen: `.`
+    // matches a SPACE, so any script that merely TALKS about protection rules in
+    // a runtime string - the diagnostic below is the natural way to write it -
+    // buys the run-time credit while never reading the field. Comment stripping
+    // does not help here; this text is in live code.
+    const nearMiss =
+      'const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+      'if (!envJson) throw new Error("cannot see the protection rules for " + envUrl);\n';
+    const { code, out } = run(tree({ submitScript: nearMiss }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('the limb-4 `ok` line COUNTS the scripts it opened and names them in a stable order', () => {
+    // Pins two things the `ok` line carries that nothing asserted: the count
+    // `${submitScriptsChecked.size}`, and the `.sort()` on the join. MEASURED
+    // 2026-08-24 on a scratch mirror: `size` -> `size + 1`, and the `.sort()`
+    // dropped, EACH left the whole suite green, exit 0, 103 tests, 103 pass -
+    // because every other fixture in this file opens exactly one script, where
+    // a count cannot be wrong by arithmetic and an order cannot be wrong at all.
+    // `aaa-submit.yml` sorts BEFORE `submit.yml` in the workflow walk, so the
+    // set is populated zzz-first and only the sort puts the names back in the
+    // order this guard's own coverage report is read in.
+    const root = tree({ extraScript: { path: 'tooling/release/zzz-submit.mjs', body: SUBMIT_SCRIPT_REAL } });
+    writeFileSync(
+      join(root, '.github/workflows/aaa-submit.yml'),
+      submitWorkflow({ step: '      - run: node tooling/release/zzz-submit.mjs --submit --app other' }),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(
+      out,
+      /2 job\(s\) invoke a `--submit` verb; 2 script\(s\) opened for the run-time half \(tooling\/release\/submit-store\.mjs, tooling\/release\/zzz-submit\.mjs\)/,
+    );
+  });
+
+  // ── ADDED 2026-08-24, FOURTH PASS — THE CASE-SENSITIVITY MEMBERS, AND WHY
+  //    "IT CAN ONLY MATCH MORE" IS NOT A DISPOSITION ─────────────────────────
+  // The four rows below were carried into this round as PURE WIDENINGS to be
+  // declared rather than pinned: each mutation matches a strict SUPERSET of what
+  // the shipped pattern matches, so the reasoning went, no input can separate
+  // them. THE REASONING IS WRONG AND WAS MEASURED WRONG. A matcher that only
+  // ever matches MORE still flips an exit code wherever what it feeds decides a
+  // FAIL — and TWO of the four flip it in the BLIND direction, handing limb 4
+  // (b)'s credit to a script that performs no read at all. Every pair below was
+  // run both ways on a scratch tree before its case was written, and each case
+  // names the pair it was built from. "Superset" is a fact about the pattern;
+  // "cannot change a verdict" is a claim about the guard, and only the second
+  // one is a reason to leave an atom free.
+
+  test('a `---submit` argument is not the verb — the DASH COUNT in SUBMIT_FLAG', () => {
+    // Pins the multiplicity of `--`. `-{2,}submit` passed all 114 cases before
+    // this one existed. MEASURED 2026-08-24 on the tree below: shipped EXIT 0,
+    // `-{2,}` EXIT 1. A triple dash is not a flag any CLI parses, so the lane
+    // here submits nothing and correctly declares no `environment:`; widened,
+    // the guard pulls it into limb 4 and invents an (a)-half FAIL on it — the
+    // false red this file's header says costs more than a miss. The NARROWING
+    // direction is a different atom and was already red: `-submit`, one dash,
+    // empties the domain and the floor speaks.
+    const root = tree();
+    writeFileSync(
+      join(root, '.github/workflows/tripledash.yml'),
+      submitWorkflow({
+        environment: null,
+        step: '      - run: node tooling/release/submit-store.mjs ---submit',
+      }),
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /tripledash\.yml/);
+    assert.match(out, /1 job\(s\) invoke a `--submit` verb/);
+  });
+
+  test('an uppercase `.MJS` argument is not the script — SUBMIT_SCRIPT is CASE-SENSITIVE', () => {
+    // Pins the absence of the `i` flag on SUBMIT_SCRIPT, which passed all 114
+    // cases. MEASURED 2026-08-24 on the step below: shipped EXIT 0, `/i` EXIT 1
+    // with COVERAGE LOST. The capture is LAZY, so case decides WHICH token wins
+    // the race: case-insensitively the preload argument does, and the guard then
+    // opens a file that is not in the tree instead of the script the workflow
+    // invokes. Same shape as the `.mjx` decoy one row over, at the one atom that
+    // decoy leaves free — it differs from `.mjs` by a letter, this one by a
+    // letter's CASE.
+    const step =
+      '      - run: node /opt/hooks/PRELOAD.MJS tooling/release/submit-store.mjs --submit --app subly';
+    const { code, out } = run(tree({ submit: submitWorkflow({ step }) }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /COVERAGE LOST/);
+    assert.match(out, /tooling\/release\/submit-store\.mjs/);
+  });
+
+  test('an UPPER-CASE `/ENVIRONMENTS/` is not the API route', () => {
+    // Pins the absence of `i` on ENV_API_READ, and this is one of the two that
+    // widen in the BLIND direction. MEASURED 2026-08-24 on the script below:
+    // shipped EXIT 1 (the (b) FAIL speaks), `/i` EXIT 0 — a silent credit. The
+    // REST route `/repos/{owner}/{repo}/environments/{name}` is lower-case; a
+    // GET at `/ENVIRONMENTS/…` answers 404 with no `protection_rules` in it, so
+    // the script below reads nothing and must not be credited for it.
+    const submitScript =
+      'const envUrl = `https://api.github.com/repos/${repo}/ENVIRONMENTS/store-publish`;\n' +
+      'const rules = Array.isArray(envJson.protection_rules) ? envJson.protection_rules : [];\n';
+    const { code, out } = run(tree({ submitScript }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
+  test('a wrong-CASE `PROTECTION_RULES` reads undefined and is not the rules read', () => {
+    // Pins the absence of `i` on ENV_PROTECTION_READ — the second blind-direction
+    // widening. MEASURED 2026-08-24 on the script below: shipped EXIT 1, `/i`
+    // EXIT 0. `protection_rules` is the key GitHub returns; the property access
+    // below evaluates to `undefined` on every response, so this script GETs the
+    // right endpoint and then checks nothing. Crediting it is precisely the
+    // "confirmed the environment exists" state the docstring above says is not
+    // enough, minus even that.
+    const submitScript =
+      'const envUrl = `https://api.github.com/repos/${repo}/environments/store-publish`;\n' +
+      'const rules = envJson.PROTECTION_RULES ?? [];\n';
+    const { code, out } = run(tree({ submitScript }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never reads the deployment environment's protection rules/);
+  });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -807,6 +1502,12 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
 //   · `!p.viaCommand &&` in the publish classifier's action pass — the one
 //     found by WRITING the fixture meant to pin it and watching the fixture
 //     prove it could not be pinned. The proof is beside the deletion.
+//     🔴 THAT SENTENCE IS FALSE AND WAS MEASURED FALSE 2026-08-24. A fixture
+//     does distinguish the two, and it is now committed: 'a `command:` naming
+//     the action ITSELF is a publish at its own line' above. The deletion still
+//     stands — its direction is monotone, it can only ADD a publish entry — but
+//     it is HELD now rather than argued, and the guard's own comment beside the
+//     deletion has been rewritten to say what actually reproduces.
 //
 // THE ONE RESIDUAL, stated as a fact and not as a plan: the stripper self-check
 // `if (wf.rawStepCount > 0 && wf.strippedStepCount === 0)` still survives
@@ -820,6 +1521,164 @@ describe('assert-release-provenance — a --submit job is gated on an environmen
 // asserts rawStepCount === 1 and strippedStepCount === 1, which a stripper that
 // ate the file turns red. The conjunct INSIDE it is pinnable and is pinned
 // below ('a workflow with jobs but no steps at all is NOT COVERAGE LOST').
+//
+// ── 🔴 CORRECTION 2026-08-24 — "EVERY CONDITION" WAS NOT EVERY CONDITION ─────
+// The headline above ("EVERY condition … 93 mutations … 92 RED · 1 GREEN
+// SURVIVOR") does not reproduce, and the miss has one shape: the 93 ranged over
+// `if`s, conjuncts, predicates and `??`s, and NOT over the MATCHER CONSTANTS
+// those conditions call. A regex alternative or a `\b` is a condition too.
+//
+// RE-SWEPT 2026-08-24 against the 84-case suite as it stood before this
+// correction: 46 mutations over the added hunks only — the four SUBMIT_FLAG
+// alternation/lookahead members, the boundaries and quantifiers inside
+// SUBMIT_RUNNER / SUBMIT_SCRIPT / ENV_API_READ / ENV_PROTECTION_READ, every
+// `if` in limb 4 and its two floors, both loop bounds, both `.some` predicates
+// on the publish line, both conjuncts inside each, both ternary arms, the three
+// limb-3 conjuncts and both `submitProblems++` counters. Three isolated scratch
+// mirrors, per-run cap 300 s, every anchor required to match exactly once
+// (46/46), every mutant `node --check`-clean before it ran, and six baselines
+// (3 pre + 3 post) all `exit=0 tests=84 pass=84 fail=0`.
+//     40 RED · 6 GREEN SURVIVORS
+// The six, and what became of each — all six are new cases or a deletion above,
+// so this block's claim is now true of the file it sits in:
+//   · SUBMIT_FLAG's `^` alternative        → pinned ('a `--submit` that OPENS a
+//     shell segment'). Removing it NARROWS the domain, which is the blind
+//     direction, and the suite could not see it.
+//   · SUBMIT_RUNNER's `\b…\b`              → pinned ('`nodemon` is not `node`').
+//   · SUBMIT_SCRIPT's trailing `\b`        → pinned ('a `.mjsx` path is not a
+//     `.mjs` script'). This one goes fully GREEN under mutation: the guard
+//     checks a script the workflow never names and exits 0.
+//   · ENV_API_READ's two slashes           → pinned ('the word `environments` is
+//     not the `/environments/` API path'). Also fully green under mutation.
+//   · the `submitProblems++` inside (b)    → pinned ('a (b)-half failure disowns
+//     the line too'). Its sibling in (a) was already RED; half the 2026-08-22
+//     `ok`-line repair was held and half was not.
+//   · `|| '(none)'` on the submitScriptsChecked join → DELETED, not pinned. It
+//     is dead by construction; the proof is beside the `ok` call in the guard.
+// I did NOT re-take the RED-BY-HANG row: the cycle-guard mutation is outside
+// the added hunks and I left it alone, so the "150-second cap" above is a number
+// from 2026-08-22 and not one of mine.
+//
+// ── 🔴 CORRECTION 2026-08-24, SECOND PASS — "ALL SIX … SO THIS BLOCK'S CLAIM IS
+//    NOW TRUE OF THE FILE IT SITS IN" WAS NOT TRUE, and the reason is the one
+//    thing this block keeps re-learning one level down: A ROW IS NOT A
+//    CONDITION. The 46-row sweep above wrote "SUBMIT_RUNNER's `\b…\b`" and
+//    "ENV_API_READ's two slashes" as SINGLE rows. Each is a PAIR, and a pair
+//    only ever fails together — so sweeping the pair reported it pinned while
+//    each member on its own stayed green with the entire suite passing. Two more
+//    conditions had no row at all: SUBMIT_SCRIPT's `[^\n]` class and its `\S+`.
+//
+//    RE-BUILT FROM SCRATCH rather than audited, because a merged row is
+//    invisible to an audit OF rows. The enumeration was taken mechanically from
+//    `git diff main --` over the two files and written down BEFORE anything ran,
+//    splitting every boolean, every regex alternative, every boundary, every
+//    character class and every quantifier, and covering the fixture branches in
+//    THIS file as well as the guard's conditions. Four isolated scratch mirrors,
+//    the repo tree never mutated, every anchor required to match exactly once,
+//    and the green baseline re-taken in the mirror before the first mutation.
+//        66 ROWS ENUMERATED. Four of them are DELETIONS with nothing left to
+//        mutate — `.filter(Boolean)`, `!p.viaCommand &&`, limb 3's fourth
+//        conjunct and `|| '(none)'`, all recorded above — so 62 mutants ran:
+//        59 RED · 3 non-reds, none of which is a surviving condition:
+//          · `[^\n]` restored into SUBMIT_SCRIPT — the DELETED row. Its green is
+//            the PROOF the deletion was inert, not a survivor. Why no segment
+//            can carry a newline is written beside SUBMIT_SCRIPT in the guard.
+//          · `job.lines` → `job.logical` on limb 4 (a). The two are provably the
+//            same set for a `^ {4}` key on any well-formed job; the proof is at
+//            the code site, and the predicate they feed is pinned.
+//          · this file's `environment === 'block'` fixture branch. The guard's
+//            ` {4}environment:` anchor accepts both spellings by construction,
+//            so no verdict can differ — declared beside the branch.
+//    ELEVEN conditions moved from green to red this pass, each with its own
+//    case: SUBMIT_RUNNER's leading `\b` · SUBMIT_SCRIPT's leading `\b` ·
+//    SUBMIT_SCRIPT's `\b` after `node` · SUBMIT_SCRIPT's `\S+` ·
+//    ENV_API_READ's leading `\/` · ENV_API_READ's trailing `\/` ·
+//    `shellSegments(cmd)` in the action pass · `job.logical` in the submit-call
+//    scan · `seg.match(SUBMIT_SCRIPT)` · `job.submitCalls[0]` · and the trailing
+//    `:` in `/^ {4}environment:/`.
+//
+// -- CORRECTION 2026-08-24, THIRD PASS -- "66 ROWS ENUMERATED ... 59 RED · 3
+//    NON-REDS, NONE OF WHICH IS A SURVIVING CONDITION" WAS ALSO NOT TRUE, and
+//    the reason is the second pass's own lesson taken one level further in.
+//    The second pass split every CONSTRUCT - each boundary, each alternative,
+//    each class, each quantifier - and that is still coarser than a
+//    condition. A CHARACTER can be a condition. This pass mutated the four
+//    patterns ONE CHARACTER AT A TIME instead of one construct at a time, and
+//    ELEVEN more conditions came back green with all 103 cases passing:
+//      1  SUBMIT_SCRIPT  the escaped dot `\.`      (capture lands on a
+//         dotless `...mjs` token and the real script is never read)
+//      2  SUBMIT_SCRIPT  the `s` of the literal `mjs`
+//      3  SUBMIT_SCRIPT  the ZERO-WIDTH arm of `[\s\S]*?`, distinct from the
+//         `?` that makes it lazy (`+?` still passed everything)
+//      4  SUBMIT_SCRIPT  the GREED of `\S+`, distinct from its `+`
+//      5  SUBMIT_FLAG    the EXISTENCE of the `(?:^|\s)` group, distinct from
+//         its two alternatives, which each already had a case
+//      6  SUBMIT_FLAG    the word `submit` inside the flag
+//      7  ENV_API_READ   the word `environments` between the two slashes
+//      8  ENV_PROTECTION_READ  the `protection` half (the `_rules` half had a
+//         case; its mirror did not)
+//      9  ENV_PROTECTION_READ  the UNDERSCORE
+//     10  ENV_PROTECTION_READ  the word `rules`
+//     11  the limb-4 `ok` census: BOTH the script COUNT and the `.sort()` on
+//         the join, unfalsifiable while every fixture opened exactly one
+//         script
+//    All eleven are pinned by eleven cases added above, four of them under the
+//    ADDED 2026-08-24, THIRD PASS heading and the other seven placed beside the
+//    members they belong with; every one names its own mutation in its own
+//    comment, so a row can be re-taken from the case. Each was re-run
+//    and each takes the suite to exit 1, 114 tests, 113 pass, 1 fail.
+//    FOUR rows are green and stay green, and every one of them is a
+//    DECLARED green with its proof beside the code, not a survivor:
+//      · `[^\n]` restored into SUBMIT_SCRIPT - the deleted row; the green IS
+//        the proof the deletion was inert.
+//      · `job.lines` -> `job.logical` on limb 4 (a) - provably the same set
+//        for a `^ {4}` key; proof at the code site.
+//      · `.filter(Boolean)` restored on the workflow map - proof at the code
+//        site that `parseWorkflow` cannot return null here.
+//      · `&& !findGate(wf, job).clean` restored on limb 3 - proof at the code
+//        site that the conjunct is true on every path where it could matter.
+//    Four scratch mirrors, four workers, the repo tree never mutated, every
+//    anchor required to match exactly once, and a green baseline taken in the
+//    mirror before the first mutation.
+//
+// -- CORRECTION 2026-08-24, FOURTH PASS -- TWO FINDINGS, AND ONE OF THEM IS
+//    ABOUT THE DISPOSITION "PURE WIDENING" RATHER THAN ABOUT AN ATOM.
+//
+//    1. THE RECEIVER INSIDE AN OPERAND. The third pass mutated the four
+//       patterns one character at a time and still read
+//       `SUBMIT_FLAG.test(seg) || !SUBMIT_RUNNER.test(seg)` as two operands.
+//       There are THREE receivers on that line and only two were held.
+//       SUBMIT_RUNNER's, swapped to `l.text`, left the whole 114-case suite
+//       green - MEASURED on a scratch mirror, exit 0, 114 tests, 114 pass, 0
+//       fail - and flips a verdict: on a line whose first segment runs `node`
+//       without submitting and whose second submits without a runner, shipped
+//       EXIT 0 and the swap EXIT 1 with COVERAGE LOST. Pinned by 'the `node`
+//       runner must be on the SUBMITTING segment, not merely on the line', and
+//       the rule that finds it is written beside the code: EVERY RECEIVER IS AN
+//       ATOM, not only the expression it sits in.
+//
+//    2. "IT CAN ONLY EVER MATCH MORE" IS NOT A REASON TO LEAVE AN ATOM FREE,
+//       and four rows were carried into this pass on exactly that reasoning:
+//       SUBMIT_FLAG's dash multiplicity and the `i` flag on SUBMIT_SCRIPT,
+//       ENV_API_READ and ENV_PROTECTION_READ. Each mutant does match a strict
+//       SUPERSET. All four still flip an exit code, because a matcher feeds a
+//       boolean that decides a FAIL, and TWO of them flip it in the BLIND
+//       direction - `/i` on either ENV_ pattern credits a script that reads a
+//       404 route or an undefined key. Measured pair by pair on scratch trees
+//       before the cases were written: dash `EXIT 0 -> 1` - SUBMIT_SCRIPT `/i`
+//       `EXIT 0 -> 1` - ENV_API_READ `/i` `EXIT 1 -> 0` - ENV_PROTECTION_READ
+//       `/i` `EXIT 1 -> 0`. All four are pinned above under the FOURTH PASS
+//       heading. Superset-ness is a fact about the PATTERN; verdict-neutrality
+//       is a claim about the GUARD, and only the second one disposes of a row.
+//
+//    WHAT IS DECLARED RATHER THAN PINNED, and it is a short list: the two
+//    REPORT-TEXT greens on the limb-4 `ok` line - `${publishJobs}` and the
+//    prose tail after the script list. Both were measured both ways and BOTH
+//    EXIT 0 either way, the printed sentence the only difference; the reasons
+//    are written at the code site beside the `ok` call, together with why the
+//    two census numbers on that same line are pinned and this third one is not.
+//    The line is tight over the prefix its case matches, and NOT over its tail;
+//    no comment in either file claims otherwise, and none should acquire one.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** An ungated, unrecorded publish. Dropped into a tree by filename, it is the
@@ -1224,6 +2083,19 @@ describe('assert-release-provenance — an `ok` line may not assert what the run
     assert.match(out, /never calls tooling\/ci\/record-deployment\.mjs/);
     assert.match(out, /each declares an `environment:` and its script performs a run-time protection-rules read/);
   });
+
+  test('a (b)-half failure disowns the line too, not only an (a)-half one', () => {
+    // ADDED 2026-08-24. Both existing failing cases above drive `submitProblems`
+    // through limb 4 (a) or through limb 2, so the `submitProblems++` inside
+    // (b) — the run-time-read half — could be replaced with `void 0` and all 84
+    // cases stayed green. That single token is the whole 2026-08-22 repair:
+    // without it the `ok` line says "each … performs a run-time
+    // protection-rules read" four lines above the FAIL saying this one does not.
+    const { code, out } = run(tree({ submitScript: SUBMIT_SCRIPT_BLIND }));
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /each declares an `environment:`/);
+    assert.match(out, /1 of those assertions FAILED — see the FAIL line\(s\) below/);
+  });
 });
 
 describe('assert-release-provenance — the gate-constituent walk', () => {
@@ -1291,33 +2163,47 @@ describe('assert-release-provenance — the gate-constituent walk', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// THE FOUR NUMBERS, RE-TAKEN 2026-08-22 AFTER THE LAST EDIT TO EITHER FILE.
-// They are listed here and nowhere else, because the last time they were
-// written in two places one place went stale within the session.
+// THE FOUR NUMBERS, RE-TAKEN 2026-08-24 AFTER THE LAST CODE EDIT TO EITHER
+// FILE. They are listed here and nowhere else, because the last time they were
+// written in two places one place went stale within the session — and then the
+// block that said so went stale itself: every figure it carried was two sweeps
+// and eleven cases out of date by the time anyone read it, and it was the only
+// dated block in this file with no stale marker on it. That is the failure this
+// heading exists to prevent, so it has now happened here once.
+// NOTHING AFTER THIS MEASUREMENT CAN MOVE THESE FOUR: the only edits that
+// follow it are comment lines, which `grep -c "^  test("` cannot match and
+// which assert-guard-coverage strips before it counts.
 //     `node --test tooling/ci/test/release-provenance.test.mjs`
-//         → 84 tests in this FILE, EXIT 0
+//         → EXIT 0, tests 114, pass 114, fail 0
 //     cases in the limb-4 suite ('a --submit job is gated on an environment')
-//         → 16
+//         → 43
 //     `grep -c "^  test(" tooling/ci/test/release-provenance.test.mjs`
-//         → 78   (lower than 84: three `for (const form of …)` loops declare
-//                 one `test(` each and run three cases each)
+//         → 108   (lower than 114: TWO `for (const form of …)` loops declare
+//                 one `test(` each and run three cases each, 108 + 6 = 114.
+//                 The 2026-08-22 note said THREE such loops; its own
+//                 78 + 6 = 84 needed two, and `grep -n "for (const form of"`
+//                 finds two. A number can be right while the sentence
+//                 explaining it is wrong, and both get copied forward.)
 //     coverage-manifest.json's ROW FOR THIS FILE
-//         → 80, written by assert-guard-coverage itself, which counts
-//           statically; NEVER hand-edited. `node tooling/ci/assert-guard-coverage.mjs`
-//           run after the last edit exited 0 and left THIS ROW at 80, so the
-//           row is current with this file rather than merely plausible.
-//           🔴 NOT the whole file, and the first draft of this note said so
-//           wrongly: it claimed the manifest came back byte-identical, md5 and
-//           all. Re-measured, it did not — 27522e3f… → 373be90…, and its
-//           ratchet moved 5258 → 5259 between two of my own runs — because
-//           OTHER agents' test files are being written into the same manifest
-//           concurrently. A whole-file hash is not this file's number. The row
-//           is.
-// FOUR numbers, ONE file, and only two of them come from running it. Which one
-// a sentence means still has to be said, every time.
+//         → 99, AND THAT ROW IS A FLOOR, NOT A DESCRIPTION OF THIS FILE.
+//           assert-guard-coverage counts `^\s*(test|it)\s*\(` over comment-
+//           stripped text, which on this file now reads 110: the 108 above
+//           plus the two FOUR-space declarations inside those loops, which the
+//           `^  test(` grep does not see. 110 > 99, and the ratchet's rule for
+//           a rise is "rewrite the manifest, print, PASS" — so CI is green and
+//           the row updates itself on the next run of that guard.
+//           I did NOT run it. The manifest is shared with every test file in
+//           the tree and other agents are writing to it in this same session,
+//           so the row it would land on is not a number I could honestly
+//           report as mine. NEVER hand-edited either way.
+// FOUR numbers, ONE file, and no two of them equal: 114 ran, 108 declared at
+// two spaces, 110 counted by the ratchet, 99 recorded. Which one a sentence
+// means still has to be said, every time.
 //
 // The guard's own run on the real tree, same session, after the same last edit:
 //     node tooling/ci/assert-release-provenance.mjs  → EXIT 0
 //     ok  11 workflow file(s), 43 job(s); 11 build for release, 4 publish
 //     ok  2 job(s) invoke a `--submit` verb; 2 script(s) opened …
+//         (tooling/release/submit-play.mjs, tooling/release/submit-snap.mjs)
+//     ok  1 served-channel lane(s) from tooling/channel-register.json
 // ─────────────────────────────────────────────────────────────────────────────

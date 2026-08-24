@@ -31,9 +31,9 @@
 // date nothing anywhere counted it. Measured on the tree that day: this INSERT
 // was the table's ONLY writer, and `executed_at` occurred in FIVE code sites in
 // the whole repository, NONE of them a reader — the INSERT below (grep
-// `requested_at, executed_at, not_executed_reason`, :168 as of 2026-08-22 and
-// :151 before the paragraph you are reading grew), three lines of
-// migrations/0005_cancellation_requests.sql (:20, :25, :59) and one
+// `requested_at, executed_at, not_executed_reason`, :175 as of 2026-08-24, :168
+// as of 2026-08-22 and :151 before the paragraph you are reading grew), three
+// lines of migrations/0005_cancellation_requests.sql (:20, :25, :59) and one
 // assertion at test/cancellation.test.ts:156. There was no UPDATE of the table
 // anywhere and nothing in tooling/ops listed a pending row. FIVE is the count
 // BEFORE this change, which adds ten of its own — five in ../scheduled.ts, four
@@ -48,14 +48,21 @@
 // to each of this file and ../scheduled.ts. The point is unchanged — a reader
 // must not read the count as evidence of readers at all, because the number of
 // CODE PATHS THAT READ the column is still ONE, the census in ../scheduled.ts.
+// ⚠️ CORRECTED AGAIN 2026-08-24, AND AGAIN NOT REWRITTEN: the TWENTY is now
+// TWENTY-ONE. The pin-or-delete pass added ONE more mention of the drain column,
+// in the SELECT of the new case that reads the fixture's own rows back, so
+// test/cancellation-drain.test.ts goes 6 -> 7 and no other file moves. NOT ONE
+// of the seven lines of this correction spells the column, so the correction
+// cannot appear in its own count. The point survives all three numbers: the
+// number of CODE PATHS THAT READ the column is STILL ONE.
 // The drain-census limb in ../scheduled.ts now writes the queue's depth to
-// `cron_heartbeat` under the job name `cancellation_drain` on every nightly cron
-// run. Its constant is named in words rather than spelt here on purpose:
-// `deriveWatchedJobs` (tooling/ops/check-heartbeats.mjs) decides whether a job
-// constant is USED by regex-matching its name over the RAW concatenated bytes of
-// services/platform/src, comments included, so a prose mention in this file
-// switches off the "declared and NEVER USED" limb for that constant. Measured
-// 2026-08-22 — see that constant's doc comment for the six-way before/after.
+// `cron_heartbeat` under a job name THIS FILE DELIBERATELY DOES NOT SPELL, on
+// every nightly cron run. Two different spellings disarm two different limbs of
+// `deriveWatchedJobs` (tooling/ops/check-heartbeats.mjs), which reads the RAW
+// bytes of services/platform/src with comments included: the CONSTANT name
+// disarms "declared and NEVER USED", and the JOB NAME IN SINGLE OR DOUBLE QUOTES
+// disarms "COVERAGE LOST". Measured 2026-08-24 — see that constant's doc in
+// ../scheduled.ts for both before/afters; one of the two had to be fixed there.
 //
 // ⚠️ IT CHANGES NOTHING ABOUT THIS ROUTE, and it drains nothing. The census
 // counts; executing is still owner-gated on the seller credential above, no
