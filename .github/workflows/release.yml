@@ -167,8 +167,108 @@ jobs:
       # would grade whatever stale zips happened to sit in publish/ and report on
       # a release it never opened. These are the exact bytes the next step
       # uploads.
+      # 🔴 AND IT RAN BARE, SO ITS EXIT CODE WAS THE VERDICT — WHICH THE
+      # SCRIPT ITSELF SAYS IT IS NOT. MEASURED 2026-08-25 from the repo root
+      # with no dist/: `node scripts/check-store-packages.mjs fullshot --dir
+      # dist` prints "0 store package(s) opened and graded, 0 unreadable,
+      # across 2 declared target(s).", then "ZERO PACKAGES WERE PRESENT, so
+      # this run proved nothing about any artifact." and "Read this line rather
+      # than the exit code." — and EXITS 0. Its `die()` fires only when ZERO
+      # TARGETS are declared, which is a fact about tool.json, not about dist.
+      #
+      # This is the same defect class the AMO step below already carries a
+      # wrapper for, so the wrapper here is deliberately the same shape:
+      # capture with `|| code=$?` so `-e` cannot pre-empt the report, print the
+      # output, fail on a nonzero code, and only THEN assert the positive.
+      #
+      # 🔴 THE POSITIVE IS `graded == declared`, NOT `graded > 0`, AND THAT IS
+      # THE WHOLE FIX. `> 0` passes the realistic failure, which is not an empty
+      # dist but a half-built one: the pack step above wrote the chromium zip
+      # and not the firefox one, so ONE package across TWO declared targets is
+      # graded and every assertion that ran, passed. MEASURED 2026-08-25
+      # against a real `--release` build of both FullShot packages, then with
+      # dist/fullshot-firefox.zip removed / corrupted:
+      #
+      #   dist state            the script says                 bare EXIT  this step
+      #   both zips             2 graded / 2 declared, 5 passed      0      EXIT 0
+      #   chromium zip only     1 graded / 2 declared, 3 passed      0      EXIT 1
+      #   dist present, empty   0 graded / 2 declared, 0 passed      0      EXIT 1
+      #   firefox zip corrupt   3 passed · 1 FAILED                  1      EXIT 1
+      #
+      # With the assertion weakened to `[ "$graded" -lt 1 ]` the chromium-only
+      # row goes EXIT 0 on the same fixture — so the equality is what bites,
+      # and a naive non-emptiness check would have cleared a half-built release
+      # with a green tick.
+      #
+      # ⚠️ NOT KEYED ON THE "ZERO PACKAGES WERE PRESENT" WORDING, on purpose.
+      # That is the script's FAILURE text, and the AMO step's comment below
+      # spells out why a tripwire on failure wording is worthless: it goes
+      # quietly green the day the wording changes. The tally line read here is
+      # printed on every run that reaches the end, pass or not.
+      #
+      # ⚠️ AND THIS IS THE GENERAL FIX. A missing firefox zip is caught today
+      # for exactly one tool, by the `if: steps.tag.outputs.id == 'fullshot'`
+      # AMO step below. This step carries no tool-id condition.
+      #
+      # ── APPENDED CORRECTION, 2026-08-25 — the block above is left as written ─
+      # 🔴 `[ "$graded" -ne "$declared" ]`, WHICH THE BLOCK ABOVE DESCRIBES AND
+      # WHICH THIS STEP NO LONGER USES, IS A COUNT IDENTITY, NOT A PER-TARGET
+      # ASSERTION. It compares the script's packagesGraded to its targetsGraded.
+      # Two totals agreeing says nothing about WHICH target each package
+      # belonged to, so it passes a run where one target got two packages and
+      # another got none — which is the same half-built release the block above
+      # set out to catch.
+      #
+      # DISPROOF FIXTURE, measured 2026-08-25 off-runner. dist held a real
+      # `--release` build of both FullShot packages with
+      # `browser_specific_settings` stripped from the firefox zip's
+      # manifest.json — a packer regression this repo gates against elsewhere.
+      # check-store-packages.mjs then classifies that zip as chromium and
+      # prints, verbatim:
+      #     PASS  target "chromium" — 2 package(s) graded  — Extension/Full_Screen_Shot
+      #     target "firefox" (Extension/Full_Screen_Shot): no built package found
+      #     in <dir> — nothing to grade for it in this checkout.
+      #     2 store package(s) opened and graded, 0 unreadable, across 2 declared target(s).
+      # graded == declared == 2. The step body lifted out of THIS FILE by
+      # yaml.safe_load and run under `bash --noprofile --norc` printed
+      # "graded 2 of 2 declared target(s)." and EXIT 0 — a green tick on a
+      # release with no Firefox package in it.
+      #
+      # THE REPLACEMENT COUNTS THE SCRIPT'S OWN POSITIVE PER-TARGET LINE.
+      # check-store-packages.mjs:350-358 emits exactly one line per declared
+      # target: `  PASS  target "<t>" — N package(s) graded` when N > 0, and an
+      # 8-space-indented note carrying no `PASS` when N == 0. So counting the
+      # PASS form and requiring that count == declared IS the per-target
+      # property, and `covered` can never exceed `declared`.
+      # Same harness, same two fixtures, measured 2026-08-25:
+      #   firefox zip stripped  → covered=1 declared=2, EXIT 1
+      #   both zips intact      → covered=2 declared=2, EXIT 0
+      # Keyed on the POSITIVE wording on purpose — the ⚠️ note above says why a
+      # tripwire keyed on the "no built package found" failure text is worthless.
       - name: The built packages are uploadable
-        run: node scripts/check-store-packages.mjs ${{ steps.tag.outputs.id }} --dir dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=0
+          out=$(node scripts/check-store-packages.mjs ${{ steps.tag.outputs.id }} --dir dist 2>&1) || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "::error::check-store-packages.mjs exited $code on dist. These are the exact archives the release step below uploads to a public repository, and an upload cannot be taken back."
+            exit "$code"
+          fi
+          tally=$(printf '%s\n' "$out" | grep -oE '[0-9]+ store package\(s\) opened and graded, [0-9]+ unreadable, across [0-9]+ declared target\(s\)\.' | tail -1) || true
+          if [ -z "$tally" ]; then
+            echo "::error::the gate exited 0 but printed no 'N store package(s) opened and graded ... across K declared target(s).' tally. That line is the verdict this step reads — the script's own output says to read it rather than the exit code — so a run without it proved nothing this step could check."
+            exit 1
+          fi
+          graded=${tally%% *}
+          declared=$(printf '%s\n' "$tally" | sed -E 's/.*across ([0-9]+) declared target\(s\)\.$/\1/')
+          covered=$(printf '%s\n' "$out" | grep -cE '^  PASS  target "[^"]+".*package\(s\) graded') || true
+          if [ "$covered" -ne "$declared" ]; then
+            echo "::error::$tally  Every declared target must have had a built package OF ITS OWN opened and graded here; $covered of $declared declared target(s) did. The release step below uploads dist/*.zip, so an uncovered target is either an artifact this gate never opened or one the pack step never wrote. The two totals in that tally can agree while a target is missing, which is why this reads the script's per-target PASS lines instead."
+            exit 1
+          fi
+          echo "every declared target had a built package graded: $covered of $declared target(s), $graded package(s)."
 
       # ── THE TOOL'S OWN AMO GATE, ON THE BYTES THIS TAG SHIPS ───────────────
       # 🔴 THE RELEASE PATH HAD NEVER OPENED THIS GATE AT ALL. Measured
@@ -273,8 +373,67 @@ jobs:
           fi
           npx --yes web-ext@8 lint --source-dir dist/unpacked-firefox --warnings-as-errors
 
+      # 🔴 THIS STEP DECLARED NO `shell:` AND ITS ONLY COMMAND WAS A PIPE, SO
+      # ITS STATUS WAS `tee`'s AND NEVER `sha256sum`'s. GitHub runs a bare
+      # `run:` as `bash -e {0}` — `-e` but NOT `-o pipefail` — and there is no
+      # `defaults:` block in this file to supply one (`grep -n '^defaults:'
+      # .github/workflows/release.yml` -> no match; `grep -n 'shell:'` found it
+      # only on the preflight and AMO steps). MEASURED 2026-08-25 on the old
+      # one-liner body in a temp tree, three dist fixtures, both shells:
+      #
+      #   dist fixture              bash -e  (the old flags)   -eo pipefail
+      #   0 zips                    EXIT 0, file 0 bytes       EXIT 1
+      #   1 hashable zip of 2       EXIT 0, file 1 line        EXIT 1
+      #   2 hashable zips of 2      EXIT 0, file 2 lines       EXIT 0
+      #
+      # ⚠️ THE ZERO-ZIP ROW IS NOT THE REACHABLE ONE, and saying otherwise
+      # would overstate this. "Reference integrity + leak check on every
+      # artifact" above already exits 1 when `dist/*.zip` matches nothing, so a
+      # wholly empty dist never gets here. The reachable row is the middle one:
+      # a PARTIAL failure, where the glob matches N zips and sha256sum can hash
+      # fewer, and the step went green having published a SHORT list.
+      #
+      # Short is the whole problem, because that list is a published claim.
+      # "Release notes from CHANGELOG" below appends "Artifacts are
+      # byte-reproducible: rebuild from this tag ... and compare
+      # SHA256SUMS.txt", and `gh release create` uploads dist/SHA256SUMS.txt to
+      # a PUBLIC release with no `--draft`. A digest file missing a zip makes
+      # that sentence a claim about bytes it does not cover, on an artifact
+      # that cannot be un-published.
+      #
+      # `shell: bash` alone fixes the DIRECTION — it makes GitHub run
+      # `bash --noprofile --norc -eo pipefail {0}` — and the middle row above is
+      # the proof. `set -euo pipefail` is spelled out anyway for the reason
+      # given at the preflight step: the flag a reader sees should be the flag
+      # that is running.
+      #
+      # The count check below is the POSITIVE half, and it deliberately does
+      # not key on sha256sum's error wording — same rule as the AMO step's
+      # `grep -q '^ALL PASS$'`: a tripwire keyed on failure text goes quietly
+      # green the day that text changes. MEASURED 2026-08-25 with pipefail
+      # removed from BOTH the body and the shell, so this check was the only
+      # thing that could bite: 1-of-2 fixture EXIT 1, 2-of-2 fixture EXIT 0.
+      # Weakened to the naive `[ "$listed" -lt 1 ]` on those same fixtures, the
+      # 1-of-2 goes EXIT 0 — so it is the EQUALITY that bites, not the
+      # non-emptiness.
       - name: Checksums
-        run: cd dist && sha256sum *.zip | tee SHA256SUMS.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::dist holds no *.zip, so SHA256SUMS.txt would be published empty beside release notes that tell readers to rebuild and compare against it."
+            exit 1
+          fi
+          sha256sum "${zips[@]}" | tee SHA256SUMS.txt
+          listed=$(grep -cE '^[0-9a-f]{64} ' SHA256SUMS.txt || true)
+          if [ "$listed" -ne "${#zips[@]}" ]; then
+            echo "::error::SHA256SUMS.txt carries $listed digest line(s) for ${#zips[@]} zip(s) in dist. Every one of those zips is uploaded to this public release under the printed claim that a rebuild can be compared against this file, and a short list makes that claim about artifacts it does not cover."
+            exit 1
+          fi
+          echo "SHA256SUMS.txt: $listed digest line(s) for ${#zips[@]} zip(s) in dist."
 
       - name: Release notes from CHANGELOG
         run: |

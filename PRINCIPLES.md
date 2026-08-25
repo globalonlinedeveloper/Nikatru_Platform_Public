@@ -255,14 +255,37 @@ itself fails closed: `templates/tool/publish/pack.mjs` will not write the Firefo
 id is a placeholder or disagrees with `publish/identity.json`, and the id is derived from a single
 field (`slug` + `ownerDomain`) so it cannot be typed twice and differ.
 
-**FullShot's own packager is softer, and the difference matters today.**
-`Extension/Full_Screen_Shot/publish/package.node.js` prints `BLOCK gecko.id is still the placeholder`
-and a named owner action, then **exits 0** — by design, so a packaging defect and an owner decision
-are not the same red. The gate that refuses is `publish/verify-firefox-package.node.js`, which treats
-a placeholder id as a hard failure. FullShot's packaged Firefox manifest carries
-`fullshot@REPLACE-WITH-YOUR-DOMAIN.example` right now, so that submission gate is red on purpose, and
-it stays red until the owner picks a domain. Nobody else can pick it, and shipping once with the
-placeholder cannot be walked back.
+**FullShot's own packager is softer, and the difference is the point.**
+`Extension/Full_Screen_Shot/publish/package.node.js:735` prints `BLOCK  gecko.id is still the
+placeholder` and a named owner action, then **exits 0** — by design, so a packaging defect and an
+owner decision are not the same red. The gate that refuses is `publish/verify-firefox-package.node.js`,
+which treats a placeholder id as a hard failure (`gate('gecko.id is NOT the placeholder', …)`), and
+`scripts/pack.mjs` refuses to write the Firefox package on the same condition. That split still
+stands, re-read in all three files on 2026-08-25.
+
+⚠️ **CORRECTED 2026-08-25 — FullShot's id is set, and it is `fullshot@nikatru.com`.** This paragraph
+used to end: *"FullShot's packaged Firefox manifest carries `fullshot@REPLACE-WITH-YOUR-DOMAIN.example`
+right now, so that submission gate is red on purpose, and it stays red until the owner picks a domain."*
+That is false, and the placeholder string is left above only so the correction is legible next to it.
+Measured, bare, exit code on its own line:
+
+- `publish/manifest.firefox.json` → `browser_specific_settings.gecko.id` is **`fullshot@nikatru.com`**,
+  set on 2026-08-18 in commit `088b4e3` and derived from `publish/identity.json`.
+- `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` → **0**, printing
+  `firefox manifest — publish/manifest.firefox.json applied as a merge patch — gecko.id
+  fullshot@nikatru.com`.
+- `node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js` → **0** bare
+  (`SOURCE PASSES — NO PACKAGE WAS GRADED.`), and **0** again with `--zip` against a freshly built
+  package (`ALL PASS`). The AMO submission gate is **not red**, and has not been since 2026-08-18.
+- `node scripts/policy-check.mjs fullshot` → **0**, `the Firefox add-on id is set — fullshot@nikatru.com
+  -- and agrees with publish/identity.json`.
+
+**The principle is unchanged, and filling the id is what made it binding rather than what retired it.**
+AMO fixes the add-on identity at first signing; `fullshot@nikatru.com` is now the value that cannot be
+walked back, on a domain the owner actually controls. Nobody else could have picked it, and no gate
+could have picked it for them — which is exactly why the packager printed a BLOCK and exited 0 instead
+of failing, and why the submission gate refused. Both behaved correctly; the difference between them is
+still the thing to copy into the next tool.
 
 ---
 

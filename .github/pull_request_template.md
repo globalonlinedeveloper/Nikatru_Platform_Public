@@ -2,7 +2,12 @@
 Title convention (CONTRIBUTING.md → Commits):
   fullshot: guard importScripts for Gecko event pages
   skeleton: fold the report section into the options page
-  repo:     pin setup-node to the v4 major
+  repo:     widen the secret scan to the whole tree
+The three lines above exist to show the SCOPE PREFIX, nothing else. Keep their
+payloads version-free: the `repo:` example used to read "pin setup-node to the
+v4 major", which stopped being true when the workflows moved to the v7 major and
+left a comment block quietly recommending a dead pin. Bumping the number would
+only re-arm the same rot on the next major, so the example no longer names one.
 The tool id (not the directory) is what CI, tags and zip names key on, and it is
 what `discover.mjs` falls back to when path detection is ambiguous. Use
 `skeleton:` for `templates/tool/` and `repo:` for anything at the root.
@@ -67,7 +72,7 @@ node scripts\verify-refs.mjs --zip dist\<id>-chromium.zip --strict --leaks
 - [ ] Every permission has a justification string in `tool.json` → `policy.permissions`.
 - [ ] `description` ≤ 132 chars, `name` ≤ 45, `short_name` ≤ 12, `manifest_version` is 3.
 - [ ] 🔴 **No packaged root file or directory starts with `_`, except `_locales`.** Chrome refuses to load the whole extension otherwise — which is why the vendored core is `vendor/core/` and never `_core/`, and why `_locales/` has to be allowlist-*always* in the packer rather than pattern-matched.
-- [ ] The Firefox manifest stays an **RFC 7386 overlay**, not a second full manifest — one place to edit, or one of them will drift. (FullShot's is still a full duplicate; `tool.json` → `targets.firefox.overlay` is `null` and says so.)
+- [ ] The Firefox manifest stays an **RFC 7386 overlay**, not a second full manifest — one place to edit, or one of them will drift. (FullShot's already is one: `tool.json` → `targets.firefox.overlay` = `publish/manifest.firefox.json`, converted 2026-08-18. The parenthetical here claimed `null` until 2026-08-25.)
 - [ ] ⚠️ **`browser_specific_settings.gecko.id` is permanent once AMO signs the first build.** Changing it later starts a new listing and loses reviews and users. FullShot's is still a placeholder — confirm the final value *before* the first AMO submission, not after.
 
 ### If this changes store listing copy
