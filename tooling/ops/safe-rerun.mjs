@@ -27,6 +27,34 @@
 //    NEW entrant into a concurrency group, not a replay of an old one.** The age
 //    of the commit buys no protection at all.
 //
+// ── 📌 APPENDED 2026-08-25 — `ci.yml` NO LONGER READS `cancel-in-progress: true`
+//    THE QUOTED BLOCK ABOVE IS LEFT EXACTLY AS IT STANDS. It is what that file
+//    said on 2026-08-12 and the incident is a dated record of that day; this is
+//    what CHANGED SINCE, not a correction to it.
+//
+//    Wave 3 round B replaced the third line of that block with an expression, so
+//    that main alone stops evicting:
+//
+//        cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+//
+//    MEASURED 2026-08-25 BY CALLING THIS MODULE, not by reading the file:
+//    parseWorkflow() on the real ci.yml returns cancelInProgress **true** with
+//    cancelIsExpression **true**, and namedLaneProblem() returns **null**. So
+//    this tool's behaviour is UNCHANGED and its named lane stays green — the
+//    `cancelIsExpression ? true` collapse below is what carries that.
+//
+//    ⚠️ THE DIRECTION, STATED PLAINLY. `github.ref != 'refs/heads/main'`
+//    renders FALSE on `refs/heads/main`, so the 2026-08-12 eviction can no longer
+//    happen THERE — and this tool will still refuse such a re-run as though it
+//    could. That is a FALSE REFUSAL, never a false allow, which is the safe
+//    direction to be wrong in. On feature branches and on `refs/pull/N/merge` the
+//    expression renders TRUE, the hazard is intact, and the refusal is correct.
+//
+//    🔴 NOT COVERED, RECORDED RATHER THAN CLOSED: no fixture distinguishes
+//    one expression from another. The collapse below reads every `${{ … }}` as
+//    cancelling, so a typo'd ref literal is indistinguishable from the line as
+//    written. The source mutation for that class is the workflow line itself.
+//
 // WHAT THIS REFUSES. Given a run id, exit non-zero WITHOUT re-running when BOTH:
 //   (a) the run's head SHA is not the current HEAD of its branch — i.e. this is
 //       a re-run of history, so its result cannot be what anyone is waiting on;
