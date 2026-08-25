@@ -59,18 +59,80 @@
 /*.js
   Cache-Control: public, max-age=0, must-revalidate
 
-# Long-cache immutable static assets.
-# ⚠️ RECORDED GAP — this is not a claim that these are content-addressed.
-# `rajasekar-v4.jpg` / `rajasekar-v4.webp` carry their version IN THE NAME,
-# which is what makes `immutable` correct for them. `icon-16/32/192/512.png`,
-# `apple-touch-icon.png` and `og-image.png` do NOT: replacing one of those
-# under the same name would not reach a returning visitor for a year. Left
-# as-is DELIBERATELY — they are the page's heaviest bytes and re-cutting them
-# is the owner's call. assert-web-cache-policy.mjs prints the stable-named
-# `immutable` paths on every run rather than failing the build, so the gap
-# cannot become permanent by being invisible.
+# Long-cache immutable static assets — but ONLY names that carry a version.
+# `rajasekar-v4.jpg` / `rajasekar-v4.webp` carry theirs IN THE NAME, which is
+# what makes `immutable` correct for them: a new cut gets a new name, so no
+# cached copy can ever be the wrong one.
+#
+# 🔴 FIXED 2026-08-21 — `/*.png` NO LONGER SAYS `immutable`. This root ships SIX
+# .png files and NOT ONE of them carries a version token: `icon-16.png`,
+# `icon-32.png`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` and
+# `og-image.png` (the whole .png inventory under sites/rajasekarselvam/,
+# counted this run). They are STABLE names with CHANGING content, and
+# `immutable` on a stable name does not merely extend freshness — it suppresses
+# revalidation, so replaced bytes do not reach a returning visitor even on an
+# explicit reload.
+#
+# ── LIVE, NOT LATENT: THIS HAS ALREADY FIRED ONCE ON THIS ROOT ──────────────
+# The text below this rule used to end "left as-is DELIBERATELY", which invites
+# the reading that nothing had happened yet. MEASURED 2026-08-21: commit
+# a0e0f54, dated 2026-07-23, `feat(brand): refresh inline SVG favicons + nav
+# logos, refresh RS icons`, replaced the BYTES of five of those six under the
+# SAME filenames — apple-touch-icon.png 11128 -> 17631, icon-16.png 626 -> 699,
+# icon-32.png 1423 -> 1627, icon-192.png 11868 -> 19596, icon-512.png
+# 32233 -> 89028. Not one name moved. (og-image.png is the sixth and was not in
+# that commit; it is unchanged since the migration commit a77cbe8.) So the
+# re-cut this rule was deferring HAD ALREADY SHIPPED a month earlier, straight
+# into a year-long immutable declaration.
+#
+# And the declaration is what this edge serves: the .css/.js note above records
+# `/icon-32.png` coming back `cf-cache-status: HIT` carrying
+# `max-age=31536000, immutable` on 2026-08-04 — twelve days AFTER that re-cut.
+# ⚠️ That note is a DATED RECORD and is left unedited: its `/icon-32.png` half
+# describes what this file declared UNTIL today, not what it declares below.
+# Its `/rajasekar-v4.webp` half is unaffected — .webp still says `immutable`.
+#
+# ── THE REASONING THAT WAS WRONG, kept rather than deleted ──────────────────
+# "Left as-is DELIBERATELY — they are the page's heaviest bytes and re-cutting
+# them is the owner's call." Re-cutting the ARTWORK is the owner's call; that
+# half was true and is untouched here. But re-cutting was never what this gap
+# needed. Two different acts sat under one owner-gate, and the cheap one
+# inherited the expensive one's veto. A Cache-Control value changes not one
+# pixel and not one filename, so there is no brand question in it to defer.
+# sites/nikatru/_headers decoupled exactly these two on 2026-08-21; this is the
+# same decoupling, on the root that still had them joined.
+#
+# 🔴 NO RENAME IS PROPOSED HERE, and NOT because one is blocked. The frozen
+# legal snapshots that killed the nikatru rename have no counterpart on this
+# root — measured 2026-08-21: sites/rajasekarselvam/ has no legal/ tree at all,
+# and the six names are referenced from three non-`_headers` files
+# (index.html, 404.html, site.webmanifest). The rename is simply not NEEDED:
+# the header fixes the same defect at a strictly lower cost, and for
+# og-image.png a rename carries a real one — social platforms cache the card
+# they scraped from the OLD URL and every link already shared points at it.
+#
+# ⚠️ WHAT THIS DOES NOT CATCH, so it is not read as a full repair:
+#   · A browser that ALREADY took one of these icons under the immutable header
+#     keeps it until its own year runs out — into 2027 for a visit made before
+#     this deploy. Cache-Control governs responses served from now on; nothing
+#     but a new URL reaches a client that is already frozen, and that client is
+#     exactly the one the 2026-07-23 re-cut never reached. This closes the hole
+#     ahead; it un-freezes nobody behind.
+#   · It is a DECLARATION. What this zone's edge returns is not readable from
+#     this repository — see the ⚠️ over the .css/.js rules. A zone Cache Rule
+#     could still override it and nothing here would report that.
+#   · /*.jpg, /*.webp and /*.svg are UNTOUCHED and keep `immutable`. jpg and
+#     webp are rajasekar-v4's, whose name carries its version; no .svg is served
+#     here today. If a STABLE-named .jpg/.webp/.svg ever lands on this root the
+#     same argument applies to it unchanged, and assert-web-cache-policy.mjs
+#     names such a file on every run rather than failing the build.
+#
+# THE COST, weighed rather than discovered later: a returning visitor now spends
+# ONE conditional request per icon instead of zero, and the bytes still come
+# from the local cache on the 304. That is the identical bargain /*.css and
+# /*.js take above.
 /*.png
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=0, must-revalidate
 /*.jpg
   Cache-Control: public, max-age=31536000, immutable
 /*.webp

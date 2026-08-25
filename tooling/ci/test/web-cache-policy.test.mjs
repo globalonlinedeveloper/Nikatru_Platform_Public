@@ -53,6 +53,112 @@
 //   14. `flutter build web` copies web/ verbatim, so shippedPaths() pointed at
 //       a nonexistent dir ⇒ COVERAGE LOST (zero shipped files evaluated).
 //
+// THIRD REAL-TREE RUN, 2026-08-21 — the png decoupling on sites/rajasekarselvam.
+// Two mutations, on COPIES of this repo in the scratchpad, never in the tree:
+//
+//   15. sites/rajasekarselvam/_headers `/*.png` returned to
+//       `max-age=31536000, immutable` ⇒ guard EXIT 0 (it prints this class, it
+//       does not fail it) but `node --test` 37 pass / 3 FAIL. That is the point
+//       of pinning it here: the guard alone cannot go red on this defect, so
+//       without these three assertions the file could drift back and CI would
+//       stay green. Against the tree as it stands: 40 pass / 0 fail.
+//   16. sites/rajasekarselvam/og-image.png DELETED, `_headers` left correct ⇒
+//       39 pass / 1 FAIL. The anti-vacuity limb: an assertion that no stable
+//       name is frozen also passes when there are no names left, and that is
+//       the way this suite would quietly stop testing anything.
+//
+// ⚠️ THOSE THREE TESTS ARE THE ONLY ONES HERE THAT READ THE REAL TREE. The rest
+// stay on fixtures on purpose; these do not, because a fixture cannot notice
+// the real file drifting, and this defect's guard limb PRINTS rather than fails.
+//
+// 🔴 CORRECTED THE SAME DAY, 2026-08-21, in the refutation pass. THE COUNT
+// "THREE" ABOVE IS WRONG IN BOTH PLACES IT APPEARS — the dated text is left
+// unedited because renumbering a dated record falsifies it rather than
+// repairing it; read the correction, not the count.
+//   · FOUR tests were added by that pass, not three, and all FOUR read the
+//     real tree: the .png inventory test (`listDir` on the real root), `🔴 the
+//     REAL repository leaves NO stable name declared immutable` (`run(REPO)`),
+//     and the two that `readFileSync(RJS_HEADERS)`. Measured:
+//     `git show main:tooling/ci/test/web-cache-policy.test.mjs | grep -c "^\s*test("`
+//     = 36 and the same grep on the worktree = 40, matching `node --test`'s
+//     own `tests 40` exactly. 36 -> 40 is +4.
+//     🔴 THE REVISION IN THAT RECIPE CORRECTED 2026-08-24 — it read `HEAD:`,
+//     and that spelling SELF-INVALIDATED the moment this branch committed the
+//     four tests. Re-taken today: `HEAD:` (e6272bc) returns 40, `main:`
+//     (7211ca7) returns 36, worktree 40. So the recipe as shipped disagreed
+//     with the number printed beside it — a reader re-taking it got 40 = 40
+//     and no `+4` at all. A revision pointer rots exactly the way the line
+//     number in pack_verifier.dart's ANCHOR note does: cite the BRANCH POINT,
+//     which is fixed, not the tip, which every commit moves.
+//   · "three" is the number of tests MUTATION 15 turns red — a different
+//     quantity, written under the word "these". The mutation counts
+//     themselves (37/3 and 39/1, of 40) do reproduce; see the re-run below.
+//
+// 🔴 AND ONE OF THE FOUR IS WIDER THAN "these read the real file" SUGGESTS.
+// `🔴 the REAL repository leaves NO stable name declared immutable` runs the
+// guard over `REPO`, the WHOLE repository, so it goes red for ANY
+// assert-web-cache-policy failure on ANY scanned root — apps/subly/web, the
+// brick template, sites/nikatru — not only for a rajasekarselvam drift, and it
+// duplicates that guard's own CI step's signal. That is deliberate; it is just
+// not what the sentence above says.
+//
+// RE-RUN AFTER THE REFUTATION PASS'S EDIT, 2026-08-21 — the .png inventory test
+// was rewritten (its `assert.doesNotMatch(p, /-v\d+\./)` limb compared a source
+// constant against a regex and no repository state could fail it; deleting it
+// left the suite at 40 pass / 0 fail). The two mutations above re-run, plus two
+// the rewrite makes reachable for the first time — all four on a copy in the
+// scratchpad holding tooling/ci, tooling/bricks, sites/ and apps/subly/web,
+// which are the only trees this guard reads (the copy reproduces the tree's own
+// 40 pass / 0 fail before any mutation is applied):
+//   15'. `/*.png` returned to `max-age=31536000, immutable` ⇒ 37 pass / 3 FAIL.
+//   16'. og-image.png DELETED ⇒ 39 pass / 1 FAIL.
+//   17'. NEW, and the case the dead line pretended to cover: icon-16.png
+//        RENAMED to icon-16-v2.png ⇒ 39 pass / 1 FAIL.
+//   18'. NEW: a subdirectory added under the root ⇒ 39 pass / 1 FAIL.
+//   Against the tree as it stands: 40 pass / 0 fail.
+//
+// 🔴 AND EACH OF THE TWO NEW ASSERTIONS WAS DISABLED ON ITS OWN — the check the
+// dead line failed. Rewriting the `.png` set-equality to compare the walked
+// list against ITSELF turns 16' and 17' back to 40 pass / 0 fail; doing the
+// same to the no-subdirectory assertion turns 18' back to 40 pass / 0 fail.
+// Neither survives being switched off, so neither is a decoration. Breaking the
+// `.png` predicate instead (dropping the `endsWith` filter) is red against the
+// UNMUTATED tree at 39 pass / 1 FAIL.
+//
+// 🔴 AND SO WERE THE OTHER EIGHT ASSERTIONS THIS PASS ADDED — the two above are
+// not a sample. Ten assertions arrived in the four tests below; each is listed
+// here with the input that turns THAT ONE red, because an assertion no input
+// reaches is a decoration that makes the file look guarded. Same scratch copy,
+// one change at a time, restored between, all re-measured 2026-08-21 after the
+// last edit to this file (pristine copy: EXIT 0, 40 pass / 0 fail):
+//   `…ships EXACTLY the six stable-named .png files`
+//     · the no-subdirectory deepEqual — 18' ⇒ 39/1; switched off, 18' ⇒ 40/0.
+//     · the .png set equality — 16' ⇒ 39/1 and 17' ⇒ 39/1; switched off, both
+//       ⇒ 40/0. Neither assertion covers the other's mutation.
+//   `🔴 the REAL repository leaves NO stable name declared immutable`
+//     · `assert.equal(code, 0, out)` — apps/subly/web/_headers DELETED ⇒ 39/1
+//       with THIS test the only red one, on `1 !== 0`. That is the whole-repo
+//       coupling flagged above, measured rather than argued.
+//     · `doesNotMatch(/STABLE NAMES…/)` — 15' ⇒ red (one of that mutation's 3).
+//   `🔴 …and reverting the real `/*.png` line to `immutable` brings the print back`
+//     · `ok(real.includes(FIXED))` — 15' ⇒ red; run alone with
+//       `--test-name-pattern="brings the print back"` it is EXIT 1, 0 pass /
+//       1 fail, message `the /*.png rule is no longer the line this test mutates`.
+//     · `assert.equal(code, 0, out)` — the `/*.css` rule deleted from the real
+//       sites/rajasekarselvam/_headers ⇒ 37 pass / 3 FAIL, this test red on
+//       `1 !== 0` (C1 above still holds there, so this is the assertion that fires).
+//     · `match(/… — 6 file\(s\)/)` — GUARD mutation in the copy: the guard's
+//       `frozen.push` condition (search it for `!/-v\d+\./.test(path)`, in the
+//       `for (const { dir, kind } of bundles)` loop) → `if (false)` ⇒ 38 pass / 2 FAIL.
+//     · the per-name `match` loop — GUARD mutation: `${frozen.join(', ')}` replaced
+//       by a literal, the count left intact ⇒ 38 pass / 2 FAIL.
+//   `the same fixture, on the file AS IT STANDS, prints nothing`
+//     · `assert.equal(code, 0, out)` — the same `/*.css` deletion ⇒ red on `1 !== 0`.
+//     · `doesNotMatch(/STABLE NAMES…/)` — 15' ⇒ red (the third of that three).
+//   The two GUARD mutations each turn the PRE-EXISTING fixture test `a stable-named
+//   site asset declared immutable is PRINTED, never failed` red as well — that is
+//   the second failure in both 38/2 lines, not a second real-tree test.
+//
 // ⚠️ EVERY ASSERTION IS AGAINST THE DECLARED FILE, so the suite fails offline.
 // What the edge actually returns is deliberately out of scope — see the
 // CANNOT-SEE list in the guard's header.
@@ -62,13 +168,17 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// The ONE shared directory-listing primitive — the real-tree .png inventory
+// below is walked with it rather than with a `readdirSync` of its own.
+import { listDir } from '../tree-walk.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-web-cache-policy.mjs');
+const REPO = resolve(CI_DIR, '..', '..');
 const BRICK_WEB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/web';
 
 let TMP;
@@ -358,6 +468,326 @@ describe('assert-web-cache-policy', () => {
     // The hand-versioning convention is what makes immutable honest, so a name
     // that carries a version must NOT be reported.
     assert.doesNotMatch(out, /founder-v4\.png \(via/);
+  });
+
+  // ── the png decoupling, pinned against the REAL tree ──────────────────────
+  // 🔴 2026-08-21. Both deploy roots declared `/*.png` `immutable` over icon
+  // names that carry no version. sites/nikatru fixed its half earlier the same
+  // day; sites/rajasekarselvam's half was fixed in this pass, and on THAT root
+  // the defect was LIVE rather than hypothetical — commit a0e0f54 (2026-07-23)
+  // replaced the bytes of five of the six .png files under their existing
+  // names, so a re-cut brand mark shipped into a year-long freeze.
+  //
+  // Everything else in this suite runs on fixtures, deliberately. This one pair
+  // does not, because a fixture cannot notice the real file drifting back — and
+  // the guard PRINTS this class rather than failing it, so nothing else in CI
+  // would go red if it did.
+  const RJS_ROOT = join(REPO, 'sites', 'rajasekarselvam');
+  const RJS_HEADERS = join(RJS_ROOT, '_headers');
+  // The whole .png inventory of that root as measured 2026-08-21. It is WRITTEN
+  // OUT and also READ OFF DISK, and both halves carry weight: the literal is
+  // what the two fixture tests below hand the guard, so deleting an icon cannot
+  // make THEM pass by leaving nothing to be wrong about; the `listDir` of the
+  // real root is what gives the comparison an input that can turn it red.
+  const RJS_PNGS = [
+    'apple-touch-icon.png', 'icon-16.png', 'icon-32.png',
+    'icon-192.png', 'icon-512.png', 'og-image.png',
+  ];
+  // The shipped-file set the TWO fixture tests below both hand the guard. ONE
+  // binding, read twice, so "the same six files" is true BY CONSTRUCTION — the
+  // pair only isolates the Cache-Control line while both sides really are the
+  // same tree, and two copies of one expression can drift apart silently.
+  //
+  // 🔴 HOISTED 2026-08-24, AND THE REASON IS A MEASUREMENT. As two separate
+  // `Object.fromEntries(RJS_PNGS.map(...))` expressions, the copy in
+  // `…prints nothing` was a GREEN row: measured on a scratch copy of this repo,
+  // replacing THAT test's `siteFiles` with `{}` left the unmutated tree at
+  // EXIT 0, 40 pass / 0 fail — because that test asserts an ABSENCE, and no
+  // .png in the fixture can change whether nothing is printed. The copy in
+  // `…brings the print back` is load-bearing on the same mutation: `{}` there
+  // is 39 pass / 1 fail. Rather than leave an unpinnable duplicate sitting
+  // beside the pinned one, the duplicate is gone and the single survivor is
+  // pinned by that test.
+  // ⚠️ The `'png'` here is a file BODY, not a kind or an extension — see
+  // `fixture()`'s `siteFiles` loop, which writes the value as the file's
+  // contents. The guard reads PATHS and header rules and never opens these
+  // files, so the string is arbitrary: measured 2026-08-24, changing it to
+  // `'jpg'` leaves the unmutated tree at EXIT 0, 40 pass / 0 fail. It is
+  // listed here only so the next sweep does not re-enumerate it as a condition.
+  const RJS_SITE_FILES = Object.fromEntries(RJS_PNGS.map((p) => [p, 'png']));
+
+  test('the real sites/rajasekarselvam ships EXACTLY the six stable-named .png files', () => {
+    // Anti-vacuity for both fixture tests below: they are about these six
+    // files, and an assertion about files that are gone is not an assertion.
+    //
+    // 🔴 DERIVED FROM THE TREE, 2026-08-21 — and it did not start that way.
+    // This test was an `existsSync` loop plus
+    //   assert.doesNotMatch(p, /-v\d+\./, …)
+    // where `p` iterated RJS_PNGS: a source constant checked against a regex,
+    // which NO state of the repository could turn red. Measured on a copy of
+    // this repo in the scratchpad — deleting that one line left `node --test
+    // tooling/ci/test/web-cache-policy.test.mjs` at EXIT 0, tests 40 / pass 40
+    // / fail 0. It was a decoration that made the file look guarded, which
+    // this corpus rates worse than no assertion at all.
+    //
+    // Set equality against the LISTED inventory is the honest form of what it
+    // was trying to say, and it strictly contains the old `existsSync` loop: a
+    // delete, a rename to `icon-16-v2.png`, and a SEVENTH .png arriving under
+    // the same `/*.png` rule are each red here now.
+    const entries = listDir(RJS_ROOT, { withFileTypes: true });
+
+    // 🔴 THE DOMAIN, ASSERTED RATHER THAN ASSUMED. The listing below is FLAT,
+    // and it is only the whole inventory while the root is flat — measured
+    // 2026-08-21: sixteen entries, none of them a directory. The guard's own
+    // shipped-file walk (assert-web-cache-policy.mjs, the `const walk =`
+    // inside `shippedPaths`) RECURSES, and `/*.png` matches at any depth, so a
+    // subdirectory is the one way a .png could exist here and not be counted.
+    // A recursive walk was written here instead and REMOVED: with no
+    // subdirectory in the tree its descent branch could not be reached by any
+    // mutation of the current repository, which is the same dead-code-that-
+    // looks-like-a-check defect this test was rewritten to remove. Asserting
+    // the flatness is reachable — `mkdir sites/rajasekarselvam/img` is red.
+    // ⚠️ GREEN AND KEPT, DISCLOSED RATHER THAN PINNED — the
+    // `.map((e) => e.name)` on the deepEqual below is verdict-NEUTRAL: no input
+    // distinguishes it. It is ONE OF TWO such expressions in this test, not the
+    // only one — the other is the `[...]` spread on the expected side of the
+    // SECOND deepEqual, disclosed at its own site below.
+    // 🔴 CORRECTED 2026-08-24: this paragraph read "is the ONE expression in
+    // this test that no input distinguishes", which was false about the very
+    // test it scoped itself to. Repaired in place rather than annotated, because
+    // a false absolute left standing under a note about it is the defect twice.
+    // Re-measured 2026-08-24 on a scratch mirror holding tooling/ci,
+    // tooling/bricks, sites/ and apps/subly/web — the only trees this guard
+    // reads, and the mirror reproduces the tree's own EXIT 0, 40 pass / 0 fail
+    // before any mutation. Replacing it with `.map(() => 'X')` leaves the
+    // unmutated tree at EXIT 0, 40 pass / 0 fail, AND still goes red under
+    // `mkdir sites/rajasekarselvam/img` at 39 pass / 1 fail — the same verdict
+    // in both directions, because `deepEqual` against `[]` fails for ANY
+    // non-empty array whatever the projection. So it is verdict-NEUTRAL, not a
+    // check: its whole effect is to make the failure name the directory.
+    // NEITHER of the two atoms beside it is neutral, and both are pinned by that
+    // same `mkdir`, which is red at 39 pass / 1 fail on its own:
+    //   · the `.filter((e) => e.isDirectory())` — replace the predicate with
+    //     `() => false` and `mkdir` goes green at 40 pass / 0 fail.
+    //   · the `[]` EXPECTED side — replace it with the walked expression so both
+    //     sides are one and `mkdir` goes green at 40 pass / 0 fail.
+    assert.deepEqual(
+      entries.filter((e) => e.isDirectory()).map((e) => e.name),
+      [],
+      'sites/rajasekarselvam has grown a subdirectory. The `/*.png` rule reaches into it and the flat '
+        + 'listing below does not — walk the root recursively here, or this test stops seeing the tree',
+    );
+    // 🔴 DO NOT "DERIVE RJS_PNGS FROM THE TREE", 2026-08-24. It reads like the
+    // fix for a hardcoded literal and it is the one change that would make this
+    // assertion unfalsifiable. The literal is the EXPECTED side; the `listDir`
+    // walk is the ACTUAL side, and having the two come from different places is
+    // exactly what gives the comparison an input that can fail. Measured on a
+    // scratch copy, with the literal below replaced by the same walked
+    // expression so both sides are one: deleting og-image.png, renaming
+    // icon-16.png to icon-16-v2.png, and adding a seventh .png each fall from
+    // 39 pass / 1 fail back to EXIT 0, 40 pass / 0 fail. All three are red
+    // today against the literal. The `.map` and `.filter` on this one ARE both
+    // load-bearing, unlike the pair above: breaking either leaves the tree as
+    // it stands at 39 pass / 1 fail.
+    //
+    // AND SO IS THE DOT INSIDE `endsWith('.png')`, which is a THIRD row here and
+    // not part of the `.filter` one — recorded 2026-08-24 because an escaped dot
+    // inside an otherwise fully-enumerated expression is precisely the atom the
+    // last sweep of this corpus missed. Its input is not a .png at all: drop a
+    // file named `sprite-png` (ends in `png`, no dot) into the root and the tree
+    // is correctly still EXIT 0, 40 pass / 0 fail, while `endsWith('png')` pulls
+    // it into the walked set and is EXIT 1, 39 pass / 1 fail. The dot is what
+    // scopes this inventory to the same names the `/*.png` rule reaches, so
+    // widening it does not loosen the check, it invents a failure.
+    //
+    // 🔴 THE `.sort()` ON THE ACTUAL SIDE IS PINNED, NOT A GREEN WIDENING —
+    // CORRECTED 2026-08-24, and the correction is a measurement. This paragraph
+    // disclosed it as green "because readdir already hands back these six names
+    // in lexicographic order". That reason is an NTFS accident, not a property
+    // of the code: `listDir` sorts NOTHING — grep `export function listDir` in
+    // tooling/ci/tree-walk.mjs (ONE hit; `const entries = readdirSync` is TWO,
+    // so do not anchor on that) and its body is a filtered `readdirSync`, whose
+    // order is defined by the filesystem. On the ext4 CI runs on that is hash
+    // order, not name order. So the input that reddens this `.sort()` is a
+    // listDir ORDER mutation, not a tree-CONTENT one, which is why rounds of
+    // content mutations all found it green. Measured on the scratch mirror with
+    // `listDir` returning `kept.reverse()`: the file AS SHIPPED is EXIT 0,
+    // 40 pass / 0 fail, and dropping this `.sort()` is EXIT 1, 39 pass / 1 fail.
+    //
+    // ⚠️ GREEN AND KEPT, DISCLOSED RATHER THAN PINNED — the `[...]` SPREAD on
+    // the expected side below, the second of this test's two verdict-neutral
+    // expressions (the first is the `.map` above). It is a row no earlier sweep
+    // listed. Measured on the same mirror: drop the spread, so the expected side
+    // is `RJS_PNGS.sort()`, and the unmutated tree stays EXIT 0, 40 pass /
+    // 0 fail — and it is verdict-IDENTICAL under every input that reaches this
+    // test, each the same number that input gives on its own: og-image.png
+    // deleted 39/1, icon-16.png renamed to icon-16-v2.png 39/1, a seventh .png
+    // added 39/1, a subdirectory added 39/1, `listDir` reversed 40/0. It cannot
+    // change a verdict because the multiset compared is identical either way.
+    // It is KEPT for a reason that is NOT this comparison: without it `.sort()`
+    // reorders a module-scope binding IN PLACE, and that binding is read again
+    // by the `for (const p of RJS_PNGS)` loop two tests below.
+    //
+    // The `.sort()` on the EXPECTED side is a THIRD, separate row and is pinned
+    // by the tree as it stands: RJS_PNGS is written in icon-SIZE order, where
+    // `icon-192` precedes `icon-32`, so dropping THAT one is EXIT 1,
+    // 39 pass / 1 fail against the unmutated tree.
+    assert.deepEqual(
+      entries.filter((e) => e.name.endsWith('.png')).map((e) => e.name).sort(),
+      [...RJS_PNGS].sort(),
+      'the .png inventory of sites/rajasekarselvam has moved — RJS_PNGS, and the two fixture tests '
+        + 'below that feed it to the guard, no longer describe the tree',
+    );
+  });
+
+  test('🔴 the REAL repository leaves NO stable name declared immutable', () => {
+    const { code, out } = run(REPO);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /STABLE NAMES DECLARED IMMUTABLE/);
+  });
+
+  test('🔴 …and reverting the real `/*.png` line to `immutable` brings the print back', () => {
+    // The negative half, kept in the suite instead of run once by hand: it
+    // takes the file as it actually is, applies the exact one-line reversion,
+    // and requires the guard to name every one of the six again.
+    const real = readFileSync(RJS_HEADERS, 'utf8');
+    const FIXED = '/*.png\n  Cache-Control: public, max-age=0, must-revalidate';
+    // This `ok` is the whole anti-vacuity check, and it is the assertion that
+    // actually fires if the rule drifts. A follow-up `notEqual(broken, real)`
+    // was written here and DELETED: once `includes` holds, `replace` cannot
+    // leave the string unchanged, so it was an assertion with no input that
+    // could fail — which inflates coverage rather than adding any.
+    assert.ok(real.includes(FIXED), 'the /*.png rule is no longer the line this test mutates');
+    const broken = real.replace(FIXED, '/*.png\n  Cache-Control: public, max-age=31536000, immutable');
+
+    const { code, out } = run(fixture({ sites: { rajasekarselvam: broken }, siteFiles: RJS_SITE_FILES }));
+    // ⚠️ SCOPE, MEASURED 2026-08-24 — NO REPOSITORY STATE REDDENS THE NEXT
+    // LINE. It is not verdict-neutral the way the rows disclosed above are
+    // (the directory-side `.map`, the `[...]` spread, the `'utf8'` below):
+    // disabling THIS one can change a verdict, but only under a mutation of
+    // the guard itself, never under any state of the tree.
+    // The guard's `if (problems.length) {` block ends in `process.exit(1)` and
+    // runs BEFORE its `if (prints.length) {` block — grep both in
+    // assert-web-cache-policy.mjs — so a matched STABLE NAMES print is already
+    // proof the guard exited 0, and the `assert.match` below already implies
+    // this `assert.equal`. Measured: delete the real `/*.css` rule and the suite
+    // is EXIT 1, 37 pass / 3 fail EITHER WAY, with this line and with it
+    // disabled, because the print vanishes together with the exit code.
+    // It is KEPT as the canary for exactly that ordering, and it IS reachable by
+    // a SUBJECT mutation: emit the prints above that `process.exit(1)` and then
+    // delete the `/*.css` rule, and the pair separates — 37 pass / 3 fail
+    // shipped, 38 pass / 2 fail with this line disabled.
+    // The sibling `assert.equal(code, 0, out)` assertions in the two
+    // `doesNotMatch` tests are NOT in this class and need no such note:
+    // deleting the `/*.css` rule
+    // takes each of them from 37/3 to 38/2 on its own.
+    assert.equal(code, 0, out); // still a print, never a failure
+    // 🔴 THE ATOMS OF THE NEXT TWO LINES, ENUMERATED 2026-08-24, because a
+    // regex and a loop bound are the two shapes this corpus has re-merged into
+    // one row before. Each was mutated alone on a scratch mirror; the number
+    // beside it is what the SHIPPED file scores under that input, against the
+    // 40 pass / 0 fail the mirror gives unmutated.
+    //   · the `6` — PINNED twice: guard printing `frozen.length + 1` is
+    //     39 pass / 1 fail, and `\d+` in its place is 40 pass / 0 fail; and a
+    //     consistent shrink (og-image.png dropped from BOTH the tree and
+    //     RJS_PNGS) is 39/1 shipped, 40/0 with `\d+`.
+    //   · `sites\/rajasekarselvam` — PINNED: guard naming another root is
+    //     38 pass / 2 fail, and `\S+` in its place is 39 pass / 1 fail.
+    //   · the escaped `\(s\)` — PINNED against the unmutated tree: unescape
+    //     them to a capture group and it is 39 pass / 1 fail.
+    //   · THE LOOP BOUND `of RJS_PNGS` — PINNED, and it needs a guard mutation
+    //     that keeps the print alive while corrupting ONE name, because any
+    //     mutation that EMPTIES `frozen` kills the line above and reddens this
+    //     test before the loop runs. The one that works is
+    //     `${frozen.join(', ')}` → `${frozen[0]}`: 39 pass / 1 fail shipped,
+    //     and 40 pass / 0 fail with the bound narrowed to `.slice(0, 1)` OR
+    //     emptied to `[]`. Both narrowings are therefore load-bearing.
+    //   · the leading `/` before `${p}` — PINNED: guard printing
+    //     `path.slice(1)` is 39/1 shipped, 40/0 without the slash.
+    //   · the `\\(via ` open paren — PINNED against the unmutated tree at
+    //     39 pass / 1 fail (unescaped it opens a group that never closes).
+    //   · the `"` quotes around the rule — PINNED twice: 39/1 against the
+    //     unmutated tree, and guard printing `(via ${p})` unquoted is 39/1
+    //     shipped against 40/0 with the quotes dropped here.
+    //   · the `\\*` escape — PINNED against the unmutated tree at 39/1.
+    //   · the `\\.` escape in `p.replace('.', '\\.')` — PINNED, and NOT by any
+    //     tree state: guard printing the path with its dots replaced is
+    //     38 pass / 2 fail shipped and 39 pass / 1 fail with the escape
+    //     dropped. This is the atom an earlier sweep of this corpus missed.
+    //   · the `\\.` escape in `/\\*\\.png` — PINNED the same way: guard
+    //     printing `rule.pattern` with its dots replaced is 39/1 shipped, 40/0
+    //     with that escape dropped.
+    //   · THE CLOSING `\\)` — THE ELEVENTH ATOM OF THIS LINE, and the only one
+    //     of the eleven that is DECLARED rather than pinned. Added 2026-08-24
+    //     because it was missing from the ten above while its mirror image,
+    //     the opening `\\(`, was listed. Dropping it only WIDENS the match, and
+    //     NO STATE OF ANY TREE separates the two spellings: the `)` is a
+    //     CONSTANT in the guard's own template — grep `frozen.push` in
+    //     assert-web-cache-policy.mjs, it pushes `… (via "${rule.pattern}")` —
+    //     sitting immediately after the closing quote, so no `_headers` rule
+    //     and no shipped file can put a different byte there, and the pattern
+    //     printed for these six is a literal of THIS file (see `broken`
+    //     above), not tree-derived. It IS separable by a mutation of that
+    //     template, and that is this row: drop the guard's closing paren and
+    //     this file is EXIT 1, 39 pass / 1 fail as shipped, against EXIT 0,
+    //     40 pass / 0 fail with the `\\)` dropped here — both measured
+    //     2026-08-24 on a scratch mirror that gives 40/0 unmutated.
+    //     DECLARED, NOT PINNED, deliberately: killing a matcher's narrowing
+    //     needs a SECOND narrowing (a right anchor) whose own removal is green
+    //     in exactly the same way, so a "pin" here buys one notch and hands
+    //     the next sweep the same finding one character finer.
+    // ⚠️ GREEN AND KEPT, DISCLOSED RATHER THAN PINNED — `replace` here takes a
+    // STRING, so it rewrites only the FIRST `.`. Measured: `replaceAll` in its
+    // place leaves the unmutated tree at EXIT 0, 40 pass / 0 fail. It is
+    // verdict-neutral BY CONSTRUCTION, not by luck: each of the six RJS_PNGS
+    // entries contains exactly ONE `.`, so first-only and all are the same
+    // string. A two-dot name could separate them — and could not arrive
+    // unnoticed, because the tree and RJS_PNGS have to agree or the inventory
+    // test two above is red first.
+    assert.match(out, /STABLE NAMES DECLARED IMMUTABLE on sites\/rajasekarselvam — 6 file\(s\)/);
+    for (const p of RJS_PNGS) assert.match(out, new RegExp(`/${p.replace('.', '\\.')} \\(via "/\\*\\.png"\\)`));
+  });
+
+  test('the same fixture, on the file AS IT STANDS, prints nothing', () => {
+    // The other half of the discriminator: same tree, same six files, only the
+    // one Cache-Control value differs. If this went green with the reverted
+    // line too, the test above would be measuring the fixture, not the fix.
+    // ⚠️ GREEN AND KEPT, DISCLOSED RATHER THAN PINNED, 2026-08-24 — the
+    // `'utf8'` on THIS read, a row no earlier sweep listed. `real` is only
+    // handed to `fixture()` here, and `writeFileSync` writes a Buffer and a
+    // string to identical bytes, so no input distinguishes it: measured on the
+    // scratch mirror, dropping it leaves the unmutated tree at EXIT 0,
+    // 40 pass / 0 fail and is verdict-identical under the guard mutation that
+    // does redden this test — drop the `immutable` test from the freeze
+    // condition and it is 37 pass / 3 fail either way. KEPT so both halves of
+    // this pair read the file the same way. The `'utf8'` on the sibling read
+    // above is NOT in this class: `real.includes(FIXED)` needs a string.
+    // `siteFiles: RJS_SITE_FILES` two lines down IS pinned, and its input is
+    // also a guard mutation rather than a tree change: make the freeze
+    // condition `/\.png$/.test(path)` instead of the `immutable` test, so the
+    // guard names every .png whatever its Cache-Control, and it is 38 pass /
+    // 2 fail shipped against 39 pass / 1 fail with this test's `siteFiles`
+    // emptied to `{}`. (That is this test's REFERENCE to the binding. The
+    // binding itself is pinned by the test above, where emptying it to `{}` is
+    // 39 pass / 1 fail.)
+    // ⚠️ AND THE SITE KEY `rajasekarselvam:` ON THE LINE BELOW — GREEN AND
+    // KEPT, DECLARED 2026-08-24. Its sibling in the test above IS load-bearing
+    // and IS rowed (that test matches `on sites/rajasekarselvam`); this one is
+    // not, and the asymmetry is the reason it needs saying rather than being
+    // left to look like an oversight. Nothing here reads the printed root
+    // name — the two assertions are an exit code and an ABSENCE — and
+    // `fixture()` gives a site key no meaning beyond the directory it makes.
+    // So no input separates the spellings, measured all three ways with
+    // `zzother:` in its place: EXIT 0, 40 pass / 0 fail on the unmutated tree;
+    // 37 pass / 3 fail under the TREE state that reddens this test (the real
+    // `/*.png` rule returned to `immutable`); 38 pass / 2 fail under the GUARD
+    // mutation that reddens it (freeze condition `/\.png$/.test(path)`) —
+    // identical to the shipped key on all three. KEPT so both halves of the
+    // pair name the same site.
+    const real = readFileSync(RJS_HEADERS, 'utf8');
+    const { code, out } = run(fixture({ sites: { rajasekarselvam: real }, siteFiles: RJS_SITE_FILES }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /STABLE NAMES DECLARED IMMUTABLE/);
   });
 
   // ── coverage self-check ───────────────────────────────────────────────────

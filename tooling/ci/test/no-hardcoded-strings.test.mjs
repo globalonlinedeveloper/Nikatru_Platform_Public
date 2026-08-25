@@ -66,6 +66,253 @@
 //     surviving fixture clears the floor on its own.
 // Deleting them instead would have left the retirement asserted by nothing.
 //
+// ── 2026-08-21 · THE REVERSE LIMB'S TRIPWIRES, WALKED ONE BY ONE ────────────
+// Two adversarial reviews of the reverse limb found the same class of defect
+// twice — an assertion nothing can falsify — so every condition the new block
+// adds was disabled individually against the REAL tree and the suite re-run.
+// Baseline before any of it: EXIT 0, tests 69, pass 69, fail 0.
+//   RED when disabled (so an input reaches them): the missing-arb, unparseable-
+//   arb, no-message-keys, no-render-files, no-consumer-files and
+//   MAX_UNREAD_SHARE branches; the `printable.length > 0` consumer sweep; the
+//   ok/print fork; both bucket headers; the literal-echo line; the consumer
+//   line-match; the enforced/test exclusion in the consumer walk; and the final
+//   `notes.length` print.
+//   GREEN when disabled, i.e. DEFECTS, and the reason three cases below exist:
+//     · `if (odd.length > 0)` — the non-Dart-identifier COVERAGE-LOST branch.
+//       EXIT 0, 69/69 with it deleted. Both real arbs hold identifiers only
+//       (155 + 309 keys, 0 odd), so only a fixture can reach it → `FAILS when
+//       the arb declares a key that is not a Dart identifier`.
+//     · the DOMAIN sentence — replaced by a literal `DOMAIN: (elided)`, still
+//       EXIT 0, 69/69, on the fixture AND real-repo paths. It was asserted only
+//       on the `ok …` branch, never on the 👤 OWNER branch that actually prints
+//       a gap, and it is the only thing separating this print from a bare
+//       "0 unread keys" → assertions added to `PRINTS an unrendered key…` and
+//       to `prints the three dead keys…`.
+//     · `if (!unread.includes(e.key))` — the half of the de-duplication that is
+//       conditional on the key still being unread. EXIT 0 with it deleted, so a
+//       key the owner had already wired up kept drawing a "deliberately NOT
+//       listed above" line → `stops crediting the other guard once the key IS
+//       rendered`.
+//   NOT ASSERTED, DELIBERATELY, and named so the next reader is not misled:
+//   the `!anyKey.test(raw) && …` pre-filter is a speed skip whose disabling is
+//   a strict WIDENING (it reads more files, same answer); the direction that
+//   would hide a reader — always skipping — is caught by the consumer and echo
+//   cases. And `/app_localizations/` in the CONSUMER walk is redundant today:
+//   every generated file lives under an enforced root and is already dropped by
+//   `inEnforced`, so no input distinguishes it. Left in place rather than
+//   removed, and claimed as nothing.
+//   Each of the three fixes above was then re-mutated with its test in place and
+//   confirmed RED: 72 tests, 71 pass, 1 fail, and the failing name is the one
+//   written beside it. The `non-test` adjective fix was proven the same way —
+//   dropping `IS_TEST_PATH` from the render domain fails `does NOT treat a
+//   _test.dart under an enforced tree as a render surface`, 72/71/1.
+//
+// ── 2026-08-21 · 🔴 THAT SWEEP WAS NOT EXHAUSTIVE, AND SAYING IT WAS IS THE ──
+// ── WORSE HALF OF THE DEFECT. ───────────────────────────────────────────────
+// The block above says "every condition the new block adds was disabled
+// individually". A tenth adversarial review refuted that with counter-examples
+// and was right: MORE conditions survived `if (false)` on that suite, and one of
+// them made the guard PRINT the owner a promise the code could not keep. A
+// record claiming a sweep was exhaustive is worse than no record, because the
+// next reader stops looking — so this correction is APPENDED and the paragraphs
+// above are left byte-unchanged rather than quietly repaired.
+//
+// WHAT WAS MISSED, and where each is pinned now:
+//   1. 🔴 the crediting-guard name check ran on RAW bytes, so `consentReadPolicy`
+//      surviving only inside a COMMENT there held the suppression open — while
+//      the print told the owner "if that limb goes, this one starts printing
+//      it". Measured 2026-08-21: that key occurs twice in the real crediting
+//      guard, once as code and once in prose, and LOCKED forbids rewriting the
+//      dated prose, so deleting the limb the legal way leaves exactly that
+//      input. The guard now strips before testing the name →
+//      `stops crediting a guard that names the key only in a COMMENT`.
+//   2. `!f.rel.includes('/l10n/')` in the render domain — not redundant with the
+//      `app_localizations` name skip, because that one matches on the BASENAME →
+//      `does NOT treat a hand-written file under lib/l10n/ as a render surface`.
+//   3. `v !== ''` on the literal-echo check → `a key with an EMPTY English value
+//      reports no literal echo`.
+//   4. ACCESSOR_OF's trailing `\b`, in the WIDENING direction (`.appTitleSuffix`
+//      satisfying `appTitle`) → `a key is NOT rendered by a LONGER accessor that
+//      merely starts with it`.
+//   5. FOUR `continue`s in the non-render walk — the dot-directory skip,
+//      CONSUMER_PRUNE, the extension list and the `app_localizations` name skip.
+//      All four now have an input → `the non-render sweep is narrowed only in
+//      ways that have a failing input`. ⚠️ The dot-directory decoy must NOT be
+//      under `.claude`: `listDir` drops that name itself (tree-walk.mjs's
+//      SCRATCH_DIR_NAME), so a `.claude` decoy leaves the mutation GREEN — the
+//      first version of this case did exactly that and proved nothing.
+//   6. `if (arbsRead === 0)`, whose body is an empty block and therefore reads
+//      like a comment. Without it a run where NO tree has an arb prints
+//      `ok every declared l10n key reaches a screen` over zero keys →
+//      `FAILS when NEITHER enforced tree has an app_en.arb…`.
+//   7. `site()`'s `(+N more)` count → `names one reader site and counts the rest`.
+//   8. 🔴 the ok/print fork itself: when the ONLY unread key was a suppressed
+//      one, `printable.length === 0` sent the guard down the `ok …` branch — it
+//      printed "every declared l10n key reaches a screen" while knowing one
+//      reached none, and the crediting line lived only in the other branch so
+//      nothing was said at all. The suppression lines are now built once and
+//      emitted on both branches → `PRINTS the crediting line even when the
+//      suppressed key is the ONLY unread one`.
+// CORRECTING THE PARAGRAPH ABOVE: `/app_localizations/` in the CONSUMER walk is
+// no longer "redundant today … claimed as nothing" — item 5 gives it an input,
+// and it was never redundant by construction, only by the tree's current shape.
+// The pre-filter claim is unchanged and still honest: disabling it is a strict
+// widening, so no test can go red on `if (false)` there and none claims to.
+//
+// TWO CONDITIONS WERE DELETED RATHER THAN PINNED, which is the other legal
+// answer to an unfalsifiable condition: `inEnforced`'s `rel === root` half (the
+// argument is always a FILE path, so it could never be true) and the
+// `for (const e of suppressed)` loop that existed only inside the owner branch.
+//
+// ── THE CORRECTED SWEEP, AND HOW TO RE-RUN IT ──────────────────────────────
+// Method, so the next reader can repeat it rather than trust it: the guard and
+// its two relative imports were copied into a scratch mirror alongside a copy of
+// THIS file with its `REPO` constant repointed at the real repository — so the
+// `against the REAL repository` cases still ran against the real tree, and no
+// mutated guard ever existed inside the checkout. One condition mutated per run,
+// whole file re-run, `code=$?` captured on its own line.
+// Baseline in that mirror before any mutation: EXIT 0, tests 80, pass 80, fail 0
+// — identical to the working tree, which is what makes the mirror admissible.
+//
+// FORTY-ONE conditions, every one of them in or reached by this block, each
+// disabled alone. FORTY came back RED. The enumeration, so "every" is a list and
+// not an adjective: the four per-arb COVERAGE-LOST branches (missing,
+// unparseable, no-message-keys, non-identifier) · the `@`-metadata filter · the
+// odd-key `continue` · the first-declaration-wins guard · both render-domain
+// exclusions (`/l10n/`, IS_TEST_PATH) · all six narrowings in the non-render
+// walk (dot-directory, CONSUMER_PRUNE, extension list, `app_localizations`,
+// `inEnforced`, IS_TEST_PATH) · `arbsRead === 0` · the empty-render and
+// empty-consumer branches · ACCESSOR_OF's trailing `\b` · MAX_UNREAD_SHARE · all
+// three halves of the suppression filter (still-unread, file-exists,
+// names-it-in-stripped-code) plus the strip itself · `printable` ·
+// `printable.length > 0` · the consumer line match · both halves of the
+// literal-echo test · `site()`'s count · `where()`'s count · the DOMAIN sentence
+// · all three arms of the ok/print fork · both bucket headers · the echo ternary
+// · `creditLines` · the final `notes.length` print.
+// THE ONE GREEN IS THE PRE-FILTER, and it is green BY CONSTRUCTION rather than
+// by omission: disabling `if (!anyKey.test(raw) && …) continue;` makes the sweep
+// read MORE files and return the same answer, so no test can go red on it. It is
+// claimed as nothing, here and at its own line, and its dangerous direction —
+// always skipping — is covered by the consumer and echo cases.
+//
+// ── 2026-08-22 · THAT SWEEP WAS NOT EXHAUSTIVE EITHER, AND THE GAP WAS A ────
+// ── BOUNDARY RATHER THAN A CONDITION. ───────────────────────────────────────
+// The 41-condition block above is left byte-unchanged and every one of its
+// verdicts reproduced this day. What it missed is where it stopped looking: it
+// enumerated the reverse limb and the non-render walk and treated
+// `readDartTree` as inherited code. `readDartTree` is not inherited — the same
+// change SPLIT it out of `scanRaw` so both limbs provably range over one
+// domain, which is exactly what makes every clause inside it load-bearing for a
+// limb that did not exist before.
+//
+// Method identical to the block above, so the two runs are comparable: guard
+// plus its two relative imports copied into a scratch mirror, a copy of THIS
+// file with `REPO` repointed at the real repository, ONE condition disabled per
+// run, the whole file re-run, `code=$?` captured on its own line, and no
+// mutated guard ever inside the checkout. Baseline in that mirror before any
+// mutation: EXIT 0, tests 80, pass 80, fail 0 — identical to the working tree.
+//
+// FORTY-NINE conditions this time, in 54 runs — the extra five runs are second
+// DIRECTIONS on a condition already counted (`if (true)` as well as
+// `if (false)` on the first-declaration-wins guard, both directions of
+// ACCESSOR_OF) plus two mutations re-run in corrected form, see the trap below.
+// The eight beyond the 41 above are `readDartTree`'s four — the `existsSync`
+// short-circuit, the directory recursion, the `.dart` extension filter and the
+// `app_localizations` name skip — and four the earlier list folded into a
+// neighbour's row rather than disabling on its own: the DIRECTORY RECURSION in
+// the non-render walk (that list says "all six narrowings" and there are seven
+// `continue`-shaped decisions there), the consumer line loop bound, and the
+// `read` and `dark` partition predicates behind the two bucket headers.
+//
+// 🔴 ONE NEW GREEN, i.e. one more assertion nothing could falsify, and it is a
+// HIDING one: `if (!entry.endsWith('.dart')) continue;`. `if (false)` on it left
+// the file at EXIT 0, 80/80/0. Measured the same day, the whole reason nothing
+// reached it: the only non-`.dart` files under the two enforced trees are the
+// four `.arb` files, and all four sit under `/l10n/`, which the render-domain
+// filter drops anyway. Now pinned by `does NOT treat a non-.dart file under an
+// enforced tree as a render surface`, and RED against it when dropped.
+// Everything else came back RED, and the pre-filter is still the one green
+// claimed as nothing.
+//
+// ⚠️ AND A METHOD TRAP THIS RUN WALKED INTO, recorded because it would have
+// been reported as two findings: a mutation that changes the SOURCE can still
+// change nothing. `const x = '(elided)' && <expr>` and `const x = [] && <expr>`
+// both evaluate to `<expr>` in JavaScript, so the first-draft mutations of the
+// DOMAIN sentence and of `creditLines` were semantic no-ops and came back GREEN
+// on a limb that is properly pinned. `guardCopy`'s `assert.notEqual(out, src)`
+// catches a TEXTUAL no-op and cannot catch this one. Re-run in corrected form,
+// both are RED — the DOMAIN sentence against `says so, with the domain sizes,
+// when every declared key reaches a screen` (8 cases), `creditLines` against
+// `PRINTS the crediting line even when the suppressed key is the ONLY unread
+// one`. A GREEN row is only a finding once the mutation is shown to have
+// changed behaviour.
+//
+// ── 2026-08-24 · THE TWO BLOCKS ABOVE MERGED ROWS, AND A MERGED ROW IS HOW ──
+// ── AN UNFALSIFIABLE HALF SURVIVES A SWEEP THAT SAYS IT WALKED EVERYTHING. ──
+// Both blocks are left byte-unchanged and every verdict in them reproduced this
+// day. What they got wrong is not a verdict but the UNIT: they enumerated
+// "conditions" where a condition sometimes meant a whole `if`, sometimes an
+// operand, and sometimes a whole regex. The 41-row list has a row reading "both
+// halves of the literal-echo test" — `v !== ''` and the includes-pair — but the
+// includes-pair is itself `A || B`, so the row was two conditions wearing one
+// name. That is exactly the half that had no input.
+//
+// THE UNIT USED HERE, stated so the next sweep can be compared to this one
+// rather than trusted: every `&&` and every `||` is TWO rows, one per operand;
+// every ternary is TWO rows, one per arm; every early `return`/`continue`, every
+// `if`, every `?? / ?.` is one row; every `.filter`/`.some`/`.map` predicate is
+// one row; every loop bound is one row; and inside a regex, every top-level
+// ALTERNATION and every optional quantifier on a whole alternative is a row.
+// The line is drawn BELOW character-class atoms — `[a-z]` is not decomposed into
+// 26 rows — but the atoms of ARB_KEY_SHAPE were measured anyway and are recorded
+// below, because a boundary nobody states is a boundary nobody can check.
+//
+// METHOD, identical to the 2026-08-21 and 2026-08-22 blocks so the three runs
+// are comparable: guard plus its two relative imports copied into a scratch
+// mirror, a copy of THIS file with `REPO` repointed at the real repository, ONE
+// row mutated per run, the whole file re-run, `code=$?` captured on its own
+// line, and no mutated guard ever inside the checkout. Every mutation was
+// checked for the 2026-08-22 no-op trap by confirming the guard's own output on
+// the real tree changed. Baseline in the mirror before any mutation: EXIT 0,
+// tests 81, pass 81, fail 0 — identical to the working tree, which is what makes
+// the mirror admissible. (Both earlier blocks say 80; the file had grown by one
+// case between then and now.)
+//
+// EIGHT ROWS CAME BACK GREEN. Seven are now pinned and one was deleted:
+//   1. 🔴 `lines[i].includes(`"${v}"`)` — the DOUBLE-quoted half of the
+//      literal-echo test, and the live defect the 41-row list hid inside a
+//      merged row. → `names the file where a DOUBLE-QUOTED English copy ships`.
+//   2. `site()`'s falsy arm — forcing the counting arm to be taken ALWAYS was
+//      green while printing ` (+0 more)` on every one-site line of the real
+//      guard's output. → `names a single reader site without inventing a count`.
+//   3. ACCESSOR_OF's LEADING `\.`. Every list so far named the trailing `\b` and
+//      none named the dot. Same widening, same silent deletion of an owner line.
+//      → `a key is NOT rendered by a bare mention with no accessor dot`.
+//   4. the consumer line match's `\b…\b`. → `a consumer that names only a LONGER
+//      key is not filed as a reader`.
+//   5. the suppression name check's `\b…\b`. → `stops crediting a guard that
+//      names only a LONGER key starting with it`.
+//   6. three ALTERNATIVES inside IS_TEST_PATH — `integration_test`, the `s?` in
+//      `tests?`, and the `\.` in `(_|\.)`. → `the non-render sweep drops every
+//      path shape IS_TEST_PATH names`.
+//   7. both operands of `tree()`'s own `subly !== null || allowlisted !== null`,
+//      a FIXTURE-side condition neither earlier block looked at. → `the Subly
+//      arb is planted when EITHER of that tree’s two files is`.
+//   8. DELETED, not pinned: `breakAccessorMatcher`'s
+//      `assert.notEqual(i, -1, …)`. Unreachable by any input AND redundant —
+//      `guardCopy`'s `assert.notEqual(out, src)` catches a moved anchor and was
+//      measured doing it. See that helper's own note.
+// Three ARB_KEY_SHAPE character atoms were green too — `_`, `$`, and `A-Z` in
+// the HEAD class — and are pinned together by `accepts a legal Dart identifier
+// that is not lowerCamelCase`, below the stated boundary but cheap to hold.
+//
+// STILL GREEN AND STILL CLAIMED AS NOTHING, both by construction rather than by
+// omission: the pre-filter conjunction, and `anyKey`'s `\b…\b` inside it. Both
+// are pure WIDENINGS — they read more files and return the same answer — and
+// both operands of that conjunction are individually RED, which the guard's own
+// comment now records. `odd.slice(0, 3)` is green in the widening direction too;
+// it is a display cap beside a printed `odd.length`, not a check.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -176,6 +423,32 @@ class SublyHome extends StatelessWidget {
 const ALLOWLISTED_FILE = `${SUBLY}/features/auth/login_screen.dart`;
 const ALLOWLISTED = "const probe = Text('debug: $detail');\n";
 
+// ── 2026-08-21 · THE REVERSE DIRECTION NEEDS AN .arb IN EVERY FIXTURE TREE ───
+// The guard now also asks which DECLARED keys reach no screen, so a fixture with
+// no `l10n/app_en.arb` is not a clean tree — it is a tree the reverse limb could
+// not read, and it says so as COVERAGE LOST. Each root's arb is planted with the
+// root itself and removed with it, so "the tree is gone" stays one input rather
+// than becoming two half-states.
+//
+// 🔴 THE TWO DEFAULT ARBs ARE DISJOINT ON PURPOSE. The real trees overlap
+// heavily — the brick's 155 keys are a subset of subly's 309 — and the union
+// domain is what makes that safe. Overlapping them HERE would hide the opposite
+// failure: a default fixture where every key is declared in both trees cannot
+// tell a per-root scan from a union scan, so the union decision would be
+// untested by construction. The overlap is exercised deliberately instead, in
+// `the reader domain is the union of the enforced trees` below.
+const arb = (o) => (typeof o === 'string' ? o : `${JSON.stringify(o, null, 2)}\n`);
+const BRICK_ARB = { '@@locale': 'en', appTitle: 'Demo', navHome: 'Home', welcomeTo: 'Welcome to {name}' };
+const SUBLY_ARB = { '@@locale': 'en', homeTitle: 'Your subscriptions' };
+
+/** The rest of the tree — where a NON-render reader lives. The reverse limb
+ *  refuses to report "nothing else reads this key" when it swept nothing, so a
+ *  fixture with no consumer files at all is COVERAGE LOST rather than a clean
+ *  run. The default is the real crediting guard's one live line, because the
+ *  de-duplication of `consentReadPolicy` is keyed to that file existing. */
+const CONSENT_GUARD = 'tooling/ci/assert-consent-withdrawal-surface.mjs';
+const CONSUMERS = { [CONSENT_GUARD]: "const POLICY_LINK_KEY = 'consentReadPolicy';\n" };
+
 function tree({
   brick = CLEAN_BRICK,
   subly = CLEAN_SUBLY,
@@ -184,12 +457,25 @@ function tree({
   quiet = QUIET,
   families = FAMILIES,
   omitBrick = false,
+  brickArb = BRICK_ARB,
+  sublyArb = SUBLY_ARB,
+  consumers = CONSUMERS,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
-  if (!omitBrick) files[`${BRICK}/features/home/home_screen.dart`] = brick;
+  if (!omitBrick) {
+    if (brick !== null) files[`${BRICK}/features/home/home_screen.dart`] = brick;
+    if (brickArb !== null) files[`${BRICK}/l10n/app_en.arb`] = arb(brickArb);
+  }
   if (subly !== null) files[`${SUBLY}/features/home/home_screen.dart`] = subly;
   if (allowlisted !== null) files[ALLOWLISTED_FILE] = allowlisted;
+  // The arb belongs to the ROOT, so it is planted whenever the root will exist
+  // at all — otherwise "the enforced tree is gone" and "its arb is gone" become
+  // two different inputs and every existing case would have to say which it meant.
+  if ((subly !== null || allowlisted !== null) && sublyArb !== null) {
+    files[`${SUBLY}/l10n/app_en.arb`] = arb(sublyArb);
+  }
+  for (const [rel, body] of Object.entries(consumers ?? {})) files[rel] = body;
   if (fixture !== null) files[`${FIXTURE}/dirty/legacy_screen.dart`] = fixture;
   if (quiet !== null) files[`${FIXTURE}/quiet/not_user_facing.dart`] = quiet;
   if (families !== null) files[`${FIXTURE}/expected-families.txt`] = families;
@@ -241,6 +527,40 @@ function guardCopy(mutate = (s) => s) {
   writeFileSync(p, out);
   return p;
 }
+
+/** Break the `.<key>` accessor matcher without removing it. Every declared key
+ *  then looks unrendered, which is a BROKEN SCAN wearing the costume of a
+ *  finding — the reverse limb must say so instead of printing a 309-line owner
+ *  gap. Spliced by line index rather than by an exact string, because the line
+ *  is a template literal full of backslashes and a mismatched needle would make
+ *  `guardCopy` throw in a way that reads exactly like the mutation working.
+ *
+ *  ── 2026-08-24 · NO ANCHOR ASSERT HERE, AND THAT IS THE DELETION HALF OF THE
+ *  PIN-OR-DELETE RULE. This helper carried
+ *  `assert.notEqual(i, -1, 'ACCESSOR_OF moved; re-point this mutation')`, and
+ *  no input could redden it: deleting the line outright left this file at
+ *  EXIT 0, tests 84, pass 84, fail 0. It was also redundant, which is why the
+ *  answer is deletion rather than a new case. Measured the same day, with the
+ *  assert already gone and the guard copy's `const ACCESSOR_OF =` indented so
+ *  `findIndex` returns -1: `lines[-1] = …` sets a property `join` never reads,
+ *  so `mutate(src)` returns `src` unchanged and `guardCopy`'s
+ *  `assert.notEqual(out, src)` fires — `FAILS on the REAL repo when the
+ *  accessor matcher stops matching` goes RED with "the mutation changed
+ *  nothing, so the test below would prove nothing". One check, in one place.
+ *  (`deleteLabellingMatcher` below still carries the same idiom. It predates
+ *  this branch and is untouched here rather than swept in passing.) */
+const breakAccessorMatcher = (src) => {
+  const lines = src.split('\n');
+  const i = lines.findIndex((l) => l.startsWith('const ACCESSOR_OF ='));
+  lines[i] = 'const ACCESSOR_OF = () => /a shape no source line has/;';
+  return lines.join('\n');
+};
+
+/** Point the `consentReadPolicy` de-duplication at a guard that is not there.
+ *  The suppression must then STOP suppressing — otherwise deleting the other
+ *  guard's owner line would silently delete this key from both prints at once. */
+const orphanTheSuppression = (src) =>
+  src.replace(`by: '${CONSENT_GUARD}',`, "by: 'tooling/ci/assert-a-guard-nobody-wrote.mjs',");
 
 /** Delete a whole matcher family from the list — the mutation NEITHER the floor
  *  NOR the per-family loop can see, because the loop iterates over the list that
@@ -650,5 +970,737 @@ const b = Text('Hardcoded right after a URL');
         assert.match(out, /has no near miss in/);
       });
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── THE REVERSE DIRECTION: a translated key that reaches no screen. ──────
+  //
+  // The half above proves every SHOWN string came from the arb. This half asks
+  // the converse, and it PRINTS rather than fails — CLAUDE.md's owner-gated
+  // rule, the same shape as assert-adapter-capabilities' `max_promos_per_week`
+  // tripwire and assert-consent-withdrawal-surface's `consentReadPolicy` line.
+  //
+  // 🔴 SO THE FIRST THING EVERY CASE HERE ASSERTS IS `code === 0`. A print that
+  // can redden the build is a print somebody switches off, and "it fires" is
+  // the easy half to get right — the hard half is that it fires and the build
+  // still passes. The genuinely load-bearing cases are the NEGATIVE ones: the
+  // key that IS rendered must drop out of the print, and an empty domain must
+  // be COVERAGE LOST rather than a clean zero.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('the reverse direction prints unrendered keys and never fails the build', () => {
+    const GHOST = { ...SUBLY_ARB, ghostKey: 'Ghost copy' };
+
+    test('says so, with the domain sizes, when every declared key reaches a screen', () => {
+      const { code, out } = run(tree());
+      assert.equal(code, 0, out);
+      assert.match(out, /ok {3}every declared l10n key reaches a screen/);
+      // A bare "no unread keys" is worth nothing; the domain is what makes it a
+      // measurement. Both halves of the sweep have to be in the sentence.
+      assert.match(out, /\d+ message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\)/);
+      assert.match(out, /\d+ non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+      assert.match(out, /\d+ non-test [^ ]+ file\(s\) elsewhere searched for any other reader/);
+      assert.doesNotMatch(out, /👤 OWNER/);
+    });
+
+    test('PRINTS an unrendered key as an owner gap and still exits 0', () => {
+      const { code, out } = run(tree({ sublyArb: GHOST }));
+      assert.equal(code, 0, `an owner judgement reddened the build:\n${out}`);
+      assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
+      assert.match(out, /NOTHING IN THE TREE NAMES THE KEY AT ALL \(1\)/);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /appears nowhere else in the tree either/);
+      // 🔴 THE DOMAIN SENTENCE, WITH ITS NUMBERS, ON THE PATH THAT ACTUALLY
+      // PRINTS A GAP. Until 2026-08-21 it was asserted only on the `ok …` path,
+      // so replacing the line with a literal `DOMAIN: (elided)` left this file
+      // at EXIT 0, 69/69 — and that sentence is the entire difference between a
+      // measurement and a blind spot. The fixture is fully known, so the numbers
+      // are exact here rather than `\d+`: 5 union keys from 2 arbs, 3 .dart
+      // render files (both home screens plus the allowlisted login screen), and
+      // 1 consumer file outside the enforced trees.
+      assert.match(
+        out,
+        /DOMAIN, so the number above is a measurement and not a blind spot: 5 message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\) · 3 non-test \.dart file\(s\) in 2 enforced tree\(s\) searched for a `\.<key>` accessor · 1 non-test \.mjs\/\.js\/\.ts\/\.tsx\/\.dart file\(s\) elsewhere searched for any other reader\./,
+      );
+      // …and the sentence that says WHY the generated accessors are out of both
+      // halves. Without it the exclusion looks like a scan that missed them.
+      assert.match(out, /Generated gen-l10n accessors are excluded from both/);
+      // The forward half must be unaffected — this is one guard, not two.
+      assert.match(out, new RegExp(`${SUBLY} shows no hardcoded user-facing strings`));
+    });
+
+    // 🔴 THE `non-test` ADJECTIVE IN THAT SENTENCE, MADE FALSIFIABLE. It was a
+    // label with nothing behind it until 2026-08-21: `readDartTree` filters only
+    // `app_localizations`, so a test file under an enforced tree counted as a
+    // render surface while the identical file one directory up was excluded from
+    // the consumer sweep by IS_TEST_PATH. Latent on the real tree — measured
+    // 2026-08-21, 0 of its 71 render files match IS_TEST_PATH — so a fixture is
+    // the only place the input exists.
+    test('does NOT treat a _test.dart under an enforced tree as a render surface', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: {
+          ...CONSUMERS,
+          [`${SUBLY}/features/home/home_screen_test.dart`]: 'const probe = Text(l10n.ghostKey);\n',
+        },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      // …and the printed domain stays at 3, so the file was EXCLUDED rather than
+      // scanned-and-missed. A count of 4 here would mean the word is still a label.
+      assert.match(out, /3 non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+    });
+
+    // 🔴 THE NEGATIVE HALF, AND THE ONLY ONE THAT PROVES THE LIMB IS DERIVED
+    // FROM THE TREE. Same arb, same key — the ONLY difference is a screen that
+    // renders it. If the print survived this it would be reporting a list, not a
+    // measurement, and it would never stop printing once the owner acted.
+    test('DROPS the key the moment a screen renders it', () => {
+      const rendered = `${CLEAN_SUBLY}\nconst probe = Text(l10n.ghostKey);\n`;
+      const { code, out } = run(tree({ sublyArb: GHOST, subly: rendered }));
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /ghostKey/);
+      assert.doesNotMatch(out, /👤 OWNER/);
+      assert.match(out, /ok {3}every declared l10n key reaches a screen/);
+    });
+
+    test('files a key with a NON-render reader separately, and names the reader', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: { ...CONSUMERS, 'tooling/ci/assert-something.mjs': "const KEY = 'ghostKey';\n" },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /NOT RENDERED, BUT SOMETHING ELSE READS THE KEY — do not delete before reading the consumer \(1\)/);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\] — read at tooling\/ci\/assert-something\.mjs:1/);
+      assert.doesNotMatch(out, /NOTHING IN THE TREE NAMES THE KEY AT ALL/);
+    });
+
+    // The AppErrorScreen shape, derived rather than hardcoded: the key is dead,
+    // but its English copy is alive as a literal somewhere that cannot read
+    // l10n. "Delete the key" and "make that surface localisable" are different
+    // owner answers and the print must not hide which one is on the table.
+    test('names the file where an unrendered key’s copy already ships as a literal', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: { ...CONSUMERS, 'packages/design_system/lib/fallback.dart': "const t = 'Ghost copy';\n" },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /ships as a hardcoded LITERAL at packages\/design_system\/lib\/fallback\.dart:1/);
+      assert.match(out, /different owner answers/);
+    });
+
+    // ── 2026-08-24 · THE OTHER HALF OF THAT ECHO TEST, WHICH NOTHING REACHED ──
+    // The case above pins `lines[i].includes('<v>')`. The line is a two-operand
+    // OR, and the second operand — `lines[i].includes("<v>")`, the DOUBLE-quoted
+    // needle — had no input at all. Measured 2026-08-24 in the scratch mirror
+    // (guard plus its two relative imports copied out, this file's `REPO`
+    // repointed at the real repository, one condition per run, `code=$?` on its
+    // own line): dropping that operand alone left EXIT 0, tests 81, pass 81,
+    // fail 0. Dropping the SINGLE-quoted operand instead is EXIT 1. That
+    // asymmetry is why three sweeps merged the pair into one row and passed it.
+    //
+    // 🔴 IT IS LATENT, NOT DEAD, AND IT FAILS IN THE HIDING DIRECTION. All three
+    // echo sites on the real tree are single-quoted Dart
+    // (packages/design_system/lib/src/widgets/system_screens.dart:63 and :65,
+    // packages/notifications/lib/src/local_notification_service_io.dart:266),
+    // while four of the five swept consumer extensions — .mjs/.js/.ts/.tsx —
+    // conventionally quote with `"`. With the operand gone, a key whose English
+    // copy ships double-quoted stops being reported at the file that ships it
+    // and is reported instead as "its English copy appears nowhere else in the
+    // tree either. Nothing shows this string." — a FALSE sentence to the owner,
+    // in the one print whose entire promise is that its evidence is inspectable,
+    // and one that turns "make that surface localisable" into "delete the key".
+    // So the fixture is a `.ts` consumer with a double-quoted value, which is
+    // the shape the real tree does not currently hold and the next consumer
+    // written in this repo most likely will.
+    test('names the file where a DOUBLE-QUOTED English copy ships', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: {
+          ...CONSUMERS,
+          'tooling/sites/discovery-copy.ts': 'export const fallback = "Ghost copy";\n',
+        },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /ships as a hardcoded LITERAL at tooling\/sites\/discovery-copy\.ts:1/);
+      // …and NOT the sentence the missing operand replaces it with, which is the
+      // whole reason this is a defect rather than a smaller print.
+      assert.doesNotMatch(out, /appears nowhere else in the tree either/);
+    });
+
+    // The OTHER half of "the suppression is conditional": it is conditional on
+    // the key still being UNREAD, not only on the crediting guard still existing.
+    // Measured 2026-08-21, deleting that half (`if (false)` on the
+    // `!unread.includes(e.key)` line) left this file green — so a key the owner
+    // had already wired up would keep drawing a line saying it is unrendered and
+    // deliberately not listed, which is a false owner gap in a print whose one
+    // job is not to file those.
+    test('stops crediting the other guard once the key IS rendered', () => {
+      const wired = { ...GHOST, consentReadPolicy: 'Read the privacy policy' };
+      const { code, out } = run(tree({
+        sublyArb: wired,
+        subly: `${CLEAN_SUBLY}\nconst probe = Text(l10n.consentReadPolicy);\n`,
+      }));
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /deliberately NOT listed above/);
+      assert.doesNotMatch(out, /consentReadPolicy/);
+      // …and the print is still live for the key that really is unrendered, so
+      // this is not passing because the owner block vanished.
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+    });
+
+    // 🔴 …AND CONDITIONAL ON THE CREDITING GUARD NAMING IT IN *CODE*, WHICH IS
+    // THE HALF THAT WAS FALSE UNTIL 2026-08-21. The name check read the other
+    // guard's RAW bytes, so a key surviving only inside a COMMENT there held the
+    // suppression open — and the print promises the owner the opposite in as many
+    // words ("if that limb goes, this one starts printing it"). That is not a
+    // hypothetical shape: `consentReadPolicy` occurs twice in the real crediting
+    // guard, once as code and once in prose (measured 2026-08-21: 2 raw, 1 after
+    // stripSourceComments), and LOCKED forbids rewriting the dated prose — so
+    // deleting the limb the honest way leaves exactly this input behind.
+    // Mutating the check back to `return existsSync(abs);` is RED against this
+    // case (re-measured 2026-08-21). The pre-fix suite it survived was 72 cases
+    // and no longer exists, so that half of the record is the review's number
+    // and is attributed rather than re-taken.
+    test('stops crediting a guard that names the key only in a COMMENT', () => {
+      const orphaned = { ...SUBLY_ARB, consentReadPolicy: 'Read the privacy policy' };
+      const { code, out } = run(tree({
+        sublyArb: orphaned,
+        consumers: { [CONSENT_GUARD]: "// the limb that printed 'consentReadPolicy' was deleted; this note is dated\nconst UNRELATED = 1;\n" },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /consentReadPolicy \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.doesNotMatch(out, /deliberately NOT listed above/);
+    });
+
+    // …and the THIRD way that name check can be wrong, which no row had split:
+    // the `\b` boundaries on `new RegExp(`\b${e.key}\b`)`. Measured 2026-08-24,
+    // dropping both left EXIT 0, tests 85, pass 85, fail 0 — so a crediting
+    // guard that had been rewritten to talk about `consentReadPolicyV2` would
+    // hold the suppression open for `consentReadPolicy`, and the key would be
+    // printed by NOBODY: not here, because it is suppressed, and not there,
+    // because that limb is about a different key now. The same silence the
+    // stripped-source fix closed for comments, through a longer identifier
+    // instead of a comment.
+    test('stops crediting a guard that names only a LONGER key starting with it', () => {
+      const orphaned = { ...SUBLY_ARB, consentReadPolicy: 'Read the privacy policy' };
+      const { code, out } = run(tree({
+        sublyArb: orphaned,
+        consumers: { [CONSENT_GUARD]: "const POLICY_LINK_KEY = 'consentReadPolicyV2';\n" },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /consentReadPolicy \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.doesNotMatch(out, /deliberately NOT listed above/);
+    });
+
+    // 🔴 THE CONTROL FOR THE CASE ABOVE — same arb, same key, crediting guard
+    // naming it in LIVE CODE — AND the input for a second defect fixed the same
+    // day. When the ONLY unread key is a suppressed one, `printable.length === 0`
+    // and the guard used to take the `ok …` branch: it printed "every declared
+    // l10n key reaches a screen" while knowing one reached none, and the line
+    // naming the guard that owns it lived only in the other branch, so it was
+    // never emitted. Latent on the real tree only because 4 other keys are
+    // printable today.
+    test('PRINTS the crediting line even when the suppressed key is the ONLY unread one', () => {
+      const onlyCredited = { ...SUBLY_ARB, consentReadPolicy: 'Read the privacy policy' };
+      const { code, out } = run(tree({ sublyArb: onlyCredited }));
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /every declared l10n key reaches a screen/);
+      assert.match(
+        out,
+        /👤 OWNER l10n render direction — 0 of 5 translated, reviewed key\(s\) need a line here, and 1 unrendered key\(s\) are printed by the guard that owns them\./,
+      );
+      assert.match(out, new RegExp(`consentReadPolicy is unrendered too and is deliberately NOT listed above: ${CONSENT_GUARD}`));
+      // …and the domain is still stated on this branch too, so the 0 above is a
+      // measurement rather than a scan that reached nothing.
+      assert.match(out, /DOMAIN, so the number above is a measurement and not a blind spot: 5 message key\(s\)/);
+      // The key is credited, not filed — one line for one key.
+      assert.doesNotMatch(out, /consentReadPolicy \[declared in/);
+    });
+
+    // 🔴 THE OTHER HALF OF THE RENDER-DOMAIN NARROWING, `/l10n/`. `readDartTree`
+    // filters on the BASENAME (`app_localizations*`), so a HAND-WRITTEN helper
+    // under `lib/l10n/` is caught by this clause and by nothing else — and a
+    // getter declared there is the output of l10n, not a render of it. Latent:
+    // measured 2026-08-21, 0 of the 71 real render files sit under a `/l10n/`
+    // path, so nothing reached the clause until this case; the review that found
+    // it measured the pre-fix suite green. What is re-taken here is the state
+    // that ships: dropping the clause is RED against this case.
+    test('does NOT treat a hand-written file under lib/l10n/ as a render surface', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: {
+          ...CONSUMERS,
+          [`${SUBLY}/l10n/l10n_extensions.dart`]: 'String probe(l10n) => l10n.ghostKey;\n',
+        },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      // …and the printed domain stays at 3, so the file was EXCLUDED rather than
+      // scanned-and-missed.
+      assert.match(out, /3 non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+    });
+
+    // 🔴 THE THIRD RENDER-DOMAIN NARROWING, AND THE ONE NO SWEEP HAD REACHED:
+    // `readDartTree`'s `if (!entry.endsWith('.dart')) continue;`. Measured
+    // 2026-08-22 — `if (false)` on that line left this whole file at EXIT 0,
+    // tests 80, pass 80, fail 0. The two clauses above were swept in the
+    // 2026-08-21 pass because they sit in the reverse limb; this one sits in the
+    // walk, which that pass treated as inherited code. It is not inherited: the
+    // walk was SPLIT OUT of `scanRaw` by the same change, precisely so both
+    // limbs range over one domain, which makes every clause in it load-bearing
+    // for a limb that did not exist before.
+    // LATENT, measured rather than assumed: the only non-`.dart` files under the
+    // two enforced trees today are the four `.arb` files, and all four sit under
+    // `/l10n/`, which the clause above drops anyway — so nothing in the real tree
+    // and nothing in any fixture reached it.
+    // THE DIRECTION THAT BITES IS THE HIDING ONE, which is why the fixture is a
+    // `.json` rather than a stray `.txt`: with the clause gone, any non-Dart file
+    // under `lib/` whose bytes merely CONTAIN `.someKey` is read as a render
+    // surface, and the key silently leaves the owner print. A false "rendered"
+    // deletes an owner line; that is the one failure this limb's whole one-way
+    // bias exists to prevent.
+    test('does NOT treat a non-.dart file under an enforced tree as a render surface', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: {
+          ...CONSUMERS,
+          [`${SUBLY}/features/home/home_copy.json`]: '{ "note": "l10n.ghostKey" }\n',
+        },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      // …and the printed domain stays at 3. A 4 here would mean the file was
+      // scanned and merely happened not to match, which is a different guard.
+      assert.match(out, /3 non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+    });
+
+    // 🔴 THE ACCESSOR MATCHER'S TRAILING `\b`, IN THE WIDENING DIRECTION. The
+    // narrowing direction is pinned against the real repo by MAX_UNREAD_SHARE;
+    // this one had no input at all until 2026-08-21, and it is the dangerous
+    // side — `new RegExp('[.]' + key)` makes `.appTitleSuffix` satisfy
+    // `appTitle`, which deletes an owner line silently instead of adding a
+    // false one. Nothing reached it before this case; the review that found it
+    // measured the pre-fix suite green, and dropping the `\b` is RED here.
+    test('a key is NOT rendered by a LONGER accessor that merely starts with it', () => {
+      const nearMiss = `${CLEAN_SUBLY}\nconst probe = Text(l10n.ghostKeySuffix);\n`;
+      const { code, out } = run(tree({ sublyArb: GHOST, subly: nearMiss }));
+      assert.equal(code, 0, out);
+      assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+    });
+
+    // ── 2026-08-24 · THE OTHER HALF OF ACCESSOR_OF, WHICH NO ROW HAD SPLIT ───
+    // `ACCESSOR_OF` is `\.<key>\b` — a LEADING dot as well as a trailing word
+    // boundary — and every sweep so far enumerated only the `\b`. Measured
+    // 2026-08-24: dropping the `\.` left EXIT 0, tests 85, pass 85, fail 0.
+    // It is the same widening failure as the `\b` one and it fails the same way:
+    // with the dot gone, a render file that merely NAMES the key — a local
+    // variable, an enum case, a map literal — satisfies the accessor test, the
+    // key leaves the unread set, and the owner line disappears in silence. A
+    // false "rendered" deletes an owner line; that is the one direction this
+    // limb's whole bias exists to prevent.
+    test('a key is NOT rendered by a bare mention with no accessor dot', () => {
+      const named = `${CLEAN_SUBLY}\nfinal ghostKey = 1;\n`;
+      const { code, out } = run(tree({ sublyArb: GHOST, subly: named }));
+      assert.equal(code, 0, out);
+      assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
+      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+    });
+
+    // ── 2026-08-24 · THE CONSUMER MATCH HAS THE SAME TWO WORD BOUNDARIES, AND ─
+    // ── NOTHING REACHED THEM EITHER. ────────────────────────────────────────
+    // `new RegExp(`\b${k}\b`)` decides whether a non-render file NAMES the key.
+    // Measured 2026-08-24: dropping both boundaries left EXIT 0, tests 85, pass
+    // 85, fail 0 — so `ghostKeySuffix` in any swept file would have been filed
+    // as a reader of `ghostKey`, moving the key out of "NOTHING IN THE TREE
+    // NAMES THE KEY AT ALL" and into "do not delete before reading the
+    // consumer", pointed at a file that does not name it. That is the same
+    // wrong-file-named failure as the double-quoted echo above, on the other
+    // bucket of the same print.
+    // ⚠️ THE FIXTURE MUST ALSO CARRY THE ENGLISH VALUE, and that is not padding:
+    // the pre-filter skips any file matching neither `\b<key>\b` nor the value,
+    // so a file holding `ghostKeySuffix` alone is never read at all and the
+    // mutation would come back GREEN having proved nothing.
+    test('a consumer that names only a LONGER key is not filed as a reader', () => {
+      const nearMiss = "const ghostKeySuffix = 1;\nconst copy = 'Ghost copy';\n";
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: { ...CONSUMERS, 'tooling/ci/assert-near-miss.mjs': nearMiss },
+      }));
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /— read at /);
+      // …and the file IS being read, so this is not passing on an empty sweep:
+      // its second line is reported as the literal echo.
+      assert.match(out, /ships as a hardcoded LITERAL at tooling\/ci\/assert-near-miss\.mjs:2/);
+    });
+
+    // 🔴 THE `v !== ''` GUARD ON THE LITERAL-ECHO CHECK. An arb key whose English
+    // value is the empty string makes `''` and `""` the needle, so every consumer
+    // line carrying an empty literal would be reported to the owner as "its
+    // English copy ships as a hardcoded LITERAL at <file:line>" — a file:line
+    // pointing at nothing, in the one print whose whole promise is that the
+    // evidence is inspectable. Nothing reached the guard before this case; the
+    // review that found it measured the pre-fix suite green, and dropping the
+    // guard is RED here (re-measured 2026-08-21).
+    test('a key with an EMPTY English value reports no literal echo', () => {
+      const { code, out } = run(tree({
+        sublyArb: { ...SUBLY_ARB, blankKey: '' },
+        consumers: { ...CONSUMERS, 'tooling/ci/assert-something.mjs': "const nothing = '';\n" },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(
+        out,
+        /blankKey \[declared in 1 of 2 enforced tree\(s\)\] — and its English copy appears nowhere else in the tree either/,
+      );
+      assert.doesNotMatch(out, /ships as a hardcoded LITERAL/);
+    });
+
+    // 🔴 EVERY NARROWING IN THE NON-RENDER WALK, IN ONE INPUT. Each `continue`
+    // there is a place a real reader can be lost — the generate-discovery.mjs
+    // incident is the whole reason the sweep is wide — and four of the six had
+    // no failing input until 2026-08-21: the dot-directory skip, CONSUMER_PRUNE,
+    // the extension list and the `app_localizations` name skip. A hand-written
+    // prune list that grows from `node_modules` to `node_modules|docs` moved no
+    // test before this case existed.
+    test('the non-render sweep is narrowed only in ways that have a failing input', () => {
+      const names = "const KEY = 'ghostKey';\n";
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: {
+          ...CONSUMERS,
+          'node_modules/some-pkg/reader.mjs': names, // CONSUMER_PRUNE
+          'build/generated/reader.mjs': names, // CONSUMER_PRUNE
+          // The dot-directory skip. `.github`, NOT `.claude`: `listDir` drops
+          // `.claude` itself (tree-walk.mjs's SCRATCH_DIR_NAME), so a `.claude`
+          // decoy would be excluded by the shared module and prove nothing about
+          // this guard's own clause. Measured 2026-08-21 — with `.claude` here
+          // the mutation that deletes the clause stayed GREEN at 80/80.
+          '.github/scripts/reader.mjs': names,
+          'docs/notes.md': names, // CONSUMER_EXTS
+          'packages/design_system/lib/app_localizations.dart': names, // the generated-name skip
+        },
+      }));
+      assert.equal(code, 0, out);
+      // Exactly ONE file was swept — the crediting guard planted by default —
+      // so all five decoys were excluded rather than read and ignored.
+      assert.match(out, /1 non-test \.mjs\/\.js\/\.ts\/\.tsx\/\.dart file\(s\) elsewhere searched for any other reader/);
+      assert.match(out, /NOTHING IN THE TREE NAMES THE KEY AT ALL \(1\)/);
+      assert.doesNotMatch(out, /— read at /);
+    });
+
+    // ── 2026-08-24 · IS_TEST_PATH IS A DISJUNCTION, AND THREE OF ITS BRANCHES ─
+    // ── HAD NO INPUT. ────────────────────────────────────────────────────────
+    // The case above pins the WALK's `continue`s; the two cases pinning
+    // IS_TEST_PATH pin the whole regex at each of its two call sites. Inside it
+    // `(^|\/)(tests?|integration_test)\/|(_|\.)test\.[a-z]+$` is four
+    // alternatives, and a `|` in a regex is an OR like any other. Measured
+    // 2026-08-24, one branch removed per run: dropping the directory half is
+    // RED, dropping the `(_|\.)test\.` half is RED, but dropping
+    // `integration_test`, dropping the `s?` from `tests?`, and dropping the `\.`
+    // from `(_|\.)` all left EXIT 0, tests 84, pass 84, fail 0 — three
+    // narrowings nothing could redden.
+    // Each is live rather than hypothetical. apps/subly/integration_test holds
+    // three tracked files today, and one of them —
+    // apps/subly/integration_test/store_capture_guard.dart — does NOT end in
+    // `_test.dart`, so it is held out of the sweep by the `integration_test`
+    // branch alone; it sits outside `apps/subly/lib`, so `inEnforced` does not
+    // catch it either. The pin is a fixture rather than that file, because a
+    // real-tree count is a moving number.
+    // The direction that bites is MANUFACTURING a reader: a key named only by a
+    // test would be printed to the owner as "something else reads this key — do
+    // not delete before reading the consumer", which is the opposite of true.
+    test('the non-render sweep drops every path shape IS_TEST_PATH names', () => {
+      const names = "const KEY = 'ghostKey';\n";
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: {
+          ...CONSUMERS,
+          'tests/reader.mjs': names, // the `s?` in `tests?`
+          'integration_test/reader.mjs': names, // the `integration_test` branch
+          'packages/design_system/lib/reader.test.mjs': names, // the `\.` in `(_|\.)`
+        },
+      }));
+      assert.equal(code, 0, out);
+      // Still exactly ONE swept file — the crediting guard planted by default.
+      assert.match(out, /1 non-test \.mjs\/\.js\/\.ts\/\.tsx\/\.dart file\(s\) elsewhere searched for any other reader/);
+      // …and the key stays DARK, so no decoy was read and credited as a reader.
+      assert.match(out, /NOTHING IN THE TREE NAMES THE KEY AT ALL \(1\)/);
+      assert.doesNotMatch(out, /— read at /);
+    });
+
+    // `site()` names the first reader and COUNTS the rest, and the count is what
+    // stops a one-line print reading as a one-site fact. The real repo prints
+    // `(+2 more)` for appTitle today, but a real-repo count is a moving number,
+    // so the pin is a fixture with exactly two readers.
+    test('names one reader site and counts the rest', () => {
+      const names = "const KEY = 'ghostKey';\n";
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: { ...CONSUMERS, 'tooling/ci/assert-one.mjs': names, 'tooling/ci/assert-two.mjs': names },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /— read at tooling\/ci\/assert-(?:one|two)\.mjs:1 \(\+1 more\)/);
+    });
+
+    // …and the ternary's OTHER arm, which had no input until 2026-08-24. The
+    // case above pins `list.length > 1 ? ' (+N more)' : …`; forcing the counting
+    // arm to be taken ALWAYS (`true ?`) left this file at EXIT 0, tests 81, pass
+    // 81, fail 0, measured that day in the same scratch mirror — while the real
+    // repository's output gained ` (+0 more)` on all three literal-echo lines,
+    // so the mutation is a genuine behaviour change and not the semantic no-op
+    // the 2026-08-22 method trap describes. `(+0 more)` is not a smaller truth:
+    // it tells the owner evidence was withheld, in the print whose one promise
+    // is that the evidence is inspectable and complete.
+    test('names a single reader site without inventing a count', () => {
+      const { code, out } = run(tree({
+        sublyArb: GHOST,
+        consumers: { ...CONSUMERS, 'tooling/ci/assert-one.mjs': "const KEY = 'ghostKey';\n" },
+      }));
+      assert.equal(code, 0, out);
+      assert.match(out, /— read at tooling\/ci\/assert-one\.mjs:1$/m);
+      assert.doesNotMatch(out, /\(\+0 more\)/);
+    });
+
+    // ── The union domain, which is the difference between 5 findings and 23 ──
+    // Subly was stamped FROM the brick and diverged, so a chassis key sits in
+    // BOTH arbs and is rendered by whichever tree still has that screen. Asked
+    // per-tree this limb reports FIFTEEN keys that a sibling renders (measured
+    // 2026-08-21 — this read "eighteen", which was 23 − 5 and double-counted the
+    // three keys declared in both arbs), and the natural owner answer — delete
+    // it — breaks the other tree.
+    describe('the reader domain is the union of the enforced trees', () => {
+      const SHARED_BRICK = { ...BRICK_ARB, sharedChassisKey: 'Shared' };
+
+      test('a key declared in the brick and rendered only by Subly is NOT reported', () => {
+        const { code, out } = run(tree({
+          brickArb: SHARED_BRICK,
+          subly: `${CLEAN_SUBLY}\nconst probe = Text(l10n.sharedChassisKey);\n`,
+        }));
+        assert.equal(code, 0, out);
+        assert.doesNotMatch(out, /sharedChassisKey/);
+      });
+
+      // …and the control, so the case above is not passing because the key is
+      // invisible to the limb altogether.
+      test('the same key IS reported when neither tree renders it', () => {
+        const { code, out } = run(tree({ brickArb: SHARED_BRICK }));
+        assert.equal(code, 0, out);
+        assert.match(out, /sharedChassisKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      });
+    });
+
+    // ── 2026-08-24 · A CONDITION IN THE FIXTURE BUILDER, NOT IN THE GUARD ────
+    // `tree()` plants the Subly arb when `subly !== null || allowlisted !== null`
+    // — the arb belongs to the ROOT, and the root exists through EITHER of the
+    // two files planted under it. Neither operand had an input: every case that
+    // removed one of those files removed both (`{ brick: null, subly: null,
+    // allowlisted: null }` is the only one), so on 2026-08-24 each operand was
+    // dropped alone and this file stayed at EXIT 0, tests 81, pass 81, fail 0.
+    // A fixture-side condition that cannot fail is the worse kind: it does not
+    // make the GUARD look guarded, it makes every case built on the fixture
+    // start reporting COVERAGE LOST for a reason that case never asked about,
+    // and the next reader debugs the guard.
+    // Two inputs, one per operand, because one input can only reach one of them.
+    // The assertion is the reverse limb's own DOMAIN count rather than a clean
+    // exit, because `allowlisted: null` fails the guard for a reason of its own
+    // — the waiver written for that file's literal then matches nothing — and a
+    // `code === 0` here would be measuring the allowlist check, not the arb.
+    test('the Subly arb is planted when EITHER of that tree’s two files is', () => {
+      const viaAllowlistedFile = run(tree({ subly: null }));
+      assert.match(viaAllowlistedFile.out, /2 tracked l10n\/app_en\.arb file\(s\)/, viaAllowlistedFile.out);
+      assert.doesNotMatch(viaAllowlistedFile.out, new RegExp(`${SUBLY}/l10n/app_en.arb does not exist`));
+
+      const viaScreen = run(tree({ allowlisted: null }));
+      assert.match(viaScreen.out, /2 tracked l10n\/app_en\.arb file\(s\)/, viaScreen.out);
+      assert.doesNotMatch(viaScreen.out, new RegExp(`${SUBLY}/l10n/app_en.arb does not exist`));
+    });
+
+    // ── COVERAGE LOST: an empty domain is not "no unread keys". ─────────────
+    describe('a scan that reached nothing says so instead of printing a clean zero', () => {
+      test('FAILS when an enforced tree has no app_en.arb', () => {
+        const { code, out } = run(tree({ brickArb: null }));
+        assert.equal(code, 1, 'the reverse limb read no keys and called the tree clean');
+        assert.match(out, new RegExp(`COVERAGE LOST — ${BRICK.replace(/[{}]/g, '\\$&')}/l10n/app_en.arb does not exist`));
+      });
+
+      // 🔴 THE `arbsRead === 0` BRANCH, WHICH IS AN EMPTY BLOCK AND THEREFORE
+      // READS LIKE A COMMENT. It is not: without it, a run where NO enforced
+      // tree has an arb falls through to the normal path with an empty key set,
+      // and the guard prints `ok every declared l10n key reaches a screen` —
+      // over zero keys — beside the COVERAGE LOST lines. Measured 2026-08-21,
+      // the case above only removes ONE arb, so nothing reached this branch
+      // before this case; `if (false)` on it is RED against this one.
+      test('FAILS when NEITHER enforced tree has an app_en.arb, and prints no clean zero', () => {
+        const { code, out } = run(tree({ brickArb: null, sublyArb: null }));
+        assert.equal(code, 1, 'the reverse direction read no keys at all and still called the tree clean');
+        assert.equal(
+          (out.match(/does not exist, so the reverse direction read no keys/g) ?? []).length,
+          2,
+          'both roots must be reported, not only the first',
+        );
+        assert.doesNotMatch(out, /every declared l10n key reaches a screen/);
+        assert.doesNotMatch(out, /👤 OWNER l10n render direction/);
+      });
+
+      test('FAILS when the arb does not parse as JSON', () => {
+        const { code, out } = run(tree({ brickArb: '{ "appTitle": "Demo",,, }\n' }));
+        assert.equal(code, 1, 'an unparseable arb made every key it holds invisible');
+        assert.match(out, /did not parse as JSON/);
+      });
+
+      test('FAILS when the arb holds only metadata and no message keys', () => {
+        const { code, out } = run(tree({ brickArb: { '@@locale': 'en' } }));
+        assert.equal(code, 1, '"no unrendered keys" was a statement about an empty file');
+        assert.match(out, /declares no message keys/);
+      });
+
+      // 🔴 THE TRIPWIRE THAT SHIPPED WITH NO INPUT REACHING IT. Measured
+      // 2026-08-21: replacing the guard's `if (odd.length > 0)` with
+      // `if (false)` left this file at EXIT 0, tests 69, pass 69, fail 0. Both
+      // real arbs hold only Dart identifiers (155 + 309 keys, 0 odd, measured
+      // the same day), so a fixture is the only place the input can exist — and
+      // a COVERAGE-LOST branch that can redden a real build while nothing can
+      // falsify it is an assertion the next reader is free to delete.
+      test('FAILS when the arb declares a key that is not a Dart identifier', () => {
+        const { code, out } = run(tree({ brickArb: { ...BRICK_ARB, 'not-an-identifier': 'x' } }));
+        assert.equal(code, 1, 'a key this limb cannot build a regex for was silently skipped');
+        assert.match(out, /declares 1 key\(s\) that are not Dart identifiers \(not-an-identifier\)/);
+        assert.match(out, /They were SKIPPED rather than checked/);
+        // …and the message is TRUE: the key really is outside the count below,
+        // which is the whole reason the branch says COVERAGE LOST rather than
+        // reporting the key as unrendered. 4 is the default union, unchanged.
+        assert.match(out, /4 message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\)/);
+      });
+
+      // ── 2026-08-24 · THE CONTROL FOR ARB_KEY_SHAPE, AND THREE OF ITS ───────
+      // ── CHARACTER ATOMS HAD NO INPUT. ─────────────────────────────────────
+      // The case above proves the shape REJECTS. Nothing proved what it accepts
+      // beyond lowerCamelCase, and the class is a disjunction like any other.
+      // Measured 2026-08-24, one atom removed per run: dropping `0-9` from the
+      // tail is RED, dropping `A-Z` from the tail is RED, dropping `a-z` from
+      // the head is RED — but dropping `_` from both classes, dropping `$` from
+      // both, and dropping `A-Z` from the HEAD all left EXIT 0, tests 85, pass
+      // 85, fail 0. All three are legal in a Dart identifier and therefore legal
+      // in an arb key, and the failure they cause is a false COVERAGE LOST: a
+      // real, checkable key reported as one the limb had to skip. Both real arbs
+      // hold 464 keys between them and not one uses `_`, `$` or an upper-case
+      // first letter (measured the same day), which is why only a fixture can
+      // reach this.
+      // ONE key covers all three atoms — upper-case head, `_`, `$` — because
+      // any of the three removals alone turns it odd and flips this case to
+      // EXIT 1.
+      test('accepts a legal Dart identifier that is not lowerCamelCase', () => {
+        const { code, out } = run(tree({ sublyArb: { ...SUBLY_ARB, 'Legacy_$Key': 'Legacy copy' } }));
+        assert.equal(code, 0, out);
+        assert.doesNotMatch(out, /not Dart identifiers/);
+        // …and it was CHECKED rather than merely not-rejected: it is inside the
+        // domain count and it drew its own owner line.
+        assert.match(out, /5 message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\)/);
+        assert.match(out, /Legacy_\$Key \[declared in 1 of 2 enforced tree\(s\)\]/);
+      });
+
+      test('FAILS when there is no .dart to look for accessors in', () => {
+        const { code, out } = run(tree({ brick: null, subly: null, allowlisted: null }));
+        assert.equal(code, 1, 'every key would read as unrendered, which is a broken scan');
+        assert.match(out, /ZERO non-test \.dart file\(s\) to look for accessors in/);
+      });
+
+      // 🔴 THE generate-discovery.mjs LESSON AS A FAILING INPUT. Three config
+      // keys were once "proven" unread by a sweep that never opened a .mjs; the
+      // reader was JavaScript and the keys were rendering live bullets on
+      // nikatru.com. "Nothing else reads this key" is only worth saying when
+      // something outside the render trees was actually read.
+      test('FAILS when the non-render sweep had no files to sweep', () => {
+        const { code, out } = run(tree({ consumers: null }));
+        assert.equal(code, 1, '"nothing else reads it" was a statement about an empty sweep');
+        assert.match(out, /found no .+ file\(s\) outside the enforced trees/);
+      });
+    });
+
+    // ── Against the REAL repository. A fixture I wrote encodes the same ─────
+    // misunderstanding as the limb I wrote — assert-seams-wired.mjs shipped with
+    // all six of its fixture tests passing against a broken guard.
+    describe('against the REAL repository', () => {
+      test('prints the three dead keys, exits 0, and states its domain', () => {
+        const { code, out } = run(REPO);
+        assert.equal(code, 0, out);
+        assert.match(out, /👤 OWNER l10n render direction/);
+        for (const key of ['errorTitle', 'errorMessage', 'notificationActionOpen']) {
+          assert.match(out, new RegExp(`${key} \\[declared in \\d of 2 enforced tree\\(s\\)\\]`), key);
+        }
+        // appTitle has a LIVE JavaScript reader — assert-stamp-text-fidelity.mjs
+        // fails the brick lane when it disagrees with the stamped display name.
+        // Filing it beside errorTitle would invite a delete that reddens CI, so
+        // the bucket it lands in is asserted, not just its presence.
+        assert.match(out, /appTitle \[declared in 2 of 2 enforced tree\(s\)\] — read at tooling\/ci\/assert-stamp-text-fidelity\.mjs:\d+/);
+        assert.match(out, /ships as a hardcoded LITERAL at packages\/design_system\/lib\/src\/widgets\/system_screens\.dart:\d+/);
+        assert.doesNotMatch(out, /COVERAGE LOST/);
+
+        // 🔴 THE DOMAIN SENTENCE, PINNED TO THE REST OF THE PRINT. The title of
+        // this test claimed "states its domain" and nothing checked it — until
+        // 2026-08-21 the line could be replaced with a literal `DOMAIN:
+        // (elided)` and this file stayed at EXIT 0, 69/69. The counts are not
+        // written down here, because a real-repo count is a moving number and a
+        // test that pins one is a test somebody edits every week. What IS pinned
+        // is that the sentence carries derived numbers AND that they agree with
+        // the rest of the print — the property "(elided)" cannot satisfy and a
+        // stale hardcoded number could.
+        const d = out.match(
+          /DOMAIN, so the number above is a measurement and not a blind spot: (\d+) message key\(s\) from (\d+) tracked l10n\/app_en\.arb file\(s\) · (\d+) non-test \.dart file\(s\) in (\d+) enforced tree\(s\) searched for a `\.<key>` accessor · (\d+) non-test [^ ]+ file\(s\) elsewhere searched for any other reader\./,
+        );
+        assert.ok(d, `the DOMAIN sentence is missing or reshaped:\n${out}`);
+        const [keys, arbs, dartFiles, trees, elsewhere] = d.slice(1).map(Number);
+        const head = out.match(/👤 OWNER l10n render direction — (\d+) translated, reviewed key\(s\) of (\d+) reach NO surface/);
+        assert.ok(head, 'the owner header is missing');
+        assert.equal(Number(head[2]), keys, 'the header and the domain disagree about how many keys were read');
+        // One arb and one enforced tree per root, and both halves non-empty —
+        // the three ways this sentence could be true of nothing.
+        assert.equal(arbs, trees, 'an enforced tree contributed no arb');
+        assert.equal(trees, 2, 'ENFORCED_ROOTS changed; re-read this assertion');
+        assert.ok(dartFiles > 0 && elsewhere > 0, `an empty half: ${dartFiles} render, ${elsewhere} elsewhere`);
+        // The printed key lines must account for exactly the header's count, so
+        // the header cannot drift from the buckets underneath it.
+        assert.equal(
+          (out.match(/^ {8}\w+ \[declared in \d of \d enforced tree\(s\)\]/gm) ?? []).length,
+          Number(head[1]),
+          'the owner header counts keys the buckets do not list',
+        );
+        assert.match(out, /Generated gen-l10n accessors are excluded from both/);
+      });
+
+      // Printing one key twice is worse than not printing it: the owner reads
+      // the second line as a second gap.
+      test('does NOT re-print consentReadPolicy, and says which guard owns it', () => {
+        const { out } = run(REPO);
+        assert.doesNotMatch(out, /consentReadPolicy \[declared in/);
+        assert.match(out, new RegExp(`consentReadPolicy is unrendered too and is deliberately NOT listed above: ${CONSENT_GUARD}`));
+      });
+
+      // 🔴 …AND THE SUPPRESSION IS CONDITIONAL, NOT A MUTE. If the crediting
+      // guard's limb goes, the key must fall through into THIS print rather than
+      // vanishing from both. Nothing in this file can be edited to hide a key.
+      test('starts printing consentReadPolicy when the crediting guard is gone', () => {
+        const { code, out } = run(REPO, guardCopy(orphanTheSuppression));
+        assert.equal(code, 0, out);
+        assert.match(out, /consentReadPolicy \[declared in 1 of 2 enforced tree\(s\)\]/);
+        assert.doesNotMatch(out, /deliberately NOT listed above/);
+      });
+
+      // 🔴 THE MUTATION THE SANITY CEILING EXISTS FOR, run against the real tree
+      // rather than a fixture. Break the accessor matcher and all 309 reviewed
+      // keys look unrendered — an owner gap so large it is obviously a broken
+      // scan, and one that a limb which merely "prints and never fails" would
+      // happily print forever.
+      test('FAILS on the REAL repo when the accessor matcher stops matching', () => {
+        const { code, out } = run(REPO, guardCopy(breakAccessorMatcher));
+        assert.equal(code, 1, 'a broken accessor matcher printed a 309-key owner gap and passed');
+        assert.match(out, /COVERAGE LOST — \d+ of \d+ declared key\(s\) reached no accessor/);
+        assert.match(out, /the accessor matcher has stopped matching/);
+        // …and the owner print was suppressed rather than drowned in noise.
+        assert.doesNotMatch(out, /👤 OWNER l10n render direction/);
+      });
+    });
   });
 });
