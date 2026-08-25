@@ -136,6 +136,18 @@ that half of the old paragraph quoted above was the TRUE half. The header says i
 outright at :38: "⚠️ A ROUTE WITH NO CLIENT DOES NOT FAIL THE BUILD; IT PRINTS, ON
 EVERY RUN."
 
+🔄 AMENDED AGAIN 2026-08-25, SAME DAY — AND THIS ONE IS ABOUT THE OPENING WORDS OF
+THE CORRECTION TWO PARAGRAPHS UP, WHICH THE AMENDMENT ABOVE CONTRADICTS WITHOUT
+NAMING. "BOTH HALVES OF IT ARE FALSE AT HEAD" OVERSTATES BY EXACTLY ONE HALF. Only
+the FIRST half — "no equivalent register covers this Worker" — is false at head,
+and the `appWorkers[0]` measurement above is what falsifies it. The SECOND half —
+"the day a client appears nothing will notice" — is TRUE at head, for the reason
+the amendment sets out: limb 2 never scans the tree for callers, so nothing goes
+red when one appears. The dated sentence is left standing rather than edited,
+because rewriting a dated record falsifies it instead of repairing it; this line is
+the repair, and it is the same defect the record already documents twice — a
+correction that over-claims in the direction of reassurance.
+
 What IS machine-checked is narrower than "the claim above", and it is two things,
 both of which push to `problems` and therefore fail the build:
 - **the route set**, both directions — every route `services/subly-api/src/index.ts`

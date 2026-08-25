@@ -45,6 +45,31 @@
 // standing rule applies: a guard that reds the build on work only a person can
 // do gets switched off, and a gap nobody sees becomes permanent.
 //
+// ── WIRED IS NOT ONE THING, AND THE WEAK KIND IS PRINTED LOUDLY ──────────────
+// An enforcer whose every invoker is a DISPATCH-ONLY workflow — no push, no
+// pull_request, nothing but a button — is WIRED in a sense no reader assumes.
+// Section 6b reads the invoking workflow's triggers and separates three lanes:
+// automatic (a repository event runs it), schedule-only (a clock runs it,
+// unattended but attached to no commit), and dispatch-only (nothing runs it).
+//
+// THAT LIMB PRINTS, IT DOES NOT FAIL, AND THE PRINT IS THE JUSTIFICATION.
+// Manual lanes are legitimate here — a store submission and a screenshot
+// capture are owner actions by design — so failing on one would red the build
+// over work only a person can do, which is the standing way a guard gets
+// switched off. But the rule that a gap nobody sees becomes permanent makes
+// "printed" acceptable ONLY if the print cannot be missed, so it is not one
+// more line in the quiet list: it is a banner, and the lane counts ride on the
+// single ok line every run of this guard emits, whether they are zero or not.
+// A count on the summary line is a number a reader compares run to run; a line
+// buried among the orphans is one nobody reads twice.
+//
+// Two limbs around it DO fail, so this is not a print with no teeth:
+//  · an enforcer named by the Definition-of-Done register as what enforces an
+//    item, whose lane is dispatch-only or unresolved — the register states a
+//    thing is enforced and no lane enforces it; and
+//  · every WIRED row being non-automatic on the real repository, which is what
+//    a deleted push trigger looks like from here.
+//
 // Usage:  node tooling/ci/assert-enforcement-index.mjs [repoRoot]
 // Exit 0 = the committed index is byte-for-byte what this tree generates, every
 //          ref resolves in the way its kind requires, and the population holds.
@@ -55,7 +80,11 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { parseAllWorkflows, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
-import { INDEX_REL, KINDS, STATES, CoverageLost, buildEnforcementIndex, serialiseIndex } from './build-enforcement-index.mjs';
+import {
+  INDEX_REL, KINDS, STATES, CoverageLost, buildEnforcementIndex, serialiseIndex,
+  readTriggers, laneOf, laneOfInvokers,
+  LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH, LANE_INHERITED, LANE_UNREADABLE,
+} from './build-enforcement-index.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const scanningRealRepo = process.argv[2] === undefined;
@@ -394,6 +423,104 @@ if (wiredRows.length > 0 && edges === 0) {
   ]);
 }
 
+// ── 6b. WIRED, BUT REACHED BY WHICH LANE ────────────────────────────────────
+// Section 6 proves a WIRED row's job really names it. It never asks what makes
+// that job RUN. A workflow triggered only by `workflow_dispatch` runs when a
+// person presses a button and at no other time, so an enforcer wired only into
+// one enforces nothing on any push, any pull request or any merge — and the
+// index published it under the same word as a guard ci.yml runs on every
+// commit. The lane is derived HERE from the workflows this guard parsed
+// itself, using the shared reader, so the generator cannot define the question
+// away; what the generator supplies is the reading, not the verdict.
+const laneByWorkflow = new Map(parsed.map((w) => [w.rel, laneOf(readTriggers(w))]));
+const byLane = new Map([LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH, LANE_INHERITED, LANE_UNREADABLE].map((l) => [l, []]));
+// Only kinds whose `invokedBy` names workflow jobs. A `human` ref is a review
+// row and a HELD row has no edges at all — neither has a lane, and asking
+// produces a sentence about a claim the row never made.
+const LANE_BEARING = new Set(['guard', 'script', 'lane']);
+for (const row of committedRows) {
+  if (!row || row.state !== 'WIRED' || !LANE_BEARING.has(row.kind)) continue;
+  if (!Array.isArray(row.invokedBy) || row.invokedBy.length === 0) continue;
+  const lane = laneOfInvokers(row.invokedBy, laneByWorkflow);
+  if (lane !== null) byLane.get(lane).push(row);
+}
+const laneBearing = [...byLane.values()].reduce((n, l) => n + l.length, 0);
+const weakRows = [...byLane.get(LANE_DISPATCH), ...byLane.get(LANE_INHERITED), ...byLane.get(LANE_UNREADABLE)];
+// A `lane` row's ref IS the job, so naming the edge again reads as a typo.
+const laneEdges = (row) => {
+  const edges = row.invokedBy.map((e) => `${e} [${laneByWorkflow.get(String(e).split('#')[0]) ?? LANE_UNREADABLE}]`);
+  if (row.kind === 'lane' && row.invokedBy.length === 1 && row.invokedBy[0] === row.ref) {
+    return `its own workflow's triggers make it [${laneByWorkflow.get(String(row.ref).split('#')[0]) ?? LANE_UNREADABLE}]`;
+  }
+  return edges.join(', ');
+};
+
+// 🔴 FAILING LIMB — THE AUTOMATIC LANE HAS VANISHED. Deleting `push:` and
+// `pull_request:` from ci.yml leaves every guard still named by a job, still
+// WIRED, still byte-identical in the index: sections 1-6 all pass and the whole
+// gate has silently become opt-in. Real repository only, because a fixture tree
+// may legitimately hold nothing but a manual workflow.
+if (scanningRealRepo && laneBearing > 0 && byLane.get(LANE_AUTOMATIC).length === 0) {
+  coverageLost([
+    `all ${laneBearing} WIRED row(s) are reached ONLY by workflows no repository event triggers.`,
+    'Not one enforcer in this index runs on a push or a pull request. Either every automatic trigger was',
+    'removed, or the trigger reader stopped reading them — and both make WIRED a word about nothing.',
+  ]);
+}
+
+// 🔴 FAILING LIMB — A DEFINITION-OF-DONE ITEM ENFORCED BY A BUTTON. The
+// register is the machine-readable statement that this item is enforced by
+// this guard. A dispatch-only lane makes that statement false in the strongest
+// way available: the item is published as enforced and no lane enforces it.
+// This one fails rather than prints because the fix is a workflow edit, not
+// owner work — the exemption that keeps the print above a print does not apply.
+for (const row of weakRows) {
+  const dodClaims = (Array.isArray(row.claims) ? row.claims : []).filter((c) => typeof c === 'string' && c.startsWith('DoD '));
+  if (dodClaims.length === 0) continue;
+  problems.push(
+    `"${row.ref}" is named by ${DOD_REL} as what enforces ${dodClaims.join(' · ')}, and every workflow that ` +
+      `invokes it is dispatch-only or of an unresolved lane — ${laneEdges(row)}. A Definition-of-Done item ` +
+      'whose enforcer runs only when someone remembers to press a button is not enforced.',
+  );
+}
+
+// ⬜ PRINTING LIMB — see the header. Manual lanes are legitimate; an unseen one
+// is not. So the banner is loud, and the counts below ride on the ok line.
+const laneBanner = [];
+if (weakRows.length) {
+  const RULE = '═'.repeat(78);
+  const unresolved = byLane.get(LANE_INHERITED).length + byLane.get(LANE_UNREADABLE).length;
+  laneBanner.push(RULE);
+  laneBanner.push(
+    `⚠️  DISPATCH-ONLY WIRING — ${weakRows.length} enforcer(s) read WIRED and NO LANE RUNS THEM` +
+      ` (${byLane.get(LANE_DISPATCH).length} dispatch-only, ${unresolved} lane unresolved).`,
+  );
+  laneBanner.push('    No push, no pull request and no merge causes them to execute even once. Somebody');
+  laneBanner.push('    has to open the Actions tab and press Run workflow, or they never run at all.');
+  for (const row of weakRows) {
+    laneBanner.push(`    · ${row.ref}`);
+    laneBanner.push(`        ← ${laneEdges(row)}`);
+    if (Array.isArray(row.claims) && row.claims.length) laneBanner.push(`        claims ${row.claims.join(' · ')} — cited by something no event runs.`);
+  }
+  if (unresolved) {
+    laneBanner.push('    LANE UNRESOLVED means the workflow states no trigger this reader can act on — a');
+    laneBanner.push('    reusable workflow, whose lane is its caller\'s, or an `on:` block written in a shape');
+    laneBanner.push('    the reader does not know. Unresolved is counted here, never as automatic.');
+  }
+  laneBanner.push(RULE);
+}
+if (byLane.get(LANE_SCHEDULED).length) {
+  const crons = [...new Set(byLane.get(LANE_SCHEDULED).flatMap((r) => r.invokedBy.map((e) => String(e).split('#')[0])))]
+    .filter((w) => laneByWorkflow.get(w) === LANE_SCHEDULED).sort();
+  prints.push(
+    `SCHEDULE-ONLY — ${byLane.get(LANE_SCHEDULED).length} enforcer(s) are WIRED only into cron workflow(s) ` +
+      `${crons.join(', ')}. They run unattended, which a button does not, but on a CLOCK and not on a change: ` +
+      'a defect merged at noon is caught by a run attached to no commit, blocking no merge. Weaker than a push ' +
+      'lane, stronger than a button, and counted as neither.',
+  );
+  prints.push(`   ${byLane.get(LANE_SCHEDULED).map((r) => r.ref).join(' · ')}`);
+}
+
 // ── 7. ORPHANS PRINT ────────────────────────────────────────────────────────
 const orphans = committedRows.filter((r) => r && r.state === 'ORPHAN');
 for (const row of orphans) {
@@ -407,6 +534,9 @@ for (const row of orphans) {
 for (const n of built.notes) prints.push(n);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The banner goes FIRST and outside the ⬜ list. A finding formatted like every
+// other finding is read like every other finding.
+for (const l of laneBanner) console.log(l);
 if (prints.length) {
   console.log('   ── printed, not failed (a gap nobody sees becomes permanent) ──');
   for (const p of prints) console.log(`   ⬜ ${p}`);
@@ -424,5 +554,11 @@ console.log(
   `ok  enforcement index — ${committedRows.length} row(s) in ${INDEX_REL} are byte-for-byte the index regenerated ` +
     `from this tree [${[...kinds.entries()].sort().map(([k, n]) => `${n} ${k}`).join(', ')}]; ` +
     `all ${onDisk.length} enforcer(s) in ${CI_REL} carry a row; ${resolved} ref(s) resolve; ` +
-    `${edges} WIRED row × job edge(s) checked against ${parsed.length} workflow(s); ${orphans.length} orphan(s) printed`,
+    `${edges} WIRED row × job edge(s) checked against ${parsed.length} workflow(s); ${orphans.length} orphan(s) printed; ` +
+    // ⚠️ PRINTED EVEN WHEN ZERO, and that is the point. This is the one line a
+    // green run leaves behind, so a dispatch-only count that appears — or grows
+    // — is visible in the log of the run that introduced it. A finding that is
+    // only emitted when it is non-zero is a finding nobody has a baseline for.
+    `WIRED by lane: ${byLane.get(LANE_AUTOMATIC).length} automatic, ${byLane.get(LANE_SCHEDULED).length} schedule-only, ` +
+    `${byLane.get(LANE_DISPATCH).length} DISPATCH-ONLY, ${byLane.get(LANE_INHERITED).length + byLane.get(LANE_UNREADABLE).length} unresolved`,
 );
