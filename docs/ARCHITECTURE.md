@@ -176,6 +176,47 @@ below names **where the authority is**; the snapshot is only the last column. Ve
 one rule is a real divergence, not a nuance: a fix applied to one is not applied to the other. Treat
 convergence as work that has not happened yet.
 
+### ⚠️ APPENDED CORRECTION — 2026-08-25
+
+**The table above is not edited.** It is a dated snapshot, it says so, and it tells you to re-derive
+before relying on it. This is the re-derivation, run on 2026-08-25. Rows it does not name still stand.
+
+- **"Repo-level gates … *Incomplete, landing*" is false.** The row names the right authority — the
+  `gate-inventory` job derives the set from the workflow files rather than from prose — so run what it
+  runs. From the repo root:
+
+  ```bash
+  grep -rhoE '(scripts|Extension/[A-Za-z0-9_]+/publish)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(mjs|node\.js)' \
+    .github/workflows | sort -u
+  ```
+
+  → **17** paths, and every one of them is a file on disk: **0 ABSENT**. Sixteen live in `scripts/`
+  (`ls scripts/*.mjs` → **18**, two of which no workflow calls) and the seventeenth is
+  `Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js`. Nothing in that list is
+  "landing" any more. What the row's *reasoning* got right and what must not be softened: a script the
+  header names and CI cannot find still fails the job on purpose, and there are still no
+  `if [ -f … ]` guards.
+
+- **"The per-tool contract … *Written; not yet consumed end to end*" is false** — see the corrected
+  §5 below. `pack.mjs`, `verify-refs.mjs`, `run-tests.mjs` and `discover.mjs` all read `tool.json`, and
+  all four exited **0** on 2026-08-25.
+
+- **"CI … *Present and not green*" is half false.** The half that has moved: the workflows no longer
+  "call `scripts/*.mjs` gates that are still landing" — see the inventory above. The half that is
+  still true, re-measured: `git tag | wc -l` → **0**, so `release.yml` has still never run.
+
+- **"A tool's own packager … Real, runnable" is still true, and it is green again today.**
+  `node publish/package.node.js` (full build, run in a scratch worktree so no zip lands in `publish/`)
+  exits **0** with `ALL PASS — packaging + reference integrity` and `85 files` byte-identical to the
+  tree for both targets. It had been red since 2026-08-20 on one limb —
+  `Chrome package keeps the plain importScripts calls` — whose column-0 regex stopped matching when
+  `background.js` gained the Firefox guard and the call moved two columns right. The **assertion** was
+  what had moved, not the zip; it is now indent-tolerant and pinned against four mutant sources in
+  `Extension/Full_Screen_Shot/test/i18n-sim.node.js`.
+
+- **"The vendored copy inside a tool … *Absent everywhere*" is still true.**
+  `ls Extension/Full_Screen_Shot/vendor` → `No such file or directory`.
+
 ---
 
 ## 4. The template is a stamp, not a library
@@ -205,26 +246,52 @@ afterwards:
 
 The architecture calls for one file per tool — `tool.json` — as the entire coupling surface between a
 tool and the repo: id, package allowlist, targets, tests, permission justifications and an empty network
-allowlist that makes the privacy claim machine-readable. **The file exists for FullShot. Nothing reads it
-end to end yet** — the gates that would consume it (`pack`, `verify-refs`, `run-tests`) are the part still
-landing. Treat it today as a written contract with no enforcement behind it, and check `scripts/` before
-assuming otherwise.
+allowlist that makes the privacy claim machine-readable. **The file exists for FullShot, and it is read
+end to end.** ⚠️ **CORRECTED 2026-08-25** — this passage used to say *"Nothing reads it end to end yet —
+the gates that would consume it (`pack`, `verify-refs`, `run-tests`) are the part still landing. Treat it
+today as a written contract with no enforcement behind it"*, and it ends with *"check `scripts/` before
+assuming otherwise"*, so here is that check, run bare on 2026-08-25 with the exit code on its own line:
+
+| Command | Exit | What it printed |
+| --- | --- | --- |
+| `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` | **0** | `6 passed`; `85 file(s) selected by package.include/exclude: 55 locale catalogue(s) + 30 code/assets` |
+| `node scripts/verify-refs.mjs --zip <scratch>/fullshot-firefox.zip --strict --leaks` | **0** | `4 passed · 1 warning(s)` |
+| `node scripts/run-tests.mjs fullshot` | **0** | `12 passed` — *"the subject set is `tests` in tool.json and nothing else"* |
+| `node scripts/discover.mjs` | **0** | `tools on disk: fullshot` — the CI matrix is globbed out of `*/*/tool.json`, so the contract file is what decides which jobs exist at all |
+
+The enforcement is real. What the passage got right and what still holds: where the code and a
+`tool.json` disagree, the code is what ships, so the contract file is the thing to correct.
 
 Two properties of it are worth knowing before writing the second one:
 
 - **It was filled in from the tree, not from the plan.** Where a planning document and the shipped
   artifact disagreed, the artifact won and the disagreement is recorded in the file rather than smoothed
   over. Its package list was checked against the 85 entries of the zip that actually shipped.
-- **It carries an `absent` block.** A tool records what the architecture names and it does not have — no
-  `CHANGELOG.md`, no vendored core, a Firefox manifest that is a full second manifest rather than an
-  overlay. A gap that is written down can be read as a gap; a plausible stub cannot.
+- **It carries an `absent` block.** A tool records what the architecture names and it does not have.
+  ⚠️ **CORRECTED 2026-08-25** — this bullet used to name three examples, *"no `CHANGELOG.md`, no
+  vendored core, a Firefox manifest that is a full second manifest rather than an overlay"*, and
+  **only the middle one is still true**:
+  - `CHANGELOG.md` **exists** — `wc -c Extension/Full_Screen_Shot/CHANGELOG.md` → **12874** bytes, top
+    entry `## [1.10.2] — 2026-08-15`; `node scripts/check-version.mjs fullshot` EXIT **0**, `3 passed`.
+  - **No vendored core** — still true. `ls Extension/Full_Screen_Shot/vendor` → `No such file or
+    directory`.
+  - The Firefox manifest is **not a second manifest**: it is an RFC 7386 merge patch, converted on
+    2026-08-15 (`1c2c082`, 532 bytes) and **511** bytes in its present shape since 2026-08-18
+    (`088b4e3`). `check-version.mjs` prints `publish/manifest.firefox.json is an overlay — it does not
+    restate the version, so it cannot drift from it`.
+
+  Both retired entries were removed from `tool.json`'s `absent` block on 2026-08-22 and the removal is
+  recorded in its `NOTES.corrections`; a third, `absent.README`, was removed on 2026-08-25 the same
+  way. The principle is unchanged and is why the block is worth keeping: **a stale absence is the same
+  lie pointing the other way**, so an entry is deleted the day the real thing lands. A gap that is
+  written down can be read as a gap; a plausible stub cannot.
 
 Three other files hold the rest of a tool's facts:
 
 | File | What it owns |
 | --- | --- |
 | `manifest.json` | The version. The single source of truth; the AMO manifest and the CHANGELOG follow it. |
-| `publish/identity.json` | The facts that appear in more than one place: slug, owner domain (the Firefox add-on id is derived from it), support email, hosted privacy-policy URL. Every publish script reads them from here so they cannot be typed twice and drift. **Template-side only — FullShot has none**, which is part of why its publish scripts are a different set. |
+| `publish/identity.json` | The facts that appear in more than one place: slug, owner domain (the Firefox add-on id is derived from it), support email, hosted privacy-policy URL. Every publish script reads them from here so they cannot be typed twice and drift. ⚠️ **CORRECTED 2026-08-25** — this cell used to read *"Template-side only — FullShot has none, which is part of why its publish scripts are a different set."* FullShot **has one**: `wc -c Extension/Full_Screen_Shot/publish/identity.json` → **2476** bytes, and it is what the Firefox add-on id is derived from — `policy-check.mjs` prints `the Firefox add-on id is set — fullshot@nikatru.com -- and agrees with publish/identity.json` (EXIT **0**). The publish scripts being a different set is still true, for the reason in §3, not for this one. |
 | `skeleton.json` | Provenance and the inherited-file list (§4). |
 
 The package allowlist, the permission justifications and the network prohibition are also stated in code

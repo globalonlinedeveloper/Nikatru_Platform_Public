@@ -201,8 +201,26 @@ node publish/preflight.mjs
 Steps 2–4 are the script names a tool inherits from `templates/tool/`. **FullShot predates them** and has
 its own: `node publish/package.node.js` builds both packages and grades what it built, and
 `node publish/package.node.js --verify` grades the existing zips without rebuilding.
-`node publish/verify-firefox-package.node.js` grades the AMO submission and is red by design until the
-owner sets a real `gecko.id`. FullShot has no `preflight.mjs`.
+`node publish/verify-firefox-package.node.js` grades the AMO submission. FullShot has no `preflight.mjs`.
+
+⚠️ **CORRECTED 2026-08-25.** That sentence used to end *"and is red by design until the owner sets a
+real `gecko.id`"*. **It is not red, either way.** Run bare — exactly as `ci.yml:486` invokes it — it
+exits **0** with `SOURCE PASSES — NO PACKAGE WAS GRADED.`; run `--zip` against a freshly built package
+it exits **0** with `ALL PASS`. The id was filled on 2026-08-18 (`088b4e3`) and is `fullshot@nikatru.com`.
+Two things that did **not** change with it: the gate is still what you run before an AMO upload, and
+AMO still fixes the add-on identity at first signing, so the id cannot be walked back.
+
+⚠️ One more measured note on the line above it, because it is the one that surprises people:
+`node publish/package.node.js --verify` grades zips **it does not build**, and no zip exists in
+`Extension/Full_Screen_Shot/publish/` on a fresh checkout (`git ls-files
+'Extension/Full_Screen_Shot/publish/*.zip'` → 0 lines; all twelve were deleted 2026-08-20, see
+`publish/STALE-FIREFOX-ARTIFACTS-2026-08-20.md`). So on a clean tree it exits **1** with
+`2 FAIL — packaging + reference integrity`, and both FAILs are `package exists`. That is the absence of
+a build, not a defect in the tree. Build first — the bare form builds and grades in one go, and exited
+**0** with `ALL PASS — packaging + reference integrity`, `85 files` byte-identical to the tree, on
+2026-08-25. ⚠️ It writes into `publish/` and only `publish/` (`OUT = __dirname`, there is no `--out`),
+and `publish/*.zip` is deliberately *un*-ignored, so run it somewhere disposable or clean up after it —
+`git status --porcelain` must not show a zip.
 
 Two traps in that paragraph, both cheap to hit:
 
@@ -222,11 +240,32 @@ node scripts/policy-check.mjs <id>    # privacy · permissions · store limits �
 node scripts/check-version.mjs <id>   # manifest version == top CHANGELOG entry
 ```
 
-Some of these are **red on FullShot today, for reasons the tree already admits**: its manifest
-description is 137 characters against the store's 132-character cap (recorded in its own `tool.json`),
-and it has no `CHANGELOG.md` yet. A red gate naming a real defect is the system working. Read the
-finding before you fix it, though — a gate can also be wrong, and `@@`-prefixed messages such as
-`@@bidi_dir` are supplied by the browser rather than by `_locales/en/messages.json`.
+⚠️ **CORRECTED 2026-08-25 — all three of those are green now.** This paragraph used to read *"Some of
+these are red on FullShot today, for reasons the tree already admits: its manifest description is 137
+characters against the store's 132-character cap (recorded in its own `tool.json`), and it has no
+`CHANGELOG.md` yet."* Re-measured on 2026-08-25, bare, exit code on its own line:
+
+| Command | Exit | What it printed |
+| --- | --- | --- |
+| `node scripts/lint.mjs fullshot` | **0** | — |
+| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)`, including `name/short_name/description within store limits — checked across all 55 locale(s)` |
+| `node scripts/check-version.mjs fullshot` | **0** | `3 passed` |
+
+The description is **111** characters, not 137 — count it yourself with
+`node -e "const m=require('./Extension/Full_Screen_Shot/_locales/en/messages.json'); console.log([...m.appDescription.message].length)"`
+— it was fixed in 1.10.2 and it no longer lives in the manifest at all, but in
+`_locales/en/messages.json` and 54 sibling catalogues. `CHANGELOG.md` exists: **12874** bytes, top
+entry `## [1.10.2] — 2026-08-15`. `tool.json` has been corrected in place and records both under
+`NOTES.corrections`.
+
+**The rule this paragraph exists for is unchanged, and it is the part worth keeping: a red gate naming
+a real defect is the system working.** Read the finding before you fix it, though — a gate can also be
+wrong, and `@@`-prefixed messages such as `@@bidi_dir` are supplied by the browser rather than by
+`_locales/en/messages.json`. A gate that has gone red because its *assertion* drifted is the same
+class of bug pointing the other way: `publish/package.node.js` spent five days reporting a Chrome
+packaging defect that did not exist, because its `importScripts` check was anchored at column 0 and
+the source had gained a guard that indented the call. Fix the assertion, never by loosening it into
+something the real defect would also pass.
 
 The real-browser tier (`test/browser/smoke.mjs` in the skeleton, `test/e2e/run.mjs` for FullShot) is
 slower and needs a driver installed; run it before a release, not before every commit.

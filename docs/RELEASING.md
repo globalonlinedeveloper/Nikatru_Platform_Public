@@ -519,3 +519,202 @@ Two failure modes are worth remembering because they cost days rather than minut
 - **Never upload a hand-zipped folder.** Besides the nesting problem, hand-zipping sweeps in `test/`,
   whose fixtures deliberately contain network APIs inside an item whose listing claim is that it makes
   none. The allowlist makes that impossible; a right-click makes it likely.
+
+
+---
+
+## Appendix A — the release lane, measured 2026-08-25
+
+**Appended, not merged into the sections above** — every dated block in this document stays as it was
+written, and this one corrects two of them by name rather than by rewriting them.
+
+Everything below was measured on 2026-08-25 in a working tree where **other in-flight work was editing
+`.github/workflows/ci.yml`**. Where that perturbs a figure it is said so on the line, and the reproduction
+command is given so you can take your own.
+
+### A.1 — two holes in `release.yml` were closed on 2026-08-25
+
+Both were the same family: a step whose *shell flags* decided its verdict instead of its subject.
+
+**`Checksums` published its digest list through an unguarded pipe.** The body was
+`run: cd dist && sha256sum *.zip | tee SHA256SUMS.txt` with **no `shell:` key**, and this file has no
+`defaults:` block (`grep -n '^defaults:' .github/workflows/release.yml` → no match). GitHub runs a bare
+`run:` as `bash -e {0}` — `-e` but **not** `-o pipefail` — so the step’s status was `tee`’s. Measured on
+the old one-liner against three `dist` fixtures in a temp tree:
+
+| `dist` fixture | `bash -e` (the old flags) | `bash --noprofile --norc -eo pipefail` |
+| --- | --- | --- |
+| 0 zips | **EXIT 0**, `SHA256SUMS.txt` 0 bytes | EXIT 1 |
+| 1 hashable zip of 2 | **EXIT 0**, `SHA256SUMS.txt` 1 line | EXIT 1 |
+| 2 hashable zips of 2 | EXIT 0, 2 lines | EXIT 0 |
+
+The zero-zip row is **not** the reachable one — `Reference integrity + leak check on every artifact` above
+already exits 1 when `dist/*.zip` matches nothing. The reachable row is the middle one: a *partial*
+failure, where the glob matches N zips and `sha256sum` can hash fewer, and the step went green having
+published a **short** list. That matters because `Release notes from CHANGELOG` appends *“Artifacts are
+byte-reproducible: rebuild from this tag … and compare SHA256SUMS.txt”* and `gh release create` uploads
+`dist/SHA256SUMS.txt` to a **public** release. The step now carries `shell: bash`, `set -euo pipefail`,
+and a positive count check (`digest lines == zips present`) rather than a tripwire on `sha256sum`’s
+wording. Re-measured with pipefail deleted from *both* the body and the shell, so only that count check
+could bite: 1-of-2 fixture **EXIT 1**, 2-of-2 fixture **EXIT 0**; weakened to the naive
+`[ "$listed" -lt 1 ]`, the 1-of-2 goes **EXIT 0**. The equality is what bites.
+
+⚠️ **What that step does *not* catch, on purpose.** It compares digest lines to the zips *present in
+`dist`*. A build that wrote one zip instead of two is 1 zip and 1 digest, so `Checksums` is correctly
+green on it — measured on real `--release` artifacts. Catching a **missing** package is the next fix’s job.
+
+**`The built packages are uploadable` ran its gate bare, and that gate says its exit code is not the
+verdict.** Measured from the repo root with no `dist/`:
+
+```
+node scripts/check-store-packages.mjs fullshot --dir dist   ->  EXIT 0
+  0 store package(s) opened and graded, 0 unreadable, across 2 declared target(s).
+  ZERO PACKAGES WERE PRESENT, so this run proved nothing about any artifact.
+  ... Read this line rather than the exit code.
+```
+
+The step now wraps it the way the AMO step below it already did — `shell: bash`, `set -euo pipefail`,
+`out=$(…) || code=$?`, print, fail on nonzero — **and then asserts `graded == declared`, parsed from that
+tally line.** The equality is the whole fix: `graded > 0` passes the realistic failure, which is not an
+empty `dist` but a half-built one. Measured against a real `--release` build of both FullShot packages,
+then with `dist/fullshot-firefox.zip` removed / corrupted:
+
+| `dist` state | the script prints | its bare EXIT | the step |
+| --- | --- | --- | --- |
+| both zips | 2 graded / 2 declared, 5 passed | 0 | EXIT 0 |
+| chromium zip only | 1 graded / 2 declared, 3 passed | **0** | **EXIT 1** |
+| present but empty | 0 graded / 2 declared, 0 passed | **0** | **EXIT 1** |
+| firefox zip corrupted | 3 passed · 1 FAILED | 1 | EXIT 1 |
+
+With the assertion weakened to `[ "$graded" -lt 1 ]` the chromium-only row goes **EXIT 0** on the same
+fixture. It is deliberately **not** keyed on the `ZERO PACKAGES WERE PRESENT` wording: that is the
+script’s failure text, and a tripwire on failure text goes quietly green the day the text changes. Before
+this change the missing-Firefox-zip case was caught for exactly one tool, by the
+`if: steps.tag.outputs.id == 'fullshot'` AMO step; the new assertion holds for every tool and every
+declared target.
+
+⬜ **OPEN, and not part of this change.** `ci.yml` calls the same script the same bare way in its
+`package` job — `grep -n 'check-store-packages.mjs ${{ matrix.tool }} --dir dist' .github/workflows/ci.yml`
+finds it — so the PR-time twin of this gate still reads an exit code the script disclaims. Fixing it
+belongs with whoever owns `ci.yml`.
+
+### A.2 — CORRECTION to the header block: `release.yml`’s anchored `shell: bash` count is now **4**
+
+The block near the top of this document reports `grep -cE "^        shell: bash$"` as **7** for `ci.yml`
+and **2** for `release.yml`, measured 2026-08-22. The `release.yml` half is superseded: the two steps in
+A.1 each gained a `shell: bash` key, and the same command returned **4** on 2026-08-25.
+
+The `ci.yml` half is **deliberately not re-pinned here.** That file was being edited by other work while
+this was measured, and the same command returned a different number than 7 during it. Run it yourself;
+do not carry either figure forward on trust. The point the original sentence makes — that a handful of
+steps are inline `bash` and are not runnable as-is in PowerShell — is unchanged and now applies to two
+more of them.
+
+### A.3 — CORRECTION to a dated comment inside `release.yml`: one sentence in it is stale
+
+`release.yml`’s 2026-08-22 comment block above the AMO step says:
+
+> The repository’s most detailed AMO gate therefore graded no package on any path, and least of all on the
+> one that ships one.
+
+(`grep -n 'graded no package on any' .github/workflows/release.yml` finds it; line numbers move.)
+
+**That is no longer true, and it is corrected here rather than by rewriting the dated block.** Measured
+2026-08-25: `ci.yml`’s `package` job runs
+
+```
+out=$(node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js --zip "$zip" 2>&1) || code=$?
+```
+
+with the same `grep -q '^ALL PASS$'` wrapper — `grep -n 'verify-firefox-package.node.js --zip'
+.github/workflows/ci.yml` finds it. So the `--zip` limb **is** exercised on CI, on every PR that builds a
+Firefox package. The sentence was true of the tree it described and stopped being true when that `ci.yml`
+step landed. What survives from it is the *reason* the wrapper exists, which is still exactly right: the
+script exits 0 having graded nothing, so both steps assert `ALL PASS` instead of trusting the code.
+
+### A.4 — “The release lane is untested” is FALSE. **Four** things in it have never executed.
+
+`release.yml` has still never fired: `git for-each-ref refs/tags | wc -l` → **0**, `git tag | wc -l` →
+**0**, `git ls-remote --tags origin | wc -l` → **0**, all re-measured 2026-08-25. But *never fired* is not
+*never proven*: most of what it runs is the same call `ci.yml` makes on every PR, and writing off the
+whole lane would send the next reader re-deriving all of it.
+
+Token occurrences over each file’s **full text, comments and prose included** — the literal rule is
+`grep -oE '<token>' <file> | wc -l`, so these are *mentions*, not call counts. Measured 2026-08-25 **after**
+the A.1 edits:
+
+| token | `ci.yml` | `release.yml` |
+| --- | --- | --- |
+| `check-version\.mjs` | 2 | 1 |
+| `pack\.mjs` | 12 | 7 |
+| `\-\-release` | 2 | 5 |
+| `check-store-packages` | 2 | 3 |
+| `verify-refs\.mjs` | 3 | 1 |
+| `web-ext` | 6 | 5 |
+| `verify-firefox-package` | 3 | 1 |
+| `\-\-zip` | 4 | 3 |
+| `\-\-expect` | **0** | 1 |
+| `changelog-section` | **0** | 1 |
+| `sha256sum` | **0** | 5 |
+| `gh release` | **0** | 2 |
+
+The `release.yml` column moved on 2026-08-25 for four of those tokens (`--release` 4→5,
+`check-store-packages` 1→3, `sha256sum` 2→5, `gh release` 1→2) purely because the new comment blocks
+discuss them. That is the counting rule doing what it says, and it is why the load-bearing half of this
+table is the **zeros in the `ci.yml` column**.
+
+**The four genuinely unexecuted things, named precisely:**
+
+1. **`Parse tag  (fullshot-v1.10.1 → id + version)`** — reads `GITHUB_REF_NAME` and writes the `id` and
+   `version` outputs every later step interpolates. It *cannot* exist in `ci.yml`: there is no tag on a
+   PR. Never executed anywhere.
+2. **`Tag must be reachable from main`** — `git fetch --no-tags …` then
+   `git merge-base --is-ancestor "$GITHUB_SHA" origin/main`. Same reason; no `ci.yml` equivalent exists.
+3. **`Checksums` / `sha256sum` / `SHA256SUMS.txt`** — `sha256sum` has **0** hits in `ci.yml`. CI proves
+   determinism through `scripts/sha256.mjs`, a *different program* that hashes two builds and compares
+   them; the coreutils binary and the published digest file are release-only. The rewritten body was
+   exercised locally against the fixtures in A.1, but no runner has ever run this step.
+4. **`Publish GitHub Release` / `gh release create`** — **0** hits in `ci.yml`, and it must never be
+   rehearsed. It carries no `--draft` and both repositories are public, so pushing a test tag publishes a
+   permanent public release. There is no safe way to execute this step as it stands; see A.6.
+
+Two clarifications that keep this list honest:
+
+- **An unproven step is not a broken one.** Nothing above is a defect. It is an inventory of what a first
+  tag will exercise for the first time.
+- **The A.1 wrappers are release-only code and have never run on a runner either**, but their *subjects*
+  (`check-store-packages.mjs`, `sha256sum`) are covered above, and both bodies were extracted from the
+  YAML and run under the runner’s exact flags against passing and failing fixtures. They are not a fifth
+  unknown.
+
+### A.5 — the two release-only *scripts* were exercised off-runner, 2026-08-25
+
+Run from a detached worktree of `main`, bare, exit code captured on its own line:
+
+```
+node scripts/check-version.mjs     fullshot --expect 1.10.2   ->  EXIT 0
+node scripts/check-version.mjs     fullshot --expect 9.9.9    ->  EXIT 1
+node scripts/changelog-section.mjs fullshot 1.10.2            ->  EXIT 0
+node scripts/changelog-section.mjs fullshot 9.9.9             ->  EXIT 1
+```
+
+The red halves are shown deliberately: both gates discriminate, so their green is worth something.
+`changelog-section.mjs` reported on stderr *“emitted [1.10.2] — heading on
+Extension/Full_Screen_Shot/CHANGELOG.md line 25, section ends at line 62 — 34 line(s), 2145 byte(s) on
+stdout”*.
+
+⚠️ **Read that as a line count, not a byte count.** The redirected file is **2148** bytes with **34** LF
+line endings and **5** non-ASCII bytes: the script’s figure is a JavaScript string length, so it
+undercounts every multi-byte character by the bytes they add. The **34 lines** figure reproduces exactly.
+
+### A.6 — PROPOSED, not implemented: a `workflow_dispatch` dry run
+
+The only way to raise confidence in A.4’s items 1–4 without publishing something permanent is to give
+`release.yml` a `workflow_dispatch` trigger with a dry-run input — supplying the tag string by hand,
+running every gate, building both packages and writing `SHA256SUMS.txt`, then **stopping before
+`gh release create`**.
+
+**It is deliberately not done in this change.** It alters the workflow’s trigger surface, which is a
+decision with a cost rather than a cleanup: a second entry point into the one job that holds
+`contents: write` needs its own thinking about who may press it and what an input can reach. It is raised
+in the pull request instead, for a decision.

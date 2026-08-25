@@ -476,6 +476,26 @@ function resolves(entries, ref, ctx, label) {
     ci ? 'CASE MISMATCH: package holds "' + ci + '"' : 'not in the package (' + ctx + ')');
 }
 
+/* The Chrome package must still carry the real importScripts() calls: under an
+   MV3 SERVICE WORKER they are how pages/db.js and pages/batch.js arrive, and a
+   Chrome zip that lost them is dead on first capture.
+
+   INDENT-TOLERANT, NOT LOOSE. background.js:24 guards the calls with
+   `if (typeof importScripts === 'function') {` (2026-08-20, the Firefox port),
+   so the call now sits indented beneath that `if`. The column-0 anchor this
+   check used to carry stopped matching that source and reported a Chrome
+   package defect that did not exist. `^[ \t]*` tolerates the indent and
+   NOTHING else — the trailing `$` and the literal `);` are kept on purpose:
+     · deleting the call            → false (the harm this guards)
+     · replacing it with self.db=1  → false
+     · commenting it out            → false (`//` is not space or tab)
+     · the Firefox background.scripts form, which has no call at all → false
+   A `.includes('importScripts')` or a dropped `$` would pass all four. */
+const CHROME_IMPORTSCRIPTS_RE = /^[ \t]*importScripts\('pages\/db\.js'\);$/m;
+function chromeKeepsImportScripts(bgSrc) {
+  return CHROME_IMPORTSCRIPTS_RE.test(String(bgSrc == null ? '' : bgSrc));
+}
+
 function verifyPackage(zipPath, kind) {
   console.log('\n### ' + path.basename(zipPath) + '  (' + kind + ')');
   if (!fs.existsSync(zipPath)) { check('package exists', false, zipPath); return; }
@@ -743,7 +763,10 @@ function verifyPackage(zipPath, kind) {
   } else {
     const bgSrc = (entries.get('background.js') || Buffer.alloc(0)).toString('utf8');
     check('Chrome package keeps the plain importScripts calls',
-      /^importScripts\('pages\/db\.js'\);$/m.test(bgSrc));
+      chromeKeepsImportScripts(bgSrc),
+      chromeKeepsImportScripts(bgSrc)
+        ? 'importScripts(\'pages/db.js\'); present, guarded or not'
+        : 'the Chrome zip no longer imports pages/db.js — the worker starts with no FSDB');
   }
 }
 
@@ -757,7 +780,8 @@ if (require.main !== module) {
   module.exports = {
     ROOT, ALLOW, NEVER, MAX_DEPTH,
     collect, localeMessageFiles, localesViaAllowRules, localeProblems, readManifests, readZip,
-    mergePatch, mergePatchDrift, firefoxManifest, firefoxManifestBytes, patchProblems
+    mergePatch, mergePatchDrift, firefoxManifest, firefoxManifestBytes, patchProblems,
+    chromeKeepsImportScripts
   };
   return;
 }

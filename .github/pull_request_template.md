@@ -2,7 +2,12 @@
 Title convention (CONTRIBUTING.md → Commits):
   fullshot: guard importScripts for Gecko event pages
   skeleton: fold the report section into the options page
-  repo:     pin setup-node to the v4 major
+  repo:     widen the secret scan to the whole tree
+The three lines above exist to show the SCOPE PREFIX, nothing else. Keep their
+payloads version-free: the `repo:` example used to read "pin setup-node to the
+v4 major", which stopped being true when the workflows moved to the v7 major and
+left a comment block quietly recommending a dead pin. Bumping the number would
+only re-arm the same rot on the next major, so the example no longer names one.
 The tool id (not the directory) is what CI, tags and zip names key on, and it is
 what `discover.mjs` falls back to when path detection is ambiguous. Use
 `skeleton:` for `templates/tool/` and `repo:` for anything at the root.

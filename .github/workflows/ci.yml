@@ -119,6 +119,98 @@ jobs:
             exit 1
           fi
 
+      # ── ONE REF PER ACTION, ACROSS EVERY WORKFLOW FILE ─────────────────────
+      # 🔴 A PARTIAL BUMP IS INVISIBLE AND SELF-PERPETUATING, AND THIS REPOSITORY
+      # HAD ONE FOR MONTHS. 584ba1a ("ci: bump actions/setup-node from 4 to 7
+      # (#1)") rewrote eight of the nine setup-node refs in ci.yml and missed the
+      # ninth, in the `templates parse` job at the bottom of this file. Measured
+      # 2026-08-25 at a564962, before the fix: 13 checkout@v7, 10 setup-node@v7,
+      # 1 setup-node@v4, 3 upload-artifact@v7. Nothing was ever going to catch
+      # it — Dependabot already considers setup-node current at 7, so it will not
+      # open a second PR, and every other signal (a green CI, a clean diff) reads
+      # the same whether the tree is uniform or not. The stale ref runs a
+      # different Node-provisioning action on one job than on the other nine,
+      # which is precisely the kind of difference that shows up as one job
+      # behaving oddly and gets blamed on the job.
+      #
+      # THIS GRADES REF STRINGS, WHICH IS THE RIGHT UNIT HERE AND ONLY HERE.
+      # ⚠️ It would report a 40-hex SHA and the tag it points at as a SPLIT,
+      # because it cannot resolve either. That is deliberate and it is not an
+      # invitation to convert this repo to SHA pins: dependabot.yml's own comment
+      # says CI "uses first-party actions only ... referenced by major tag — which
+      # is exactly what Dependabot can keep current", so the float is the written
+      # policy and SHA-pinning it would silently retire the updater.
+      #
+      # ⚠️ WHAT THIS INPUT CLASS CANNOT EXPRESS: an action invoked from a file
+      # OUTSIDE .github/workflows — a composite action under .github/actions/, or
+      # a workflow kept elsewhere. Measured 2026-08-25, `find .github -maxdepth 2
+      # -type d` returns .github, .github/ISSUE_TEMPLATE and .github/workflows
+      # only, so there is nothing outside the sweep today; the day there is, this
+      # step will keep reporting ONE REF over a tree that has two.
+      - name: Every action is referenced at ONE ref across all workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          # DERIVED, NOT LISTED — the same rule the gate inventory above follows,
+          # and the domain is the literal command rather than a description of it.
+          # It is ANCHORED AT THE LINE START so it reads STEPS, not PROSE: a
+          # comment that mentions an action ref starts with '#', so it cannot
+          # match — and this file discusses action refs at length, the block
+          # directly above included. MEASURED 2026-08-25 on the delivered tree:
+          # the anchored and the unanchored form of this pattern both return 28
+          # matches, so today they agree and the anchoring looks like fussiness.
+          # Plant ONE ordinary comment line that quotes a setup-node ref at the
+          # older major — the way a correction note in this file naturally would —
+          # and the unanchored form climbs to 29 and this step goes RED over a
+          # SENTENCE, reporting that action as SPLIT across two refs, while the
+          # anchored form stays at 28 and EXIT 0. Both numbers were taken that
+          # way rather than asserted. It is the same trap the `shell: bash` count
+          # in the selftest job's comments already pays for once: a count that
+          # its own explanation moves. ⚠️ WHICH IS WHY NO SUCH LITERAL IS WRITTEN
+          # HERE — spelling the example out in full would have made this
+          # paragraph the 29th match and falsified its own first sentence.
+          all=$(grep -rhoE '^[[:space:]]*-?[[:space:]]*uses:[[:space:]]*[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._/-]+@[A-Za-z0-9._-]+' .github/workflows \
+                  | sed -E 's/^.*uses:[[:space:]]*//') || true   # `|| true` so a no-match reaches the required-coverage limb below instead of ending the step under `-e`.
+          # REQUIRED COVERAGE. Zero refs is a RED, never a clean pass: a sweep
+          # that stops matching and a tree that invokes no action are the same
+          # two lines of output, and only one of them is a real state.
+          if [ -z "$all" ]; then
+            echo "::error::this check found no anchored 'uses: <action>@<ref>' line under .github/workflows at all — its own pattern is broken, and it was about to report a uniform inventory over an empty set."
+            exit 1
+          fi
+          # PRINTED RATHER THAN ASSUMED, the same way the gate inventory prints
+          # PRESENT/ABSENT: the counts are the evidence that the sweep saw the
+          # tree, and they are what makes a future partial bump legible in the log
+          # before it is legible in a diff.
+          echo "action refs under .github/workflows, as invoked:"
+          printf '%s\n' "$all" | sort | uniq -c | sed 's/^ */  /'
+          echo
+          split=0
+          actions=0
+          while IFS= read -r row; do
+            [ -n "$row" ] || continue
+            n=${row%% *}
+            rest=${row#* }
+            a=${rest%% *}
+            refs=${rest#* }
+            actions=$((actions + 1))
+            if [ "$n" -eq 1 ]; then
+              printf 'ONE REF  %-26s %s\n' "$a" "$refs"
+            else
+              printf 'SPLIT    %-26s %s\n' "$a" "$refs"
+              echo "::error::$a is invoked at $n different refs ($refs) across .github/workflows. A partial bump is how this happens, and the leftover ref is the one nothing will ever revisit — the updater already believes the action is current."
+              split=$((split + 1))
+            fi
+          done <<< "$(printf '%s\n' "$all" | sort -u \
+                        | awk -F'@' '{n[$1]++; r[$1]=r[$1] (r[$1]=="" ? "" : " ") $2} END {for (a in n) printf "%d %s %s\n", n[a], a, r[a]}' \
+                        | sort -k2,2)"
+          echo
+          echo "$actions distinct action(s) invoked; $split of them at more than one ref."
+          if [ "$split" -gt 0 ]; then
+            echo "::error::$split action(s) above are invoked at more than one ref. Pick one ref per action and use it everywhere; do NOT resolve the disagreement by pinning a SHA, because dependabot.yml is configured against major tags."
+            exit 1
+          fi
+
   discover:
     name: Discover affected tools
     runs-on: ubuntu-latest
@@ -747,7 +839,19 @@ jobs:
     # a worse outcome than an inline loop.
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      # ⚠️ THIS LINE READ `@v4` UNTIL 2026-08-25, AND IT WAS THE LAST ONE THAT
+      # DID. 584ba1a ("ci: bump actions/setup-node from 4 to 7 (#1)") converted
+      # eight of the nine refs in this file and left this one behind. Measured
+      # 2026-08-25: `git show 584ba1a^:.github/workflows/ci.yml | grep -oE
+      # 'setup-node@v[0-9]+' | sort | uniq -c` -> 9 v4; the same command at
+      # 584ba1a -> 1 v4 and 8 v7; and it was still 1 v4 / 8 v7 at a564962.
+      # The straggler was SELF-PERPETUATING: Dependabot already considers
+      # setup-node current at 7, so it will never open a second PR to finish the
+      # job, and nothing else was looking. What is looking now is the
+      # "Every action is referenced at ONE ref" step in the `gate-inventory` job
+      # at the top of this file — the durable half, because fixing one ref
+      # without it just resets the clock until the next partial bump.
+      - uses: actions/setup-node@v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: Every script under templates/ must parse
         shell: bash
@@ -827,3 +931,209 @@ jobs:
             echo "::error::$failed file(s) above do not parse. new-tool.mjs copies this tree into every new tool, so a syntax error here is not one broken file — it is one broken file per tool created from today onward, discovered by whoever creates the next one."
             exit 1
           fi
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # THE ONE CHECK NAME BRANCH PROTECTION CAN REQUIRE.
+  #
+  # 🔴 THE NAME IS THE DELIVERABLE, AND IT IS `ci-required`. A required status
+  # check is configured by its STRING. Three of the jobs above name themselves
+  # from the matrix — `gates · <tool>`, `sims · <tool> · node <n>`,
+  # `package · <tool> · <target> · <os>` — so their check names are a function
+  # of what discovery selected on that push, and there is no stable string to
+  # type into a protection rule for them. Measured 2026-08-25 at a564962:
+  # `grep -cE '^    name:.*matrix\.' .github/workflows/ci.yml` -> 3, and
+  # `grep -rn 'required check|required status|branch protection' --include=*.md
+  # --include=*.yml .` -> no matches, i.e. nothing in the repository has ever
+  # written down what to require. This job is the answer: one job, one fixed
+  # name, and it waits on all of them.
+  #
+  # 🔴 AND HERE IS THE TRAP IT EXISTS TO AVOID, WHICH IS ALSO THE OBVIOUS WAY TO
+  # WRITE IT. The three matrix jobs carry `if: needs.discover.outputs.count !=
+  # '0'`, so on a push that touches no tool they SKIP — and GitHub counts a
+  # SKIPPED required check as SATISFIED. The zero path is reachable and exits 0:
+  # measured 2026-08-25, `node scripts/discover.mjs --base HEAD --out <file>`
+  # prints "selected: NONE (0 file(s) changed and none of them are inside a tool
+  # directory ...)", exits 0, and writes `tools=[]` / `count=0`. So requiring
+  # those names directly would be a rule that is satisfied by nothing running.
+  # The aggregator would recreate that defect EXACTLY if it were written as
+  # `result == 'success' || result == 'skipped'`, because 'skipped' is not one
+  # outcome: it is "nothing to do" and "an upstream job died and took me with
+  # it" wearing the same word. 'skipped' is therefore LICENSED here — allowed
+  # only when discover itself SUCCEEDED and reported count == '0' — and RED in
+  # every other circumstance. 'failure' and 'cancelled' are always RED, and an
+  # outcome nobody enumerated is RED rather than ignored.
+  #
+  # ⚠️ NOT A BEHAVIOUR CHANGE TO THE ZERO PATH. The `Show the matrix` step in
+  # `discover` prints "::notice::no tool was affected by this change — the
+  # per-tool jobs below are skipped on purpose, not by accident", and that stays
+  # a notice. Turning a zero matrix into a build failure is an owner decision,
+  # not a side effect of adding a required check; this job agrees with that
+  # notice rather than overriding it.
+  #
+  # ⚠️ WHAT THIS CANNOT EXPRESS: jobs in the OTHER workflow files. e2e.yml and
+  # release.yml publish their own check names and are not aggregated here — this
+  # job's structural check below reads THIS file only, and says so in its own
+  # output rather than leaving the reader to assume repo-wide coverage.
+  ci-required:
+    name: ci-required
+    needs: [gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      # Read into the environment rather than into the shell body, so the body
+      # below is a plain bash program: the SAME function grades the built-in
+      # cases and this run's real outcomes. A rule that is only ever executed by
+      # GitHub's expression engine cannot be exercised before it is relied on.
+      DISCOVER_COUNT: ${{ needs.discover.outputs.count }}
+      R_GATE_INVENTORY: ${{ needs.gate-inventory.result }}
+      R_DISCOVER: ${{ needs.discover.result }}
+      R_SECRETS_SCAN: ${{ needs.secrets-scan.result }}
+      R_CATALOGUE: ${{ needs.catalogue.result }}
+      R_CORE: ${{ needs.core.result }}
+      R_GATES: ${{ needs.gates.result }}
+      R_SIMS: ${{ needs.sims.result }}
+      R_PACKAGE: ${{ needs.package.result }}
+      R_SELFTEST: ${{ needs.selftest.result }}
+      R_TEMPLATES: ${{ needs.templates.result }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Every job in this workflow is accounted for, and every outcome is graded
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ── THE RULE, ONCE ──────────────────────────────────────────────────
+          # verdict <count> <discover-result> <job=result>...
+          # One line per job on stdout; returns 0 for GREEN, 1 for RED.
+          verdict() {
+            local count="$1"; shift
+            local dres="$1"; shift
+            local rc=0 pair job res
+            for pair in "$@"; do
+              job=${pair%%=*}
+              res=${pair#*=}
+              case "$res" in
+                success)
+                  printf '  ok   %-14s %s\n' "$job" "$res"
+                  ;;
+                skipped)
+                  # 🔴 THE WHOLE POINT OF THIS JOB IS THIS BRANCH. `skipped` is
+                  # NOT a synonym for success; it is licensed only by the one
+                  # input that makes "nothing ran" the correct outcome.
+                  if [ "$dres" = 'success' ] && [ "$count" = '0' ]; then
+                    printf '  ok   %-14s %s  (licensed: discover succeeded and selected 0 tools)\n' "$job" "$res"
+                  else
+                    printf '  RED  %-14s %s  (UNLICENSED: discover=%s count=%s)\n' "$job" "$res" "$dres" "${count:-<empty>}"
+                    rc=1
+                  fi
+                  ;;
+                failure|cancelled)
+                  printf '  RED  %-14s %s\n' "$job" "$res"
+                  rc=1
+                  ;;
+                *)
+                  printf '  RED  %-14s %s  (outcome is not in the allowed set)\n' "$job" "$res"
+                  rc=1
+                  ;;
+              esac
+            done
+            return "$rc"
+          }
+
+          # ── WHO IS GRADED, DERIVED FROM THE PAIRS BELOW, NOT FROM PROSE ─────
+          pairs=(
+            "gate-inventory=$R_GATE_INVENTORY"
+            "discover=$R_DISCOVER"
+            "secrets-scan=$R_SECRETS_SCAN"
+            "catalogue=$R_CATALOGUE"
+            "core=$R_CORE"
+            "gates=$R_GATES"
+            "sims=$R_SIMS"
+            "package=$R_PACKAGE"
+            "selftest=$R_SELFTEST"
+            "templates=$R_TEMPLATES"
+          )
+
+          # ── STRUCTURAL: NO JOB MAY ESCAPE THIS AGGREGATOR ───────────────────
+          # An aggregated required check is only as good as its `needs:` list,
+          # and that list is hand-written — so the next job added to this file
+          # would be outside the required check while looking exactly like part
+          # of it. This reads the job ids back out of the file and refuses a
+          # disagreement. The domain is this file only; e2e.yml and release.yml
+          # are separate check names, stated here and in the output below rather
+          # than left to be assumed.
+          declared=$(awk '/^jobs:/{f=1;next} f && /^  [A-Za-z0-9_-]+:/{sub(/:.*/,"",$1); print $1}' .github/workflows/ci.yml \
+                       | grep -v '^ci-required$' | sort) || true
+          required=$(printf '%s\n' "${pairs[@]}" | sed 's/=.*//' | sort)
+          if [ -z "$declared" ]; then
+            echo "::error::found no job ids in .github/workflows/ci.yml at all — this step's own awk is broken, and it was about to certify that every job is aggregated over an empty set."
+            exit 1
+          fi
+          if [ "$declared" != "$required" ]; then
+            echo "jobs declared in ci.yml (excluding ci-required itself):"
+            printf '%s\n' "$declared" | sed 's/^/  /'
+            echo "jobs this aggregator waits on:"
+            printf '%s\n' "$required" | sed 's/^/  /'
+            echo "::error::the two lists above disagree. A job outside this aggregator's needs list is a job branch protection does not require — it shows on the checks page and blocks nothing. Add it to needs: and to the pairs list in this step."
+            exit 1
+          fi
+          echo "$(printf '%s\n' "$required" | grep -c .) job(s) declared in ci.yml, and this aggregator waits on every one of them (e2e.yml and release.yml are separate check names and are NOT aggregated here)."
+          echo
+
+          # ── THE RULE IS EXERCISED BEFORE IT IS TRUSTED ──────────────────────
+          # 🔴 THESE CASES ARE THE REDDENABILITY HARNESS, AND THEY RUN ON EVERY
+          # PUSH. Cases 2 and 3 are the same job outcomes under different
+          # discovery inputs and they must disagree; a fixture that only ever
+          # supplied count=='1' could not express the skip case at all, and the
+          # defect this job exists to prevent lives exactly there.
+          # MEASURED 2026-08-25, by mutating the rule above and re-running these
+          # same cases: licensing 'skipped' unconditionally (the `success ||
+          # skipped` defect) flips cases 3 and 6 to GREEN — NOT 7, which stays
+          # RED because discover's own 'failure' reds it independently of the
+          # skip rule — and adding 'failure' to the success arm flips 4 and 8.
+          # Two cases per mutation, and the step exits 1 rather than grading the
+          # run, which is what makes this harness a pin and not a decoration.
+          ALL_OK='gate-inventory=success discover=success secrets-scan=success catalogue=success core=success gates=success sims=success package=success selftest=success templates=success'
+          ZERO_MATRIX="${ALL_OK/gates=success/gates=skipped}"
+          ZERO_MATRIX="${ZERO_MATRIX/sims=success/sims=skipped}"
+          ZERO_MATRIX="${ZERO_MATRIX/package=success/package=skipped}"
+          cases=0
+          bad=0
+          expect() {
+            local want="$1" label="$2" count="$3" dres="$4"; shift 4
+            local got=GREEN
+            verdict "$count" "$dres" "$@" >/dev/null 2>&1 || got=RED
+            cases=$((cases + 1))
+            if [ "$got" = "$want" ]; then
+              printf '  ok    %-64s -> %s\n' "$label" "$got"
+            else
+              printf '  FAIL  %-64s -> %s, expected %s\n' "$label" "$got" "$want"
+              bad=$((bad + 1))
+            fi
+          }
+          echo "built-in cases for the rule above:"
+          expect GREEN '1. every job succeeded, one tool selected'                  '1' 'success' $ALL_OK
+          expect GREEN '2. zero matrix: the three per-tool lanes skipped'           '0' 'success' $ZERO_MATRIX
+          expect RED   '3. THE DEFECT: same lanes skipped, but a tool WAS selected' '1' 'success' $ZERO_MATRIX
+          expect RED   '4. a per-tool lane failed'                                  '1' 'success' ${ALL_OK/sims=success/sims=failure}
+          expect RED   '5. a per-tool lane was cancelled'                           '1' 'success' ${ALL_OK/package=success/package=cancelled}
+          expect RED   '6. lanes skipped, count output empty (contract broke)'      ''  'success' $ZERO_MATRIX
+          expect RED   '7. discover failed and the lanes skipped in its wake'       ''  'failure' ${ZERO_MATRIX/discover=success/discover=failure}
+          expect RED   '8. a non-matrix job failed under a legitimate zero matrix'  '0' 'success' ${ZERO_MATRIX/core=success/core=failure}
+          expect RED   '9. an outcome nobody enumerated'                            '1' 'success' ${ALL_OK/core=success/core=neutral}
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad of $cases built-in case(s) above disagree with the rule this job is about to apply. The rule was weakened or the cases were; either way this run's verdict would mean nothing."
+            exit 1
+          fi
+          echo "$cases of $cases built-in case(s) agree with the rule."
+          echo
+
+          # ── AND NOW, THIS RUN ───────────────────────────────────────────────
+          echo "discover: result=$R_DISCOVER count=${DISCOVER_COUNT:-<empty>}"
+          code=0
+          verdict "${DISCOVER_COUNT:-}" "$R_DISCOVER" "${pairs[@]}" || code=$?   # `|| code=$?` and not a bare `code=$?`: `-e` is already on, and a bare capture would abort the step before the table above could be read.
+          if [ "$code" -ne 0 ]; then
+            echo "::error::at least one job above is RED. This is the check to require in branch protection, under the name 'ci-required', and it is red because the tree is — a skipped lane is only licensed by a discover run that succeeded and selected zero tools."
+            exit 1
+          fi
+          echo "ci-required: ${#pairs[@]} job(s) accounted for, every outcome in the allowed set."

@@ -519,6 +519,43 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
       .map(s => s.slice(6, -2)))].sort().join(',');
     check('both manifests spend exactly the same __MSG__ keys',
       keysOf(chrome.mf) === keysOf(firefox.mf), keysOf(firefox.mf));
+
+    /* THE CHROME importScripts LIMB, PINNED. verifyPackage() asks this of a
+       built zip, and nothing in the tree could redden it: it lives in a branch
+       that only runs against a Chrome package, and a package is only ever as
+       fresh as the last build. On 2026-08-20 background.js grew the Firefox
+       guard, the call moved two columns right, and the column-0 anchor the
+       check carried went red on a package that was perfectly correct. That was
+       found by a human reading the log, not by this tier.
+
+       THE FIXTURES ARE WRITTEN OUT, NOT DERIVED. A fixture built only from the
+       real background.js expresses the PASSING class alone and could not fail
+       over any of these; each harmful form below is a literal string. */
+    {
+      const KEEP = PKG.chromeKeepsImportScripts;
+      const realBg = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
+      check('the Chrome importScripts predicate accepts the real background.js', KEEP(realBg) === true,
+        'guarded since 2026-08-20 — the call is indented two spaces under the typeof if');
+      check('...and the same call at column 0 (the pre-guard shape)',
+        KEEP("importScripts('pages/db.js');\nimportScripts('pages/batch.js');\n") === true);
+      check('...and a tab-indented call',
+        KEEP("if (typeof importScripts === 'function') {\n\timportScripts('pages/db.js');\n}\n") === true);
+
+      /* MUTANTS. Each is the source edit whose harm this limb exists to catch. */
+      check('MUTANT deleted: a Chrome zip with the db.js import REMOVED is REJECTED',
+        KEEP("if (typeof importScripts === 'function') {\n  importScripts('pages/batch.js');\n}\n") === false,
+        'the worker would start with no FSDB and every capture would throw');
+      check('MUTANT replaced: `self.db = 1;` in place of the import is REJECTED',
+        KEEP("if (typeof importScripts === 'function') {\n  self.db = 1;\n}\n") === false);
+      check('MUTANT commented out: `// importScripts(...)` is REJECTED',
+        KEEP("if (typeof importScripts === 'function') {\n  // importScripts('pages/db.js');\n}\n") === false,
+        'a dropped $ or a .includes() matcher would accept this');
+      check('MUTANT firefox shape: background.scripts and NO call is REJECTED',
+        KEEP('/* Firefox loads pages/db.js via background.scripts */\nself.FSDB = FSDB;\n') === false,
+        'the Firefox form must never satisfy the CHROME limb');
+      check('MUTANT empty: an unreadable/absent background.js is REJECTED',
+        KEEP('') === false && KEEP(null) === false);
+    }
   }
 
   /* ================= direction: RTL layout, LTR data =====================
