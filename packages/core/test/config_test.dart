@@ -138,11 +138,8 @@ void main() {
           isEmpty);
     });
 
-    test('feature() and text() honor their fallbacks', () {
-      final AppConfig c = AppConfig.fromJson(sublyServerJson())
-          .copyWith(copy: <String, String>{'welcome': 'Hi'});
-      expect(c.text('welcome'), 'Hi');
-      expect(c.text('missing'), 'missing');
+    test('feature() honors its fallback', () {
+      final AppConfig c = AppConfig.fromJson(sublyServerJson());
       expect(c.feature('nope'), isFalse);
       expect(c.feature('nope', orElse: true), isTrue);
     });

@@ -34,6 +34,10 @@
 //      which is byte-identical to the hardcoded literal `DueInfo.of` still
 //      returns, so an implementation that never touched the arb would pass it.
 //      Tamil is what makes the assertion able to fail.
+//      (CORRECTION 2026-08-25: `DueInfo.of` was DELETED — read "still returns"
+//      as "returned". The reasoning is unchanged and the Tamil half is now the
+//      only thing standing between this group and a tautology, so it matters
+//      MORE than it did, not less.)
 //
 //   3. `PoweredByNikatru` RENDERS THE LOCALIZED LINE. Same reasoning, and Tamil
 //      is even sharper here: `poweredByLine` reads "{company} வழங்கும் {app}" —
@@ -607,6 +611,10 @@ void main() {
       // 🔴 This pins the ARB VALUES, not DueInfo. Both live branches of
       // `DueInfo.of` read `In $d days`, so before `dueInDays` became a plural
       // key a one-day horizon anywhere in the app rendered "In 1 days".
+      // (CORRECTION 2026-08-25: `DueInfo.of` is deleted. That is the record of
+      // where the bug came from, not a live call site — and the assertions below
+      // never touched `of`; they read the arb directly, which is why deleting it
+      // moved nothing here.)
       // English needed the plural before Tamil did. DueInfo.localized itself
       // never reaches the =1 arm (d == 1 returns renewsTomorrow first), so if
       // the arm is ever deleted as "unreachable", this is what says otherwise.
@@ -615,25 +623,59 @@ void main() {
       expect(en.dueInDays(1), isNot(en.dueInDays(2)));
     });
 
-    testWidgets('localized keeps of()\'s thresholds and colours', (
+    testWidgets('the colour threshold table, pinned to the tokens', (
       WidgetTester tester,
     ) async {
       final AppLocalizations en = await AppLocalizations.delegate.load(
         const Locale('en'),
       );
 
-      // `of` is retained until the three call sites migrate, which means the
-      // two factories coexist and can DRIFT. The urgency colour is the part a
-      // reader would not notice drifting, so it is asserted across the whole
-      // range rather than at one point.
+      // 🔴 THIS CASE WAS A DRIFT COMPARISON UNTIL 2026-08-25, and it could not
+      // survive as one. It read
+      //     expect(DueInfo.localized(en, s, now).color, DueInfo.of(s, now).color)
+      // across this same range, which was the right limb while `of` and
+      // `localized` were one behaviour spelled twice. `DueInfo.of` is deleted;
+      // pointing both sides of that `expect` at `localized` would leave an
+      // assertion comparing a value to itself, which cannot fail — and it would
+      // have taken the whole range's coverage with it, silently.
+      //
+      // So the comparison is replaced by the thing it was standing in for: the
+      // branch table itself, spelled out and asserted at every day offset rather
+      // than at one point. The urgency colour is the part a reader would not
+      // notice moving, and the boundaries — d <= 1 urgent, d <= 5 near, d > 5
+      // far — are exactly where a `<` written for a `<=` hides.
+      //
+      // ⚠️ NO BRIGHTNESS IS PASSED HERE ON PURPOSE, so the urgent arm is the
+      // dark-safe default `AppColors.warn`. The forked light arm (#9C6406) and
+      // the arithmetic showing no single colour serves both grounds are pinned
+      // by a11y_semantics_test.dart's "the due-label urgent branch clears AA in
+      // BOTH brightnesses". This case is about WHICH BRANCH a given `d` lands
+      // in, not about what the urgent branch is worth on a ground.
       for (int d = -3; d <= 40; d++) {
         final Subscription s = _dueIn(d, now);
+        final Color expected = d <= 1
+            ? AppColors.warn
+            : (d <= 5 ? AppColors.accent : AppColors.muted);
         expect(
           DueInfo.localized(en, s, now).color,
-          DueInfo.of(s, now).color,
-          reason: 'Colour drift between of() and localized() at d = $d.',
+          expected,
+          reason:
+              'DueInfo.localized picked the wrong branch at d = $d. The table '
+              'is: d <= 1 urgent (AppColors.warn, the no-brightness default), '
+              '2 <= d <= 5 AppColors.accent, d > 5 AppColors.muted.',
         );
       }
+
+      // The three tokens must be mutually DISTINCT, or every assertion in the
+      // loop above would pass for a DueInfo that had collapsed two branches into
+      // one. That is the input class the loop cannot express about itself.
+      expect(
+        <Color>{AppColors.warn, AppColors.accent, AppColors.muted},
+        hasLength(3),
+        reason:
+            'two of the three due tokens now hold the same value, so the branch '
+            'table above is no longer observable',
+      );
     });
   });
 

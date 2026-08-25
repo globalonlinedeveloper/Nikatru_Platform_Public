@@ -94,6 +94,27 @@ const DECLARED_WRITERS = [
     // secret must REFUSE, not wave the request through.
     proof: /if\s*\(\s*!\s*configured\s*\)/,
     proofWhat: 'a fail-closed branch on an unset webhook secret',
+    // ── ADDED 2026-08-25 · the GATE that replaced a deleted print ─────────────
+    // The second structural property this legacy rail owes, beside the
+    // fail-closed branch above. Every `INSERT INTO entitlements (…)` in this file
+    // must name `provider_environment` in its COLUMN LIST, because the shared
+    // read decides live-vs-sandbox from that column: a row written without it is
+    // UNDECIDABLE, and an undecidable row is denied. The route already derives
+    // the world from the event and refuses a cross-world one before any write —
+    // this is what keeps that true.
+    //
+    // Checked over EVERY insert, not the first one that matches: a
+    // first-match regex would be satisfied by one honest statement while a
+    // second, blind one sat beside it. And it is the column LIST, not the file:
+    // `SELECT provider_environment …` elsewhere in the same route must not
+    // satisfy it, which is the near-miss the fixture pins.
+    //
+    // NARROW BY DESIGN, and it fails CLOSED: a writer that moves the world onto
+    // an `UPDATE … SET` instead will trip this and must update this row in the
+    // same diff. That is the declaration doing its job.
+    worldColumn: 'provider_environment',
+    worldColumnWhy:
+      'the shared entitlement read decides live-vs-sandbox from this column; a row without it is undecidable and is denied',
   },
   {
     // 🔴 FOUND BY THIS GUARD ON ITS FIRST RUN AGAINST THE REAL TREE, and it is
@@ -271,6 +292,29 @@ for (const w of DECLARED_WRITERS) {
         'without it, the declaration is a claim about code that no longer holds.',
     );
     continue;
+  }
+  // The world column, over EVERY insert in the file. See `worldColumn` above.
+  if (w.worldColumn) {
+    const code = stripComments(src);
+    const inserts = [...code.matchAll(/INSERT\s+INTO\s+entitlements\s*\(([^)]*)\)/gi)];
+    if (inserts.length === 0) {
+      fail(
+        `COVERAGE LOST — ${w.file} is declared with a \`${w.worldColumn}\` column requirement and the scan found ` +
+          'NO `INSERT INTO entitlements (…)` in it at all. Either the write moved to a shape this check cannot ' +
+          'read, in which case the check is asserting nothing, or the declaration is stale. Both are fixed here, ' +
+          'in the row, not by loosening the pattern.',
+      );
+      continue;
+    }
+    const blind = inserts.filter((m) => !new RegExp(String.raw`\b${w.worldColumn}\b`, 'i').test(m[1]));
+    if (blind.length > 0) {
+      fail(
+        `${w.file} — ${blind.length} of ${inserts.length} \`INSERT INTO entitlements\` statement(s) do NOT name ` +
+          `\`${w.worldColumn}\` in the column list. ${w.worldColumnWhy}. The first blind column list was ` +
+          `(${blind[0][1].replace(/\s+/g, ' ').trim()}).`,
+      );
+      continue;
+    }
   }
   printed.push(
     `⚠  ${w.file} — WRITES entitlements behind a \`${w.gate}\` gate, not a signature. ${w.why} RETIREMENT: ${w.retire}`,
@@ -579,6 +623,22 @@ if (!existsSync(join(ROOT, CONTRACT))) {
   // red for a reason that has nothing to do with the tree. The DECLARED_WRITERS
   // row for that file already carries a structural `proof` regex; the column check
   // belongs beside it, in the same change that updates the fixture.
+  //
+  // ── APPENDED 2026-08-25 (same day, later change) · THE GATE LANDED ──────────
+  // The requirement above is now discharged, in the order the note demanded.
+  // FIRST the fixture: tooling/ci/test/mor-adapters.test.mjs's LEGACY_WEBHOOK_TS
+  // was split into three variants that differ ONLY in where
+  // `provider_environment` appears — in the INSERT column list, absent, and
+  // present in the file but outside the column list. THEN the predicate, beside
+  // the structural `proof` regex on the DECLARED_WRITERS row for
+  // services/subly-api/src/routes/webhooks.ts: see `worldColumn` there, enforced
+  // over EVERY `INSERT INTO entitlements (…)` in the file.
+  // MEASURED after the change: `node tooling/ci/assert-mor-adapters.mjs` exits 0
+  // on this tree, `node --test tooling/ci/test/mor-adapters.test.mjs` reports
+  // 38 tests / 38 pass / 0 fail, and the 32 pre-existing cases are all still in
+  // it. Between the two halves — predicate added, fixture not yet taught — 4 of
+  // those 32 were red, which is the interval this note existed to prevent
+  // anyone walking into blind.
 }
 
 // ── report ───────────────────────────────────────────────────────────────────

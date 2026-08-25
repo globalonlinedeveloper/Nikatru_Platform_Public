@@ -164,6 +164,28 @@
 # under `immutable`, so the remaining instance of this defect — the identical
 # `/*.png` rule on sites/rajasekarselvam, which this pass does not own — stays
 # visible on every run instead of becoming permanent by being invisible.
+#
+# 🔄 CORRECTED 2026-08-25 — APPENDED, NOT REWRITTEN. Both halves of the
+# paragraph above are false at head, and each was MEASURED TODAY:
+#   · THE "REMAINING INSTANCE" IS GONE. `grep -n '/\*.png' -A1
+#     sites/rajasekarselvam/_headers` returns `/*.png` followed by
+#     `Cache-Control: public, max-age=0, must-revalidate`, at :134-135, sitting
+#     under that file's OWN dated block — ":67 🔴 FIXED 2026-08-21 — `/*.png` NO
+#     LONGER SAYS `immutable`". That root took the same fix days after this
+#     paragraph was written, which is the outcome the paragraph was hoping for.
+#   · SO NOTHING IS "STAYING VISIBLE" — THERE IS NOTHING LEFT TO PRINT.
+#     `node tooling/ci/assert-web-cache-policy.mjs 2>&1 | grep -c 'STABLE NAMES
+#     DECLARED IMMUTABLE'` = 0, and the guard's bare exit is 0. That print
+#     (assert-web-cache-policy.mjs:508-517) fires only for a file whose name
+#     carries no `-v<n>.` token while its rule still says `immutable`; across the
+#     four scanned bundles there is no such file today.
+#
+# WHAT DID NOT CHANGE, AND IS WHY THE PARAGRAPH ABOVE IS KEPT RATHER THAN CUT:
+# the print is still armed and still runs on every build, so a STABLE-named
+# .jpg/.webp/.svg landing on either root brings that line straight back — which
+# is exactly the case the two paragraphs above reserve. The watcher did not go
+# quiet; the thing it was watching was closed. No Cache-Control value in this
+# file was touched by this correction.
 /*.png
   Cache-Control: public, max-age=0, must-revalidate
 /*.jpg

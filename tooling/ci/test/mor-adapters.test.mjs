@@ -172,12 +172,59 @@ describe('the paddle rail', () => {
 });
 `;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE LEGACY REVENUECAT ROUTE, IN THREE VARIANTS, BECAUSE ONE CANNOT FAIL.
+//
+// 🔴 Until 2026-08-25 there was ONE variant and its INSERT named no
+// `provider_environment`. A single-variant fixture is structurally incapable of
+// failing over the class it is the fixture for — this repo has been bitten by
+// exactly that twice on this date (a zip fixture that wrote the real size into
+// the declared-size slot; a D1 fixture that never answered the pragma key). So
+// the world column arrives with the variants that can tell the two sides apart:
+//
+//   LEGACY_WEBHOOK_TS               the column IS in the INSERT column list
+//   LEGACY_WEBHOOK_NO_WORLD_TS      the column is ABSENT — the pre-2026-08-25 shape
+//   LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS   the token is in the FILE but not in the
+//                                       column list, which is the near miss a
+//                                       file-wide `includes` would wave through
+//
+// The three differ ONLY in where `provider_environment` appears, so a case that
+// separates them is measuring the predicate and nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
 const LEGACY_WEBHOOK_TS = `
 app.post('/revenuecat', async (c) => {
   const configured = c.env.REVENUECAT_WEBHOOK_SECRET;
   if (!configured) return c.json({ error: 'webhook_not_configured' }, 503);
-  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id) VALUES (?)').bind(1).run();
+  const environment = body.event.environment === 'PRODUCTION' ? 'live' : 'sandbox';
+  if (environment !== c.env.MONEY_ENVIRONMENT) return c.json({ error: 'cross_world_event' }, 202);
+  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider, provider_environment, last_event_id) VALUES (?, ?, ?, ?)').bind(userId, 'revenuecat', environment, eventId).run();
   return c.json({ ok: true });
+});
+`;
+
+/** The pre-2026-08-25 shape: the world is derived and then dropped on the floor,
+ *  so the row this writes cannot be decided live-from-sandbox by the shared read. */
+const LEGACY_WEBHOOK_NO_WORLD_TS = `
+app.post('/revenuecat', async (c) => {
+  const configured = c.env.REVENUECAT_WEBHOOK_SECRET;
+  if (!configured) return c.json({ error: 'webhook_not_configured' }, 503);
+  const environment = body.event.environment === 'PRODUCTION' ? 'live' : 'sandbox';
+  if (environment !== c.env.MONEY_ENVIRONMENT) return c.json({ error: 'cross_world_event' }, 202);
+  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider, last_event_id) VALUES (?, ?, ?)').bind(userId, 'revenuecat', eventId).run();
+  return c.json({ ok: true });
+});
+`;
+
+/** The near miss: the route READS the column and still does not WRITE it. */
+const LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS = `
+app.post('/revenuecat', async (c) => {
+  const configured = c.env.REVENUECAT_WEBHOOK_SECRET;
+  if (!configured) return c.json({ error: 'webhook_not_configured' }, 503);
+  const environment = body.event.environment === 'PRODUCTION' ? 'live' : 'sandbox';
+  if (environment !== c.env.MONEY_ENVIRONMENT) return c.json({ error: 'cross_world_event' }, 202);
+  const prior = await c.env.PLATFORM_DB.prepare('SELECT provider_environment FROM entitlements WHERE user_id = ?').bind(userId).all();
+  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider, last_event_id) VALUES (?, ?, ?)').bind(userId, 'revenuecat', eventId).run();
+  return c.json({ ok: true, prior });
 });
 `;
 
@@ -483,5 +530,96 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
     const r = run({ wrangler: `{ "name": "platform", "vars": { "PADDLE_NOTIFICATION_SECRET": "${NTF_SECRET}" } }` });
     assert.equal(r.code, 1);
     assert.match(r.out, /declares PADDLE_NOTIFICATION_SECRET as a committed var/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE WORLD COLUMN — the GATE that replaced a print deleted 2026-08-25.
+//
+// An UNCONDITIONAL `printed.push` used to stand at the bottom of
+// assert-mor-adapters.mjs claiming, on every CI run, that "THE LEGACY REVENUECAT
+// RAIL WRITES NO `provider_environment`". It was FALSE at HEAD — the route has
+// derived the world from the event, refused a cross-world event before any
+// write, and named `provider_environment` in its INSERT column list since the
+// adversarial review that asked for it. A settled fact returning as an open
+// question on every run is this repository's own scar shape, so the print was
+// deleted and its replacement written down as a REQUIREMENT: a gate, beside the
+// structural `proof` regex on that file's DECLARED_WRITERS row.
+//
+// This is that gate's fixture, and the ORDER was load-bearing: the fixture had
+// to learn the class BEFORE the predicate existed, because the single-variant
+// LEGACY_WEBHOOK_TS could not express the passing side at all. MEASURED: with
+// the predicate added and the old one-variant fixture still in place, 4 of the
+// 32 cases in this file went red — every case that runs the default fixture and
+// expects exit 0 — for a reason that had nothing to do with the tree.
+//
+// DIRECTION, pinned in both senses below, because the failure mode of a column
+// check is a looser matcher that turns a red green:
+//   · column in the INSERT column list          → exit 0
+//   · column absent                             → exit 1
+//   · column in the FILE but not the column list→ exit 1  (a `SELECT` is not a write)
+//   · one honest INSERT beside one blind INSERT → exit 1  (checked over EVERY insert)
+//   · no INSERT at all                          → exit 1 as COVERAGE LOST, never ok
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-25]', () => {
+  test('the fixture can express BOTH sides of the class', () => {
+    // House rule: a fixture that omits the input class is a test that cannot
+    // fail over it. This case fails the moment the three variants stop differing
+    // in the one property the predicate reads.
+    assert.match(LEGACY_WEBHOOK_TS, /INSERT INTO entitlements \([^)]*\bprovider_environment\b[^)]*\)/);
+    assert.doesNotMatch(LEGACY_WEBHOOK_NO_WORLD_TS, /provider_environment/);
+    assert.match(LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS, /provider_environment/);
+    assert.doesNotMatch(
+      LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS,
+      /INSERT INTO entitlements \([^)]*provider_environment/,
+      'the near-miss variant must NOT name the column in the INSERT column list',
+    );
+  });
+
+  test('PASSES when the INSERT column list names provider_environment', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}MoR adapters/);
+  });
+
+  test('🔴 FAILS when the INSERT column list does NOT name provider_environment', () => {
+    const r = run({ legacy: LEGACY_WEBHOOK_NO_WORLD_TS });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 1 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
+    assert.match(r.out, /undecidable and is denied/);
+  });
+
+  test('🔴 the token elsewhere in the FILE does not satisfy it — a SELECT is not a write', () => {
+    const r = run({ legacy: LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 1 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
+  });
+
+  test('🔴 one honest INSERT does not cover a blind one beside it', () => {
+    const two = LEGACY_WEBHOOK_TS.replace(
+      '  return c.json({ ok: true });',
+      "  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider) VALUES (?, ?)').bind(userId, 'revenuecat').run();\n  return c.json({ ok: true });",
+    );
+    assert.equal((two.match(/INSERT INTO entitlements/g) ?? []).length, 2, 'the two-insert fixture did not build');
+    const r = run({ legacy: two });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 2 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
+  });
+
+  test('COVERAGE LOST — not ok — when the declared writer stops INSERTing at all', () => {
+    // It still writes (limb 1 keeps it declared), so the column check still has a
+    // duty; what it no longer has is anything to read. It must say so rather than
+    // pass over zero statements, which is how an assertion becomes unfailable.
+    const upd = LEGACY_WEBHOOK_TS.replace(
+      "INSERT INTO entitlements (user_id, provider, provider_environment, last_event_id) VALUES (?, ?, ?, ?)",
+      'UPDATE entitlements SET last_event_id = ? WHERE user_id = ?',
+    );
+    assert.doesNotMatch(upd, /INSERT INTO entitlements/, 'the no-insert fixture did not build');
+    const r = run({ legacy: upd });
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /COVERAGE LOST — services\/subly-api\/src\/routes\/webhooks\.ts is declared with a `provider_environment` column requirement/,
+    );
   });
 });

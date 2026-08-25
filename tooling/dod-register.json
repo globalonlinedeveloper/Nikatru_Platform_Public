@@ -387,7 +387,7 @@
       "basis": "already-satisfied",
       "state": "SATISFIED",
       "evidence": "2.3.2 forbids ANY content flashing more than three times per second (2.3.1, Level A, allows it below the general and red flash thresholds; 2.3.2 removes the threshold escape). Measured 2026-08-13: no timed-media playback exists in the tree (see `vacuityGuard` below — zero video/audio playback plugins in any pubspec.yaml), and every occurrence of the word 'flash' under tooling/bricks/app/__brick__ is about a UI interstitial appearing once at launch (router.dart:279, sign_up_screen.dart:91, onboarding_screen.dart:22, providers.dart:601 and :2183), not about repeated luminance change",
-      "guard": "COVERED BY `vacuityGuard` (assert-no-timed-media.mjs) FOR ITS LARGEST RISK SURFACE, and only for that. Video is where a >3Hz flash realistically arrives; a hand-written Flutter animation that flashes faster than 3Hz is possible and NOT mechanically detectable. This is stated rather than papered over — the guard reduces the surface, it does not close the criterion",
+      "guard": "COVERED BY `vacuityGuard` (assert-no-timed-media.mjs) FOR ITS LARGEST RISK SURFACE, and only for that. Video is where a >3Hz flash realistically arrives; a hand-written Flutter animation that flashes faster than 3Hz is possible and NOT mechanically detectable. This is stated rather than papered over — the guard reduces the surface, it does not close the criterion. ⬜ NOT BUILT AS OF 2026-08-25, AND THIS FIELD NAMES A FILE THAT HAS NEVER EXISTED: `[ -e tooling/ci/assert-no-timed-media.mjs ]` is false in this tree and `git log --diff-filter=D -- tooling/ci/assert-no-timed-media.mjs` returns nothing, so it was not deleted either — it was specified and never written. What this field records is the guard this criterion is SPECIFIED to get, not one that runs today; `vacuityGuard.guardStatus` (decided 2026-08-13) has said so all along and is the honest half. Nothing enforces this row mechanically until that file exists.",
       "guardStatus": "⬜ NOT BUILT — named, not enforced. Do not read this row as coverage",
       "why": "free today, and it is the one adopted criterion whose residual risk is NOT mechanisable. A criterion you cannot fully guard is one you may still adopt — but you may not claim the guard closes it, which is the difference between this row and Guideline 3.1's non-adoption"
     },
@@ -413,7 +413,7 @@
       "conditionalOn": "vacuityGuard",
       "w3cBasis": "WCAG 2.2 Conformance: \"if there is no content to which a success criterion applies, the success criterion is satisfied\"",
       "unmetDebt": false,
-      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`",
+      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`. ⬜ NOT BUILT AS OF 2026-08-25, AND THIS FIELD NAMES A FILE THAT HAS NEVER EXISTED: `[ -e tooling/ci/assert-no-timed-media.mjs ]` is false in this tree and `git log --diff-filter=D -- tooling/ci/assert-no-timed-media.mjs` returns nothing, so it was not deleted either — it was specified and never written. What this field records is the guard this criterion is SPECIFIED to get, not one that runs today; `vacuityGuard.guardStatus` (decided 2026-08-13) has said so all along and is the honest half. Nothing enforces this row mechanically until that file exists.",
       "guardStatus": "⬜ NOT BUILT — named, not enforced. Until it is built this row is a VACUOUS CLAIM WITH NO TRIPWIRE",
       "why": "free while it is true, and false the hour someone ships an onboarding video. That is the whole reason these five carry a guard the four `reclaimed` rows did not need: SC 2.5.7's domain is non-empty and STAYS non-empty, whereas these five are true only about an absence, and an absence is exactly what a single commit reverses"
     },
@@ -426,7 +426,7 @@
       "state": "SATISFIED (vacuously — no prerecorded video in synchronized media exists)",
       "conditionalOn": "vacuityGuard",
       "unmetDebt": false,
-      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`",
+      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`. ⬜ NOT BUILT AS OF 2026-08-25, AND THIS FIELD NAMES A FILE THAT HAS NEVER EXISTED: `[ -e tooling/ci/assert-no-timed-media.mjs ]` is false in this tree and `git log --diff-filter=D -- tooling/ci/assert-no-timed-media.mjs` returns nothing, so it was not deleted either — it was specified and never written. What this field records is the guard this criterion is SPECIFIED to get, not one that runs today; `vacuityGuard.guardStatus` (decided 2026-08-13) has said so all along and is the honest half. Nothing enforces this row mechanically until that file exists.",
       "guardStatus": "⬜ NOT BUILT — named, not enforced. Until it is built this row is a VACUOUS CLAIM WITH NO TRIPWIRE",
       "why": "same absence, same tripwire. 1.2.7 is also the most expensive of the five to retrofit — extended audio description means re-cutting the video itself, not adding a track beside it"
     },
@@ -439,7 +439,7 @@
       "state": "SATISFIED (vacuously — no prerecorded synchronized media and no prerecorded video-only content exists)",
       "conditionalOn": "vacuityGuard",
       "unmetDebt": false,
-      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`",
+      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`. ⬜ NOT BUILT AS OF 2026-08-25, AND THIS FIELD NAMES A FILE THAT HAS NEVER EXISTED: `[ -e tooling/ci/assert-no-timed-media.mjs ]` is false in this tree and `git log --diff-filter=D -- tooling/ci/assert-no-timed-media.mjs` returns nothing, so it was not deleted either — it was specified and never written. What this field records is the guard this criterion is SPECIFIED to get, not one that runs today; `vacuityGuard.guardStatus` (decided 2026-08-13) has said so all along and is the honest half. Nothing enforces this row mechanically until that file exists.",
       "guardStatus": "⬜ NOT BUILT — named, not enforced. Until it is built this row is a VACUOUS CLAIM WITH NO TRIPWIRE",
       "why": "same absence, same tripwire"
     },
@@ -452,7 +452,7 @@
       "state": "SATISFIED (vacuously — no live audio-only content exists)",
       "conditionalOn": "vacuityGuard",
       "unmetDebt": false,
-      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`. ⚠️ THIS ONE IS ONLY PARTLY COVERED: the guard inspects BUNDLED and PACKED assets and the absence of a player, and LIVE audio arrives over the network with no asset to inspect. The player limb (limb 3) is what covers it, and it is the only limb that does",
+      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`. ⚠️ THIS ONE IS ONLY PARTLY COVERED: the guard inspects BUNDLED and PACKED assets and the absence of a player, and LIVE audio arrives over the network with no asset to inspect. The player limb (limb 3) is what covers it, and it is the only limb that does. ⬜ NOT BUILT AS OF 2026-08-25, AND THIS FIELD NAMES A FILE THAT HAS NEVER EXISTED: `[ -e tooling/ci/assert-no-timed-media.mjs ]` is false in this tree and `git log --diff-filter=D -- tooling/ci/assert-no-timed-media.mjs` returns nothing, so it was not deleted either — it was specified and never written. What this field records is the guard this criterion is SPECIFIED to get, not one that runs today; `vacuityGuard.guardStatus` (decided 2026-08-13) has said so all along and is the honest half. Nothing enforces this row mechanically until that file exists.",
       "guardStatus": "⬜ NOT BUILT — named, not enforced. Do not read this row as coverage",
       "why": "same absence. Recorded with its coverage gap named, because 'the guard covers the five' would have been a claim about a guard nobody had written yet"
     },
@@ -465,7 +465,7 @@
       "state": "SATISFIED (vacuously — no prerecorded audio-only content containing speech exists)",
       "conditionalOn": "vacuityGuard",
       "unmetDebt": false,
-      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`",
+      "guard": "assert-no-timed-media.mjs — see `vacuityGuard`. ⬜ NOT BUILT AS OF 2026-08-25, AND THIS FIELD NAMES A FILE THAT HAS NEVER EXISTED: `[ -e tooling/ci/assert-no-timed-media.mjs ]` is false in this tree and `git log --diff-filter=D -- tooling/ci/assert-no-timed-media.mjs` returns nothing, so it was not deleted either — it was specified and never written. What this field records is the guard this criterion is SPECIFIED to get, not one that runs today; `vacuityGuard.guardStatus` (decided 2026-08-13) has said so all along and is the honest half. Nothing enforces this row mechanically until that file exists.",
       "guardStatus": "⬜ NOT BUILT — named, not enforced. Until it is built this row is a VACUOUS CLAIM WITH NO TRIPWIRE",
       "why": "🔴 THE ONE OF THE FIVE MOST LIKELY TO GO FALSE, AND THE MEASUREMENT SAYS WHY. [ADR 019] locks audio/TTS to Google Cloud Chirp 3 HD, banked as content. 1.4.7 binds on prerecorded audio-only content that is primarily SPEECH — which is precisely what a TTS pipeline emits. The absence protecting this row is a schedule, not a design"
     },

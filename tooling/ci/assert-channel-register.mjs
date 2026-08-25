@@ -1964,6 +1964,90 @@ if (gradleFilesCrossChecked > 0) {
         );
       }
     }
+
+    // ── limb (iii), added 2026-08-25 · A FORMAT NO LANE EMITS MAY NOT NAME A
+    //    PACKAGER ──────────────────────────────────────────────────────────
+    // Until today nothing in this guard read `packagedBy` past its own key. §10
+    // asserted format-set equality in both directions and the presence of
+    // `flutterTarget`, and `node tooling/ci/assert-channel-register.mjs` exited
+    // 0 while three of the eight entries described packaging steps that do not
+    // exist:
+    //   · `.AppImage` — "AppImage packaging — tooling/ci/appimage-signing.mjs
+    //     and its lane". `grep -rn -E "appimagetool|linuxdeploy|AppImageKit"
+    //     --include=*.mjs --include=*.yml --include=*.sh`, excluding
+    //     node_modules/ and .bundles/, returns ZERO lines; appimage-signing.mjs
+    //     says on its own line 3 that it materialises the SIGNING KEY. It signs,
+    //     it does not package.
+    //   · `.pkg` — "productbuild + notarisation". `productbuild` appears in no
+    //     workflow in this repository, and apple-signing.mjs:182 states it
+    //     outright: "The `productbuild` step stays a printed intent."
+    //   · `.ipa` — `null`, and no lane runs `flutter build ipa`.
+    // Only `.exe` said so out loud, and it said so where nothing could read it.
+    //
+    // 🔴 KEYED ON EMISSION, NOT ON FILE EXISTENCE. The obvious limb — "packagedBy
+    // must name a path that exists" — is GREEN on all three, because
+    // appimage-signing.mjs and apple-signing.mjs are both real files sitting in
+    // tooling/ci/. It is the VERB that is false, not the path. So the right-hand
+    // side is section 3b's emitted-format set — `allEmits`, already computed
+    // there from the same workflows the register names — and never the
+    // filesystem. A second scanner over .github/ would be the third one in this
+    // file and would drift from the first.
+    //
+    // `null` IS A CLAIM AND NOT A FREE PASS. On `.aab` it means "flutter build
+    // appbundle leaves the artifact where the lane picks it up and no packaging
+    // step is needed", which is true. On a format no lane emits it makes exactly
+    // that sentence about a build verb nothing runs, which is the same silence
+    // the two prose entries were shipping — so it is held to the same sentinel.
+    // ⚠️ WHAT THIS LIMB CANNOT SEE, recorded so nobody reads more into a pass
+    // than is there. `.exe` is skipped here because it IS emitted — BUILD_TARGETS
+    // maps `flutter build windows` to ".exe" and the windows job runs it — while
+    // the `.exe` entry's own sentinel is about an INSTALLER, which is a different
+    // artifact wearing the same suffix. Its honesty is therefore not what saves
+    // it. The reverse direction (a format a lane DOES emit that carries the
+    // NOT-IMPLEMENTED sentinel) is deliberately NOT a failure for exactly that
+    // reason: it would fire on `.exe` today and it would be wrong.
+    const NOT_PACKAGED = 'NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY';
+    const emittedFormats = new Set();
+    for (const e of allEmits.values()) for (const f of e.formats) emittedFormats.add(f);
+    if (emittedFormats.size === 0) {
+      // Not a bypass: with an empty right-hand side EVERY entry is "emitted by no
+      // lane", so the per-format loop below would fire on all of them and none of
+      // those messages would be true. One honest failure instead of eight false
+      // ones — still red, because a scan that reaches nothing is the way this
+      // limb would otherwise stop meaning anything.
+      problems.push(
+        'COVERAGE LOST — section 3b\'s workflow scan yielded no emitted artifact format for any platform, so ' +
+          '§10 limb (iii) has nothing to compare `packagedBy` against. The build-verb and upload-path extraction ' +
+          'has stopped reaching the workflows this register names.',
+      );
+    } else {
+      let unbuilt = 0;
+      let sentinelled = 0;
+      for (const f of built) {
+        if (emittedFormats.has(f)) continue;
+        unbuilt++;
+        const claim = ab.formats[f]?.packagedBy;
+        if (typeof claim === 'string' && claim.includes(NOT_PACKAGED)) {
+          sentinelled++;
+          continue;
+        }
+        problems.push(
+          `artifactBuild.formats["${f}"] describes a packaging step and NO lane this register names emits "${f}". ` +
+            (claim === null || claim === undefined
+              ? '`packagedBy` is null — the sentence that means "the build verb leaves the artifact and nothing further is needed", said about a verb no workflow runs. '
+              : `\`packagedBy\` reads "${String(claim)}", which reads as a live packaging step. `) +
+            `The lanes emit ${fmtList([...emittedFormats].sort())} and nothing else. Either wire the packaging step into a lane, ` +
+            `or append a dated correction carrying the sentinel ".exe" already carries — the literal "${NOT_PACKAGED}". ` +
+            'A format nobody builds, described by a packager nobody runs, is the store-pipeline failure §10 was lifted to stop: ' +
+            'the note is not wrong where anyone reads it, it is wrong where nothing does.',
+        );
+      }
+      ok(
+        `artifactBuild packagers — ${emittedFormats.size} format(s) emitted by a lane; ${unbuilt} declared format(s) emitted by NONE, ` +
+          `${sentinelled} of which say so with the NOT-IMPLEMENTED sentinel [§10 limb (iii), 2026-08-25]`,
+      );
+    }
+
     ok(`artifactBuild — ${built.size} format(s), every one declared by a channel and every declared format built [lifted from store-pipeline 2026-08-20]`);
   }
 

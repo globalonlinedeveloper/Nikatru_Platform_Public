@@ -375,8 +375,35 @@ if (apps === null || apps.length === 0) {
 }
 const APPS = new Set(apps);
 
-/** The sentinel a `${{ … }}` leaves behind when nothing here can resolve it. */
-const DYNAMIC = ' dynamic ';
+/** The sentinel a `${{ … }}` leaves behind when nothing here can resolve it.
+ *
+ *  WRITTEN AS \u0000 ESCAPES, NOT RAW NUL BYTES, AND THAT IS THE POINT OF THE
+ *  LINE LOOKING LIKE THIS. Until 2026-08-25 it carried two LITERAL NULs — at byte
+ *  offsets 22908 and 22916 of this file AS OF 57e6e10, which is where to verify
+ *  it, because this comment has since shifted every offset below it — and ripgrep
+ *  therefore classified this whole file as
+ *  binary and SKIPPED IT WITHOUT A WORD unless the searcher remembered `-a`. A
+ *  sweep for any string in this guard came back clean and wrong — the same
+ *  false-negative shape as grepping this repo from the root and never opening
+ *  the gitignored trees. Measured that day, immediately either side of the
+ *  rewrite: the tooling-wide text-reductions import sweep answered 46 and 43
+ *  WITHOUT `-a` before, 47 and 44 after, and 47 and 44 with `-a` throughout.
+ *  assert-guard-coverage.mjs booked this removal as owed and now carries the
+ *  dated re-measurement.
+ *
+ *  THE VALUE IS UNCHANGED: NUL + 'dynamic' + NUL, utf8
+ *  0064796e616d696300, byte-identical to what this line evaluated to at 57e6e10.
+ *
+ *  DO NOT "simplify" the escapes into a plain word. Measured 2026-08-25: mutating
+ *  this to 'dynamic' leaves BOTH this guard and
+ *  test/release-lane-generic.test.mjs at EXIT 0 — no fixture expresses the input
+ *  class the NULs defend, namely a workflow path whose app segment is the literal
+ *  word `dynamic`, so that particular loosening is UNPINNED and this comment is
+ *  the only thing standing in front of it. The escapes themselves ARE pinned:
+ *  write \\u0000 (literal backslash text instead of a NUL) and guard and test
+ *  both go to EXIT 1 together.
+ */
+const DYNAMIC = '\u0000dynamic\u0000';
 
 /** `KEY: value` under every `env:` block in the file — workflow level and job
  *  level merged. Merging is deliberate and it is what closes the bypass: the

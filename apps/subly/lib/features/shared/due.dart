@@ -47,6 +47,28 @@ class DueInfo {
   /// same amber warning. It is the same step `app_colors.dart:100-113` already
   /// measured and named when it recorded the status-trio fork as owed.
   ///
+  /// ── CORRECTION 2026-08-25 · THE LINE NUMBERS ABOVE MOVED ────────────────
+  /// Appended, not a rewrite: the ratios and the argument are unchanged and
+  /// still measured. What moved is the CITATIONS. `_neutrals` was hoisted out of
+  /// `budget_screen.dart`, `calendar_screen.dart` and `insights_screen.dart`
+  /// into `features/shared/neutrals.dart` in the same change that deleted
+  /// `DueInfo.of`, and every deleted line was near the top of its file, so every
+  /// citation below its import block shifts by a fixed amount. Measured with
+  /// `wc -l` before and after on 2026-08-25:
+  ///   · `calendar_screen.dart`  857 → 842 lines  (−15)
+  ///   · `budget_screen.dart`    581 → 560 lines  (−21)
+  ///   · `insights_screen.dart`  688 → 673 lines  (−15)
+  /// So `calendar_screen.dart:823-829` above now reads 808-814.
+  ///
+  /// ⚠️ AND THAT CITATION WAS ALREADY SEVEN LINES HIGH BEFORE THE SHIFT, which
+  /// is worth saying because subtracting 15 from a wrong number gives a wrong
+  /// number. Measured 2026-08-25 against `git show HEAD:` for the pre-change
+  /// file: 823-829 spanned the `Text(s.name, …)` above the due label, and the
+  /// `Text(due.label, …)` this paragraph is about began at 830. Today it is at
+  /// `calendar_screen.dart:815` — 830 − 15, the same −15. `home_screen.dart` and
+  /// `subscription_detail_screen.dart` were not edited in this change and their
+  /// citations stand as written.
+  ///
   /// 📌 IT IS A LOCAL CONST BECAUSE THE TOKEN IT BELONGS TO IS NOT IN THIS
   /// PACKAGE. The right long-term home is a `warnText` slot on `AppThemeX`
   /// beside the existing `warn`, resolved by brightness the way `AppText.of`
@@ -84,32 +106,36 @@ class DueInfo {
   /// The parameter is a plain [Brightness] rather than a [BuildContext] for the
   /// same reason [localized] takes an [AppLocalizations]: a context-free
   /// signature keeps both factories testable without pumping a widget.
+  ///
+  /// ── CORRECTION 2026-08-25 ──────────────────────────────────────────────
+  /// Everything above stands as measured; this is appended, not a rewrite.
+  /// 🔴 THE SENTENCE "UNTIL EACH PASSES `Theme.of(context).brightness` THEY
+  /// KEEP THE EXACT COLOUR THEY RENDER TODAY" IS NOW MEASURED FALSE. All
+  /// three live call sites migrated. Measured 2026-08-25:
+  /// `grep -rnF 'DueInfo.localized(' --include=*.dart apps/subly/lib` returns
+  /// FOUR lines — `features/home/home_screen.dart:1152`,
+  /// `features/calendar/calendar_screen.dart:728`,
+  /// `features/detail/subscription_detail_screen.dart:134`, and this comment's
+  /// own mention of the name three lines above. The three call sites are those
+  /// first three, and every one of them passes
+  /// `brightness: Theme.of(context).brightness`. So no shipped surface reaches
+  /// the default any more, and the `except:` exemptions those unmigrated sites
+  /// paid for are gone from `a11y_semantics_test.dart`.
+  ///
+  /// ⚠️ THE DEFAULT IS KEPT, AND IT IS STILL DARK-SAFE ON PURPOSE. It is now
+  /// reached only from tests, but flipping it to [Brightness.light] would
+  /// still be the wrong trade for any future caller that forgets the
+  /// argument: dark would regress from 5.74:1 to 2.49:1, which is worse than
+  /// the 2.15:1 the light default would replace. `a11y_semantics_test.dart`
+  /// pins the default's identity for exactly that reason.
+  ///
+  /// 📌 `DueInfo.of` — the retained English-only factory the paragraphs above
+  /// and the [_warnOnLight] doc both name — WAS DELETED IN THIS SAME CHANGE,
+  /// its last four callers all being assertions in `apps/subly/test`. Every
+  /// surviving `[of]` reference above is therefore historical: read it as
+  /// "the factory that existed when this was measured", not as a link.
   static Color _urgentText(Brightness? brightness) =>
       brightness == Brightness.light ? _warnOnLight : AppColors.warn;
-
-  /// The English-only original. **RETAINED DURING THE L10N MIGRATION.**
-  ///
-  /// The workorder specifies changing this signature to take an
-  /// [AppLocalizations]; doing that in one step would drag the three call sites
-  /// (home:459, calendar:256, detail:56) into this increment, and those files
-  /// belong to later file-group increments that also port their date tables and
-  /// dark tokens. Adding [localized] alongside instead keeps every increment
-  /// independently compilable and collision-free — the three call sites migrate
-  /// with their own files, and the FINAL cleanup increment deletes this method
-  /// once the last one has moved. Do not add new callers.
-  ///
-  /// ⚠️ [brightness] IS CARRIED HERE TOO, NOT ONLY ON [localized]. The two
-  /// factories are one behaviour spelled twice; forking only the live one would
-  /// leave this method handing out a 2.15:1 light colour that its own tests
-  /// would go on calling correct, and the cleanup increment above would then
-  /// delete the record of the fix along with the method. See [_urgentText].
-  static DueInfo of(Subscription s, DateTime now, {Brightness? brightness}) {
-    final int d = s.daysUntil(now);
-    if (d <= 0) return DueInfo('Due today', _urgentText(brightness));
-    if (d == 1) return DueInfo('Renews tomorrow', _urgentText(brightness));
-    if (d <= 5) return DueInfo('In $d days', AppColors.accent);
-    return DueInfo('In $d days', AppColors.muted);
-  }
 
   /// The localized form. Identical thresholds and colors to [of]; only the label
   /// comes from the arb.

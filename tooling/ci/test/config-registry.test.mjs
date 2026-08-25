@@ -149,6 +149,11 @@ const DART = {
   // would be measuring the Dart class rather than the tree), and limb 10's
   // subject is the accessor's own declaration — so a fixture carrying neither
   // proves neither.
+  // (CORRECTION 2026-08-25: limb 10 and its cases 10a–10h are deleted, and so is
+  //  `AppConfig.text` in the real class. The `text` member is kept in this
+  //  fixture ONLY so the fixture keeps resembling a Dart class with more than
+  //  one method — no case reads it any more. `theme` is still load-bearing for
+  //  every limb-9 case below.)
   'packages/core/lib/src/config/app_config.dart': `class AppConfig {\n  final Map<String, Object?>? theme;\n  final Map<String, String> copy;\n  bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;\n  String text(String key) => copy[key] ?? key;\n}\n`,
   'apps/subly/lib/state/providers.dart': `const String kPromoCardFeature = 'promo_card_enabled';\n`,
   // 🔴 IT DECLARES ITS RECEIVER `core.AppConfig? cfg`, AND THAT IS NOT
@@ -558,6 +563,20 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
 //   E′ (limb 10: `String text(String key, {String? fallback})` PLUS a non-test
 //        caller) → EXIT 0 on the shipped guard, EXIT 1 on the fixed one.
 // 9k below is B′ as a fixture; 10h is E′.
+//
+// ── CORRECTION 2026-08-25 · THE LIMB-10 HALVES OF THIS RECORD HAVE NO SUBJECT ─
+// The runs above are left exactly as measured; this is appended, not a rewrite.
+// LATER THE SAME DAY `AppConfig.text` WAS DELETED from packages/core's
+// app_config.dart along with its only two callers, and limb 10 was deleted with
+// it rather than left as a branch that could only ever print "its subject is
+// gone". So of the runs recorded above:
+//   · D  (`cfg.text('promo.card.title')` in home_screen.dart → EXIT 1 on limb
+//        10) no longer has a limb to fail. Re-running it today would exit 0.
+//   · E′ (the signature-change-plus-caller run) likewise. Its fixture, 10h, was
+//        deleted in the same change, together with 10a–10g.
+// The limb-9 runs — A, B, C, A′, B′, C′, D′ — are untouched and 9k below is
+// still B′ as a fixture; only the "10h is E′" half of that sentence is stale, and
+// this note is what retires it.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-config-registry — 9 · an OPTIONAL AppConfig field is still a field', () => {
   test('9a · the armed tripwire is PRINTED on the passing tree, not asserted away', () => {
@@ -764,112 +783,5 @@ describe('assert-config-registry — 9 · an OPTIONAL AppConfig field is still a
     );
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*resolved ZERO AppConfig-typed identifiers/);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 10 · THE DEAD COPY ACCESSOR DOES NOT ACQUIRE A USER-FACING READER
-// ─────────────────────────────────────────────────────────────────────────────
-describe('assert-config-registry — 10 · AppConfig.text(key) stays uncalled', () => {
-  test('10a · the armed tripwire is PRINTED on the passing tree', () => {
-    const r = run(tree());
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-  });
-
-  test('10b · a non-test caller FAILS, with the [O3] reason', () => {
-    const r = run(
-      tree({
-        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}String t(cfg) => cfg.text('promo.card.title');\n` },
-      }),
-    );
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /`AppConfig\.text\(key\)` has a non-test caller[\s\S]*never the raw key/);
-  });
-
-  test('10c · `find.text(` is flutter_test, not the accessor — excluded by RECEIVER', () => {
-    // The `/test/` filter would normally hide this shape. Relying on that alone
-    // is relying on a coincidence: a screenshot harness or a golden helper that
-    // lives outside a `test/` directory would fire the limb for the wrong
-    // reason, and the fix would be to loosen it — the dangerous direction.
-    const r = run(
-      tree({
-        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}final f = find.text('Skip');\n` },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-  });
-
-  test('10d · a caller in a TEST file is not a caller — that is the state being reported', () => {
-    const r = run(
-      tree({
-        dart: { ...DART, 'packages/core/test/config_test.dart': "void main() {\n  expect(c.feature('renewals'), isTrue);\n  expect(c.text('welcome'), 'Hi');\n}\n" },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-  });
-
-  test('10e · a caller inside a COMMENT is not a caller — the brick explains why it does NOT call it', () => {
-    // Not hypothetical: tooling/bricks/…/onboarding_screen.dart carries a doc
-    // comment naming `AppConfig.text(key)` as the thing it deliberately avoids.
-    // A raw-text scan reads that explanation as the caller this limb hunts.
-    const r = run(
-      tree({
-        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `/// Never cfg.text(key) — it falls back to the raw key. [O3]\n${DART['apps/subly/lib/features/home/home_screen.dart']}` },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-  });
-
-  test('10f · with the accessor DELETED the limb says its subject is gone, not "clean"', () => {
-    const r = run(
-      tree({
-        dart: { ...DART, 'packages/core/lib/src/config/app_config.dart': DART['packages/core/lib/src/config/app_config.dart'].replace(/  String text.*\n/, '') },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` is no longer declared/);
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 10f PINNED THE DELETION CASE ONLY, and that was the gap (2026-08-25). The
-  // subject test was the accessor's SIGNATURE spelled out —
-  // `/\bString\s+text\s*\(\s*String\s+\w+\s*\)/` — so a signature CHANGE
-  // read as a deletion: the limb printed "its subject is gone … ranges over
-  // nothing" and PASSED while the accessor was still there, still returning the
-  // raw key, still able to acquire callers. Same disarm direction as limb 9's,
-  // one limb over.
-  // ───────────────────────────────────────────────────────────────────────────
-
-  const RESIGNED = DART['packages/core/lib/src/config/app_config.dart'].replace(
-    '  String text(String key) => copy[key] ?? key;',
-    '  String text(String key, {String? fallback}) => copy[key] ?? fallback ?? key;',
-  );
-
-  test('10g · a SIGNATURE change is not a deletion — the limb stays ARMED', () => {
-    const r = run(tree({ dart: { ...DART, 'packages/core/lib/src/config/app_config.dart': RESIGNED } }));
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-    assert.doesNotMatch(r.out, /`AppConfig\.text` is no longer declared/);
-  });
-
-  test('10h · …and with a non-test caller beside it, it still FAILS', () => {
-    // Against the shipped subject test this exact tree EXITED 0 with "subject is
-    // gone". Measured the same way on a worktree of 6d67631 (run E′ in the limb
-    // 9 record above), which is what makes this a pin rather than a fixture.
-    const r = run(
-      tree({
-        dart: {
-          ...DART,
-          'packages/core/lib/src/config/app_config.dart': RESIGNED,
-          'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}String _t(core.AppConfig cfg, String k) => cfg.text(k);\n`,
-        },
-      }),
-    );
-    assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /`AppConfig\.text\(key\)` has a non-test caller/);
   });
 });

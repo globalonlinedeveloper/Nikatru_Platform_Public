@@ -367,6 +367,16 @@ const gradleFile = ({
    falls back to 'web' so the register stays well formed and the test fails on the
    thing it is testing rather than on a missing verb. */
 const FIXTURE_BUILD_VERB = { 'static-bundle': 'web', '.msix': 'windows', '.aab': 'appbundle' };
+/* §10 limb (iii) — `packagedBy` DEFAULTS TO THE NOT-IMPLEMENTED SENTINEL in every
+   fixture, because a fixture tree packages nothing: the only build step any of
+   these workflows runs is `flutter build web` in the lane, so every format but
+   `static-bundle` is emitted by no lane. Defaulting to `null` (what this file did
+   until 2026-08-25) made the ~50 cases above red on a limb none of them is about.
+   The `packagedBy` knob overrides one format, and it is the knob the limb's own
+   cases turn — including back to `null`, which the limb treats as a claim and not
+   as an absence. */
+const FIXTURE_UNPACKAGED =
+  '\u{1F534} NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY \u2014 a fixture tree runs no packaging step.';
 
 function tree({
   mutate = null,
@@ -406,6 +416,10 @@ function tree({
   withRecipeScript = false,
   recipeScriptOnDisk = true,
   recipeScriptInvoked = true,
+  // §10 limb (iii): per-format override of `artifactBuild.formats[f].packagedBy`.
+  // `{ '.msix': null }` is a real case — the limb holds null to the same sentinel
+  // as prose — so membership, not truthiness, decides whether the default applies.
+  packagedBy = {},
   // Extra files written into the fixture root, for cases that need a real ADR
   // on disk beside the harness marker.
   extraFiles = {},
@@ -468,7 +482,10 @@ function tree({
     formats: Object.fromEntries(
       [...new Set(register.channels.flatMap((c) => c.artifactFormats ?? []))].map((f) => [
         f,
-        { flutterTarget: FIXTURE_BUILD_VERB[f] ?? 'web', packagedBy: null },
+        {
+          flutterTarget: FIXTURE_BUILD_VERB[f] ?? 'web',
+          packagedBy: Object.prototype.hasOwnProperty.call(packagedBy, f) ? packagedBy[f] : FIXTURE_UNPACKAGED,
+        },
       ]),
     ),
   };
@@ -2161,7 +2178,10 @@ describe('assert-channel-register — §10 artifactBuild and the signing seams',
 
   test('M3 a build verb for a format NO channel declares is caught', () => {
     const { code, out } = run(tree({
-      breakArtifactBuild: (r) => { r.artifactBuild.formats['.deb'] = { flutterTarget: 'linux', packagedBy: null }; },
+      // `packagedBy` carries the sentinel so limb (iii) stays silent: `.deb` is
+      // emitted by no lane either, and two failures for one mutation is a red
+      // result nobody can attribute.
+      breakArtifactBuild: (r) => { r.artifactBuild.formats['.deb'] = { flutterTarget: 'linux', packagedBy: FIXTURE_UNPACKAGED }; },
     }));
     assert.equal(code, 1, out);
     assert.match(out, /describes a build verb for a format NO channel declares/);
@@ -2202,6 +2222,96 @@ describe('assert-channel-register — §10 artifactBuild and the signing seams',
     assert.equal(code, 1, out);
     // It must say the cross-check ranged over nothing, not merely pass.
     assert.match(out, /COVERAGE LOST|no `artifactFormats`/);
+  });
+
+  // ── limb (iii), 2026-08-25 · a format NO LANE EMITS may not name a packager ──
+  // The real defect: `.AppImage` said "AppImage packaging — tooling/ci/appimage-signing.mjs
+  // and its lane", `.pkg` said "productbuild + notarisation", `.ipa` said `null`, and the
+  // guard exited 0 over all three. Direction proven against the REAL tree before these cases
+  // were written: with the limb added and the register text UNCHANGED,
+  // `node tooling/ci/assert-channel-register.mjs` exited 1 with exactly three FAIL lines
+  // (.ipa, .pkg, .AppImage); with the three corrections appended it exits 0 and prints
+  // "3 declared format(s) emitted by NONE, 3 of which say so with the NOT-IMPLEMENTED sentinel".
+  //
+  // 🔴 THE FIXTURE'S EMITTED SET IS ONE FORMAT WIDE AND THAT IS THE POINT. The lane workflow
+  // runs `flutter build web`, so `static-bundle` IS emitted and `.msix` is NOT — one tree
+  // carrying both input classes, which is what a single-fixture test of this limb cannot
+  // express. `LIVE_CLAIM` below is the SAME string on both, so the two verdicts differ on
+  // emission and on nothing else.
+  const LIVE_CLAIM = 'packaged by tooling/ci/appimage-signing.mjs in its lane, on every release run.';
+
+  test('FAILS when a format NO lane emits names a live packager', () => {
+    const { code, out } = run(tree({ packagedBy: { '.msix': LIVE_CLAIM } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /artifactBuild\.formats\["\.msix"\] describes a packaging step and NO lane this register names emits "\.msix"/);
+    assert.match(out, /reads as a live packaging step/);
+    // It must say what the lanes DO emit, or the reader cannot tell a false claim
+    // from a scan that stopped reaching the workflows.
+    assert.match(out, /The lanes emit "static-bundle" and nothing else/);
+  });
+
+  // 🔴 THE TRAP THIS LIMB WAS WRITTEN AROUND. "packagedBy must name a path that
+  // exists" is GREEN on the real `.AppImage` entry, because tooling/ci/appimage-signing.mjs
+  // is a real file — it signs, it does not package. Here the named file is written
+  // into the fixture root, so the existence-keyed limb would pass and this one
+  // must still fail: it is the VERB that is false, not the path.
+  test('FAILS even when the named packaging script really is on disk', () => {
+    const { code, out } = run(
+      tree({
+        packagedBy: { '.msix': LIVE_CLAIM },
+        extraFiles: { 'tooling/ci/appimage-signing.mjs': '// a real file that signs and does not package\n' },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /NO lane this register names emits "\.msix"/);
+  });
+
+  // `null` is a claim: "the build verb leaves the artifact and nothing further is
+  // needed". True of `.aab`; a lie about a verb no workflow runs, which is what the
+  // real `.ipa` entry was. Without this case the limb would be an opt-out — delete
+  // the sentence and pass.
+  test('FAILS when a format NO lane emits carries packagedBy: null', () => {
+    const { code, out } = run(tree({ packagedBy: { '.msix': null } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /artifactBuild\.formats\["\.msix"\]/);
+    assert.match(out, /`packagedBy` is null/);
+  });
+
+  // 🔴 THE INPUT CLASS A SINGLE FIXTURE CANNOT EXPRESS — the negative control.
+  // The SAME live-sounding string on a format the lane really does emit must pass,
+  // or the limb is "no packagedBy string is ever allowed" wearing a longer message.
+  test('PASSES when the very same live claim sits on a format the lane DOES emit', () => {
+    const { code, out } = run(tree({ packagedBy: { 'static-bundle': LIVE_CLAIM } }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /describes a packaging step and NO lane/);
+  });
+
+  test('the NOT-IMPLEMENTED sentinel is what closes it, and the count is printed', () => {
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    // 1 emitted (static-bundle, from `flutter build web` in the lane), 1 declared
+    // and emitted by nothing (.msix), and that one carries the sentinel.
+    assert.match(
+      out,
+      /artifactBuild packagers — 1 format\(s\) emitted by a lane; 1 declared format\(s\) emitted by NONE, 1 of which say so/,
+    );
+  });
+
+  // The count is a measurement, not decoration: emitting `.msix`'s platform in
+  // another format must not change it, but emitting nothing at all must.
+  test('a format moves out of the "emitted by NONE" count when a lane starts emitting it', () => {
+    const before = run(tree({ mutate: (r) => { r.channels[1].artifactFormats = ['.exe']; } }));
+    assert.equal(before.code, 0, before.out);
+    assert.match(before.out, /1 declared format\(s\) emitted by NONE/);
+
+    const after = run(
+      tree({
+        windowsRun: 'flutter build windows --release',
+        mutate: (r) => { r.channels[1].artifactFormats = ['.exe']; },
+      }),
+    );
+    assert.equal(after.code, 0, after.out);
+    assert.match(after.out, /2 format\(s\) emitted by a lane; 0 declared format\(s\) emitted by NONE/);
   });
 
   test('the real register passes both limbs, and says what it measured', () => {

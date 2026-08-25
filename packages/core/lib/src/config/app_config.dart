@@ -285,34 +285,6 @@ class AppConfig {
   /// The rollout percentage (0..100) for [flag], or 0 (off) when absent.
   int rolloutPercent(String flag) => flags[flag] ?? 0;
 
-  /// Override copy for [key], or [key] itself when absent.
-  ///
-  /// ⬜ ZERO NON-TEST CALLERS, AND THE THREE LIVE COPY SITES ALL BYPASS IT ON
-  /// PURPOSE. Measured 2026-08-25 across every `.dart` file in this repository:
-  /// the only `AppConfig.text(` call sites in existence are
-  /// `packages/core/test/config_test.dart:144` and `:145`. Meanwhile [copy]
-  /// itself IS live — `home_screen.dart`, `onboarding_screen.dart` and the
-  /// brick's `onboarding_screen.dart` each read `cfg?.copy[key]` DIRECTLY. So
-  /// the map reaches paint on three surfaces and only this accessor is dead.
-  ///
-  /// 🔴 THEY BYPASS IT BECAUSE ITS FALLBACK IS THE WRONG ONE, and the chassis
-  /// says so in its own words: "`AppConfig.text(key)` returns the KEY ITSELF
-  /// when there is no override — by design, and exactly wrong here: a freshly
-  /// stamped app has no overrides, so a purely config-driven carousel would
-  /// greet its first user with `onboarding.1.title`."
-  /// Subly's [O3] states the rule positively: an override REPLACES designed
-  /// copy, designed copy is the FALLBACK, never the raw key. Every live site
-  /// therefore reads the map and supplies an l10n default, and each additionally
-  /// treats a blank override as absent — which this accessor does not do either.
-  ///
-  /// ⚠️ IT IS KEPT ONLY BECAUSE ITS DELETION IS NOT THIS CHANGE'S TO MAKE (two
-  /// assertions in `packages/core/test/config_test.dart` still call it, and that
-  /// file is outside this edit's ownership). `assert-config-registry.mjs` limb
-  /// 10 holds the line meanwhile: the FIRST non-test caller fails the build,
-  /// with the [O3] reason, so this accessor cannot quietly acquire a user-facing
-  /// reader while it waits to be removed. Prefer `copy[key] ?? designedDefault`.
-  String text(String key) => copy[key] ?? key;
-
   /// Parse the Worker / `defaults.json` JSON shape.
   ///
   /// Throws [FormatException] when a required key (`app_id`, `api_base_url`,

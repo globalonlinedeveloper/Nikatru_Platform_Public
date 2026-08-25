@@ -1641,7 +1641,8 @@
       "F-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#sites"
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "guard",
     "ref": "tooling/ci/check-site-integrity.mjs",
@@ -2133,12 +2134,40 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "M-11",
+      "W-1",
+      "W-2a",
+      "W-2c",
+      "W-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/site-drift-repair.yml#repair"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-discovery.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#sites"
     ],
     "kind": "script",
     "ref": "tooling/sites/generate-landing-payload.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "W-3a"
+    ],
+    "invokedBy": [
+      ".github/workflows/site-drift-repair.yml#repair"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/lastmod.mjs",
     "references": [],
     "state": "WIRED"
   },

@@ -394,6 +394,20 @@ void main() {
       final AppLocalizations ta = await AppLocalizations.delegate.load(
         const Locale('ta'),
       );
+      // 🔴 THE ENGLISH ORACLE IS LOADED EXPLICITLY, AND THE DIRECTION IS THE
+      // WHOLE POINT (2026-08-25). This used to be `DueInfo.of(...)`, the
+      // English-only factory, deleted in this change. The replacement must NOT
+      // be `DueInfo.localized(ta, …)` — that would compare the Tamil render
+      // against Tamil, `findsNothing` would be asserting that the screen does
+      // not show what it is supposed to show, and the case would pass by being
+      // backwards. `en` is the same substitution `of` was: the arb's English
+      // values for the three due branches are byte-identical to the strings `of`
+      // hardcoded ("Due today", "Renews tomorrow", "In N days" for N >= 2 — the
+      // `=1{In 1 day}` arm is unreachable because d == 1 returns
+      // renewsTomorrow first).
+      final AppLocalizations en = await AppLocalizations.delegate.load(
+        const Locale('en'),
+      );
       final DateTime now = DateTime.now();
       final Subscription netflix = DemoData.subscriptions().firstWhere(
         (Subscription s) => s.id == kNetflixId,
@@ -404,15 +418,24 @@ void main() {
         locale: const Locale('ta'),
       );
 
-      // The mini-card's sub-caption. `DueInfo.of` — the English-only factory
-      // L1 retained — would render the same label in Tamil as in English, so
-      // this is the assertion that says the call site migrated.
+      // The mini-card's sub-caption. An un-localized render would show the
+      // ENGLISH label under a Tamil locale, so the pair below is what says the
+      // call site is localized: the Tamil string is on screen and the English
+      // one is not.
       final String expected = DueInfo.localized(ta, netflix, now).label;
+      final String englishLabel = DueInfo.localized(en, netflix, now).label;
+      expect(
+        englishLabel,
+        isNot(expected),
+        reason:
+            'precondition: if Tamil ever rendered this branch identically to '
+            'English the two assertions below would pass for the wrong reason',
+      );
       expect(find.text(expected), findsOneWidget);
       expect(
-        find.text(DueInfo.of(netflix, now).label),
+        find.text(englishLabel),
         findsNothing,
-        reason: 'the un-localized factory is still being called at detail:56',
+        reason: 'the English label is still reaching the Tamil detail screen',
       );
     });
   });

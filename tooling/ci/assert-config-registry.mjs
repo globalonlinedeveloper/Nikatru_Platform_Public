@@ -65,6 +65,26 @@
 // bypassed on purpose by all three live copy surfaces, and the first non-test
 // caller fails the build.
 //
+// ── CORRECTION 2026-08-25 · OBSERVATION 10 IS RETIRED, NOT RELAXED ──────────
+// Everything above stands as written and is corrected rather than deleted.
+// `AppConfig.text(key)` NO LONGER EXISTS: it was removed from
+// packages/core/lib/src/config/app_config.dart together with its only two call
+// sites, the two assertions in packages/core/test/config_test.dart that limb 10
+// named as the thing its deletion was waiting on. Observation 10 can therefore
+// no longer be made — an accessor that is gone cannot acquire a caller — so the
+// Exit line's "one of the ten above" now reads one of the NINE above, and limb
+// 10 was DELETED rather than left printing "its subject is gone" on every run.
+// That branch existed to say "delete me"; keeping it would be keeping a check
+// that cannot fail, which this file already refuses one limb over (see the
+// absent `dartFiles.length === 0` branch in limb 8 and the reason recorded
+// beside it). Tests 10a–10h went with it in the same change.
+//
+// THE [O3] RULE THE LIMB ENFORCED IS UNCHANGED AND STILL LIVE. The `copy` map is
+// still read directly on three surfaces — subly's home_screen and
+// onboarding_screen and the brick's onboarding_screen — each supplying a designed
+// l10n default and each treating a blank override as absent. What is gone is the
+// accessor that got that rule wrong, not the rule.
+//
 // ── WHAT IT DELIBERATELY DOES NOT CLAIM ──────────────────────────────────────
 // It does NOT claim the live 404 is gone. Both files are BUNDLED at build time
 // (a Worker has no filesystem), so a catalogue row reaches the edge only after
@@ -114,7 +134,13 @@ const DART_ROOTS = ['apps', 'packages', 'tooling/bricks'];
  *  half of the contract `types.ts` declares, and both new limbs are questions
  *  about it: with that file unread, limb 9's mirror check would pass over
  *  nothing and limb 10 would report a dead accessor whose declaration it never
- *  looked for. */
+ *  looked for.
+ *
+ *  CORRECTION 2026-08-25 — limb 10 was deleted later the same day, with
+ *  `AppConfig.text`. APP_CONFIG_DART STAYS IN THIS LIST REGARDLESS: limb 9
+ *  still reads it as the Dart mirror of the `types.ts` interface, so dropping
+ *  it here would exit at limb 0 with COVERAGE LOST and take limb 9's mirror
+ *  check down with it. */
 const REQUIRED_COVERAGE = [CATALOGUE, CONFIG_TS, DATA, TYPES_TS, PRE_GEN, DISCOVERY, APP_CONFIG_DART];
 
 const problems = [];
@@ -408,6 +434,8 @@ const slugSet = new Set(slugs.filter(Boolean));
 //     value silently and generate-discovery.mjs's `on !== true` skips it, so it
 //     is a key that reads as configuration and reaches no surface at all.
 // ── THE SHIPPED-DART CORPUS, READ ONCE FOR LIMBS 8, 9 AND 10 ─────────────────
+// (CORRECTION 2026-08-25: limb 10 was deleted with `AppConfig.text`; the corpus
+//  below is now read once for limbs 8 and 9.)
 /** Non-test Dart under DART_ROOTS. `test/` and `integration_test/` are cut
  *  because a key read only by a test is exactly the state these limbs report:
  *  counting them would make every dead key look alive.
@@ -443,6 +471,9 @@ const dartFiles = DART_ROOTS.reduce((acc, d) => dartUnder(d, acc), []).filter(
 // onboarding screen explains in a doc comment why it does not call
 // `AppConfig.text`, and a raw-text scan would read that explanation as the
 // caller limb 10 exists to find.
+// (CORRECTION 2026-08-25: limb 10 is deleted. The reduction is still
+//  load-bearing for limb 9, whose BOUND `.theme` scan reads the same map and
+//  would otherwise resolve identifiers named inside doc comments.)
 const dartSrc = new Map();
 for (const rel of dartFiles) {
   dartSrc.set(rel, stripSourceComments(readFileSync(join(ROOT, rel), 'utf8'), '.dart'));
@@ -825,76 +856,6 @@ for (const rel of dartFiles) {
             'limb fails until the other one exists.',
         );
       }
-    }
-  }
-}
-
-// ── 10 · THE DEAD COPY ACCESSOR DOES NOT ACQUIRE A USER-FACING READER ────────
-// 🔴 A FALLBACK THAT RETURNS THE KEY IS A FALLBACK THAT SHIPS `onboarding.1.title`
-// TO A USER. `AppConfig.text(key)` answers `copy[key] ?? key`. Measured
-// 2026-08-25 over every .dart file in the repository: its ONLY call sites are two
-// assertions in packages/core/test/config_test.dart, while the `copy` MAP is live
-// on three surfaces — subly's home_screen and onboarding_screen and the brick's
-// onboarding_screen all read `cfg?.copy[key]` DIRECTLY and each supplies a
-// designed l10n default. So the map reaches paint and only the accessor is dead,
-// and the bypass is deliberate: the brick's own doc comment calls the accessor
-// "by design, and exactly wrong here", and subly's [O3] states the rule — an
-// override REPLACES designed copy, designed copy is the FALLBACK, never the raw
-// key.
-//
-// This limb is what keeps that from being prose only. The accessor is kept for
-// now (deleting it means editing packages/core's test suite), and the FIRST
-// non-test caller fails the build with the reason. When the accessor is deleted
-// the limb reports that its subject is gone rather than passing silently.
-//
-// ⚠️ THE SUBJECT TEST IS MATCHED BY NAME, NOT BY SIGNATURE (2026-08-25). It was
-// `/\bString\s+text\s*\(\s*String\s+\w+\s*\)/` — the accessor's signature spelled
-// out. That is the same disarm direction limb 9 shipped with, one limb over: a
-// SIGNATURE change rather than a deletion, e.g.
-//     String text(String key, {String? fallback})
-// left the pattern unmatched, so the limb printed "its subject is gone … the limb
-// ranges over nothing" and PASSED while the accessor still existed and could
-// still acquire callers. Test 10f pinned the DELETION case only, so nothing
-// disagreed. The pattern now asks for a declaration named `text` with any return
-// type and any parameter list. It is deliberately loose in the direction that
-// keeps the gate ARMED — a bare `return text(key);` inside app_config.dart would
-// also match it — because a limb that stays armed one commit too long is the safe
-// way for this test to be wrong. Only an actual deletion reports "subject gone";
-// 10g and 10h pin the signature-change case.
-{
-  const TEXT_DECL = /\b[A-Za-z_$][\w$]*(?:<[^>\n]*>)?\??\s+text\s*\(/;
-  if (!TEXT_DECL.test(code(APP_CONFIG_DART, '.dart'))) {
-    notes.push(
-      `\`AppConfig.text\` is no longer declared in ${APP_CONFIG_DART}; limb 10's subject is gone and the limb ` +
-        'ranges over nothing. Delete it rather than leaving a check that cannot fail.',
-    );
-  } else {
-    // `find.text(` is the one benign `.text(` shape in this tree and it belongs
-    // to flutter_test, so it is excluded by RECEIVER rather than by filename —
-    // the /test/ filter above already removes the files it normally lives in,
-    // and a scan that relied on that alone would be relying on a coincidence.
-    const callers = [];
-    for (const [rel, src] of dartSrc) {
-      if (rel === APP_CONFIG_DART) continue;
-      for (const m of src.matchAll(/([A-Za-z_$][\w$]*)\s*\??\.text\(/g)) {
-        if (m[1] !== 'find') callers.push(`${rel} → ${m[1]}.text(`);
-      }
-    }
-    if (callers.length) {
-      fail(
-        `\`AppConfig.text(key)\` has a non-test caller: ${callers.join(', ')}. It answers \`copy[key] ?? key\`, ` +
-          'so a freshly stamped app with no overrides shows a user the literal key. [O3] — an override REPLACES ' +
-          'designed copy, designed copy is the FALLBACK, never the raw key. Read `copy[key]` and supply a ' +
-          'designed default, as home_screen.dart, onboarding_screen.dart and the brick all do (each also treats ' +
-          'a blank override as absent, which this accessor does not). If the caller is a different `.text(`, ' +
-          'name its receiver in the exclusion beside `find`.',
-      );
-    } else {
-      notes.push(
-        `\`AppConfig.text\` — TRIPWIRE ARMED, DOMAIN EMPTY (${dartFiles.length} non-test Dart file(s) scanned). ` +
-          'Zero non-test callers; the `copy` map itself is live on three surfaces that all bypass the accessor ' +
-          'deliberately. The accessor is a deletion waiting on packages/core/test/config_test.dart.',
-      );
     }
   }
 }

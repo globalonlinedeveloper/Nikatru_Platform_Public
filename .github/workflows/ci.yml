@@ -13,7 +13,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}  # FALSE ON MAIN ONLY. Every push to main resolves to the same group, so the 10:03 run was killed by the 10:08 push and a cancelled run notifies nobody and blocks nothing (deploy-web.yml:476, runs 145/146). PR events resolve to refs/pull/N/merge, and a plain false would queue every superseded feature-branch push. — NOT REDDENABLE BY ANY FIXTURE, and said so rather than hidden: a grep for `concurrency` and for `cancel-in-progress` over tooling/ci/*.mjs and tooling/scripts/*.mjs returned ZERO hits on 2026-08-25, so nothing in this tree asserts a concurrency policy and no mutant of this line can be caught by a guard. THE SOURCE MUTATION IS THIS LINE ITSELF: put `true` back and every push to main can again kill the run in flight. Direction was proven by rendering the scalar under github.ref = refs/heads/main -> false, refs/heads/feat/<slug> -> true, refs/pull/N/merge -> true; a typo'd ref literal, `==` for `!=`, and a misspelled context path each flip main back to true. See duty.workflow.ci.yml in tooling/ops/register.json for the measured cadence this was sized against.
 
 # NOTE (2026-07-22): the Dart/Flutter per-package lanes (flutter/app, core, api_client,
 # design_system, telemetry) were RETIRED — `workspace_gate` runs `melos run analyze` +
