@@ -1893,7 +1893,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.44.9
+          flutter-version: 3.47.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -2352,7 +2352,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.44.9
+          flutter-version: 3.47.1
       - name: Activate melos
         run: dart pub global activate melos 8.2.2
       # Flutter members require the Flutter tool for root workspace resolution

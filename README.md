@@ -35,7 +35,7 @@ not published.
 
 The toolchain is declared once, in [`tooling/versions.json`](tooling/versions.json), and
 `tooling/ci/assert-version-consistency.mjs` fails the build if any workflow disagrees with it.
-As of this writing: **Flutter 3.44.9 · Node 24 · Java 17 · Melos 8.2.2 · Mason 0.1.3 · Wrangler 4.120.0.**
+As of this writing: **Flutter 3.47.1 · Node 24 · Java 17 · Melos 8.2.2 · Mason 0.1.3 · Wrangler 4.120.0.**
 
 There are two workspaces, deliberately separate — Dart resolves through pub workspaces + Melos,
 JavaScript through pnpm.

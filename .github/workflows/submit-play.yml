@@ -165,7 +165,7 @@ permissions:
   checks: read
 
 env:
-  FLUTTER_VERSION: '3.44.9'
+  FLUTTER_VERSION: '3.47.1'
 
 jobs:
   # Same shape and same reason as build-platforms.yml's gate job: this workflow
