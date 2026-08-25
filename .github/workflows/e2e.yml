@@ -29,7 +29,7 @@ jobs:
       suites: ${{ steps.set.outputs.suites }}
       count: ${{ steps.set.outputs.count }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Derived, not listed — the same rule as the CI matrix. A tool joins the
       # e2e run by having test/e2e/package.json, not by being named here.
@@ -80,7 +80,7 @@ jobs:
       matrix:
         suite: ${{ fromJSON(needs.discover.outputs.suites) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
