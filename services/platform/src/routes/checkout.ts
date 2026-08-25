@@ -160,10 +160,27 @@ const PADDLE_API_KEY_PREFIX: Readonly<Record<MoneyEnvironment, string>> = {
 };
 
 /**
- * The env var holding the seller API key. Read BY NAME off `c.env` rather than
- * through a typed field, exactly as `routes/money.ts` reads a rail's destination
- * secret: `src/types.ts` belongs to the Worker's binding contract and this route
- * does not need to widen it to work.
+ * The env var holding the seller API key — the NAME, kept as a const because
+ * every refusal below names it in a log line so an operator can act on it.
+ *
+ * 🔴 IT IS A DECLARED BINDING NOW, AND THE COMMENT THAT SAID OTHERWISE WAS
+ * MEASURED FALSE. This const used to justify reading the value through
+ * `(c.env as unknown as Record<string, string | undefined>)[…]` "exactly as
+ * `routes/money.ts` reads a rail's destination secret", so `src/types.ts` would
+ * not have to be widened. Measured 2026-08-25: the two are NOT symmetric.
+ * money.ts reads by name because the name is DATA — `verifier.secretEnvVar`,
+ * resolved at runtime from the `:provider` URL segment — and its secret is
+ * declared in `Env` regardless. This route has ONE credential, known at compile
+ * time. The cast bought nothing and cost discovery: an env sweep over
+ * `services/platform/src` extracting every `env.[A-Z_]+` returned 19 names with
+ * this one absent, and `.dev.vars.example` documented two values, neither of
+ * them this — so a developer following the file verbatim got a Worker whose
+ * POST /v1/checkout refuses with no hint the value existed anywhere.
+ *
+ * The read below is therefore `c.env[PADDLE_API_KEY_VAR]`, which is a TYPED
+ * index, not a cast: delete or rename `Env.PADDLE_API_KEY` in `src/types.ts` and
+ * `npx tsc --noEmit` fails on this file. That compile-time tie is the check —
+ * this paragraph does not carry it.
  *
  * 🔴 SET IT WITH `wrangler secret put PADDLE_API_KEY`, NEVER AS A COMMITTED VAR.
  * This repository is public and `.gitleaks.toml` carries rules for both key
@@ -466,7 +483,7 @@ checkout.post('/checkout', async (c) => {
     return c.json({ error: 'offering_not_available' }, 503);
   }
 
-  const apiKey = (c.env as unknown as Record<string, string | undefined>)[PADDLE_API_KEY_VAR] ?? '';
+  const apiKey = c.env[PADDLE_API_KEY_VAR] ?? '';
   if (apiKey.length === 0) {
     console.error(
       `[checkout] rid=${rid} ${PADDLE_API_KEY_VAR} is not set — refusing. ` +

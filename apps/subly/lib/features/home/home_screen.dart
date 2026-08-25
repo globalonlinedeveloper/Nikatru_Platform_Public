@@ -661,42 +661,51 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // `expectNothingNaked` cannot see this defect in either direction — it
         // ranges over nodes that HAVE a tap action, so a control missing one is
         // exactly the control it skips.
-        Semantics(
-          button: true,
+        //
+        // 🔴 THE THIRD KEYBOARD-DEAD CONTROL ON THIS SCREEN, AND THE
+        // SUBSTITUTION IS DELIBERATELY NARROW: `FocusableTap` re-emits the same
+        // `Semantics(button: true, label: …)` this had, keeps the
+        // `ExcludeSemantics` exactly where the paragraph above argues it
+        // belongs — INSIDE, round the visual, so the tap action stays on the
+        // node that announces the button — and adds only the `FocusNode` the
+        // pair never created. `mergeDescendants: false` preserves the previous
+        // spelling: the annotation was bare `Semantics`, not `MergeSemantics`,
+        // and there is nothing beneath it left to merge anyway.
+        FocusableTap(
           label: l10n.a11yAccountSettings,
-          child: GestureDetector(
-            onTap: () => context.go('/settings'),
-            child: ExcludeSemantics(
-              // 🔴 48, NOT 44 — AND THE 44 SURVIVED BECAUSE IT WAS BESIDE THE
-              // ONE ASSERTION THAT COULD NOT SEE IT. `_circleButton` nine
-              // pixels to the left is 48 and says so in its own comment ("48px,
-              // not 44: the chassis floor for an icon-only tap target"); this
-              // control does the same job in the same row and shipped at 44.
-              // `chassis_properties_test`'s 48px limb ranges over
-              // `_iconOnlyControls`, which filters to controls with NO `Text`
-              // descendant — and this one has one, the account initial. So the
-              // ONE control in the header the floor did not apply to is the one
-              // that missed it. [ADR 048] defect 1, found by the sweep that
-              // replaces the mistitled assertion: measured 44.0x44.0 against
-              // androidTapTargetGuideline's 48.
-              //
-              // The row was ALREADY 48 tall (the bell sets it), so this changes
-              // the avatar's own box and nothing around it.
-              child: Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: AppColors.brandGradient,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  user?.initial ?? 'A',
-                  style: const TextStyle(
-                    fontFamily: 'Manrope',
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+          mergeDescendants: false,
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => context.go('/settings'),
+          child: ExcludeSemantics(
+            // 🔴 48, NOT 44 — AND THE 44 SURVIVED BECAUSE IT WAS BESIDE THE
+            // ONE ASSERTION THAT COULD NOT SEE IT. `_circleButton` nine
+            // pixels to the left is 48 and says so in its own comment ("48px,
+            // not 44: the chassis floor for an icon-only tap target"); this
+            // control does the same job in the same row and shipped at 44.
+            // `chassis_properties_test`'s 48px limb ranges over
+            // `_iconOnlyControls`, which filters to controls with NO `Text`
+            // descendant — and this one has one, the account initial. So the
+            // ONE control in the header the floor did not apply to is the one
+            // that missed it. [ADR 048] defect 1, found by the sweep that
+            // replaces the mistitled assertion: measured 44.0x44.0 against
+            // androidTapTargetGuideline's 48.
+            //
+            // The row was ALREADY 48 tall (the bell sets it), so this changes
+            // the avatar's own box and nothing around it.
+            child: Container(
+              width: 48,
+              height: 48,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: AppColors.brandGradient,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                user?.initial ?? 'A',
+                style: const TextStyle(
+                  fontFamily: 'Manrope',
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -903,47 +912,51 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // word, which is the announce-one-thing-do-another shape the avatar
         // above records. The painted row is unmoved; only the header's own
         // block is taller.
-        trailing: MergeSemantics(
-          child: Semantics(
-            button: true,
-            child: GestureDetector(
-              onTap: () => context.go('/calendar'),
-              behavior: HitTestBehavior.opaque,
-              child: SizedBox(
-                height: 48,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    // 🔴 THE ACCENT IS INK HERE, SO IT FORKS BY BRIGHTNESS.
-                    // `AppColors.accent` (#6459F5) is a FILL colour that this
-                    // row paints as 12px w700 TEXT, so SC 1.4.3's 4.5:1 governs,
-                    // not 1.4.11's 3:1. On the dark scaffold #131318 it measured
-                    // **3.78:1** — the whole reason `every string on home … DARK`
-                    // was red. `scheme.primary` is the same seed resolved for the
-                    // ambient brightness (M3 puts dark primary at tone 80), which
-                    // is why the fork is a chassis lookup and not a second
-                    // literal. Light keeps the literal so nothing repaints.
-                    Text(
-                      l10n.calendarLink,
-                      style: AppText.body.copyWith(
-                        color: Theme.of(context).brightness == Brightness.light
-                            ? AppColors.accent
-                            : Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(width: 3),
-                    Icon(
-                      Icons.arrow_forward,
-                      color: Theme.of(context).brightness == Brightness.light
-                          ? AppColors.accent
-                          : Theme.of(context).colorScheme.primary,
-                      size: 13,
-                    ),
-                  ],
+        //
+        // 🔴 AND IT WAS KEYBOARD-DEAD, WHICH IS A THIRD PROPERTY OF THE
+        // SAME CONTROL AND WAS FIXED LAST. The two paragraphs above are about
+        // what a READER hears and what a FINGER can hit; neither implies a
+        // keyboard can get here, and it could not —
+        // `test/keyboard_traversal_test.dart` counted this as one of home's
+        // three dead controls. `FocusableTap` keeps the `MergeSemantics` +
+        // `Semantics(button: true)` and the `opaque` 48px band exactly as
+        // argued above, and adds the `FocusNode`.
+        trailing: FocusableTap(
+          onTap: () => context.go('/calendar'),
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 48,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // 🔴 THE ACCENT IS INK HERE, SO IT FORKS BY BRIGHTNESS.
+                // `AppColors.accent` (#6459F5) is a FILL colour that this
+                // row paints as 12px w700 TEXT, so SC 1.4.3's 4.5:1 governs,
+                // not 1.4.11's 3:1. On the dark scaffold #131318 it measured
+                // **3.78:1** — the whole reason `every string on home … DARK`
+                // was red. `scheme.primary` is the same seed resolved for the
+                // ambient brightness (M3 puts dark primary at tone 80), which
+                // is why the fork is a chassis lookup and not a second
+                // literal. Light keeps the literal so nothing repaints.
+                Text(
+                  l10n.calendarLink,
+                  style: AppText.body.copyWith(
+                    color: Theme.of(context).brightness == Brightness.light
+                        ? AppColors.accent
+                        : Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 3),
+                Icon(
+                  Icons.arrow_forward,
+                  color: Theme.of(context).brightness == Brightness.light
+                      ? AppColors.accent
+                      : Theme.of(context).colorScheme.primary,
+                  size: 13,
+                ),
+              ],
             ),
           ),
         ),
@@ -1136,8 +1149,12 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // against a 4.5 bar. The fork landed before these three call sites did, so
     // a11y_semantics_test.dart carried a named exemption citing this exact line;
     // passing brightness is what expires it.
-    final DueInfo due = DueInfo.localized(l10n, s, now,
-        brightness: Theme.of(context).brightness);
+    final DueInfo due = DueInfo.localized(
+      l10n,
+      s,
+      now,
+      brightness: Theme.of(context).brightness,
+    );
 
     // 🔴 THE USAGE BAND IS NOW CONDITIONAL, BECAUSE ITS INPUT IS NEVER
     // COLLECTED AND ITS `else` ARM WAS THEREFORE A CONSTANT.
@@ -1293,39 +1310,47 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // 48px, not 44: the chassis floor for an icon-only tap target, asserted
     // route-wide by chassis_properties_test. The Semantics wrapper is what a
     // screen reader announces — an icon-only control without one is unusable.
-    return Semantics(
-      button: true,
+    //
+    // 🔴 AND `FocusableTap` IS WHAT A KEYBOARD REACHES. Two of home's
+    // three keyboard-dead controls are built here (notifications and calendar;
+    // the account avatar below is the third), and the register's phrasing is
+    // the one to keep: they are every route OFF a screen whose rows all
+    // traverse fine, so a keyboard-only user could read the list and leave by
+    // no door on it. `mergeDescendants: false` because this control has no
+    // descendant text to merge — [semanticLabel] IS its name, and the dot is
+    // decoration.
+    return FocusableTap(
       label: semanticLabel,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Stack(
-          children: <Widget>[
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: fill,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: edge),
-              ),
-              child: Icon(icon, color: glyph, size: 20),
+      mergeDescendants: false,
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Stack(
+        children: <Widget>[
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: edge),
             ),
-            if (dot)
-              Positioned(
-                top: 9,
-                right: 10,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: AppColors.warn,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: fill, width: 2),
-                  ),
+            child: Icon(icon, color: glyph, size: 20),
+          ),
+          if (dot)
+            Positioned(
+              top: 9,
+              right: 10,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: AppColors.warn,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: fill, width: 2),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

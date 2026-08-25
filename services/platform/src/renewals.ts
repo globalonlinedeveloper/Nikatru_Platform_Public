@@ -139,18 +139,52 @@ export async function recomputeRenewals(
     const updateStmt = db.prepare(
       'UPDATE subscriptions SET next_renewal = ?, updated_at = ? WHERE id = ?',
     );
-    const paymentStmt = db.prepare(
-      `INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at)
-       VALUES (?, ?, ?, ?, ?)`,
+    // ── payment_history.updated_at — THE ONLY WRITER, FINALLY WRITING IT ──────
+    // 🔴 THIS INSERT IS THE TABLE'S ONLY WRITER ANYWHERE IN THE TREE, and until
+    // 2026-08-25 its column list ended at `paid_at`. subly_db's migration
+    // 0002_schema_debt.sql had added `updated_at` and seeded the rows that
+    // existed at the time from `paid_at`; every row written SINCE carried NULL
+    // forever, so the one-shot backfill was the only value the column would ever
+    // hold and "tell a stale row from a fresh one" was undecidable for exactly
+    // the rows the cron creates. It is seeded from `paid_at` for the same reason
+    // the migration's backfill was: a row that has just been created has never
+    // been modified since creation, and the column should mean one thing.
+    //
+    // ⚠️ THE COLUMN IS PROBED, NOT ASSUMED, and that is not defensiveness — this
+    // function's own header says it is "generic over any app DB with
+    // subscriptions + payment_history", and the fan-out is a `for` loop over
+    // every app whose one rule is that one app's broken database must not take
+    // the rest down. `updated_at` is subly_db's 0002; the brick's starter schema
+    // has no payment_history at all, so a future app's table may legitimately
+    // predate the column. An unconditional six-column INSERT would fail the whole
+    // nightly batch for that app — every renewal missed, every payment row lost —
+    // to write one timestamp. Where the column is missing the write is the same
+    // five columns it always was and the heartbeat SAYS SO, so the gap is a
+    // number an operator can see rather than a silence.
+    const paymentColumns = await allRows<{ name: string }>(
+      db.prepare("SELECT name FROM pragma_table_info('payment_history')"),
     );
+    const hasUpdatedAt = paymentColumns.some((col) => col.name === 'updated_at');
+    const paymentStmt = hasUpdatedAt
+      ? db.prepare(
+          `INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+      : db.prepare(
+          `INSERT INTO payment_history (id, subscription_id, user_id, amount, paid_at)
+       VALUES (?, ?, ?, ?, ?)`,
+        );
 
     const ops: D1PreparedStatement[] = [];
     for (const sub of due) {
       const cycle = sub.cycle as 'monthly' | 'yearly';
       const { next, crossings } = rollForward(sub.next_renewal as string, cycle, today);
       for (const when of crossings) {
+        const paidAt = `${when}T00:00:00Z`;
         ops.push(
-          paymentStmt.bind(uuid(), sub.id, sub.user_id, sub.price ?? null, `${when}T00:00:00Z`),
+          hasUpdatedAt
+            ? paymentStmt.bind(uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt, paidAt)
+            : paymentStmt.bind(uuid(), sub.id, sub.user_id, sub.price ?? null, paidAt),
         );
       }
       ops.push(updateStmt.bind(next, ts, sub.id));
@@ -164,7 +198,11 @@ export async function recomputeRenewals(
       // contradiction against a non-empty `due`, and a night that suddenly
       // advances thousands is worth seeing in the same table as a night that
       // advances three.
-      detail: `advanced ${due.length} subscription(s), ${ops.length} statement(s)`,
+      detail:
+        `advanced ${due.length} subscription(s), ${ops.length} statement(s)` +
+        (hasUpdatedAt
+          ? ''
+          : ' — WITHOUT updated_at: this app database has no such column on payment_history, so every row written tonight carries none'),
     };
   } catch (err) {
     console.log(`[cron] renewals(${appId}) failed: ${String(err)}`);

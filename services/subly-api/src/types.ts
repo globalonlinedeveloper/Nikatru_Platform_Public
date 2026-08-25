@@ -114,13 +114,21 @@ export interface Subscription {
   updated_at: string | null;
 }
 
-/** A payment_history row. */
+/** A payment_history row.
+ *
+ * `updated_at` was added by migration 0002_schema_debt.sql — "no way to tell a
+ * stale row from a fresh one, so any last-write-wins merge is undecidable for
+ * that table" — and was missing from this interface until 2026-08-25 while
+ * routes/subscriptions.ts served it anyway through a `SELECT *`. Declared here
+ * because it IS on the wire; the same edit named the columns in that SELECT so
+ * the two can no longer drift apart silently. */
 export interface Payment {
   id: string;
   subscription_id: string | null;
   user_id: string | null;
   amount: number | null;
   paid_at: string | null;
+  updated_at: string | null;
 }
 
 // `Entitlement` WAS HERE and was deleted 2026-08-09 with its last reader: both

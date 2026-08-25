@@ -6,7 +6,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show AuthCapabilities, AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show ContentPane, FocusableTap;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
@@ -551,53 +551,64 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // prose — "New here? Create account" — so without a role a
                   // reader announces it as body copy that happens to sit at the
                   // bottom of a form. It is the only way to reach sign-up.
-                  child: MergeSemantics(
-                    child: Semantics(
-                      button: true,
-                      child: GestureDetector(
-                        onTap: () => setState(() => _signUp = !_signUp),
-                        // 🔴 THE TAP TARGET IS THE BAND, NOT THE INK.
-                        // Measured 319.0x40.0 against
-                        // androidTapTargetGuideline: eight pixels short, on the
-                        // ONLY control that reaches registration from the screen
-                        // every signed-out visitor is routed to. `opaque` is
-                        // half the fix — `deferToChild` would leave the pointer
-                        // hunting the glyphs while the semantics rect claimed
-                        // the whole band. `minHeight` rather than a fixed
-                        // height because `haveAccountPrompt` is a different
-                        // sentence in every locale and some of them wrap to
-                        // three lines; a `SizedBox(height: 48)` would clip those
-                        // instead of growing.
-                        behavior: HitTestBehavior.opaque,
-                        // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
-                        // This was two `TextSpan`s — "New here? " + "Create account"
-                        // — which is a concatenation wearing a rich-text costume: it
-                        // fixes English word order, and in a language that puts the
-                        // verb last the "link" half would have to move to the front
-                        // of the sentence. `newHerePrompt` / `haveAccountPrompt`
-                        // each carry the complete line, so the translator controls
-                        // the order.
-                        //
-                        // ⚠️ The whole line is the tap target either way — the
-                        // `GestureDetector` above always was the button, and the
-                        // second span was never independently tappable (no
-                        // `TapGestureRecognizer`), so nothing about the interaction
-                        // changed. What is lost is the accent colouring of the last
-                        // two words; a per-locale substring hunt to restore it would
-                        // be exactly the fixed-word-order assumption this removes.
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 48),
-                          child: Align(
-                            child: Text(
-                              _signUp
-                                  ? l10n.haveAccountPrompt
-                                  : l10n.newHerePrompt,
-                              textAlign: TextAlign.center,
-                              style: AppText.muted.copyWith(
-                                fontSize: 14,
-                                color: t.muted,
-                              ),
-                            ),
+                  // 🔴 `FocusableTap`, NOT `Semantics` + `GestureDetector`.
+                  // THE PAIR THAT STOOD HERE WAS THE WORST SINGLE INSTANCE OF
+                  // SC 2.1.1 IN THE APP, and the comment right below already
+                  // said why without anyone noticing: this is the ONLY control
+                  // that reaches registration from the screen every signed-out
+                  // visitor is routed to. `Semantics(button: true)` gave a
+                  // screen reader a ROLE and gave a keyboard NOTHING — it
+                  // creates no `FocusNode` — so a keyboard-only user could not
+                  // create an account at all. Measured 2026-08-21 and again
+                  // 2026-08-25 by `test/keyboard_traversal_test.dart`; the
+                  // primitive is `packages/design_system`'s, so the fix is one
+                  // widget rather than one per call site.
+                  //
+                  // Nothing a reader hears changes: `FocusableTap` re-emits the
+                  // same `MergeSemantics` + `Semantics(button: true)` it
+                  // replaces, and paints its ring as a foreground decoration so
+                  // the 48px band below keeps every pixel it had.
+                  child: FocusableTap(
+                    onTap: () => setState(() => _signUp = !_signUp),
+                    borderRadius: BorderRadius.circular(8),
+                    // 🔴 THE TAP TARGET IS THE BAND, NOT THE INK.
+                    // Measured 319.0x40.0 against
+                    // androidTapTargetGuideline: eight pixels short, on the
+                    // ONLY control that reaches registration from the screen
+                    // every signed-out visitor is routed to. `opaque` is
+                    // half the fix — `deferToChild` would leave the pointer
+                    // hunting the glyphs while the semantics rect claimed
+                    // the whole band. `minHeight` rather than a fixed
+                    // height because `haveAccountPrompt` is a different
+                    // sentence in every locale and some of them wrap to
+                    // three lines; a `SizedBox(height: 48)` would clip those
+                    // instead of growing.
+                    behavior: HitTestBehavior.opaque,
+                    // 🔴 ONE WHOLE SENTENCE PER KEY, NOT A LEAD-IN PLUS A LINK.
+                    // This was two `TextSpan`s — "New here? " + "Create account"
+                    // — which is a concatenation wearing a rich-text costume: it
+                    // fixes English word order, and in a language that puts the
+                    // verb last the "link" half would have to move to the front
+                    // of the sentence. `newHerePrompt` / `haveAccountPrompt`
+                    // each carry the complete line, so the translator controls
+                    // the order.
+                    //
+                    // ⚠️ The whole line is the tap target either way — the
+                    // tap wrapper above always was the button, and the
+                    // second span was never independently tappable (no
+                    // `TapGestureRecognizer`), so nothing about the interaction
+                    // changed. What is lost is the accent colouring of the last
+                    // two words; a per-locale substring hunt to restore it would
+                    // be exactly the fixed-word-order assumption this removes.
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Align(
+                        child: Text(
+                          _signUp ? l10n.haveAccountPrompt : l10n.newHerePrompt,
+                          textAlign: TextAlign.center,
+                          style: AppText.muted.copyWith(
+                            fontSize: 14,
+                            color: t.muted,
                           ),
                         ),
                       ),
