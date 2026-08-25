@@ -14,6 +14,15 @@ name: Release
 # A release is the one place where a missing gate must stop the work entirely:
 # a published artifact cannot be un-published, and the store keeps whichever
 # package it received first.
+#
+# ── APPENDED 2026-08-25 — the paragraph above is left as written ──────────────
+# ⚠️ "THE FIRST STEP BELOW IS THE PREFLIGHT" IS NOW OFF BY TWO. Two steps were
+# added ahead of it in this change and neither displaces it in meaning: the
+# first refuses a dispatch that asked to publish, the second asserts that every
+# publishing command in this file sits behind the dry-run guard. Both are about
+# whether this run may publish AT ALL, which has to be settled before the
+# question of which gates exist is even worth asking. The preflight is still the
+# first step that inspects the repository.
 
 on:
   push:
@@ -25,6 +34,51 @@ on:
       # go looking for a tool called "core" and fail confusingly.
       - '!core-v*'
 
+  # ── THE PUBLISH-FREE DRY RUN ─────────────────────────────────────────────────
+  # 🔴 THIS LANE HAD NEVER EXECUTED. `git tag` is 0 in this repository and a tag
+  # may not be pushed, so every step below `push:` was written, reviewed, argued
+  # about in the comments above them — and never run by a runner. The measured
+  # bug list in this file is the evidence: `set -uo pipefail` under a shell that
+  # already had `-e`, a `tee` swallowing sha256sum's status, an AMO gate that
+  # exits 0 having opened nothing. Each was found by READING, and each is the
+  # kind of thing one execution would have shown in a second. A lane that can
+  # only be exercised by the irreversible act it performs is a lane nobody has
+  # exercised.
+  #
+  # A dispatch gives it a runner without giving it a release. Everything above
+  # the publish gate runs on real bytes — the gates, the secret scan, the sims,
+  # a real `--release` pack of both targets, the store-package check, the AMO
+  # gate on the built zip, verify-refs, web-ext, the checksums — and then the
+  # run stops, because the one step that publishes tests these inputs in its
+  # own `if:`.
+  #
+  # ⚠️ `dry_run` IS NOT A CHOICE BETWEEN DRY AND WET. A dispatch has no tag in
+  # GITHUB_REF_NAME (it carries the branch, `main`), so a dispatch that reached
+  # the publish step would create a release literally named `main`. Unchecking
+  # the box therefore REFUSES in the first step of the job rather than
+  # publishing. The input is a declared switch that must read `true`, not a
+  # second publishing path — and it is checked twice: once by that refusal, and
+  # once by the `if:` on the publishing step itself.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >-
+          Run every gate on a real build and stop before publishing. This is the
+          only mode a dispatch has: unchecking it makes the run refuse, not
+          publish. Releases come from a tag push and from nothing else.
+        type: boolean
+        required: true
+        default: true
+      tag:
+        description: >-
+          The tag this run rehearses, e.g. fullshot-v1.10.1. A dispatch has no
+          tag in GITHUB_REF_NAME, so the tool id and version are read from here.
+          Deliberately not defaulted: a stale default would rehearse a version
+          the CHANGELOG has moved past and fail in check-version, which reads
+          like a defect in the tool rather than a typo in the dispatch.
+        type: string
+        required: true
+
 permissions:
   contents: read
 
@@ -33,11 +87,109 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write        # the only write in the repo: creating the release
+      # ⬜ RESIDUAL, STATED RATHER THAN GLOSSED, 2026-08-25. A dispatch writes
+      # nothing — the one step that would is fenced off — but the job token it
+      # runs under still carries this `write`, because `permissions:` takes no
+      # expression: there is no supported spelling of "read on a dispatch,
+      # write on a tag push" at job level. Narrowing it for real means splitting
+      # the publish step into a second job with its own `permissions:` and an
+      # `if:` of its own, which moves `dist/` across a job boundary through
+      # upload-artifact and changes what "the exact bytes this gate opened" can
+      # mean. That is a decision with a cost, not a cleanup, and it is left
+      # here as a named gap rather than half-done. What DOES hold today: no
+      # step reachable on a dispatch uses the token to write.
     steps:
+      # ⚠️ FIRST, AND BEFORE THE CHECKOUT ON PURPOSE — it needs no repository to
+      # answer, and it is the answer to "may this run publish". `inputs` is
+      # empty on a `push`, so `inputs.dry_run != true` is null != true, i.e.
+      # TRUE — which is why this whole step is fenced behind the event name.
+      # Without that fence every tag push would hit this refusal and no release
+      # could ever be cut.
+      - name: A dispatch is a rehearsal, so dry_run must stay checked
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
+        run: |
+          echo "::error::dry_run was unchecked on a workflow_dispatch run. This lane publishes from a tag push and from nothing else — a dispatch carries no tag in GITHUB_REF_NAME, so a dispatched release would be created under the branch name. Re-run with dry_run checked to rehearse every gate on real bytes, or push the tag."
+          exit 1
+
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v7
         with: { node-version: '24' }
+
+      # ── THE DRY RUN'S GUARD IS ASSERTED, NOT ASSUMED ─────────────────────────
+      # The refusal above is one half. The other half is the `if:` on the
+      # publishing step at the bottom of this file, and an `if:` is one line
+      # that a future edit can drop without any test noticing — the publishing
+      # step has never run, so nothing downstream of it can go red when its
+      # guard goes missing. This step is what notices.
+      #
+      # It reads THIS FILE and requires that every line carrying a publishing
+      # command sits in a step whose own `if:` tests the dry-run input. That is
+      # the structural property the dry run rests on, stated once, in a form
+      # that fails loudly rather than silently.
+      #
+      # ⚠️ THE PATTERN IS BUILT BY ALTERNATION SO NO LINE OF THIS BODY IS ITSELF
+      # A LITERAL PUBLISHING COMMAND. `gh release (create|upload|edit|delete)`
+      # does not match the text `gh release (create|upload|edit|delete)` — after
+      # `gh release ` the subject line has `(`, not `c`. Written the obvious way,
+      # as the four literals, this tripwire would count its own body as four
+      # unguarded publishes and could never go green. A check that quotes the
+      # string it counts counts itself.
+      #
+      # ⚠️ COMMENT LINES ARE EXCLUDED BY STRIPPING INDENTATION AND TESTING THE
+      # FIRST CHARACTER, not by an anchored regex. `^ {6,}[^#[:space:]].*<pat>`
+      # is the obvious spelling and it is WRONG: the greedy run of spaces
+      # backtracks to the last one, `[^#[:space:]]` then eats the `g` of `gh`,
+      # and `.*<pat>` has to find a SECOND copy further along the line. Measured
+      # 2026-08-25 against this file: that form returns nothing on
+      # `          gh release create "$GITHUB_REF_NAME" \` while a bare
+      # `grep -nE 'gh release (create|upload|edit|delete)'` returns it plus the
+      # prose mention in the Checksums comment — so the anchored form would have
+      # reported "0 unguarded" over a file it had not actually read.
+      #
+      # ⚠️ AND `found == 0` IS A FAILURE, NOT A PASS. If a publishing command is
+      # renamed or a store upload arrives under a name this pattern does not
+      # know, the guard this step exists to assert simply goes unasserted. Same
+      # rule as the AMO step's `grep -q '^ALL PASS$'` further down: assert the
+      # positive, because a tripwire that can only fire on wording it already
+      # knows goes quietly green the day the wording changes.
+      - name: Every publishing step carries the dry-run guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          pub='gh release (create|upload|edit|delete)'
+          pub="$pub"'|web-ext (sign|submit)'
+          pub="$pub"'|chrome-webstore-(upload|api)'
+          pub="$pub"'|addons\.mozilla\.org/(api|addon)'
+          guard='inputs.dry_run != true'
+          step='(no step yet)'
+          seen=''
+          found=0
+          bad=0
+          while IFS= read -r line; do
+            case "$line" in
+              '      - '*)   step=$line; seen='' ;;
+              '        if:'*) seen=$line ;;
+            esac
+            bare=${line#"${line%%[![:space:]]*}"}
+            case "$bare" in ''|'#'*) continue ;; esac
+            printf '%s\n' "$bare" | grep -qE "$pub" || continue
+            found=$((found + 1))
+            case "$seen" in
+              *"$guard"*) printf 'GUARDED    %s\n             step: %s\n' "$bare" "$step" ;;
+              *)          printf 'UNGUARDED  %s\n             step: %s\n' "$bare" "$step"
+                          bad=$((bad + 1)) ;;
+            esac
+          done < .github/workflows/release.yml
+          if [ "$found" -eq 0 ]; then
+            echo "::error::this step graded nothing: it found no publishing command in release.yml at all. Its pattern names the commands that ship bytes to the public, so a zero here means one was renamed or a new one was added under a name the pattern does not know — and the dry-run guard on it, if any, went unasserted. Widen the pattern; do not delete this step."
+            exit 1
+          fi
+          if [ "$bad" -gt 0 ]; then
+            echo "::error::$bad of $found publishing command(s) above sit in a step whose if: does not contain '$guard'. A workflow_dispatch rehearsal would reach them, and a published release cannot be un-published."
+            exit 1
+          fi
+          echo "$found publishing command(s) in this file, all $found behind an if: that tests the dry-run input."
 
       # Derived from this file, not listed beside it: whatever this workflow
       # actually calls is what gets checked, so the two can never disagree.
@@ -80,10 +232,51 @@ jobs:
             exit 1
           fi
 
+      # ⚠️ ON A DISPATCH, GITHUB_REF_NAME IS `main`. It is the ref the workflow
+      # was dispatched from, not a tag, so the split below would hand every gate
+      # an id of `main` and a version of `main` and the rehearsal would fail six
+      # steps down for a reason that has nothing to do with the release. The
+      # `tag` input carries the tag instead, and the two sources are read in
+      # separate branches so neither can silently stand in for the other.
+      #
+      # 🔴 THE INPUT IS VALIDATED BEFORE IT BECOMES `steps.tag.outputs.*`, AND
+      # THAT IS A SHELL-INJECTION FIX, NOT TIDINESS. Those outputs are
+      # interpolated as `${{ }}` straight into the `run:` bodies of six later
+      # steps — check-version, policy-check, check-core-sync, lint,
+      # check-store-metadata, the pack calls, changelog-section — where GitHub
+      # substitutes them as TEXT before bash ever sees the script. On a `push`
+      # the value comes from a ref that already matched the tag filters above,
+      # so it cannot carry a metacharacter. On a dispatch it is whatever the
+      # dispatcher typed. The regex below admits only `[a-z0-9-]` before the
+      # `-v` and digits and dots after it, so nothing that survives it can close
+      # a quote or open a subshell. The value is read through `env:` rather than
+      # interpolated into this body for the same reason — at the moment it is
+      # first handled it is still untrusted.
+      #
+      # `core-v*` is excluded here as well as in the tag filters: the filter
+      # cannot see a dispatch, and the header at the top of this file explains
+      # why core must not take this path.
       - name: Parse tag  (fullshot-v1.10.1 → id + version)
         id: tag
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$DISPATCH_TAG"
+            if ! printf '%s' "$TAG" | grep -qE '^[a-z0-9][a-z0-9-]*-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+              echo "::error::the tag input was '$TAG', which is not a release tag. Expected <tool-id>-v<major>.<minor>.<patch> with an optional fourth store-only component, e.g. fullshot-v1.10.1. This value is interpolated into later steps, so it is rejected here rather than passed on."
+              exit 1
+            fi
+            if [ "${TAG%%-v*}" = "core" ]; then
+              echo "::error::core is versioned and tagged but it is not a tool: it ships no package and has no store listing, so every gate below would go looking for a tool called 'core'. The push trigger excludes core-v* and a dispatch has to exclude it too, because a tag filter cannot see a dispatch."
+              exit 1
+            fi
+            echo "rehearsing $TAG (workflow_dispatch; nothing will be published)"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
           echo "id=${TAG%%-v*}"     >> "$GITHUB_OUTPUT"
           echo "version=${TAG#*-v}" >> "$GITHUB_OUTPUT"
 
@@ -451,7 +644,39 @@ jobs:
 
       # Store submission stays manual and owner-gated. This publishes the
       # GitHub Release only; nothing here talks to a store.
+      #
+      # ── THIS IS THE ONE STEP A DRY RUN MUST NOT REACH ────────────────────────
+      # 🔴 IT IS ALSO THE ONLY ONE. Measured 2026-08-25 across this whole file:
+      # the executable lines carrying a publishing command are exactly one, the
+      # `gh release (create)` below — there is no store upload step and no AMO
+      # SUBMISSION step in this lane at all. The AMO step above is a verifier
+      # that opens the built zip; it uploads nothing. So the entire publishing
+      # surface of the release lane is this `if:` and this step. "Every
+      # publishing step carries the dry-run guard" near the top of the job is
+      # what keeps that sentence true as the file changes, and what will go red
+      # the day a store upload is added without one.
+      #
+      # BOTH LIMBS ARE LOAD-BEARING, AND THEY FAIL DIFFERENTLY:
+      #   · `github.event_name == 'push'` — the total guard. No dispatch can
+      #     reach this step under any input. Remove it and a dispatch with
+      #     dry_run unchecked publishes a release named `main`, carrying every
+      #     zip and SHA256SUMS.txt, to a PUBLIC repository. (The first step of
+      #     the job refuses that combination, so this limb is the second of two
+      #     independent things that would both have to be removed.)
+      #   · `inputs.dry_run != true` — the declared switch, and the one the
+      #     guard step above asserts by text. Remove it and a dispatch still
+      #     cannot publish, but the file stops SAYING it cannot: the property
+      #     survives only as an event-name coincidence that reads like a
+      #     restriction on which tags are allowed. It is also what turns the
+      #     dry-run guard step red, which is the only automated notice this
+      #     file's publishing surface has.
+      #
+      # ⚠️ `inputs.dry_run` IS NULL ON A PUSH, not false — the `inputs` context
+      # is empty for any event but a dispatch. `!= true` is therefore the
+      # correct comparison and `== false` is NOT: null == false is false, and a
+      # tag push would stop publishing releases entirely.
       - name: Publish GitHub Release
+        if: github.event_name == 'push' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -459,3 +684,12 @@ jobs:
             dist/*.zip dist/SHA256SUMS.txt \
             --title "${{ steps.tag.outputs.id }} v${{ steps.tag.outputs.version }}" \
             --notes-file notes.md
+
+      # The counterpart, so a rehearsal ends in a sentence rather than in the
+      # absence of one. A skipped step is rendered the same way whether it was
+      # skipped on purpose or skipped because an earlier step died, and this
+      # lane's whole problem is that nobody has ever watched it run.
+      - name: Rehearsal complete — nothing was published
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "::notice::dry run finished. Every gate above ran on a real --release build of ${{ steps.tag.outputs.id }} v${{ steps.tag.outputs.version }}; the publish step was skipped by its if:, so no GitHub Release exists and nothing was sent to a store. Push the tag to release."

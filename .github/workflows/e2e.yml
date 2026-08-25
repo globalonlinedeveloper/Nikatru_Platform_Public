@@ -4,8 +4,16 @@ name: E2E
 # and it never blocks a PR by default. It runs weekly, on demand, or on a PR
 # the moment someone adds the `run-e2e` label.
 #
-# Unlike ci.yml this needs no scripts/: each suite is `node run.mjs` inside a
-# tool's own test/e2e directory, which is how it already runs locally.
+# Unlike ci.yml this needs no scripts/ gate: a suite is a `node <name>.mjs` in a
+# tool's own test/e2e directory, which is how they already run locally.
+#
+# ⚠️ THAT SENTENCE READ "each suite is `node run.mjs`" UNTIL 2026-08-25, AND THE
+# SINGULAR WAS THE WHOLE DEFECT IN ONE LINE. run.mjs is one entrypoint of TEN in
+# Extension/Full_Screen_Shot/test/e2e; the other nine had never executed in this
+# workflow, so a green E2E tick spoke for a tenth of the directory it named. The
+# `Run every suite` step below derives the set rather than naming it — and it is
+# the comment on that step, not this paragraph, that carries which suites are
+# wired, which are quarantined and why.
 
 on:
   schedule: [{ cron: '17 4 * * 1' }]          # Mondays 04:17 UTC
@@ -74,7 +82,14 @@ jobs:
     # matrix rather than in a step anyone can read.
     if: needs.discover.result == 'success' && needs.discover.outputs.count != '0'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 45 until 2026-08-25, when it was sized for ONE suite. The five wired
+    # suites total 685s (11m25s) on the author machine — run.mjs 122s,
+    # claim-reduction 79s, reduction-corpus 451s, batch-artifact 15s,
+    # v3acts-probe 18s — so 75 leaves a two-core runner room to be three times
+    # slower and still finish, dependency install included. It is the BACKSTOP
+    # and not the hang detector: the per-suite cap inside the run step below is
+    # the finer instrument, and it names the suite that hung.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -97,9 +112,148 @@ jobs:
 
       # The runner loads the extension straight from the tool directory — no
       # build step, which is also the repo's law for the extensions themselves.
-      - name: Run the suite
+      #
+      # 🔴 `run: node run.mjs` WAS THIS ENTIRE STEP UNTIL 2026-08-25, AND THAT IS
+      # WHY A GREEN E2E TICK PROVED LESS THAN ANY READER WOULD TAKE IT FOR.
+      # Measured that day in Extension/Full_Screen_Shot/test/e2e: twelve `.mjs`
+      # files — two libraries and TEN runnable entrypoints, of which NINE had
+      # never executed in this workflow once. It is the same disease the `A run
+      # that found nothing is not a pass` step above exists to prevent, one
+      # level down: not a job that ran nothing, but a job that ran a tenth of
+      # the directory it names and reported success for all of it.
+      #
+      # DERIVED, NOT LISTED — the rule the discover job already follows. A
+      # sibling `.mjs` is a LIBRARY when another file in the same directory
+      # imports it by relative path (today claim-lib.mjs and png.mjs, and no
+      # others) and a SUITE otherwise. Ten names typed here would recreate the
+      # defect the day an eleventh landed, silently, which is exactly how this
+      # one was made. The classifier prints what it decided on every run, and
+      # the package.json cross-check exists because a classifier that swallows a
+      # real suite fails in the one direction nobody looks.
+      #
+      # ONE STEP RATHER THAN A SECOND MATRIX DIMENSION, on purpose. The suites
+      # bind fixed localhost ports (8907 · 8911 · 8913 twice · 8915 · 8917 ·
+      # 8921 · 8127 · 8131 · 8145 — two of them collide, so the set was never
+      # safe to run concurrently on one machine anyway) and they all write into
+      # the single `out/` directory the upload step below collects. Ten legs
+      # would mean ten partial `out/`s under one artifact name, and ten Chromium
+      # downloads for suites measured at fifteen seconds to seven and a half
+      # minutes each.
+      #
+      # EVERY SUITE RUNS EVEN AFTER ONE FAILS, AND THE JOB STILL GOES RED. The
+      # step collects failures and exits non-zero at the end. That is the
+      # opposite of `continue-on-error`: stopping at the first red would hide
+      # the state of the others behind whichever one broke first, and
+      # `continue-on-error` would hide all of them behind a green tick.
+      #
+      # ⚠️ EXPECT THE FIRST RUNS OF THIS STEP TO BE RED, AND READ THE RED BEFORE
+      # BLAMING THE STEP. Measured 2026-08-25 on the author machine: run alone
+      # TWICE, before and after, reduction-corpus.mjs is 1196 pass / 0 fail and
+      # exit 0 both times (451s on the first, which is the timed one) — that is
+      # the control, and it is why the sentence below is a claim about the
+      # SEQUENCE rather than about the suite; run THIRD in this
+      # step, on the same tree the same afternoon, it is 612 pass / 25 fail in
+      # 301s — and EIGHTEEN of those twenty-five are one assertion repeated on
+      # eighteen fixtures, `A0 requested records the setting that was actually
+      # on`, answering false; the other seven are the counters that follow from
+      # it. Nothing about redaction changed between the two: the suite asks
+      # for `redactPII: true` as soon as the service worker appears, and
+      # background.js's `chrome.runtime.onInstalled` handler writes the whole
+      # DEFAULTS object (in which redactPII is false) on `install`. Whichever
+      # write lands second wins, so a busier machine silently captures with
+      # redaction OFF and every claim-lib suite grades a pass that never ran.
+      # The repair belongs in test/e2e/claim-lib.mjs — its `setSettings` should
+      # read the patch back and not return until it has stuck — and NOT here: a
+      # sleep in this step, or a retry around a failing suite, would convert a
+      # race that CI has just exposed back into a green tick. A two-core runner
+      # is the slow machine this favours.
+      - name: Run every suite in test/e2e (derived, not listed)
         working-directory: ${{ matrix.suite.dir }}/test/e2e
-        run: node run.mjs
+        env:
+          SUITE_DIR: ${{ matrix.suite.dir }}
+        run: |
+          node -e '
+            const fs = require("fs"), cp = require("child_process");
+            /* QUARANTINE — the only file names typed anywhere in this step, and
+               each one carries the MEASUREMENT that put it here and the date it
+               was taken. It is not a skip list to reach for when something is
+               inconvenient: an entry is a suite measured RED, with its exit
+               code, and a red suite is neither wired (a permanently red weekly
+               job teaches everyone to stop reading the tick) nor silenced —
+               every entry prints a ::warning:: on EVERY run, and an entry
+               naming a file this directory no longer has FAILS the job, so the
+               note cannot outlive its subject. Emptying this list is the goal.
+               Adding to it without an exit code beside the name is not what it
+               is for, and neither is editing a suite until it goes quiet. */
+            const QUARANTINE = [
+              { dir: "Extension/Full_Screen_Shot", file: "giveup-verify.mjs",
+                why: "2026-08-25, exit 1, 107 pass 5 fail. NOT a stale suite and NOT quiet: on iframe-door it reports 1 readable-but-unentered frame while matchedComplete stays true and the payload prints (whole count), with an address, a phone and a card still legible in the delivered PNG; on defercap the payload says (PARTIAL count) while the screen says a whole-count sentence. That is the spec 2.1.1 rule - anywhere the pipeline gives up on something, that fact is recorded, carried and reaches the surface - failing in the direction of a person believing more was covered than was. Left unwired because it is red today, NOT because the finding is doubted. Somebody who owns the source has to answer it; this note is here so the answer is not postponed by silence." },
+              { dir: "Extension/Full_Screen_Shot", file: "privacy-verify.mjs",
+                why: "2026-08-25, exit 1, 297 pass 1 fail - canvas-pii check B2, stray=27 of 27. The 27 pixels are not a block the ledger missed: the canvas-pii fixture paints its canvas text with a fillStyle ONE STEP off the block literal (rgb 16,16,16 against a block of rgb 17,17,17), and the antialiasing ramp from that ink to white passes exactly through the block colour - which B2 counts by exact equality, on purpose, because PNG is lossless. test/e2e/README.md already states the rule the fixture breaks (no text colour may sit within tolerance of the block colour). The repair belongs to the FIXTURE, not to the suite and not to the product, and the suite wires the day it lands. Untested on Linux, where the ramp will produce a different count." },
+              { dir: "Extension/Full_Screen_Shot", file: "review-keyboard.mjs",
+                why: "2026-08-25, exit 1. Grades the CURRENT record shape and is the only tier that presses real keys, so this is a live disagreement rather than a retired suite. On review-tall.html the capture comes back 1280x3708 with acts matched=null painted=0 ledger=partial and ZERO marks, on a fixture that carries an example.com address and a Luhn-valid card; P0 wants at least 2 marks past the 3136px tiling floor, so P1, P2 and the whole focus-trap block cascade off it and the run ends in a TimeoutError on the review zoom control. Cause NOT established from this side - either the pass really paints nothing on a capture that tall, or the record is read before it finishes. Compare privacy-verify on sr-only, which reports ledger=present matched=3 on a short page." },
+              { dir: "Extension/Full_Screen_Shot", file: "redaction-claim.mjs",
+                why: "2026-08-25, exit 1, 151 pass 199 fail. Retired, not broken: every failure reads redaction.state, redaction.pixels or the scan and bake ledgers, and REDACTION-CLAIM-SPEC.md 2.2 (Removed - do not leave the old field beside the new one) deletes all four. The product line it grades renders correctly in the same run. test/e2e/README.md says so itself - reduction-corpus.mjs supersedes it in coverage - and reduction-corpus.mjs is wired and green." },
+              { dir: "Extension/Full_Screen_Shot", file: "adversarial-claim.mjs",
+                why: "2026-08-25, exit 1. The same retired record shape and the same spec 2.2 row as redaction-claim.mjs, and named beside it in test/e2e/README.md as superseded by reduction-corpus.mjs. Its own log shows the product answering correctly (Redaction on. 3 matched, 3 painted, 3 confirmed opaque in this image.) while the suite reads undefined off fields that no longer exist." }
+            ];
+            const here = process.env.SUITE_DIR || "";
+            const files = fs.readdirSync(".").filter(f => f.endsWith(".mjs")).sort();
+            const src = new Map(files.map(f => [f, fs.readFileSync(f, "utf8")]));
+            const libs = files.filter(g => files.some(f => f !== g && src.get(f).includes("./" + g)));
+            const all = files.filter(f => !libs.includes(f));
+            console.log(`${files.length} .mjs file(s) in ${here}/test/e2e: ${all.length} suite(s) [${all.join(" ")}], ${libs.length} librar(y/ies) [${libs.join(" ") || "none"}]`);
+            /* package.json is an INDEPENDENT statement of what is runnable here.
+               If the library rule ate something it names, say so and stop. */
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const named = [...new Set(Object.values(pkg.scripts || {})
+              .flatMap(c => [...String(c).matchAll(/node\s+([A-Za-z0-9._-]+\.mjs)/g)].map(m => m[1])))];
+            const lost = named.filter(n => !all.includes(n));
+            if (lost.length) {
+              console.log(`::error::package.json runs ${lost.join(", ")}, which this step did not classify as a suite. Either the file is gone or the library rule swallowed it; either way it must not go unrun.`);
+              process.exit(1);
+            }
+            const mine = QUARANTINE.filter(q => q.dir === here);
+            const stale = mine.filter(q => !all.includes(q.file));
+            if (stale.length) {
+              console.log(`::error::the quarantine names ${stale.map(q => q.file).join(", ")}, which is not a suite in ${here}/test/e2e any more. Delete the entry along with the file, or fix the name — a quarantine note that outlives its subject is how a skip becomes permanent.`);
+              process.exit(1);
+            }
+            for (const q of mine) console.log(`::warning::NOT RUN — ${q.file}: ${q.why}`);
+            const suites = all.filter(f => !mine.some(q => q.file === f));
+            /* Zero suites is not a pass. A step that runs nothing exits 0, and
+               on the checks list that is indistinguishable from every suite
+               passing — the same argument as the discover job above. */
+            if (!suites.length) {
+              console.log(`::error::every .mjs in ${here}/test/e2e is a library or quarantined — this step was about to run nothing and report success.`);
+              process.exit(1);
+            }
+            const failed = [];
+            for (const s of suites) {
+              const t = Date.now();
+              console.log(`::group::node ${s}`);
+              /* A per-suite cap, so a hung suite is a NAMED failure instead of
+                 a job timeout that says only that the step ran out of wall
+                 clock. Twenty minutes against a slowest suite measured at 451s
+                 on the author machine: room for a much slower runner before the
+                 cap, rather than the suite, is the thing that bites. */
+              const r = cp.spawnSync(process.execPath, [s], { stdio: "inherit", timeout: 20 * 60 * 1000 });
+              console.log("::endgroup::");
+              const code = r.error ? 1 : (r.status === null ? 1 : r.status);
+              const extra = r.error ? ` (${r.error.message})` : (r.signal ? ` (signal ${r.signal})` : "");
+              /* `e2e-suite` prefixes the line because the suites print their
+                 own PASS/FAIL at column 0 as well (run.mjs does), and a log a
+                 person greps has to distinguish one assertion from a verdict
+                 on a whole suite. */
+              console.log(`e2e-suite ${code === 0 ? "PASS" : "FAIL"}  ${s}  exit=${code}${extra}  ${Math.round((Date.now() - t) / 1000)}s`);
+              if (code !== 0) failed.push(`${s} exit ${code}${extra}`);
+            }
+            if (failed.length) {
+              console.log(`::error::${failed.length} of ${suites.length} e2e suite(s) failed: ${failed.join("; ")}`);
+              process.exit(1);
+            }
+            console.log(`${suites.length} e2e suite(s) ran, all green${mine.length ? ` — and ${mine.length} quarantined above did NOT run` : ""}`);
+          '
 
       - uses: actions/upload-artifact@v7
         if: always()

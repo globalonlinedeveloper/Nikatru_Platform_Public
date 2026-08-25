@@ -1205,6 +1205,244 @@ expect('naming no tool at all refuses', {
   script: 'policy-check.mjs', argv: [], root: fixture(), code: 2, contains: 'no tool given'
 });
 
+/* =====================================================================
+   coverage — is there a case in this file for every gate CI actually runs?
+   =====================================================================
+
+   EXT-GUARD-COVERAGE. Every pair above proves that ONE NAMED gate bites.
+   Nothing above notices a gate that has NO pair at all, and on the checks
+   list a gate nobody tests is indistinguishable from a gate that passes —
+   which is this file's own opening paragraph turned back on itself.
+   Platform_Public answers this with an assert-guard-coverage step; this
+   repository has no such script, and the only file the answer can live in
+   is the suite whose coverage is in question.
+
+   BOTH SETS ARE DERIVED, NEITHER IS LISTED. The invoked set is read out of
+   .github/workflows; the covered set is read out of this file's own source.
+   A hand-written copy of either would be a second declaration of a fact the
+   workflows already state, and the copy is the one that rots — toward
+   looking healthier than the repository is. That is the same reasoning the
+   `gate-inventory` job in ci.yml is built on, and this is the other half of
+   it: that job asks whether a called gate EXISTS, this asks whether a
+   called gate is PROVEN.
+
+   WHAT IT IS NOT. It does not assert that a gate is well tested — one case
+   satisfies it. It asserts only that the number of cases is not zero, which
+   is the distinction between a gate that was thought about and one that was
+   never looked at. ===================================================== */
+console.log('\ncoverage (which workflow-invoked gates have a case here)');
+
+/* Filled in from the derived sets below and printed by the final summary line,
+   which used to end "every gate proven to bite on a real mutation" full stop.
+   ⚠️ CORRECTED 2026-08-25: measured that day, that sentence was true of the 7
+   gates with a case and said nothing about the 10 that have none — an
+   overclaim of exactly the kind this section exists to detect, printed by the
+   suite itself on every green run. The numbers in it are now derived on the
+   run that prints them rather than asserted in prose. */
+let COVERAGE_NOTE = '';
+
+/* Kept deliberately in step with the pattern in ci.yml's `gate-inventory`
+   step, including its narrowness: the full `Extension/<Tool>/publish/`
+   prefix is required, because a bare `publish/<name>.node.js` is a
+   tool-relative path that does not resolve from the repository root and
+   appears in prose. A fresh RegExp per call — a shared /g literal carries
+   lastIndex between calls and would silently drop matches. */
+const gateHits = text => text.match(
+  /(?:scripts|Extension\/[A-Za-z0-9_]+\/publish)\/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:mjs|node\.js)/g
+) || [];
+
+/* One line in, one line out, comment removed. YAML comments and the shell
+   comments inside a `run: |` body are the same shape and the same hazard, so
+   they get the same treatment: a `#` counts only where a comment can start —
+   at the head of the line or after whitespace — and never inside quotes. The
+   quote state is per line on purpose; a string spanning lines inside a run
+   body would be a block scalar of its own. */
+function stripComments(line) {
+  let q = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (q === '"' && c === '\\') { i++; continue; }
+      if (c === q) q = null;
+      continue;
+    }
+    if (c === "'" || c === '"') { q = c; continue; }
+    if (c === '#' && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i);
+  }
+  return line;
+}
+const stripAll = text => text.split(/\r?\n/).map(stripComments).join('\n');
+
+const repoRel = abs => path.relative(REPO, abs).split(path.sep).join('/');
+
+/* gate path -> Set of workflow files that call it. `null` means the workflow
+   directory could not be read at all, which is COVERAGE LOST, not zero gaps. */
+function gatesInvokedByWorkflows() {
+  const dir = path.join(REPO, '.github', 'workflows');
+  let files;
+  try { files = fs.readdirSync(dir).filter(f => /\.ya?ml$/i.test(f)); }
+  catch (_) { return null; }
+  const found = new Map();
+  for (const f of files) {
+    for (const hit of gateHits(stripAll(fs.readFileSync(path.join(dir, f), 'utf8')))) {
+      const gate = path.posix.normalize(hit);
+      if (!found.has(gate)) found.set(gate, new Set());
+      found.get(gate).add(f);
+    }
+  }
+  return found;
+}
+
+/* The covered set is this file, read as text. A case names its gate in the
+   same key `run()` resolves against SCRIPTS, so the same resolution is done
+   here and the result is made repo-relative — a future case reaching a gate
+   outside scripts/ lands in the set without this needing to change.
+   SELF-REFERENCE, PINNED: the matcher below is anchored to the head of a
+   line, and the only line in this block that carries that key is inside a
+   regular expression whose line starts with `const`. Measured 2026-08-25 on
+   the file as written: 10 gate names, unchanged by adding this section. */
+function gatesWithACaseInThisFile() {
+  const src = fs.readFileSync(__filename, 'utf8');
+  const re = /^[ \t]*script:[ \t]*'([^'\n]+)'/gm;
+  const out = new Set();
+  let m;
+  while ((m = re.exec(src))) out.add(repoRel(path.resolve(SCRIPTS, m[1])));
+  return out;
+}
+
+/* THE RECORDED EXEMPTIONS. An entry here is not a claim that the gate is
+   fine; it is a claim that its absence was LOOKED AT and why it is still
+   absent. Two rules below keep it from becoming a place to hide things: an
+   entry naming a gate no workflow invokes is dead and fails, and an entry
+   naming a gate that has since gained a case is stale and fails. The list
+   can therefore only shrink without someone editing this file on purpose. */
+const NO_CASE_RECORDED = [
+  { gate: 'scripts/test/selftest.node.js',
+    why: 'PERMANENT. This is the suite itself. A case for it would be this file spawning this file; what grades it is that every other case in it is a proven red/green pair.' },
+  { gate: 'scripts/pack.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. The check-store-packages cases synthesise their zips with the local zipOf() helper rather than running pack.mjs, so pack\'s allowlist and its determinism are asserted by nothing in this file — CI compares two pack runs, which catches non-determinism but not a wrong allowlist.' },
+  { gate: 'scripts/verify-refs.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. Both workflow calls are `--zip <file> --strict|--leaks`, so a case needs a built package as its subject, not the --repo-root tree every case here mutates. The zip fixture exists (zipOf) and wiring it to this gate is the next step.' },
+  { gate: 'scripts/run-tests.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. It runs exactly the commands in a tool.json "tests" block, so a case must let the fixture spawn a real child command and prove both limbs: a failing command fails the gate, and an EMPTY tests block does not pass silently.' },
+  { gate: 'scripts/secret-scan.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. A case has to plant a credential-shaped literal, and this file is inside the tree CI scans with `secret-scan.mjs .` — so the literal must be assembled at run time rather than written as source, or the suite becomes the finding. Deliberately not bodged in without that being got right.' },
+  { gate: 'scripts/sha256.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. The plainest of the nine: one file in, one hash out, used by the determinism comparison in ci.yml. Nothing here proves it reports a missing file rather than printing an empty hash.' },
+  { gate: 'scripts/check-catalog.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. gen-catalog.mjs has cases; its two consumers do not. This one grades the real README catalog markers, so a case needs the marker block in the fixture README to be driven out of step with the fixture tools.' },
+  { gate: 'scripts/publish-catalog.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. Same family as check-catalog.mjs and uncovered for the same reason.' },
+  { gate: 'scripts/changelog-section.mjs',
+    why: 'OPEN GAP, recorded 2026-08-25. Called only from release.yml, to cut one version section out of a CHANGELOG for the release body. Uncovered means a release note that silently comes out empty is caught by nobody.' },
+  { gate: 'Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js',
+    why: 'OPEN GAP, recorded 2026-08-25. It lives in a tool\'s publish/, not in scripts/, and the run() helper here resolves against SCRIPTS and appends --repo-root, which this gate does not take — it takes --zip. It needs its own runner before it can have a case.' }
+];
+
+/* The evaluation, as a pure function, so it can be pointed at synthetic sets
+   and shown to bite before it is pointed at the real ones. */
+function unexplainedGaps(invoked, covered, recorded) {
+  const excused = new Set(recorded.map(e => e.gate));
+  return [...invoked].filter(g => !covered.has(g) && !excused.has(g)).sort();
+}
+
+/* ---- the evaluator must itself be shown to go red ---- */
+{
+  const uncovered = 'scripts/' + 'nobody-tests-me.mjs';
+  const proven = 'scripts/' + 'has-a-case.mjs';
+  const red = unexplainedGaps([proven, uncovered], new Set([proven]), []);
+  const green = unexplainedGaps([proven, uncovered], new Set([proven]), [{ gate: uncovered, why: 'recorded' }]);
+  if (red.length === 1 && red[0] === uncovered && green.length === 0) {
+    ok('the coverage evaluator reports an uncovered gate, and only an unrecorded one');
+  } else {
+    bad('the coverage evaluator reports an uncovered gate, and only an unrecorded one',
+      'on a synthetic pair it returned ' + JSON.stringify(red) + ' unrecorded and ' +
+      JSON.stringify(green) + ' recorded; it cannot fail over the input class it exists for');
+  }
+}
+
+/* ---- a gate named in a COMMENT is not a gate anybody invokes ---- */
+/* The two names are assembled from halves so that no full path to a file that
+   does not exist ever appears as one token in this repository — a whole-path
+   grep somewhere else must not start reporting a missing script because of a
+   fixture string. */
+{
+  const inRun = 'scripts/' + 'ghost-invoked.mjs';
+  const inComment = 'scripts/' + 'ghost-mentioned.mjs';
+  const synthetic = [
+    '# a workflow header that discusses ' + inComment + ' at length',
+    'jobs:',
+    '  demo:',
+    '    steps:',
+    '      - name: real',
+    '        run: |',
+    '          # and a shell comment inside a run body, naming ' + inComment,
+    '          node ' + inRun + ' --all  # ' + inComment,
+    ''
+  ].join('\n');
+  const seen = new Set(gateHits(stripAll(synthetic)));
+  if (seen.has(inRun) && !seen.has(inComment)) {
+    ok('a gate named only in a comment is not counted as invoked', 'YAML header, shell comment and trailing comment all stripped');
+  } else {
+    bad('a gate named only in a comment is not counted as invoked',
+      'the comment stripper let through ' + JSON.stringify([...seen]) +
+      '; prose would enter the invoked set and this whole case would grade the wrong thing');
+  }
+}
+
+/* ---- the real sets ---- */
+const INVOKED = gatesInvokedByWorkflows();
+const COVERED = gatesWithACaseInThisFile();
+
+if (INVOKED === null) {
+  bad('the set of gates the workflows invoke can be read',
+    'COVERAGE LOST — ' + path.join(REPO, '.github', 'workflows') + ' could not be read.\n' +
+    'An unreadable workflow directory produces an empty invoked set, and an empty invoked set has no gaps in it. ' +
+    'That is not a clean bill of health, so it is a failure here rather than a silent pass.');
+} else if (INVOKED.size === 0) {
+  bad('the set of gates the workflows invoke is not empty',
+    'COVERAGE LOST — the workflow files parsed but named no gate at all.\n' +
+    'Either every gate call was removed, or the pattern in this section no longer matches the way they are written. ' +
+    'Both mean this case is grading nothing, and grading nothing must never be green.');
+} else if (COVERED.size === 0) {
+  bad('the set of gates with a case in this file is not empty',
+    'COVERAGE LOST — this file read its own source and found no case naming a gate, ' +
+    'which cannot be true while the cases above are running. The matcher has drifted from the way a case is written, ' +
+    'and every gate would be reported as uncovered — or, with the check inverted, none would.');
+} else {
+  ok('both sets are derived, neither is listed',
+    INVOKED.size + ' gate(s) invoked by .github/workflows · ' + COVERED.size + ' gate(s) with a case here');
+
+  const gaps = unexplainedGaps(INVOKED.keys(), COVERED, NO_CASE_RECORDED);
+  if (gaps.length === 0) {
+    const excused = NO_CASE_RECORDED.length;
+    COVERAGE_NOTE = '\n' + excused + ' of ' + INVOKED.size + ' workflow-invoked gate(s) have NO case here. ' +
+      'Every one is recorded in NO_CASE_RECORDED with the reason; none is a silent gap.';
+    ok('every gate the workflows invoke has a case here or a recorded reason',
+      (INVOKED.size - excused) + ' proven · ' + excused + ' recorded as having no case');
+  } else {
+    bad('every gate the workflows invoke has a case here or a recorded reason',
+      gaps.length + ' gate(s) are called by a workflow, have no case in this file, and no recorded reason:\n' +
+      gaps.map(g => '  · ' + g + '   (called by ' + [...INVOKED.get(g)].sort().join(', ') + ')').join('\n') +
+      '\nAdd a red/green pair for each, or add an entry to NO_CASE_RECORDED saying what is missing and why. ' +
+      'Do not add the entry to make this green if you can write the pair.');
+  }
+
+  /* Both directions of rot in the recorded list. */
+  const dead = NO_CASE_RECORDED.filter(e => !INVOKED.has(e.gate)).map(e => e.gate).sort();
+  if (dead.length === 0) ok('every recorded reason still names a gate a workflow invokes');
+  else bad('every recorded reason still names a gate a workflow invokes',
+    'these entries excuse a gate no workflow calls any more, so they excuse nothing and hide the next real gap:\n' +
+    dead.map(g => '  · ' + g).join('\n'));
+
+  const stale = NO_CASE_RECORDED.filter(e => COVERED.has(e.gate)).map(e => e.gate).sort();
+  if (stale.length === 0) ok('no recorded reason survives the case that closed it');
+  else bad('no recorded reason survives the case that closed it',
+    'these gates now HAVE a case in this file, so the entry recording their absence is false:\n' +
+    stale.map(g => '  · ' + g).join('\n') +
+    '\nDelete the entry. The list is a ratchet; leaving a closed gap in it is how the count stops meaning anything.');
+}
+
 /* ---------------- summary ---------------- */
 console.log('');
 if (!KEEP) { try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) {} }
@@ -1215,5 +1453,5 @@ if (FAILURES.length) {
   for (const f of FAILURES) console.log('  - ' + f.label);
   process.exit(1);
 }
-console.log('ALL PASS — ' + PASS + ' checks, every gate proven to bite on a real mutation');
+console.log('ALL PASS — ' + PASS + ' checks, every gate THAT HAS A CASE proven to bite on a real mutation' + COVERAGE_NOTE);
 process.exit(0);

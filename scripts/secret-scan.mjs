@@ -75,6 +75,45 @@
    itself, and that exemption is a hole straight through the middle of it.
    `'this gate is committable'` below is the assertion that keeps it true.
 
+   AND A SECOND CLASS: INDIAN IDENTITY NUMBERS, WHOSE SAMPLES ARE THE HARD PART
+
+   Everything above this line is a CREDENTIAL rule, and a credential scanner has
+   no opinion about a national identity number. That gap is not hypothetical:
+   Nikatru_Platform_Public found the proprietor's real PAN committed to a public
+   repository in the PII scrubber's own test fixture, past a green gate and past
+   a .gitignore whose exclusions were PATH-based while the leak was a string
+   literal in ordinary source. [ADR 034] settles WHERE the control belongs — the
+   PRIVATE corpus may carry these in clear, the PUBLIC repos may not — and
+   Platform_Public carries it in .gitleaks.toml. This repository has no
+   .gitleaks.toml; this file is its whole content gate, so the control lands here
+   or it lands nowhere. Measured on 2026-08-25: `git grep` for those literals at
+   HEAD found nothing here. This closes a FUTURE hole, it does not clean a leak.
+
+   THE TRAP, WHICH IS THE WHOLE DIFFICULTY. Every rule in this file proves it
+   still bites by matching a `sample` that lives in this file's own bytes. A
+   sample for an identity rule that were a REAL number would put real PII into a
+   public repository — precisely what the rule exists to prevent. So each sample
+   below is chosen to be OUTSIDE THE ISSUABLE VALUE SPACE by construction, on a
+   published numbering rule, and each rule states which rule and why. "It looks
+   obviously fake" is NOT one of those arguments and is measurably worthless: of
+   the ten twelve-digit repdigits, the all-9s, the all-3s and the all-6s each
+   carry a VALID Verhoeff check digit, so each is a number UIDAI could have
+   issued — a value can look like a placeholder and still be somebody's.
+
+   ⚠️ AND THAT SENTENCE NAMES THEM RATHER THAN SPELLING THEM, deliberately.
+   Writing those digits out here made this file a finding in its own scan, and
+   the gate below caught it on the first run — the identical trap
+   Nikatru_Platform_Public's .gitleaks.toml records for its own PAN comment. A
+   rule's documentation is inside that rule's blast radius. Nothing in this file
+   may contain a matchable identity number: the samples exist only as fragments
+   joined at run time, and the prose describes values instead of quoting them.
+
+   AND THE REMEDY IS NOT THE CREDENTIAL REMEDY. A leaked token is rotated. A PAN
+   cannot be rotated, a GSTIN cannot be rotated and an Aadhaar cannot be rotated —
+   the person is stuck with the number. That is why these hits get their own
+   verdict below instead of being folded into the credential one under advice
+   ("ROTATE IT FIRST") that is impossible to follow.
+
    READ AS BYTES, NOT AS TEXT
 
    Every file is read as a buffer and decoded latin1, so one byte is one
@@ -184,6 +223,115 @@ const CONTENT_RULES = [
     sample: '1//' + '04aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789' }
 ];
 
+/* Indian identity numbers — a DIFFERENT CLASS, kept in its own array on purpose.
+   CONTENT_RULES above is the parity claim against CONTENT_RE in
+   .githooks/pre-commit, and that hook has no identity patterns. Folding these in
+   there would make a true parity statement quietly false; leaving the arrays
+   apart keeps it checkable. THE HOOK IS THEREFORE ONE CLASS BEHIND THIS FILE —
+   stated rather than implied, because the hook is not this change's file to edit.
+
+   Every `sample` here is fragmented and every one is outside the issuable value
+   space; the per-rule comments carry the argument, which is the point of them. */
+const IDENTITY_RULES = [
+  /* PAN — 5 letters, 4 digits, 1 letter. Same shape Platform_Public's
+     `nikatru-india-pan` uses, deliberately: two public repos disagreeing about
+     what a PAN looks like is a gap shaped like a policy.
+
+     SAMPLE SAFETY. The 4th character of a PAN encodes the holder's status and
+     comes from a FIXED published set — A, B, C, E, F, G, H, J, K, L, P, T
+     (individual, company, firm, HUF, trust, government, …). `Z` is in no
+     published set, so a value carrying it is shape-valid for this loose regex
+     and CANNOT HAVE BEEN ISSUED to anybody. That is the whole argument, and it
+     is why the regex is deliberately NOT narrowed to `[A-Z]{3}[ABCEFGHJKLPT]…`:
+     narrowing it would force this sample to become an issuable PAN in order to
+     keep matching, which is the self-reference trap this class is full of. The
+     looseness is paid for by measurement, not by hope — see below.
+
+     FALSE POSITIVES, MEASURED not reasoned about: this shape can in principle
+     match a build hash or a base32 fragment, and Platform_Public carries an
+     allowlist for exactly that. Run across all 540 committable files in this
+     repository on 2026-08-25 it matched ZERO of them, so it ships with no
+     allowlist — an allowlist entry with no user is a permanent hole in the net
+     that nothing is using, and this file already argues that case for `_PAT`. */
+  { name: 'Indian PAN', re: /\b[A-Z]{5}[0-9]{4}[A-Z]\b/,
+    sample: 'AAA' + 'ZA' + '1111' + 'A' },
+
+  /* GSTIN — 2-digit state code, then the holder's PAN at characters 3-12, then
+     entity number, then a fixed letter, then a checksum character. IT NEEDS ITS
+     OWN RULE even though it contains a PAN: the PAN rule is `\b`-anchored, and
+     inside a GSTIN the PAN is bounded by digits on the left, so no word boundary
+     exists and the PAN rule cannot see it. Verified, not assumed.
+
+     SAMPLE SAFETY — TWO INDEPENDENT REASONS, because one leaked PAN is one too
+     many and a GSTIN sample IS a PAN sample:
+       1. it embeds the same impossible-4th-character PAN as the rule above, so
+          no real person's PAN is written down here either;
+       2. its state code is `00`. GST state codes are the census codes 01-38,
+          plus 97 (Other Territory) and 99 (Centre Jurisdiction). 00 is assigned
+          to nothing, so this value cannot be issued on that ground alone.
+     Measured across the same 540 files: ZERO matches, no allowlist. */
+  { name: 'Indian GSTIN', re: /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}\b/,
+    sample: '00' + 'AAA' + 'ZA' + '1111' + 'A' + '1Z5' },
+
+  /* Aadhaar — 12 digits, optionally grouped 4-4-4.
+     The leading `[2-9]` is the UIDAI numbering rule, not a shortcut: no issued
+     Aadhaar begins 0 or 1. Carried across from Platform_Public's
+     `nikatru-india-aadhaar`, where it is what lets that rule need no allowlist.
+
+     BUT IT CANNOT DO THE SAMPLE'S WORK HERE, and that difference matters. Over
+     there the fixtures begin with 1, so the rule is unable to match them — a
+     stronger guarantee than being excused by an allowlist. Here the sample must
+     MATCH or the rule is dead, so it has to begin 2-9 and the safety has to come
+     from somewhere else: the 12th digit is a VERHOEFF check digit, and the
+     all-2s repdigit — the sample below, which exists in this file only as three
+     fragments joined at run time — has Verhoeff residue 9 rather than 0. It
+     fails the check UIDAI applies, so it is not an issuable Aadhaar. (The
+     Verhoeff implementation used to establish that was validated first against
+     the published vectors 2363 and 758722, with 2364 as a one-digit-off control
+     that correctly failed. Repdigits are NOT self-evidently safe: three of the
+     ten pass Verhoeff — see the header, which names them without spelling them.)
+
+     THE BOUNDARY GUARDS ARE THE ENTIRE DIFFERENCE BETWEEN A RULE AND A DELETED
+     RULE, and they were measured on this tree rather than imagined. The
+     `\b`-only form matched 51 times across 23 tracked files here — every one of
+     them a payment-card or order-id fixture in Full_Screen_Shot's redaction
+     tests, because the middle three groups of `4242 4242 4242 4242` ARE the
+     4-4-4 Aadhaar shape. Platform_Public's own guarded form still matched all
+     51: it excludes a leading `+` or hyphen (phone numbers) but not a preceding
+     GROUP. So two guards are added on top of it —
+       (?<![0-9][ -])  not a continuation of an earlier 4-digit group
+       (?![ -]?[0-9])  not continued by a later one
+     — which is to say: match 12 digits, never 12 digits carved out of 16. With
+     both, the same sweep matches 0 of 540. A rule that reddens every branch is a
+     rule somebody deletes.
+
+     KNOWN, ACCEPTED FALSE NEGATIVE, stated rather than discovered later: a real
+     Aadhaar written immediately after some other digit run and a single space
+     ("560001 2345 6789 0123") is skipped by the leading guard. That is the price
+     of not firing on every card fixture in the repository, and it is the right
+     side to fail on for a gate that blocks commits.
+
+     Lookaround is used rather than Platform_Public's captured-boundary trick
+     because Go's RE2 has none and JavaScript does; it also keeps the reported
+     match length equal to the length of the number itself, which the verdict
+     below prints instead of the value. */
+  { name: 'Indian Aadhaar', re: /(?<![0-9A-Za-z+-])(?<![0-9][ -])[2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}(?![0-9A-Za-z-])(?![ -]?[0-9])/,
+    sample: '2222' + ' 2222' + ' 2222' }
+];
+
+/* One list for the machinery, two for the reader and for the verdicts. `kind`
+   is what lets a PAN hit avoid being printed under advice to rotate it. */
+const ALL_CONTENT_RULES = [
+  ...CONTENT_RULES.map(rule => ({ ...rule, kind: 'credential' })),
+  ...IDENTITY_RULES.map(rule => ({ ...rule, kind: 'identity' }))
+];
+
+/* WHAT THIS CLASS STILL DOES NOT SEE, named rather than implied: these are
+   CONTENT rules only. A PAN spelled in a FILENAME is not caught by them, and
+   PATH_RULES below is a credential-file list, not a PII one. Same position
+   Platform_Public's .gitleaks.toml is in — gitleaks scans content too — so this
+   is a shared gap and not a local oversight. */
+
 /* Paths that are credential files by name, whatever they happen to contain. An
    empty `.pem` is still a signing key that was in this directory. */
 const PATH_RULES = [
@@ -207,6 +355,24 @@ const BENIGN = [
   { name: 'prose about tokens', text: 'The hook refuses classic and fine-grained PATs.' },
   { name: 'ordinary base64', text: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB' },
   { name: 'a bare // comment', text: 'return 1 // 0 is not a token' },
+  /* The next five pin the Aadhaar boundary guards down, and they are here
+     because they were MEASURED, not anticipated: the unguarded 4-4-4 shape
+     matched 51 times across 23 tracked files in this repository, and every one
+     of those matches was one of these shapes. They are the redaction tests'
+     own fixtures — Full_Screen_Shot has to render a card number in order to
+     prove it redacts one — so they are not going away and must not redden the
+     tree. A future widening of that rule now trips over these instead of over
+     twenty-three test files and a contributor's afternoon. */
+  { name: 'a grouped card number', text: 'Card 4242 4242 4242 4242' },
+  { name: 'a hyphen-grouped card number', text: 'card=4242-4242-4242-4242;' },
+  { name: 'a 16-digit order id', text: 'Order 1234 5678 9012 3456' },
+  { name: 'a bare 16-digit run', text: 'ref 2345678901234567 ok' },
+  /* A UUID's leading groups are eight digits, a hyphen and four more, which is
+     the 4-4-4 shape again; digits-only here so the assertion is not accidentally
+     satisfied by a stray letter. And an E.164 number is twelve digits behind a
+     `+`, which is what the `+` in the leading guard's class is for. */
+  { name: 'a digit-only UUID', text: '24680135-2468-4013-8246-801324680135' },
+  { name: 'an E.164 phone number', text: 'tel:+919876543210' },
   { name: 'this gate is committable', text: fs.readFileSync(fileURLToPath(import.meta.url), 'latin1') }
 ];
 
@@ -214,7 +380,7 @@ const BENIGN = [
 {
   const dead = [];
   const noisy = [];
-  for (const rule of CONTENT_RULES) {
+  for (const rule of ALL_CONTENT_RULES) {
     if (!rule.re.test(rule.sample)) {
       dead.push('  ' + rule.name + '  ' + String(rule.re) + '  no longer matches its own sample');
     }
@@ -247,8 +413,8 @@ const BENIGN = [
     process.exit(EXIT_FAIL);
   }
   r.pass('the scanner still bites',
-    CONTENT_RULES.length + ' content + ' + PATH_RULES.length + ' path rule(s) matched their own samples; ' +
-    BENIGN.length + ' benign sample(s) matched none');
+    CONTENT_RULES.length + ' credential + ' + IDENTITY_RULES.length + ' identity + ' + PATH_RULES.length +
+    ' path rule(s) matched their own samples; ' + BENIGN.length + ' benign sample(s) matched none');
 }
 
 /* ---------------- derivation A: the filesystem ---------------- */
@@ -386,7 +552,7 @@ for (const rel of subject) {
   }
 
   for (const view of views) {
-    for (const rule of CONTENT_RULES) {
+    for (const rule of ALL_CONTENT_RULES) {
       const re = new RegExp(rule.re.source, 'g');
       let m;
       while ((m = re.exec(view.text)) !== null) {
@@ -394,7 +560,7 @@ for (const rel of subject) {
            secret echoed to a terminal is a secret in scrollback, in a
            screenshot, and in whatever bug report the log gets pasted into. */
         contentHits.push({
-          rel, rule: rule.name, how: view.how,
+          rel, rule: rule.name, kind: rule.kind, how: view.how,
           line: view.text.slice(0, m.index).split('\n').length,
           length: m[0].length
         });
@@ -434,11 +600,19 @@ if (pathHits.length) {
   r.pass('no committable path is a credential file by name', subject.length + ' path(s) against ' + PATH_RULES.length + ' rule(s)');
 }
 
-if (contentHits.length) {
-  const shown = contentHits.slice(0, 20)
-    .map(h => '  ' + h.rel + ':' + h.line + h.how + '  — ' + h.rule + ' (' + h.length + ' chars, not printed)');
-  r.fail(contentHits.length + ' credential-shaped string(s) in committable content',
-    shown.join('\n') + (contentHits.length > 20 ? '\n  … and ' + (contentHits.length - 20) + ' more' : '') +
+/* Split by class before printing. Both verdicts say "the match is not printed"
+   for the same reason, but they part company completely on the remedy, and a
+   verdict that gives impossible advice is a verdict people learn to skim. */
+const list = hits => hits.slice(0, 20)
+  .map(h => '  ' + h.rel + ':' + h.line + h.how + '  — ' + h.rule + ' (' + h.length + ' chars, not printed)')
+  .join('\n') + (hits.length > 20 ? '\n  … and ' + (hits.length - 20) + ' more' : '');
+
+const credentialHits = contentHits.filter(h => h.kind === 'credential');
+const identityHits = contentHits.filter(h => h.kind === 'identity');
+
+if (credentialHits.length) {
+  r.fail(credentialHits.length + ' credential-shaped string(s) in committable content',
+    list(credentialHits) +
     '\nThe match itself is deliberately not printed: a secret in a CI log is a secret in every fork\n' +
     'of that log. Open the line above to see it.\n' +
     'If it is a real credential, ROTATE IT FIRST. Deleting it from the tree does not delete it from\n' +
@@ -449,6 +623,25 @@ if (contentHits.length) {
   r.pass('no credential-shaped string in committable content',
     scanned + ' file(s) · ' + bytes + ' bytes · ' + CONTENT_RULES.length + ' rule(s)' +
     (utf16 ? ' · ' + utf16 + ' scanned twice for UTF-16' : ''));
+}
+
+if (identityHits.length) {
+  r.fail(identityHits.length + ' Indian identity number(s) in committable content',
+    list(identityHits) +
+    '\nThe match is not printed, for the same reason a credential is not: this is the exact class of\n' +
+    'value the rule exists to keep out of a public repository, and a CI log is public too.\n' +
+    'THERE IS NO ROTATION HERE. A PAN, a GSTIN and an Aadhaar all belong to a person or an entity\n' +
+    'for life — the credential playbook does not apply and there is no undo. If this reaches a\n' +
+    'commit the remedy is history rewriting, not a follow-up commit, so deal with it now.\n' +
+    'If it is a REAL number: it belongs in the private corpus, which [ADR 034] says may carry these\n' +
+    'in clear. It does not belong here. This repository is public.\n' +
+    'If it is a FIXTURE: make it unissuable rather than merely unfamiliar. The rules above each\n' +
+    'document how — a PAN whose 4th character is outside the published holder-status set, a GSTIN\n' +
+    'on state code 00, an Aadhaar that fails its Verhoeff check digit or simply begins with 0 or 1,\n' +
+    'which no issued Aadhaar does. "It looks made up" is not a property anything can check.');
+} else {
+  r.pass('no Indian identity number in committable content',
+    scanned + ' file(s) · ' + IDENTITY_RULES.length + ' rule(s) — PAN, GSTIN, Aadhaar');
 }
 
 r.note('subject: ' + subjectSource + (widened ? ' — WIDENED, see above' : ''));

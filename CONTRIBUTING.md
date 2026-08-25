@@ -101,6 +101,91 @@ script is honest in a way that an `if [ -f ]` guard is not. So today the only th
 and this repository's public history is a hook you installed by hand on your own machine. Treat the
 first line of that block as part of the price of a clone, not as a tip.
 
+⚠️ **CORRECTED 2026-08-25 — the backstop exists. The paragraph above is false from "and that file
+does not exist" onward, and it is left standing only so the correction is legible next to it.**
+`scripts/secret-scan.mjs` is a real file — **25027 bytes**, present since 2026-08-15 — and it is
+invoked by two workflows, not zero: the `secrets-scan` job (`ci.yml`, the bare `- run:` step that
+calls it) and the release workflow's equivalent. Measured today, bare, from the repository root with
+the exit code read on its own line:
+
+| Command | Exit | What it printed |
+| --- | --- | --- |
+| `node scripts/secret-scan.mjs .` | **0** | `3 passed` — `no committable path is a credential file by name` (540 paths × 5 rules), `no credential-shaped string in committable content` (540 files · 12274076 bytes · 9 rules) |
+
+It also self-tests before it grades: its first line is `the scanner still bites — 9 content + 5 path
+rule(s) matched their own samples; 5 benign sample(s) matched none`. That is the same discipline
+`--self-test` gives the hook, run automatically rather than by hand.
+
+The citation is stale too. `scripts/README.md` no longer "says so on purpose": it lists the script in
+its inventory table, records its exit code in a dated block, and names the CI job it belongs to —
+⚠️ **grep the job name `secrets-scan`, not a step name**, which is that README's own measured note.
+
+Two things the correction does **not** retire, and they are the reason this paragraph was written:
+
+- **The hook is still hand-installed and still unchecked.** `git config core.hooksPath .githooks` is
+  written into `.git/config`, which is neither cloned nor pushed, and nothing in this repository can
+  make it automatic. That half of the paragraph stands exactly as written.
+- **A CI scan is not a pre-commit hook.** `secret-scan.mjs` runs *after* you have pushed, so it is a
+  net under the history, not a gate in front of it. A credential caught by CI is a credential already
+  in a public branch. Install the hook anyway.
+
+The rule underneath is also unchanged and worth keeping: **a job that fails loudly on a missing
+script is honest in a way that an `if [ -f ]` guard is not.** What changed is that the job no longer
+has a missing script to be honest about.
+
+⚠️ **CORRECTED AGAIN 2026-08-25, later the same day — four figures in the block above have drifted.
+This is drift, not fabrication.** Every number in that block was measured honestly against the tree
+as it stood when it was written; nothing there was guessed or reconstructed from memory. What moved
+underneath it is `scripts/secret-scan.mjs` itself: a later change on the same day added a third
+family of content rules — Indian identity numbers (PAN, GSTIN, Aadhaar) — as a fourth gate, which
+changed the pass count, rewrote the self-test line word for word, and changed the scanner's own size
+and the byte total it reports. The block above is left standing unedited, because the sequence of
+corrections is the record.
+
+Re-measured today from the repository root, bare, with the exit code read on its own line
+(`node scripts/secret-scan.mjs . >/tmp/ss.txt 2>&1; rc=$?; echo "rc=$rc"` → `rc=0`), against the
+working tree at commit `7c33a62` **plus the uncommitted change to `scripts/secret-scan.mjs`**:
+
+| Figure in the block above | Stated there | Prints today |
+| --- | --- | --- |
+| Grade line for `node scripts/secret-scan.mjs .` | `3 passed` | `4 passed` — the added gate is `no Indian identity number in committable content` — `540 file(s) · 3 rule(s) — PAN, GSTIN, Aadhaar` |
+| The self-test line, quoted verbatim | `the scanner still bites — 9 content + 5 path rule(s) matched their own samples; 5 benign sample(s) matched none` | see the block below — the old string no longer exists anywhere in the output |
+| Content-gate size | `540 files · 12274076 bytes` | `540 file(s) · 12304986 bytes` |
+| Size of `scripts/secret-scan.mjs` | `25027 bytes` | **25027 bytes at `7c33a62`, still exact** — but **37832 bytes** in the working tree with the identity rules applied |
+
+The self-test line as it prints today, copied out of the run rather than retyped — note the two
+spaces before the dash, and that `content` is now split into `credential` and `identity`:
+
+```
+  PASS  the scanner still bites  — 9 credential + 3 identity + 5 path rule(s) matched their own samples; 11 benign sample(s) matched none
+```
+
+What did **not** move, and is therefore the part of that block still safe to rely on: the exit code
+is still **0**; the subject is still **540** committable files (547 on disk, 7 gitignored); the path
+gate is still **5** rules; the credential-content gate is still **9** rules; and the script is still
+invoked by two workflows.
+
+🔴 **The lesson, and it is the reason this second correction was worth writing.** A record that
+quotes a **verbatim self-test string** and a **byte count of a file somebody else is editing** is a
+record that goes stale by the hour — not by the release. Both of those figures were true when taken
+and false before the day was out, and neither failure was anybody's carelessness. Prefer the claim
+that survives the next commit: *the scanner self-tests its own rules before it grades anything, and
+fails closed — `gate A` calls `process.exit(EXIT_FAIL)` immediately if any rule stops matching its
+own sample, before a single file is read.* That sentence stays true when a fourth or fifth rule
+family lands; `9 content + 5 path` did not survive one. Where an exact figure genuinely earns its
+place, **pin it to a commit** (`25027 bytes at 7c33a62`) or say out loud that it drifts — an
+unpinned byte count reads as a fact and behaves like a timestamp.
+
+⚠️ **This correction is self-referential, so any grep count of these strings is self-inclusive —
+including the counts in this sentence.** The strings `the scanner still bites`, `12274076` and
+`25027` now appear in this file both in the block being corrected and in the correction quoting it,
+and again in this note about the counting. Counted with `grep -o … | wc -l` immediately after this
+section was written: `the scanner still bites` **5 times** — once in the stale block, once in the
+table row above, once in the fenced current output, and twice in this paragraph; `12274076`
+**4 times**; `25027` **6 times**. None of those is evidence about the scanner; they are evidence
+about this file. Subtract this section before concluding anything from such a count, and re-count
+rather than trusting these three numbers if the file has been edited since.
+
 `.githooks/pre-commit` refuses a commit whose staged paths or staged diff look like a credential.
 `--no-verify` bypasses it, which is why it is a net rather than a permit.
 
@@ -140,6 +225,16 @@ It copies a whole working extension — `templates/tool/` if that directory exis
 otherwise, and it prints which one it used — stamps the four facts that must be right on day one, and
 writes the `tool.json` that makes the rest of the repository see the tool at all. Then it prints the
 ordered list of things it deliberately did not do, and that list is the real procedure.
+
+⚠️ **CORRECTED 2026-08-25 — that sentence names the same directory twice, so it describes no
+fallback at all.** Read out of the script rather than the prose: the candidate list is
+`['templates/tool', '_skeleton']`, tried in that order, and `_skeleton/` is the template's
+**pre-move location**, kept only as a fallback. In this tree `_skeleton/` **does not exist**
+(`ls -d _skeleton` → `No such file or directory`), so `templates/tool/` is the only source a
+scaffold can come from today; if it were ever missing, `new-tool.mjs` does not fall through
+silently — it dies naming both candidates and offering `--template <dir>`. The rest of the sentence
+is right, including "it prints which one it used": the run note says so explicitly when the fallback
+is what got used.
 
 **Do not substitute `cp -r`.** A hand-copied folder has no `tool.json`, and `tool.json` is the entire
 coupling surface: `scripts/discover.mjs` builds the CI matrix by globbing for it, so a tool without
@@ -257,6 +352,30 @@ The description is **111** characters, not 137 — count it yourself with
 `_locales/en/messages.json` and 54 sibling catalogues. `CHANGELOG.md` exists: **12874** bytes, top
 entry `## [1.10.2] — 2026-08-15`. `tool.json` has been corrected in place and records both under
 `NOTES.corrections`.
+
+⚠️ **CORRECTED 2026-08-25 — "exactly what `ci.yml` runs" is true of those three and incomplete as a
+list.** Each of the three *is* a CI gate, but the per-tool matrix runs four more beside them, and the
+one this omission costs you most is **`run-tests.mjs`** — the tier that actually catches a capture
+regression, and the one a contributor following this section would push without. Re-measured today
+for `fullshot`, bare, exit code on its own line:
+
+| Command | Exit | What it printed |
+| --- | --- | --- |
+| `node scripts/lint.mjs fullshot` | **0** | `1 passed` — `26 file(s) parse` |
+| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)` — the warning is the absent CSP `connect-src`, a second barrier that is wanted and not a defect |
+| `node scripts/check-version.mjs fullshot` | **0** | `3 passed` |
+| `node scripts/run-tests.mjs fullshot` | **0** | `12 passed` — zero `FAIL` lines across the whole run |
+| `node scripts/check-core-sync.mjs fullshot` | **0** | `1 passed` — `this tool vendors no core … consistent` |
+| `node scripts/check-store-metadata.mjs fullshot` | **0** | prints the empty-screenshots note as **owner work** and exits 0 rather than blocking |
+| `node scripts/check-store-packages.mjs fullshot` | **0** | `5 passed` |
+
+⚠️ **Read `check-store-metadata`'s print, not its silence.** It exits 0 while telling you
+`store/_shared/screenshots holds no images yet`. That is a real, unfinished submission prerequisite
+that no exit code will ever turn red for you — an owner-work note is not a passing grade.
+
+Add the four to your pre-push loop; the durable way to find the full set is
+`grep -n 'run: node scripts/' .github/workflows/ci.yml`, because the matrix is edited often and any
+list pasted into prose starts drifting the day it is written — this one included.
 
 **The rule this paragraph exists for is unchanged, and it is the part worth keeping: a red gate naming
 a real defect is the system working.** Read the finding before you fix it, though — a gate can also be
