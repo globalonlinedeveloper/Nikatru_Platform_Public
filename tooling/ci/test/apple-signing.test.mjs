@@ -204,10 +204,15 @@ function makeZip(entries, { zip64 = false } = {}) {
       // is the case a reader gets wrong by taking the extra field's slots
       // positionally instead of conditionally.
       const offsetIsSentinel = offset !== 0;
+      // `declaredUncompressed` lets a case state an uncompressed size LARGER
+      // than the archive that holds it, which is what a compressed member of any
+      // real package does and which no fixture could express while this was
+      // hard-wired to the byte length.
+      const declaredU = BigInt(e.declaredUncompressed ?? e.bytes.length);
       const localExtra = Buffer.alloc(20);
       localExtra.writeUInt16LE(0x0001, 0);
       localExtra.writeUInt16LE(16, 2);
-      localExtra.writeBigUInt64LE(BigInt(e.bytes.length), 4);
+      localExtra.writeBigUInt64LE(declaredU, 4);
       localExtra.writeBigUInt64LE(BigInt(data.length), 12);
       local.writeUInt32LE(0xffffffff, 18);
       local.writeUInt32LE(0xffffffff, 22);
@@ -215,7 +220,7 @@ function makeZip(entries, { zip64 = false } = {}) {
       const centralExtra = Buffer.alloc(offsetIsSentinel ? 28 : 20);
       centralExtra.writeUInt16LE(0x0001, 0);
       centralExtra.writeUInt16LE(offsetIsSentinel ? 24 : 16, 2);
-      centralExtra.writeBigUInt64LE(BigInt(e.bytes.length), 4);
+      centralExtra.writeBigUInt64LE(declaredU, 4);
       centralExtra.writeBigUInt64LE(BigInt(data.length), 12);
       if (offsetIsSentinel) centralExtra.writeBigUInt64LE(BigInt(offset), 20);
       central.writeUInt32LE(0xffffffff, 20);
@@ -785,6 +790,50 @@ describe('apple-signing — unzip and ZIP64', () => {
     const classic = makeZip(members());
     assert.equal(find(classic, 0x07064b50), -1);
     assert.equal(classic.readUInt32LE(eocdOf(classic) + 16) === 0xffffffff, false);
+  });
+
+  // 🔴 THE CASE NO CONSTRUCTED FIXTURE COULD REACH UNTIL THE REAL PACKAGE WAS IN
+  // HAND. The first ZIP64 fix made unzip() stop CRASHING on the .msix and start
+  // REFUSING it — `could not be read as a zip` — because the slot reader applied
+  // one bound to every 64-bit field: "nothing inside this archive can sit past
+  // its own end". True of an OFFSET. True of a COMPRESSED size. FALSE of an
+  // UNCOMPRESSED one, which describes the decompressed content and is routinely
+  // larger than the whole archive. That is what compression IS.
+  //
+  // MEASURED on the real subly.msix (build-platforms 32823633046, the first run
+  // to keep the package after the guard refused it — see PR #372): 96 members,
+  // every one carrying sentinels, and entry [2] `flutter_windows.dll` declaring
+  // an uncompressed size of 21,284,864 bytes inside a 16,585,733-byte archive.
+  // 1.28x the file containing it, and entirely ordinary for a DLL.
+  //
+  // The fixture could not express this while it wrote `e.bytes.length` into that
+  // slot — the declared size was the real one by construction, so the bound was
+  // never violated and every ZIP64 test passed over an archive that could not
+  // occur. `declaredUncompressed` exists for exactly this.
+  test('an uncompressed size LARGER than the archive is read, not refused', () => {
+    const big = members().map((m, i) => (i === 1 ? { ...m, declaredUncompressed: 21284864 } : m));
+    const zip = makeZip(big, { zip64: true });
+    assert.ok(21284864 > zip.length, 'the declared size must exceed the archive, or this pins nothing');
+    const out = unzip(zip);
+    assert.notEqual(out, null, 'a member that decompresses to more than the archive holds must still open');
+    assert.deepEqual(out.map((e) => e.name), ['AppxManifest.xml', 'subly.exe', 'Assets/icon.png']);
+    for (const [i, m] of members().entries()) assert.deepEqual(out[i].bytes, m.bytes);
+  });
+
+  // The bound still HOLDS where it is true: an OFFSET past the end is corruption
+  // and must still be refused, or the repair would have removed the check rather
+  // than aimed it.
+  test('an OFFSET past the end of the archive is still refused', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const cd = zip.readBigUInt64LE(Number(zip.readBigUInt64LE(eocdOf(zip) - 20 + 8)) + 48);
+    let p = Number(cd);
+    // second entry: its local offset is a sentinel, so the extra field carries it
+    p += 46 + zip.readUInt16LE(p + 28) + zip.readUInt16LE(p + 30) + zip.readUInt16LE(p + 32);
+    const nameLen = zip.readUInt16LE(p + 28);
+    const extraStart = p + 46 + nameLen;
+    // slots: uncompressed, compressed, offset -> the offset is the third
+    zip.writeBigUInt64LE(BigInt(zip.length + 4096), extraStart + 4 + 16);
+    assert.equal(unzip(zip), null, 'a local-header offset beyond the archive must still be refused');
   });
 
   test('a ZIP64 archive is READ — the exact shape that threw ERR_OUT_OF_RANGE', () => {

@@ -10,7 +10,7 @@
   "app-dod.test.mjs": 33,
   "app-versioning.test.mjs": 38,
   "appimage-signing.test.mjs": 73,
-  "apple-signing.test.mjs": 105,
+  "apple-signing.test.mjs": 107,
   "appstore-submission.test.mjs": 37,
   "artifact-shape.test.mjs": 25,
   "artifact-signed-apple.test.mjs": 35,
