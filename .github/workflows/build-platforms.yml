@@ -774,6 +774,28 @@ jobs:
       # AppxSignature.p7x, which is the positive evidence that `store: true`
       # took effect — `store: false` silently re-introduces a test certificate
       # nobody owns.
+      # 🔴 UPLOAD THE PACKAGE BEFORE ANYTHING JUDGES IT, AND UPLOAD IT EVEN WHEN
+      # THE JUDGEMENT FAILS. The artifact upload at the end of this job carries
+      # no `if:`, so it defaults to `success()` — meaning on 2026-08-25, three
+      # consecutive runs failed at the guard below and NOT ONE of them left the
+      # .msix anywhere a human could fetch it. The bytes that would explain the
+      # failure are destroyed by the failure. Two of those runs were spent
+      # inferring the package's shape from a stack trace because of it.
+      #
+      # `if: always()` rather than `success()`, and a SEPARATE upload from the
+      # one at the end of the job, so this cannot be broken by someone changing
+      # what that one collects. `if-no-files-found: warn` is deliberate HERE and
+      # would be wrong there: if `msix:create` produced nothing, the step above
+      # already failed and this upload has nothing to add — turning that into a
+      # second red would report one defect twice.
+      - name: Keep the .msix even if what follows refuses it
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.app }}-windows-msix-diagnostic
+          path: apps/${{ matrix.app }}/build/windows/msix/*.msix
+          retention-days: 14
+          if-no-files-found: warn
       - name: The MSIX carries the identity the register declares
         shell: bash
         run: >
