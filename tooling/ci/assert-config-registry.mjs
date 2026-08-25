@@ -608,14 +608,78 @@ for (const rel of dartFiles) {
 // assert-adapter-capabilities.mjs uses for `max_promos_per_week`: an empty
 // domain that says so cannot be mistaken for a rule that held.
 //
-// ⚠️ WHAT THE READER SCAN CAN GET WRONG, AND IN WHICH DIRECTION. It matches a
-// member access `.<camelCase>` in comment-stripped non-test Dart, excluding the
-// class that declares the field. That is deliberately BROAD: `MaterialApp.theme`
-// would count if it appeared in shipped Dart (it appears only in widget TESTS
-// today, which are cut). A broad matcher can only turn a tripwire into a FAIL
-// here — never a FAIL into a pass — so the error it can make is the visible one,
-// and every matched file is named in the message so a false positive is one
-// glance to disprove.
+// ⚠️ WHAT THE READER SCAN CAN GET WRONG, AND IN WHICH DIRECTION — REWRITTEN
+// 2026-08-25. The paragraph that stood here is kept as a dated CORRECTION at the
+// end of this block rather than deleted, because it asserted a SAFETY PROPERTY
+// this code did not have and the record of that is the point.
+//
+// The scan computes TWO sets per optional key over comment-stripped non-test
+// Dart, always excluding the class that declares the field:
+//   · LOOSE — every file containing a member access `.<camelCase>` on ANY
+//     receiver. `MaterialApp.theme` lands in this set.
+//   · BOUND — the subset in which that access resolves TEXTUALLY to an
+//     AppConfig-typed receiver. Per file, from the comment-stripped source: the
+//     identifiers this file declares with an AppConfig type — the tree's idioms
+//     are `final core.AppConfig? cfg = …`, `core.AppConfig cfg`, `AppConfig? cfg`
+//     and the parameter form `_copy(core.AppConfig? cfg, …)` — plus the class
+//     name itself, for static access. A name immediately followed by `(` is a
+//     METHOD whose RETURN type is AppConfig (`AppConfig? peek(String appId)` in
+//     config_loader.dart), not an identifier of that type, so it is excluded.
+// BOUND ⊆ LOOSE by construction: both require the literal `.<camelCase>`.
+//
+// Each branch is fed the set whose ERROR DIRECTION is a visible FAIL:
+//   · emitted + BOUND empty → FAIL. Resolution is textual, so it UNDER-reaches:
+//     a receiver returned by a call (`_cache.peek(id)?.theme`), an identifier
+//     declared in another file, a typedef. Under-reaching here produces a FAIL,
+//     which is the safe way to be wrong — and every LOOSE file is NAMED in the
+//     message as a near miss whose receiver did not resolve, so a genuine reader
+//     the binding scan could not see is one glance to spot.
+//   · unemitted + LOOSE non-empty → FAIL, and deliberately on the LOOSE set: in
+//     THIS branch a false positive is a FAIL and a MISS would be a false pass, so
+//     the broad matcher is the safe one here for the same reason the narrow one
+//     is safe above. The files are named.
+//   · emitted + BOUND non-empty → healthy note, which NAMES the bound files (and
+//     any loose-only near miss) rather than counting them.
+//   · neither → the armed-tripwire note, reached only when nothing is emitted and
+//     the LOOSE set is empty too.
+//
+// ── CORRECTION 2026-08-25 ────────────────────────────────────────────────────
+// From this limb's first commit until today the paragraph here read, in full:
+//
+//     "It matches a member access `.<camelCase>` in comment-stripped non-test
+//      Dart, excluding the class that declares the field. That is deliberately
+//      BROAD: `MaterialApp.theme` would count if it appeared in shipped Dart (it
+//      appears only in widget TESTS today, which are cut). A broad matcher can
+//      only turn a tripwire into a FAIL here — never a FAIL into a pass — so the
+//      error it can make is the visible one, and every matched file is named in
+//      the message so a false positive is one glance to disprove."
+//
+// BOTH HALVES WERE FALSE. There was ONE set, `\.<camel>\b`, feeding every branch.
+// Measured on a byte mirror of 6d67631, two runs differing in ONE line:
+//
+//   A. add `"theme": {"seed":"#6459F5"}` to `defaults` in
+//      services/platform/src/app-config-data.json
+//      → EXIT 1, `services/platform/src/app-config-data.json emits optional
+//        AppConfig field "theme" (defaults) and NOTHING reads it`. CORRECT.
+//   B. the same, PLUS one line appended to
+//      apps/subly/lib/features/home/home_screen.dart:
+//          ThemeData? _appTheme(MaterialApp app) => app.theme;
+//      → EXIT 0, `ok  optional AppConfig field "theme" is emitted (defaults) and
+//        read by 1 non-test Dart file(s).`
+//
+// One unrelated line of shipped Dart turned a correct FAIL into a PASS. That is
+// a RED-to-GREEN loosening — strictly worse than the seam it polices — and it
+// fires exactly when `theme` starts moving, because `.theme` on a non-AppConfig
+// receiver is what a theming change introduces. Measured this run, `app.theme`
+// on a MaterialApp already occurs 6 times in this tree, 3 in
+// apps/subly/test/chassis_properties_test.dart and 3 in the brick's copy — all
+// under /test/ today, so cut by the filter, and that is a property of where they
+// happen to live, not of the matcher.
+//
+// The second half was false too, and independently: the PASSING branch printed a
+// COUNT (`read by N non-test Dart file(s)`) and named no file at all. Only the
+// read-and-unemitted FAIL branch named files. Both are fixed below; the passing
+// note now names its readers.
 {
   const iface = /export interface AppConfig\s*\{([\s\S]*?)\n\}/.exec(typesSrc);
   const dartMirror = code(APP_CONFIG_DART, '.dart');
@@ -632,6 +696,42 @@ for (const rel of dartFiles) {
           'that held.',
       );
     }
+
+    // ── THE BINDING RESOLVER, limb-9-LOCAL ON PURPOSE ──────────────────────
+    // It is not a shared module and must not become one: it answers a question
+    // only this limb asks ("is this receiver an AppConfig?"), it is textual, and
+    // a shared copy would invite a second caller with a different tolerance for
+    // under-reach. NOT_A_SCANNER in assert-guard-coverage.mjs is this repo's
+    // index of what IS shared; nothing there resolves a Dart receiver type.
+    //
+    // `AppConfig` is seeded into every file's set so `AppConfig.<field>` static
+    // access resolves, which is why the emptiness check below asks for size > 1.
+    const APPCONFIG_DECL = /\bAppConfig\s*\??\s+([A-Za-z_$][\w$]*)\b(?!\s*\()/g;
+    const bindings = new Map(); // rel → Set<identifier of AppConfig type>
+    if (optional.length > 0) {
+      for (const [rel, src] of dartSrc) {
+        if (rel === APP_CONFIG_DART) continue;
+        const idents = new Set(['AppConfig']);
+        for (const m of src.matchAll(APPCONFIG_DECL)) idents.add(m[1]);
+        bindings.set(rel, idents);
+      }
+      // COVERAGE. With ZERO AppConfig-typed identifiers anywhere in the corpus,
+      // BOUND is empty for every key no matter what the tree reads, and the
+      // emitted branch below would be failing on a fact about this regex rather
+      // than about the tree. The real tree has these declarations in
+      // home_screen.dart, onboarding_screen.dart, money_providers.dart,
+      // providers.dart, config_loader.dart, default_configs.dart and the brick
+      // copies, so an empty result means the idiom moved.
+      if (![...bindings.values()].some((s) => s.size > 1)) {
+        coverageLost(
+          `limb 9 resolved ZERO AppConfig-typed identifiers across ${dartFiles.length} non-test Dart file(s). ` +
+            'Its binding scan looks for `final core.AppConfig? cfg = …`, `core.AppConfig cfg` and the parameter ' +
+            'form `_copy(core.AppConfig? cfg, …)`; with none found, "no bound reader" is a fact about that ' +
+            'pattern and not about the tree, and every emitted optional field would fail for the wrong reason.',
+        );
+      }
+    }
+
     for (const key of optional) {
       const camel = key.replace(/_([a-z0-9])/g, (_m, c) => c.toUpperCase());
       // The MIRROR half. `packages/core`'s AppConfig opens by declaring itself a
@@ -653,41 +753,76 @@ for (const rel of dartFiles) {
       for (const [slug, entry] of Object.entries(data.apps ?? {})) {
         if (carries(entry)) emittedIn.push(`apps.${slug}`);
       }
-      const readers = [];
+
+      const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const access = new RegExp(`\\.${camel}\\b`);
+      const looseReaders = [];
+      const boundReaders = [];
       for (const [rel, src] of dartSrc) {
         if (rel === APP_CONFIG_DART) continue;
-        if (access.test(src)) readers.push(rel);
+        if (!access.test(src)) continue;
+        looseReaders.push(rel);
+        const idents = [...(bindings.get(rel) ?? new Set())].map(esc).join('|');
+        if (idents && new RegExp(`\\b(?:${idents})\\s*[?!]?\\s*\\.${camel}\\b`).test(src)) boundReaders.push(rel);
       }
-
-      if (emittedIn.length > 0 && readers.length === 0) {
-        fail(
-          `${DATA} emits optional AppConfig field "${key}" (${emittedIn.join(', ')}) and NOTHING reads it. ` +
-            `Measured this run: ${dartFiles.length} non-test Dart file(s) scanned for \`.${camel}\`, excluding ` +
-            `${APP_CONFIG_DART} itself. A field on the wire that reaches every client's parser and no surface ` +
-            "is dead data that reads as configuration — limb 8's failure one level up, for a field rather than " +
-            'a flag.',
+      // ⚠️ THIS ONE CANNOT BE REDDENED BY ANY TREE, and that is stated rather
+      // than hidden. BOUND ⊆ LOOSE holds because both patterns require the
+      // literal `.<camel>`; the assertion exists to catch an edit to THIS FILE's
+      // two patterns that decouples them. Proved able to fire, on a mirror of
+      // 6d67631 (2026-08-25), by dropping `\\.${camel}\\b` from the BOUND pattern
+      // above — 27 stray files, EXIT 1. Dropping the LOOSE gate alone does NOT
+      // fire it, which is the measurement that says the coupling is in the two
+      // patterns and not in the loop. Every branch below reads its verdict off
+      // one set or the other, so the two drifting apart is the one way the branch
+      // table stops meaning what the paragraph above says it means.
+      const strays = boundReaders.filter((r) => !looseReaders.includes(r));
+      if (strays.length) {
+        coverageLost(
+          `limb 9's BOUND set is not a subset of its LOOSE set for "${key}" (${strays.join(', ')}). The two ` +
+            'patterns have been edited apart, so the branch table above no longer means what its header says.',
         );
-      } else if (emittedIn.length === 0 && readers.length > 0) {
+      }
+      const nearMiss = looseReaders.filter((r) => !boundReaders.includes(r));
+
+      if (emittedIn.length > 0 && boundReaders.length === 0) {
         fail(
-          `optional AppConfig field "${key}" is READ by ${readers.join(', ')} and ${DATA} emits it from ` +
+          `${DATA} emits optional AppConfig field "${key}" (${emittedIn.join(', ')}) and NOTHING reads it off ` +
+            `an AppConfig-typed receiver. Measured this run: ${dartFiles.length} non-test Dart file(s) scanned ` +
+            `for \`.${camel}\` bound to an AppConfig identifier, excluding ${APP_CONFIG_DART} itself. A field ` +
+            "on the wire that reaches every client's parser and no surface is dead data that reads as " +
+            "configuration — limb 8's failure one level up, for a field rather than a flag." +
+            (nearMiss.length
+              ? ` NEAR MISS — \`.${camel}\` also occurs in ${nearMiss.join(', ')}, on a receiver this scan ` +
+                'could NOT resolve to AppConfig (a call result, a cross-file declaration, a typedef — or a ' +
+                'genuinely unrelated receiver such as `MaterialApp.theme`). Binding resolution is textual and ' +
+                'under-reaches on purpose, because under-reaching fails and over-reaching would pass.'
+              : ''),
+        );
+      } else if (emittedIn.length === 0 && looseReaders.length > 0) {
+        fail(
+          `optional AppConfig field "${key}" is READ by ${looseReaders.join(', ')} and ${DATA} emits it from ` +
             'NOWHERE — not `defaults`, not any `apps.*` entry. The runtime branch can therefore never be taken ' +
             'in production while every test passes, because falling back is the correct behaviour when a value ' +
             'is absent. That is the `update_url` seam verbatim; src/types.ts records it as instance five. Emit ' +
-            'it, or delete the reader.',
+            'it, or delete the reader. (This branch reads the BROAD set on purpose: here a false positive is a ' +
+            'FAIL and a miss would be a false pass.)',
         );
       } else if (emittedIn.length > 0) {
         notes.push(
-          `optional AppConfig field "${key}" is emitted (${emittedIn.join(', ')}) and read by ` +
-            `${readers.length} non-test Dart file(s).`,
+          `optional AppConfig field "${key}" is emitted (${emittedIn.join(', ')}) and read off an ` +
+            `AppConfig-typed receiver by ${boundReaders.join(', ')}.` +
+            (nearMiss.length
+              ? ` Also carrying \`.${camel}\` on an unresolved receiver, NOT counted as a reader: ` +
+                `${nearMiss.join(', ')}.`
+              : ''),
         );
       } else {
         notes.push(
           `optional AppConfig field "${key}" — TRIPWIRE ARMED, DOMAIN EMPTY (${dartFiles.length} non-test Dart ` +
-            `file(s) scanned). ${DATA} emits it from nowhere and no shipped Dart reads \`.${camel}\`, so it can ` +
-            'reach a client only through a hand-written CONFIG_KV override that `deepMerge` passes through ' +
-            'unvalidated. Whichever end moves first — an emitter or a reader — this limb fails until the other ' +
-            'one exists.',
+            `file(s) scanned). ${DATA} emits it from nowhere and no shipped Dart mentions \`.${camel}\` on any ` +
+            'receiver at all, so it can reach a client only through a hand-written CONFIG_KV override that ' +
+            '`deepMerge` passes through unvalidated. Whichever end moves first — an emitter or a reader — this ' +
+            'limb fails until the other one exists.',
         );
       }
     }
@@ -711,8 +846,24 @@ for (const rel of dartFiles) {
 // now (deleting it means editing packages/core's test suite), and the FIRST
 // non-test caller fails the build with the reason. When the accessor is deleted
 // the limb reports that its subject is gone rather than passing silently.
+//
+// ⚠️ THE SUBJECT TEST IS MATCHED BY NAME, NOT BY SIGNATURE (2026-08-25). It was
+// `/\bString\s+text\s*\(\s*String\s+\w+\s*\)/` — the accessor's signature spelled
+// out. That is the same disarm direction limb 9 shipped with, one limb over: a
+// SIGNATURE change rather than a deletion, e.g.
+//     String text(String key, {String? fallback})
+// left the pattern unmatched, so the limb printed "its subject is gone … the limb
+// ranges over nothing" and PASSED while the accessor still existed and could
+// still acquire callers. Test 10f pinned the DELETION case only, so nothing
+// disagreed. The pattern now asks for a declaration named `text` with any return
+// type and any parameter list. It is deliberately loose in the direction that
+// keeps the gate ARMED — a bare `return text(key);` inside app_config.dart would
+// also match it — because a limb that stays armed one commit too long is the safe
+// way for this test to be wrong. Only an actual deletion reports "subject gone";
+// 10g and 10h pin the signature-change case.
 {
-  if (!/\bString\s+text\s*\(\s*String\s+\w+\s*\)/.test(code(APP_CONFIG_DART, '.dart'))) {
+  const TEXT_DECL = /\b[A-Za-z_$][\w$]*(?:<[^>\n]*>)?\??\s+text\s*\(/;
+  if (!TEXT_DECL.test(code(APP_CONFIG_DART, '.dart'))) {
     notes.push(
       `\`AppConfig.text\` is no longer declared in ${APP_CONFIG_DART}; limb 10's subject is gone and the limb ` +
         'ranges over nothing. Delete it rather than leaving a check that cannot fail.',
@@ -747,6 +898,7 @@ for (const rel of dartFiles) {
     }
   }
 }
+
 
 done();
 

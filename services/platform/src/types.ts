@@ -362,6 +362,167 @@ export interface AppConfig {
    *     widget test — a DIFFERENT symbol, and exactly the false positive a
    *     careless sweep banks as a reader.
    *
+   * ⚠️ CORRECTION 2026-08-25, SAME DAY — THAT SPLIT IS INVERTED. The paragraph
+   * above is left unedited on purpose: renumbering a dated record falsifies it
+   * instead of repairing it. Read it as history and read this as the number.
+   * Re-measured at commit `a028cc0`, the merge base of branch `backlog-wave-2`,
+   * over all 1260 files tracked there, no language filter. The TOTAL of nine is
+   * right; the split is 2 / 1 / 6, not 6 / 1 / 2:
+   *   · 2 — AppConfig's own sites: `this.theme` in the constructor and
+   *     `theme ?? this.theme` in `copyWith`. The class touches the IDENTIFIER
+   *     `theme` six times (declare, parse, serialise, copyWith), which is where
+   *     "six sites" came from — but only two of those are the DOTTED token, and
+   *     the dotted token is what the scan matches.
+   *   · 1 — `packages/core/test/config_test.dart`, asserting it is null.
+   *   · 6 — `MaterialApp.theme`, the different symbol.
+   *   · AND THOSE SIX SIT IN TWO WIDGET TESTS, not the one named above:
+   *     `apps/subly/test/chassis_properties_test.dart` (3) and its brick copy
+   *     `tooling/bricks/app/__brick__/apps/{{app_id}}/test/chassis_properties_test.dart`
+   *     (3). The brick copy appears nowhere in the record, and it is the copy
+   *     that MULTIPLIES — every app the factory stamps carries it.
+   *
+   * DIRECTION OF THE ERROR: it UNDERSTATED the false-positive population this
+   * note exists to warn about. Two thirds of the tree-wide hits are the
+   * different symbol, not two ninths — the trap is three times larger than the
+   * record admitted, and understating it is the direction that makes a careless
+   * sweep look safer than it is.
+   *
+   * VERDICT UNCHANGED. All nine sit in AppConfig itself or under a `/test/`
+   * segment, and limb 9 cuts both: `dartFiles` filters
+   * `/(?:test|integration_test)/` and the reader loop skips `APP_CONFIG_DART`.
+   * The reader scan's domain does not move, so everything below stands —
+   * declared on both sides, emitted and read by nobody, owner-gated.
+   *
+   * COUNTED OVER COMMENT-STRIPPED SOURCE — CODE POSITIONS ONLY. That is the
+   * domain limb 9 reads (`stripSourceComments` in
+   * `tooling/ci/text-reductions.mjs`) and the only domain in which this
+   * paragraph can state a count without becoming part of it. Not a hypothetical
+   * worry: this corpus once shipped a "grep returns 12" correction that was
+   * itself the 13th hit. A raw tree-wide grep at HEAD now returns 21, and every
+   * one of the extra twelve is prose about the nine. Code positions in THIS
+   * file: 0 before this correction and 0 after — every `.theme` here has always
+   * been commentary, never a member access.
+   *
+   * SWEEP RULE — run from the repo root; both print 9, and they agree only
+   * because no comment at `a028cc0` carried the token, which is precisely what
+   * stopped being true when this correction was written:
+   *
+   *     git grep -o -E '\.theme\b' a028cc0 -- . | wc -l
+   *
+   *     node --input-type=module -e "
+   *     import {execSync as x} from 'node:child_process';
+   *     import {extname} from 'node:path';
+   *     import {stripSourceComments as s} from './tooling/ci/text-reductions.mjs';
+   *     const T = 'a028cc0', g = (c) => x(c, {encoding: 'utf8', maxBuffer: 1e9});
+   *     let n = 0;
+   *     for (const f of g('git ls-tree -r --name-only ' + T).split('\n').filter(Boolean))
+   *       n += (s(g('git show ' + T + ':' + JSON.stringify(f)), extname(f))
+   *             .match(/\.theme\b/g) || []).length;
+   *     console.log(n);
+   *     "
+   *
+   * Naming the commit is part of the rule. A tree-wide count with no commit
+   * pinned rots the next time anyone writes the token — including into a comment
+   * like this one. The client-side half carries the same correction: search
+   * `packages/core/lib/src/config/app_config.dart` for `CORRECTION 2026-08-25`.
+   *
+   * ⚠️ CORRECTION 2026-08-25, PART TWO — THE DOMAIN CLAIM IS ALSO WRONG, AND IT
+   * IS THE WORSE OF THE TWO ERRORS. The paragraph above declares the sweep ran
+   * "over every git-tracked file in this repository and in the three sibling
+   * repositories, with no language filter (.ts .dart .mjs .js .json .md .yml
+   * alike)" and then asserts a result that was only ever true of ONE
+   * repository's Dart. Run the rule as written over the domain as written and
+   * it does not reproduce. Measured this run, `git grep -o -E '\.theme\b' -- .`
+   * in each repository's working tree:
+   *
+   *     Nikatru_Platform_Public      9   PINNED AT a028cc0. The live worktree
+   *                                      figure is larger and climbs with every
+   *                                      note like this one, which is the whole
+   *                                      reason it is pinned.
+   *     Nikatru_Platform_Private     2
+   *     Nikatru_Extensions_Public   51   🔴
+   *     Nikatru_Extensions_Private   0
+   *     ─────────────────────────────
+   *     four-repo total             62
+   *
+   * FIFTY-ONE OF THOSE SIXTY-TWO ARE A THIRD SYMBOL the sentence does not admit
+   * exists, and it is not `MaterialApp.theme` either. Every one is JavaScript:
+   * `Nikatru_Extensions_Public` tracks ZERO `.dart` files and does not contain
+   * the string `AppConfig` or `MaterialApp` in any file. Receivers, via
+   * `git grep -o -E '\w+\.theme\b' -- . | awk -F: '{print $NF}' | sort | uniq -c
+   * | sort -rn` — `dataset.theme` 12, `r.theme` 11, `s.theme` 7, `sync.theme` 6,
+   * `settings.theme` 3, then a tail of local names. It is a browser extension's
+   * own light/dark settings key — `document.documentElement.dataset.theme` and
+   * the stored record behind it — concentrated in
+   * `Extension/Full_Screen_Shot/test/editor-sim.node.js`,
+   * `core/test/settings.node.js` and
+   * `templates/tool/test/skeleton-sim.node.js`. Different language, different
+   * product, same six letters.
+   *
+   * The remaining 2 are PROSE: `notes/HANDOFF-2026-08-21.md` and
+   * `notes/RESEARCH-dead-seams-2026-08-21.md` in `Nikatru_Platform_Private` each
+   * cite `AppConfig.theme` in a markdown sentence. Same symbol this time — but
+   * nothing executes a note.
+   *
+   * THE SHAPE OF THE MISTAKE MATTERS MORE THAN THE COUNT. It is the same error
+   * twice in one sentence. The record WIDENED ITS DOMAIN to four repositories
+   * and seven file extensions in order to sound rigorous — it says so, correcting
+   * an earlier sweep for having been "language scoped and wrong" — and then
+   * stated a RESULT it had only ever checked in one repository's Dart. A domain
+   * claimed wider than the result checked is WORSE than the narrow claim it was
+   * improving on, because it reads as more careful. The repair is not to widen
+   * again; it is to state the domain that actually carries the verdict.
+   *
+   * THE DOMAIN THAT ACTUALLY CARRIES THE VERDICT — non-test Dart, the Platform
+   * repository, comment-stripped, pinned. That is limb 9's real reach: it walks
+   * `DART_ROOTS` (`apps`, `packages`, `tooling/bricks`), cuts
+   * `/(?:test|integration_test)/`, takes every file through
+   * `stripSourceComments`, and skips `APP_CONFIG_DART` itself. It reads no
+   * JavaScript, no markdown and no other repository, so nothing outside this
+   * domain can arm it or disarm it. From the Platform repo root, over every
+   * tracked `.dart` — a SUPERSET of that walk — this prints 0:
+   *
+   *     node --input-type=module -e "
+   *     import {execSync as x} from 'node:child_process';
+   *     import {stripSourceComments as s} from './tooling/ci/text-reductions.mjs';
+   *     const T = 'a028cc0';
+   *     const SELF = 'packages/core/lib/src/config/app_config.dart';
+   *     const g = (c) => x(c, {encoding: 'utf8', maxBuffer: 1e9});
+   *     let n = 0;
+   *     for (const f of g('git ls-tree -r --name-only ' + T).split('\n'))
+   *       if (f.endsWith('.dart') && !/\/(?:test|integration_test)\//.test(f)
+   *           && f !== SELF)
+   *         n += (s(g('git show ' + T + ':' + JSON.stringify(f)), '.dart')
+   *               .match(/\.theme\b/g) || []).length;
+   *     console.log(n);
+   *     "
+   *
+   * ZERO — not "nine, of which some are false positives". Zero, in the only
+   * domain the guard can see. The self-reference trap is closed by the same two
+   * devices as above: the commit is pinned, and the Dart file is excluded BY
+   * NAME exactly as limb 9 excludes it, so no quantity of prose can move it.
+   *
+   * 🔴 THE FOUR-REPO SWEEP STRENGTHENS THE VERDICT, IT DOES NOT SOFTEN IT. Every
+   * one of the 53 hits outside the Platform repository is either prose in a
+   * markdown note or another language's unrelated settings key, in a repository
+   * containing no Dart at all. Not one of them is STRUCTURALLY CAPABLE of being
+   * a reader of `AppConfig.theme` — reading that field requires Dart that parses
+   * that class, and there is none outside this tree. The wide sweep is not a
+   * concession; it is the strongest evidence yet for EMITTED BY NOBODY, READ BY
+   * NOBODY, and it now rests on a domain small enough to re-run in seconds.
+   *
+   * HOW LIMB 9 READS IT TODAY — rewritten 2026-08-25; do NOT describe the old
+   * matcher. It no longer banks a bare `.theme` on any receiver as a reader. It
+   * computes a LOOSE set (the access on any receiver) and a BOUND set (the
+   * access resolved textually to an AppConfig-typed identifier) and feeds each
+   * branch the set whose error direction is a visible FAIL; loose-only files
+   * print as NEAR MISS instead of counting as readers. Search
+   * `assert-config-registry.mjs` for `boundReaders` and for `NEAR MISS`. The
+   * consequence here: `MaterialApp.theme` would no longer be banked as a reader
+   * even if it left `/test/`. The false positive the paragraph above warns about
+   * is now a warning for the HUMAN running the sweep rather than for the guard —
+   * which is exactly who got it wrong, twice.
+   *
    * 🔴 NOT DELETED, AND NOT OUT OF TIMIDITY. This is the SERVER-SIDE HOME of the
    * brand-vs-seed decision, which is half taken: the owner has recorded that
    * #6459F5 is Subly's brand under a two-layer model, and only the
