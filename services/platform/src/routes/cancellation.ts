@@ -26,6 +26,51 @@
 // user their subscription is over. The three booleans are separate because they
 // are separately true.
 //
+// ── WHO COUNTS THE ROWS NOBODY DRAINS (added 2026-08-21) ─────────────────────
+// Recording without a drain is a queue that grows in silence, and until this
+// date nothing anywhere counted it. Measured on the tree that day: this INSERT
+// was the table's ONLY writer, and `executed_at` occurred in FIVE code sites in
+// the whole repository, NONE of them a reader — the INSERT below (grep
+// `requested_at, executed_at, not_executed_reason`, :175 as of 2026-08-24, :168
+// as of 2026-08-22 and :151 before the paragraph you are reading grew), three
+// lines of migrations/0005_cancellation_requests.sql (:20, :25, :59) and one
+// assertion at test/cancellation.test.ts:156. There was no UPDATE of the table
+// anywhere and nothing in tooling/ops listed a pending row. FIVE is the count
+// BEFORE this change, which adds ten of its own — five in ../scheduled.ts, four
+// in test/cancellation-drain.test.ts, one here — so the same repository-wide
+// grep run today returns FIFTEEN, not six.
+// ⚠️ CORRECTED 2026-08-22, NOT REWRITTEN: the FIFTEEN was re-taken today and is
+// now TWENTY.  `grep -ron executed_at .` (node_modules and .git excluded) —
+// test/cancellation-drain.test.ts 6, ../scheduled.ts 6, this file 4,
+// migrations/0005_cancellation_requests.sql 3, test/cancellation.test.ts 1. The
+// FIVE and the FIFTEEN above were both true when written; the 2026-08-22 pass
+// added two assertions naming the column to the new test and one grep recipe
+// to each of this file and ../scheduled.ts. The point is unchanged — a reader
+// must not read the count as evidence of readers at all, because the number of
+// CODE PATHS THAT READ the column is still ONE, the census in ../scheduled.ts.
+// ⚠️ CORRECTED AGAIN 2026-08-24, AND AGAIN NOT REWRITTEN: the TWENTY is now
+// TWENTY-ONE. The pin-or-delete pass added ONE more mention of the drain column,
+// in the SELECT of the new case that reads the fixture's own rows back, so
+// test/cancellation-drain.test.ts goes 6 -> 7 and no other file moves. NOT ONE
+// of the seven lines of this correction spells the column, so the correction
+// cannot appear in its own count. The point survives all three numbers: the
+// number of CODE PATHS THAT READ the column is STILL ONE.
+// The drain-census limb in ../scheduled.ts now writes the queue's depth to
+// `cron_heartbeat` under a job name THIS FILE DELIBERATELY DOES NOT SPELL, on
+// every nightly cron run. Two different spellings disarm two different limbs of
+// `deriveWatchedJobs` (tooling/ops/check-heartbeats.mjs), which reads the RAW
+// bytes of services/platform/src with comments included: the CONSTANT name
+// disarms "declared and NEVER USED", and the JOB NAME IN SINGLE OR DOUBLE QUOTES
+// disarms "COVERAGE LOST". Measured 2026-08-24 — see that constant's doc in
+// ../scheduled.ts for both before/afters; one of the two had to be fixed there.
+//
+// ⚠️ IT CHANGES NOTHING ABOUT THIS ROUTE, and it drains nothing. The census
+// counts; executing is still owner-gated on the seller credential above, no
+// heartbeat goes red as the backlog grows, and on a healthy night the number is
+// only in the table — check-heartbeats.mjs prints a job's detail only when that
+// job is RED. It makes the depth a number instead of a silence, so the owner
+// half starts from a count rather than from an unknown.
+//
 // ── WHY THE SUBSCRIPTION IS RESOLVED FROM THE SESSION ────────────────────────
 // The body carries an app id and NOTHING ELSE. A route that accepted a
 // subscription id would let anyone cancel anyone's subscription — the id is not

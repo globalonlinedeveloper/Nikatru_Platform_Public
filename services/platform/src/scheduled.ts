@@ -423,6 +423,449 @@ export async function renewalsFanOut(env: Env): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [pipeline 5]M-9 · THE CANCELLATION DRAIN CENSUS — A DEPTH, NOT A DRAIN.
+//
+// 🔴 THE DEFECT, RE-MEASURED ON THIS TREE 2026-08-21. `cancellation_requests`
+// had exactly ONE writer and NO reader outside the test suite. `executed_at`
+// occurred in FIVE code sites in the whole repository and NONE was a reader:
+// the INSERT in src/routes/cancellation.ts that binds it as the literal NULL
+// (grep `requested_at, executed_at, not_executed_reason` — :151 the day this
+// paragraph was written, :168 once that file's header grew on 2026-08-22, and
+// :175 as of 2026-08-24, moved again by the seven-line "CORRECTED AGAIN"
+// paragraph that file's own header took this round — which is why the anchor and
+// not the number is the durable pointer), three lines of
+// migrations/0005_cancellation_requests.sql (:20, :25,
+// :59), and one assertion at test/cancellation.test.ts:156. There is no UPDATE
+// of the table anywhere in the tree, no cron limb touched it, and none of the
+// 16 files in tooling/ops/ listed a pending row. So every recorded request sat
+// at `executed_at IS NULL` for as long as it existed and NOTHING COUNTED THEM.
+//
+// LATENT, NOT LIVE, and that distinction is why this is a census and not an
+// alarm: the route answers 404 without an active entitlement and no
+// subscription has been sold, so the depth is zero today. What was live is the
+// depth being UNKNOWN — "nobody has drained this" was a silence, and a silence
+// gives the owner half no number to start from on the day the credential lands.
+//
+// ⚠️ IT DRAINS NOTHING. Executing against the merchant of record needs a seller
+// credential that does not exist (OWNER_QUEUE A-1) and is deliberately not
+// designed around here.
+//
+// ⚠️ AND `ok` STAYS 1 WHILE THE BACKLOG GROWS — [ADR 035] applied, not an
+// oversight. Nothing in this Worker can drain a row, so `ok = undrained === 0`
+// would go red on the first real cancellation and stay red every night until an
+// owner-gated credential landed: the muted-alarm shape `analytics_liveness`
+// already paid for once (its `ok` was `total > 0` for one day, 2026-08-06 →
+// 08-07). `ok` keeps answering the one question every writer's `ok` answers —
+// DID THE WORK SUCCEED, i.e. did the query run.
+//
+// ⚠️ WHAT THIS DOES NOT CATCH, said plainly because a census that reads as a
+// monitor is worse than no census:
+//   · NOTHING TURNS RED ON A GROWING BACKLOG, and nothing prints the number on
+//     a healthy night either. tooling/ops/check-heartbeats.mjs prints a job's
+//     `detail` only when that job is RED (main() logs `verdict.reason`, and the
+//     green reason names the occurrence, not the detail). So today the depth is
+//     read by querying `cron_heartbeat` — there is no judging reader for this
+//     job the way tooling/ops/check-analytics-liveness.mjs judges the liveness
+//     one, and writing one is the next increment, not this one.
+//   · NO PER-REASON SPLIT. `not_executed_reason` stays on the row for whoever
+//     drains it; putting that enum in this SQL would copy `NotExecutedReason`
+//     (src/routes/cancellation.ts) into a second place nothing keeps in step.
+//   · IT SAYS NOTHING ABOUT WHETHER A REQUEST SHOULD HAVE BEEN EXECUTED. Every
+//     row is undrained today for a reason the row itself records.
+//   · AND PART OF THE `detail` CONTRACT IS PINNED BY NO TEST. A 13-mutant sweep
+//     of this function against test/cancellation-drain.test.ts, 2026-08-21:
+//     FOUR go red — both `CASE WHEN ... IS NULL` limbs of the query below, the
+//     `Number.isFinite` branch, and `ok = false` in the catch. NINE survive.
+//     Deleting the ` oldest=${oldest}` token, and forcing either the
+//     `recorded === 0` or the `undrained === 0` prose limb, are all invisible:
+//     the test's helper parses every token, but its assertions read only
+//     `undrained`, `recorded` and `oldest_age_h`. Five more are normalisations
+//     no input in that file reaches (`?? 0`, `|| 0`, `== null`, the
+//     `oldest === null` guard, `Math.max(0, …)`) — kept, because a count that is
+//     correct by coincidence breaks the first time the shape moves, but nothing
+//     measures them. The ninth is the call site itself:
+//   · THE CALL SITE IS HELD BY NOTHING. No file in test/ imports the `scheduled`
+//     handler — every import from this module is of a named function or
+//     constant — so removing `await cancellationDrainCensus(env)` from the
+//     handler leaves test/cancellation-drain.test.ts at 6/6 green, and
+//     `deriveWatchedJobs` still passes because it only needs the drain job
+//     constant — 🔴 SPELT OUT HERE ON 2026-08-21 AND DE-SPELT ON 2026-08-22,
+//     because spelling it in a comment is itself what switched that check off;
+//     the constant's own doc below carries the measurement — to appear beside a
+//     `recordHeartbeat` call, which it does whether or not anything calls this
+//     function. NOT NEW, and not caused here: all five pre-existing cron limbs
+//     are wired exactly this way.
+//
+// ⚠️ THE TWO BULLETS ABOVE ARE THE 2026-08-21 MEASUREMENT AND ARE LEFT AS
+// WRITTEN — they were true that day and a dated record that is renumbered stops
+// being one. RE-MEASURED 2026-08-22, after SEVEN cases were added to
+// test/cancellation-drain.test.ts, they are no longer the state of the tree:
+//   · THE SWEEP IS NOW 20 MUTANTS, NOT 13 — the FOURTEEN mutation points in
+//     this function (every condition it contains, its two SQL `CASE` limbs, the
+//     catch's `ok = false`, and the ` oldest=` token), `recordHeartbeat`'s one
+//     row-count guard, the handler call site, and the four conditions the test
+//     file's own helper and stubs contain, each set to its `if (false)`
+//     equivalent ONE AT A TIME against a baseline of
+//     `vitest run test/cancellation-drain.test.ts` EXIT 0, 13 passed. 17 go red
+//     in vitest, 2 go red in `tsc --noEmit` (EXIT 2) and in no test, and ONE
+//     survives.
+//   · THE SURVIVOR IS NOT IN THIS FUNCTION: `if (rows.length === 0) return;` in
+//     `recordHeartbeat` above, which predates this change and which no limb here
+//     can reach — this census always passes exactly one row. Reported rather
+//     than deleted because it is not in a block this change touches.
+//   · THE NINE THE BULLET ABOVE NAMES ARE CLOSED. ` oldest=` is read by "carries
+//     the oldest UNDRAINED row verbatim"; `Math.max(0, …)` by "never reports a
+//     NEGATIVE age"; both `|| 0` fallbacks by the two "non-numeric" cases; the
+//     `row?.` chains and the `== null` guard by "survives first() returning
+//     null"; and BOTH zero-branches by "an empty table and a fully drained one
+//     are NOT the same sentence" — which grades the ENGLISH, because those two
+//     branches emit byte-identical tokens and no token assertion can ever tell
+//     them apart. The call site is read by "writes a cancellation_drain beat
+//     when the SCHEDULED HANDLER runs", the only test in the tree that runs the
+//     real handler; it also asserts the whole six-job set the register watches.
+//   · TWO WERE DELETED RATHER THAN PINNED: the `?? 0` that sat inside the
+//     `recorded` normalisation below, and an `i === -1` fallback in the test
+//     file's `prose` helper. Measured before deleting, on a green baseline:
+//     forcing either to `false` left the file at EXIT 0, 13 passed. No input
+//     distinguished either from its own absence, and the rule is pin or delete,
+//     never "obviously correct".
+//   · TWO ARE HELD BY THE TYPECHECKER AND BY NO TEST, SAID PLAINLY RATHER THAN
+//     COUNTED AS COVERAGE: `row?.oldest ?? null` and the `oldest === null`
+//     guard. Disabling either leaves the suite 13/13 green and exits
+//     `tsc --noEmit` 2, because `.first()` is typed `T | null` and `Date.parse`
+//     does not take one. They cannot be deleted — their absence does not
+//     compile — so "no test reddens" is a fact about them, not a hole.
+//
+// ⚠️ RE-MEASURED 2026-08-24 BY THE PIN-OR-DELETE PASS, AND THE 08-22 BLOCK
+// ABOVE IS AGAIN LEFT AS WRITTEN. The sweep is now 42 mutants, run one at a
+// time against a baseline of `vitest run test/cancellation-drain.test.ts`
+// EXIT 0, 15 passed, and `tsc --noEmit` EXIT 0. It splits every boolean, BOTH
+// ARMS of every ternary, both SQL `CASE` limbs, the ` oldest=` token, the catch,
+// the handler call site, and the four conditions the test file's own helpers and
+// stubs carry. 38 go red in vitest. 2 go red ONLY in `tsc --noEmit` (EXIT 2) —
+// still `row?.oldest ?? null` and the `oldest === null` guard, and still not a
+// hole, because their absence does not compile. TWO do not move, and neither is
+// a condition of this function:
+//   · `if (rows.length === 0) return;` in `recordHeartbeat`, the same
+//     out-of-scope one as on 08-22, re-confirmed surviving 2026-08-24 and still
+//     outside every hunk this branch added.
+//   · WIDENING `fitsTheSlice`'s 200-char bound in the test file. That is an
+//     ASSERTION, not a guard: loosening a pin is green by construction, so it
+//     was checked the other way instead — TIGHTENED to 120 it goes RED, which
+//     is what says the bound is live rather than vacuous.
+//   · LOOP BOUNDS AND REGEXES, ENUMERATED SEPARATELY BECAUSE THEY ARE WHAT
+//     GETS MERGED INTO A NEIGHBOUR: this function contains NO loop and NO regex
+//     — no `for`, no `while`, no `.map`/`.filter`/`.some`/`.find`/`.slice` — and
+//     the array handed to `recordHeartbeat` is a one-element object literal, not
+//     a truncation of a collection, which is why the row-count guard above is
+//     unreachable from here. The whole set contains exactly ONE regex, in the
+//     test file's `tokens` helper, and it has ZERO top-level alternations and
+//     ZERO optional quantifiers on a whole alternative, so it is one condition
+//     and not several. Its loop is unbounded over every match: forced to
+//     `.slice(0, 1)` the file goes RED.
+//   · TWO CONDITIONS THAT WERE GREEN ON 08-22 ARE NOW PINNED, both in the test
+//     file's own helpers rather than here: `!(m[1] in out)` in `tokens` (forced
+//     TRUE, the trailing prose overwrote the leading measurement and nothing
+//     noticed) and `insertRequest`'s `reason` default. See the block at the foot
+//     of test/cancellation-drain.test.ts.
+//
+// ⚠️ CORRECTED 2026-08-24 BY A SECOND PIN-OR-DELETE PASS, AND THE 42-MUTANT
+// BLOCK ABOVE IS LEFT AS WRITTEN. It was wrong in ONE way, and the way matters:
+// it counted each TERNARY as one row instead of three, so a condition and BOTH
+// of its arms shared a single verdict and two live holes hid inside a "38 red"
+// total. Re-enumerated with every arm on its own line — 56 mutants this run,
+// one at a time, against a baseline of `vitest run test/cancellation-drain.test.ts`
+// EXIT 0 / 15 passed and `tsc --noEmit` EXIT 0. The whole 56 was then re-run
+// after the LAST edit, against EXIT 0 / 17 passed and `tsc --noEmit` EXIT 0, and
+// the counts below are that final run's:
+//   · 48 RED in vitest, the two newly pinned arms among them.
+//   · 3 RED ONLY in `tsc --noEmit` (EXIT 2): deleting `?? null`, deleting the
+//     `oldest === null` guard, and forcing that guard false. Their absence does
+//     not compile, so they cannot be deleted and "no test reddens" is a fact
+//     about them, not a hole.
+//   · 2 WERE REAL SURVIVORS AND ARE NOW PINNED — the `? 0` arm of the
+//     `undrained` normalisation and the `? Number.NaN` arm of the age guard.
+//     Both were invisible for the same reason: every earlier fixture that
+//     reached them also had a zero count, and both zero-branches print their
+//     tokens as LITERALS. Two cases driving the aggregate stub to a null part
+//     beside a NON-zero total redden them; see each arm's note at the code site.
+//   · 2 ARE AN ASSERTION'S WIDENING DIRECTION, green by construction and stated
+//     as such: `fitsTheSlice`'s `200` and its `HEADROOM`. Tightening either goes
+//     RED (`200 -> 120`, `HEADROOM -> 92`), which is what says the bound is live.
+//   · 1 IS `ORDER BY job` in the handler test's own SELECT — a determinism
+//     device whose loss can only ever produce a FALSE RED, never hide a job the
+//     handler failed to write. KEPT, and said so at the code site.
+//     ⚠️ CORRECTED 2026-08-24: that SELECT carries TWO green atoms, not one.
+//     `DISTINCT` had no row of its own — the same merge-into-a-neighbour the
+//     whole enumeration exists to stop, one line after the row that caught its
+//     sibling. Measured this run, after the last edit to the test file: dropping
+//     `DISTINCT` leaves `vitest run test/cancellation-drain.test.ts` at EXIT 0 /
+//     17 passed and `tsc --noEmit` at EXIT 0. Unlike `ORDER BY job` it is not the
+//     widening direction — removing it can only ADD rows, so it is the LOOSER
+//     form that ships — and it is KEPT for a stated reason rather than an
+//     obvious one: `recordHeartbeat` above writes ONE ROW PER ELEMENT of the
+//     array it is handed, so fan-out limbs write several rows per run, and the
+//     assertion's subject is the job-name SET. The check it therefore does not
+//     make — a job writing two rows in one run — is written at the code site.
+//     So this block's total is 57 rows, not 56: the `1` in the sum in the next
+//     bullet becomes a `2`. NO OTHER FIGURE IN THIS BLOCK WAS RE-TAKEN by the
+//     pass that added this row; the four terms it did not measure are left
+//     exactly as the run that did measure them wrote them.
+//   · 2 MUTANTS WERE DISCARDED AS INVALID rather than counted as survivors: a
+//     type assertion added to keep a nullability mutant compiling supplies the
+//     very fact the operator provided, so it proves nothing either way.
+//     48 + 3 + 2 + 1 + 2 = 56, and every one of those five numbers is from the
+//     final run rather than carried forward from the block above.
+//     🔴 THAT `1` IS NOW A `2` AND THE TOTAL IS 57 — `DISTINCT` in the handler
+//     test's SELECT was an omitted row and is measured in the bullet above. The
+//     other four terms were not re-taken when it was added, so the sum as
+//     written is 56 by four numbers from one run plus one from another; it is
+//     left visible rather than silently re-added.
+//   · OUT OF SCOPE, unchanged: `if (rows.length === 0) return;` in
+//     `recordHeartbeat`, which no hunk on this branch touched.
+//   · LOOP BOUNDS AND REGEXES, RE-CHECKED SEPARATELY: this function still
+//     contains NO loop and NO regex. The whole set has exactly ONE of each, both
+//     in the test file's `tokens` helper — the loop forced to `.slice(0, 1)` is
+//     RED, and the regex has ZERO top-level alternations and ZERO optional
+//     quantifiers on a whole alternative, so it is one row and it is RED.
+//     🔴 THE SECOND HALF OF THAT BULLET IS WITHDRAWN, 2026-08-24. "The regex is
+//     ONE ROW" was a COMMENT CARRYING A CHECK: it told a later sweep how many
+//     rows to expect, and the count was wrong, so three atoms inside that one
+//     literal were never mutated. Counting alternations and whole-alternative
+//     quantifiers is not how a regex is enumerated — a character class, a
+//     quantifier and a single literal character are each an atom. Measured in a
+//     mirror this run, one mutation at a time, baseline EXIT 0 / 17 passed:
+//     `[A-Za-z_]` -> `[A-Za-z0-9_]`, `*` -> `+`, and `=` -> `=?` were EACH
+//     EXIT 0 / 17 passed. All three are now dispositioned AT THE CODE SITE in
+//     test/cancellation-drain.test.ts (anchor `THREE ATOMS OF THIS ONE REGEX`):
+//     the `=` is PINNED by a new case, and the other two are DECLARED verdict-
+//     neutral with the reason no input can separate them. The loop-bound half of
+//     the bullet stands; only the regex sentence is withdrawn.
+//
+// 🔴 THE SUM ABOVE IS RETIRED, NOT RE-ADDED — 2026-08-24, sixth pass.
+// Five rounds of this work each carried one term of that arithmetic forward from
+// a run that no longer described the tree, and re-adding it here would make a
+// sixth. It is left where it is as a DATED RECORD of the run that took it, and
+// nothing below restates it. What THIS pass measured, in a mirror, one mutation
+// at a time, after its last edit, is only this: a baseline of EXIT 0 / 17 passed
+// and six named green survivors — the SPACE in `indexOf('— ')`, the backlog
+// separator here, the catch separator here, and three atoms of the `tokens`
+// regex. THREE of the six change a verdict and are now PINNED by three new
+// cases; THREE cannot and are DECLARED at their code sites with the reason.
+//
+// 🔴 AND THE STANDARD THAT REPLACES THE COUNT. A running total of mutants is a
+// number that goes stale on the next edit; what does not go stale is the
+// disposition written beside each atom. From this pass on, a green atom in this
+// set is finished when the code site says which it is — PINNED with the case
+// that reddens it, or DECLARED with the reason no input can separate the two
+// spellings. A count in a comment is a promise about a sweep somebody else ran.
+//
+// 🔴 AND THE ONE DEFECT OF THIS ROUND'S OWN CLASS WAS IN THE PROSE, NOT THE
+// CODE: the doc on the job constant below asserted that the name was spelt in no
+// comment anywhere, three lines above a sentence that spelt it IN DOUBLE QUOTES
+// — which is exactly the form `deriveWatchedJobs` greps for, and which therefore
+// made its COVERAGE-LOST limb unfalsifiable for this job. Fixed and measured
+// there; a comment may not carry a check, and this one was carrying it upside
+// down.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The job name recorded in `cron_heartbeat` for the drain census.
+ *
+ *  ⚠️ Same load-bearing `<NAME>_JOB` spelling as the other five constants in
+ *  this file (grep `^export const [A-Z_]*_JOB`) — see the keep-alive one's doc
+ *  at the top for why. `duty.platform-cron.watchedJobs` in
+ *  tooling/ops/register.json names this literal, and the constant reaches
+ *  `recordHeartbeat` at a real call site below; `deriveWatchedJobs` fails both
+ *  directions without those two.
+ *
+ *  🔴 NO `<NAME>_JOB` SYMBOL IS SPELT IN ANY COMMENT UNDER src/, AND NO JOB
+ *  NAME IS SPELT THERE IN EITHER QUOTED FORM. Those two forms are the only ones
+ *  the two limbs read, so they are the whole claim — measured 2026-08-24 over
+ *  every .ts/.js/.mjs under services/platform/src, counting each string in the
+ *  RAW bytes and again with `stripSourceComments` applied:
+ *    · the six CONSTANT names: raw == stripped (2, 2, 3, 2, 3, 3 occurrences
+ *      respectively, in declaration order), so none is written in a comment;
+ *    · the six JOB NAMES in SINGLE quotes: raw == stripped == 1 each — the
+ *      declaration itself and nothing else;
+ *    · the six JOB NAMES in DOUBLE quotes: raw == stripped == 0 each.
+ *
+ *  ⚠️ AND THE BLANKET SENTENCE THIS REPLACES WAS FALSE, which is this file's own
+ *  headline defect one notch weaker. It read "NEITHER THE SYMBOL NOR THE JOB NAME
+ *  IS SPELT IN A COMMENT", and BARE, unquoted job names are spelt in comments
+ *  here: for FOUR of the six — the liveness, renewals, drain and rollup jobs —
+ *  the raw count EXCEEDS the stripped one, THIS job's excess being the "writes a
+ *  … beat" sentence in the census block above. (The bare figures are left out
+ *  on purpose: prose about them moves them, so the number in the sentence would
+ *  be counting the sentence. The three QUOTED counts above cannot move that way,
+ *  because no line of this comment writes a job name in either quoted form.)
+ *  BARE IS NOT A
+ *  FORM EITHER LIMB READS, so the check is live and was never disarmed by them;
+ *  the sentence merely claimed more than the code holds, and a reader who
+ *  trusted it would not know that line exists.
+ *
+ *  `readSourceTree` (tooling/ops/check-heartbeats.mjs)
+ *  concatenates RAW bytes with no `stripSourceComments`, so BOTH limbs of
+ *  `deriveWatchedJobs` read comment prose as though it were code — and each is
+ *  switched off by a DIFFERENT spelling:
+ *    · the "declared and NEVER USED" limb strips the declaration out and then
+ *      regex-matches `\b<NAME>\b` over what is left, so the CONSTANT name written
+ *      in a comment counts as a usage;
+ *    · the COVERAGE-LOST limb asks `src.includes("'<job>'")` /
+ *      `src.includes('"<job>"')`, so the JOB NAME inside SINGLE OR DOUBLE QUOTES
+ *      in a comment counts as an occurrence. Backticks are NOT that form.
+ *
+ *  🔴 CORRECTED 2026-08-24, AND THIS IS THE THING THE PARAGRAPH GOT WRONG. The
+ *  sentence below used to write the job name IN DOUBLE QUOTES, three lines from
+ *  the claim that it was never spelt anywhere, and that one pair of quotes made
+ *  the COVERAGE-LOST limb UNFALSIFIABLE for this job.
+ *
+ *  🔴 THE MEASUREMENT THAT CORRECTION SHIPPED WITH DID NOT REPRODUCE, AND IT IS
+ *  REPLACED HERE RATHER THAN LEFT STANDING AS A DATED RECORD. It read "JOBS=7
+ *  PROBLEMS=0" and "JOBS=6 PROBLEMS=1", and JOBS=7 is unreachable by
+ *  construction: `deriveWatchedJobs` pushes at most ONE job per `watchedJobs`
+ *  entry, there is exactly ONE `cloudflare-cron` duty row in the register, and
+ *  it lists SIX names — six is the ceiling, so every JOBS figure in that pair
+ *  was one too high. A following paragraph excused the gap by supposing the run
+ *  had also taught the register a seventh name; nothing measured that, so the
+ *  supposition is dropped with it. This block is the record a reader is told to
+ *  re-run before writing a job name into a comment, and its numbers have to
+ *  land.
+ *
+ *  ⚠️ RE-DRIVEN 2026-08-24 AND THESE ARE THE NUMBERS. Driver: the real
+ *  `deriveWatchedJobs` from tooling/ops/check-heartbeats.mjs over a MIRROR of
+ *  this tree (tooling/ops/register.json + services/platform/wrangler.jsonc +
+ *  services/platform/src), which answers JOBS=6 PROBLEMS=0 unmutated. The
+ *  mutation is: point THIS declaration's literal at a different name, so the
+ *  Worker writes no beat under the watched name at all. WHICH name it is
+ *  repointed at changes the totals, and the earlier record never said:
+ *    · REPOINTED AT A NAME THE REGISTER ALREADY WATCHES (the renewals job).
+ *      With the job name in DOUBLE QUOTES in any comment under src/ the guard
+ *      answers JOBS=6 PROBLEMS=0 — a watched job that nothing writes, reading
+ *      GREEN. Remove that mention and change nothing else and the SAME mutation
+ *      answers JOBS=5 PROBLEMS=1, "COVERAGE LOST … that literal appears NOWHERE
+ *      in services/platform/src". This is the variant that shows one pair of
+ *      quotes switching the limb off outright.
+ *    · REPOINTED AT A FRESH NAME: JOBS=6 PROBLEMS=1 with the quoted mention and
+ *      JOBS=5 PROBLEMS=2 without. The extra problem is the OTHER limb —
+ *      "declares and uses job … and watchedJobs does NOT name it" — which fires
+ *      either way, so this variant never reads fully green and the quoted
+ *      mention only ever removes one of its two problems.
+ *  The DIRECTION is what the paragraph is for, and it is identical in both: one
+ *  pair of double quotes in a comment deletes the COVERAGE-LOST problem for a
+ *  job the Worker has stopped writing.
+ *
+ *  Measured 2026-08-22, same driver, for the other limb: with the CONSTANT names
+ *  spelt out, replacing EVERY non-comment use of any ONE of the six constants
+ *  with a literal — 1, 1, 2, 1, 2 and 2 uses respectively, in declaration
+ *  order — left PROBLEMS=0 in all six cases. Six live limbs reading as green.
+ *  De-spelt as they are now, the same six mutations give PROBLEMS=1 each.
+ *
+ *  The register direction is pinned by a TEST rather than by this prose:
+ *  measured 2026-08-24, dropping this job from `duty.platform-cron.watchedJobs`
+ *  reddens tooling/ci/test/heartbeats.test.mjs, EXIT 1, "COVERAGE LOST — the
+ *  scheduler declares and uses job … and duty.platform-cron.watchedJobs does
+ *  NOT name it". Re-run all of it before writing EITHER a constant name OR a
+ *  quoted job name into a comment anywhere under src/. */
+export const CANCELLATION_DRAIN_JOB = 'cancellation_drain';
+
+/**
+ * ONE query, three aggregates, no row bodies — the same shape and the same
+ * reason as the liveness limb's GROUP BY: D1 Free bounds queries per
+ * invocation, and a census must never be the limb that costs the sweep its
+ * budget.
+ *
+ * 🔴 `recorded` IS COUNTED ALONGSIDE `undrained` ON PURPOSE. `undrained=0`
+ * alone is ambiguous in exactly the way an empty `events` table was: it reads
+ * identically for "every request was executed" and "nobody ever asked". Today
+ * the second is true, and the token pair is what will say so when it stops
+ * being.
+ *
+ * 🔴 `oldest` IS THE OLDEST UNDRAINED ROW, NOT THE OLDEST ROW. `MIN(requested_at)`
+ * over the whole table would be pinned by the first request ever made and would
+ * keep reporting a huge age after every request had been executed — an age that
+ * only ever grows is not a queue depth, it is a clock.
+ *
+ * A row is written UNCONDITIONALLY, including at zero. A detector that records
+ * only when it found something is silent in precisely the case it exists for.
+ */
+export async function cancellationDrainCensus(env: Env): Promise<void> {
+  let detail: string;
+  let ok = true;
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      `SELECT COUNT(*) AS recorded,
+              SUM(CASE WHEN executed_at IS NULL THEN 1 ELSE 0 END) AS undrained,
+              MIN(CASE WHEN executed_at IS NULL THEN requested_at END) AS oldest
+         FROM cancellation_requests`,
+    ).first<{ recorded: number | null; undrained: number | null; oldest: string | null }>();
+    // ⚠️ `?? 0` USED TO SIT INSIDE THIS `Number(…)` AND IS DELETED, 2026-08-22.
+    // No input could distinguish it: `Number(undefined)` is NaN and the `|| 0`
+    // already catches NaN, so the nullish arm and its absence produced the same
+    // byte on every path. It read as a guard and was not one. `|| 0` IS held —
+    // test/cancellation-drain.test.ts, "survives a non-numeric `recorded`".
+    const recorded = Number(row?.recorded) || 0;
+    // ⚠️ `SUM` over zero rows is NULL in SQLite, not 0. `Number(null)` happens
+    // to be 0, but a count that is correct by coincidence is a count that goes
+    // wrong the first time the shape changes, so it is normalised explicitly.
+    // The `row?.` chain is not decoration either: `.first()` is typed `T | null`
+    // and "survives first() returning null" goes red without it.
+    // ⚠️ THE CONDITION AND THE `? 0` ARM ARE SEPARATE ROWS, and only the first
+    // was graded before 2026-08-24. Set the arm to 99 and every earlier fixture
+    // stayed green, because a NULL count on the real table means ZERO rows, so
+    // `recorded === 0` wins below and prints its LITERAL — the arm's value never
+    // reached the detail. "a NULL count beside a real total normalises to zero"
+    // reaches it through the aggregate stub and reddens it.
+    const undrained = row?.undrained == null ? 0 : Number(row.undrained) || 0;
+    // ⚠️ `?? null` AND `=== null` ARE HELD BY THE TYPECHECKER AND BY NO TEST,
+    // said plainly rather than counted as coverage: delete either and
+    // `.first()`'s `T | null` reaches `Date.parse`, which does not take one —
+    // `tsc --noEmit` EXIT 2 on all three ways of disabling them, measured
+    // 2026-08-24. Their absence does not compile, so they cannot be deleted.
+    // The `? Number.NaN` ARM is a THIRD row and it IS graded: forced to 0 the
+    // age becomes hours-since-the-epoch, which "an age is UNKNOWN when the
+    // aggregate carries no oldest" reddens.
+    const oldest = row?.oldest ?? null;
+    const oldestMs = oldest === null ? Number.NaN : Date.parse(oldest);
+    // `unknown`, never a silent 0. `requested_at` is written by `nowIso()` and
+    // is therefore parseable on every row this rail wrote — but the column is a
+    // bare TEXT with no CHECK, so an unparseable value is reachable, and an
+    // unparseable timestamp reported as `oldest_age_h=0` would read as "the
+    // queue is brand new" at exactly the moment nobody can tell how old it is.
+    const age = Number.isFinite(oldestMs)
+      ? Math.max(0, (Date.now() - oldestMs) / 3_600_000).toFixed(1)
+      : 'unknown';
+    // 🔴 THE ` — ` IN ALL THREE SENTENCES BELOW IS A SEPARATOR, NOT PUNCTUATION.
+    // The test file slices `detail` at it to grade the operator-facing half, and
+    // does so with NO fallback for its absence. Until 2026-08-24 only the two
+    // ZERO-branches were held that way: relaxing the BACKLOG branch's ` — ` to
+    // ` :: ` left test/cancellation-drain.test.ts at EXIT 0 / 17 passed, because
+    // that branch was graded by a substring match that a wrong slice survives.
+    // Now held whole-line by "slices at the dash FOLLOWED BY A SPACE, not at one
+    // inside the oldest value". The SPACE after the dash is load-bearing too —
+    // the slice searches for dash-then-space, so a dash with no space after it
+    // is not a separator and `oldest` may legitimately contain one.
+    detail =
+      recorded === 0
+        ? 'undrained=0 recorded=0 oldest=none oldest_age_h=0 — nothing has ever been recorded, so the queue depth is zero rather than unknown.'
+        : undrained === 0
+          ? `undrained=0 recorded=${recorded} oldest=none oldest_age_h=0 — every recorded request carries executed_at.`
+          : `undrained=${undrained} recorded=${recorded} oldest=${oldest} oldest_age_h=${age} — UNDRAINED: nothing here executes a cancellation; this falls only when a human acts. [5]M-9`;
+  } catch (err) {
+    // ok=0 means THE WORK FAILED. A query that could not run tells us nothing
+    // about the queue, and must never be recorded as "nothing is waiting".
+    ok = false;
+    // 🔴 SAME SEPARATOR, AND THIS PATH WAS THE LAST ONE UNGRADED. Relaxing this
+    // ` — ` to ` :: ` was EXIT 0 / 17 passed as late as 2026-08-24: the only case
+    // reaching here matched `FAILED` as a substring of the RAW detail and never
+    // sliced it, so the half a human reads at 3am was unheld on the one path
+    // that exists to be read by a human at 3am. Now anchored by "grades the
+    // FAILED path too — the catch branch has an operator-facing half as well".
+    detail = `undrained=unknown recorded=unknown oldest=none oldest_age_h=unknown — the drain census query FAILED: ${String(err)}`;
+  }
+  await recordHeartbeat(env, [{ target: '(portfolio)', ok, detail }], CANCELLATION_DRAIN_JOB);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // [pipeline 14]O-17 · THE RETENTION SWEEP — BUILT DORMANT, ARMED BY ONE VALUE.
 //
 // 🔴 THE STATE THIS REPLACES. tooling/ops/register.json carries two rows at
@@ -453,8 +896,8 @@ export async function renewalsFanOut(env: Env): Promise<void> {
 
 /** The job name recorded in `cron_heartbeat` for the retention sweep.
  *
- *  ⚠️ THE `<NAME>_JOB` SPELLING IS LOAD-BEARING — the same convention
- *  RENEWALS_JOB documents above. `deriveWatchedJobs` in
+ *  ⚠️ THE `<NAME>_JOB` SPELLING IS LOAD-BEARING — the same convention the
+ *  renewals constant documents above. `deriveWatchedJobs` in
  *  tooling/ops/check-heartbeats.mjs reads these declarations out of THIS source
  *  and fails BOTH directions: unless `duty.platform-cron.watchedJobs` names the
  *  literal, and unless the constant reaches `recordHeartbeat` at a REAL call
@@ -595,8 +1038,11 @@ export function retentionCutoff(days: number | null, nowMs: number = Date.now())
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Heartbeat job name. Same `<NAME>_JOB` convention and same two-directional
- *  check by `deriveWatchedJobs` as RETENTION_SWEEP_JOB — it must also appear in
- *  `duty.platform-cron.watchedJobs` in tooling/ops/register.json. */
+ *  check by `deriveWatchedJobs` as the retention-sweep constant above — it must
+ *  also appear in `duty.platform-cron.watchedJobs` in tooling/ops/register.json.
+ *
+ *  ⚠️ The neighbouring constant is named in words, not spelt: see the drain
+ *  census constant's doc for the measurement that says why. */
 export const EVENTS_ROLLUP_JOB = 'events_rollup';
 
 /** The rollup's identity in `rollup_state`. One string, one place. */
@@ -1004,6 +1450,12 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, en
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
       await renewalsFanOut(env);
+      // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
+      // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
+      // retention.d1.platform_db.cancellation_requests) that the sweep below never
+      // touches. It sits ahead of the destructive limb only so a slow sweep cannot
+      // delay a census that costs one query.
+      await cancellationDrainCensus(env);
       // The rollup runs BEFORE the sweep so a day rolled up tonight is sweepable
       // tonight.
       //
