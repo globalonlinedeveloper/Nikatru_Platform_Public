@@ -112,6 +112,27 @@ const DECLARED_WRITERS = [
     // NARROW BY DESIGN, and it fails CLOSED: a writer that moves the world onto
     // an `UPDATE … SET` instead will trip this and must update this row in the
     // same diff. That is the declaration doing its job.
+    //
+    // ── APPENDED 2026-08-25 (same day, later change) · WHAT "EVERY INSERT" AND
+    //    "FAILS CLOSED" MEAN MECHANICALLY, because as first written they were
+    //    BROADER THAN THE CODE ────────────────────────────────────────────────
+    // The two sentences above were true of every insert the matcher could SEE,
+    // and the matcher could not see all of them. `INSERT INTO entitlements
+    // VALUES (…)` carries no column list; the column matcher skipped it, and
+    // because one honest column-list insert remained the `inserts.length === 0`
+    // COVERAGE LOST branch never fired — a blind statement sat beside an honest
+    // one and the guard exited 0. MEASURED before the repair, through this
+    // guard's own harness: `node --test tooling/ci/test/mor-adapters.test.mjs`
+    // → tests 40 / pass 38 / fail 2, both new cases reporting `code: 0` where 1
+    // was expected.
+    // THE REPAIR IS A DENOMINATOR, not a wider pattern: the check now counts
+    // entitlements INSERTs with `/\bINSERT\s+INTO\s+entitlements\b/gi` — the
+    // INSERT branch of WRITE_RE character for character — and any
+    // excess over the number of column lists it could read is COVERAGE LOST.
+    // So "checked over EVERY insert" now holds in the only way it can: every
+    // insert is either read and judged, or counted and refused. A statement
+    // this check cannot parse can no longer be certified by silence.
+    // MEASURED after the repair: guard exit 0 on this tree, 40 tests / 40 pass.
     worldColumn: 'provider_environment',
     worldColumnWhy:
       'the shared entitlement read decides live-vs-sandbox from this column; a row without it is undecidable and is denied',
@@ -296,7 +317,29 @@ for (const w of DECLARED_WRITERS) {
   // The world column, over EVERY insert in the file. See `worldColumn` above.
   if (w.worldColumn) {
     const code = stripComments(src);
-    const inserts = [...code.matchAll(/INSERT\s+INTO\s+entitlements\s*\(([^)]*)\)/gi)];
+    // THE DENOMINATOR FIRST, and it is the INSERT branch of limb 1's WRITE_RE
+    // character for character (`\bINSERT\s+INTO\s+entitlements\b`), so a statement
+    // limb 1 calls a write cannot be a statement this row declines to count.
+    // `allInserts` is every entitlements INSERT; `inserts` is the
+    // subset whose COLUMN LIST this check can read. Any excess is a write the
+    // predicate cannot see — `INSERT INTO entitlements VALUES (…)` is the shape —
+    // and an unreadable write is COVERAGE LOST, never a pass. Without this the
+    // one honest column-list INSERT kept `inserts.length === 0` from ever firing
+    // and a blind statement beside it exited 0. See the 2026-08-25 (later change)
+    // note on the DECLARED_WRITERS row above.
+    const allInserts = code.match(/\bINSERT\s+INTO\s+entitlements\b/gi) ?? [];
+    const inserts = [...code.matchAll(/\bINSERT\s+INTO\s+entitlements\s*\(([^)]*)\)/gi)];
+    if (allInserts.length > inserts.length) {
+      fail(
+        `COVERAGE LOST — ${w.file} carries ${allInserts.length} \`INSERT INTO entitlements\` statement(s) and ` +
+          `this check could read the column list of only ${inserts.length}. The remaining ` +
+          `${allInserts.length - inserts.length} name no columns (\`INSERT INTO entitlements VALUES (…)\`) or are ` +
+          `written in a shape this check cannot parse, so it cannot tell whether \`${w.worldColumn}\` is written. ` +
+          'Give every insert an explicit column list — the positional form is unreadable to a reviewer too — or ' +
+          'fix this row. Not by loosening the pattern.',
+      );
+      continue;
+    }
     if (inserts.length === 0) {
       fail(
         `COVERAGE LOST — ${w.file} is declared with a \`${w.worldColumn}\` column requirement and the scan found ` +
@@ -639,6 +682,20 @@ if (!existsSync(join(ROOT, CONTRACT))) {
   // it. Between the two halves — predicate added, fixture not yet taught — 4 of
   // those 32 were red, which is the interval this note existed to prevent
   // anyone walking into blind.
+  //
+  // ── APPENDED 2026-08-25 (same day, third change) · THE GATE HAD A HOLE AND
+  //    THE COUNT ABOVE IS SUPERSEDED ──────────────────────────────────
+  // The gate as landed above read only inserts that carry a COLUMN LIST, so
+  // `INSERT INTO entitlements VALUES (…)` was invisible to it and — with one
+  // honest column-list insert still in the file — the COVERAGE LOST branch never
+  // fired. The `worldColumn` row now counts entitlements INSERTs with the INSERT
+  // branch of WRITE_RE verbatim and refuses any file whose count exceeds the
+  // number of column lists it could read; the two new cases in
+  // tooling/ci/test/mor-adapters.test.mjs pin both forms of that shape.
+  // MEASURED THIS RUN, AFTER that change: `node tooling/ci/assert-mor-adapters.mjs`
+  // exits 0 on this tree, and `node --test tooling/ci/test/mor-adapters.test.mjs`
+  // reports 40 tests / 40 pass / 0 fail. The "38 tests / 38 pass" line above was
+  // correct when written and is HISTORICAL; 40/40 is the current number.
 }
 
 // ── report ───────────────────────────────────────────────────────────────────

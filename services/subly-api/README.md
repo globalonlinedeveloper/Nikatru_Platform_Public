@@ -120,8 +120,37 @@ MEASURED TODAY: `tooling/platform-register.json` carries an `appWorkers[0]` whos
 mounted route(s) reconciled with 9 register entry(ies), plus 12 across 1 app
 Worker(s) reconciled with 12`. The gap is not merely covered but PRINTED, every
 run: `⚠  GET /v1/renewals — NO CLIENT. · subly-api 🔴 NOTHING IN THIS REPO CALLS
-IT`. So the claim above is machine-checked, and the day a client appears the
-register goes red until somebody writes that client into the entry.
+IT`.
+
+🔄 AMENDED 2026-08-25, SAME DAY, AFTER READING THE GUARD — the sentence that
+closed this paragraph was itself false and is NOT restored. It read: "So the claim
+above is machine-checked, and the day a client appears the register goes red until
+somebody writes that client into the entry." WHAT LIMB 2 ACTUALLY DOES, at
+`tooling/ci/assert-platform-register.mjs:607-618`: `const c = entry.client; if (!c)
+{ if (String(entry.unconsumedReason ?? '').trim()) { printed.push(...) } else {
+problems.push(...) } continue; }`. A route that declares no client but carries a
+written `unconsumedReason` goes to `printed`, which is only `console.log`-ed (:879);
+only `problems.length` sets the exit code (:868-875). The guard never scans the tree
+for callers, so a client appearing is invisible to it and NOTHING STILL NOTICES —
+that half of the old paragraph quoted above was the TRUE half. The header says it
+outright at :38: "⚠️ A ROUTE WITH NO CLIENT DOES NOT FAIL THE BUILD; IT PRINTS, ON
+EVERY RUN."
+
+What IS machine-checked is narrower than "the claim above", and it is two things,
+both of which push to `problems` and therefore fail the build:
+- **the route set**, both directions — every route `services/subly-api/src/index.ts`
+  mounts must appear in the register and every register entry must be mounted
+  (:543-558). That is the `12 … reconciled with 12` in the `ok` line above.
+- **the resolution of a client that is DECLARED** — the file must exist, must live
+  OUTSIDE the serving Worker, and its expression must survive comment-stripping and
+  contain the route's own path (:619-657).
+
+Not the zero-clients claim. The register DECLARES a resolving client for one of the
+two routes — `subly-entitlements`, `client.expression` `_rest.get('/entitlements')`
+— so for that route the machine asserts the OPPOSITE of zero clients, and "no live
+caller" is a hand-written note at `tooling/platform-register.json:270`. The only
+thing that fails over a missing client is an entry carrying NEITHER a `client` NOR
+an `unconsumedReason` (:611-616): an UNDECLARED gap fails, a declared one prints.
 
 ⚠️ WHAT IS STILL NOT CHECKED, SO NOBODY READS MORE INTO THAT GREEN THAN IS THERE:
 the register's limb 2 asserts that a route's URL is CONSTRUCTED somewhere outside

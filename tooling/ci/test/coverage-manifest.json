@@ -67,7 +67,7 @@
   "mail-transport-claims.test.mjs": 35,
   "money-config.test.mjs": 35,
   "monitor-coverage.test.mjs": 21,
-  "mor-adapters.test.mjs": 40,
+  "mor-adapters.test.mjs": 42,
   "no-clone-tells.test.mjs": 18,
   "no-dead-files.test.mjs": 7,
   "no-do-alarms.test.mjs": 26,

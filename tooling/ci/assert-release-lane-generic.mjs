@@ -234,6 +234,21 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'it. Grading it would add a workflow to the denominator that can never move the answer.',
   ],
   [
+    'site-drift-repair.yml',
+    'regenerates the discovery surface after a push to main and opens a pull request when the regenerated ' +
+      'bytes differ from what main carries. It builds no app, produces no release artifact and names no ' +
+      'app id. R-1 quantifies over the workspace APP set to prove a lane is generic, so a lane that ships ' +
+      'no app has nothing for this guard to compare and would sit in the denominator as a permanent ' +
+      'empty-set pass — the same reason already written out above for deploy-workers.yml and ops-watch.yml. ' +
+      'The owning stage is stage 14 ops, through the duty row `duty.workflow.site-drift-repair.yml` in ' +
+      'tooling/ops/register.json, and that ownership is not prose: assert-ops-register.mjs:23 holds ' +
+      '`watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so this lane cannot be in the ' +
+      'tree without a row there. What holds its OUTPUT correct is tooling/ci/check-site-integrity.mjs, ' +
+      'which the workflow runs as its own last step, AFTER the regeneration. Classified 2026-08-25, the ' +
+      'round the workflow landed; between the two, this guard exited 1 naming it — the unclassified-lane ' +
+      'limb working exactly as designed, not a defect in the lane.',
+  ],
+  [
     'submit-appstore.yml',
     "[10]D-10 owns the store submission paths. The script it runs is already `--app`-parameterised; the " +
       'workflow that calls it is the half that still names one app, and pulling that into R-1 would claim ' +

@@ -559,6 +559,30 @@ describe('assert-mor-adapters — one verifier between a provider and the entitl
 //   · column absent                             → exit 1
 //   · column in the FILE but not the column list→ exit 1  (a `SELECT` is not a write)
 //   · one honest INSERT beside one blind INSERT → exit 1  (checked over EVERY insert)
+//   · one honest INSERT beside a COLUMNLESS one  → exit 1 as COVERAGE LOST
+//   · a COLUMNLESS INSERT alone                  → exit 1 as COVERAGE LOST
+//
+// ⚠️ THE LAST TWO LINES WERE ADDED 2026-08-25 (later change) AND THEY WERE RED
+// WHEN WRITTEN. `INSERT INTO entitlements VALUES (…)` carries no column list, so
+// the column matcher cannot see it at all; with one honest column-list INSERT
+// still in the file the old `inserts.length === 0` COVERAGE LOST branch never
+// fired and the guard exited 0 on a blind write. MEASURED before the guard was
+// changed, with these two cases present: `node --test tooling/ci/test/mor-adapters.test.mjs`
+// → tests 40 / pass 38 / fail 2, both failures `code: 0` where 1 was expected.
+// The guard now counts entitlements INSERTs with the same anchor limb 1 uses and
+// refuses to certify a file whose INSERT count exceeds the number of column
+// lists it could read — a statement it cannot read is coverage lost, not a pass.
+//
+// TWO MUTATIONS OF THAT DENOMINATOR, RUN AGAINST THIS FILE 2026-08-25 (guard
+// restored byte-identical afterwards, md5 d993e44a6d1536bae0ada0c579f83324):
+//   W-A  `allInserts.length > inserts.length`                 -> 40 tests / 38 pass /
+//        made unreachable (`+ 99`)                               2 fail, exactly the
+//                                                                two cases below
+//   W-B  the counting anchor loosened from                    -> 40 / 38 / 2, the same
+//        `/\bINSERT\s+INTO\s+entitlements\b/gi` to one that      two — i.e. the natural
+//        also demands a column list                              wrong fix is caught
+// W-B is the direction that matters: the denominator has to be the SAME anchor
+// limb 1 calls a write, or the check grades itself on the statements it likes.
 //   · no INSERT at all                          → exit 1 as COVERAGE LOST, never ok
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-25]', () => {
@@ -604,6 +628,44 @@ describe('the legacy rail writes a DECIDABLE row — the world column [2026-08-2
     const r = run({ legacy: two });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /1 of 2 `INSERT INTO entitlements` statement\(s\) do NOT name `provider_environment`/);
+  });
+
+  test('🔴 a COLUMNLESS INSERT beside an honest one is COVERAGE LOST, never ok', () => {
+    // The same shape as the case above, changing ONLY the blind statement's form:
+    // `INSERT INTO entitlements VALUES (…)` names no columns, so the column-list
+    // matcher is blind to it while limb 1's WRITE_RE reads it as a write. Before
+    // the guard counted its own denominator this case exited 0.
+    const two = LEGACY_WEBHOOK_TS.replace(
+      '  return c.json({ ok: true });',
+      "  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements VALUES (?, ?, ?, ?)').bind(userId, 'revenuecat', environment, eventId).run();\n  return c.json({ ok: true });",
+    );
+    assert.equal((two.match(/INSERT INTO entitlements/g) ?? []).length, 2, 'the columnless fixture did not build');
+    assert.equal(
+      (two.match(/INSERT INTO entitlements\s*\(/g) ?? []).length,
+      1,
+      'the blind statement must carry NO column list, or this case is the previous one',
+    );
+    const r = run({ legacy: two });
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /COVERAGE LOST — services\/subly-api\/src\/routes\/webhooks\.ts carries 2 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 1/,
+    );
+  });
+
+  test('🔴 a COLUMNLESS INSERT alone is COVERAGE LOST, never ok', () => {
+    const blind = LEGACY_WEBHOOK_TS.replace(
+      "INSERT INTO entitlements (user_id, provider, provider_environment, last_event_id) VALUES (?, ?, ?, ?)",
+      'INSERT INTO entitlements VALUES (?, ?, ?, ?)',
+    );
+    assert.doesNotMatch(blind, /INSERT INTO entitlements\s*\(/, 'the columnless fixture did not build');
+    assert.match(blind, /INSERT INTO entitlements/);
+    const r = run({ legacy: blind });
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /COVERAGE LOST — services\/subly-api\/src\/routes\/webhooks\.ts carries 1 `INSERT INTO entitlements` statement\(s\) and this check could read the column list of only 0/,
+    );
   });
 
   test('COVERAGE LOST — not ok — when the declared writer stops INSERTing at all', () => {

@@ -1975,9 +1975,9 @@ if (gradleFilesCrossChecked > 0) {
     //   · `.AppImage` — "AppImage packaging — tooling/ci/appimage-signing.mjs
     //     and its lane". `grep -rn -E "appimagetool|linuxdeploy|AppImageKit"
     //     --include=*.mjs --include=*.yml --include=*.sh`, excluding
-    //     node_modules/ and .bundles/, returns ZERO lines; appimage-signing.mjs
-    //     says on its own line 3 that it materialises the SIGNING KEY. It signs,
-    //     it does not package.
+    //     node_modules/, .bundles/ AND THIS FILE, returns ZERO lines. Measured
+    //     2026-08-25: exactly 1 hit tree-wide, and it is this comment's own
+    //     quotation of the pattern. appimage-signing.mjs:3 signs; never packages.
     //   · `.pkg` — "productbuild + notarisation". `productbuild` appears in no
     //     workflow in this repository, and apple-signing.mjs:182 states it
     //     outright: "The `productbuild` step stays a printed intent."

@@ -386,6 +386,51 @@ if (!existsSync(CI) || !existsSync(TESTS)) {
 // (assert-ads-declarations, assert-policy-claims) spread the braces over
 // several lines, and a line-anchored pattern misses both.
 //
+// ⏱ APPENDED 2026-08-25 — the ⚠️ paragraph above is left EXACTLY as written; this
+// corpus appends dated corrections rather than rewriting them. Four of its
+// claims are now HISTORICAL and the removal it books is DISCHARGED. Every
+// number below was measured in this tree today, after that removal landed:
+//
+//   (a) THE NUL BYTES ARE GONE. tooling/ci/assert-release-lane-generic.mjs
+//       scans to ZERO NUL bytes today — a byte scan of the whole file returns
+//       count 0. The 2026-08-17 reading still reproduces AT THE SHA IT WAS
+//       TAKEN ON: byte-scan `git show 57e6e10:tooling/ci/assert-release-lane-generic.mjs`
+//       and you get count 2, offsets 22908 and 22916, both on line 379. So
+//       read that sentence as a statement about 57e6e10, not about this tree.
+//       The sentinel is now written with BACKSLASH-u ESCAPES rather than
+//       raw bytes, which is why this file can describe it without
+//       acquiring the same problem; find it with
+//       `grep -n '^const DYNAMIC' tooling/ci/assert-release-lane-generic.mjs`,
+//       which answers 421 today and not 379 — grep for it rather than trusting
+//       either number, since every edit above it moves the line. Its doc
+//       comment there records the rewrite and that the VALUE is byte-identical
+//       to what the line evaluated to at 57e6e10.
+//
+//   (b) THE OWED REMOVAL IS DISCHARGED. "worth removing on their own, in
+//       whichever change owns that file" was a booking, not a description.
+//       The change that owns that file made the removal on 2026-08-25, and
+//       this append closes the booking. Nothing is still owed here.
+//
+//   (c) "Without it ripgrep answers 35" AND "SKIPS it silently" NO LONGER
+//       REPRODUCE. Run the recipe above today and it answers 44 WITH `-a` and
+//       44 WITHOUT it; the bare-specifier form (drop the stripSourceComments
+//       brace clause, keep the module specifier) answers 47 both ways. No file
+//       in this sweep's domain is rescued by `-a` any more.
+//
+//   (d) KEEP `-a` ANYWAY — it is still load-bearing for OTHER sweeps of
+//       tooling, just not for this one. Three .mjs files under tooling carry
+//       literal NUL bytes today: tooling/ci/assert-update-coverage.mjs (2),
+//       tooling/ci/flutter-stock-assets.mjs (1), and
+//       tooling/scripts/assert-public-citations.mjs (2). None of the three
+//       imports text-reductions, so none of them moves the two counts above,
+//       but an un-flagged sweep of tooling still drops them without a word.
+//
+//   (e) `--multiline-dotall` is still load-bearing, and the count beside it
+//       has rotted from two to THREE. Measured today: 44 with the multiline
+//       flags and 41 without them. The three the line-anchored pattern misses
+//       are assert-ads-declarations.mjs, assert-policy-claims.mjs and
+//       test/text-reductions.test.mjs.
+//
 // The count is prose and prose rots; the check below does not. It fails on the
 // BEHAVIOUR, whatever the blast radius turns out to be on the day.
 const CANARY_COMMENT_ONLY = `// the caller must report ${COVERAGE_MARKER} rather than pass\nconst x = 1;\n`;
