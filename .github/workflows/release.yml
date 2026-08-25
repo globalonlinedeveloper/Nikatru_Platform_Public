@@ -208,7 +208,43 @@ jobs:
       #
       # ⚠️ AND THIS IS THE GENERAL FIX. A missing firefox zip is caught today
       # for exactly one tool, by the `if: steps.tag.outputs.id == 'fullshot'`
-      # AMO step below. This holds for every tool and every declared target.
+      # AMO step below. This step carries no tool-id condition.
+      #
+      # ── APPENDED CORRECTION, 2026-08-25 — the block above is left as written ─
+      # 🔴 `[ "$graded" -ne "$declared" ]`, WHICH THE BLOCK ABOVE DESCRIBES AND
+      # WHICH THIS STEP NO LONGER USES, IS A COUNT IDENTITY, NOT A PER-TARGET
+      # ASSERTION. It compares the script's packagesGraded to its targetsGraded.
+      # Two totals agreeing says nothing about WHICH target each package
+      # belonged to, so it passes a run where one target got two packages and
+      # another got none — which is the same half-built release the block above
+      # set out to catch.
+      #
+      # DISPROOF FIXTURE, measured 2026-08-25 off-runner. dist held a real
+      # `--release` build of both FullShot packages with
+      # `browser_specific_settings` stripped from the firefox zip's
+      # manifest.json — a packer regression this repo gates against elsewhere.
+      # check-store-packages.mjs then classifies that zip as chromium and
+      # prints, verbatim:
+      #     PASS  target "chromium" — 2 package(s) graded  — Extension/Full_Screen_Shot
+      #     target "firefox" (Extension/Full_Screen_Shot): no built package found
+      #     in <dir> — nothing to grade for it in this checkout.
+      #     2 store package(s) opened and graded, 0 unreadable, across 2 declared target(s).
+      # graded == declared == 2. The step body lifted out of THIS FILE by
+      # yaml.safe_load and run under `bash --noprofile --norc` printed
+      # "graded 2 of 2 declared target(s)." and EXIT 0 — a green tick on a
+      # release with no Firefox package in it.
+      #
+      # THE REPLACEMENT COUNTS THE SCRIPT'S OWN POSITIVE PER-TARGET LINE.
+      # check-store-packages.mjs:350-358 emits exactly one line per declared
+      # target: `  PASS  target "<t>" — N package(s) graded` when N > 0, and an
+      # 8-space-indented note carrying no `PASS` when N == 0. So counting the
+      # PASS form and requiring that count == declared IS the per-target
+      # property, and `covered` can never exceed `declared`.
+      # Same harness, same two fixtures, measured 2026-08-25:
+      #   firefox zip stripped  → covered=1 declared=2, EXIT 1
+      #   both zips intact      → covered=2 declared=2, EXIT 0
+      # Keyed on the POSITIVE wording on purpose — the ⚠️ note above says why a
+      # tripwire keyed on the "no built package found" failure text is worthless.
       - name: The built packages are uploadable
         shell: bash
         run: |
@@ -227,11 +263,12 @@ jobs:
           fi
           graded=${tally%% *}
           declared=$(printf '%s\n' "$tally" | sed -E 's/.*across ([0-9]+) declared target\(s\)\.$/\1/')
-          if [ "$graded" -ne "$declared" ]; then
-            echo "::error::$tally  Every declared target must have had a built package opened and graded here; graded=$graded declared=$declared. The release step below uploads dist/*.zip, so an ungraded target is either an artifact this gate never opened or one the pack step never wrote."
+          covered=$(printf '%s\n' "$out" | grep -cE '^  PASS  target "[^"]+".*package\(s\) graded') || true
+          if [ "$covered" -ne "$declared" ]; then
+            echo "::error::$tally  Every declared target must have had a built package OF ITS OWN opened and graded here; $covered of $declared declared target(s) did. The release step below uploads dist/*.zip, so an uncovered target is either an artifact this gate never opened or one the pack step never wrote. The two totals in that tally can agree while a target is missing, which is why this reads the script's per-target PASS lines instead."
             exit 1
           fi
-          echo "graded $graded of $declared declared target(s)."
+          echo "every declared target had a built package graded: $covered of $declared target(s), $graded package(s)."
 
       # ── THE TOOL'S OWN AMO GATE, ON THE BYTES THIS TAG SHIPS ───────────────
       # 🔴 THE RELEASE PATH HAD NEVER OPENED THIS GATE AT ALL. Measured

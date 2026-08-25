@@ -593,6 +593,11 @@ this change the missing-Firefox-zip case was caught for exactly one tool, by the
 `if: steps.tag.outputs.id == 'fullshot'` AMO step; the new assertion holds for every tool and every
 declared target.
 
+🔴 **SUPERSEDED — see A.7.** The paragraph above is left as written because it is a dated record.
+The assertion it describes, `graded == declared`, is a **count identity** and does not prove the
+per-target property this section claims for it. The step no longer uses it. Read A.7 before relying on
+anything between the start of A.1 and this line about *which* targets are covered.
+
 ⬜ **OPEN, and not part of this change.** `ci.yml` calls the same script the same bare way in its
 `package` job — `grep -n 'check-store-packages.mjs ${{ matrix.tool }} --dir dist' .github/workflows/ci.yml`
 finds it — so the PR-time twin of this gate still reads an exit code the script disclaims. Fixing it
@@ -718,3 +723,88 @@ running every gate, building both packages and writing `SHA256SUMS.txt`, then **
 decision with a cost rather than a cleanup: a second entry point into the one job that holds
 `contents: write` needs its own thinking about who may press it and what an input can reach. It is raised
 in the pull request instead, for a decision.
+
+### A.7 — CORRECTION to A.1, 2026-08-25: `graded == declared` was a count identity, not a per-target assertion
+
+A.1 above says the step `The built packages are uploadable` asserts `graded == declared` "parsed from that
+tally line", and that this "holds for every tool and every declared target". The first half was true of the
+code; the second half did not follow from it, and the step has been changed.
+
+`check-store-packages.mjs` prints one tally line: *"N store package(s) opened and graded, 0 unreadable,
+across K declared target(s)."* `N` is `packagesGraded` and `K` is `targetsGraded`. **`N == K` says nothing
+about which target each package belonged to.** One target with two packages beside one target with none
+satisfies it exactly as well as one package each.
+
+**Disproof fixture, measured 2026-08-25.** `dist` held a real `--release` build of *both* FullShot
+packages, with `browser_specific_settings` deleted from the firefox zip's `manifest.json` — the packer
+regression class this repository gates against elsewhere. The script then classifies that zip as
+**chromium** and prints, verbatim:
+
+```
+  PASS  target "chromium" — 2 package(s) graded  — Extension/Full_Screen_Shot
+        target "firefox" (Extension/Full_Screen_Shot): no built package found in <dir> — nothing to
+        grade for it in this checkout.
+
+        2 store package(s) opened and graded, 0 unreadable, across 2 declared target(s).
+```
+
+`graded == declared == 2`, so the old body printed *"graded 2 of 2 declared target(s)."* and **EXIT 0** —
+green on a release with no Firefox package in it.
+
+**What it asserts now.** The script already emits exactly one line per declared target
+(`check-store-packages.mjs:350-358`): `  PASS  target "<t>" — N package(s) graded` when a package was
+found, and an 8-space-indented note carrying no `PASS` when none was. The step counts the **PASS** form
+and requires that count to equal `declared`:
+
+```
+covered=$(printf '%s\n' "$out" | grep -cE '^  PASS  target "[^"]+".*package\(s\) graded') || true
+if [ "$covered" -ne "$declared" ]; then ... exit 1; fi
+```
+
+That count *is* the per-target property, and `covered` can never exceed `declared` because the script
+writes at most one such line per target. It is keyed on the **positive** wording for the reason A.1
+already gives about the `ZERO PACKAGES WERE PRESENT` text.
+
+**Before / after, measured 2026-08-25.** The step body was lifted out of `.github/workflows/release.yml`
+by `yaml.safe_load` — never hand-copied — `${{ steps.tag.outputs.id }}` replaced with `fullshot` and
+`--dir dist` repointed at each fixture, then run under `bash --noprofile --norc`. GitHub invokes a
+`shell: bash` step as `bash --noprofile --norc -eo pipefail {0}`; the two missing flags are supplied by
+the body's own first line, `set -euo pipefail`, so the shell the fixtures ran under matches the runner's.
+
+| `dist` fixture | old body (`graded -ne declared`) | new body (`covered -ne declared`) |
+| --- | --- | --- |
+| both zips intact | EXIT 0 | EXIT 0 — *"every declared target had a built package graded: 2 of 2 target(s), 2 package(s)."* |
+| firefox zip stripped of `browser_specific_settings` | **EXIT 0** | **EXIT 1** — `1 of 2 declared target(s) did` |
+| chromium zip only | EXIT 1 | EXIT 1 |
+| `dist` present but empty | EXIT 1 | EXIT 1 |
+
+The middle row is the whole change; the other three are unchanged, so the A.1 table's rows still hold.
+
+**Both directions pinned by mutation, same harness, same fixtures.** Reverting the comparison to
+`[ "$graded" -ne "$declared" ]` puts the stripped-firefox fixture back to **EXIT 0** — so `covered` is
+what bites. Making the matcher unmatchable (`^ZZNOMATCH  PASS  target …`) turns the *intact* fixture
+**RED**, so the pattern is load-bearing and fails closed rather than silently counting zero and passing.
+
+🔴 **The release lane itself was not run, and was not going to be.** `release.yml` fires only on a
+`*-v*` tag push, its `gh release create` carries no `--draft`, and this is a public repository, so there is
+no throwaway tag that exercises the path and stays private. `git tag` is **0** in this repository and
+stays 0. Everything above is a fixture measurement of the step's own body, extracted from the file as
+committed. **A.4's list of four never-executed things is unchanged by this edit**, and this step is not
+a fifth: A.4 already records that the A.1 wrappers are release-only code that has never run on a
+runner, while their subject `check-store-packages.mjs` is covered on CI — `grep -oE
+'check-store-packages' .github/workflows/ci.yml | wc -l` → **2**, re-measured 2026-08-25. That is
+still true of the wrapper as rewritten here.
+
+⬜ **Two cells of A.4's token table moved because of this edit, and A.4 is left as written.** That
+table counts *mentions* over each file's full text, so a correction block that names a script raises
+its own count — A.4 says so itself. Re-measured 2026-08-25 with A.4's own literal rule,
+`grep -oE '<token>' <file> | wc -l`, after this section was written:
+
+| token | `ci.yml` | `release.yml` in A.4 | `release.yml` now |
+| --- | --- | --- | --- |
+| `\-\-release` | 2 | 5 | **6** |
+| `check-store-packages` | 2 | 3 | **5** |
+
+The other ten rows reproduce A.4's figures exactly, and every zero in the `ci.yml` column — the
+load-bearing half of that table — is unchanged: `\-\-expect` 0, `changelog-section` 0, `sha256sum` 0,
+`gh release` 0.

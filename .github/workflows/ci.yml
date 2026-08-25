@@ -942,10 +942,16 @@ jobs:
   # of what discovery selected on that push, and there is no stable string to
   # type into a protection rule for them. Measured 2026-08-25 at a564962:
   # `grep -cE '^    name:.*matrix\.' .github/workflows/ci.yml` -> 3, and
-  # `grep -rn 'required check|required status|branch protection' --include=*.md
-  # --include=*.yml .` -> no matches, i.e. nothing in the repository has ever
-  # written down what to require. This job is the answer: one job, one fixed
-  # name, and it waits on all of them.
+  # `git grep -nE 'required check|required status|branch protection' a564962 --
+  # '*.md' '*.yml'` -> exit 1, no output, i.e. nothing in the repository had
+  # ever written down what to require. That pathspec is not vacuous: the same
+  # invocation with a pattern that must hit selects 55 files at that commit,
+  # ci.yml / e2e.yml / release.yml among them. BOTH COMMANDS ARE PINNED TO A
+  # COMMIT ON PURPOSE. Run the second one against the WORKING TREE instead and
+  # it matches lines inside this very job -- this paragraph among them, since
+  # the paragraph now contains the literal it searches for -- so a tree-relative
+  # form of it would hand the reader the opposite of the result it is cited for.
+  # This job is the answer: one job, one fixed name, and it waits on all of them.
   #
   # 🔴 AND HERE IS THE TRAP IT EXISTS TO AVOID, WHICH IS ALSO THE OBVIOUS WAY TO
   # WRITE IT. The three matrix jobs carry `if: needs.discover.outputs.count !=

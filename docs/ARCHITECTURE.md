@@ -190,10 +190,20 @@ before relying on it. This is the re-derivation, run on 2026-08-25. Rows it does
     .github/workflows | sort -u
   ```
 
-  → **17** paths, and every one of them is a file on disk: **0 ABSENT**. Sixteen live in `scripts/`
-  (`ls scripts/*.mjs` → **18**, two of which no workflow calls) and the seventeenth is
-  `Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js`. Nothing in that list is
-  "landing" any more. What the row's *reasoning* got right and what must not be softened: a script the
+  → **17** paths, and every one of them is a file on disk: **0 ABSENT**. Sixteen live under
+  `scripts/` and the seventeenth is
+  `Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js`. **Do not subtract 16 from 18**
+  — only **15** of those sixteen are `scripts/*.mjs`; the sixteenth is `scripts/test/selftest.node.js`,
+  which is not a `.mjs`. Against `ls scripts/*.mjs` → **18**, that leaves **three** scripts no workflow
+  calls, and they are `scripts/gen-catalog.mjs`, `scripts/new-tool.mjs`, `scripts/sync-core.mjs`
+  (`comm -23` of the two sorted lists, re-measured **2026-08-25**). `grep -n` over
+  `.github/workflows/*.yml` returns **0** lines for `gen-catalog.mjs`, **0** for `sync-core.mjs`, and
+  **6** for `new-tool.mjs` — four `#` comments in ci.yml, one `//` comment inside e2e.yml's inline
+  `node -e` script, and one `echo` message string. Not one of the six is an invocation. ci.yml states
+  that third case itself, in the comment beginning "`new-tool.mjs` IS WRITTEN WITHOUT ITS `scripts/`
+  PREFIX HERE AND BELOW": writing it with the prefix "took the inventory from 17 entries to 18,
+  adding a script no workflow invokes". Nothing in the inventory is "landing" any more. What the
+  row's *reasoning* got right and what must not be softened: a script the
   header names and CI cannot find still fails the job on purpose, and there are still no
   `if [ -f … ]` guards.
 
@@ -256,7 +266,7 @@ assuming otherwise"*, so here is that check, run bare on 2026-08-25 with the exi
 | --- | --- | --- |
 | `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` | **0** | `6 passed`; `85 file(s) selected by package.include/exclude: 55 locale catalogue(s) + 30 code/assets` |
 | `node scripts/verify-refs.mjs --zip <scratch>/fullshot-firefox.zip --strict --leaks` | **0** | `4 passed · 1 warning(s)` |
-| `node scripts/run-tests.mjs fullshot` | **0** | `12 passed` — *"the subject set is `tests` in tool.json and nothing else"* |
+| `node scripts/run-tests.mjs fullshot` | **0** | `12 passed` — the subject set it ran is `tests` in `tool.json` and nothing else, which is the rule stated at `scripts/run-tests.mjs:10` (a source comment, not output: `grep -c 'subject set'` over this run's stdout+stderr → **0**) |
 | `node scripts/discover.mjs` | **0** | `tools on disk: fullshot` — the CI matrix is globbed out of `*/*/tool.json`, so the contract file is what decides which jobs exist at all |
 
 The enforcement is real. What the passage got right and what still holds: where the code and a

@@ -72,7 +72,7 @@ node scripts\verify-refs.mjs --zip dist\<id>-chromium.zip --strict --leaks
 - [ ] Every permission has a justification string in `tool.json` → `policy.permissions`.
 - [ ] `description` ≤ 132 chars, `name` ≤ 45, `short_name` ≤ 12, `manifest_version` is 3.
 - [ ] 🔴 **No packaged root file or directory starts with `_`, except `_locales`.** Chrome refuses to load the whole extension otherwise — which is why the vendored core is `vendor/core/` and never `_core/`, and why `_locales/` has to be allowlist-*always* in the packer rather than pattern-matched.
-- [ ] The Firefox manifest stays an **RFC 7386 overlay**, not a second full manifest — one place to edit, or one of them will drift. (FullShot's is still a full duplicate; `tool.json` → `targets.firefox.overlay` is `null` and says so.)
+- [ ] The Firefox manifest stays an **RFC 7386 overlay**, not a second full manifest — one place to edit, or one of them will drift. (FullShot's already is one: `tool.json` → `targets.firefox.overlay` = `publish/manifest.firefox.json`, converted 2026-08-18. The parenthetical here claimed `null` until 2026-08-25.)
 - [ ] ⚠️ **`browser_specific_settings.gecko.id` is permanent once AMO signs the first build.** Changing it later starts a new listing and loses reviews and users. FullShot's is still a placeholder — confirm the final value *before* the first AMO submission, not after.
 
 ### If this changes store listing copy
