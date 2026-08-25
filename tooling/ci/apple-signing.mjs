@@ -695,24 +695,43 @@ function zip64ExtraFields(buffer, extraStart, extraLen, whichPresent) {
     if (payloadEnd > end) return null;
     if (id !== 0x0001) { q = payloadEnd; continue; }
     let r = q + 4;
+    // Read one 8-byte slot, bounded by the PAYLOAD only. Whether the VALUE is
+    // credible depends on what the slot means, which is the caller's business
+    // below and not this reader's.
     const slot = () => {
       if (r + 8 > payloadEnd) return null;
       const v = buffer.readBigUInt64LE(r);
       r += 8;
-      // Nothing inside this archive can sit past its own end. A value that does
-      // is corruption, and passing it on is the crash this function exists to
-      // stop.
-      return v > BigInt(buffer.length) ? null : Number(v);
+      return v;
     };
+    // 🔴 THIS BOUND IS TRUE OF AN OFFSET AND OF A COMPRESSED SIZE, AND FALSE OF
+    // AN UNCOMPRESSED ONE. Nothing inside this archive can START past its end,
+    // and no member's stored bytes can be more numerous than the file holding
+    // them — but a member's UNCOMPRESSED size is a property of the decompressed
+    // content and is routinely LARGER than the whole archive. That is what
+    // compression is.
+    //
+    // MEASURED 2026-08-25 on the real subly.msix (build-platforms 32823633046,
+    // the first run to keep the package after the guard refused it): entry [2]
+    // `flutter_windows.dll` declares an uncompressed size of 21,284,864 bytes
+    // inside a 16,585,733-byte archive — 1.28x the file that contains it, and
+    // entirely ordinary for a DLL. Applying the offset bound to that slot
+    // returned null, which unzip() turned into "could not be read as a zip",
+    // which the guard reported as COVERAGE LOST over the whole package. A check
+    // added for safety was the thing refusing a valid package.
+    //
+    // The uncompressed slot is READ ONLY TO STEP OVER IT — its value is
+    // discarded — so it needs the payload bound and nothing else.
+    const withinArchive = (v) => (v === null || v > BigInt(buffer.length) ? null : Number(v));
     const out = {};
     if (whichPresent.uncompressedSize && slot() === null) return null;
     if (whichPresent.compressedSize) {
-      const v = slot();
+      const v = withinArchive(slot());
       if (v === null) return null;
       out.compressedSize = v;
     }
     if (whichPresent.localOffset) {
-      const v = slot();
+      const v = withinArchive(slot());
       if (v === null) return null;
       out.localOffset = v;
     }
