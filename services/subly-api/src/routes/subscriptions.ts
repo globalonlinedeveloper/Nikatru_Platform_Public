@@ -290,9 +290,19 @@ app.get('/:id', async (c) => {
   );
   if (!row) return c.json({ error: 'not_found' }, 404);
 
+  // ── NAMED COLUMNS, NOT `SELECT *` ──────────────────────────────────────────
+  // 🔴 THIS RESULT IS RETURNED VERBATIM ON THE WIRE as `payment_history`, so
+  // `SELECT *` made the served shape whatever the migrations happened to leave
+  // behind. It already had: 0002_schema_debt.sql added `updated_at`, and from
+  // that day `"updated_at": null` was on the wire while `Payment` in src/types.ts
+  // declared five fields and did not mention it — a served field with no
+  // declaration on one side and, until the same date, no writer on the other.
+  // Naming the columns makes the wire shape a decision in this file: a column a
+  // future migration adds does not reach a client until someone writes it here.
   const payments = await allRows<Payment>(
     c.env.APP_DB.prepare(
-      `SELECT * FROM payment_history
+      `SELECT id, subscription_id, user_id, amount, paid_at, updated_at
+         FROM payment_history
          WHERE subscription_id = ? AND user_id = ?
          ORDER BY paid_at DESC`,
     ).bind(id, userId),

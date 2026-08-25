@@ -640,6 +640,552 @@ describe('assert-platform-register', () => {
   });
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE SECOND WORKER — the conditions commit 6d67631 added, none of which had
+// a test until this block. That commit grew the guard by 359 lines and turned
+// its subject from ONE Worker into EVERY deployable Worker; every predicate it
+// introduced reddened only because somebody hand-mutated it once. A green that
+// nothing pins is a green a later softening cannot disturb, which is the whole
+// failure this file exists to stop.
+//
+// Every case names the offending thing in its assertion. "exit 1" alone passes
+// against a guard that failed for an unrelated reason, and this guard has 45
+// distinct problem messages — so that is not a hypothetical.
+//
+// The app-Worker fixture mirrors the SHAPE of services/subly-api, the Worker
+// whose twelve mounts were invisible before 6d67631:
+//   · a route declared inline in the entrypoint             (GET /v1/health)
+//   · an IN-FILE `new Hono` group mounted with app.route()   (GET /v1/whoami)
+//   · an imported sub-router whose leaf is '/'               (GET /v1/subscriptions)
+//     — five of subly-api's twelve declare their leaf that way, and that is the
+//       case `joinPath`'s trailing-slash strip exists for
+//   · a second leaf under the same sub-router                (POST …/cancel)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUBLY_INDEX_TS = `
+import { Hono } from 'hono';
+import subscriptions from './routes/subscriptions';
+import { supabaseAuth } from './lib/auth';
+const app = new Hono();
+app.get('/v1/health', async (c) => c.json({ ok: true }));
+app.route('/v1/subscriptions', subscriptions);
+// \`api\` is NEVER imported — it is declared right here. A walk that follows
+// app.route() only into default imports stops dead on the last line below.
+const api = new Hono();
+api.use('*', supabaseAuth);
+api.get('/whoami', async (c) => c.json({ id: 1 }));
+app.route('/v1', api);
+export default { fetch: app.fetch };
+`;
+
+const SUBLY_SUBSCRIPTIONS_TS = `
+import { Hono } from 'hono';
+const subscriptions = new Hono();
+subscriptions.get('/', async (c) => c.json(await c.env.SUBLY_DB.prepare('SELECT 1').all()));
+subscriptions.post('/cancel', async (c) => c.json({ ok: true }));
+export default subscriptions;
+`;
+
+const SUBLY_CFG = `{
+  "name": "subly-api",
+  "main": "src/index.ts",
+  "d1_databases": [{ "binding": "SUBLY_DB", "database_name": "subly_db" }],
+  "routes": [{ "pattern": "api.nikatru.com", "custom_domain": true }],
+}`;
+
+/** The app Worker's caller tree, deliberately OUTSIDE services/subly-api. Two of
+ *  the three expressions carry only the path BELOW `/v1` — that is what
+ *  `clientBasePath` buys, and it is why the prefix constraint on it is
+ *  load-bearing rather than decorative. */
+const SUBLY_CLIENT_DART = `
+class DioSublyTransport {
+  Future<void> whoami() async => _dio.get<dynamic>('\$_base/whoami');
+  Future<void> list() async => _dio.get<dynamic>('\$_base/subscriptions');
+  Future<void> cancel() async => _dio.post<dynamic>('\$_base/subscriptions/cancel');
+}
+`;
+
+/** The same three calls written against the FULL paths, for the cases that must
+ *  break `clientBasePath` without also breaking limb 2. */
+const SUBLY_CLIENT_DART_FULL = `
+class DioSublyTransport {
+  Future<void> whoami() async => _dio.get<dynamic>('\$_base/v1/whoami');
+  Future<void> list() async => _dio.get<dynamic>('\$_base/v1/subscriptions');
+  Future<void> cancel() async => _dio.post<dynamic>('\$_base/v1/subscriptions/cancel');
+}
+`;
+
+const SUBLY_FILES = {
+  'services/subly-api/src/index.ts': SUBLY_INDEX_TS,
+  'services/subly-api/src/routes/subscriptions.ts': SUBLY_SUBSCRIPTIONS_TS,
+  'services/subly-api/src/lib/auth.ts': 'export const supabaseAuth = async (c, next) => next();\n',
+  'services/subly-api/wrangler.jsonc': SUBLY_CFG,
+  'packages/api_client/lib/src/dio_subly_transport.dart': SUBLY_CLIENT_DART,
+};
+
+const SUBLY_CLIENT = 'packages/api_client/lib/src/dio_subly_transport.dart';
+
+const sublyRoutes = () => [
+  {
+    id: 'subly-health',
+    method: 'GET',
+    path: '/v1/health',
+    auth: 'required',
+    owningFile: 'services/subly-api/src/index.ts',
+    purpose: 'Deploy verification for the app backend.',
+    unconsumedReason: 'Human/monitor endpoint; no programmatic caller today.',
+  },
+  {
+    id: 'subly-whoami',
+    method: 'GET',
+    path: '/v1/whoami',
+    auth: 'required',
+    owningFile: 'services/subly-api/src/index.ts',
+    purpose: 'Echoes the authenticated identity.',
+    client: { file: SUBLY_CLIENT, expression: "'$_base/whoami'" },
+  },
+  {
+    id: 'subly-list',
+    method: 'GET',
+    path: '/v1/subscriptions',
+    auth: 'required',
+    owningFile: 'services/subly-api/src/routes/subscriptions.ts',
+    purpose: 'Lists the caller’s subscriptions.',
+    client: { file: SUBLY_CLIENT, expression: "'$_base/subscriptions'" },
+  },
+  {
+    id: 'subly-cancel',
+    method: 'POST',
+    path: '/v1/subscriptions/cancel',
+    auth: 'required',
+    owningFile: 'services/subly-api/src/routes/subscriptions.ts',
+    purpose: 'Cancels one subscription.',
+    client: { file: SUBLY_CLIENT, expression: "'$_base/subscriptions/cancel'" },
+  },
+];
+
+const sublyWorker = () => ({
+  name: 'subly-api',
+  config: 'services/subly-api/wrangler.jsonc',
+  entrypoint: 'services/subly-api/src/index.ts',
+  clientBasePath: '/v1',
+  routes: sublyRoutes(),
+});
+
+/** baseRegister() + the app Worker, its config and its binding. `edit` runs last
+ *  so a case can break exactly one thing. */
+function appRegister(edit = () => {}) {
+  const reg = baseRegister();
+  reg.appWorkers = [sublyWorker()];
+  reg.bindingSources.configs.push('services/subly-api/wrangler.jsonc');
+  reg.bindings.push({
+    binding: 'SUBLY_DB',
+    kind: 'd1_databases',
+    purpose: 'The app backend database.',
+    readers: ['services/subly-api/src/routes/subscriptions.ts'],
+  });
+  edit(reg);
+  return reg;
+}
+
+/** The same tree as `tree()`, plus the whole second Worker. */
+const appTree = ({ register, files = {} } = {}) =>
+  tree({ register: register ?? appRegister(), files: { ...SUBLY_FILES, ...files } });
+
+/** Every route rewritten onto its full path, so a clientBasePath case breaks the
+ *  base path and NOTHING else. */
+const fullPathClients = (r) => {
+  for (const rt of r.appWorkers[0].routes) {
+    if (rt.client) rt.client.expression = `'$_base${rt.path}'`;
+  }
+};
+
+describe('assert-platform-register — every deployable Worker is the subject [6d67631]', () => {
+  // ── the positive control for this whole block ─────────────────────────────
+  // Without it, every RED below is equally consistent with a guard that rejects
+  // any tree carrying a second Worker at all.
+  test('passes on a tree with a SECOND Worker whose register entry is honest', () => {
+    const { code, out } = run(appTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /3 mounted route\(s\) reconciled with 3 register entry\(ies\)/);
+    assert.match(out, /plus 4 across 1 app Worker\(s\) reconciled with 4/);
+    assert.match(out, /5 binding\(s\) across 2 wrangler config\(s\)/);
+  });
+
+  // ── THE WORKER SET, BOTH DIRECTIONS ───────────────────────────────────────
+  // A set check pinned in one direction only is half a check: it would still
+  // catch a register naming a Worker the tree lost, and miss the failure this
+  // block exists for — a third backend arriving unseen.
+  test('🔴 FAILS on a Worker that declares `main` on disk and is in NO register entry (tree → register)', () => {
+    // Its config and its binding ARE declared, so the only thing wrong is that
+    // no register entry claims the Worker itself.
+    const { code, out } = run(appTree({ register: appRegister((r) => { delete r.appWorkers; }) }));
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /services\/subly-api\/wrangler\.jsonc — declares `main`, so it is a Worker that answers requests, and the register declares/,
+    );
+    assert.match(out, /✗ platform register — 1 problem\(s\)/, 'the missing Worker must be the only complaint');
+  });
+
+  test('🔴 FAILS on a register entry naming a config the tree does not deploy (register → tree)', () => {
+    // `main` removed: the config is still on disk, so its bindings and its host
+    // are still read. It is simply not a Worker that answers requests, and the
+    // register says it is.
+    const { code, out } = run(
+      appTree({
+        files: { 'services/subly-api/wrangler.jsonc': SUBLY_CFG.replace('"main": "src/index.ts",\n  ', '') },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /appWorkers\[0\] names `services\/subly-api\/wrangler\.jsonc`, which is not a `services\/\*` wrangler config declaring `main`/,
+    );
+    assert.match(out, /✗ platform register — 1 problem\(s\)/);
+  });
+
+  test('FAILS when the declared entrypoint is not what the config `main` resolves to', () => {
+    const { code, out } = run(
+      appTree({
+        files: {
+          'services/subly-api/wrangler.jsonc': SUBLY_CFG.replace('"main": "src/index.ts"', '"main": "src/worker.ts"'),
+          'services/subly-api/src/worker.ts': SUBLY_INDEX_TS,
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /appWorkers\[0\] — declares entrypoint `services\/subly-api\/src\/index\.ts`, but `services\/subly-api\/wrangler\.jsonc`'s `main` resolves to `services\/subly-api\/src\/worker\.ts`/,
+    );
+  });
+
+  test('FAILS when the register calls the Worker something the config does not deploy it as', () => {
+    const { code, out } = run(
+      appTree({ files: { 'services/subly-api/wrangler.jsonc': SUBLY_CFG.replace('"subly-api"', '"subly-backend"') } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /appWorkers\[0\] — calls this Worker `subly-api`; `services\/subly-api\/wrangler\.jsonc` deploys it as `subly-backend`/,
+    );
+  });
+
+  // ── the register's own shape, now that there is more than one Worker ──────
+  test('FAILS when an appWorkers entry has no `routes` array — its mounts would be enforced by nothing', () => {
+    const { code, out } = run(
+      appTree({ register: appRegister((r) => { delete r.appWorkers[0].routes; }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /appWorkers\[0\] has no `routes` array; its Worker's mounts would be enforced by nothing/);
+  });
+
+  test('FAILS when two declared Workers share a `name` — one subject swallowing two', () => {
+    const { code, out } = run(
+      appTree({ register: appRegister((r) => { r.appWorkers[0].name = 'platform'; }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /two declared Workers share a `name` \(platform, platform\)/);
+  });
+
+  test('FAILS on two register entries sharing a (method, path) — one shadows the other forever', () => {
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes.push({ ...sublyRoutes()[1], id: 'subly-whoami-dup', purpose: 'A duplicate.' });
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /appWorkers\[0\] — two entries share a \(method, path\); one is shadowing the other/);
+  });
+
+  // ── owningFile, now checked per Worker ────────────────────────────────────
+  // [MR7] above pins this for servingWorker. 6d67631 moved the loop inside the
+  // per-Worker walk, and a loop that silently ranged over one Worker would look
+  // identical from the servingWorker test.
+  test('🔴 FAILS when an app Worker route names a REAL file that does not declare it  [owningFile]', () => {
+    // A real file, in the right Worker, that really does declare routes — just
+    // not this one. Field presence and existsSync both pass.
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes.find((x) => x.id === 'subly-list').owningFile = 'services/subly-api/src/index.ts';
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /GET \/v1\/subscriptions — register says `services\/subly-api\/src\/index\.ts` owns it; the parser found it declared in `services\/subly-api\/src\/routes\/subscriptions\.ts`/,
+    );
+    assert.match(out, /✗ platform register — 1 problem\(s\)/, 'a wrong owningFile must be the only complaint');
+  });
+
+  test('🔴 FAILS when an app Worker route claims an owningFile in the OTHER Worker', () => {
+    // services/platform/src/index.ts really does declare a GET /v1/health — for
+    // a different Worker. Nothing but the per-Worker parse can tell them apart.
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes.find((x) => x.id === 'subly-health').owningFile = 'services/platform/src/index.ts';
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /GET \/v1\/health — register says `services\/platform\/src\/index\.ts` owns it; the parser found it declared in `services\/subly-api\/src\/index\.ts`/,
+    );
+  });
+
+  // ── clientBasePath — THE PREFIX CONSTRAINT ────────────────────────────────
+  // The dangerous direction is the permissive one: a base path that swallows a
+  // discriminating segment turns the rename check into a tautology. The shape
+  // rule and the "is a real prefix of EVERY mount" rule are pinned separately,
+  // and each assertion names the base path rather than settling for exit 1.
+  test('🔴 FAILS on a clientBasePath that is not a prefix of every route the Worker mounts', () => {
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].clientBasePath = '/v2';
+          fullPathClients(r);
+        }),
+        files: { [SUBLY_CLIENT]: SUBLY_CLIENT_DART_FULL },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /appWorkers\[0\] — `clientBasePath` `\/v2` is not a prefix of /);
+    assert.match(out, /GET \/v1\/health/, 'the message must NAME the routes it does not front');
+    assert.match(out, /POST \/v1\/subscriptions\/cancel/);
+    assert.match(out, /✗ platform register — 1 problem\(s\)/, 'the base path must be the only complaint');
+  });
+
+  test('🔴 a clientBasePath that swallows the discriminating segment is rejected outright', () => {
+    // `/v1/subscriptions` IS a real prefix of two of the four mounts. Accepting
+    // it would let POST /v1/subscriptions/cancel resolve on a bare `/cancel`.
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].clientBasePath = '/v1/subscriptions';
+          fullPathClients(r);
+        }),
+        files: { [SUBLY_CLIENT]: SUBLY_CLIENT_DART_FULL },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`clientBasePath` `\/v1\/subscriptions` is not a prefix of GET \/v1\/health, GET \/v1\/subscriptions/);
+    assert.match(out, /✗ platform register — 1 problem\(s\)/);
+  });
+
+  test('FAILS on a clientBasePath with a trailing slash — a shape a prefix test alone would accept', () => {
+    const { code, out } = run(
+      appTree({ register: appRegister((r) => { r.appWorkers[0].clientBasePath = '/v1/'; }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /appWorkers\[0\] — `clientBasePath` must be an absolute path with no trailing slash \(got "\/v1\/"\)/,
+    );
+  });
+
+  test('FAILS on a relative clientBasePath', () => {
+    const { code, out } = run(
+      appTree({ register: appRegister((r) => { r.appWorkers[0].clientBasePath = 'v1'; }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /`clientBasePath` must be an absolute path with no trailing slash \(got "v1"\)/);
+  });
+
+  test('🔴 the residual below clientBasePath is the ONLY reason the short expressions resolve', () => {
+    // The positive control passes on expressions carrying only `/whoami` and
+    // `/subscriptions`. Take the base path away and those same expressions must
+    // stop resolving — otherwise the rename check is satisfied by anything and
+    // clientBasePath costs nothing to declare.
+    const { code, out } = run(
+      appTree({ register: appRegister((r) => { delete r.appWorkers[0].clientBasePath; }) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /GET \/v1\/whoami — client expression `'\$_base\/whoami'` does not contain the route's own path `\/v1\/whoami`/,
+    );
+  });
+
+  // ── the parser changes 6d67631 made, pinned by fixture ────────────────────
+  test('🔴 an IN-FILE `new Hono` group is still a sub-router — its routes are MOUNTED', () => {
+    // `api` is declared in the entrypoint and never imported. A walk that only
+    // follows default imports sees three of this Worker's four routes and agrees
+    // perfectly with a register that omits the fourth.
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes = r.appWorkers[0].routes.filter((x) => x.id !== 'subly-whoami');
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /GET \/v1\/whoami — MOUNTED by services\/subly-api\/src\/index\.ts and absent from the register/);
+    assert.match(out, /✗ platform register — 1 problem\(s\)/);
+  });
+
+  test('🔴 a sub-router whose leaf is `/` mounts at the prefix WITHOUT a trailing slash', () => {
+    // hono answers 200 on '/v1/subscriptions' and 404 on '/v1/subscriptions/'.
+    // A register written against the slashed form describes a path the Worker
+    // does not serve, and BOTH directions of limb 1 have to say so.
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes.find((x) => x.id === 'subly-list').path = '/v1/subscriptions/';
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /GET \/v1\/subscriptions\/ \(register id `subly-list`\) — registered but NOT mounted/);
+    assert.match(out, /GET \/v1\/subscriptions — MOUNTED by services\/subly-api\/src\/routes\/subscriptions\.ts/);
+  });
+
+  // ── limbs 1, 2 and 4 now range over the app Worker too ────────────────────
+  test('an app Worker route registered and NOT mounted is caught  [limb 1, second Worker]', () => {
+    const { code, out } = run(
+      appTree({
+        files: {
+          'services/subly-api/src/routes/subscriptions.ts': SUBLY_SUBSCRIPTIONS_TS.replace(
+            "subscriptions.get('/', async (c) => c.json(await c.env.SUBLY_DB.prepare('SELECT 1').all()));",
+            "const _unused = async (c) => c.json(await c.env.SUBLY_DB.prepare('SELECT 1').all());",
+          ),
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /GET \/v1\/subscriptions \(register id `subly-list`\) — registered but NOT mounted by services\/subly-api\/src\/index\.ts/,
+    );
+  });
+
+  test('🔴 an app Worker client inside its OWN Worker is the declaration, not a caller  [limb 2, second Worker]', () => {
+    // `servingDir` is derived per Worker now. One still pinned to
+    // services/platform would wave this through.
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes.find((x) => x.id === 'subly-list').client = {
+            file: 'services/subly-api/src/routes/subscriptions.ts',
+            expression: "'/v1/subscriptions'",
+          };
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /GET \/v1\/subscriptions — client file `services\/subly-api\/src\/routes\/subscriptions\.ts` is inside the serving Worker \(services\/subly-api\)/,
+    );
+  });
+
+  test('a PUBLIC app Worker route with no limiter and no reason FAILS  [limb 4, second Worker]', () => {
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          r.appWorkers[0].routes.find((x) => x.id === 'subly-health').auth = 'public';
+        }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /GET \/v1\/health — `auth: public` and its handler reaches neither withinRateLimit nor withinEdgeCeiling/,
+    );
+  });
+
+  test('a declared noLimiterReason on an app Worker PRINTS with the Worker name attached', () => {
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => {
+          const rt = r.appWorkers[0].routes.find((x) => x.id === 'subly-health');
+          rt.auth = 'public';
+          rt.noLimiterReason = 'Static 200; does no I/O at all.';
+        }),
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /⚠ {2}GET \/v1\/health — PUBLIC AND UNLIMITED\. · subly-api Static 200/);
+  });
+
+  test('🔴 the printed gaps are attributed to the right Worker — two Workers mount GET /v1/health', () => {
+    const { code, out } = run(appTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /⚠ {2}GET \/v1\/health — NO CLIENT\. · subly-api /);
+    assert.match(out, /⚠ {2}GET \/v1\/health — NO CLIENT\. · platform /);
+  });
+
+  // ── the per-Worker coverage self-checks ───────────────────────────────────
+  test('COVERAGE LOST names the FIELD when an app Worker entrypoint does not exist', () => {
+    const { code, out } = run(
+      appTree({
+        register: appRegister((r) => { r.appWorkers[0].entrypoint = 'services/subly-api/src/nowhere.ts'; }),
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /COVERAGE LOST — servingWorker\.entrypoint `services\/subly-api\/src\/nowhere\.ts` \(appWorkers\[0\]\) does not exist/,
+    );
+  });
+
+  test('COVERAGE LOST when the APP Worker entrypoint mounts nothing the parser can see', () => {
+    const { code, out } = run(
+      appTree({ files: { 'services/subly-api/src/index.ts': 'export default { fetch: () => new Response() };\n' } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — parsed services\/subly-api\/src\/index\.ts and found ZERO mounted routes/);
+  });
+
+  test('COVERAGE LOST when the APP Worker parse follows no app.route() into a sub-router file', () => {
+    // Both surviving routes — including the in-file group's — have the
+    // entrypoint as their owningFile, which is exactly the partial loss the
+    // zero-check cannot see.
+    const { code, out } = run(
+      appTree({
+        files: {
+          'services/subly-api/src/index.ts': SUBLY_INDEX_TS.replace(
+            "app.route('/v1/subscriptions', subscriptions);",
+            '',
+          ),
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /COVERAGE LOST — every route the parser found is declared inline in services\/subly-api\/src\/index\.ts/,
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️ NOT PINNED BY FIXTURE, AND SAID SO RATHER THAN FAKED. An assertion that
+// cannot fail is worse than none.
+//
+//   · `deployableWorkers()`'s `if (!cfgRel.startsWith('services/')) continue;`
+//     — the ONLY non-`services/` config the scan can reach is the brick
+//     template, and the brick template carries no `main`, so the `main` test on
+//     the next line already excludes it on every tree that can exist. No fixture
+//     separates the guard from a mutant here.
+//     THE SOURCE MUTATION THAT MAKES IT FIRE: delete that line AND give
+//     tooling/bricks/app/__brick__/…/wrangler.jsonc a `"main"`. The guard then
+//     reports the brick config as an undeclared Worker — and would go on to
+//     demand a client tree for a mustache template, which is why the line is
+//     there. The exclusion is deliberate and documented in the guard's header;
+//     it is recorded here so nobody adds a test that looks like it pins it.
+//
+//   · the `· ${workerName}` suffix on the two `printed` lines is output text,
+//     not a condition — there is no exit code to disagree about. The two tests
+//     above assert the exact string, which is the whole of what it does.
+// ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 REGRESSION: A ROUTE PATH CONTAINING `/*` BLINDED THE WHOLE SCANNER.
 //

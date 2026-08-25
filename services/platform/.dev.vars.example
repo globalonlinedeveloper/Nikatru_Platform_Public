@@ -15,6 +15,34 @@
 # wrangler.jsonc, and never committed anywhere (scan-secrets.mjs refuses it).
 PADDLE_NOTIFICATION_SECRET=
 
+# ── THE CHECKOUT CREDENTIAL ───────────────────────────────────────────────────
+# [ADR 044] · `src/routes/checkout.ts`. POST /v1/checkout creates a Paddle
+# transaction with this key as a bearer token. WITHOUT IT A LOCAL CHECKOUT CANNOT
+# START: the route refuses with 503 `checkout_not_configured` and logs
+# `PADDLE_API_KEY is not set`.
+#
+# 🔴 IT WAS MISSING FROM THIS FILE UNTIL 2026-08-25 AND THAT WAS A SILENT TRAP.
+# The route read the value by name through a cast, so `tsc` never saw the string
+# and an env sweep over src/ (19 `env.[A-Z_]+` names) did not list it either — a
+# developer following this file verbatim got a Worker whose checkout refused with
+# no hint the value had ever been documented anywhere. It is a declared binding
+# now (`Env.PADDLE_API_KEY` in src/types.ts), so the name is discoverable from
+# the type, and deleting it there fails `npm run typecheck`.
+#
+# 🔴 OWNER-GATED, the same gate as the secret above. The key is generated in the
+# Paddle seller console (OWNER_QUEUE A-1, PENDING) under Developer tools ->
+# Authentication. The deployed value is the vault's `PADDLE_API_KEY_LIVE`, and
+# the vault QUOTES its values — strip the quotes before pasting or the header
+# goes out as `Bearer "…"` and reads exactly like a revoked token.
+#
+# 🔴 THE PREFIX MUST MATCH MONEY_ENVIRONMENT BELOW. `pdl_live_apikey_` for
+# `live`, `pdl_sdbx_apikey_` for `sandbox`; checkout.ts compares the prefix and
+# refuses rather than creating a transaction in the other money world ([5]M-12).
+# So a local run set to `sandbox` needs the SANDBOX key, not the live one.
+# Deploy: `wrangler secret put PADDLE_API_KEY` — NEVER as a var in
+# wrangler.jsonc, and never committed (.gitleaks.toml carries both prefixes).
+PADDLE_API_KEY=
+
 # Which money world THIS local run is. Exactly `live` or `sandbox`. The deployed
 # value lives in wrangler.jsonc `vars` and is `live`; a local run against Paddle's
 # sandbox destination sets `sandbox` HERE so a sandbox notification can never be

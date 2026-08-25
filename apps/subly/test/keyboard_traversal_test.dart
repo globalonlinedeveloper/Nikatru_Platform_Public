@@ -86,12 +86,63 @@
 // control is added AND when one is fixed — the second is the point. A sweep
 // that only fires on regression records today's failure as the standard.
 //
+// ── 🟢 2026-08-25 — RE-MEASURED AFTER THE FIX. APPENDED, NOT REWRITTEN. ──
+// The block above is the 2026-08-21 measurement and stays as it was written;
+// this is what the same sweep reports today, on the same 1079x2400 surface,
+// after `packages/design_system`'s `FocusableTap` replaced the hand-rolled
+// `Semantics` + `GestureDetector` pairs on all three screens:
+//
+//   login    8 of 8   (was 4 of 8)
+//   settings 25 of 27 (was 9 of 27)
+//   home     20 of 20 (was 17 of 20)
+//
+// 55 controls, 53 reachable by Tab, 2 not. Both remaining are the `en` and `ta`
+// members of the LANGUAGE `RadioGroup`.
+//
+// 🔴 AND THOSE TWO ARE NOT KEYBOARD-DEAD — THE 2026-08-21 READING OF THEM WAS
+// WRONG, AND IT IS CORRECTED HERE RATHER THAN QUIETLY DROPPED. That sweep's
+// sentence "every one of the eighteen it does NOT visit is a hand-rolled
+// `_Toggle`, `_LinkRow` or currency chip" is FALSE of two of the eighteen: they
+// are Material `RadioListTile`s, and a `RadioGroup` is a SINGLE Tab stop by
+// design — you arrive on the group and move within it with the arrow keys, which
+// is what a radio group is supposed to do. MEASURED 2026-08-25 by
+// [_arrowReachesWithinTheRadioGroup] below: ArrowDown from the group's own Tab
+// stop moves focus onto the `en` tile. SC 2.1.1 asks whether a KEYBOARD can
+// operate the control, not whether TAB can land on it, so a Tab-only sweep
+// counts a conformant radio group as two failures. The honest 2026-08-21 total
+// was therefore 23 keyboard-dead, not 25.
+//
+// The two rows are NOT counted as reachable in the pins below — the pins measure
+// the Tab orbit and must keep measuring exactly that — so the arrow-key property
+// gets its own case with its own EXACT count instead. That is what stops the
+// correction becoming a loosened matcher: the number 2 goes red if a third
+// control ever falls out of the Tab orbit for a different reason.
+
 // ── THE SCOPE, STATED SO IT CANNOT BE READ AS MORE ───────────────────────────
-// THREE screens — login, settings, home — of the register's 22. On apps/subly,
-// the frozen rail-prover, NOT on a fresh stamp of `tooling/bricks/app`. The
-// 2.1.3 guard the register specifies is "on a fresh stamp, EVERY declared
-// route"; this is neither, and the register's `guardStatus` says PARTLY BUILT
-// for exactly that reason.
+// THREE screens — login, settings, home. ⚠️ TWO DENOMINATORS, AND THEY COUNT
+// DIFFERENT THINGS, so both are named rather than blended — this comment read
+// "of the register's 22" until 2026-08-25 and that number was stale by
+// nineteen days and belonged to neither domain:
+//
+//   · 25 — screens declared in `tooling/screen-register.json`. MEASURED
+//     2026-08-25: `node -e "console.log(JSON.parse(require('fs')
+//     .readFileSync('tooling/screen-register.json','utf8')).screens.length)"`
+//     -> 25, of which 24 are `present` and 1 is `blocked`. This is the domain
+//     the register's 2.1.3 guard specifies ("on a fresh stamp, EVERY declared
+//     route"), and 22 was this set's `present` count on 2026-08-06 — see
+//     `tooling/ci/assert-screen-set.mjs`, whose header quotes its own old
+//     output `22 present and anchored` and whose MIN_PRESENT floor now reads
+//     24. The number went UP; the stale figure UNDERSTATED the domain and so
+//     OVERSTATED this file's share of it.
+//   · 17 — screens `apps/subly/lib/core/router.dart` actually declares.
+//     MEASURED 2026-08-25: `grep -c 'GoRoute(' apps/subly/lib/core/router.dart`
+//     -> 19, two of which are redirect-only (`/` and `/login`) and carry no
+//     builder, so 17 build a screen. This is the domain THIS FILE sweeps 3 of,
+//     and 14 of it are unmeasured.
+//
+// On apps/subly, the frozen rail-prover, NOT on a fresh stamp of
+// `tooling/bricks/app`. This is neither the guard's tree nor its scope, and the
+// register's `guardStatus` says PARTLY BUILT for exactly that reason.
 //
 // The three were chosen because their files are stable, and because between
 // them they cover the three control idioms the app has: a form (login), a
@@ -101,6 +152,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:subly/core/e2e_keys.dart';
+import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/features/auth/login_screen.dart';
 import 'package:subly/features/home/home_screen.dart';
 import 'package:subly/features/settings/settings_screen.dart';
@@ -169,6 +222,25 @@ String _label(Element e) {
   return painted ?? e.widget.runtimeType.toString();
 }
 
+/// Is [e] a `RadioListTile`, or inside one?
+///
+/// Used by exactly one assertion, and its narrowness is the assertion: the
+/// tolerance for a control that no `Tab` press reaches applies to a radio group
+/// and to NOTHING else. `RadioListTile` is generic, so the walk matches on the
+/// runtime type's NAME rather than on `is RadioListTile<T>` for a `T` this file
+/// would have to guess.
+bool _isUnderARadioTile(Element e) {
+  bool found = e.widget.runtimeType.toString().startsWith('RadioListTile');
+  e.visitAncestorElements((Element a) {
+    if (a.widget.runtimeType.toString().startsWith('RadioListTile')) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
 /// One screen's measurement.
 class _Sweep {
   _Sweep(this.orbit, this.controls, this.dead);
@@ -224,9 +296,8 @@ Future<_Sweep> _sweep(WidgetTester tester, Widget screen) async {
   ];
   final List<Element> controls = candidates
       .where(
-        (Element e) => !candidates.any(
-          (Element o) => !identical(o, e) && _isUnder(e, o),
-        ),
+        (Element e) =>
+            !candidates.any((Element o) => !identical(o, e) && _isUnder(e, o)),
       )
       .toList();
 
@@ -420,7 +491,7 @@ void main() {
       return s;
     }
 
-    testWidgets('login · 4 of 8, and the missing one is registration', (
+    testWidgets('login · 8 of 8, registration included', (
       WidgetTester tester,
     ) async {
       final _Sweep s = await pin(
@@ -428,49 +499,235 @@ void main() {
         'login',
         const LoginScreen(),
         controls: 8,
-        reachable: 4,
+        reachable: 8,
       );
-      // 🔴 NAMED SEPARATELY BECAUSE THE COUNT DOES NOT CONVEY IT. Three of the
-      // four dead controls are the `PoweredByNikatru` legal links; the fourth
-      // is the sign-up toggle, which `login_screen.dart:562` records as the
-      // only control that reaches registration from the screen every
-      // signed-out visitor is routed to. A keyboard-only user cannot create an
-      // account.
+      // 🔴 THIS CASE USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE
+      // POINT. Until 2026-08-25 it read `expect(deadLabels.where(contains
+      // 'Create account')).length, 1)` — a pin on the fact that a
+      // keyboard-only user could NOT create an account, with a note saying that
+      // if the toggle ever became reachable "this is the good failure". It
+      // became reachable; this is that failure, taken.
+      //
+      // Kept as its own assertion rather than folded into `reachable: 8`
+      // because the count does not convey WHICH control. `8 of 8` would also be
+      // satisfied by deleting the sign-up toggle and fixing the seven that
+      // remain — and deleting the only route to registration is not a fix.
       expect(
-        s.deadLabels.where((String l) => l.contains('Create account')).length,
-        1,
+        s.deadLabels,
+        isEmpty,
         reason:
-            'login keyboard-dead controls: ${s.deadLabels}. Expected the '
-            'sign-up toggle and the three PoweredByNikatru legal links. If the '
-            'toggle has become reachable this is the good failure — say so and '
-            'move the counts',
+            'login keyboard-dead controls: ${s.deadLabels}. The screen every '
+            'signed-out visitor is routed to must have NO control a keyboard '
+            'cannot reach — login_screen.dart records the sign-up toggle as '
+            'the only control that reaches registration from it',
       );
     });
 
-    testWidgets('settings · 9 of 27', (WidgetTester tester) async {
-      // The nine the orbit visits, in order and by the labels the sweep read
-      // off them: System · Light · Dark · System · Reminders · Stop showing
-      // offers · Open-source licences · About · Log out. Every one is reached
-      // through a Material `InkWell` or `ListTile`; every one of the eighteen
-      // it does NOT visit is a hand-rolled `_Toggle`, `_LinkRow` or currency
-      // chip. That is the finding in one sentence — this screen is operable by
-      // keyboard exactly where it used Material and nowhere it did not.
-      await pin(
+    // ⚠️ REACHABLE IS NOT OPERABLE, AND THIS IS THE CONTROL WHERE THE
+    // DIFFERENCE COSTS AN ACCOUNT. The case below drives the worst single
+    // instance end to end: Tab to the sign-up toggle, press Enter, and read the
+    // form's own copy to prove it actually flipped into registration. A toggle
+    // that takes focus and ignores Enter would satisfy every count in this file
+    // and still leave a keyboard-only user unable to register.
+    testWidgets('Enter on the sign-up toggle really opens registration', (
+      WidgetTester tester,
+    ) async {
+      final _Sweep s = await _sweep(tester, const LoginScreen());
+      final FocusNode toggle = s.orbit.firstWhere(
+        (FocusNode n) =>
+            _label(n.context! as Element).contains('Create account'),
+        orElse: () => throw StateError(
+          'the sign-up toggle is not in the login Tab orbit at all. Orbit: '
+          '${s.orbit.map((FocusNode n) => _label(n.context! as Element))}',
+        ),
+      );
+      toggle.requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      // ⚠️ THE EXPECTED STRING IS READ OUT OF THE APP'S OWN
+      // LOCALISATIONS, NOT TYPED. The header's rule is that no assertion in
+      // this file compares a localised value, so an .arb edit cannot turn it
+      // red; `l10n.haveAccountPrompt` honours that — it is the same lookup the
+      // widget does, so the two move together by construction.
+      final AppLocalizations l10n = AppLocalizations.of(
+        tester.element(find.byType(LoginScreen)),
+      );
+      expect(
+        find.text(l10n.haveAccountPrompt),
+        findsOneWidget,
+        reason:
+            'Enter on the focused sign-up toggle must flip the form into '
+            'registration — the prompt swaps from newHerePrompt to '
+            'haveAccountPrompt. Focus without activation is a control a '
+            'keyboard can look at and not use',
+      );
+    });
+
+    testWidgets('settings · 25 of 27, and the 2 are a radio group', (
+      WidgetTester tester,
+    ) async {
+      // WAS 9 of 27 on 2026-08-21. The sixteen that moved are the four currency
+      // chips, the four `_Toggle` switches, five wired `_LinkRow`s and the three
+      // `PoweredByNikatru` legal links — every one of them a hand-rolled
+      // `Semantics` + `GestureDetector` pair, and every one now a
+      // `FocusableTap`. The two `_LinkRow`s that stay OUT of the orbit are the
+      // ones with no `onTap` ("Connected accounts", "Export data (CSV)"): they
+      // were never in the 27 either, because the inventory counts
+      // `GestureDetector(onTap:)`.
+      //
+      // The remaining 2 are the `en` and `ta` radios — see the 2026-08-25 block
+      // in the header, and [_arrowReachesWithinTheRadioGroup] below, which is
+      // where their keyboard operability is actually asserted.
+      final _Sweep s = await pin(
         tester,
         'settings',
         const SettingsScreen(),
         controls: 27,
-        reachable: 9,
+        reachable: 25,
+      );
+      expect(
+        s.dead.length,
+        2,
+        reason:
+            'settings controls outside the Tab orbit: ${s.deadLabels}. EXACTLY '
+            'two are expected and both must be RadioListTiles inside the '
+            'language RadioGroup, which is a single Tab stop by design. A '
+            'third would be a real regression wearing the same shape',
+      );
+      for (final Element e in s.dead) {
+        expect(
+          _isUnderARadioTile(e),
+          isTrue,
+          reason:
+              '"${_label(e)}" is outside the Tab orbit and is NOT a '
+              '`RadioListTile`. The radio-group exemption applies to radio '
+              'groups and to nothing else — any other widget that leaves the '
+              'orbit is SC 2.1.1 failing again, and must not inherit this '
+              "case's tolerance",
+        );
+      }
+    });
+
+    // 🔴 THE ONE PLACE THIS FILE ASSERTS OPERABILITY BY A KEY THAT IS NOT
+    // TAB, AND WHY THAT IS NOT A LOOSENED MATCHER.
+    //
+    // A `RadioGroup` collects ONE Tab stop and moves within itself on the arrow
+    // keys — the behaviour every platform's radio group has, and the reason
+    // SC 2.1.1's text says "operable through a keyboard interface" rather than
+    // "reachable by Tab". The 2026-08-21 sweep, which presses only Tab, counted
+    // the two non-focused tiles as keyboard-dead. They are not.
+    //
+    // ⚠️ THE WHOLE ORBIT, NOT THE FIRST STEP — CORRECTED 2026-08-25, AND THE
+    // COMMENT THAT STOOD HERE UNTIL TODAY WAS DISPROVABLE BY READING THE LOOP
+    // BELOW IT. It said the count was pinned at EXACTLY 1 rather than
+    // `isNotEmpty` because "a 'one or more' matcher would let a group that
+    // stopped responding at the second tile pass for the same reason a working
+    // one does". That justification was FALSE IN BOTH HALVES. The old loop
+    // re-focused its start node before EVERY ArrowDown and so never pressed a
+    // second one, and MEASURED 2026-08-25 exactly ONE orbit node of the 25 sits
+    // inside the `RadioGroup` (orbit[3]) while the other 24 land ArrowDown on a
+    // node the orbit already covers — so `reached` could not structurally
+    // exceed 1 and `== 1` and `isNotEmpty` were THE SAME ASSERTION. Worse, a
+    // group that stopped at the second tile still scores 1, so the strict
+    // matcher did not catch the very failure it was defended by, and the `ta`
+    // tile's operability was asserted NOWHERE.
+    //
+    // What is asserted now is the FULL orbit from the group's single Tab stop:
+    // three ArrowDowns must visit BOTH skipped tiles, once each, and the third
+    // must return focus to the Tab stop it started from. That is what evidences
+    // every member of the group rather than the first, and it is STRICTLY
+    // STRONGER than what it replaces — negative-tested 2026-08-25 in a scratch
+    // mirror, never the checkout: `ExcludeFocus` round the `ta` tile alone
+    // leaves the old `reached == 1` GREEN and turns this case RED.
+    //
+    // 🔴 IDENTITY, NEVER LABELS. Every assertion below compares ELEMENTS via
+    // [_isUnder]; `_label` appears only inside `reason:` strings. The header's
+    // rule holds — an .arb edit cannot turn this file red.
+    testWidgets('ArrowDown walks the whole language radio group', (
+      WidgetTester tester,
+    ) async {
+      final _Sweep s = await _sweep(tester, const SettingsScreen());
+
+      // The group is ONE Tab stop BY DESIGN, and every count below depends on
+      // that being true rather than assumed: if a second orbit node ever lands
+      // inside a radio tile, "three ArrowDowns is the whole orbit" stops being
+      // the right walk and this case must say so instead of quietly measuring
+      // the wrong thing.
+      final List<FocusNode> inGroup = s.orbit
+          .where((FocusNode n) => _isUnderARadioTile(n.context! as Element))
+          .toList();
+      expect(
+        inGroup.length,
+        1,
+        reason:
+            'the language RadioGroup must contribute EXACTLY ONE node to the '
+            'settings Tab orbit — that is the whole reason the ${s.dead.length} '
+            'tiles Tab skips are tolerated. Orbit nodes found inside a radio '
+            'tile: ${inGroup.map((FocusNode n) => _label(n.context! as Element)).toList()}',
+      );
+
+      final Element stop = inGroup.single.context! as Element;
+      inGroup.single.requestFocus();
+      await tester.pump();
+
+      // One press per member: 2 skipped tiles + the wrap back onto the Tab
+      // stop. NOT a bounded search — the length is the group's size, so a
+      // fourth tile added without a fourth press would fail the coverage
+      // assertion below rather than pass unnoticed.
+      final List<Element?> walk = <Element?>[];
+      for (int i = 0; i < s.dead.length + 1; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+        walk.add(tester.binding.focusManager.primaryFocus?.context as Element?);
+      }
+
+      for (final Element tile in s.dead) {
+        expect(
+          walk
+              .where((Element? l) => _isUnder(tile, l) || _isUnder(l, tile))
+              .length,
+          1,
+          reason:
+              '"${_label(tile)}" is skipped by Tab, so ArrowDown is the ONLY '
+              'key that can reach it and this walk is the only place it is '
+              'evidenced. Walking ${s.dead.length + 1} steps from the group\'s '
+              'Tab stop must land on it EXACTLY once. Landed on: '
+              '${walk.map((Element? l) => l == null ? "<focus lost>" : _label(l)).toList()}. '
+              'Skipped tiles: ${s.deadLabels}',
+        );
+      }
+
+      expect(
+        _isUnder(stop, walk.last) || _isUnder(walk.last, stop),
+        isTrue,
+        reason:
+            'the ${s.dead.length + 1}th ArrowDown must bring focus back to the '
+            "group's own Tab stop — a radio group cycles, and a walk that ran "
+            'off the end into the rest of the screen would have visited both '
+            'tiles above and still not be a radio group. Landed on: '
+            '${walk.last == null ? "<focus lost>" : _label(walk.last!)}',
       );
     });
 
-    testWidgets('home · 17 of 20', (WidgetTester tester) async {
-      // Home is the best of the three and the reason is instructive: its
-      // subscription rows are `InkWell`s, so they traverse for free. The three
-      // dead ones are the app-bar actions — notifications, settings, calendar —
-      // i.e. every route OUT of this screen. A keyboard-only user can read the
-      // list and leave by no door on it.
-      await pin(tester, 'home', const HomeScreen(), controls: 20, reachable: 17);
+    testWidgets('home · 20 of 20', (WidgetTester tester) async {
+      // WAS 17 of 20. Home's subscription rows were always `InkWell`s, so they
+      // traversed for free; the three that did not were the app-bar actions —
+      // notifications, account/settings, calendar — i.e. every route OUT of
+      // this screen. A keyboard-only user could read the list and leave by no
+      // door on it. All three are `FocusableTap`s now.
+      final _Sweep s = await pin(
+        tester,
+        'home',
+        const HomeScreen(),
+        controls: 20,
+        reachable: 20,
+      );
+      expect(
+        s.deadLabels,
+        isEmpty,
+        reason: 'home keyboard-dead controls: ${s.deadLabels}',
+      );
     });
 
     // ⚠️ NO FOURTH CASE SUMMING THE THREE. It was written, and it was deleted:
@@ -498,18 +755,43 @@ void main() {
     WidgetTester tester,
   ) async {
     final _Sweep s = await _sweep(tester, const LoginScreen());
-    s.orbit.last.requestFocus();
+    // ⚠️ `orbit.last` UNTIL 2026-08-25, AND THAT WAS ONLY EVER TRUE BY
+    // ACCIDENT. The sign-in button was last in the orbit because everything
+    // BELOW it on the screen — the sign-up toggle and the three legal links —
+    // was keyboard-dead; fixing them moved four nodes in behind it and this
+    // case started pressing Enter on "Refund". A test whose subject is chosen
+    // by position depends on the defect it is meant to outlive, so the button
+    // is now found by the key the screen gives it.
+    //
+    // The SAME containment relation the sweep itself uses, in both directions:
+    // `GradientButton` carries the key and builds its focus node BENEATH
+    // itself, so `find.descendant` from the focus element would find nothing
+    // and a one-directional test would report the button missing.
+    final Element submit = tester.element(find.byKey(E2EKeys.loginSubmit));
+    final FocusNode signIn = s.orbit.firstWhere(
+      (FocusNode n) =>
+          _isUnder(submit, n.context as Element?) ||
+          _isUnder(n.context as Element?, submit),
+      orElse: () => throw StateError(
+        'the sign-in button is not in the login Tab orbit. Orbit: '
+        '${s.orbit.map((FocusNode n) => _label(n.context! as Element))}',
+      ),
+    );
+    signIn.requestFocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
+    final AppLocalizations l10n = AppLocalizations.of(
+      tester.element(find.byType(LoginScreen)),
+    );
     expect(
-      find.text('Enter your email and password.'),
+      find.text(l10n.authEnterBoth),
       findsOneWidget,
       reason:
-          "the last node in login's orbit is the sign-in button. Enter on it "
-          'must reach `_submit` — which, with both fields empty, answers with '
-          'authEnterBoth. A button that accepts focus and ignores Enter is '
-          'reachable and inoperable, and only this half can tell them apart',
+          'Enter on the focused sign-in button must reach `_submit` — which, '
+          'with both fields empty, answers with authEnterBoth. A button that '
+          'accepts focus and ignores Enter is reachable and inoperable, and '
+          'only this half can tell them apart',
     );
   });
 }
