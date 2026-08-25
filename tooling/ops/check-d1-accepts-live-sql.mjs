@@ -34,6 +34,14 @@
 //   1. THE INTROSPECTIVE STATEMENTS, VERBATIM. The `sqlite_master` read as
 //      written; then the per-table pragma once for each table that read returns
 //      — which is exactly the two-step walk the routes perform.
+//      🔄 APPENDED 2026-08-25 — the candidate tables come from the SCHEMA READ
+//      ALONE, not from every introspective answer. Every one of them returns a
+//      `name` column and a pragma's is the COLUMNS OF ONE TABLE, so when a route
+//      shipped a hole-free `pragma_table_info('payment_history')` this step took
+//      that table's six columns for the schema of subly_db, tried to erase a
+//      table called `updated_at`, and reported step 2 as not-instantiable. The
+//      probe is still SENT and still counted; what narrowed is what its answer
+//      is allowed to mean. See [yieldsTableNames] in the shared inventory.
 //   2. THE MUTATING DYNAMIC-IDENTIFIER STATEMENTS, EXECUTED, with identifiers
 //      taken from the live schema and the bound key set to `d1guard-<uuid>`.
 //      `meta.changes` must be 0.
@@ -85,6 +93,7 @@ import {
   identifierRole,
   inventoryServices,
   isBareIdentifierExpression,
+  yieldsTableNames,
 } from '../ci/d1-sql-inventory.mjs';
 
 const flag = (name) => {
@@ -271,6 +280,13 @@ for (const svc of withDatabases) {
     // ── STEP 1 · THE INTROSPECTIVE STATEMENTS, VERBATIM ─────────────────────
     let tables = [];
     let executed = 0;
+    // 🔴 DID ANYTHING THIS RUN ACTUALLY LIST THE DATABASE'S TABLES? Tracked
+    // separately from `tables.length` because the two empty cases have opposite
+    // causes and opposite fixes — a schema read that came back empty is a broken
+    // read of a real database, and no schema read at all is an inventory that
+    // never asked. Reporting the second as the first sent a reader looking for a
+    // credential problem that was not there.
+    let sawTableListing = false;
     for (const st of introspective.filter((s) => s.holes.length === 0)) {
       const r = await d1(db.id, st.sql);
       if (r.blind) {
@@ -287,19 +303,37 @@ for (const svc of withDatabases) {
         continue;
       }
       executed++;
-      const names = rowsOf(r)
-        .map((row) => row?.name)
-        .filter((n) => typeof n === 'string' && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(n) && !/^(sqlite_|d1_|_cf_)/.test(n));
-      if (names.length > tables.length) tables = names;
+      // 🔴 ONLY A SCHEMA-TABLE READ NAMES TABLES — see [yieldsTableNames]. Every
+      // introspective answer has a `name` column; a pragma's is the COLUMNS of
+      // one table. Harvesting candidates from all of them read
+      // `SELECT name FROM pragma_table_info(<one table>)` as the schema of the
+      // database and cost this check both erasure statements on 2026-08-25.
+      if (yieldsTableNames(st.sql)) {
+        sawTableListing = true;
+        const names = rowsOf(r)
+          .map((row) => row?.name)
+          .filter((n) => typeof n === 'string' && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(n) && !/^(sqlite_|d1_|_cf_)/.test(n));
+        if (names.length > tables.length) tables = names;
+      }
       console.log(`ok  step 1 — ${st.file}:${st.line} accepted, ${rowsOf(r).length} row(s)`);
     }
 
     if (tables.length === 0) {
-      console.error(
-        `COULD NOT LOOK: no table name came back from ${db.name}, so the per-table pragma and every mutating ` +
-          'statement below had nothing real to be instantiated with. An empty schema read is a broken read, not ' +
-          'an empty database — the erasure routes refuse (503) on exactly this condition.',
-      );
+      if (sawTableListing) {
+        console.error(
+          `COULD NOT LOOK: no table name came back from ${db.name}, so the per-table pragma and every mutating ` +
+            'statement below had nothing real to be instantiated with. An empty schema read is a broken read, not ' +
+            'an empty database — the erasure routes refuse (503) on exactly this condition.',
+        );
+      } else {
+        console.error(
+          `COULD NOT LOOK: nothing this check executed against ${db.name} LISTS THE DATABASE'S TABLES. Every ` +
+            'hole-free introspective statement services/' +
+            `${svc.id} sends is a pragma, which names one table's COLUMNS — so there is no candidate to ` +
+            'instantiate a dynamic identifier with, and inventing one would prove nothing about the deployed ' +
+            'statement. A schema read (sqlite_master/sqlite_schema) is what this step needs.',
+        );
+      }
       worse(2);
       continue;
     }

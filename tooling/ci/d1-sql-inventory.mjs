@@ -89,6 +89,44 @@ export function isIntrospective(sql) {
   return SCHEMA_TABLE.test(sql) || PRAGMA_TVF.test(sql) || PRAGMA_STATEMENT.test(sql);
 }
 
+/**
+ * True when the `name` column of THIS statement's RESULT ROWS holds TABLE names.
+ *
+ * 🔴 THE DISTINCTION THAT WENT MISSING, AND IT COST THE LIVE HALF ITS REACH ON
+ * 2026-08-25. [isIntrospective] answers "does this ask the database about its
+ * own schema" — the question the AUTHORIZER judges, and the reason that
+ * predicate exists. The live half needed a DIFFERENT question — "may I read the
+ * rows of this answer as the list of tables to instantiate a dynamic identifier
+ * with" — and used the first as if it were the second, because until then the
+ * only hole-free introspective statement in the repository happened to be a
+ * schema-table read and the two questions had the same answer.
+ *
+ * Then a route shipped a hole-free pragma of ONE named table (a column probe:
+ * does payment_history carry updated_at). It is introspective, it returns a
+ * `name` column, and every value in it is a COLUMN. The live half read
+ * `id, subscription_id, user_id, amount, paid_at, updated_at` as the schema of
+ * subly_db, tried to erase a table called `updated_at`, was told there is no
+ * such table, and reported that it could not instantiate EITHER erasure
+ * statement — exit 2, COULD NOT LOOK, over two statements that were never
+ * touched and are perfectly fine. Nothing about the deployed SQL had changed;
+ * what changed was the checker's ability to name a real table.
+ *
+ * A schema-table read lists OBJECTS. A pragma lists ONE object's PARTS. Only
+ * the first names tables.
+ *
+ * ⚠️ CONSERVATIVE IN ONE NAMED DIRECTION, and the direction is the safe one. A
+ * `sqlite_master` read filtered to `type = 'index'` would be accepted here and
+ * its rows are index names; no such statement exists in this repository. If one
+ * appears, the failure is the LOUD one — an index name is not a table, so D1
+ * answers "no such table" and the live half prints "could not be instantiated"
+ * rather than passing over something it did not run. The opposite mistake —
+ * taking a pragma's answer for a table listing — is the one that just happened,
+ * and it is the one this predicate refuses.
+ */
+export function yieldsTableNames(sql) {
+  return SCHEMA_TABLE.test(sql) && !PRAGMA_TVF.test(sql) && !PRAGMA_STATEMENT.test(sql);
+}
+
 /** A statement that can change rows — the set the live half must run with a key
  *  that matches nothing and then assert `changes === 0` over. */
 export function isMutating(sql) {

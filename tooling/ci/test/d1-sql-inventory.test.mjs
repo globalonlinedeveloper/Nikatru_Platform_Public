@@ -35,10 +35,12 @@ import {
   identifierRole,
   inventoryFile,
   isBareIdentifierExpression,
+  isIntrospective,
   normaliseProse,
   scanPreparedCalls,
   scanSqlLiterals,
   violatesD1Authorizer,
+  yieldsTableNames,
 } from '../d1-sql-inventory.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -568,6 +570,40 @@ describe('the extraction', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WHICH INTROSPECTIVE ANSWER NAMES TABLES. Narrower than isIntrospective on
+// purpose, and the gap between the two is where the 2026-08-25 regression lived.
+// ─────────────────────────────────────────────────────────────────────────────
+const LISTING_SQL = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name";
+const PAYMENT_PROBE = "SELECT name FROM pragma_table_info('payment_history')";
+
+describe('yieldsTableNames', () => {
+  test('a schema-table read names tables, both spellings', () => {
+    assert.equal(yieldsTableNames(LISTING_SQL), true);
+    assert.equal(yieldsTableNames('SELECT name FROM sqlite_schema'), true);
+  });
+
+  test("🔴 a pragma names ONE TABLE'S COLUMNS — the answer that was read as a schema", () => {
+    // services/platform/src/renewals.ts sends this verbatim to decide whether
+    // payment_history carries updated_at. Its rows are id, subscription_id,
+    // user_id, amount, paid_at, updated_at. Read as a table list, they sent the
+    // live half looking for a table called `updated_at`.
+    assert.equal(yieldsTableNames(PAYMENT_PROBE), false);
+    assert.equal(yieldsTableNames("SELECT name FROM pragma_table_info('{{0}}')"), false);
+    assert.equal(yieldsTableNames('PRAGMA table_info(payment_history)'), false);
+  });
+
+  test('the statement that names BOTH is not a listing either', () => {
+    assert.equal(yieldsTableNames(REJECTED_FIXTURE), false);
+  });
+
+  test('it is strictly narrower than isIntrospective, which is the whole point', () => {
+    const all = [LISTING_SQL, PAYMENT_PROBE, REJECTED_FIXTURE];
+    assert.deepEqual(all.map(isIntrospective), [true, true, true]);
+    assert.deepEqual(all.map(yieldsTableNames), [true, false, false]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // THE LIVE HALF, driven by --fixture. Every branch that decides an exit code is
 // reachable offline; what a fixture cannot prove — that D1 still answers this
 // way — is exactly what the scheduled and deploy-time runs are for.
@@ -578,8 +614,21 @@ const rows = (names, changes = 0) => ({
   result: [{ results: names.map((name) => ({ name })), meta: { changes } }],
 });
 
-const LISTING = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name";
+const noSuchTable = (t) => ({
+  success: false,
+  errors: [{ code: 7500, message: `no such table: ${t}: SQLITE_ERROR` }],
+});
+
+const LISTING = LISTING_SQL;
 const COLUMNS = "SELECT name FROM pragma_table_info('subscriptions')";
+/** The hole-free column probe services/platform/src/renewals.ts sends, and the
+ *  six names payment_history really answers it with. 🔴 IT IS IN THE DEFAULT
+ *  FIXTURE DELIBERATELY: leaving it out is what let every case below pass while
+ *  the deploy job exited 2, because an unanswered key falls to `*` and returns
+ *  no rows, and no rows cannot be mistaken for a schema. A fixture that does not
+ *  answer what production answers is not a control. */
+const PAYMENT = PAYMENT_PROBE;
+const PAYMENT_COLUMNS = ['id', 'subscription_id', 'user_id', 'amount', 'paid_at', 'updated_at'];
 
 /** A fixture that answers the way production did on 2026-08-09, with the one
  *  thing under test overridden. Keys are the NORMALISED SQL the reader looks up.
@@ -589,9 +638,23 @@ const liveFixture = (over = {}) => ({
   [REJECTED_FIXTURE]: REFUSAL,
   [LISTING]: rows(['subscriptions']),
   [COLUMNS]: rows(['user_id', 'claimed_user_id']),
+  [PAYMENT]: rows(PAYMENT_COLUMNS),
   '*': rows([], 0),
   ...over,
 });
+
+/** The same fixture, plus the answer a REAL database gives when this checker
+ *  mistakes a column for a table. Without these keys the `*` fallback reports
+ *  success for `DELETE FROM updated_at`, and a bad substitution reads as a
+ *  clean execution — the one outcome this whole family exists to refuse. */
+const liveFixtureAnsweringNoSuchTable = (over = {}) => {
+  const f = liveFixture();
+  for (const c of PAYMENT_COLUMNS) {
+    f[`SELECT name FROM pragma_table_info('${c}')`] = rows([]);
+    f[`DELETE FROM ${c} WHERE user_id = ?`] = noSuchTable(c);
+  }
+  return { ...f, ...over };
+};
 
 function runLive(fixtureBody, root) {
   const dir = mkdtempSync(join(tmpdir(), 'nikatru-d1-fx-'));
@@ -686,6 +749,56 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
       assert.equal(r.status, 2, r.stdout + r.stderr);
       assert.match(r.stderr, /could not be instantiated against/);
     });
+  });
+
+  test('🔴 THE 2026-08-25 REGRESSION — a pragma answer must not become the candidate table set', () => {
+    // services/platform/src/routes/account.ts was NOT TOUCHED by the release
+    // that reddened this check (`git diff a028cc0 b8d2481 -- <that file>` is
+    // empty). What the release added was a hole-free
+    // `pragma_table_info('payment_history')` in renewals.ts, probing for the
+    // updated_at column. This step harvested candidates from EVERY hole-free
+    // introspective answer, so the six COLUMNS of payment_history became the
+    // schema of subly_db: `DELETE FROM updated_at WHERE user_id = ?` came back
+    // `no such table: updated_at`, both erasure statements went uninstantiated,
+    // and the deploy job exited 2 over SQL that had not changed.
+    withLive(liveFixtureAnsweringNoSuchTable(), (r) => {
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.doesNotMatch(r.stderr, /could not be instantiated against/);
+      assert.doesNotMatch(r.stderr, /no such table: updated_at/);
+      // 🔴 THE PROBE IS STILL EXECUTED. The fix narrows what its answer MEANS;
+      // skipping the statement would be the loosening this file refuses.
+      assert.match(r.stdout, /step 1 — services\/platform\/src\/renewals\.ts:\d+ accepted, 6 row\(s\)/);
+      // …and both erasure statements ran against a REAL table.
+      assert.match(r.stdout, /step 2 — services\/platform\/src\/routes\/account\.ts:\d+ executed on subscriptions, changes=0/);
+      assert.match(r.stdout, /ok {2}platform_db — 3 introspective and 2 mutating statement\(s\) executed/);
+    });
+  });
+
+  test('🔴 the fix does not loosen: a real table the authorizer refuses is still 1, not 0', () => {
+    withLive(liveFixtureAnsweringNoSuchTable({ 'DELETE FROM subscriptions WHERE user_id = ?': REFUSAL }), (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /D1's authorizer will not run `DELETE FROM subscriptions WHERE user_id = \?`/);
+      assert.match(r.stderr, /D1 REFUSES A STATEMENT THIS REPOSITORY DEPLOYS/);
+    });
+  });
+
+  test('a service whose only hole-free introspection is a pragma ⇒ 2, saying THAT, not "empty schema"', () => {
+    // The two empty cases have opposite causes: a schema read that came back
+    // empty is a broken read of a real database; no schema read at all is an
+    // inventory that never asked. Printing the first over the second sends a
+    // reader hunting a credential problem that is not there.
+    const root = sharedTree();
+    const snap = snapshotOf(root);
+    try {
+      replaceListing(COLUMNS)(root);
+      const r = runLive(liveFixtureAnsweringNoSuchTable(), root);
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /nothing this check executed against \w+ LISTS THE DATABASE'S TABLES/);
+      assert.match(r.stderr, /services\/platform sends is a pragma/);
+      assert.doesNotMatch(r.stderr, /no table name came back/);
+    } finally {
+      restoreTo(root, snap);
+    }
   });
 
   test('no credential and no fixture ⇒ 2 before any request, naming what is missing', () => {
