@@ -85,6 +85,31 @@
 // l10n default and each treating a blank override as absent. What is gone is the
 // accessor that got that rule wrong, not the rule.
 //
+// ── APPENDED 2026-08-25 · OBSERVATION 10 RETURNS, WITH A DIFFERENT SUBJECT ───
+// Both blocks above are left exactly as written. The retirement was right about
+// the ACCESSOR and wrong about what it left behind: deleting the one place that
+// got [O3] wrong is not the same as keeping [O3], and the block above says so
+// itself — "the rule is unchanged and still live" — while the change that wrote
+// it removed the only mechanical enforcement the rule had. Between that commit
+// and this one, a freshly reintroduced `copy[key] ?? key` failed nothing.
+//
+// So observation 10 now reads: a shipped `copy` READ falls back to the raw key,
+// or reads an override without treating a blank one as absent. Same rule, same
+// [O3] reason, and a domain that is NOT empty — FOUR live read sites, measured
+// and PRINTED on every run rather than typed into this prose. It subsumes the
+// old limb without needing the accessor to exist: `app_config.dart` is in
+// `dartFiles`, so re-declaring `String text(String key) => copy[key] ?? key;`
+// fails limb 10 on the declaration alone, with no caller required.
+//
+// ⏱ TWO NUMBERS IN THE BLOCK ABOVE ARE WRONG AND ARE CORRECTED HERE, NOT EDITED
+// THERE. (1) "three surfaces" is four — both brick screens read the map, not
+// just the brick's onboarding one; the recipe and the four paths are written out
+// beside limb 10. (2) "the Exit line's 'one of the ten above' now reads one of
+// the NINE above" described an edit that was never made: the Exit line below
+// still says TEN, was never changed to nine, and is correct again today. A
+// correction that describes a change instead of making it is the drift this
+// file's own limb 8 exists to catch, one register up.
+//
 // ── WHAT IT DELIBERATELY DOES NOT CLAIM ──────────────────────────────────────
 // It does NOT claim the live 404 is gone. Both files are BUNDLED at build time
 // (a Worker has no filesystem), so a catalogue row reaches the edge only after
@@ -860,6 +885,131 @@ for (const rel of dartFiles) {
   }
 }
 
+
+// ── 10 · A COPY OVERRIDE NEVER FALLS BACK TO THE RAW KEY ─────────────────────
+// 🔴 THE SUBJECT MOVED; THE RULE DID NOT. Limb 10 used to be "`AppConfig.text`
+// does not acquire a non-test caller", and it was deleted on 2026-08-25 with the
+// accessor — correctly, because a branch whose only remaining output is "my
+// subject is gone" is a check that cannot fail. What that deletion ALSO removed,
+// with nothing said, was the only mechanical enforcement of [O3] anywhere in the
+// tree: the rule that an override REPLACES designed copy, that designed copy is
+// the FALLBACK, and that the raw key is NEVER what a user sees. The accessor was
+// merely the one place that got the rule wrong. Deleting the wrong implementation
+// is not the same as keeping the rule, and between that deletion and this limb
+// nothing in CI would have failed on a freshly reintroduced `copy[key] ?? key`.
+//
+// So this limb asks the question at the place the rule is actually exercised —
+// the `copy` MAP's read sites — instead of at one dead accessor's declaration.
+// MEASURED 2026-08-25 over `dartFiles`: FOUR non-test read sites, all four the
+// same idiom.
+//
+//     final String? override = cfg?.copy[key];
+//     return (override == null || override.trim().isEmpty) ? fallback : override;
+//
+// ⏱ APPENDED 2026-08-25 — the retired limb's prose (and the correction in this
+// file's header) says the map is read directly on THREE surfaces. Re-measured
+// today with `grep -rn "copy\[" --include=*.dart apps packages tooling`: there
+// are FOUR non-test sites, not three — subly's home_screen.dart:1535 and
+// onboarding_screen.dart:100, AND BOTH brick screens,
+// `tooling/bricks/…/features/firstrun/onboarding_screen.dart:53` and
+// `tooling/bricks/…/features/home/home_screen.dart:300`. The prose above is left
+// as written and corrected here rather than rewritten. The count this limb
+// PRINTS is derived from the scan on every run, so it cannot go stale the way
+// that sentence did.
+//
+// TWO CONDITIONS, BOTH TAKEN FROM WHAT THE FOUR SITES ALREADY DO:
+//   (A) NO RAW-KEY FALLBACK. `copy[k] ?? k` — the same key on both sides of the
+//       `??` — is exactly the shape that greets a freshly stamped app's first
+//       user with `onboarding.1.title`. It is identifier-sensitive on purpose:
+//       `copy[key] ?? fallback` is the CORRECT shape and must not trip it, so a
+//       bare "`copy[…]` followed by `??`" test would be the wrong check. This is
+//       also what stops the deleted accessor coming back — `app_config.dart` is
+//       in `dartFiles`, so re-declaring `String text(String key) => copy[key] ??
+//       key;` fails this limb on the declaration itself, with no caller needed.
+//   (B) A BLANK OVERRIDE IS ABSENT. All four sites treat the empty string and
+//       whitespace as no override, and each says why in its own words: "a config
+//       that ships an empty string is a config somebody half-edited". A site that
+//       skips that check ships a blank heading, worse than the designed one.
+//
+// ⚠️ WHAT (B) CAN AND CANNOT SEE, STATED RATHER THAN IMPLIED. The window is the
+// read's own `;`-delimited statement plus the TWO after it — which is what all
+// four sites need and no more. It is a proximity rule, not a parse: a site that
+// spread the blank test five statements later would fail this limb for a reason
+// that is not quite true. That direction is the safe one (it fails ARMED, and the
+// repair is to write the idiom the other four use), and it is why (B) names the
+// statement window in its own message.
+//
+// ⚠️ AND THE SELF-CHECK, because a scan over zero sites reports perfect
+// compliance. Zero `copy[` reads in the shipped tree is COVERAGE LOST, not a
+// pass: it means either the surfaces stopped reading overrides — the config key
+// that reaches no surface, this file's limb 8 in another costume — or the scan
+// stopped reaching them.
+{
+  const IDENT_FALLBACK = /copy\s*\[\s*([A-Za-z_$][\w$]*)\s*\]\s*\?\?\s*([A-Za-z_$][\w$]*)/g;
+  const LITERAL_FALLBACK = /copy\s*\[\s*(['"])([^'"]*)\1\s*\]\s*\?\?\s*(['"])([^'"]*)\3/g;
+
+  const sites = [];
+  const rawKey = [];
+  const blankBlind = [];
+
+  for (const [rel, src] of dartSrc) {
+    // Split on `;` rather than on newlines: the window below is "this statement
+    // and the next two", and a statement is what the idiom is written in. Line
+    // proximity would move under a reformat that changes nothing.
+    const stmts = src.split(';');
+    let nth = 0;
+    for (let i = 0; i < stmts.length; i++) {
+      if (!/\bcopy\s*\[/.test(stmts[i])) continue;
+      nth += 1;
+      const where = `${rel} (read #${nth})`;
+      sites.push(where);
+
+      let key = null;
+      for (const m of stmts[i].matchAll(IDENT_FALLBACK)) if (m[1] === m[2]) key = m[1];
+      for (const m of stmts[i].matchAll(LITERAL_FALLBACK)) if (m[2] === m[4]) key = `'${m[2]}'`;
+      if (key !== null) {
+        rawKey.push(`${where}: \`copy[${key}] ?? ${key}\``);
+        continue;
+      }
+
+      if (!/\bis(?:Not)?Empty\b/.test(stmts.slice(i, i + 3).join(';'))) blankBlind.push(where);
+    }
+  }
+
+  if (sites.length === 0) {
+    coverageLost(
+      `no shipped Dart reads the \`copy\` map at all (${dartFiles.length} non-test Dart file(s) scanned), so ` +
+        'this limb ranged over nothing and would have reported [O3] as honoured by an empty set. Either every ' +
+        'override surface stopped reading overrides — a served `copy` document that reaches no surface, which ' +
+        'is limb 8 in another costume — or DART_ROOTS no longer reaches the screens.',
+    );
+  } else if (rawKey.length) {
+    fail(
+      `a \`copy\` override falls back to the RAW KEY: ${rawKey.join(', ')}. A freshly stamped app has ` +
+        'overridden nothing, so that ships the literal key to a user — `onboarding.1.title` as a heading. ' +
+        '[O3] — an override REPLACES designed copy, designed copy is the FALLBACK, never the raw key. Read ' +
+        '`copy[key]` and supply a designed l10n default, as all four live sites do. This is the shape ' +
+        '`AppConfig.text(key)` had before it was deleted on 2026-08-25; it does not come back.',
+    );
+  } else if (blankBlind.length) {
+    fail(
+      `a \`copy\` override is read without treating a BLANK override as absent: ${blankBlind.join(', ')}. ` +
+        'A config that ships an empty string is a config somebody half-edited, and a blank heading is worse ' +
+        'than the designed one. Every live site answers `(override == null || override.trim().isEmpty) ? ' +
+        'fallback : override` — inside the read\'s own statement or the two after it, which is the window ' +
+        'this limb reads.',
+    );
+  } else {
+    notes.push(
+      `[O3] copy overrides — TRIPWIRE ARMED, ${sites.length} READ SITE(S) (${dartFiles.length} non-test Dart ` +
+        `file(s) scanned): ${sites.join(', ')}. The sites are LISTED, not just counted, because "four" was ` +
+        'prose in this file twice and was wrong both times. None falls back to the raw key and every one ' +
+        'treats a blank override as absent. ' +
+        'This is what replaced the deleted `AppConfig.text` limb: the rule is checked where the map is read, ' +
+        'not at one accessor\'s declaration, so it stays armed with a NON-empty domain.',
+    );
+  }
+}
 
 done();
 
