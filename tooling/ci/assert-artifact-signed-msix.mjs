@@ -44,6 +44,32 @@
 // invented identity while the register still says PARTNER-CENTER-PENDING is
 // precisely the unrecoverable case, and it is what this catches today.
 //
+// ── APPENDED 2026-08-25: THE PACKAGE IS ZIP64 AND THE READER WAS NOT ─────────
+// Nothing above is withdrawn; this is the third thing that had to be true
+// before any of it could run. With PR #366's argv defect fixed, the Windows leg
+// of build-platforms reached the real package on run 32814517717 and this guard
+// did not fail — it CRASHED, `RangeError [ERR_OUT_OF_RANGE] … Received
+// 4294967295` out of the `unzip` call in main(). The trace read
+// `assert-artifact-signed-msix.mjs:214`, which is where that call sat in the
+// file AS IT THEN STOOD (18b8641) and is recorded as history, not as a pointer
+// into this text. The other five platforms were green on that same run.
+//
+// 4294967295 is 0xFFFFFFFF, the ZIP64 sentinel, in a package of 16.6 MB — so
+// this was never a ">4 GB" overflow. An .msix is an OPC/APPX package and the
+// packaging tool writes the ZIP64 end-of-central-directory record, its locator
+// and the sentinels REGARDLESS OF SIZE. `unzip` read the central-directory
+// offset as a bare 32-bit field and used the sentinel as an index.
+//
+// 🔴 AND THE FIX BELONGED IN THE SHARED READER, NOT HERE. `unzip` is declared
+// in tooling/ci/apple-signing.mjs and its own header said it existed for Apple
+// provisioning profiles — "a handful of small files" — while this file had been
+// handing it a Windows app package since F-2 landed. Giving this guard a
+// private second zip reader would have left that contradiction standing AND put
+// two readers of the same format in one repository, which drift in the one way
+// that reports clean. So `unzip` now handles ZIP64 and its header names BOTH
+// callers; the Apple release-signing path, which was green throughout, is
+// pinned byte-for-byte in test/apple-signing.test.mjs.
+//
 // Usage:
 //   node tooling/ci/assert-artifact-signed-msix.mjs [--repo-root <path>] <pkg.msix>…
 // Exit 0 = every package carries the declared identity and no signature.
