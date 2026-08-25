@@ -282,7 +282,20 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           // and still gets the detail as a full route over the shell.
           detail: _selectedId == null
               ? null
-              : SubscriptionDetailScreen(id: _selectedId!),
+              // 🔴 `onClose` IS NOT OPTIONAL HERE EVEN THOUGH THE PARAMETER IS.
+              // This is the arm that mounts the detail as a WIDGET, so nothing
+              // was pushed and the location is still `/home` — a one-match
+              // stack. Without this callback the screen falls through to its
+              // router arm and every dismiss control on it throws `GoError:
+              // There is nothing to pop` (GlitchTip SUBLY-9, fatal, and the
+              // reason it was only ever seen from wide landscape windows).
+              // Clearing the selection is also what the control is FOR: the
+              // pane closes and the placeholder comes back.
+              // `test/detail_pane_pop_test.dart` pins both halves.
+              : SubscriptionDetailScreen(
+                  id: _selectedId!,
+                  onClose: () => setState(() => _selectedId = null),
+                ),
           // ⬜ THE COPY IS AN EXISTING KEY AND NOT THE RIGHT ONE — DELIBERATE,
           // AND NAMED SO IT IS NOT MISTAKEN FOR AN OVERSIGHT. What this column
           // wants to say is "select a subscription to see its details", and no
