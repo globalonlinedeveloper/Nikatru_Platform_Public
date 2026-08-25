@@ -34,7 +34,30 @@ export function verifierFor(provider: string): MoRWebhookVerifier | null {
   return BY_PROVIDER.get(provider) ?? null;
 }
 
-/** The env var names every registered rail's destination secret lives under. */
-export function moneySecretEnvVars(): readonly string[] {
-  return MOR_VERIFIERS.map((v) => v.secretEnvVar);
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETED 2026-08-25 — `moneySecretEnvVars()`, A HELPER WRITTEN FOR A CALLER
+// THAT CANNOT EXIST.
+//
+// It returned `MOR_VERIFIERS.map((v) => v.secretEnvVar)` and had ZERO readers,
+// measured across all four repositories in every language: one occurrence in the
+// tree, its own declaration.
+//
+// It could not acquire one either, and that is the part worth recording rather
+// than the count. Its intended readers were the guards — `contract.ts` says
+// `secretEnvVar` is "named as DATA so tooling/ci/assert-money-config.mjs can
+// enumerate the money secrets from the registry instead of from a hand-kept
+// list". But a guard is `.mjs` run by bare node against a repository checkout;
+// it cannot import a TypeScript module, so it can never CALL this. Both guards
+// that need the set therefore PARSE it — assert-money-config.mjs:329-340 and
+// assert-mor-adapters.mjs — reading MOR_VERIFIERS and then each adapter's
+// `secretEnvVar: '…'` out of comment-stripped source. The registry's promise
+// ("registering a rail automatically puts it inside the guard's floor") is kept
+// by that parse, and it is kept whether or not this function exists.
+//
+// The Worker's own runtime never wanted a list: `routes/money.ts` reads
+// `verifier.secretEnvVar` off the ONE verifier the URL segment resolved, and
+// `routes/checkout.ts` names its credential directly. So this was a declaration
+// standing in for a use — the same argument this repository applied to
+// `Entitlement` on 2026-08-09, and the reason the deletion is recorded here
+// instead of leaving a silence a later reader has to re-derive.
+// ─────────────────────────────────────────────────────────────────────────────

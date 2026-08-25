@@ -217,83 +217,85 @@ class SettingsScreen extends ConsumerWidget {
               // anything, and a glyph is not a channel a screen reader has.
               // Merging is what turns "Rajasekar" / "raj@…" / (silent icon)
               // from three stops into one.
-              MergeSemantics(
-                child: Semantics(
-                  button: true,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _editProfile(context, ref, l10n, user),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: cardDecoration(context),
-                      child: Row(
-                        children: <Widget>[
-                          // The initial again — decorative for the reason
-                          // `home_screen.dart`'s avatar records, and here it is
-                          // even plainer: the display name is the very next
-                          // widget.
-                          ExcludeSemantics(
-                            child: Container(
-                              width: 52,
-                              height: 52,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                gradient: AppColors.brandGradient,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                user.initial,
-                                style: const TextStyle(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 20,
-                                  color: Colors.white,
-                                ),
-                              ),
+              // 🔴 `FocusableTap` supplies the FOCUS NODE the pair never had.
+              // Same substitution as the four other control shapes on this
+              // screen: `MergeSemantics` + `Semantics(button: true)` re-emitted
+              // unchanged, plus the one thing SC 2.1.1 asks for. This card does
+              // not appear in `keyboard_traversal_test`'s inventory (it renders
+              // only when `user != null`, and the sweep pumps the screen
+              // signed-out), so it is fixed on the shape rather than on a count
+              // — which is the argument for a shared primitive in one line.
+              FocusableTap(
+                onTap: () => _editProfile(context, ref, l10n, user),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: cardDecoration(context),
+                  child: Row(
+                    children: <Widget>[
+                      // The initial again — decorative for the reason
+                      // `home_screen.dart`'s avatar records, and here it is
+                      // even plainer: the display name is the very next
+                      // widget.
+                      ExcludeSemantics(
+                        child: Container(
+                          width: 52,
+                          height: 52,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: AppColors.brandGradient,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            user.initial,
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w800,
+                              fontSize: 20,
+                              color: Colors.white,
                             ),
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                // No tier is shown, deliberately. This read
-                                // '· Pro plan' as a HARDCODED string — not
-                                // derived from `isPro`, so every user saw it
-                                // regardless of entitlement, for a tier that is
-                                // not sold and gates nothing (`PaywallGate` has
-                                // no consumers). A paid-tier claim is the
-                                // category Apple's accurate-metadata rule and
-                                // Google's deceptive-behaviour policy scrutinise
-                                // hardest, and Paddle reviews the site against
-                                // the product. Restore a tier line only when a
-                                // real entitlement backs it.
-                                Text(
-                                  (user.displayName == null ||
-                                          user.displayName!.isEmpty)
-                                      ? l10n.displayNameNotSet
-                                      : user.displayName!,
-                                  style: AppText.of(context).body.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                Text(
-                                  user.email,
-                                  style: AppText.of(
-                                    context,
-                                  ).muted.copyWith(fontSize: 13),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.edit_outlined,
-                            color: AppText.of(context).muted.color,
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            // No tier is shown, deliberately. This read
+                            // '· Pro plan' as a HARDCODED string — not
+                            // derived from `isPro`, so every user saw it
+                            // regardless of entitlement, for a tier that is
+                            // not sold and gates nothing (`PaywallGate` has
+                            // no consumers). A paid-tier claim is the
+                            // category Apple's accurate-metadata rule and
+                            // Google's deceptive-behaviour policy scrutinise
+                            // hardest, and Paddle reviews the site against
+                            // the product. Restore a tier line only when a
+                            // real entitlement backs it.
+                            Text(
+                              (user.displayName == null ||
+                                      user.displayName!.isEmpty)
+                                  ? l10n.displayNameNotSet
+                                  : user.displayName!,
+                              style: AppText.of(context).body.copyWith(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              user.email,
+                              style: AppText.of(
+                                context,
+                              ).muted.copyWith(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.edit_outlined,
+                        color: AppText.of(context).muted.color,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -377,83 +379,84 @@ class SettingsScreen extends ConsumerWidget {
                     //
                     // No `label:`: the symbol IS the datum, and it is already
                     // the chip's own `Text`.
-                    child: MergeSemantics(
-                      child: Semantics(
-                        button: true,
-                        selected: sel,
-                        child: GestureDetector(
-                          onTap: () => controller.setCurrency(sym),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            alignment: Alignment.center,
-                            // 🔴 THE OFF CHIP WAS A PINNED WHITE BLOCK, AND IN
-                            // DARK IT WAS THE BRIGHTEST THING ON THE SCREEN.
-                            // Measured against `buildAppTheme(seed: 0xFF6459F5,
-                            // brightness: dark)` — what `app.dart:84` supplies —
-                            // on 2026-08-21: #FFFFFF on the scaffold #131318 is
-                            // **18.52:1**, i.e. three white slabs glaring out of
-                            // a dark screen, with an #ECECF2 hairline round each
-                            // at **15.74:1**. Not a legibility failure — the ink
-                            // on that white still measures 18.25:1 — but the
-                            // dark build reading as a light one in four places.
-                            //
-                            // `surfaceContainerHighest` is the slot
-                            // `cardDecoration`, `RowCard` and `login_screen`'s
-                            // `_tones` already chose, so the chip is made of the
-                            // same material as every other raised surface in the
-                            // app: #35343A, **1.50:1** off the scaffold, with an
-                            // `outlineVariant` edge at **1.99:1** and
-                            // `onSurface` on it at **9.55:1** (AA, and AAA).
-                            //
-                            // ⚠️ THOSE TWO SEPARATION NUMBERS LOOK LOW AND ARE
-                            // STILL A GAIN: the SHIPPING LIGHT chip is white on
-                            // the light scaffold #FCF8FF at **1.05:1** with a
-                            // 1.12:1 border. Dark now separates its chip from
-                            // its ground BETTER than light does. Neither reaches
-                            // 1.4.11's 3:1, and 1.4.11 is not what identifies
-                            // these chips anyway — `selected:` on the `Semantics`
-                            // above and the gradient below are.
-                            decoration: BoxDecoration(
-                              gradient: sel ? AppColors.brandGradient : null,
-                              color: sel
-                                  ? null
-                                  : (isLight
-                                        ? AppColors.surface
-                                        : scheme.surfaceContainerHighest),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: sel
-                                    ? Colors.transparent
-                                    : (isLight
-                                          ? AppColors.line
-                                          : scheme.outlineVariant),
-                              ),
-                            ),
-                            // The SELECTED chip keeps `Colors.white`
-                            // unconditionally and deliberately: it rides
-                            // `brandGradient`, and an on-gradient colour must not
-                            // follow the scheme because the surface under it does
-                            // not. `AppColors.accent2`'s doc records the
-                            // measurement that pins it — white on the gradient's
-                            // far end is 4.51:1, its accent end 4.90:1, in both
-                            // brightnesses.
-                            //
-                            // The OFF branch is written out rather than left to
-                            // `copyWith(color: null)` because the ternary has to
-                            // supply both arms anyway; `ink → onSurface` is
-                            // exactly the mapping `AppText.of` already applies to
-                            // `fig`, so the two cannot disagree.
-                            child: Text(
-                              sym,
-                              style: AppText.of(context).fig.copyWith(
-                                fontSize: 16,
-                                color: sel
-                                    ? Colors.white
-                                    : (isLight
-                                          ? AppColors.ink
-                                          : scheme.onSurface),
-                              ),
-                            ),
+                    // 🔴 FOUR OF SETTINGS' EIGHTEEN KEYBOARD-DEAD CONTROLS
+                    // ARE THESE CHIPS. `selected:` survives verbatim —
+                    // `FocusableTap` re-emits it — and the `FocusNode` is what
+                    // is new. `borderRadius` matches the chip's own 12 so the
+                    // ring matches the chip's own 14 rather than the
+                    // primitive's 12 default, so it does not read as a
+                    // rendering fault round a rounded box.
+                    child: FocusableTap(
+                      selected: sel,
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => controller.setCurrency(sym),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        alignment: Alignment.center,
+                        // 🔴 THE OFF CHIP WAS A PINNED WHITE BLOCK, AND IN
+                        // DARK IT WAS THE BRIGHTEST THING ON THE SCREEN.
+                        // Measured against `buildAppTheme(seed: 0xFF6459F5,
+                        // brightness: dark)` — what `app.dart:84` supplies —
+                        // on 2026-08-21: #FFFFFF on the scaffold #131318 is
+                        // **18.52:1**, i.e. three white slabs glaring out of
+                        // a dark screen, with an #ECECF2 hairline round each
+                        // at **15.74:1**. Not a legibility failure — the ink
+                        // on that white still measures 18.25:1 — but the
+                        // dark build reading as a light one in four places.
+                        //
+                        // `surfaceContainerHighest` is the slot
+                        // `cardDecoration`, `RowCard` and `login_screen`'s
+                        // `_tones` already chose, so the chip is made of the
+                        // same material as every other raised surface in the
+                        // app: #35343A, **1.50:1** off the scaffold, with an
+                        // `outlineVariant` edge at **1.99:1** and
+                        // `onSurface` on it at **9.55:1** (AA, and AAA).
+                        //
+                        // ⚠️ THOSE TWO SEPARATION NUMBERS LOOK LOW AND ARE
+                        // STILL A GAIN: the SHIPPING LIGHT chip is white on
+                        // the light scaffold #FCF8FF at **1.05:1** with a
+                        // 1.12:1 border. Dark now separates its chip from
+                        // its ground BETTER than light does. Neither reaches
+                        // 1.4.11's 3:1, and 1.4.11 is not what identifies
+                        // these chips anyway — `selected:` on the `Semantics`
+                        // above and the gradient below are.
+                        decoration: BoxDecoration(
+                          gradient: sel ? AppColors.brandGradient : null,
+                          color: sel
+                              ? null
+                              : (isLight
+                                    ? AppColors.surface
+                                    : scheme.surfaceContainerHighest),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: sel
+                                ? Colors.transparent
+                                : (isLight
+                                      ? AppColors.line
+                                      : scheme.outlineVariant),
+                          ),
+                        ),
+                        // The SELECTED chip keeps `Colors.white`
+                        // unconditionally and deliberately: it rides
+                        // `brandGradient`, and an on-gradient colour must not
+                        // follow the scheme because the surface under it does
+                        // not. `AppColors.accent2`'s doc records the
+                        // measurement that pins it — white on the gradient's
+                        // far end is 4.51:1, its accent end 4.90:1, in both
+                        // brightnesses.
+                        //
+                        // The OFF branch is written out rather than left to
+                        // `copyWith(color: null)` because the ternary has to
+                        // supply both arms anyway; `ink → onSurface` is
+                        // exactly the mapping `AppText.of` already applies to
+                        // `fig`, so the two cannot disagree.
+                        child: Text(
+                          sym,
+                          style: AppText.of(context).fig.copyWith(
+                            fontSize: 16,
+                            color: sel
+                                ? Colors.white
+                                : (isLight ? AppColors.ink : scheme.onSurface),
                           ),
                         ),
                       ),
@@ -1641,43 +1644,50 @@ class _Toggle extends StatelessWidget {
     // with no text of its own — and a label + toggled state for screen readers
     // (the row's texts sit BESIDE this control, not inside it, so without this
     // it announces nothing).
-    return Semantics(
-      button: true,
+    //
+    // 🔴 AND FOUR OF THEM WERE KEYBOARD-DEAD. `Semantics(toggled: value)`
+    // told a screen reader the state and created no `FocusNode`, so the four
+    // preference switches on this screen — renewal alerts, unused plans,
+    // weekly digest, usage statistics — could be heard and not operated.
+    // `FocusableTap` re-emits `button`, `toggled` and `label` unchanged and
+    // adds the node; `mergeDescendants: false` keeps the previous spelling,
+    // since this control's texts sit BESIDE it and there is nothing beneath to
+    // merge. The ring is a 999-radius pill to match the switch it rings.
+    return FocusableTap(
       toggled: value,
       label: semanticLabel,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: AnimatedContainer(
+      mergeDescendants: false,
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 46,
+            height: 28,
+            decoration: BoxDecoration(
+              color: value ? AppColors.accent : const Color(0xFFE2E2EA),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: AnimatedAlign(
               duration: const Duration(milliseconds: 180),
-              width: 46,
-              height: 28,
-              decoration: BoxDecoration(
-                color: value ? AppColors.accent : const Color(0xFFE2E2EA),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 180),
-                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  margin: const EdgeInsets.all(3),
-                  width: 22,
-                  height: 22,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: Color(0x40000000),
-                        blurRadius: 3,
-                        offset: Offset(0, 1),
-                      ),
-                    ],
-                  ),
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                margin: const EdgeInsets.all(3),
+                width: 22,
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x40000000),
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1739,77 +1749,78 @@ class _LinkRow extends StatelessWidget {
       //
       // Merged so the label and its subtitle arrive as one stop rather than two,
       // matching the profile card above.
-      child: MergeSemantics(
-        child: Semantics(
-          button: onTap != null,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-              child: Row(
-                children: <Widget>[
-                  // 🔴 THE LEADING GLYPH IS AN EMOJI IN A `Text`, NOT AN `Icon`,
-                  // WHICH IS WHY IT WAS AUDIBLE AT ALL. An `Icon` with no
-                  // `semanticLabel` contributes nothing, so the chevron on the
-                  // far right of this row has always been silent — correctly.
-                  // This one is a real string, so a reader announced the
-                  // emoji's CLDR name in front of every settings row ("locked
-                  // with key, Privacy policy"). Same decorative rule as
-                  // [GlyphTile]: the label beside it is the row.
-                  ExcludeSemantics(
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        gradient: const LinearGradient(
-                          colors: <Color>[
-                            Color.fromRGBO(100, 89, 245, 0.13),
-                            Color.fromRGBO(155, 107, 255, 0.13),
-                          ],
-                        ),
-                      ),
-                      child: Text(
-                        icon,
-                        style: const TextStyle(
-                          color: AppColors.accent,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          label,
-                          style: AppText.of(context).body.copyWith(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        if (sub != null)
-                          Text(
-                            sub,
-                            style: AppText.of(
-                              context,
-                            ).muted.copyWith(fontSize: 12),
-                          ),
+      //
+      // 🔴 `button: onTap != null` BECOMES `FocusableTap(onTap:)` AND THE
+      // CONDITION IS THE SAME CONDITION. The primitive drops the role AND the
+      // focus node together when [onTap] is null, which is what the paragraph
+      // above asks for one sense over: a row that does nothing when activated
+      // must not collect a Tab stop either, or somebody presses Enter at a dead
+      // surface and blames their keyboard. Five wired rows on this screen were
+      // among settings' eighteen keyboard-dead controls; the two inert ones
+      // stay unfocusable, by the same test.
+      child: FocusableTap(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(
+            children: <Widget>[
+              // 🔴 THE LEADING GLYPH IS AN EMOJI IN A `Text`, NOT AN `Icon`,
+              // WHICH IS WHY IT WAS AUDIBLE AT ALL. An `Icon` with no
+              // `semanticLabel` contributes nothing, so the chevron on the
+              // far right of this row has always been silent — correctly.
+              // This one is a real string, so a reader announced the
+              // emoji's CLDR name in front of every settings row ("locked
+              // with key, Privacy policy"). Same decorative rule as
+              // [GlyphTile]: the label beside it is the row.
+              ExcludeSemantics(
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color.fromRGBO(100, 89, 245, 0.13),
+                        Color.fromRGBO(155, 107, 255, 0.13),
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: AppText.of(context).muted.color,
-                    size: 18,
+                  child: Text(
+                    icon,
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 15,
+                    ),
                   ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      label,
+                      style: AppText.of(context).body.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (sub != null)
+                      Text(
+                        sub,
+                        style: AppText.of(context).muted.copyWith(fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: AppText.of(context).muted.color,
+                size: 18,
+              ),
+            ],
           ),
         ),
       ),

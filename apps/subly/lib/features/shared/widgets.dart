@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show FocusableTap, TapRole;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
@@ -287,10 +289,9 @@ class _RowCardState extends State<RowCard> {
               // Exactly the one-word migration [SectionHeader] below records.
               Text(
                 widget.title,
-                style: AppText.of(context).body.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
+                style: AppText.of(
+                  context,
+                ).body.copyWith(fontWeight: FontWeight.w700, fontSize: 15),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -866,21 +867,38 @@ class _LegalLink extends StatelessWidget {
     // wants before activating something on a phone — "link" warns you that you
     // are about to be taken out of the app. A bare `GestureDetector` around a
     // `Text` carries neither today; it is prose you can happen to tap.
-    return MergeSemantics(
-      child: Semantics(
-        link: true,
-        child: GestureDetector(
-          onTap: () => openExternalUrl(url),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Manrope',
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-              color: color,
-              decoration: TextDecoration.underline,
-            ),
-          ),
+    //
+    // 🔴 AND `FocusableTap`, NOT A BARE `GestureDetector` — THESE THREE
+    // WERE KEYBOARD-DEAD ON TWO SCREENS AT ONCE. `test/keyboard_traversal_test
+    // .dart` found them among login's four unreachable controls AND among
+    // settings' eighteen, because this widget is rendered on both: one shared
+    // defect counted twice, which is exactly the argument for fixing it in a
+    // shared primitive. `Semantics(link: true)` announced the role and created
+    // no `FocusNode`, so Tab passed straight over all three.
+    //
+    // `deferToChild`, NOT the primitive's `opaque` default: the underlined
+    // words ARE the target here, and these three sit in a `Wrap` beside two
+    // separator dots — an opaque box round each would claim the gaps and make
+    // the dots tappable-adjacent for no reason. The pointer behaviour is
+    // therefore byte-identical to what it replaced.
+    return FocusableTap(
+      onTap: () => openExternalUrl(url),
+      role: TapRole.link,
+      behavior: HitTestBehavior.deferToChild,
+      borderRadius: BorderRadius.circular(4),
+      // No `focusColor`: the ring takes the theme's primary rather than
+      // [color]. [color] is the deliberately quiet link ink (`AppText.muted`,
+      // or 60% white on a hero) and a ring painted in it would be a focus
+      // indicator the sighted keyboard user has to hunt for — which is the
+      // failure the ring exists to prevent.
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'Manrope',
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: color,
+          decoration: TextDecoration.underline,
         ),
       ),
     );

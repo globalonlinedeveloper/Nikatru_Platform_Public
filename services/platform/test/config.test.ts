@@ -318,8 +318,26 @@ describe('AppConfig contract (mirrors packages/core AppConfig)', () => {
         expect(keys, `${appId} is missing "${k}"`).toContain(k);
       }
       // No stray keys: an untyped extra here would ship to every client.
+      //
+      // 🔴 `theme` USED TO BE WAVED PAST THIS LINE AS `[...REQUIRED_KEYS,
+      // 'theme']`, unargued, in a block where every other entry carries a
+      // paragraph. It is gone as of 2026-08-25, and removing it is a
+      // TIGHTENING that changes no verdict today: measured this run, `"theme"`
+      // occurs ZERO times in `app-config-data.json`, `DEFAULT_CONFIGS` is built
+      // from that file alone by `buildRegistry`, and no compiled-in default
+      // carries the key — so the allowance permitted something that never
+      // arrives.
+      //
+      // What it buys is the lever the two keys above describe, pointed at the
+      // one field that had escaped every one of them. `theme?` is OPTIONAL in
+      // the TS interface, which is exactly how it slipped past
+      // assert-config-registry limb 6 (its required set is built with
+      // `.filter((k) => k[2] !== '?')`); limb 9 now covers the optional fields,
+      // and this line is its other half. Serving `theme` from a compiled-in
+      // default now turns THIS lane red the same day, which forces the decision
+      // to be taken rather than merged.
       for (const k of keys) {
-        expect([...REQUIRED_KEYS, 'theme'], `${appId} has unexpected "${k}"`).toContain(k);
+        expect([...REQUIRED_KEYS], `${appId} has unexpected "${k}"`).toContain(k);
       }
     }
   });

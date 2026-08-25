@@ -360,6 +360,27 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
   }
 }
 
+/**
+ * Every registered rail's DESTINATION-SECRET env var name, read off the adapter
+ * the registry points at rather than typed here.
+ *
+ * 🔴 THE COMMITTED-VAR CHECK BELOW USED TO CARRY THE LITERAL
+ * /"PADDLE_NOTIFICATION_SECRET"/ AS A HARDCODED REGEX, which is exactly the
+ * shape registry.ts's own header says the registry exists to abolish: "a guard
+ * whose right-hand side is a hand-kept list in the guard itself stops covering a
+ * provider the day one is added and never says so". Rail #2's secret is covered
+ * here the moment it is registered, with no edit to this file.
+ *
+ * ⚠️ NO COVERAGE BRANCH FOR AN EMPTY SET, AND THAT IS DELIBERATE. `contract.ts`
+ * declares `secretEnvVar` as a REQUIRED member of MoRWebhookVerifier, so an
+ * adapter without one does not compile and the platform Worker's own
+ * `tsc --noEmit` is the check. `assert-money-config.mjs` (same CI lane) derives
+ * the identical set by the identical route and DOES fail on an adapter that
+ * declares none, on two rails sharing one secret, and on an empty derivation. A
+ * second copy of that rule here would be a second thing to disagree with.
+ */
+const secretEnvVars = [];
+
 for (const p of providers) {
   const adapter = `services/platform/src/lib/mor/${p}.ts`;
   if (!existsSync(join(ROOT, adapter))) {
@@ -367,6 +388,14 @@ for (const p of providers) {
     continue;
   }
   const src = stripComments(readFileSync(join(ROOT, adapter), 'utf8'));
+  {
+    // Read from the COMMENT-STRIPPED source, and matched as the PATTERN rather
+    // than the bare token: `secretEnvVar` appears in prose in more than one file,
+    // and a guard matching the token would resolve a rail's secret out of a
+    // sentence describing it. Same expression assert-money-config.mjs uses.
+    const named = /secretEnvVar\s*:\s*'([A-Z][A-Z0-9_]*)'/.exec(src);
+    if (named) secretEnvVars.push(named[1]);
+  }
   for (const method of ['verify', 'parse']) {
     if (!new RegExp(`\\b(?:async\\s+)?${method}\\s*\\(`).test(src)) {
       fail(`adapter ${adapter} does not implement \`${method}\`. A verifier that cannot ${method} is a registry entry, not a rail.`);
@@ -500,12 +529,16 @@ if (!existsSync(join(ROOT, CONTRACT))) {
 // reported, or every CI run blocks on a signup no agent can perform.
 {
   const wrangler = existsSync(join(ROOT, WRANGLER)) ? readFileSync(join(ROOT, WRANGLER), 'utf8') : '';
-  // The secret must NOT be a committed var — that half IS a failure.
-  if (/"PADDLE_NOTIFICATION_SECRET"\s*:/.test(wrangler)) {
-    fail(
-      `${WRANGLER} declares PADDLE_NOTIFICATION_SECRET as a committed var. It is a SECRET: \`wrangler secret put\`, ` +
-        'never a var in a file this public repository tracks.',
-    );
+  // The secret must NOT be a committed var — that half IS a failure. The NAMES
+  // come from `secretEnvVars` above, derived from the registry, so registering a
+  // second rail covers its secret here without an edit to this guard.
+  for (const varName of secretEnvVars) {
+    if (new RegExp(`"${varName}"\\s*:`).test(wrangler)) {
+      fail(
+        `${WRANGLER} declares ${varName} as a committed var. It is a SECRET: \`wrangler secret put\`, ` +
+          'never a var in a file this public repository tracks.',
+      );
+    }
   }
   printed.push(
     '⬜ MONEY RAIL — OWNER-GATED HALF, printed on every run so "finished, waiting on one signup" can never look like "nothing built":',
@@ -524,11 +557,28 @@ if (!existsSync(join(ROOT, CONTRACT))) {
     '     · [ADR 004] 2026-07-24 — applying BEFORE a reviewable product with a live paywall and complete legal pages exists is the main ' +
       'documented cause of hold or rejection. The sequencing is deliberate, not a delay.',
   );
-  printed.push(
-    '⬜ THE LEGACY REVENUECAT RAIL WRITES NO `provider_environment`, so any row it writes is UNDECIDABLE and the shared read denies it ' +
-      '([5]M-12, fail closed). That is safe today — `entitlements` has never held a row and native IAP is deferred with native mobile ' +
-      '(39-CHASSIS §4 cut 5) — and it is a REQUIREMENT on whoever un-defers that rail: set the column, or every purchase it records is inert.',
-  );
+  // ── DELETED 2026-08-25: A PRINT THAT ASKED, EVERY RUN, FOR WORK ALREADY DONE ─
+  // An UNCONDITIONAL `printed.push` stood here — no predicate against the tree —
+  // claiming "THE LEGACY REVENUECAT RAIL WRITES NO `provider_environment`, so any
+  // row it writes is UNDECIDABLE and the shared read denies it… it is a
+  // REQUIREMENT on whoever un-defers that rail". It was FALSE at HEAD.
+  //
+  // MEASURED this run against services/subly-api/src/routes/webhooks.ts: the route
+  // derives the world from the event itself (:285, 'PRODUCTION' -> 'live'),
+  // REFUSES a cross-world event before any write (:292-299), names
+  // `provider_environment` in the INSERT column list (:522), sets it on the DO
+  // UPDATE path (:531) and binds `environment` in the batch (:556). The column has
+  // been written since the adversarial review that asked for it.
+  //
+  // So this was this repository's own scar shape — a settled fact returning as an
+  // open question on every CI run. It is DELETED rather than re-pointed because
+  // the honest replacement is a GATE, not a print, and a gate belongs with a
+  // fixture that can prove it fails. `tooling/ci/test/mor-adapters.test.mjs`'s
+  // LEGACY_WEBHOOK_TS writes no `provider_environment` today, so adding that
+  // predicate here without teaching the fixture first would turn 32 passing cases
+  // red for a reason that has nothing to do with the tree. The DECLARED_WRITERS
+  // row for that file already carries a structural `proof` regex; the column check
+  // belongs beside it, in the same change that updates the fixture.
 }
 
 // ── report ───────────────────────────────────────────────────────────────────

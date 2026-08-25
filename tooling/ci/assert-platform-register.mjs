@@ -202,9 +202,26 @@ function balanced(src, open) {
 // ─────────────────────────────────────────────────────────────────────────────
 const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all'];
 
-function honoIdent(code) {
-  const m = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Hono\b/.exec(code);
-  return m ? m[1] : null;
+/** EVERY `new Hono` instance a file declares, in source order. The first is the
+ *  file's own router; the rest are IN-FILE GROUPS, and missing them is not a
+ *  cosmetic gap — see the block above `mountedRoutes`. */
+function honoIdents(code) {
+  return [...code.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Hono\b/g)].map((m) => m[1]);
+}
+
+/** Mount prefix + leaf path, joined the way Hono's own `mergePath` joins them.
+ *
+ *  🔴 THE TRAILING SLASH IS NOT COSMETIC AND IT IS NOT GUESSED. `posix.join`
+ *  turns ('/v1/subscriptions', '/') into '/v1/subscriptions/', and a register
+ *  entry written against that string would describe a path the Worker does not
+ *  serve. Measured against hono 4.12.34 before this line was written: mounting a
+ *  sub-router whose leaf is '/' answers 200 on '/v1/subscriptions' and 404 on
+ *  '/v1/subscriptions/'. Five of subly-api's twelve routes declare their leaf as
+ *  '/', so without this the register and the Worker would disagree on five paths
+ *  while limb 1 reported perfect agreement with the register it was handed. */
+function joinPath(prefix, p) {
+  const j = rel(posix.join(prefix || '/', p));
+  return j.length > 1 ? j.replace(/\/+$/, '') : j;
 }
 
 /** `import <ident> from '<spec>'` → repo-relative .ts path, resolved from `from`. */
@@ -219,6 +236,58 @@ function resolveDefaultImport(code, ident, fromFileRel) {
 
 const parseNotes = [];
 
+/** Walk ONE Hono identifier inside an already-stripped file, at `prefix`.
+ *
+ *  🔴 THE SUB-ROUTER A FILE DECLARES ITSELF IS STILL A SUB-ROUTER. The walk used
+ *  to follow `app.route(prefix, ident)` ONLY when `ident` resolved to a default
+ *  import, and pushed a parse note otherwise. services/platform/src/index.ts
+ *  happens to mount every group from an import, so nothing was lost there — but
+ *  services/subly-api/src/index.ts builds its authenticated group in the file:
+ *
+ *      const api = new Hono<AppEnv>();
+ *      api.use('*', supabaseAuth);
+ *      api.route('/subscriptions', subscriptions);
+ *      …
+ *      app.route('/v1', api);
+ *
+ *  `api` is not imported, so the old walk stopped at that line and reported
+ *  THREE mounted routes for a Worker that mounts TWELVE. That is the same
+ *  PARTIAL loss as the 2026-08-05 `/*`-in-a-string defect recorded below — 7 of
+ *  12 then, 3 of 12 here — and the liveness self-check cannot see either,
+ *  because it fires on zero. */
+function walkHono(code, fileRel, id, prefix, localIdents, seenFiles, out, seenLocal) {
+  const localKey = `${id}@${prefix}`;
+  if (seenLocal.has(localKey)) return;
+  seenLocal.add(localKey);
+
+  const methodRe = new RegExp(`\\b${id}\\s*\\.\\s*(${METHODS.join('|')})\\s*\\(\\s*(['"\`])([^'"\`]*)\\2`, 'g');
+  for (const m of code.matchAll(methodRe)) {
+    const openParen = code.indexOf('(', m.index + id.length);
+    out.push({
+      method: m[1].toUpperCase(),
+      path: joinPath(prefix, m[3]),
+      owningFile: fileRel,
+      handler: balanced(code, openParen),
+    });
+  }
+
+  const routeRe = new RegExp(`\\b${id}\\s*\\.\\s*route\\s*\\(\\s*(['"\`])([^'"\`]*)\\1\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*\\)`, 'g');
+  for (const m of code.matchAll(routeRe)) {
+    const target = m[3];
+    const nextPrefix = joinPath(prefix, m[2]);
+    if (localIdents.includes(target)) {
+      walkHono(code, fileRel, target, nextPrefix, localIdents, seenFiles, out, seenLocal);
+      continue;
+    }
+    const sub = resolveDefaultImport(code, target, fileRel);
+    if (!sub) {
+      parseNotes.push(`${fileRel} mounts \`${target}\` at ${m[2]} but no default import and no in-file \`new Hono\` resolves it`);
+      continue;
+    }
+    out.push(...mountedRoutes(sub, nextPrefix, seenFiles));
+  }
+}
+
 /** Returns [{ method, path, owningFile, handler }] mounted at `prefix`. */
 function mountedRoutes(fileRel, prefix, seen = new Set()) {
   if (seen.has(fileRel)) return [];
@@ -229,33 +298,13 @@ function mountedRoutes(fileRel, prefix, seen = new Set()) {
     return [];
   }
   const code = stripComments(readFileSync(abs, 'utf8'));
-  const id = honoIdent(code);
-  if (!id) {
+  const idents = honoIdents(code);
+  if (idents.length === 0) {
     parseNotes.push(`${fileRel} declares no \`new Hono\` instance — the parser found nothing to walk`);
     return [];
   }
   const out = [];
-
-  const methodRe = new RegExp(`\\b${id}\\s*\\.\\s*(${METHODS.join('|')})\\s*\\(\\s*(['"\`])([^'"\`]*)\\2`, 'g');
-  for (const m of code.matchAll(methodRe)) {
-    const openParen = code.indexOf('(', m.index + id.length);
-    out.push({
-      method: m[1].toUpperCase(),
-      path: rel(posix.join(prefix || '/', m[3])),
-      owningFile: fileRel,
-      handler: balanced(code, openParen),
-    });
-  }
-
-  const routeRe = new RegExp(`\\b${id}\\s*\\.\\s*route\\s*\\(\\s*(['"\`])([^'"\`]*)\\1\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*\\)`, 'g');
-  for (const m of code.matchAll(routeRe)) {
-    const sub = resolveDefaultImport(code, m[3], fileRel);
-    if (!sub) {
-      parseNotes.push(`${fileRel} mounts \`${m[3]}\` at ${m[2]} but no default import resolves it`);
-      continue;
-    }
-    out.push(...mountedRoutes(sub, rel(posix.join(prefix || '/', m[2])), seen));
-  }
+  walkHono(code, fileRel, idents[0], prefix, idents, seen, out, new Set());
   return out;
 }
 
@@ -287,152 +336,318 @@ if (declaredConfigs.length === 0) {
 const problems = [];
 const printed = [];
 
-// ── LIMB 1 · route set == what the entrypoint mounts, both directions ────────
-const entrypoint = rel(serving.entrypoint);
-if (!existsSync(join(ROOT, entrypoint))) {
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SUBJECT IS EVERY DEPLOYABLE WORKER, AND THE LIST OF THEM IS DERIVED.
+//
+// 🔴 UNTIL THIS BLOCK, LIMB 1'S WHOLE SUBJECT WAS `servingWorker` — ONE Worker.
+// `services/subly-api` mounts TWELVE routes and not one of them was in any
+// register, so limb 2's rule ("a capability with no client is not delivered")
+// covered zero of them, and a route deleted from that Worker was
+// indistinguishable from a route that had never existed. That is how
+// `GET /v1/renewals` — 108 lines, mounted behind supabaseAuth, with its own test
+// file and no caller anywhere — stayed invisible.
+//
+// ⚠️ THE WORKER LIST IS NOT HAND-KEPT. A hand-kept list covers what somebody
+// remembered, which is the failure this register exists to stop. A wrangler
+// config under `services/` that declares `main` IS a Worker that answers
+// requests — that is already the predicate the [B-15] host limb below uses — so
+// the deployable set is read off the same configs, and the register's declared
+// set must EQUAL it in both directions. A third backend cannot arrive unseen.
+//
+// ⚠️ THE BRICK TEMPLATE IS DELIBERATELY NOT IN THIS SET, and the exclusion is a
+// path predicate rather than a sentence: it is a mustache TEMPLATE, not a
+// deployed Worker, and it has no client tree of its own to resolve a caller in.
+// It stays fully in scope for the binding limb and the host limb, which is where
+// the per-app-bucket defect it once carried would show up.
+// ─────────────────────────────────────────────────────────────────────────────
+const onDiskConfigs = wranglerConfigsOnDisk();
+if (onDiskConfigs.length === 0) {
   fail([
-    `✗ COVERAGE LOST — servingWorker.entrypoint \`${entrypoint}\` does not exist.`,
-    '  The register names a Worker this scan cannot read; every route claim below would pass over nothing.',
+    '✗ COVERAGE LOST — found ZERO wrangler configs on disk. The scan is broken, not the tree.',
+    `  looked under ${SERVICES_DIR} and ${BRICK_SERVICES_GLOB}`,
   ]);
 }
-const mounted = mountedRoutes(entrypoint, '');
 
-// Self-check: a parser that matches nothing agrees perfectly with any register.
-// This is the ONLY integer in the guard and it is a parser liveness floor, not a
-// coverage number — the coverage floor is the set equality immediately below.
-if (mounted.length === 0) {
+/** Every `services/*` wrangler config that declares `main`, with the entrypoint
+ *  that `main` resolves to. This is the right-hand side of the worker-set
+ *  equality below — read off the tree, never off the register. */
+function deployableWorkers() {
+  const out = [];
+  for (const cfgRel of onDiskConfigs) {
+    if (!cfgRel.startsWith('services/')) continue;
+    const cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'), cfgRel);
+    if (typeof cfg.main !== 'string' || cfg.main === '') continue;
+    out.push({
+      config: cfgRel,
+      name: typeof cfg.name === 'string' ? cfg.name : '',
+      entrypoint: rel(posix.join(posix.dirname(cfgRel), cfg.main)),
+    });
+  }
+  return out;
+}
+const derivedWorkers = deployableWorkers();
+const derivedByConfig = new Map(derivedWorkers.map((w) => [w.config, w]));
+
+const appWorkers = Array.isArray(register.appWorkers) ? register.appWorkers : [];
+const declaredWorkers = [
+  { spec: serving, field: 'servingWorker', routes },
+  ...appWorkers.map((w, i) => ({ spec: w, field: `appWorkers[${i}]`, routes: w?.routes })),
+];
+
+for (const w of declaredWorkers) {
+  if (!Array.isArray(w.routes)) {
+    fail([`✗ platform register — ${w.field} has no \`routes\` array; its Worker's mounts would be enforced by nothing.`]);
+  }
+}
+
+const declaredNames = declaredWorkers.map((w) => String(w.spec?.name ?? ''));
+if (new Set(declaredNames).size !== declaredNames.length) {
   fail([
-    `✗ COVERAGE LOST — parsed ${entrypoint} and found ZERO mounted routes.`,
-    '  The parser is broken, not the Worker. Notes:',
-    ...parseNotes.map((n) => `    · ${n}`),
+    `✗ platform register — two declared Workers share a \`name\` (${declaredNames.join(', ')}).`,
+    '  The route key is (worker, method, path); duplicate names collapse two Workers into one subject,',
+    '  and both of these Workers mount GET /v1/health and DELETE /v1/account.',
   ]);
 }
-// …and it must have followed at least one `app.route()` into a sub-router, or it
-// is only seeing the routes declared inline in the entrypoint. Today that would
-// silently drop three of four.
-if (!mounted.some((r) => r.owningFile !== entrypoint)) {
-  fail([
-    `✗ COVERAGE LOST — every route the parser found is declared inline in ${entrypoint};`,
-    '  it followed no `app.route(prefix, subRouter)` into a sub-router file. Notes:',
-    ...parseNotes.map((n) => `    · ${n}`),
-  ]);
+
+// The worker set, in BOTH directions, against the tree.
+const declaredConfigSet = new Set(declaredWorkers.map((w) => rel(String(w.spec?.config ?? ''))));
+for (const d of derivedWorkers) {
+  if (!declaredConfigSet.has(d.config)) {
+    problems.push(
+      `${d.config} — declares \`main\`, so it is a Worker that answers requests, and the register declares ` +
+        'neither it nor its routes. [B-1] Every route it mounts is outside the subject of limbs 1, 2 and 4: ' +
+        'nothing can tell a handler that was deleted from one that was never there.',
+    );
+  }
+}
+for (const w of declaredWorkers) {
+  const cfgRel = rel(String(w.spec?.config ?? ''));
+  if (!derivedByConfig.has(cfgRel)) {
+    problems.push(
+      `${w.field} names \`${cfgRel}\`, which is not a \`services/*\` wrangler config declaring \`main\`. ` +
+        'The register is describing a Worker the tree does not deploy.',
+    );
+  }
 }
 
 const key = (m, p) => `${m} ${p}`;
-const mountedByKey = new Map(mounted.map((r) => [key(r.method, r.path), r]));
-const registeredByKey = new Map(routes.map((r) => [key(String(r.method).toUpperCase(), rel(String(r.path))), r]));
 
-for (const [k, r] of mountedByKey) {
-  if (!registeredByKey.has(k)) {
-    problems.push(
-      `${k} — MOUNTED by ${r.owningFile} and absent from the register. [B-1] An unregistered shared ` +
-        'route is one no other requirement can quantify over: B-13 cannot ask whether it is limited, ' +
-        'B-14 cannot ask whether its wire shape is pinned, B-4a cannot ask whether it validates app_id.',
-    );
+/** Route entries whose `client` may name a path with the Worker's base prefix
+ *  removed — the Dart seam builds its URLs on a baseUrl that already carries it.
+ *  Constrained rather than trusted: the prefix must be a real prefix of EVERY
+ *  path this Worker mounts, and the residual it leaves must still be a non-empty
+ *  path. A `clientBasePath` that swallowed the discriminating segment would turn
+ *  the rename check into a tautology, which is the dangerous direction. */
+function clientPathCandidates(routePath, basePath) {
+  const staticPrefix = rel(String(routePath)).split('/:')[0];
+  const out = [staticPrefix];
+  if (basePath && staticPrefix.startsWith(`${basePath}/`)) {
+    const residual = staticPrefix.slice(basePath.length);
+    if (residual.length > 1) out.push(residual);
   }
-}
-for (const [k, entry] of registeredByKey) {
-  if (!mountedByKey.has(k)) {
-    problems.push(
-      `${k} (register id \`${entry.id ?? '?'}\`) — registered but NOT mounted by ${entrypoint}. ` +
-        'The register is describing a capability the shared server does not provide.',
-    );
-  }
+  return out;
 }
 
-// owningFile must be where the route is really declared, not merely a real file.
-for (const [k, entry] of registeredByKey) {
-  const m = mountedByKey.get(k);
-  if (!m) continue;
-  if (rel(String(entry.owningFile ?? '')) !== m.owningFile) {
-    problems.push(
-      `${k} — register says \`${entry.owningFile}\` owns it; the parser found it declared in ` +
-        `\`${m.owningFile}\`. A wrong owningFile silently re-points limb 4 at a different file's limiters.`,
-    );
-  }
-  if (!['required', 'public'].includes(entry.auth)) {
-    problems.push(`${k} — \`auth\` must be exactly "required" or "public" (got ${JSON.stringify(entry.auth)}).`);
-  }
-  if (!String(entry.purpose ?? '').trim()) {
-    problems.push(`${k} — no \`purpose\`. A register that says only that a route exists is a routing table.`);
-  }
-}
+const allMounted = [];
+let mountedInServing = 0;
+for (const w of declaredWorkers) {
+  const workerName = String(w.spec?.name ?? w.field);
 
-// ── LIMB 2 · every client RESOLVES to a real call site, or PRINTS its reason ──
-const servingDir = posix.dirname(posix.dirname(entrypoint)); // services/platform
-for (const entry of routes) {
-  const k = key(String(entry.method).toUpperCase(), rel(String(entry.path)));
-  const c = entry.client;
-  if (!c) {
-    if (String(entry.unconsumedReason ?? '').trim()) {
-      printed.push(`⚠  ${k} — NO CLIENT. ${entry.unconsumedReason}`);
-    } else {
+  // ── LIMB 1 · route set == what the entrypoint mounts, both directions ──────
+  const entrypoint = rel(String(w.spec?.entrypoint ?? ''));
+  if (!entrypoint || !existsSync(join(ROOT, entrypoint))) {
+    fail([
+      `✗ COVERAGE LOST — servingWorker.entrypoint \`${entrypoint}\` (${w.field}) does not exist.`,
+      '  The register names a Worker this scan cannot read; every route claim below would pass over nothing.',
+    ]);
+  }
+  const derived = derivedByConfig.get(rel(String(w.spec?.config ?? '')));
+  if (derived) {
+    if (derived.entrypoint !== entrypoint) {
       problems.push(
-        `${k} — declares no \`client\` and no \`unconsumedReason\`. [B-1] A capability with no client is ` +
-          'not delivered; say who calls it, or say in writing why nothing does.',
+        `${w.field} — declares entrypoint \`${entrypoint}\`, but \`${derived.config}\`'s \`main\` resolves to ` +
+          `\`${derived.entrypoint}\`. The scan would parse a file the deploy does not run.`,
       );
     }
-    continue;
+    if (derived.name && derived.name !== workerName) {
+      problems.push(
+        `${w.field} — calls this Worker \`${workerName}\`; \`${derived.config}\` deploys it as \`${derived.name}\`.`,
+      );
+    }
   }
-  if (!c.file || !c.expression) {
-    problems.push(`${k} — \`client\` needs both a \`file\` and an \`expression\`. A bare string is the "TBD" defect.`);
-    continue;
-  }
-  const cf = rel(c.file);
-  // 🔴 The expression may not come from the Worker that SERVES the route. This is
-  // the HTTP analogue of "matched as a usage, never as the symbol's own
-  // declaration" — the server declaring `POST /v1/events` is not evidence that
-  // anything calls it.
-  if (cf.startsWith(`${servingDir}/`)) {
-    problems.push(
-      `${k} — client file \`${cf}\` is inside the serving Worker (${servingDir}). That is the route's own ` +
-        'declaration, not a caller. [B-1]',
-    );
-    continue;
-  }
-  if (!existsSync(join(ROOT, cf))) {
-    problems.push(`${k} — client file \`${cf}\` does not exist on disk.`);
-    continue;
-  }
-  const src = stripComments(readFileSync(join(ROOT, cf), 'utf8'));
-  if (!src.includes(c.expression)) {
-    problems.push(
-      `${k} — client expression \`${c.expression}\` does not appear in \`${cf}\` once comments are stripped. ` +
-        'Either the call site moved or the only occurrence was a doc comment — this repo has shipped ' +
-        'exactly that bug before (assert-capability-register.mjs, 2026-08-01).',
-    );
-    continue;
-  }
-  // …and the expression must be about THIS route. Without this, one correct
-  // client expression would satisfy every entry that named the same file.
-  const staticPrefix = rel(String(entry.path)).split('/:')[0];
-  if (!c.expression.includes(staticPrefix)) {
-    problems.push(
-      `${k} — client expression \`${c.expression}\` does not contain the route's own path \`${staticPrefix}\`, ` +
-        'so it would keep resolving after the route was renamed.',
-    );
-  }
-}
 
-// ── LIMB 4 · a public route is bounded, or SAYS why it is not ────────────────
-// (Numbered 4 in the register's _readme; run here because it needs limb 1's
-// parse and nothing from limb 3.)
-for (const entry of routes) {
-  if (entry.auth !== 'public') continue;
-  const k = key(String(entry.method).toUpperCase(), rel(String(entry.path)));
-  const m = mountedByKey.get(k);
-  if (!m) continue; // already reported by limb 1
-  const handler = stripComments(m.handler, { alsoStrings: true });
-  const bounded = LIMITER_CALLS.some((fn) => new RegExp(`\\b${fn}\\s*\\(`).test(handler));
-  if (bounded) continue;
-  if (String(entry.noLimiterReason ?? '').trim()) {
-    printed.push(`⚠  ${k} — PUBLIC AND UNLIMITED. ${entry.noLimiterReason}`);
-  } else {
+  const mounted = mountedRoutes(entrypoint, '');
+  allMounted.push(...mounted);
+  if (w.field === 'servingWorker') mountedInServing = mounted.length;
+
+  // Self-check: a parser that matches nothing agrees perfectly with any register.
+  // This is the ONLY integer in the guard and it is a parser liveness floor, not a
+  // coverage number — the coverage floor is the set equality immediately below.
+  if (mounted.length === 0) {
+    fail([
+      `✗ COVERAGE LOST — parsed ${entrypoint} and found ZERO mounted routes.`,
+      '  The parser is broken, not the Worker. Notes:',
+      ...parseNotes.map((n) => `    · ${n}`),
+    ]);
+  }
+  // …and it must have followed at least one `app.route()` into a sub-router, or it
+  // is only seeing the routes declared inline in the entrypoint. Today that would
+  // silently drop three of four.
+  if (!mounted.some((r) => r.owningFile !== entrypoint)) {
+    fail([
+      `✗ COVERAGE LOST — every route the parser found is declared inline in ${entrypoint};`,
+      '  it followed no \`app.route(prefix, subRouter)\` into a sub-router file. Notes:',
+      ...parseNotes.map((n) => `    · ${n}`),
+    ]);
+  }
+
+  const mountedByKey = new Map(mounted.map((r) => [key(r.method, r.path), r]));
+  const registeredByKey = new Map(
+    w.routes.map((r) => [key(String(r.method).toUpperCase(), rel(String(r.path))), r]),
+  );
+  if (registeredByKey.size !== w.routes.length) {
     problems.push(
-      `${k} — \`auth: public\` and its handler reaches neither ${LIMITER_CALLS.join(' nor ')}, and it ` +
-        'declares no `noLimiterReason`. [B-13] An unauthenticated route that can be made expensive is a ' +
-        'bill anyone can run up; one that genuinely cannot must say so in writing.',
+      `${w.field} — two entries share a (method, path); one is shadowing the other and can never be checked.`,
     );
+  }
+
+  for (const [k, r] of mountedByKey) {
+    if (!registeredByKey.has(k)) {
+      problems.push(
+        `${k} — MOUNTED by ${r.owningFile} and absent from the register. [B-1] An unregistered shared ` +
+          'route is one no other requirement can quantify over: B-13 cannot ask whether it is limited, ' +
+          'B-14 cannot ask whether its wire shape is pinned, B-4a cannot ask whether it validates app_id.',
+      );
+    }
+  }
+  for (const [k, entry] of registeredByKey) {
+    if (!mountedByKey.has(k)) {
+      problems.push(
+        `${k} (register id \`${entry.id ?? '?'}\`) — registered but NOT mounted by ${entrypoint}. ` +
+          'The register is describing a capability the shared server does not provide.',
+      );
+    }
+  }
+
+  // owningFile must be where the route is really declared, not merely a real file.
+  for (const [k, entry] of registeredByKey) {
+    const m = mountedByKey.get(k);
+    if (!m) continue;
+    if (rel(String(entry.owningFile ?? '')) !== m.owningFile) {
+      problems.push(
+        `${k} — register says \`${entry.owningFile}\` owns it; the parser found it declared in ` +
+          `\`${m.owningFile}\`. A wrong owningFile silently re-points limb 4 at a different file's limiters.`,
+      );
+    }
+    if (!['required', 'public'].includes(entry.auth)) {
+      problems.push(`${k} — \`auth\` must be exactly "required" or "public" (got ${JSON.stringify(entry.auth)}).`);
+    }
+    if (!String(entry.purpose ?? '').trim()) {
+      problems.push(`${k} — no \`purpose\`. A register that says only that a route exists is a routing table.`);
+    }
+  }
+
+  // ── the client base path, checked against this Worker's own mounts ─────────
+  const rawBase = w.spec?.clientBasePath;
+  let basePath = '';
+  if (rawBase !== undefined) {
+    const bp = rel(String(rawBase));
+    if (!/^\/[^/](?:.*[^/])?$/.test(bp)) {
+      problems.push(
+        `${w.field} — \`clientBasePath\` must be an absolute path with no trailing slash (got ${JSON.stringify(rawBase)}).`,
+      );
+    } else {
+      const notPrefixed = mounted.filter((r) => !r.path.startsWith(`${bp}/`));
+      if (notPrefixed.length) {
+        problems.push(
+          `${w.field} — \`clientBasePath\` \`${bp}\` is not a prefix of ` +
+            `${notPrefixed.map((r) => key(r.method, r.path)).join(', ')}. A base path that does not front every ` +
+            'mounted route is not a base path; it is a way to delete a segment from the rename check.',
+        );
+      } else {
+        basePath = bp;
+      }
+    }
+  }
+
+  // ── LIMB 2 · every client RESOLVES to a real call site, or PRINTS its reason ──
+  const servingDir = posix.dirname(posix.dirname(entrypoint)); // services/<worker>
+  for (const entry of w.routes) {
+    const k = key(String(entry.method).toUpperCase(), rel(String(entry.path)));
+    const where = ` · ${workerName}`;
+    const c = entry.client;
+    if (!c) {
+      if (String(entry.unconsumedReason ?? '').trim()) {
+        printed.push(`⚠  ${k} — NO CLIENT.${where} ${entry.unconsumedReason}`);
+      } else {
+        problems.push(
+          `${k} — declares no \`client\` and no \`unconsumedReason\`. [B-1] A capability with no client is ` +
+            'not delivered; say who calls it, or say in writing why nothing does.',
+        );
+      }
+      continue;
+    }
+    if (!c.file || !c.expression) {
+      problems.push(`${k} — \`client\` needs both a \`file\` and an \`expression\`. A bare string is the "TBD" defect.`);
+      continue;
+    }
+    const cf = rel(c.file);
+    // 🔴 The expression may not come from the Worker that SERVES the route. This is
+    // the HTTP analogue of "matched as a usage, never as the symbol's own
+    // declaration" — the server declaring `POST /v1/events` is not evidence that
+    // anything calls it.
+    if (cf.startsWith(`${servingDir}/`)) {
+      problems.push(
+        `${k} — client file \`${cf}\` is inside the serving Worker (${servingDir}). That is the route's own ` +
+          'declaration, not a caller. [B-1]',
+      );
+      continue;
+    }
+    if (!existsSync(join(ROOT, cf))) {
+      problems.push(`${k} — client file \`${cf}\` does not exist on disk.`);
+      continue;
+    }
+    const src = stripComments(readFileSync(join(ROOT, cf), 'utf8'));
+    if (!src.includes(c.expression)) {
+      problems.push(
+        `${k} — client expression \`${c.expression}\` does not appear in \`${cf}\` once comments are stripped. ` +
+          'Either the call site moved or the only occurrence was a doc comment — this repo has shipped ' +
+          'exactly that bug before (assert-capability-register.mjs, 2026-08-01).',
+      );
+      continue;
+    }
+    // …and the expression must be about THIS route. Without this, one correct
+    // client expression would satisfy every entry that named the same file.
+    const candidates = clientPathCandidates(entry.path, basePath);
+    if (!candidates.some((p) => c.expression.includes(p))) {
+      problems.push(
+        `${k} — client expression \`${c.expression}\` does not contain the route's own path \`${candidates[0]}\`` +
+          `${candidates[1] ? ` (nor \`${candidates[1]}\`, its path below \`${basePath}\`)` : ''}, ` +
+          'so it would keep resolving after the route was renamed.',
+      );
+    }
+  }
+
+  // ── LIMB 4 · a public route is bounded, or SAYS why it is not ──────────────
+  // (Numbered 4 in the register's _readme; run here because it needs limb 1's
+  // parse and nothing from limb 3.)
+  for (const entry of w.routes) {
+    if (entry.auth !== 'public') continue;
+    const k = key(String(entry.method).toUpperCase(), rel(String(entry.path)));
+    const m = mountedByKey.get(k);
+    if (!m) continue; // already reported by limb 1
+    const handler = stripComments(m.handler, { alsoStrings: true });
+    const bounded = LIMITER_CALLS.some((fn) => new RegExp(`\\b${fn}\\s*\\(`).test(handler));
+    if (bounded) continue;
+    if (String(entry.noLimiterReason ?? '').trim()) {
+      printed.push(`⚠  ${k} — PUBLIC AND UNLIMITED. · ${workerName} ${entry.noLimiterReason}`);
+    } else {
+      problems.push(
+        `${k} — \`auth: public\` and its handler reaches neither ${LIMITER_CALLS.join(' nor ')}, and it ` +
+          'declares no \`noLimiterReason\`. [B-13] An unauthenticated route that can be made expensive is a ' +
+          'bill anyone can run up; one that genuinely cannot must say so in writing.',
+      );
+    }
   }
 }
 
@@ -462,13 +677,6 @@ function wranglerConfigsOnDisk() {
   return found.sort();
 }
 
-const onDiskConfigs = wranglerConfigsOnDisk();
-if (onDiskConfigs.length === 0) {
-  fail([
-    '✗ COVERAGE LOST — found ZERO wrangler configs on disk. The scan is broken, not the tree.',
-    `  looked under ${SERVICES_DIR} and ${BRICK_SERVICES_GLOB}`,
-  ]);
-}
 // The coverage assertion, in both directions: the declared list and the glob
 // must be the SAME SET. A config that appears on disk and not in the register's
 // list would otherwise be scanned silently — or, worse, a config removed from the
@@ -641,8 +849,14 @@ if (problems.length) {
 // ── the gaps print whether or not the build passes ───────────────────────────
 for (const line of printed) console.log(line);
 
+const appMountCount = allMounted.length - mountedInServing;
+const appEntryCount = declaredWorkers.slice(1).reduce((n, w) => n + w.routes.length, 0);
 console.log(
-  `ok  platform register — ${mounted.length} mounted route(s) reconciled with ${routes.length} register ` +
-    `entry(ies); ${declaredBindings.size} binding(s) across ${onDiskConfigs.length} wrangler config(s), ` +
+  `ok  platform register — ${mountedInServing} mounted route(s) reconciled with ${routes.length} register ` +
+    `entry(ies)` +
+    (declaredWorkers.length > 1
+      ? `, plus ${appMountCount} across ${declaredWorkers.length - 1} app Worker(s) reconciled with ${appEntryCount}`
+      : '') +
+    `; ${declaredBindings.size} binding(s) across ${onDiskConfigs.length} wrangler config(s), ` +
     `each with a resolved reader; ${printed.length} declared gap(s) printed above`,
 );

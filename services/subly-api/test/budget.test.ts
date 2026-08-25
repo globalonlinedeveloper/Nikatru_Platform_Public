@@ -46,19 +46,41 @@ const caps = (db: ReturnType<typeof realAppDb>) =>
     .rows('SELECT name, cap FROM budget_categories WHERE user_id = ? ORDER BY name', A)
     .map((r) => `${r.name}:${r.cap}`);
 
+/** name -> stored surrogate id, straight out of the database. */
+const idsByName = (db: ReturnType<typeof realAppDb>): Record<string, string> =>
+  Object.fromEntries(
+    db
+      .rows('SELECT name, id FROM budget_categories WHERE user_id = ?', A)
+      .map((r) => [String(r.name), String(r.id)]),
+  );
+
+type CategoryBody = { id: string; name: string; cap: number };
+const getBody = async (
+  call: ReturnType<typeof asUser>,
+): Promise<{ monthly_budget: number; categories: CategoryBody[] }> =>
+  (await (await call(A, '/v1/budget')).json()) as {
+    monthly_budget: number;
+    categories: CategoryBody[];
+  };
+
 describe('PUT /v1/budget — happy path', () => {
   it('stores the budget and the caps, and GET reads them back', async () => {
     const { db, call } = setup();
     await seed(call);
 
-    const res = await call(A, '/v1/budget');
-    expect(await res.json()).toEqual({
-      monthly_budget: 500,
-      categories: [
-        { name: 'Music', cap: 20 },
-        { name: 'Video', cap: 35 },
-      ],
-    });
+    const body = await getBody(call);
+    expect(body.monthly_budget).toBe(500);
+    expect(body.categories.map((c) => ({ name: c.name, cap: c.cap }))).toEqual([
+      { name: 'Music', cap: 20 },
+      { name: 'Video', cap: 35 },
+    ]);
+    // 🔴 THE id IS ON THE WIRE. It was not until 2026-08-25: GET selected
+    // `name, cap`, so the column 0002_schema_debt.sql added, backfilled and put a
+    // UNIQUE index on never left the database and no caller could address a row
+    // by it. Deleting `id` from that SELECT turns this assertion red.
+    const stored = idsByName(db);
+    expect(body.categories.map((c) => c.id)).toEqual([stored.Music, stored.Video]);
+    for (const c of body.categories) expect(typeof c.id, 'id must be on the wire').toBe('string');
     expect(caps(db)).toEqual(['Music:20', 'Video:35']);
   });
 
@@ -95,6 +117,125 @@ describe('PUT /v1/budget — happy path', () => {
     const { call } = setup();
     const res = await call(A, '/v1/budget');
     expect(await res.json()).toEqual({ monthly_budget: 0, categories: [] });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SURROGATE id IS AN ADDRESS, WHICH MEANS IT HAS TO SURVIVE A SAVE.
+//
+// 0002_schema_debt.sql states its own purpose: without a single-column id "the
+// row is unaddressable as (entity, row_id), and renaming a category would read
+// as delete+create rather than an edit". PUT is a REPLACE — DELETE-all then
+// re-insert — so before 2026-08-25 it minted a fresh uuid() for every category
+// on every save. The column was written on every write, indexed UNIQUE, and read
+// by nothing: a rename read as delete+create, and so did a save that changed
+// NOTHING AT ALL. Each test below fails against that version.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PUT /v1/budget — the category id is an address, not a fresh uuid', () => {
+  it('a save that changes nothing leaves every id EXACTLY where it was', async () => {
+    const { db, call } = setup();
+    await seed(call);
+    const before = idsByName(db);
+
+    await call(A, '/v1/budget', { method: 'PUT', body: SEED });
+
+    expect(idsByName(db)).toEqual(before);
+  });
+
+  it('a RENAME that round-trips the id is an EDIT — same row, new name', async () => {
+    const { db, call } = setup();
+    await seed(call);
+    const musicId = idsByName(db).Music;
+
+    const body = await getBody(call);
+    const renamed = body.categories.map((c) =>
+      c.name === 'Music' ? { id: c.id, name: 'Audio', cap: c.cap } : c,
+    );
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 500, categories: renamed },
+    });
+    expect(res.status).toBe(200);
+
+    const after = idsByName(db);
+    expect(after.Music).toBeUndefined();
+    expect(after.Audio, 'the renamed row must keep its address').toBe(musicId);
+  });
+
+  it('a category that is genuinely new gets an id of its own', async () => {
+    const { db, call } = setup();
+    await seed(call);
+    const before = idsByName(db);
+    await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 500, categories: [...SEED.categories, { name: 'Books', cap: 10 }] },
+    });
+    const after = idsByName(db);
+    expect(after.Music).toBe(before.Music);
+    expect(after.Video).toBe(before.Video);
+    expect(typeof after.Books).toBe('string');
+    expect(new Set(Object.values(after)).size).toBe(3);
+  });
+
+  it('the id the caller sends is the id that is stored', async () => {
+    const { db, call } = setup();
+    const chosen = '018f4c2e-0000-7000-8000-0000000000aa';
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 100, categories: [{ id: chosen, name: 'Music', cap: 20 }] },
+    });
+    expect(res.status).toBe(200);
+    expect(idsByName(db).Music).toBe(chosen);
+    expect((await getBody(call)).categories[0].id).toBe(chosen);
+  });
+
+  it('400s a DUPLICATE id — the UNIQUE index would answer 500 and name nothing', async () => {
+    const { db, call } = setup();
+    await seed(call);
+    const dup = '018f4c2e-0000-7000-8000-0000000000bb';
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: {
+        monthly_budget: 500,
+        categories: [
+          { id: dup, name: 'A', cap: 1 },
+          { id: dup, name: 'B', cap: 2 },
+        ],
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { detail: string }).detail).toMatch(/id duplicates/);
+    expect(caps(db), 'the DELETE must not have run').toEqual(['Music:20', 'Video:35']);
+  });
+
+  const badIds: Array<[string, unknown]> = [
+    ['id is a number', 7],
+    ['id is blank', '   '],
+    ['id is an object', {}],
+    ['id is over-long', 'x'.repeat(65)],
+  ];
+  for (const [label, id] of badIds) {
+    it(`400s when ${label}, leaving the existing caps intact`, async () => {
+      const { db, call } = setup();
+      await seed(call);
+      const res = await call(A, '/v1/budget', {
+        method: 'PUT',
+        body: { monthly_budget: 500, categories: [{ id, name: 'Music', cap: 20 }] },
+      });
+      expect(res.status, label).toBe(400);
+      expect(caps(db)).toEqual(['Music:20', 'Video:35']);
+    });
+  }
+
+  it('an ABSENT id is still accepted — no released client sends one yet', async () => {
+    // apps/subly's BudgetCap.toJson emits name + cap only. A required id would
+    // 400 every save the shipped app makes.
+    const { call } = setup();
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 10, categories: [{ name: 'Music', cap: 5 }] },
+    });
+    expect(res.status).toBe(200);
   });
 });
 

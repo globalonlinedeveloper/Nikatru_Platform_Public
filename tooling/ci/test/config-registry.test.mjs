@@ -144,7 +144,12 @@ export const RAIL_CONFIG = 'services/platform/src/app-config-data.json';
  *  resolves that or not depending on directory order, so the fixture pins the
  *  two-pass behaviour rather than trusting it. */
 const DART = {
-  'packages/core/lib/src/config/app_config.dart': `class AppConfig {\n  bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;\n}\n`,
+  // 🔴 IT CARRIES `theme` AND `text` BECAUSE LIMBS 9 AND 10 ARE ABOUT THEM.
+  // Limb 9 refuses to scan for a field `packages/core` does not parse (that
+  // would be measuring the Dart class rather than the tree), and limb 10's
+  // subject is the accessor's own declaration — so a fixture carrying neither
+  // proves neither.
+  'packages/core/lib/src/config/app_config.dart': `class AppConfig {\n  final Map<String, Object?>? theme;\n  final Map<String, String> copy;\n  bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;\n  String text(String key) => copy[key] ?? key;\n}\n`,
   'apps/subly/lib/state/providers.dart': `const String kPromoCardFeature = 'promo_card_enabled';\n`,
   'apps/subly/lib/features/home/home_screen.dart': `Widget build() {\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n`,
   // 🔴 A TEST THAT READS A KEY MUST NOT COUNT AS A READER. This file asks for
@@ -215,6 +220,7 @@ describe('assert-config-registry — COVERAGE', () => {
     'services/platform/src/types.ts',
     'tooling/bricks/app/hooks/pre_gen.dart',
     'tooling/sites/generate-discovery.mjs',
+    'packages/core/lib/src/config/app_config.dart',
   ]) {
     test(`a missing ${rel} is COVERAGE LOST, not a pass`, () => {
       const r = run(tree({ omit: rel }));
@@ -313,9 +319,28 @@ describe('assert-config-registry — the seven observations', () => {
     assert.match(r.out, /missing "renewal_notice"/);
   });
 
-  test('6c · an OPTIONAL field added to AppConfig does NOT fail — `?` is the contract', () => {
-    const r = run(tree({ typesTs: TYPES_TS.replace('  theme?:', '  renewal_notice?: string;\n  theme?:') }));
+  test('6c · an OPTIONAL field added to AppConfig does NOT fail LIMB 6 — `?` is the contract', () => {
+    // ⚠️ THE DART MIRROR IS PART OF THIS FIXTURE AS OF 2026-08-25, AND THE CASE
+    // IS WEAKER WITHOUT IT. It used to add `renewal_notice?` to the TS interface
+    // ALONE and assert exit 0, which limb 9 now correctly fails: an optional
+    // field packages/core never parses is a field no client can read. That
+    // unmirrored case did not disappear, it moved to 9h. What survives here is
+    // 6c's own claim — the `?` keeps the field out of limb 6's completeness set,
+    // so `defaults` need not carry it.
+    const r = run(
+      tree({
+        typesTs: TYPES_TS.replace('  theme?:', '  renewal_notice?: string;\n  theme?:'),
+        dart: {
+          ...DART,
+          'packages/core/lib/src/config/app_config.dart': DART['packages/core/lib/src/config/app_config.dart'].replace(
+            '  final Map<String, Object?>? theme;',
+            '  final Map<String, Object?>? theme;\n  final String? renewalNotice;',
+          ),
+        },
+      }),
+    );
     assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /defaults carry all 8 required AppConfig field\(s\)/);
   });
 
   test('7 · the shared api base diverges from the brick fallback', () => {
@@ -462,8 +487,201 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
     // "for safety". What survives is the honest answer for this tree: no
     // `feature(` call site anywhere, so "no Dart reader" is a fact about the
     // scan and says so.
-    const r = run(tree({ dart: { 'packages/core/test/config_test.dart': DART['packages/core/test/config_test.dart'] } }));
+    // app_config.dart STAYS: it joined REQUIRED_COVERAGE with limbs 9/10, so
+    // dropping it exits at limb 0 with a DIFFERENT coverage message and this
+    // case would assert nothing about limb 8. Its `feature(` is a DECLARATION,
+    // not a `.feature(` call site, so the count this test is about is still 0.
+    const r = run(
+      tree({
+        dart: {
+          'packages/core/test/config_test.dart': DART['packages/core/test/config_test.dart'],
+          'packages/core/lib/src/config/app_config.dart': DART['packages/core/lib/src/config/app_config.dart'],
+        },
+      }),
+    );
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /COVERAGE LOST[\s\S]*ZERO `feature\(` call sites/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9 · AN *OPTIONAL* AppConfig FIELD IS STILL A FIELD (2026-08-25)
+//
+// The real-tree proof, recorded here because these fixtures are not the proof:
+// four mutations were made to the WORKING TREE, run, and every file restored
+// byte-identical afterwards.
+//   A  `"theme": { "seed": "#6459F5" }` added to app-config-data.json `defaults`
+//      → EXIT 1, "emits optional AppConfig field \"theme\" (defaults) and
+//      NOTHING reads it". app-config-data.json sha256 b00e6a2e…16a7fac before
+//      and after.
+//   B  `Object? _t(core.AppConfig? cfg) => cfg?.theme;` added to
+//      apps/subly/lib/features/home/home_screen.dart → EXIT 1, "is READ by …
+//      and … emits it from NOWHERE". sha256 f551aeed…3412251 before and after.
+//   C  every `theme` renamed to `__gone__` in packages/core's app_config.dart
+//      → EXIT 1, "does not mention `theme`". sha256 00be0c94…5687e restored.
+//   D  `String _t(core.AppConfig cfg) => cfg.text('promo.card.title');` added to
+//      home_screen.dart → EXIT 1, limb 10's "has a non-test caller".
+// Unmutated, the guard PRINTS both tripwires and exits 0.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-config-registry — 9 · an OPTIONAL AppConfig field is still a field', () => {
+  test('9a · the armed tripwire is PRINTED on the passing tree, not asserted away', () => {
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /optional AppConfig field "theme" — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('9b · EMITTED with no reader fails — limb 6 cannot see past the `?`', () => {
+    // The whole reason this limb exists: limb 6 builds its required set with
+    // `.filter((k) => k[2] !== '?')`, so this key is outside it BY
+    // CONSTRUCTION and the tree below passes limb 6 while serving dead data.
+    const r = run(tree({ data: { ...DATA, defaults: { ...DATA.defaults, theme: { seed: '#6459F5' } } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /emits optional AppConfig field "theme"[\s\S]*NOTHING reads it/);
+  });
+
+  test('9c · emitted from a PER-APP entry counts as emitted too, not just `defaults`', () => {
+    const r = run(tree({ data: { ...DATA, apps: { subly: { features: { renewals: true }, theme: {} } } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /emits optional AppConfig field "theme" \(apps\.subly\)/);
+  });
+
+  test('9d · READ with no emitter fails — the `update_url` seam, which reported healthy', () => {
+    const r = run(
+      tree({
+        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}Object? t(cfg) => cfg?.theme;\n` },
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /optional AppConfig field "theme" is READ by[\s\S]*emits it from NOWHERE/);
+  });
+
+  test('9e · emitted AND read is the healthy state, and says so', () => {
+    const r = run(
+      tree({
+        data: { ...DATA, defaults: { ...DATA.defaults, theme: { seed: '#6459F5' } } },
+        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}Object? t(cfg) => cfg?.theme;\n` },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /optional AppConfig field "theme" is emitted \(defaults\) and read by 1 non-test Dart file/);
+  });
+
+  test('9f · A READER IN A TEST FILE IS NOT A READER — the fixture that would go green', () => {
+    // 🔴 THE NEGATIVE THIS LIMB IS MOST LIKELY TO LOSE. `config_test.dart`
+    // asserts `c.theme` is null on the REAL tree, and `chassis_properties_test`
+    // reads `app.theme` off a MaterialApp — a DIFFERENT SYMBOL. If the `/test/`
+    // filter ever stops filtering, both count as readers, the armed tripwire
+    // reports healthy, and the limb quietly stops catching its own class.
+    const r = run(
+      tree({
+        dart: { ...DART, 'packages/core/test/config_test.dart': "void main() {\n  expect(c.feature('renewals'), isTrue);\n  expect(c.theme, isNull);\n}\n" },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /optional AppConfig field "theme" — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('9g · A READER INSIDE A COMMENT IS NOT A READER — prose is not code', () => {
+    const r = run(
+      tree({
+        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `/// Deliberately does NOT read cfg?.theme — see the config contract.\n${DART['apps/subly/lib/features/home/home_screen.dart']}` },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /optional AppConfig field "theme" — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('9h · an optional field the Dart mirror does not parse fails', () => {
+    // A key `packages/core` never parses is a key no client can read, so the
+    // reader scan would be reporting a fact about the Dart class instead of
+    // about the tree. This is also the case 6c used to assert passed.
+    const r = run(tree({ typesTs: TYPES_TS.replace('  theme?:', '  renewal_notice?: string;\n  theme?:') }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares optional AppConfig field "renewal_notice"[\s\S]*does not mention `renewalNotice`/);
+  });
+
+  test('9i · snake_case is camelCased for the Dart side, not compared raw', () => {
+    const r = run(
+      tree({
+        typesTs: TYPES_TS.replace('  theme?:', '  renewal_notice?: string;\n  theme?:'),
+        dart: { ...DART, 'packages/core/lib/src/config/app_config.dart': `${DART['packages/core/lib/src/config/app_config.dart'].replace('}\n', '  final String? renewalNotice;\n}\n')}` },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /optional AppConfig field "renewal_notice" — TRIPWIRE ARMED/);
+  });
+
+  test('9j · AppConfig with NO optional field reports an empty domain rather than passing silently', () => {
+    const r = run(tree({ typesTs: TYPES_TS.replace('  theme?: Record<string, unknown>;\n', '') }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /declares NO optional field today/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10 · THE DEAD COPY ACCESSOR DOES NOT ACQUIRE A USER-FACING READER
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-config-registry — 10 · AppConfig.text(key) stays uncalled', () => {
+  test('10a · the armed tripwire is PRINTED on the passing tree', () => {
+    const r = run(tree());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('10b · a non-test caller FAILS, with the [O3] reason', () => {
+    const r = run(
+      tree({
+        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}String t(cfg) => cfg.text('promo.card.title');\n` },
+      }),
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`AppConfig\.text\(key\)` has a non-test caller[\s\S]*never the raw key/);
+  });
+
+  test('10c · `find.text(` is flutter_test, not the accessor — excluded by RECEIVER', () => {
+    // The `/test/` filter would normally hide this shape. Relying on that alone
+    // is relying on a coincidence: a screenshot harness or a golden helper that
+    // lives outside a `test/` directory would fire the limb for the wrong
+    // reason, and the fix would be to loosen it — the dangerous direction.
+    const r = run(
+      tree({
+        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}final f = find.text('Skip');\n` },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('10d · a caller in a TEST file is not a caller — that is the state being reported', () => {
+    const r = run(
+      tree({
+        dart: { ...DART, 'packages/core/test/config_test.dart': "void main() {\n  expect(c.feature('renewals'), isTrue);\n  expect(c.text('welcome'), 'Hi');\n}\n" },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('10e · a caller inside a COMMENT is not a caller — the brick explains why it does NOT call it', () => {
+    // Not hypothetical: tooling/bricks/…/onboarding_screen.dart carries a doc
+    // comment naming `AppConfig.text(key)` as the thing it deliberately avoids.
+    // A raw-text scan reads that explanation as the caller this limb hunts.
+    const r = run(
+      tree({
+        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `/// Never cfg.text(key) — it falls back to the raw key. [O3]\n${DART['apps/subly/lib/features/home/home_screen.dart']}` },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
+  });
+
+  test('10f · with the accessor DELETED the limb says its subject is gone, not "clean"', () => {
+    const r = run(
+      tree({
+        dart: { ...DART, 'packages/core/lib/src/config/app_config.dart': DART['packages/core/lib/src/config/app_config.dart'].replace(/  String text.*\n/, '') },
+      }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /`AppConfig\.text` is no longer declared/);
   });
 });

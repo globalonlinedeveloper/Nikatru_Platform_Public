@@ -26,7 +26,7 @@
   "channel-register.test.mjs": 160,
   "chrome-splice.test.mjs": 26,
   "clone-contract.test.mjs": 34,
-  "config-registry.test.mjs": 36,
+  "config-registry.test.mjs": 52,
   "consent-anon-id.test.mjs": 12,
   "consent-withdrawal-surface.test.mjs": 38,
   "content-pipeline.test.mjs": 45,

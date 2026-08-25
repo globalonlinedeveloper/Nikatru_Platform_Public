@@ -55,6 +55,29 @@ class AppConfig {
   /// `FeatureFlags`/`resolveFlag` (CFG G-14). Distinct from [features], which is
   /// a hard on/off toggle.
   final Map<String, int> flags;
+  /// ⬜ PARSED, SERIALISED, COPY-WITHED — AND READ BY NOTHING. Printed by
+  /// `tooling/ci/assert-config-registry.mjs` limb 9 on every CI run rather than
+  /// deleted, because the decision it is holding a place for is the owner's.
+  ///
+  /// MEASURED 2026-08-25 over every git-tracked file in this repository AND the
+  /// three sibling repositories, with no language filter — the last dead-key
+  /// sweep in this project was language-scoped and wrong, so this one was not.
+  /// `"theme"` as a JSON key occurs ZERO times in
+  /// `services/platform/src/app-config-data.json`, so no `defaults` and no
+  /// `apps.*` entry emits it and it can only arrive through a hand-written
+  /// CONFIG_KV override that the server's `deepMerge` passes through
+  /// unvalidated. `.theme` occurs nine times tree-wide: six are this class's own
+  /// declare/parse/serialise/copyWith sites, one is `config_test.dart` asserting
+  /// it is null, and two are `MaterialApp.theme` in a widget test — a DIFFERENT
+  /// SYMBOL, and exactly the false positive a careless sweep banks as a reader.
+  ///
+  /// 🔴 DO NOT DELETE IT AS DEAD CODE. It is the client-side half of the
+  /// brand-vs-seed decision, which the owner has half taken (#6459F5 is Subly's
+  /// brand under a two-layer model; only the accent migration is open).
+  /// `services/platform/src/types.ts` carries the server-side half and the same
+  /// note. Limb 9 fails the build in BOTH directions — emitted and unread, or
+  /// read and unemitted, which is the `update_url` shape that reported healthy
+  /// for weeks — so whichever end moves first, the other is forced.
   final Map<String, Object?>? theme;
 
   /// Where the force-update wall sends users, resolved at RUNTIME.
@@ -99,6 +122,31 @@ class AppConfig {
   int rolloutPercent(String flag) => flags[flag] ?? 0;
 
   /// Override copy for [key], or [key] itself when absent.
+  ///
+  /// ⬜ ZERO NON-TEST CALLERS, AND THE THREE LIVE COPY SITES ALL BYPASS IT ON
+  /// PURPOSE. Measured 2026-08-25 across every `.dart` file in this repository:
+  /// the only `AppConfig.text(` call sites in existence are
+  /// `packages/core/test/config_test.dart:144` and `:145`. Meanwhile [copy]
+  /// itself IS live — `home_screen.dart`, `onboarding_screen.dart` and the
+  /// brick's `onboarding_screen.dart` each read `cfg?.copy[key]` DIRECTLY. So
+  /// the map reaches paint on three surfaces and only this accessor is dead.
+  ///
+  /// 🔴 THEY BYPASS IT BECAUSE ITS FALLBACK IS THE WRONG ONE, and the chassis
+  /// says so in its own words: "`AppConfig.text(key)` returns the KEY ITSELF
+  /// when there is no override — by design, and exactly wrong here: a freshly
+  /// stamped app has no overrides, so a purely config-driven carousel would
+  /// greet its first user with `onboarding.1.title`."
+  /// Subly's [O3] states the rule positively: an override REPLACES designed
+  /// copy, designed copy is the FALLBACK, never the raw key. Every live site
+  /// therefore reads the map and supplies an l10n default, and each additionally
+  /// treats a blank override as absent — which this accessor does not do either.
+  ///
+  /// ⚠️ IT IS KEPT ONLY BECAUSE ITS DELETION IS NOT THIS CHANGE'S TO MAKE (two
+  /// assertions in `packages/core/test/config_test.dart` still call it, and that
+  /// file is outside this edit's ownership). `assert-config-registry.mjs` limb
+  /// 10 holds the line meanwhile: the FIRST non-test caller fails the build,
+  /// with the [O3] reason, so this accessor cannot quietly acquire a user-facing
+  /// reader while it waits to be removed. Prefer `copy[key] ?? designedDefault`.
   String text(String key) => copy[key] ?? key;
 
   /// Parse the Worker / `defaults.json` JSON shape.

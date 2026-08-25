@@ -112,6 +112,31 @@ export interface Env {
    * var: `tooling/ci/scan-secrets.mjs` refuses the prefix in the tree.
    */
   PADDLE_NOTIFICATION_SECRET?: string;
+  /**
+   * Paddle's SELLER API KEY (`pdl_live_apikey_…` / `pdl_sdbx_apikey_…`), the
+   * bearer credential `POST /v1/checkout` creates a transaction with.
+   *
+   * 🔴 DECLARED HERE BECAUSE IT WAS READ BY NAME THROUGH A CAST AND `tsc` COULD
+   * NOT SEE IT. `routes/checkout.ts` reached it as
+   * `(c.env as unknown as Record<string, string | undefined>)['PADDLE_API_KEY']`
+   * and justified that by symmetry with `routes/money.ts`. MEASURED 2026-08-25,
+   * the symmetry did not hold: money.ts reads a rail's destination secret by
+   * name because the NAME IS DATA (`verifier.secretEnvVar`, chosen at runtime by
+   * the URL segment) — and that secret is declared right above this one anyway.
+   * checkout.ts has exactly one credential, known at compile time, so the cast
+   * bought nothing and cost the one thing the cast removes: an env sweep over
+   * `services/platform/src` returned 19 names and this was not among them, so a
+   * developer had no way to discover it from the type at all.
+   *
+   * OPTIONAL, and absence FAILS CLOSED: checkout answers 503
+   * `checkout_not_configured` rather than attempting an unauthenticated call.
+   *
+   * 🔴 `wrangler secret put PADDLE_API_KEY`, NEVER a committed var — this
+   * repository is public and `.gitleaks.toml` carries rules for both prefixes.
+   * `.dev.vars.example` documents the local half; the deployed value is the
+   * vault's `PADDLE_API_KEY_LIVE` ([ADR 044]).
+   */
+  PADDLE_API_KEY?: string;
   SUPABASE_URL: string;
   /**
    * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps
@@ -318,6 +343,44 @@ export interface AppConfig {
    * run. Null ⇒ the gate shows its message with no action, which is true.
    */
   update_url: string | null;
+  /**
+   * ⬜ DECLARED ON BOTH SIDES, EMITTED BY NOBODY, READ BY NOBODY — and PRINTED
+   * on every CI run rather than deleted, because the decision this seam is
+   * waiting on belongs to the owner and not to a cleanup pass.
+   *
+   * MEASURED 2026-08-25 over every git-tracked file in this repository and in
+   * the three sibling repositories, with no language filter (.ts .dart .mjs .js
+   * .json .md .yml alike), because the last dead-key sweep here was language
+   * scoped and wrong:
+   *   · the JSON key `"theme"` occurs in `app-config-data.json` ZERO times, so
+   *     neither `defaults` nor any `apps.*` entry emits it. It can reach a
+   *     client only through a hand-written CONFIG_KV override, which
+   *     `deepMerge` passes through unvalidated.
+   *   · `packages/core`'s AppConfig declares, parses, serialises and copyWiths
+   *     it, and NOTHING reads it. Every `.theme` in the tree is that class's own
+   *     six sites, one test asserting it is null, or `MaterialApp.theme` in a
+   *     widget test — a DIFFERENT symbol, and exactly the false positive a
+   *     careless sweep banks as a reader.
+   *
+   * 🔴 NOT DELETED, AND NOT OUT OF TIMIDITY. This is the SERVER-SIDE HOME of the
+   * brand-vs-seed decision, which is half taken: the owner has recorded that
+   * #6459F5 is Subly's brand under a two-layer model, and only the
+   * accent-migration question is open. Deleting the field deletes the seam that
+   * decision lands on. Serving it today would put a key on the wire that every
+   * client parses into a field no surface reads.
+   *
+   * ⚠️ IT IS OPTIONAL, AND THAT IS PRECISELY HOW IT ESCAPED EVERY LIMB. Limb 6
+   * of `tooling/ci/assert-config-registry.mjs` derives its completeness set with
+   * `.filter((k) => k[2] !== '?')`, so an optional field is outside that check
+   * BY CONSTRUCTION, and limb 8 covers `features` only. Limb 9 now ranges over
+   * the optional fields specifically and FAILS in both directions — emitted and
+   * unread, or read and unemitted (the `update_url` shape one field up, which
+   * reported healthy for weeks). While neither has happened it prints TRIPWIRE
+   * ARMED, DOMAIN EMPTY, the idiom `assert-adapter-capabilities.mjs` uses for
+   * `max_promos_per_week`. `services/platform/test/config.test.ts` holds the
+   * other half: `theme` is no longer waved past the stray-key assertion, so
+   * putting it into a compiled-in default turns that lane red the same day.
+   */
   theme?: Record<string, unknown>;
 }
 

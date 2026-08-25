@@ -154,10 +154,11 @@
       "note": "⬜ NOT YET LIVE. Nobody can pay NIKATRU today; stage 5 owns the money rail. ⚠️ 2026-08-01: the CLIENT rail now exists too (packages/purchases + the brick wiring), so what remains is the seller account itself (A-1), not any code. Recorded now because the surfaces already exist in the tree, and a vendor whose keys are wired before its checklist is exactly the adoption-without-review this requirement stops."
     },
     "paddle": {
-      "surface": "MERCHANT OF RECORD for web/desktop — the legal seller, which remits global VAT/GST on our behalf. The surface in this repo is ONE value: the per-destination webhook notification secret.",
+      "surface": "MERCHANT OF RECORD for web/desktop — the legal seller, which remits global VAT/GST on our behalf. The surface in this repo is ONE value: the per-destination webhook notification secret. — CORRECTION 2026-08-25: it is TWO. `PADDLE_API_KEY`, the seller API key `POST /v1/checkout` creates a transaction with, is the second, and it was invisible to this register rather than absent from the tree: `routes/checkout.ts` read it as `(c.env as unknown as Record<string, string | undefined>)['PADDLE_API_KEY']`, so it appeared in no `interface Env` and this guard’s derivation could not see it. Declaring the binding surfaced it. Both are Worker SECRETS (`wrangler secret put`), never committed vars; both are OWNER-GATED on the same seller account (OWNER_QUEUE A-1); and neither changes anything else in this record — the seam, the export path and the exit plan below are about the entitlement the rail produces, not about how many credentials open the door. The key is additionally world-bound: checkout.ts refuses a `pdl_sdbx_apikey_` prefix on a `live` deploy and vice versa ([5]M-12).",
       "stickiness": "★★★★ — payments, the stickiest point the portability standard names. Mitigated to the extent it can be: the entitlement RECORD is ours, and the rail is one interface with per-provider adapters.",
       "surfaces": [
-        "PADDLE_NOTIFICATION_SECRET"
+        "PADDLE_NOTIFICATION_SECRET",
+        "PADDLE_API_KEY"
       ],
       "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. Which is exactly why parts 2 and 4 carry the weight here: the SIGNATURE SCHEME is proprietary and lives in one adapter file, and the entitlement it produces is written in our own vocabulary into our own table.",
       "seam": {
