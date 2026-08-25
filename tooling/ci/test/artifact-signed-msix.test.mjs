@@ -24,14 +24,16 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
-import { readIdentity, IDENTITY_FIELDS, MANIFEST_MEMBER, SIGNATURE_MEMBER } from '../assert-artifact-signed-msix.mjs';
+import { readIdentity, parseArgs, IDENTITY_FIELDS, MANIFEST_MEMBER, SIGNATURE_MEMBER, REGISTER_REL, CHANNEL_ID } from '../assert-artifact-signed-msix.mjs';
 
 const GUARD = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'assert-artifact-signed-msix.mjs');
+/** The root the guard falls back to when no `--repo-root` is given — the CI shape. */
+const REPO_ROOT = resolve(dirname(GUARD), '..', '..');
 const SENTINEL = 'PARTNER-CENTER-PENDING';
 
 let TMP;
@@ -138,6 +140,16 @@ function fixture({ register = REGISTER, members = null, raw = null } = {}) {
 
 const run = (root, args = ['pkg/subly.msix']) => {
   const r = spawnSync(process.execPath, [GUARD, '--repo-root', root, ...args], { encoding: 'utf8' });
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+};
+
+/** 🔴 THE CI SHAPE, AND THE ONE NO TEST USED UNTIL 2026-08-24: argv with NO
+ *  `--repo-root` at all. build-platforms.yml's "The MSIX carries the identity
+ *  the register declares" invokes the guard with exactly one positional and no
+ *  flags; every test above passes `--repo-root`, which is precisely the shape
+ *  that hid ddb9efe's off-by-one for a week. */
+const runBare = (...args) => {
+  const r = spawnSync(process.execPath, [GUARD, ...args], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
 
@@ -307,5 +319,133 @@ describe('assert-artifact-signed-msix — a question that could not be asked is 
     const { code, out } = run(root, []);
     assert.notEqual(code, 0);
     assert.match(out, /COVERAGE LOST/);
+  });
+});
+
+// ── the argument list, which is where run 32699518559 was lost ───────────────
+// 🔴 THE WEEKLY RELEASE LANE FAILED 2026-08-24T06:58Z WITH `Package MSIX`
+// GREEN. ddb9efe replaced the argument split with:
+//     const rootIdx = argv.indexOf('--repo-root');                 // -1 when ABSENT
+//     const packages = argv.filter((a, i) => !a.startsWith('--') && i !== rootIdx + 1);
+// Absent flag ⇒ rootIdx === -1 ⇒ `rootIdx + 1 === 0` ⇒ the filter dropped index
+// 0, the ONLY positional. CI passes one positional and no `--repo-root`, so the
+// guard threw away the path it was given and printed COVERAGE LOST — blaming a
+// packaging step that had succeeded.
+//
+// EVERY test in this file passed `--repo-root`, so every one of them exercised
+// rootIdx >= 0, where the arithmetic happens to be right. That is why the suite
+// was green while the lane was red. These tests use the CI shape.
+describe('assert-artifact-signed-msix — the path CI actually passes is not discarded', () => {
+  test('parseArgs keeps the lone positional when --repo-root is ABSENT', () => {
+    const got = parseArgs(['apps/subly/build/windows/msix/subly.msix']);
+    assert.deepEqual(got.packages, ['apps/subly/build/windows/msix/subly.msix']);
+    assert.equal(got.rootFlagSeen, false);
+    assert.equal(got.rootArg, undefined);
+  });
+
+  test('parseArgs keeps EVERY positional when --repo-root is absent', () => {
+    assert.deepEqual(parseArgs(['a.msix', 'b.msix', 'c.msix']).packages, ['a.msix', 'b.msix', 'c.msix']);
+  });
+
+  test('parseArgs with --repo-root first still takes the value as the root, not as a package', () => {
+    const got = parseArgs(['--repo-root', '/tmp/root', 'pkg/subly.msix']);
+    assert.equal(got.rootArg, '/tmp/root');
+    assert.equal(got.rootFlagSeen, true);
+    assert.deepEqual(got.packages, ['pkg/subly.msix']);
+  });
+
+  test('parseArgs with --repo-root AFTER the positional keeps both straight', () => {
+    const got = parseArgs(['pkg/subly.msix', '--repo-root', '/tmp/root']);
+    assert.equal(got.rootArg, '/tmp/root');
+    assert.deepEqual(got.packages, ['pkg/subly.msix']);
+  });
+
+  test('parseArgs drops other flags without eating the path beside them', () => {
+    assert.deepEqual(parseArgs(['--verbose', 'pkg/subly.msix']).packages, ['pkg/subly.msix']);
+  });
+
+  // A flag is not a path. Consuming one would root the entire comparison at a
+  // string like "--verbose" and report the result as a verdict.
+  test('parseArgs does not swallow a following FLAG as the repo root', () => {
+    const got = parseArgs(['--repo-root', '--verbose', 'pkg/subly.msix']);
+    assert.equal(got.rootFlagSeen, true);
+    assert.equal(got.rootArg, undefined);
+    assert.deepEqual(got.packages, ['pkg/subly.msix']);
+  });
+
+  test('parseArgs on a truly empty argv reports no packages and no flag', () => {
+    assert.deepEqual(parseArgs([]), { rootFlagSeen: false, rootArg: undefined, packages: [] });
+  });
+
+  // ── spawned, in the exact CI shape ────────────────────────────────────────
+  // 🔴 THE PIN. Against the ddb9efe code this reads "no .msix path was given";
+  // the path is present in argv and must never be reported as absent.
+  test('a lone positional and NO --repo-root is NOT reported as the empty set', () => {
+    const missing = join(TMP, `absent${seq++}.msix`);
+    const { code, out } = runBare(missing);
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /no \.msix path was given/);
+    assert.match(out, /no such file/);
+    assert.match(out, /NOT ONE opened as a zip/);
+  });
+
+  // The whole verdict, end to end, in the CI shape: a package built against
+  // whatever the REAL register declares today must PASS with no --repo-root.
+  // Built from the live register rather than a copy of it, so the day Partner
+  // Center replaces the sentinel this test follows instead of going stale.
+  test('a correct package at an absolute path PASSES with no --repo-root', () => {
+    const live = JSON.parse(readFileSync(join(REPO_ROOT, REGISTER_REL), 'utf8'));
+    const declared = (live.channels ?? []).find((c) => c && c.id === CHANNEL_ID).packageIdentity;
+    const pkg = join(TMP, `ci-shape${seq++}.msix`);
+    writeFileSync(
+      pkg,
+      makeZip([
+        {
+          name: MANIFEST_MEMBER,
+          bytes: Buffer.from(
+            manifestXml({
+              name: declared.identityName,
+              publisher: declared.publisher,
+              displayName: declared.publisherDisplayName,
+            }),
+            'utf8',
+          ),
+          method: 8,
+        },
+      ]),
+    );
+    const { code, out } = runBare(pkg);
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}msix identity/);
+    assert.match(out, /1 package\(s\) opened/);
+  });
+
+  // 🔴 AND THE MESSAGE ITSELF. It used to say the packaging step "produced no
+  // path to hand over, which is itself the finding" — a diagnosis of a step
+  // this guard cannot observe, and one that had SUCCEEDED on the failing run.
+  // What is observable here is argv, so argv is what it must print.
+  test('the empty-set message prints the argv and blames no step it cannot see', () => {
+    const { code, out } = runBare('--verbose');
+    assert.equal(code, 1, out);
+    assert.match(out, /no \.msix path was given/);
+    assert.match(out, /1 argument\(s\) this process received were: "--verbose"/);
+    assert.doesNotMatch(out, /produced no path to hand over/);
+    assert.doesNotMatch(out, /which is itself the finding/);
+  });
+
+  test('a wholly empty argv says so rather than printing an empty list', () => {
+    const { code, out } = runBare();
+    assert.equal(code, 1, out);
+    assert.match(out, /0 argument\(s\) this process received were: \(none\)/);
+  });
+
+  // `--repo-root` with nothing usable after it must not quietly fall back to
+  // the default root: the caller asked to compare against a tree it named, and
+  // answering about a different one is a verdict about the wrong repository.
+  test('--repo-root with no value refuses instead of falling back', () => {
+    const { code, out } = runBare('--repo-root');
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /`--repo-root` was given with no path after it/);
   });
 });

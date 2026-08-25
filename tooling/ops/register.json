@@ -453,7 +453,8 @@
         "analytics_liveness",
         "renewals",
         "events_rollup",
-        "retention_sweep"
+        "retention_sweep",
+        "cancellation_drain"
       ],
       "mechanism": {
         "substrate": "cloudflare-cron",

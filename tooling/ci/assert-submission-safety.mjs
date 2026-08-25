@@ -39,18 +39,172 @@
 //    every build over a `planned` app would be a guard that gets switched off.
 //
 // 3. CADENCE — PRINTS, and becomes build-failing on the first store record.
-//    🔴 THE ≤2-PER-CALENDAR-MONTH RULE IS **OURS**, NOT VENDOR POLICY —
-//    "NIKATRU cadence rule (`MASTER_PLAN.md:277,:281`)", printed verbatim in
-//    the output. Written beside real Google and Microsoft rules it reads as
-//    one, and somebody will eventually defend it as a policy nobody can find.
+//    🔴 THE ≤2-PER-CALENDAR-MONTH RULE IS **OURS**, NOT VENDOR POLICY. It is
+//    labelled as ours in the output — see `CADENCE_LABEL` below, which is
+//    interpolated into all four messages that CITE the rule. It is NOT the only
+//    cadence string this guard emits — see the SCOPE note in the correction
+//    block below, which measures that. Written beside real Google and Microsoft
+//    rules it reads as one, and somebody will eventually defend it as a policy
+//    nobody can find.
 //    The count is read through tooling/ci/deployment-record.mjs's
 //    `readSubmissions`, the same reader [10]D-10 limb (iii) uses, so there is
 //    one notion of "a submission happened".
+//
+//    📌 CORRECTED 2026-08-21 — THIS PARAGRAPH QUOTED A STRING THE GUARD HAD
+//    STOPPED PRINTING, in the present tense. What stood here is the two lines
+//    below: everything after each line's `//` indentation is byte-for-byte what
+//    `git show HEAD:` on this file carries, only re-indented under this block
+//    and never re-backticked, so the inner backticks the original carried
+//    survive the copy. A preserved quotation that a `grep -F` for the old string
+//    cannot match is not preserved at all — and the first draft of this block
+//    dropped exactly those backticks, repaired in place rather than annotated,
+//    since a wrong quote left standing under a note about it is the defect
+//    twice:
+//
+//        "NIKATRU cadence rule (`MASTER_PLAN.md:277,:281`)", printed verbatim in
+//        the output.
+//
+//    `CADENCE_LABEL` was repointed at the SECTION on 2026-08-15 by
+//    75374e4 ("fix(guards): cite the cadence rule by section…", read from
+//    `git log` this run, not inherited) and the note at its declaration below
+//    records that move — but this header, the FIRST description of the limb a
+//    reader meets, kept the dead locator and the claim that it reaches stdout.
+//    So the file taught the wrong locator on the way down to the correction
+//    that killed it.
+//    RE-MEASURED AFTER THE LAST EDIT TO THIS FILE, not carried in: `node
+//    tooling/ci/assert-submission-safety.mjs` → EXIT 0, and the ONE cadence
+//    line it puts on stdout CONTAINS the two fragments below. Each is a
+//    byte-for-byte substring of that line, backticks included — `grep -cF` each
+//    against the run's stdout returns 1 — and the break between them is THIS
+//    comment's wrapping, not the guard's, so the pair is not one grep. Said
+//    that way because the first draft of this block dropped the backticks and
+//    the second called a re-wrapped copy "byte-for-byte":
+//
+//        NIKATRU cadence rule (`MASTER_PLAN.md` § 10, AUTO-MODE execution
+//        operating model) caps it at 2
+//
+//    `:277,:281` appears nowhere in that output.
+//    THE FIX IS TO STOP COPYING THE VALUE, not to copy the new one: the header
+//    now NAMES the constant, so there is one string and prose cannot drift from
+//    it. Re-quoting would only have reset the clock on the same defect.
+//    LATENT, never live: the quotation sat in a `//` comment and no exit path
+//    moved.
+//    ⚠️ SCOPE, because the first draft of this block over-claimed here, and an
+//    unscoped absolute in a file about unscoped absolutes is the worst place for
+//    one. What `CADENCE_LABEL` owns is the ATTRIBUTION, not the wording: it is
+//    the only string in this guard that NAMES the rule and its locator, and its
+//    four interpolation sites are its only readers. ⚠️ TAKE THAT FOUR WITH THE
+//    COMMENTS EXCLUDED, and do not write down the raw total: this paragraph
+//    names the pattern in order to describe it, so it matches itself, and every
+//    rewording changes the raw count — the first draft of this sentence said
+//    "returns 4", the second said "returns FIVE", and the true raw figure moved
+//    again while they were being written. The stable recipe is
+//    `grep -n '${CADENCE_LABEL}' <this file> | grep -v '^[0-9]*://'`, which
+//    returns exactly the 4 interpolation sites, all inside template literals. A
+//    grep whose own prose is one of its hits is the miniature of the defect this
+//    block corrects, so the trap is recorded rather than a self-counting number.
+//    WHAT STOOD HERE INSTEAD was "`CADENCE_LABEL` (declared below) is the only
+//    cadence string that reaches stdout", and that is measurably false: the
+//    literal prefixes `CADENCE UNREAD:`, `CADENCE: 0 store submission(s) on
+//    record` and `CADENCE ${month}:` are cadence text built
+//    without the constant, and the `--ledger … does not exist` COVERAGE-LOST
+//    line ("a count of nothing reported as compliance") is a fourth. DOMAIN of
+//    the stdout measurement, since a count without one is not a measurement: a
+//    default `node tooling/ci/assert-submission-safety.mjs` run in this repo
+//    emits exactly ONE cadence line, the `CADENCE UNREAD: …` print. The
+//    over-cap message is not on that list at all — it goes to STDERR through
+//    `problems`, never to stdout.
+//    What it cost was reader trust, which is the only thing this class of defect
+//    ever costs and the reason it survives every gate.
+//    🔴 THE OTHER TWO OCCURRENCES OF `:277,:281` UNDER tooling/ ARE CORRECT AND
+//    MUST NOT BE "FIXED": the note at the `CADENCE_LABEL` declaration ("This
+//    label read … until 2026-08-15") and the block comment inside
+//    test/submission-safety.test.mjs's test named "with no ledger it PRINTS
+//    UNKNOWN, never zero, and labels the rule as ours" ("The label was … until
+//    75374e4") are DATED HISTORICAL RECORDS, not claims about today. Named by
+//    TEST NAME, not by line number, and that is a repair rather than a style
+//    choice: the first draft of this block carried `:163` and `:167` into a file
+//    this change does not own — planting two fresh instances of the 203/218
+//    citation-drift defect inside the paragraph that condemns it, four lines
+//    under the sentence at the `CADENCE_LABEL` declaration that spells out why.
+//    A test name survives an insert; a line number does not. Measured BEFORE
+//    this correction landed: `grep -rn '277,:281' tooling/` returned exactly
+//    three hits across two files, and only this one was present-tense. This
+//    block itself now adds occurrences, so do not read a count off that grep
+//    today — the two to preserve are the two named here.
+//    WHAT THIS DOES NOT CATCH: nothing mechanical defends this paragraph. No
+//    test reads a comment, so naming the constant is a discipline, not a guard —
+//    a future reader can re-inline the value and nothing goes red. What IS
+//    defended is the PRINTED label: submission-safety.test.mjs asserts the § 10
+//    form by regex, in that same test — `grep -c 'AUTO-MODE execution operating
+//    model' tooling/ci/test/submission-safety.test.mjs` returns 1, and that one
+//    hit IS the assertion. Proved rather than assumed, and re-run after the last
+//    edit to this file: a scratchpad copy of this guard with `CADENCE_LABEL`
+//    reverted to the old `:277,:281` string takes that suite from
+//    20 pass / 0 fail / EXIT 0 to 19 pass / 1 fail / EXIT 1.
 //
 // ⚠️ THE "DISTINCT VISUAL IDENTITY" LIMB IS DELIBERATELY NOT A GUARD. apps.json
 // carries no seed or palette field, so there is nothing to compare across apps;
 // `brick.yaml`'s `seed_hex` default is stage 2's to fix. It PRINTS as an owner
 // judgement rather than pretending to check something that has no data.
+//
+// ── 📌 MEASURED 2026-08-21 — WHICH OF THIS GUARD'S CONDITIONS A TEST CAN ─────
+// ── ACTUALLY FALSIFY, AND WHICH FOUR IT CANNOT ───────────────────────────────
+// Done because a tripwire no input reaches is not a weak check, it is a
+// DECORATION that makes a file look guarded. METHOD, so it can be repeated —
+// and the enumerating regex is given because a bare "18 conditions" is a number
+// nobody can re-take: `grep -nE '^\s*(\}\s*else\s+)?if \(' ` on this file lists
+// exactly 18, and it does not pick up the `if (false)` occurrences in this
+// comment because every line of it opens with `//`. All 18 of those conditions,
+// one at a time, rewritten to `if (false)` in
+// this file itself, `node --test tooling/ci/test/submission-safety.test.mjs`
+// re-run for each, the file restored from a pristine copy and the restore
+// confirmed byte-identical by sha256. DOMAIN: those 18 conditions and that one
+// suite; no other suite was run and none is claimed. RESULT: 14 of 18 go RED
+// (EXIT 1). The FOUR that stay green at 20 pass / 0 fail / EXIT 0, named by
+// their source text because a line number is a pointer into a file other people
+// edit:
+//   · `if (!existsSync(abs))` in `readJson` — REDUNDANT, NOT A HOLE. Measured
+//     with it disabled: a missing `catalog/apps.json` still exits 1 with
+//     `FAIL COVERAGE LOST — catalog/apps.json could not be parsed (ENOENT…)`,
+//     because `readFileSync` throws into `readJson`'s own `catch`. It buys the
+//     better message, not the fail-closed outcome. (Note the OTHER
+//     `if (!existsSync(abs))` in this file, the `--ledger` one, goes RED — the
+//     two are told apart by their enclosing scope, not by position.)
+//   · `if (!required) return null;` — DEAD, and provably so rather than merely
+//     untested: `grep -nE 'readJson\([^)]*,'` on this file returns ZERO hits, so
+//     `required` is `true` at both call sites and that branch has no caller.
+//   · `if (examined < apps.length)` — UNREACHABLE ON THIS VERSION OF THIS FILE.
+//     The tagline loop either increments `resolvedTaglines` or pushes a problem
+//     and `continue`s, so `resolvedTaglines + problems.length >= apps.length` is
+//     an identity here, and the STATUS and DUPLICATE limbs both add to
+//     `problems` only AFTER this point. 🔴 THE PARAGRAPH ABOVE IT CALLS IT
+//     "re-pointed at something that CAN go wrong". SCOPE THAT: what can go wrong
+//     is a FUTURE edit — a `continue` added to that loop — not any input to the
+//     file as it stands. A canary against a later change is a legitimate thing
+//     to keep, but it is NOT a clause with a writable failing input today, and
+//     that paragraph reads as if it were. Corrected in place down there too, so
+//     this is not a header that contradicts a survivor forty lines below.
+//   · `if (m === null)` (LEDGER ROW UNDATED) — REACHABLE AND SIMPLY UNTESTED,
+//     the one of the four a test would close. Proved with a real input this run
+//     rather than argued, and the fixture is given WHOLE because an elided one
+//     does not reproduce — a one-row ledger file holding exactly
+//     `[{"environment":"subly-windows-store","createdAt":"not-a-date",`
+//     `"description":"nk1 state=in_review sha=0123abcd"}]`, passed as
+//     `--ledger`, printed `⬜ LEDGER ROW UNDATED: subly-windows-store carries no
+//     usable timestamp, so it counts towards no month.` at EXIT 0. ⚠️ BOTH other
+//     fields are load-bearing: the row needs an `environment` the register
+//     resolves to a `kind: 'store'` channel AND a `description` that
+//     `decodeDescription` accepts, or `readSubmissions` reports it UNREADABLE
+//     and this branch is never reached. Measured: dropping the `description`
+//     yields `⬜ LEDGER ROW UNREADABLE: subly-windows-store — empty description`
+//     instead — which is exactly what the first attempt at this proof produced,
+//     and it looked like an unreachable branch rather than a bad fixture.
+// ⚠️ ALL FOUR ARE PRE-EXISTING. The 2026-08-21 change that added this block
+// altered NO executable line in this file — `git diff HEAD` over it shows zero
+// changed lines that are not `//`. Recording them is not a claim to have fixed
+// them, and the test file that would close the fourth is not this change's to
+// edit.
 //
 // Usage:
 //   node tooling/ci/assert-submission-safety.mjs [repoRoot]
@@ -166,6 +320,20 @@ for (const app of apps) {
 // every catalogue entry must have been ACCOUNTED FOR, either resolved or
 // reported. A `continue` added above that skips an entry silently shrinks the
 // domain, and this is what says so.
+//
+// 🔴 SCOPE, MEASURED 2026-08-21 — "something that CAN go wrong" IS TRUE OF A
+// FUTURE EDIT, NOT OF ANY INPUT TODAY, and the paragraph above does not say so.
+// The very identity that killed the `resolvedTaglines === 0` clause holds for
+// this one on the file as it stands: the loop above either increments or
+// pushes-and-continues, so `examined` can never be less than `apps.length`, and
+// both later limbs add to `problems` only after this line. Proved rather than
+// argued — set this condition to `if (false)` and the suite stays at
+// 20 pass / 0 fail / EXIT 0, one of only four of this file's 18 conditions that
+// survives that treatment. It is KEPT, because a canary against the `continue`
+// the paragraph above describes is worth having and deleting it removes the
+// canary; what is corrected is the impression that a test could go red for it
+// today. Full method, domain and the other three: the 📌 MEASURED 2026-08-21
+// block in this file's header.
 //
 // (Mutation-recorded, 2026-08-03: renaming the `tagline` key to `description`
 // — literally D-6's original defect — now reports "app X has an empty tagline"

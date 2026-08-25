@@ -33,6 +33,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// The shared blanker, never a hand-rolled rival. Used by exactly one case in
+// this file (assert-workflow-hardening, "REFUSES when its own canaries fail"),
+// which has to find a line of CODE in a guard that quotes its own source in
+// prose — see the comment there for why a raw substring count is wrong.
+import { stripSourceComments } from '../text-reductions.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1390,6 +1395,143 @@ describe('assert-workflow-hardening', () => {
       assert.equal(code, 2);
       assert.doesNotMatch(out, /ALREADY established before this stop/);
       assert.match(out, /REFUSING TO REPORT — 1 job\(s\) this limb cannot classify/);
+    });
+  });
+
+  // ── limb 5: the live workflow list, and the dispatch that reaches it ───────
+  // 🔴 ADDED 2026-08-24, AND IT IS EXACTLY THE CLOSURE THAT GUARD FILE HAS BEEN
+  // NAMING IN ITS OWN COMMENTS SINCE 2026-08-21 ("guards.test.mjs cases that
+  // invoke this script with `--live-workflows=<fixture>` and with a mistyped
+  // flag"). Every case above passes a fixture ROOT and no flag, so the whole
+  // dispatch behind that flag had NO input in the committed tree: the branch
+  // choosing between NOT CONSULTED and consulting, the refusal on a mistyped
+  // flag, the refusal on an unreadable file, and the one line that TAKES the
+  // coverage-lost stop. The guard carries in-file canaries (C1-C16) for the pure
+  // engine behind those decisions and says so; a canary cannot reach a
+  // `process.exit` path, and three of these were measured as SILENT false
+  // greens — disabled, the guard printed ok and exited 0 over two real orphans.
+  describe('limb 5 — the live workflow list', () => {
+    const liveEntry = (base) => ({ id: 1, name: base, path: `.github/workflows/${base}`, state: 'active' });
+    /** The three workflows `build()` writes, as GitHub would list them. */
+    const THREE = ['a.yml', 'b.yml', 'c.yml'].map(liveEntry);
+    /** A three-workflow root with a `gh api` page written beside it. */
+    const withPage = (name, page) => {
+      const dir = build(name);
+      const at = join(dir, 'live.json');
+      writeFileSync(at, JSON.stringify(page));
+      return { dir, at };
+    };
+
+    test('CONSULTS the live workflow list when one is supplied, and says so in the ok line', () => {
+      const { dir, at } = withPage('wh-live-ok', { total_count: 3, workflows: THREE });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir, `--live-workflows=${at}`] });
+      assert.equal(code, 0, out);
+      assert.match(out, /list consulted — 3 on GitHub under \.github\/workflows\/, 0 of them absent/);
+      assert.doesNotMatch(out, /NOT CONSULTED/);
+    });
+
+    // THE ORDER IS PART OF THE ASSERTION. Positionals and flags are separated by
+    // predicate, not by index, so a root AFTER the flag must still be the root —
+    // and the separation is the only thing that makes that true.
+    test('accepts the flag BEFORE the root, and the root is still the root', () => {
+      const { dir, at } = withPage('wh-live-order', { total_count: 3, workflows: THREE });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [`--live-workflows=${at}`, dir] });
+      assert.equal(code, 0, out);
+      assert.match(out, /3 workflow\(s\)/);
+      assert.match(out, /list consulted/);
+    });
+
+    test('FAILS COVERAGE LOST on a workflow GitHub lists that this checkout has not, naming it', () => {
+      const { dir, at } = withPage('wh-live-orphan', {
+        total_count: 4,
+        workflows: [...THREE, { id: 320102035, name: 'media-probe (throwaway)', path: '.github/workflows/media-probe.yml', state: 'active' }],
+      });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir, `--live-workflows=${at}`] });
+      assert.equal(code, 1, out);
+      assert.match(out, /COVERAGE LOST/);
+      assert.match(out, /media-probe\.yml \(id 320102035, "media-probe \(throwaway\)", state `active`\)/);
+    });
+
+    // 🔴 THE SINGULAR TYPO IS THE WHOLE POINT. `--live-workflow=` silently not
+    // running is the one failure a limb like this actually has, and it exits 0
+    // with a NOT CONSULTED line that looks exactly like a run nobody asked to
+    // consult a list.
+    test('REFUSES a mistyped flag instead of silently not consulting the list', () => {
+      const { dir, at } = withPage('wh-live-typo', { total_count: 3, workflows: THREE });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir, `--live-workflow=${at}`] });
+      assert.equal(code, 2, out);
+      assert.match(out, /unrecognised argument\(s\): --live-workflow=/);
+      assert.doesNotMatch(out, /NOT CONSULTED/);
+    });
+
+    // A missing list is not an empty list, and an empty list is zero orphans.
+    // The WORDING is the assertion: without the read's own catch the body lands
+    // on the not-readable-JSON refusal instead, same exit code, different claim.
+    test('REFUSES when the named list cannot be read, naming the flag and the path', () => {
+      const dir = build('wh-live-missing');
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir, `--live-workflows=${join(dir, 'absent.json')}`] });
+      assert.equal(code, 2, out);
+      assert.match(out, /--live-workflows=.*absent\.json could not be read/);
+      assert.doesNotMatch(out, /is not readable JSON/);
+    });
+
+    test('REFUSES a page that does not account for itself', () => {
+      const { dir, at } = withPage('wh-live-partial', { total_count: 13, workflows: THREE });
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [dir, `--live-workflows=${at}`] });
+      assert.equal(code, 2, out);
+      assert.match(out, /PARTIAL page — it reports total_count 13 and carries 3 entr/);
+    });
+
+    // NO POSITIONAL ROOT IS CI'S OWN INVOCATION, and it is a different, stricter
+    // situation: the git manifest that anchors the scan MUST be readable. Every
+    // other case in this file hands the guard a fixture root, so that branch had
+    // no input either.
+    test('treats NO positional root as the real repository, where the manifest must be readable', () => {
+      const dir = build('wh-noroot');
+      const { code, out } = run('assert-workflow-hardening.mjs', { cwd: dir, args: [] });
+      assert.equal(code, 1, out);
+      assert.match(out, /returned no tracked workflow/);
+    });
+
+    // 🔴 THE CANARIES MUST BE WIRED TO THE EXIT, NOT ONLY PRESENT. Sixteen
+    // canaries run inside that guard on every invocation, and every one of them
+    // reaches the process through ONE `if (selfTestFailures.length)`. Disabled,
+    // all sixteen become decoration and nothing in this file could tell — which
+    // is this repository's own definition of an assertion worse than none. This
+    // proves the wire by breaking a SUBJECT (limb 5's prefix filter, which C3
+    // holds) in a COPY of the guard, never in the tree. The copy needs only its
+    // two local imports; both pull nothing but node builtins.
+    test('REFUSES when its own canaries fail, so the canaries are not decoration', () => {
+      const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
+      const SUBJECT = 'if (!path.startsWith(WF_PREFIX)) continue;';
+      // 🔴 COMMENTS ARE BLANKED BEFORE COUNTING, AND ONLY FOR COUNTING. That
+      // guard quotes its own source in prose, and a quotation is not a subject:
+      // the first draft of this case counted raw bytes and went red the moment a
+      // comment there named the very line it mutates — measured, not foreseen.
+      // `stripSourceComments` blanks in place, so an offset in the blanked copy
+      // is the same offset in the real bytes, which is where the cut is made.
+      // If the anchor ever stops matching exactly once, this fails LOUDLY rather
+      // than quietly running an unmutated copy and passing for the wrong reason.
+      const code = stripSourceComments(src, '.mjs');
+      assert.equal(code.split(SUBJECT).length - 1, 1, 'the C3 subject line must appear exactly once outside comments');
+      const at = code.indexOf(SUBJECT);
+      const mutate = () => `${src.slice(0, at)}if (false) continue;${src.slice(at + SUBJECT.length)}`;
+      const modules = {};
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      const root = build('wh-canary-root');
+      const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
+      const exec = (at) => {
+        const r = spawnSync(process.execPath, [at, root], { cwd: ROOT, encoding: 'utf8' });
+        return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+      };
+      // THE CONTROL FIRST: an unmutated copy in the same place must still pass,
+      // or the case below would go green on a broken copy mechanism.
+      const control = exec(copy('wh-canary-control', src));
+      assert.equal(control.code, 0, control.out);
+      const broken = exec(copy('wh-canary-off', mutate()));
+      assert.equal(broken.code, 2, broken.out);
+      assert.match(broken.out, /canaries failed \(\d+\)/);
+      assert.match(broken.out, /C3 NON-WORKFLOW PATH/);
     });
   });
 });

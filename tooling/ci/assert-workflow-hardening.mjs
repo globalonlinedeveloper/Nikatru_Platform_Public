@@ -12,7 +12,7 @@
 // database access, bypasses RLS) and CLOUDFLARE_API_TOKEN, and it calls a
 // third-party action maintained by an individual.
 //
-// Asserts four things:
+// Asserts five things:
 //   1. every `uses:` resolves to a 40-hex commit SHA
 //   2. every workflow declares an explicit `permissions:` block
 //   3. …and that block is not `write-all`. Until 2026-08-01 limb 2 was
@@ -31,6 +31,9 @@
 //      landed — re-measured 2026-08-17 against the committed workflows at HEAD:
 //      42 jobs, 29 of them with no job-level `timeout-minutes:`. The limb is
 //      what stops the next 29.
+//   5. …and, WHEN A LIVE WORKFLOW LIST IS SUPPLIED, that GitHub knows about no
+//      workflow this scan never opened. See "limb 5" below for the measurement
+//      and, just as important, for what it does not catch.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -51,12 +54,17 @@
 // script as its guard, and limb 4 answers to that. A guard enforcing a property
 // no requirement declares is unreviewable — nobody can say whether it is right.
 //
-// Usage:  node tooling/ci/assert-workflow-hardening.mjs [repoRoot]
+// Usage:  node tooling/ci/assert-workflow-hardening.mjs [repoRoot] [--live-workflows=<file>]
+//   …where <file> is the body of `gh api repos/OWNER/REPO/actions/workflows`.
+//   Without it limbs 1-4 run exactly as before and limb 5 reports NOT CONSULTED.
 // Exit 0 = hardened. 1 = a real defect (a movable reference, a missing or
 // over-broad permissions block, an unbounded job) or a lost coverage
-// relationship. 2 = REFUSED: the scan could not answer the question at all — no
-// workflow, no job, a job shape it cannot classify, or two independent counts of
-// this tree's job ids that disagree. Those are deliberately DIFFERENT codes: "I
+// relationship — including a workflow GitHub holds that this checkout does not.
+// 2 = REFUSED: the scan could not answer the question at all — no
+// workflow, no job, a job shape it cannot classify, two independent counts of
+// this tree's job ids that disagree, an unreadable or truncated live list, an
+// unrecognised argument, or limb 5's own canaries failing. Those are
+// deliberately DIFFERENT codes: "I
 // looked and found nothing wrong" and "I could not look" are the same exit
 // status in most guards, and that is precisely how a scan over an empty subject
 // comes to read as a pass. EITHER stop first prints every finding the limbs had
@@ -68,11 +76,72 @@ import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { parseWorkflow, WORKFLOW_DIR } from './workflow-scan.mjs';
 
-const repoRoot = process.argv[2] ?? process.cwd();
-/** No argument means CI's own invocation — the real repository, where the git
- *  manifest below MUST be readable. A caller pointing this at a fixture root is
- *  a different, weaker situation and says so out loud. */
-const scanningRealRepo = process.argv[2] === undefined;
+/** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
+ *  passed alongside a fixture root. AN UNKNOWN `--flag` IS A REFUSAL, NOT A
+ *  SHRUG: the only thing limb 5 can do wrong is not run, and `--live-workflow=`
+ *  (singular, the obvious typo) silently not running is exactly the shape of
+ *  hole this guard's own header spends forty lines on. */
+const argv = process.argv.slice(2);
+const LIVE_FLAG = '--live-workflows=';
+const liveArg = argv.find((a) => a.startsWith(LIVE_FLAG))?.slice(LIVE_FLAG.length) ?? null;
+const unknownFlags = argv.filter((a) => a.startsWith('-') && !a.startsWith(LIVE_FLAG));
+if (unknownFlags.length) {
+  console.error(`✗ REFUSING TO REPORT — unrecognised argument(s): ${unknownFlags.join(', ')}.`);
+  console.error(`  Usage: node tooling/ci/assert-workflow-hardening.mjs [repoRoot] [${LIVE_FLAG}<file>]`);
+  process.exit(2);
+}
+const positional = argv.filter((a) => !a.startsWith('-'));
+const repoRoot = positional[0] ?? process.cwd();
+/** No positional argument means CI's own invocation — the real repository, where
+ *  the git manifest below MUST be readable. A caller pointing this at a fixture
+ *  root is a different, weaker situation and says so out loud.
+ *
+ *  ⚠️ REWRITTEN 2026-08-21 (it read `process.argv[2] === undefined` before the
+ *  flag existed) AND UNCOVERED EITHER WAY, stated because this pass counted the
+ *  conditions rather than trusting the count. Pinned to `false` and re-run:
+ *  EXIT 0 both directly and as the suite (tests 30 / pass 30 / fail 0), because
+ *  every case in guards.test.mjs passes a fixture root, so `scanningRealRepo` is
+ *  already false in all thirty. What it would cost is the COVERAGE LOST at the
+ *  `git ls-files` branch below: a real-repo run whose manifest went unreadable
+ *  would fall through to the fallback floor and print `no git manifest` in the
+ *  ok line instead of stopping. Closing it needs the same thing limb 5 needs — a
+ *  guards.test.mjs case, run with no positional root.
+ *
+ *  🔴 CORRECTED 2026-08-22, FOURTH PASS — "UNCOVERED EITHER WAY" WAS FALSE, AND
+ *  IT WAS FALSE IN THE DIRECTION THAT MATTERS. The paragraph above measured one
+ *  pin and generalised to both. Re-measured, both pins, each against
+ *    node --test --test-reporter=tap --test-name-pattern='assert-workflow-hardening' \
+ *         tooling/ci/test/guards.test.mjs
+ *  in a scratchpad copy, exit code captured on its own line:
+ *    · pinned `false` -> SUITE EXIT 0, tests 30 / pass 30 / fail 0  (as above)
+ *    · pinned `true`  -> SUITE EXIT 1, tests 30 / pass 20 / FAIL 10
+ *  So the `true` direction is ALREADY HELD by the committed suite: the thirty
+ *  fixture roots are not the real repository, and claiming one on them makes ten
+ *  of them demand a `git ls-files` manifest that a temp dir has not got. Only
+ *  the `false` direction is open, and closing it needs the no-positional case
+ *  the sentence above names — which is still a guards.test.mjs case, still not
+ *  this change's file. The correction is that this is HALF uncovered, not
+ *  uncovered, and half is the number a reader would have acted on.
+ *
+ *  🔴 CLOSED 2026-08-24, FIFTH PASS — THE OTHER HALF IS HELD NOW, and the
+ *  premise both paragraphs above rest on ("every case in guards.test.mjs passes
+ *  a fixture root") is no longer true of the tree. guards.test.mjs gained
+ *  `treats NO positional root as the real repository, where the manifest must
+ *  be readable`: it runs this script with cwd set to a three-workflow fixture
+ *  and NO arguments, so `scanningRealRepo` is TRUE, `git ls-files` finds no
+ *  manifest under a temp dir, and the run must exit 1 saying
+ *  `returned no tracked workflow`. Re-measured in a scratchpad copy, exit code
+ *  on its own line, against a green baseline of SUITE EXIT 0 / 38 / 38 / 0:
+ *    · pinned `false` -> SUITE EXIT 1, tests 38 / pass 37 / FAIL 1
+ *      (without it the run falls through to the fallback floor, 3 workflows
+ *       clears 3, and a real repository with an unreadable manifest reads clean)
+ *    · pinned `true`  -> SUITE EXIT 1, tests 38 / pass 22 / FAIL 16
+ *  The same case holds `positional[0] ?? process.cwd()` in the direction the
+ *  thirty could not: with the fallback DROPPED, `repoRoot` is `undefined` and
+ *  the run dies before it can say `returned no tracked workflow` — SUITE EXIT 1,
+ *  38 / 37 / FAIL 1. Pinned to `process.cwd()` it was already held at 38 / 2 /
+ *  FAIL 36. */
+const scanningRealRepo = positional.length === 0;
 const wfDir = join(repoRoot, '.github', 'workflows');
 
 /** ⚠️ A FLOOR OF LAST RESORT, and deliberately NOT the thing that protects the
@@ -100,7 +169,12 @@ const wfDir = join(repoRoot, '.github', 'workflows');
  *      falling to zero and every action reading as pinned.
  *
  *  This number survives only for roots with no git manifest (the test fixtures),
- *  where neither relationship can be computed. It is a fallback, not the guard. */
+ *  where neither relationship can be computed. It is a fallback, not the guard.
+ *
+ *  ⚠️ AND BOTH RELATIONSHIPS DESCRIBE THIS CHECKOUT ONLY — `listDir` and
+ *  `git ls-files` are two readings of the same working tree, so neither can see
+ *  a workflow that exists on another branch. That is limb 5's subject; it needs
+ *  an input from outside and says so on every run. */
 const MIN_WORKFLOWS_WITHOUT_MANIFEST = 3;
 
 if (!existsSync(wfDir)) {
@@ -518,6 +592,787 @@ if (looseSeen === 0) {
   ]);
 }
 
+// ── limb 5: SCAN vs THE LIVE WORKFLOW LIST — the orphan blind spot ───────────
+// 🔴 CHECK (1) ABOVE ANSWERS "DID I REACH THE TREE", AND THAT IS A SMALLER
+// QUESTION THAN "DID I REACH EVERY WORKFLOW GITHUB WILL RUN". Both of its inputs
+// — `listDir` and `git ls-files` — describe THIS checkout, so a workflow that
+// exists only on some other branch is outside both, and this guard printed ok
+// over it while GitHub kept it dispatchable.
+//
+// MEASURED 2026-08-21, on this tree, in this order:
+//   · node tooling/ci/assert-workflow-hardening.mjs -> EXIT 0,
+//     "11 workflow(s) (all 11 git tracks), 92 action(s) all SHA-pinned, …
+//      43 job(s) all bounded" — a completely clean report.
+//   · gh api repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/workflows
+//     -> THIRTEEN, every one of them `state: active`.
+//   · The two the report never mentioned: `.github/workflows/media-probe.yml`
+//     (id 320102035, "media-probe (throwaway)") and
+//     `.github/workflows/repro-macos-aot.yml` (id 324571883, "REPRO macOS AOT").
+//     `git ls-files -- .github/workflows` does not list either.
+//
+// LIVE, NOT LATENT — and the distinction is the point. Those two are `active` on
+// GitHub TODAY: they can be dispatched, they hold whatever `permissions:` their
+// own bytes declare, and not one of limbs 1-4 has ever read a line of them. 11
+// of 13 is 85% of the workflow surface, reported as 100%.
+//
+// ⚠️ WHAT THIS LIMB DOES NOT CATCH, stated plainly because an overclaiming
+// coverage check is the exact failure this file was written against:
+//   · IT DOES NOT RUN UNLESS IT IS GIVEN THE LIST. `ci.yml` invokes this guard
+//     with no arguments and is not part of this change, so on every CI run today
+//     limb 5 reports NOT CONSULTED — in the ok line, out loud. That is a bucket,
+//     not a gate; the hole is now named on every run instead of being absent.
+//   · IT CANNOT DERIVE THE LIST LOCALLY. The obvious alternative — walk
+//     `refs/remotes/origin` and union the workflow files — fails twice: 155 refs
+//     here made it too slow to run in a gate, and `actions/checkout` fetches a
+//     single branch, so in CI those refs do not exist at all.
+//   · IT READS NAMES, NOT BYTES. An orphan is reported as EXISTING; whether its
+//     actions are pinned, its permissions scoped or its jobs bounded is
+//     unanswerable from this checkout, because the file is on another branch.
+//   · IT CANNOT SEE A NEVER-RUN ORPHAN. GitHub lists a workflow once it has run
+//     or once it is on the default branch; a workflow file sitting on a stale
+//     branch that has never run appears in neither the API list nor the tree.
+//   · IT DELETES NOTHING. Removing the two probe branches is a write to a remote
+//     and is operator work, deliberately not done from here.
+//   · IT IS ONE-DIRECTIONAL, AND THIS BULLET IS ADDED 2026-08-21 BECAUSE A
+//     REPORT CLAIMED IT WAS ALREADY HERE AND IT WAS NOT. `orphanWorkflows` walks
+//     the LIVE list and asks whether the scan saw each entry; it never walks the
+//     scan and asks whether GitHub lists it. A workflow file present in THIS
+//     checkout that GitHub does not list — the ordinary state of any pull
+//     request that adds one — is not reported by this limb at all. Both counts
+//     are printed in the ok line so a reader can compare them; nothing fails on
+//     the difference. Verified by reading the loop: `live` is the only thing
+//     iterated, and `scanned` is only ever a `Set` membership is tested against.
+const WF_PREFIX = '.github/workflows/';
+
+/** PURE, and separated from the reading of the list so the self-test below can
+ *  drive the same engine the real comparison uses. `live` is the array GitHub
+ *  returns under `.workflows`; `scanned` is the basenames this run opened. */
+function orphanWorkflows(live, scanned) {
+  const seen = new Set(scanned);
+  const orphans = [];
+  let considered = 0;
+  for (const w of live) {
+    // `w.path` IS READ DIRECTLY, AND THE FALLBACK THAT USED TO STAND HERE WAS
+    // DELETED 2026-08-22. It read `typeof w?.path === 'string' ? w.path : ''`,
+    // and an '' fails the prefix test below, so a pathless entry was skipped:
+    // not considered, not an orphan, gone. `readLiveList` now REFUSES such a
+    // body before this function is ever reached, which leaves the fallback
+    // unreachable from the one caller that matters — and by this file's own
+    // rule an unreachable fallback is deleted, not kept for safety.
+    const path = w.path;
+    // GitHub also lists workflows it generates itself, e.g. the Pages builder at
+    // `dynamic/pages/pages-build-deployment`. There is no file for those in any
+    // branch of any repository, so counting them would manufacture an orphan on
+    // the first run — a check that cries wolf is one that gets switched off.
+    if (!path.startsWith(WF_PREFIX)) continue;
+    considered++;
+    const base = path.slice(WF_PREFIX.length);
+    if (!seen.has(base)) {
+      // 🔴 THE THREE `w?.` CHAINS ARE DELETED 2026-08-24 AND THE THREE `??`
+      // FALLBACKS ARE KEPT. They are not one row and they do not have the same
+      // answer. `const path = w.path;` above dereferences `w` with NO chain, so
+      // a nullish `w` has already thrown by the time this line runs and the
+      // short-circuit half of `w?.id` could never once have been taken — the
+      // identical unreachable-fallback the `path` ternary was deleted for one
+      // pass ago, and this file deletes those rather than keeping them for
+      // safety. The `??` halves DO have an input: `readLiveList` refuses only on
+      // a non-string `path`, so an entry with a path and no `id` reaches here.
+      // C14 below drives all three, and pinning any of them the other way (to
+      // the fallback) fires C2/C9. Measured, exit codes in the table on
+      // `liveLimbSelfTest`.
+      orphans.push({ base, id: w.id ?? null, name: w.name ?? '', state: w.state ?? 'unknown' });
+    }
+  }
+  return { considered, orphans };
+}
+
+/** PURE, AND SPLIT OUT OF THE CALLER 2026-08-21 FOR ONE REASON: as inline `if`s
+ *  on a `process.exit` path, these three refusals had NOTHING in the committed
+ *  tree that could exercise them. Measured, domain stated:
+ *  `grep -rn "live-workflows" --exclude-dir=.git --exclude-dir=.bundles .` over
+ *  the whole repository returns FOUR hits, every one of them inside this file
+ *  (this sentence is one of them) — zero in tooling/ci/test/, zero in
+ *  .github/workflows/, zero in docs — so no committed input ever
+ *  supplies the flag and every branch behind it was unreachable by the suite.
+ *  CORRECTED 2026-08-21, THIRD PASS: that same grep now returns FIVE, not four
+ *  — the third pass added exactly one more mention, in the sentence naming what
+ *  would close the uncovered dispatch below. Still all five inside this file
+ *  (:57, :79, :85, this line, and that one), still zero in tooling/ci/test/,
+ *  .github/workflows/ and docs, so the conclusion is unchanged — but the number
+ *  is not, and a count in a comment that stops reproducing is how this round's
+ *  defects were found.
+ *  Each of the three DOES bite when given a bad page — the difference between
+ *  an untested check and a decorative one — and returning the refusal instead
+ *  of taking it is what lets the canaries below drive all three on EVERY
+ *  invocation. Proof, not reasoning: with each one disabled in turn,
+ *  guards.test.mjs went from pass 30 / fail 0 to pass 12 / FAIL 18. The three
+ *  mutations and their exact results are listed on `liveLimbSelfTest` below.
+ *
+ *  🔴 CORRECTED 2026-08-22, FOURTH PASS — "THESE THREE REFUSALS" IS NOW FOUR, AND
+ *  A COUNT IN A COMMENT IS A CLAIM LIKE ANY OTHER. The paragraphs above are left
+ *  as the dated third-pass record; what changed is below them. This function now
+ *  holds FOUR refusals — unreadable JSON, no `workflows` array, a page that does
+ *  not account for itself, and an entry with no string `path` — because the
+ *  fourth was a SKIP inside `orphanWorkflows` until this pass and a skip is how
+ *  an orphan leaves a finding without leaving a trace. Six canaries drive them:
+ *  C4-C7, C12 and C13. Re-measured, not remembered.
+ *
+ *  🔴 CORRECTED 2026-08-24, FIFTH PASS — THE GREP ABOVE NO LONGER RETURNS WHAT
+ *  IT SAYS, AND THE REASON IS THE GOOD ONE. `grep -rn "live-workflows"
+ *  --exclude-dir=.git --exclude-dir=.bundles --exclude-dir=node_modules .` now
+ *  returns TWELVE, not five: FIVE still in this file (:57, :79, :85, :673 —
+ *  this sentence's own paragraph — and :995), and SEVEN in
+ *  tooling/ci/test/guards.test.mjs, which is where every sentence above says
+ *  the count had to change before this limb's dispatch could be held. Still
+ *  zero in .github/workflows/ and zero in docs. The paragraphs above are left
+ *  as the dated third- and fourth-pass record of a tree where the flag had no
+ *  caller; that tree no longer exists.
+ *  NINE canary calls reach this function now, not six — C4, C5, C6, C7, C12a,
+ *  C12b, C13, and C15/C16 added this pass — and the count was taken by
+ *  `grep -c "= readLiveList(" ` (10, of which one is `liveVerdict`'s own call),
+ *  not remembered.
+ *
+ *  Returns `{ body }` or `{ refusal: [lines] }` — never both, never neither. */
+function readLiveList(label, raw) {
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch (e) {
+    return { refusal: [`${label} is not readable JSON (${e.message}).`, 'Expected the body of `gh api repos/OWNER/REPO/actions/workflows`.'] };
+  }
+  if (!Array.isArray(body?.workflows)) {
+    return { refusal: [`${label} has no \`workflows\` array.`, 'Expected the body of `gh api repos/OWNER/REPO/actions/workflows`, not a filtered projection of it.'] };
+  }
+  // A TRUNCATED PAGE IS A SHORTER LIST IS FEWER ORPHANS. `total_count` is in the
+  // same body, so the truncation can be caught rather than believed.
+  //
+  // 🔴 CORRECTED 2026-08-22, FOURTH PASS. This read
+  // `typeof body.total_count === 'number' && body.total_count !== body.workflows.length`
+  // and the `typeof` conjunct made the refusal OPT-IN ON THE VERY FIELD IT
+  // REFUSES BY: a body carrying `workflows` and no `total_count` skipped the
+  // comparison entirely. That is not a hypothetical shape — dropping
+  // `total_count` while keeping `workflows` is exactly what a `--jq` projection
+  // does, and C6 below already calls a `--jq` projection "the easy mistake".
+  // MEASURED 2026-08-22 against the real 13-entry page with the two orphans
+  // (media-probe.yml, repro-macos-aot.yml) removed and the remaining 11 written
+  // back three ways, this script run directly, exit code captured on its own
+  // line:
+  //   · `total_count: 13`      -> EXIT 2, PARTIAL page. Correct.
+  //   · `total_count` ABSENT   -> EXIT 0, "11 on GitHub …, 0 of them absent".
+  //   · `total_count: '13'`    -> EXIT 0, the same line.
+  // Both real orphans vanished and the gate opened — verbatim the answer the
+  // sentence above says this limb must never give by accident.
+  //
+  // THE REPAIR IS A DELETION, NOT A SECOND CONDITION, and that is deliberate.
+  // `!==` is strict and `workflows.length` is always a number, so a non-number
+  // `total_count` — absent, null, string — already fails this one comparison.
+  // A separate `typeof body.total_count !== 'number'` refusal above it would
+  // refuse nothing this does not, at the same exit code, differing only in
+  // wording: the `existsSync` shape recorded twice below, and this file deletes
+  // that shape rather than shipping it. The wording is carried instead by
+  // `JSON.stringify`, which prints `undefined` for the absent field and `"13"`
+  // for the string, so the message tells the two apart with no branch. C12
+  // below pins both shapes; C7 pins the numeric one.
+  if (body.total_count !== body.workflows.length) {
+    return {
+      refusal: [
+        `${label} is a PARTIAL page — it reports total_count ${JSON.stringify(body.total_count)} and carries ${body.workflows.length} entr(ies).`,
+        'Every workflow past the page boundary would read as absent from GitHub, which is the opposite of the',
+        'finding this limb exists for. A page with no numeric `total_count` at all is the same failure with the',
+        'evidence removed. Re-fetch the WHOLE body with `?per_page=100`, and without a `--jq` projection.',
+      ],
+    };
+  }
+  // 🔴 THE SAME SHAPE ONE FIELD OVER, AND IT WAS FOUND 2026-08-22 BY WALKING
+  // THE OTHER FALLBACKS ON THIS LIMB RATHER THAN BY BEING TOLD ABOUT IT. The
+  // `total_count` conjunct above let an ABSENT field skip a refusal;
+  // `orphanWorkflows` used to do the same with an ABSENT `path`, defaulting it
+  // to '' so the entry failed the prefix test and vanished — not considered, not
+  // an orphan. MEASURED 2026-08-22 against the real 13-entry page with `path`
+  // deleted from the media-probe.yml entry only, this script run directly:
+  // EXIT 1 but "GitHub lists 12 workflow(s) … it never saw: repro-macos-aot.yml"
+  // — the OTHER real orphan silently subtracted from the finding. And measured
+  // the same way with `path` stripped from BOTH orphan entries, against a build
+  // carrying the old ternary and no C13: EXIT 0, "11 on GitHub …, 0 of them
+  // absent". The gate opens over both, which is the `total_count` false green
+  // arriving a second time through a different field.
+  // A `--jq` projection is again exactly how a body keeps `workflows` and loses
+  // `path`. So an entry that cannot be matched against a file is a REFUSAL here
+  // rather than a skip there, and C13 below drives it.
+  const pathless = body.workflows.findIndex((w) => typeof w?.path !== 'string');
+  if (pathless !== -1) {
+    return {
+      refusal: [
+        `${label} entry ${pathless} of ${body.workflows.length} has no string \`path\` (got ${JSON.stringify(body.workflows[pathless]?.path)}).`,
+        'An entry with no path cannot be matched against a file in this checkout, so the comparison would drop',
+        'it — one fewer entry considered is one fewer orphan, which is the finding of this limb running backwards.',
+        'Fetch the whole body, without a `--jq` projection.',
+      ],
+    };
+  }
+  return { body };
+}
+
+/** THE TWO STOPS `liveVerdict` MAY ASK FOR, BY NAME, so the choice between them
+ *  is data a canary can read rather than a branch nothing in the committed tree
+ *  reaches. `refuse` exits 2 (the subject could not be read); `coverageLost`
+ *  exits 1 (the subject was read and something is missing from it) — the
+ *  distinction the Usage note at the top of this file turns on. */
+const LIVE_STOPS = { refuse, coverageLost };
+
+/** PURE, AND SPLIT OUT OF THE CALLER 2026-08-21 IN A THIRD PASS, FOR THE ONE
+ *  CONDITION THE SECOND PASS LEFT DECORATIVE. `if (orphans.length)` — the line
+ *  that turns "GitHub lists a workflow this scan never opened" into a non-zero
+ *  exit — sat on the caller's `process.exit` path, which no committed input can
+ *  reach, exactly like the three refusals moved into `readLiveList` above. And
+ *  unlike those three it was not even written down as uncovered.
+ *
+ *  It was the most dangerous of the set: disabling it neither crashes nor
+ *  refuses. MEASURED 2026-08-21 with it disabled, against a page carrying two
+ *  orphans — EXIT 0, and the ok line printed `13 on GitHub …, 2 of them absent`.
+ *  The finding is on the screen and the gate is open, which is the exact shape
+ *  of "a green tick over a capability that went dark" this file's header spends
+ *  forty lines on.
+ *
+ *  Composing the whole decision here — read the page, compare it, choose the
+ *  stop — puts it under C8-C11 below, which run on EVERY invocation of this
+ *  script. What is left at the caller is one dispatch line, and that line is
+ *  named in the uncovered list on `liveLimbSelfTest`: moving a hole is not
+ *  closing one, and this file may not claim otherwise.
+ *
+ *  Returns `{ stop, liveLine }`. `stop` is `{ kind, lines }` or absent;
+ *  `liveLine` is absent exactly when the page could not be read. `scanned` is
+ *  the basenames this run opened. */
+function liveVerdict(label, raw, scanned) {
+  const parsed = readLiveList(label, raw);
+  if (parsed.refusal) return { stop: { kind: 'refuse', lines: parsed.refusal } };
+  const { considered, orphans } = orphanWorkflows(parsed.body.workflows, scanned);
+  const liveLine = `live workflow list consulted — ${considered} on GitHub under ${WF_PREFIX}, ${orphans.length} of them absent from this checkout`;
+  // EVERY ORPHAN BLOCKS, WHATEVER ITS `state`. A first draft failed only on
+  // `state: 'active'` and filed the rest as a note; all 13 entries measured
+  // 2026-08-21 are active, so that branch had no input in the world and could
+  // not be exercised — and its premise was wrong anyway, since `disabled` is one
+  // click from active and is unscanned either way. The state is PRINTED, so a
+  // reader can still tell the two apart; it just does not change the verdict.
+  if (orphans.length) {
+    return {
+      stop: {
+        kind: 'coverageLost',
+        lines: [
+          `GitHub lists ${considered} workflow(s) under ${WF_PREFIX} and this scan opened ${scanned.length}; it never saw: ${orphans.map((o) => `${o.base} (id ${o.id}, "${o.name}", state \`${o.state}\`)`).join(', ')}.`,
+          'GitHub will run these — dispatchable, schedulable, holding whatever permissions their own bytes',
+          'declare — and no limb above has read one line of them, because they are not in this checkout. They',
+          'live on branches; deleting those branches is the repair, and it is a write to the remote.',
+        ],
+      },
+      liveLine,
+    };
+  }
+  return { liveLine };
+}
+
+/** THE NEGATIVE HALF, RUN ON EVERY INVOCATION — the same in-file canary pattern
+ *  as `assert-copy-parity.mjs`'s self-test, and here for a specific reason: the
+ *  comparison this limb performs needs an input CI does not supply today, so
+ *  without these canaries the detector would ship with nothing ever exercising
+ *  its failing path. They run against every root this guard is ever pointed at,
+ *  fixtures included — guards.test.mjs alone invokes this script THIRTY-SEVEN
+ *  times (`grep -c "run('assert-workflow-hardening.mjs'"` -> 37, re-measured
+ *  2026-08-24 after the last edit of BOTH files; it read THIRTY below until this
+ *  pass added seven live-list cases, and a count in prose that stops reproducing
+ *  is how three of this file's defects were found) — the older wording and its
+ *  own measurement are kept verbatim on the next two lines as the dated record:
+ *  guards.test.mjs alone invokes this script THIRTY times
+ *  (`grep -c "run('assert-workflow-hardening.mjs'" tooling/ci/test/guards.test.mjs`
+ *  -> 30, re-measured 2026-08-21 after the last edit of this file) —
+ *  so a canary failure turns that file red many times over.
+ *
+ *  ⚠️ EXACTLY WHAT THAT COVERS, AND WHAT IT DOES NOT, corrected 2026-08-21. An
+ *  earlier wording here said "any condition below", an unscoped absolute of the
+ *  kind this corpus keeps being caught by. MEASURED INSTEAD, one mutation at a
+ *  time, each against
+ *    node --test --test-name-pattern='assert-workflow-hardening' \
+ *         tooling/ci/test/guards.test.mjs
+ *  whose green baseline that day was tests 30, pass 30, fail 0, EXIT 0:
+ *    · non-JSON refusal neutered            -> C5 fires, pass 12 / FAIL 18, EXIT 1
+ *    · `workflows`-array test -> `if (false)` -> pass 12 / FAIL 18, EXIT 1
+ *    · truncated-page test  -> `if (false)`   -> C7 fires, pass 12 / FAIL 18
+ *    · `readLiveList` forced to refuse EVERY input -> C4 fires, pass 12 / FAIL 18
+ *  (C1-C3, over `orphanWorkflows`, were measured the same way when they landed.)
+ *
+ *  THREE conditions on this limb still have NO committed negative half. They are
+ *  named, with what disabling each one actually costs, measured the same day by
+ *  running this script directly rather than reasoned about:
+ *    · `if (parsed.refusal)` below, disabled, given a non-JSON page -> uncaught
+ *      TypeError, EXIT 1. Loud. It cannot produce a false "zero orphans".
+ *    · the `readFileSync` catch below, disabled, given a missing file -> still
+ *      REFUSES, EXIT 2, because `JSON.parse(undefined)` lands on C5's refusal
+ *      instead. Same exit, different wording — which is the `existsSync`
+ *      argument recorded below, arriving a second time.
+ *    · 🔴 the unknown-flag refusal at the TOP of this file, disabled, given
+ *      `--live-workflow=` (the singular typo it exists for) -> EXIT 0 printing
+ *      "live workflow list NOT CONSULTED". That one IS a silent false green, and
+ *      it is the only uncovered condition on this limb that is. Closing it wants
+ *      a guards.test.mjs case, a file this change does not own.
+ *      [SUPERSEDED 2026-08-24 — that case exists; see THE COUNT IS NOW ZERO at
+ *      the foot of this comment. The bullet is kept as the dated record.]
+ *
+ *  APPENDED 2026-08-21, SAME SESSION, THIRD PASS — THAT LIST WAS SHORT, AND THE
+ *  CONDITION IT OMITTED WAS THE WORST ONE. Re-derived by walking every `if` on
+ *  this limb rather than from recollection: SIX conditions had no committed
+ *  negative half, not three, and the missing entry was `if (orphans.length)` —
+ *  the line that decides whether an orphan is a FINDING or a printed remark.
+ *  That one is now covered: it moved into `liveVerdict` and C8/C9 drive both of
+ *  its directions.
+ *  `if (parsed.refusal)` moved with it and is covered too, which retires the
+ *  first bullet of the three-item list above. IT ALSO RETIRES THAT LIST'S
+ *  CLOSING CLAIM — "it is the only uncovered condition on this limb that is" a
+ *  silent false green. THREE of the five below are, measured one at a time; the
+ *  sentence was true of the three conditions that list knew about and false of
+ *  the set, and correcting one line while its contradiction survives further
+ *  down the same file is the defect this pass exists to stop repeating.
+ *
+ *  RE-MEASURED AFTER THAT MOVE, one mutation at a time, in a copy of tooling/ci
+ *  under the scratchpad and never in the repository — each mutation run twice,
+ *  once as this script directly and once as the suite above, exit codes captured
+ *  on their own line. Baseline both ways: EXIT 0, and tests 30 / pass 30 /
+ *  fail 0.
+ *    · `if (orphans.length)` -> `if (false)`  -> C9+C11 fire,     pass 12/FAIL 18
+ *    · `if (orphans.length)` -> `if (true)`   -> C8 fires,        pass 12/FAIL 18
+ *    · `kind: 'coverageLost'` -> a typo       -> C9+C11 fire,     pass 12/FAIL 18
+ *    · `if (parsed.refusal)` -> `if (false)`  -> the canary's own call throws a
+ *      TypeError, EXIT 1,                                        pass 12/FAIL 18
+ *      — red by crash rather than by message, which is still red.
+ *  And the second pass's FOUR rows re-run rather than inherited, all four still
+ *  EXIT 1 at pass 12 / FAIL 18: the JSON catch (C5+C10+C11 fire), the
+ *  `workflows`-array test (a TypeError one line further down, before C6 can be
+ *  reached — C6 is what holds that refusal's WORDING, not its existence), the
+ *  truncated-page test (C7), and `readLiveList` forced to refuse EVERY input
+ *  (C4 through C9 all fire). The C1-C3 rows re-run too: the prefix filter (C3),
+ *  and the membership test both ways — `if (false)` trips C2+C9+C11, `if (true)`
+ *  trips C1+C2+C3+C8+C9 — at the same counts.
+ *
+ *  AND THE FIELDS THE FINDING IS MADE OF, each pinned to its fallback one at a
+ *  time in the same harness: `path` -> '' (C1+C2+C3+C9+C11), `state` ->
+ *  'unknown' (C2+C9), `name` -> '' (C9), `id` -> null (C9). All four EXIT 2 at
+ *  pass 12 / FAIL 18. The last of them fires ONLY because C9 was strengthened
+ *  this pass to pin the whole `base (id N, "name", state s)` triple: under the
+ *  earlier base-name-only regex, `id: null` survived every canary at EXIT 0 —
+ *  a decoration on the one line an operator actually acts on.
+ *
+ *  APPENDED 2026-08-22, FOURTH PASS — ONE CONDITION ON THIS LIMB WAS A SILENT
+ *  FALSE GREEN AND NO PASS ABOVE HAD EVER MUTATED IT. The accounting refusal in
+ *  `readLiveList` carried a `typeof body.total_count === 'number' &&` conjunct,
+ *  which made it opt-in on the very field it refuses by; the deletion, the three
+ *  real-page measurements behind it, and why the repair is a deletion rather
+ *  than a second condition are all recorded on that function. Every row below
+ *  was re-run this pass — none inherited — in a copy of tooling/ci under the
+ *  scratchpad and never in the repository, one mutation at a time, against
+ *    node --test --test-reporter=tap --test-name-pattern='assert-workflow-hardening' \
+ *         tooling/ci/test/guards.test.mjs
+ *  whose green baseline is SUITE EXIT 0, tests 30 / pass 30 / fail 0.
+ *  THE NEW ROWS:
+ *    · the accounting comparison -> `if (false)` -> C7 + C12a + C12b fire,
+ *      SUITE EXIT 1, pass 12 / FAIL 18.
+ *    · 🔴 the `typeof` conjunct RESTORED — the regression this pass removed,
+ *      run as a mutation like any other -> C12a + C12b fire and C7 DOES NOT,
+ *      SUITE EXIT 1, pass 12 / FAIL 18. That row is the entire reason C12 is
+ *      not a second canary on C7's condition: C7's page reports 13 and carries
+ *      2, a number either way, so the conjunct is invisible to it and the
+ *      defect could come back under a green C7.
+ *    · C12a -> `if (false)`, and C12b -> `if (false)`, each alone -> SUITE EXIT
+ *      0, pass 30 / fail 0. Recorded rather than hidden: that is the negative
+ *      half being switched off, not a subject, and what makes each load-bearing
+ *      is the two rows above, where the subject is broken and the canary fires.
+ *  AND EVERY OLDER ROW ON THIS LIMB WAS RE-RUN, not carried forward, each at
+ *  SUITE EXIT 1 / tests 30 / pass 12 / FAIL 18: the prefix filter, the
+ *  membership test both ways, the `id` / `name` / `state` fallbacks pinned, the
+ *  JSON catch neutered, the `workflows`-array test, `if (parsed.refusal)`,
+ *  `if (orphans.length)` both ways, and the `coverageLost` kind mistyped.
+ *
+ *  🔴 AND ONE MORE OF THE SAME DEFECT WAS FOUND BY LOOKING FOR IT RATHER THAN
+ *  BY BEING TOLD. The review named the `total_count` conjunct. Walking the other
+ *  defaulted fields on this limb found the identical shape one field over: the
+ *  `path` ternary in `orphanWorkflows` turned an entry with NO `path` into '',
+ *  which fails the prefix test, so the entry was skipped — not considered, not
+ *  an orphan. Measured against the real page with `path` deleted from the
+ *  media-probe.yml entry: EXIT 1 naming only repro-macos-aot.yml, the OTHER
+ *  real orphan subtracted in silence. That ternary is DELETED, the case is a
+ *  refusal in `readLiveList`, and C13 drives it:
+ *    · `if (pathless !== -1)` -> `if (false)` -> C13 fires, SUITE EXIT 1,
+ *      pass 12 / FAIL 18.
+ *    · C13 -> `if (false)` alone -> SUITE EXIT 0, pass 30 / fail 0 — the
+ *      negative half switched off, recorded for the same reason C12's row is.
+ *  ⚠️ THIS RETIRES ONE ROW OF THE THIRD PASS'S FIELD LIST ABOVE: `path` -> ''
+ *  (C1+C2+C3+C9+C11) no longer exists as a mutation, because the fallback it
+ *  mutated is gone. The other three rows of that list — `state`, `name`, `id` —
+ *  were re-run this pass and still hold. The dated text is left as written.
+ *
+ *  THE CANARIES' OWN `if`s ARE NOT IN THAT LIST BY DESIGN: they are the negative
+ *  half, not a subject. What proves each one load-bearing is the mutation above
+ *  that makes it fire. Several mutations trip more than one canary — that is
+ *  recorded in the rows rather than tidied away, and it is why C1 is described
+ *  further down as a stated control rather than an independent assertion.
+ *
+ *  FIVE CONDITIONS ON THIS LIMB STILL HAVE NO COMMITTED NEGATIVE HALF. All five
+ *  are DISPATCH — the TAKING of a decision rather than the making of one — and
+ *  each was measured with the condition disabled, against the real 13-entry
+ *  `gh api` page, with the suite confirmed still at tests 30 / pass 30 / fail 0:
+ *    · 🔴 `if (unknownFlags.length)` at the TOP of this file, given
+ *      `--live-workflow=` (the singular typo it exists for) -> EXIT 0, "limb 5 —
+ *      live workflow list NOT CONSULTED". A SILENT FALSE GREEN.
+ *    · 🔴 `if (liveArg === null)` forced to the NOT-CONSULTED branch, given the
+ *      same page under the CORRECT flag -> EXIT 0, "NOT CONSULTED". Silent.
+ *    · 🔴 `if (verdict.stop)` below -> `if (false)`, same page -> EXIT 0 with
+ *      "13 on GitHub …, 2 of them absent" printed in the ok block. Both real
+ *      orphans named on screen, and the gate open. Silent.
+ *    · `if (selfTestFailures.length)` -> `if (false)`, with C3's subject broken
+ *      as well -> EXIT 0. Every canary above becomes decoration — this file's
+ *      own doctrine turned on itself.
+ *    · the `readFileSync` catch below, given a missing file -> still REFUSES,
+ *      EXIT 2, because `JSON.parse(undefined)` lands on C5's refusal instead
+ *      (`… is not readable JSON ("undefined" is not valid JSON)`). Same exit,
+ *      different wording — the `existsSync` argument, arriving a third time.
+ *  ONE THING CLOSES ALL FIVE: guards.test.mjs cases that invoke this script with
+ *  `--live-workflows=<fixture>` and with a mistyped flag. That file is not owned
+ *  by this change, and saying so is the only honest place to stop.
+ *  [SUPERSEDED 2026-08-24 — those cases were written; see THE COUNT IS NOW ZERO
+ *  below. Kept as the dated record of where the fourth pass stopped.]
+ *
+ *  RE-MEASURED 2026-08-22, FOURTH PASS, AND THE COUNT IS STILL FIVE — checked
+ *  because this pass added a canary and a comment that adds one is how a count
+ *  in prose stops reproducing. The condition the fourth pass repaired did NOT
+ *  join this list: it lives inside `readLiveList`, where C12 reaches it on every
+ *  invocation. All five above were re-run with the suite confirmed still at
+ *  tests 30 / pass 30 / fail 0, and the three marked SILENT are still silent.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  🔴 THE COUNT IS NOW ZERO. 2026-08-24, FIFTH PASS — THE LIST ABOVE IS CLOSED,
+ *  AND IT WAS CLOSED BY THE ONE THING IT SAID WOULD CLOSE IT. Every paragraph
+ *  above is left exactly as written, as the dated record of the tree it
+ *  described; what follows replaces its conclusion, not its history.
+ *
+ *  `tooling/ci/test/guards.test.mjs` gained a `limb 5 — the live workflow list`
+ *  block: eight cases that invoke this script through the flag rather than
+ *  around it. `grep -c "run('assert-workflow-hardening.mjs'"` -> 37 (was 30),
+ *  and the suite over this describe is tests 38 / pass 38 / fail 0, SUITE EXIT
+ *  0, re-measured after the last edit of both files.
+ *
+ *  EVERY ROW OF THE FIVE, RE-RUN AS A MUTATION AGAINST THAT SUITE in a copy of
+ *  tooling/ci under the scratchpad and never in the repository, one at a time,
+ *  `node --check`-clean, each anchor required to match exactly once, exit code
+ *  captured on its own line. Green baseline both ways: EXIT 0, 38/38/0.
+ *    · `if (unknownFlags.length)` -> `if (false)`  SUITE EXIT 1, pass 37 / FAIL 1
+ *      (the mistyped-flag case; it was EXIT 0 / 30 / 30 / 0 before this pass)
+ *    · `if (liveArg === null)` -> `if (true)`      SUITE EXIT 1, pass 33 / FAIL 5
+ *      …and -> `if (false)`                        SUITE EXIT 1, pass 19 / FAIL 19
+ *    · `if (verdict.stop)` -> `if (false)`         SUITE EXIT 1, pass 36 / FAIL 2
+ *    · `if (selfTestFailures.length)` -> `if (false)`
+ *                                                  SUITE EXIT 1, pass 37 / FAIL 1
+ *    · the `readFileSync` catch neutered           SUITE EXIT 1, pass 37 / FAIL 1
+ *  All five were SUITE EXIT 0 / 30 / 30 / 0 on the same mutations before this
+ *  pass — measured, not inferred: the fourth-pass sweep is in the same harness.
+ *
+ *  ⚠️ THE FOURTH ONE NEEDED A DIFFERENT KIND OF CASE AND IS WORTH NAMING. Every
+ *  canary in this function reaches the process through that single
+ *  `if (selfTestFailures.length)`, so disabling it turns all sixteen into
+ *  decoration and no ordinary case could tell. The case that holds it copies
+ *  THIS FILE and its two local imports into a temp dir, turns limb 5's prefix
+ *  filter — the line C3 holds, `orphanWorkflows`' early `continue` — into
+ *  `if (false)` in the copy, and asserts the copy exits 2 naming C3, with an
+ *  unmutated copy run first as the control so a broken copy mechanism cannot
+ *  make it pass. The repository is never mutated; the copy is built under the
+ *  test's own temp root.
+ *  ⚠️ AND IT FINDS THAT LINE THROUGH `stripSourceComments`, NOT THROUGH A RAW
+ *  SUBSTRING SEARCH, WHICH IS A DEFECT THIS FILE CAUSED AND MEASURED RATHER THAN
+ *  FORESAW. The first draft asserted the anchor appeared exactly once in the
+ *  bytes; the moment the paragraph above quoted the line it mutates, the count
+ *  became 2 and the case went red — SUITE EXIT 1, tests 384 / pass 383 / FAIL 1,
+ *  over the whole of guards.test.mjs. That is the loud failure the assertion was
+ *  written to produce, and the repair is that a QUOTATION IS NOT A SUBJECT: the
+ *  count and the offset are taken from the comment-blanked copy, the cut is made
+ *  in the real bytes at that same offset (the blanker preserves them), and this
+ *  paragraph may therefore say the line out loud. 384 / 384 / 0 after.
+ *
+ *  AND THE ARGUMENT VECTOR IS HELD TOO, which no pass before this one claimed.
+ *  Same harness, same baseline: the `find` predicate pinned false -> 33/FAIL 5;
+ *  dropping either conjunct of `unknownFlags` -> FAIL 5 and FAIL 37; the
+ *  `positional` predicate pinned true -> FAIL 1 (the case that passes the flag
+ *  BEFORE the root) and pinned false -> FAIL 36; `positional[0] ?? process.cwd()`
+ *  pinned to cwd -> FAIL 36 and with the fallback dropped -> FAIL 1;
+ *  `positional.length === 0` pinned false -> FAIL 1 (the no-positional case) and
+ *  pinned true -> FAIL 16.
+ *
+ *  WHAT IS STILL NOT HELD, so the list does not silently become an absolute:
+ *  the canaries' OWN `if`s. C14, C15 and C16 each set to `if (false)` alone ->
+ *  SUITE EXIT 0, 38/38/0, exactly as recorded for C12 and C13 above. That is the
+ *  negative half being switched off, not a subject going unguarded; what makes
+ *  each load-bearing is the subject mutation above that fires it. */
+function liveLimbSelfTest() {
+  const failures = [];
+  const scanned = ['a.yml', 'b.yml'];
+  const agreeing = [
+    { id: 1, name: 'A', path: `${WF_PREFIX}a.yml`, state: 'active' },
+    { id: 2, name: 'B', path: `${WF_PREFIX}b.yml`, state: 'active' },
+  ];
+
+  // C1 AGREEMENT -> zero orphans. A detector that fires on everything is as
+  // useless as one that fires on nothing, and it is the easier mistake to ship.
+  // ⚠️ STATED HONESTLY: C1 OVERLAPS C2 AND C3 AND I COULD NOT BUILD AN INPUT IT
+  // ALONE CATCHES. Every break of `orphanWorkflows` that makes C1 fire — the
+  // membership test inverted, the push unguarded — trips one of the other two as
+  // well; measured by mutating this function six ways 2026-08-21. It is kept as
+  // a stated control on over-firing, not sold as an independent assertion.
+  const c1 = orphanWorkflows(agreeing, scanned);
+  if (!(c1.considered === 2 && c1.orphans.length === 0)) {
+    failures.push(`C1 AGREEMENT: a live list identical to the scan produced ${c1.orphans.length} orphan(s) over ${c1.considered} considered — the detector fires on correct input.`);
+  }
+
+  // C2 ONE EXTRA -> exactly that one, named, with its state. This is the literal
+  // shape measured on this repository 2026-08-21.
+  const c2 = orphanWorkflows(
+    [...agreeing, { id: 320102035, name: 'media-probe (throwaway)', path: `${WF_PREFIX}media-probe.yml`, state: 'active' }],
+    scanned,
+  );
+  if (!(c2.orphans.length === 1 && c2.orphans[0].base === 'media-probe.yml' && c2.orphans[0].state === 'active')) {
+    failures.push(`C2 ONE EXTRA: a live workflow absent from the scan was NOT reported — got ${JSON.stringify(c2.orphans)}. The detector has stopped detecting.`);
+  }
+
+  // C3 A NON-WORKFLOW PATH -> neither considered nor an orphan. Guards the
+  // prefix filter in both directions at once.
+  const c3 = orphanWorkflows(
+    [...agreeing, { id: 9, name: 'pages build and deployment', path: 'dynamic/pages/pages-build-deployment', state: 'active' }],
+    scanned,
+  );
+  if (!(c3.considered === 2 && c3.orphans.length === 0)) {
+    failures.push(`C3 NON-WORKFLOW PATH: a GitHub-generated entry outside ${WF_PREFIX} was counted — ${c3.considered} considered, ${c3.orphans.length} orphan(s). Every repo would report a false orphan.`);
+  }
+
+  // C14 AN ORPHAN CARRYING NOTHING BUT A `path` -> still reported, and the three
+  // `??` fallbacks are what keep the operator's line readable. ADDED 2026-08-24
+  // in the same edit that deleted the three `w?.` chains beside them: the CHAINS
+  // were unreachable (a nullish `w` throws on `w.path` eleven lines earlier), the
+  // FALLBACKS are not — GitHub sends id/name/state on every entry, a `--jq`
+  // projection need not, and `readLiveList` refuses only on a non-string `path`.
+  // Without them the one line an operator acts on reads
+  // `ghost.yml (id undefined, "undefined", state \`undefined\`)`, so the three
+  // literals are the assertion, not the orphan count.
+  const c14 = orphanWorkflows([{ path: `${WF_PREFIX}ghost.yml` }], scanned);
+  if (!(c14.orphans.length === 1 && c14.orphans[0].id === null && c14.orphans[0].name === '' && c14.orphans[0].state === 'unknown')) {
+    failures.push(`C14 SPARSE ORPHAN: an entry with a \`path\` and no id/name/state produced ${JSON.stringify(c14.orphans)}. The finding line an operator pastes into \`gh api\` is built out of those three fields, and an absent one must read as null/""/unknown rather than as \`undefined\`.`);
+  }
+  // C4-C7, C12 AND C13 DRIVE `readLiveList` — the refusals that decide whether
+  // "zero orphans" is a finding or an accident, plus the control that stops it
+  // refusing everything. (This line read "C4-C6" until 2026-08-21, third pass:
+  // FOUR canaries call `readLiveList`, and C7 is one of them. Corrected rather
+  // than left, because a range in a comment is a claim like any other.
+  // CORRECTED AGAIN 2026-08-22, FOURTH PASS: SIX canaries call it now, and it
+  // holds FOUR refusals, not three. C12 (below C7) holds the accounting
+  // refusal's reach over a page with no numeric `total_count` at all; C13 holds
+  // the fourth refusal, which is new this pass — an entry with no `path` used to
+  // be silently skipped by `orphanWorkflows` instead. Both numbers in the lead
+  // line were re-derived by counting the calls, not remembered.
+  // CORRECTED A THIRD TIME 2026-08-24, FIFTH PASS: NINE canary calls reach
+  // `readLiveList` — C4, C5, C6, C7, C12a, C12b, C13, and C15/C16 added this
+  // pass for the two optional chains nothing drove. It still holds FOUR
+  // refusals. Counted with `grep -c "= readLiveList("` -> 10, one of which is
+  // `liveVerdict`'s own call.) They are here AND ALSO in a test file now: the
+  // flag that reaches the dispatch has eight callers in guards.test.mjs since
+  // this pass, and the canaries keep holding the pure engine behind it, which
+  // is a different job — see the note on `readLiveList` and the closing block
+  // on `liveLimbSelfTest`.
+  const goodPage = JSON.stringify({ total_count: 2, workflows: agreeing });
+
+  // C4 A WELL-FORMED PAGE -> no refusal, and the array comes back intact. The
+  // over-firing control for the three below: a reader that refuses everything
+  // reports zero orphans on nothing, which is the same silence by another route.
+  const c4 = readLiveList('good.json', goodPage);
+  if (c4.refusal || c4.body?.workflows?.length !== 2) {
+    failures.push(`C4 WELL-FORMED PAGE: a valid \`gh api\` body was REFUSED (${JSON.stringify(c4.refusal ?? null)}). The limb would refuse on every correct input.`);
+  }
+
+  // C5 NOT JSON -> refused, naming JSON. `gh` writing an error page or half a
+  // response into the file is the live shape of this.
+  const c5 = readLiveList('broken.json', '{not json');
+  if (!c5.refusal || !/JSON/.test(c5.refusal[0])) {
+    failures.push(`C5 NOT JSON: unparseable bytes were accepted — got ${JSON.stringify(c5)}. Unreadable is not empty, and empty is zero orphans.`);
+  }
+
+  // C6 NO `workflows` ARRAY -> refused. A filtered projection (`--jq`) is the
+  // easy mistake, and it reads as a list with nothing in it.
+  const c6 = readLiveList('projection.json', '{"total_count":1,"foo":[]}');
+  if (!c6.refusal || !/workflows/.test(c6.refusal[0])) {
+    failures.push(`C6 NO WORKFLOWS ARRAY: a body with no \`workflows\` array was accepted — got ${JSON.stringify(c6)}. Every live workflow would read as absent from GitHub's own list.`);
+  }
+
+  // C7 TRUNCATED PAGE -> refused, and it must say PARTIAL. Without `?per_page`,
+  // `gh api` returns thirty of thirteen-plus and every entry past the boundary
+  // silently stops being an orphan.
+  const c7 = readLiveList('short.json', JSON.stringify({ total_count: 13, workflows: agreeing }));
+  if (!c7.refusal || !/PARTIAL/.test(c7.refusal[0])) {
+    failures.push(`C7 TRUNCATED PAGE: a page reporting total_count 13 while carrying 2 entries was accepted — got ${JSON.stringify(c7)}. Truncation reads as "absent from GitHub", the inverse of this limb's finding.`);
+  }
+
+  // C12 A PAGE THAT DOES NOT ACCOUNT FOR ITSELF -> refused, in BOTH the shapes
+  // C7 cannot reach. ADDED 2026-08-22, FOURTH PASS, with the deletion it pins:
+  // the accounting refusal above carried a `typeof total_count === 'number' &&`
+  // conjunct, so a page that simply LACKED the field skipped the refusal, and a
+  // `--jq` projection is precisely how a body keeps `workflows` and loses
+  // `total_count` — the same mistake C6 covers, arriving one field later.
+  //
+  // WHY THIS IS NOT A SECOND CANARY ON C7'S CONDITION. Both drive the one
+  // comparison, so `if (false)` on it reddens both. What separates them is the
+  // regression this pass exists to stop: RESTORE the `typeof` conjunct and C7
+  // still passes (its page reports 13 and carries 2, a number either way) while
+  // C12 fires on both of its inputs. Measured, not reasoned — the row is in the
+  // mutation list above.
+  //
+  // THE WORDING IS PART OF THE ASSERTION. `undefined` and `"2"` are what
+  // `JSON.stringify` prints for the absent and the string field, and they are
+  // what tells an operator whether the page was truncated or projected. A test
+  // for the refusal alone would pass on a message that named neither.
+  const c12absent = readLiveList('projection.json', '{"workflows":[]}');
+  const c12string = readLiveList('stringy.json', JSON.stringify({ total_count: '2', workflows: agreeing }));
+  if (!/total_count undefined and carries 0 entr/.test(c12absent.refusal?.[0] ?? '')) {
+    failures.push(`C12a NO total_count: a body with \`workflows\` and NO \`total_count\` was not refused by name — got ${JSON.stringify(c12absent)}. Truncation becomes unfalsifiable on the one field that could falsify it, and a shorter list is fewer orphans.`);
+  }
+  if (!/total_count "2" and carries 2 entr/.test(c12string.refusal?.[0] ?? '')) {
+    failures.push(`C12b STRING total_count: a body whose \`total_count\` is a string was not refused by name — got ${JSON.stringify(c12string)}. A quoted count never equals a length, and reading it as agreement is the same silence.`);
+  }
+
+  // C13 AN ENTRY WITH NO `path` -> refused, and the entry is named by index.
+  // ADDED 2026-08-22 with the fallback it replaces: `orphanWorkflows` defaulted a
+  // missing `path` to '', which fails the prefix test, so the entry was skipped
+  // rather than reported — the `total_count` defect one field over. The index
+  // and the total are part of the assertion because "some entry is malformed" is
+  // not something an operator can act on; "entry 2 of 3" is.
+  const c13 = readLiveList(
+    'pathless.json',
+    JSON.stringify({ total_count: 3, workflows: [...agreeing, { id: 7, name: 'no path at all', state: 'active' }] }),
+  );
+  if (!/entry 2 of 3 has no string `path`/.test(c13.refusal?.[0] ?? '')) {
+    failures.push(`C13 PATHLESS ENTRY: a live entry with no \`path\` was not refused by index — got ${JSON.stringify(c13)}. An entry that cannot be matched against a file is dropped from the comparison, and one fewer entry considered is one fewer orphan.`);
+  }
+
+  // C15 A BODY THAT IS JSON `null` -> refused, not crashed. ADDED 2026-08-24
+  // because the `body?.` chain in the `workflows`-array refusal had no input:
+  // `null` is valid JSON, so `JSON.parse` hands it back and `body.workflows`
+  // would throw, while C6's body is an object and short-circuits the chain
+  // without ever exercising it. A chain nothing drives is a chain that can be
+  // deleted by accident, and the accident here is a TypeError where a refusal
+  // belongs.
+  const c15 = readLiveList('null.json', 'null');
+  if (!c15.refusal || !/workflows/.test(c15.refusal[0])) {
+    failures.push(`C15 NULL BODY: a page whose entire body is JSON \`null\` produced ${JSON.stringify(c15)} instead of a refusal naming \`workflows\`. A body that is not an object is not an empty list, and an empty list is zero orphans.`);
+  }
+
+  // C16 AN ENTRY THAT IS `null` -> refused BY INDEX, not crashed. ADDED
+  // 2026-08-24. C13's entry is an object missing `path`; this one is not an
+  // object at all, which is the only input that drives BOTH the `w?.path` chain
+  // in the finder and the `[pathless]?.path` chain in the message it prints.
+  // With either chain dropped this case became a TypeError, and a crash inside
+  // the canaries is not the refusal an operator needs to read.
+  const c16 = readLiveList('nullentry.json', '{"total_count":1,"workflows":[null]}');
+  if (!/entry 0 of 1 has no string `path` \(got undefined\)/.test(c16.refusal?.[0] ?? '')) {
+    failures.push(`C16 NULL ENTRY: a live entry that is \`null\` was not refused by index — got ${JSON.stringify(c16)}. An entry that cannot be matched against a file is dropped from the comparison, and one fewer entry considered is one fewer orphan.`);
+  }
+
+  // C8-C11 DRIVE `liveVerdict` — the ORPHAN VERDICT, which is a DIFFERENT
+  // condition from the engine C2 covers. C2 proves an absent workflow is FOUND;
+  // these prove the run STOPS on one and says which stop it is. Until the third
+  // pass only the first half had a negative half, and it is the second half
+  // that decides the exit code.
+  const c8 = liveVerdict('good.json', goodPage, scanned);
+  if (c8.stop || !/0 of them absent/.test(c8.liveLine ?? '')) {
+    failures.push(`C8 AGREEING PAGE: a live list identical to the scan produced ${JSON.stringify(c8)} instead of a plain consulted line. A verdict that stops on correct input is one that gets switched off.`);
+  }
+
+  // C9 ONE ORPHAN -> a COVERAGE LOST stop that NAMES it, over a line that counts
+  // it. The literal shape measured against this repository 2026-08-21.
+  // THE ID IS PART OF THE ASSERTION, not decoration: it is what an operator
+  // pastes into `gh api /repos/…/actions/workflows/<id>` to find the thing.
+  // Added 2026-08-21, third pass, because `id: w?.id ?? null` pinned to `null`
+  // was measured surviving every canary — EXIT 0, nothing fired — while
+  // `name` and `state` were already held by C2 and by the base-name test here.
+  const c9 = liveVerdict(
+    'orphan.json',
+    JSON.stringify({
+      total_count: 3,
+      workflows: [...agreeing, { id: 320102035, name: 'media-probe (throwaway)', path: `${WF_PREFIX}media-probe.yml`, state: 'active' }],
+    }),
+    scanned,
+  );
+  if (c9.stop?.kind !== 'coverageLost' || !/media-probe\.yml \(id 320102035, "media-probe \(throwaway\)", state `active`\)/.test(c9.stop?.lines?.[0] ?? '') || !/1 of them absent/.test(c9.liveLine ?? '')) {
+    failures.push(`C9 ORPHAN VERDICT: a live workflow absent from the scan did not produce a COVERAGE LOST stop naming it — got ${JSON.stringify(c9)}. The orphan would be counted, printed, and exited 0 over.`);
+  }
+
+  // C10 AN UNREADABLE PAGE -> a REFUSE stop and NO consulted line. A refusal
+  // that reaches the comparison compares nothing and reports zero orphans,
+  // which is the one answer this limb must never give by accident.
+  const c10 = liveVerdict('broken.json', '{not json', scanned);
+  if (c10.stop?.kind !== 'refuse' || c10.liveLine !== undefined) {
+    failures.push(`C10 REFUSAL PASSTHROUGH: an unreadable page produced ${JSON.stringify(c10)} instead of a refusal alone. "I could not read it" would print as an account of the tree.`);
+  }
+
+  // C11 BOTH STOP KINDS RESOLVE. The caller takes the stop BY NAME, so a kind
+  // with no entry in `LIVE_STOPS` is a TypeError at the one moment this guard
+  // has a finding to report — the worst possible moment to discover it.
+  for (const k of [c9.stop?.kind, c10.stop?.kind]) {
+    if (typeof LIVE_STOPS[k] !== 'function') {
+      failures.push(`C11 STOP KIND: \`${k}\` is not one of ${Object.keys(LIVE_STOPS).join(', ')} — the caller would throw instead of reporting.`);
+    }
+  }
+
+  return failures;
+}
+
+const selfTestFailures = liveLimbSelfTest();
+if (selfTestFailures.length) {
+  refuse([
+    `limb 5's own canaries failed (${selfTestFailures.length}), so its findings — including "no orphans" — are worthless:`,
+    ...selfTestFailures.map((f) => `  · ${f}`),
+    'This is a statement about the detector, not about the tree. Nothing below was compared.',
+  ]);
+}
+
+let liveLine;
+if (liveArg === null) {
+  liveLine =
+    'live workflow list NOT CONSULTED — a workflow on a branch this checkout does not have is invisible here. ' +
+    `Compare with: gh api 'repos/OWNER/REPO/actions/workflows?per_page=100' > live.json && node ${'tooling/ci/assert-workflow-hardening.mjs'} ${LIVE_FLAG}live.json`;
+} else {
+  // ⚠️ NO SEPARATE `existsSync` CHECK, AND IT WAS WRITTEN AND THEN DELETED.
+  // `readFileSync` already refuses on a missing file, with ENOENT in the
+  // message; the extra branch changed the wording and nothing else — same exit,
+  // same refusal — so no input could tell the two apart. That is the `#…`-strip
+  // in the USES note above, one limb further down, and it goes the same way.
+  let raw;
+  try {
+    raw = readFileSync(liveArg, 'utf8');
+  } catch (e) {
+    refuse([
+      `${LIVE_FLAG}${liveArg} could not be read (${e.message}).`,
+      'A missing or unreadable list is not an empty list, and an empty list is zero orphans — which is the',
+      'one answer this limb must never give by accident.',
+    ]);
+  }
+  // ONE DISPATCH LINE, AND IT IS ALL THAT IS LEFT HERE. Reading the page,
+  // comparing it against the scan, and choosing between the two stops all
+  // happen inside `liveVerdict`, where C8-C11 drive them on every invocation.
+  // This line only TAKES the stop the verdict already decided on.
+  // 🔴 IT WAS UNCOVERED UNTIL 2026-08-24 AND IT IS NOT ANY MORE, which is
+  // written here because the sentence this replaced said the opposite and a
+  // reader arrives at this line, not at the block that qualifies it. Set to
+  // `if (false)` it was the worst row on the limb: SUITE EXIT 0, 30 / 30 / 0,
+  // while a page carrying two real orphans printed `2 of them absent` in the ok
+  // block and exited 0. Measured again after the guards.test.mjs case landed:
+  // SUITE EXIT 1, tests 38 / pass 36 / FAIL 2. A hole moved is not a hole
+  // closed — this one was closed where it was moved to.
+  const verdict = liveVerdict(liveArg, raw, files);
+  if (verdict.stop) LIVE_STOPS[verdict.stop.kind](verdict.stop.lines);
+  liveLine = verdict.liveLine;
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} workflow hardening problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -534,3 +1389,8 @@ console.log(
     `${jobsChecked} job(s) all bounded by \`timeout-minutes\` ` +
     `(two independent job-id counts agree per file, ${jobIdsSeen} = ${looseJobIdsSeen})`,
 );
+// PRINTED WHETHER IT RAN OR NOT, and that is the whole repair. The line above
+// has always read as a complete account of this repository's workflows; on
+// 2026-08-21 it was an account of 11 of the 13 GitHub would run, and nothing in
+// it said so.
+console.log(`    limb 5 — ${liveLine}`);
