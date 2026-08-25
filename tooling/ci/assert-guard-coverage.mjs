@@ -28,6 +28,20 @@
 // distinction, not a waiver, and it is written here where it is enforced rather
 // than in a doc nobody reads. Adding to this list should feel expensive.
 //
+// ⏱ APPENDED 2026-08-26 — the paragraph above is left EXACTLY as written; this
+// corpus appends dated corrections rather than rewriting them. "Two guards" is
+// now the smaller HALF of that list, not its size. COUNTED TODAY by reading the
+// map's own keys — not by running this guard, which rewrites the ratchet:
+// NOT_A_SCANNER holds ELEVEN entries. TWO are the API shape the sentence above
+// describes (assert-gate-passed and record-deployment, both .mjs under
+// tooling/ci/); the other NINE are the second shape the map's own header already
+// names — a shared pure-function module whose every caller carries its own
+// COVERAGE LOST — namely tree-walk, deployment-record, workflow-scan,
+// channel-arming, d1-sql-inventory, text-reductions, read-identity,
+// migration-tables and flutter-stock-assets, all .mjs under tooling/ci/. The
+// number is prose and prose rots; the map itself is what is enforced, and the
+// passing line prints the live exempt count on every run.
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -236,7 +250,17 @@ const NOT_A_SCANNER = new Map([
  *  every night by e2e.yml against a live Supabase — a stronger signal than a
  *  fixture, and the reason their absence from test/ is a recorded exception
  *  rather than an oversight. Naming them here is what makes the gap VISIBLE; the
- *  passing line counts them out loud. */
+ *  passing line counts them out loud.
+ *
+ *  ⏱ APPENDED 2026-08-26 — "The three entries" above is left EXACTLY as written;
+ *  this corpus appends dated corrections rather than rewriting them. COUNTED
+ *  TODAY from the map's own keys, not by running this guard (it rewrites the
+ *  ratchet): there are FIVE — provision_user, verify_row, purge, verify_purged
+ *  and verify_consent, all .mjs under tooling/e2e/. The last two were added
+ *  after that sentence was written and nothing re-counted it, which is the same
+ *  shape as the hand-ratcheted floors this file's header argues against.
+ *  Everything else the paragraph claims holds for all five unchanged; only the
+ *  number had rotted, and the passing line prints the live figure anyway. */
 const NO_NEGATIVE_TEST_NEEDED = new Map([
   [
     'tooling/e2e/provision_user.mjs',
@@ -505,7 +529,13 @@ if (strayMjs.length) {
 //  reads either figure; they are here so a reader knows the order of
 //  magnitude, and the run prints the live count on its own `ok` line anyway.
 //  This paragraph said "the forty-four" in the present tense until 2026-08-25,
-//  by which time the tree held 144.)
+//  by which time the tree held 144.
+//  ⏱ APPENDED 2026-08-26 — RE-MEASURED, and the 144 has NOT rotted in a day:
+//  both commands above still answer 144 on this tree. The bare-pathspec figure
+//  HAS moved — it answers 289 today, not 288, because one more test file now
+//  sits under tooling/ci/test/ and the naive `*` sweeps the suite in as guards.
+//  That is the sentence working, not a defect in it. Nothing below reads either
+//  number; measured with git ls-files and find, never by running this guard.)
 // ─────────────────────────────────────────────────────────────────────────────
 if (!existsSync(WORKFLOWS)) {
   coverageLost([
@@ -633,6 +663,29 @@ if (unfound.length) {
 //       the file must still be there, must still be unreached, AND MUST STILL
 //       REFUSE WHEN SPAWNED. Typing a name in it buys nothing; the guard has to
 //       go on failing to be excused for not being run. See the map's own header.
+//
+//       ⏱ APPENDED 2026-08-26 — both paragraphs above are left EXACTLY as
+//       written; this corpus appends dated corrections rather than rewriting
+//       them. ONE COUNT IN THEM HAS ROTTED, and it is the one in the first:
+//       "the single HTML→visible-text and source→code-without-comments
+//       reduction that five guards IMPORT and no workflow calls", followed by
+//       "every one of those five fails the moment it breaks". FIVE was true on
+//       the day that case arrived and nothing has re-derived it since.
+//       MEASURED TODAY with the ripgrep recipe that travels beside markerInCode
+//       further up this file (both flags kept), and NOT by running this guard,
+//       which rewrites the ratchet: 47 files under tooling/ name the
+//       text-reductions module as a specifier — 41 of them flat .mjs in
+//       tooling/ci, 4 test files under tooling/ci/test/, and 2 elsewhere
+//       (check-prod-provenance under tooling/ops/ and capture-suite-scan under
+//       tooling/store/). So the blast radius is 41 guards, not five, which makes
+//       the argument the paragraph is making STRONGER rather than weaker.
+//       "AND NO WORKFLOW CALLS" STILL HOLDS, re-checked today: the only mention
+//       of that module anywhere under .github/workflows/ is a comment line in
+//       ci.yml, and the invocation scan below strips comment lines before it
+//       matches — so it is not an invocation and the module is still reached
+//       only through the derived import graph. The same rot hit the "nine
+//       guards import it" figure in the importsOf note directly below; read 41
+//       there too, and re-measure rather than trust either number.
 const importsOf = (file) => {
   // Comments out first. A `// import { x } from './shared.mjs'` in a TODO must
   // not make a module reachable — the same prose-satisfies-a-check rule the
@@ -656,6 +709,25 @@ const importsOf = (file) => {
   // mutation on a clone: with all nine real imports deleted the guard names
   // text-reductions.mjs as unreached; with this file importing it, it does not.
   // The duplication is the price of the invariant, and it is worth it.
+  //
+  // ⏱ APPENDED 2026-08-26 — the 2026-08-02 paragraph above is left EXACTLY as
+  // written; this corpus appends dated corrections rather than rewriting them.
+  // TWO OF ITS READINGS ARE HISTORICAL and nothing re-derives either:
+  //   · "nine guards import it", and "with all nine real imports deleted", were
+  //     that day's tree. MEASURED TODAY by ripgrep — not by running this guard,
+  //     which rewrites the ratchet: 41 flat .mjs in tooling/ci name the
+  //     text-reductions module, 47 files under tooling/ in all.
+  //   · "over all 76 files in tooling/ci" was likewise that day's tree. Flat
+  //     .mjs in tooling/ci today: 144, per the orientation note further up.
+  // 🔴 AND ONE SENTENCE IN IT IS NO LONGER HYPOTHETICAL. "An import HERE would
+  // make its auditor one of its consumers" was written of a thing that had not
+  // happened; since the markerInCode repair of 2026-08-17 THIS FILE IMPORTS
+  // stripSourceComments at the top, so the auditor already IS a consumer, and
+  // "with this file importing it, it does not" now describes the tree's actual
+  // state rather than the rejected branch of a mutation. What survives intact is
+  // the NARROWER claim the paragraph opens with: importsOf still strips inline
+  // and is still not unified with that module. FLAGGED, NOT REPAIRED — removing
+  // that import is a change to this guard's LOGIC, not to its prose.
   //
   // 🔴 2026-08-02 — THIS WAS `.replace(/\/\*[\s\S]*?\*\//g, ' ')` AND IT ATE THIS
   // FILE'S OWN IMPORTS. Line 70 of this very file is a LINE comment containing
