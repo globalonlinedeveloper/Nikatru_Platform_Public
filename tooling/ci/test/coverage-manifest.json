@@ -34,7 +34,7 @@
   "copy-parity.test.mjs": 27,
   "cors-allowlist.test.mjs": 16,
   "d1-bindings.test.mjs": 7,
-  "d1-sql-inventory.test.mjs": 47,
+  "d1-sql-inventory.test.mjs": 54,
   "data-inventory.test.mjs": 47,
   "deletion-control.test.mjs": 18,
   "deploy-triggers.test.mjs": 17,
