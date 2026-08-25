@@ -234,6 +234,21 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'it. Grading it would add a workflow to the denominator that can never move the answer.',
   ],
   [
+    'site-drift-repair.yml',
+    'regenerates the discovery surface after a push to main and opens a pull request when the regenerated ' +
+      'bytes differ from what main carries. It builds no app, produces no release artifact and names no ' +
+      'app id. R-1 quantifies over the workspace APP set to prove a lane is generic, so a lane that ships ' +
+      'no app has nothing for this guard to compare and would sit in the denominator as a permanent ' +
+      'empty-set pass — the same reason already written out above for deploy-workers.yml and ops-watch.yml. ' +
+      'The owning stage is stage 14 ops, through the duty row `duty.workflow.site-drift-repair.yml` in ' +
+      'tooling/ops/register.json, and that ownership is not prose: assert-ops-register.mjs:23 holds ' +
+      '`watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so this lane cannot be in the ' +
+      'tree without a row there. What holds its OUTPUT correct is tooling/ci/check-site-integrity.mjs, ' +
+      'which the workflow runs as its own last step, AFTER the regeneration. Classified 2026-08-25, the ' +
+      'round the workflow landed; between the two, this guard exited 1 naming it — the unclassified-lane ' +
+      'limb working exactly as designed, not a defect in the lane.',
+  ],
+  [
     'submit-appstore.yml',
     "[10]D-10 owns the store submission paths. The script it runs is already `--app`-parameterised; the " +
       'workflow that calls it is the half that still names one app, and pulling that into R-1 would claim ' +
@@ -375,8 +390,35 @@ if (apps === null || apps.length === 0) {
 }
 const APPS = new Set(apps);
 
-/** The sentinel a `${{ … }}` leaves behind when nothing here can resolve it. */
-const DYNAMIC = ' dynamic ';
+/** The sentinel a `${{ … }}` leaves behind when nothing here can resolve it.
+ *
+ *  WRITTEN AS \u0000 ESCAPES, NOT RAW NUL BYTES, AND THAT IS THE POINT OF THE
+ *  LINE LOOKING LIKE THIS. Until 2026-08-25 it carried two LITERAL NULs — at byte
+ *  offsets 22908 and 22916 of this file AS OF 57e6e10, which is where to verify
+ *  it, because this comment has since shifted every offset below it — and ripgrep
+ *  therefore classified this whole file as
+ *  binary and SKIPPED IT WITHOUT A WORD unless the searcher remembered `-a`. A
+ *  sweep for any string in this guard came back clean and wrong — the same
+ *  false-negative shape as grepping this repo from the root and never opening
+ *  the gitignored trees. Measured that day, immediately either side of the
+ *  rewrite: the tooling-wide text-reductions import sweep answered 46 and 43
+ *  WITHOUT `-a` before, 47 and 44 after, and 47 and 44 with `-a` throughout.
+ *  assert-guard-coverage.mjs booked this removal as owed and now carries the
+ *  dated re-measurement.
+ *
+ *  THE VALUE IS UNCHANGED: NUL + 'dynamic' + NUL, utf8
+ *  0064796e616d696300, byte-identical to what this line evaluated to at 57e6e10.
+ *
+ *  DO NOT "simplify" the escapes into a plain word. Measured 2026-08-25: mutating
+ *  this to 'dynamic' leaves BOTH this guard and
+ *  test/release-lane-generic.test.mjs at EXIT 0 — no fixture expresses the input
+ *  class the NULs defend, namely a workflow path whose app segment is the literal
+ *  word `dynamic`, so that particular loosening is UNPINNED and this comment is
+ *  the only thing standing in front of it. The escapes themselves ARE pinned:
+ *  write \\u0000 (literal backslash text instead of a NUL) and guard and test
+ *  both go to EXIT 1 together.
+ */
+const DYNAMIC = '\u0000dynamic\u0000';
 
 /** `KEY: value` under every `env:` block in the file — workflow level and job
  *  level merged. Merging is deliberate and it is what closes the bypass: the

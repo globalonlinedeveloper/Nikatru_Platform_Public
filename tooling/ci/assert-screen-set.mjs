@@ -11,7 +11,12 @@
 //   · `ConsentController.record` existed with ZERO call sites — every event was
 //     silently discarded, and no test failed, because refusing is the correct
 //     behaviour when consent is absent
-//   · `PaywallGate` exists today with zero consumers
+//   · `PaywallGate` SHIPPED in the design system and was referenced by
+//     nothing for months — that dead-on-arrival stretch is the defect this
+//     bullet remembers. It is CONSUMED today: `class _GatedInsights` in
+//     `apps/subly/lib/core/router.dart` (the `/insights` route builder)
+//     constructs it, and so does `child: PaywallGate(` in the app brick's
+//     `lib/features/home/home_screen.dart`
 //   · the account-deletion dialog's confirm button called
 //     `Navigator.pop(dialogContext)` and nothing else, which looks exactly like
 //     a button that worked

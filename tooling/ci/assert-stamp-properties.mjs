@@ -237,7 +237,58 @@ const SHARED_PREFIX = /^(packages|services|tooling)\//;
 // the exact opposite of the new behaviour. Guard and fixture move together, or
 // neither moves. (`bootRoots` below deliberately ignores this Set, so the [13]T-4
 // walk already covers Subly and is untouched by any of the above.)
-const EXEMPT_APPS = new Set(['apps/subly']);
+// --- APPENDED 2026-08-25 . THE SET IS NOW A MAP, AND IT IS NO LONGER SILENT ---
+// Everything above is left exactly as written; this corpus appends dated
+// corrections rather than rewriting them. What changed today and why:
+//
+// [RED] THE EXEMPTION WAS INVISIBLE IN OUTPUT AND SELF-CHECKED NOTHING. Measured
+// before the change: `node tooling/ci/assert-stamp-properties.mjs` exited 0 and
+// ended with "ok - 26 property/properties enforced across 1 root(s):
+// tooling/bricks/app/__brick__/apps/{{app_id}}". `grep -ci exempt` over that
+// stdout returned 1, and the single hit was an unrelated brand-seed sentence. So
+// the ONE APP THAT SHIPS was dropped from the graded set and no line of output
+// said so - a reader could see `ok` and never learn what was not graded.
+// Nothing checked that the entry still named a real path either, and the SIZE of
+// what it hides lived only in the prose above, where the number moved 9 -> 10 on
+// 2026-08-21 with nothing executable tracking it.
+//
+// Three limbs, all of them strictly stricter than what was here:
+//   (1) VISIBLE - a white-square line per member on every run, and the skipped
+//       count is inside the final `ok` line itself, so `ok` cannot be read
+//       without it.
+//   (2) SELF-CHECKING EXISTENCE - the path must appear in the root pubspec.yaml
+//       `workspace:` block. `bootRoots` below already collects every apps/ entry
+//       BEFORE the exemption filter, so this is a set difference over a list that
+//       exists; no second pubspec reader (the COVERAGE LOST beside that read is
+//       there because a second reader is this file's recurring failure).
+//   (3) SELF-CHECKING SIZE - the property audit is RUN over the exempted app
+//       anyway, through the same `auditPropertyRoot` the graded roots use, the
+//       count of FAIL lines it WOULD have printed is printed, and it is pinned to
+//       `floor`. Both directions redden: drifting further fails, and CATCHING UP
+//       fails too, because a floor nobody lowers is a floor that stops measuring.
+//
+// `floor` IS A MEASURED NUMBER, NOT A BUDGET. Re-derive it the way the prose
+// above says - except that the line this guard now prints on every run IS the
+// reproduction, so there is nothing left to run by hand.
+const EXEMPT_APPS = new Map([
+  [
+    'apps/subly',
+    {
+      why: '39-CHASSIS \u00a74 cut 1 \u2014 it predates the brick and was never stamped, so it carries no inherited property test to keep.',
+      // MEASURED 2026-08-25 by this very limb, on main @57e6e10 with the anchor read
+      // COMMENT-STRIPPED: ten FAIL lines - 3 property groups absent from
+      // apps/subly/test/chassis_properties_test.dart and 7 source anchors whose
+      // implementation this file classes A/B/C/D in the prose above. It agrees with
+      // the 2026-08-21 hand measurement to the line, which is what makes it a
+      // reproduction rather than a new claim.
+      floor: 10,
+      floorAsOf: '2026-08-25',
+      floorNote:
+        'The prose above records 9 with the anchors read RAW and 10 with them COMMENT-STRIPPED (2026-08-21); ' +
+        'the strip is on, so that is the read this number comes from. Getting the RAW number back means the stripping was undone.',
+    },
+  ],
+]);
 const SCAFFOLD = 'packages/design_system/lib/src/widgets/app_scaffold.dart';
 // [pipeline 11]E-5. Shared tree, deliberately: the launch trio is implemented
 // ONCE for every stamp. Anchoring the event names inside an app would be
@@ -2131,20 +2182,28 @@ const resolveSource = (root, file) => (SHARED_PREFIX.test(file) ? file : `${root
 const MIN_BLOCKS = 12;
 let rootsAudited = 0;
 
-for (const root of roots) {
+// ── ONE ROOT AUDITED, WITH ITS VERDICTS ROUTED THROUGH A SINK ───────────────
+// 2026-08-25. This was the body of `for (const root of roots)` and it is not
+// changed a line — only its `fail`/`ok` calls are routed through `sink`, so the
+// EXEMPT_APPS ratchet below can run the SAME audit over an exempted app and
+// COUNT what it would have said. The alternative was a second extraction of the
+// property/anchor logic, which is the shape this file already fails on at the
+// `COVERAGE LOST` beside the workspace read: a rival reader agrees with itself.
+/** @param {{fail:(m:string)=>void, ok:(m:string)=>void, audited:()=>void, gap:(g:string)=>void}} sink */
+function auditPropertyRoot(root, sink) {
   const testPath = `${root}/${PROP_TEST}`;
   let test;
   try {
     test = stripDartComments(readFileSync(join(repo, testPath), 'utf8'));
   } catch {
-    fail(
+    sink.fail(
       `${testPath} is MISSING. A stamped app that deletes its inherited property test drops all ` +
         `${REQUIRED_COVERAGE.length} assertions with ONE rm — no lint suppression, no skip:, and until ` +
         'this guard read apps/ as well as the brick, every other guard in the tree stayed green.',
     );
-    continue;
+    return;
   }
-  rootsAudited++;
+  sink.audited();
 
   // COVERAGE SELF-CHECK. A file that still exists but has been emptied of tests
   // would satisfy every `group` regex below only if they were also removed — but a
@@ -2152,14 +2211,14 @@ for (const root of roots) {
   // Counted over the COMMENT-STRIPPED source: `// testWidgets(` is not a test.
   const blocks = (test.match(/\b(?:test|testWidgets)\(/g) ?? []).length;
   if (blocks < MIN_BLOCKS) {
-    fail(`COVERAGE LOST — ${testPath} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`);
+    sink.fail(`COVERAGE LOST — ${testPath} declares only ${blocks} test block(s), expected >= ${MIN_BLOCKS}. The file exists but has stopped asserting.`);
   } else {
-    ok(`${root} — property test declares ${blocks} assertion block(s)`);
+    sink.ok(`${root} — property test declares ${blocks} assertion block(s)`);
   }
 
   for (const p of REQUIRED_COVERAGE) {
     if (!p.group.test(test)) {
-      fail(`${root}: property '${p.key}' is NOT asserted in ${testPath} — ${p.why}`);
+      sink.fail(`${root}: property '${p.key}' is NOT asserted in ${testPath} — ${p.why}`);
       continue;
     }
     const sources = p.sources ?? [];
@@ -2207,12 +2266,12 @@ for (const root of roots) {
         // off for exactly the same reason: `group('property: …')` is a string.
         src = stripAnchorComments(path, readFileSync(join(repo, path), 'utf8'));
       } catch {
-        fail(`${root}: property '${p.key}': ${path} could not be read`);
+        sink.fail(`${root}: property '${p.key}': ${path} could not be read`);
         anchored = false;
         break;
       }
       if (!s.re.test(src)) {
-        fail(`${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}`);
+        sink.fail(`${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}`);
         anchored = false;
         break;
       }
@@ -2221,15 +2280,107 @@ for (const root of roots) {
     if (sources.length === 0) {
       // Refused deliberately: an unanchored property is a test heading that
       // survives its own feature's deletion. That was hole 1.
-      fail(`${root}: property '${p.key}' has NO source anchor — it would still pass with the feature deleted`);
+      sink.fail(`${root}: property '${p.key}' has NO source anchor — it would still pass with the feature deleted`);
       continue;
     }
-    ok(`${root} — property '${p.key}' asserted and implemented (${sources.length} anchor${sources.length > 1 ? 's' : ''})`);
+    sink.ok(`${root} — property '${p.key}' asserted and implemented (${sources.length} anchor${sources.length > 1 ? 's' : ''})`);
     // A limb of the property that CANNOT be exercised here, printed every run
     // rather than left in a comment nobody opens. Never blocking: the fix is
     // another stage's seam edit, and a guard that reddens CI over work this
     // branch may not do is one somebody switches off. [CLAUDE.md C-6]
-    if (p.gap) propertyGaps.add(`${p.key} — ${p.gap}`);
+    if (p.gap) sink.gap(`${p.key} — ${p.gap}`);
+  }
+}
+
+const GRADED_SINK = { fail, ok, audited: () => { rootsAudited++; }, gap: (g) => propertyGaps.add(g) };
+for (const root of roots) auditPropertyRoot(root, GRADED_SINK);
+
+// --- EXEMPT_APPS . VISIBLE, EXISTENT, AND SIZED (2026-08-25) ----------------
+// See the three limbs at EXEMPT_APPS above. Everything here prints on every run:
+// an exemption nobody can see in output is an exemption nobody re-reads.
+for (const [app, ex] of EXEMPT_APPS) {
+  console.log(`\u2b1c NOT GRADED: ${app} is in EXEMPT_APPS \u2014 ${ex.why}`);
+}
+
+// LIMB (2). `bootRoots` is the workspace apps/ list BEFORE the exemption filter,
+// so this is a set difference and not a second read of pubspec.yaml. Skipped when
+// the workspace block itself could not be read: that is already a COVERAGE LOST
+// above, and reporting it twice would attribute one defect to two causes.
+if (workspaceRead) {
+  for (const [app, ex] of EXEMPT_APPS) {
+    if (bootRoots.includes(app)) continue;
+    fail(
+      `EXEMPT_APPS names "${app}", which is NOT in the root pubspec.yaml \`workspace:\` block. ` +
+        'An exemption for a path that is not on the workspace list excuses nothing and hides that fact: it ' +
+        'reads as a live carve-out for a shipped app while naming a directory that was renamed or removed, ' +
+        `and the reason it carries \u2014 "${ex.why}" \u2014 is then a claim about nothing. ` +
+        'Delete the entry or fix the path.',
+    );
+  }
+}
+
+// LIMB (3), THE RATCHET. The exempted app is audited by the SAME
+// `auditPropertyRoot` the graded roots run through - same property groups, same
+// source anchors, same comment-stripped anchor read - with the verdicts counted
+// instead of printed. That count is what the prose above calls "9, now 10", and
+// it is now a number this guard produces rather than one a maintainer is told to
+// reproduce by hand.
+//
+// [RED] BOTH DIRECTIONS FAIL, and the second one is the point. Exceeding the
+// floor means the exempted app drifted further from the chassis while nothing
+// watched. Coming in UNDER it means the app caught up and the floor is now slack
+// a future regression could hide inside - so it must be lowered in the same
+// commit that earns it. A one-sided floor is a budget, and a budget nobody spends
+// down becomes permission.
+for (const [app, ex] of EXEMPT_APPS) {
+  if (!bootRoots.includes(app)) continue; // limb (2) already failed this entry
+  let would = 0;
+  const witness = [];
+  auditPropertyRoot(app, {
+    fail: (m) => { would++; witness.push(m); },
+    ok: () => {},
+    audited: () => {},
+    gap: () => {},
+  });
+  // IS THIS THE PACKAGE THE FLOOR WAS MEASURED OVER? A tree can NAME `apps/subly`
+  // on its workspace list without being the app — every fixture that exercises
+  // this guard does exactly that, seeding two files under `apps/subly/lib` so the
+  // [13]T-4 boot walk has something to walk. Comparing a recorded count of a real
+  // 56-file app against a two-file stub would fail those trees for being fixtures.
+  //
+  // The discriminator is the package manifest, and it is deliberately NOT an
+  // opt-out: a `workspace:` member with no `pubspec.yaml` is not a Dart workspace
+  // at all. `dart pub get` refuses it outright, so deleting this file to quiet the
+  // ratchet takes the whole repository's dependency resolution — and the app's
+  // build, its test lane and assert-app-dod — down with it. That is the opposite
+  // of a quiet move. THE COUNT IS PRINTED EITHER WAY; only the comparison is held.
+  const measurable = existsSync(join(repo, app, 'pubspec.yaml'));
+  console.log(
+    `\u2b1c ${app} is NOT GRADED, and this is the size of that: the same audit run over it produces ` +
+      `${would} FAIL line(s)` +
+      (measurable
+        ? ` (recorded floor ${ex.floor}, set ${ex.floorAsOf}). ${ex.floorNote}`
+        : ` \u2014 but this tree has no ${app}/pubspec.yaml, so it is not the package floor ${ex.floor} ` +
+          'was measured over and the ratchet is NOT applied to it.'),
+  );
+  if (!measurable) continue;
+  for (const m of witness) console.log(`   \u00b7 would fail: ${m}`);
+  if (would > ex.floor) {
+    fail(
+      `${app} is exempt and has DRIFTED: the audit now produces ${would} FAIL line(s), above the recorded ` +
+        `floor of ${ex.floor} (set ${ex.floorAsOf}). The exemption is a statement about a KNOWN gap, not a ` +
+        'licence for it to grow; every line above the floor is a chassis property this app stopped meeting ' +
+        'while the only thing tracking the number was a comment. Fix the drift, or raise the floor in the ' +
+        'same commit and say what was traded.',
+    );
+  } else if (would < ex.floor) {
+    fail(
+      `${app} is exempt and has CAUGHT UP: the audit produces ${would} FAIL line(s), BELOW the recorded ` +
+        `floor of ${ex.floor} (set ${ex.floorAsOf}). This is not a pass. A floor left above the real number ` +
+        'is slack a later regression can reappear inside without this guard saying a word - the same shape ' +
+        'as the hand-kept list REQUIRED_COVERAGE stopped being. Lower the floor to ' +
+        `${would} in this commit.`,
+    );
   }
 }
 
@@ -2841,8 +2992,12 @@ if (failed) {
   console.error('\nassert-stamp-properties: FAILED');
   process.exitCode = 1;
 } else {
+  // The skipped count is INSIDE the ok line, not beside it. Before 2026-08-25
+  // this sentence ended at the root list, and a reader could take "ok" for
+  // "everything was graded" while the only shipped app was not in it.
   console.log(
     `\nassert-stamp-properties: ok — ${REQUIRED_COVERAGE.length} property/properties enforced across ` +
-      `${rootsAudited} root(s): ${roots.join(', ')}`,
+      `${rootsAudited} root(s): ${roots.join(', ')} — and ${EXEMPT_APPS.size} app root(s) NOT GRADED ` +
+      `(EXEMPT_APPS: ${[...EXEMPT_APPS.keys()].join(', ')})`,
   );
 }

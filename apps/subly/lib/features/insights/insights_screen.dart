@@ -23,43 +23,16 @@ import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../cancel/cancel_sheet.dart';
+import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 
-/// The three neutrals this screen paints with, resolved for the current
-/// brightness.
-///
-/// 🔴 LIGHT IS THE LITERAL TOKEN, ON PURPOSE — the rule `cardDecoration` and
-/// `RowCard` carry (`features/shared/widgets.dart`): `apps/subly` is the frozen
-/// legacy rail-prover the owner eyeballs, so light stays byte-identical.
-/// `Theme.of(context).extension<AppThemeX>()` is NOT a substitute — under the
-/// seeded chassis theme its `muted`/`line` are `scheme.onSurfaceVariant`/
-/// `outlineVariant` in BOTH brightnesses, so reading it would repaint light.
-///
-/// 🔴 DARK IS THE DEFECT THIS FIXES. `AppText.title`/`.fig`/`.body` bake
-/// `AppColors.ink` (#141420), `AppText.muted` bakes `AppColors.muted`, and the
-/// unused-subscription rows are outlined in `AppColors.line` (#ECECF2) — a
-/// near-white hairline. On a dark scaffold the two card titles were
-/// near-invisible and the row outlines glared. The dark values are the same
-/// slots `buildAppTheme` maps these neutrals to (`ink: scheme.onSurface`,
-/// `divider: scheme.outlineVariant`) and `AppThemeX.fromScheme` maps `muted` to.
-///
-/// ⚠️ `calendar_screen.dart` and `budget_screen.dart` carry the identical
-/// helper: each P4 file-group increment has to stay independently compilable,
-/// and the hoist into `features/shared/` belongs to the campaign's closing
-/// cleanup alongside the deletion of `DueInfo.of`.
-({Color ink, Color muted, Color line}) _neutrals(BuildContext context) {
-  final ThemeData theme = Theme.of(context);
-  if (theme.brightness == Brightness.light) {
-    return (ink: AppColors.ink, muted: AppColors.muted, line: AppColors.line);
-  }
-  final ColorScheme scheme = theme.colorScheme;
-  return (
-    ink: scheme.onSurface,
-    muted: scheme.onSurfaceVariant,
-    line: scheme.outlineVariant,
-  );
-}
+/// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
+/// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
+/// together with the whole doc that recorded why light is the literal token and
+/// why dark derives from the seed. The triplication was deliberate for exactly
+/// one increment and its own doc said so; this is the closing cleanup it named,
+/// landed with the deletion of `DueInfo.of`. Read the argument there.
 
 /// The on-LIGHT TEXT tone for the unused-plan usage note. **#9C6406, not
 /// [AppColors.warn] #F59E0B.**
@@ -144,8 +117,14 @@ const Color _warnOnLight = Color(0xFF9C6406);
 ///
 /// Takes the [BuildContext] rather than a [Brightness] because every call site
 /// is inside this file's own build methods and already holds one, the same way
-/// [_neutrals] above does; `due.dart`'s twin takes a [Brightness] instead only
-/// because it is a context-free factory three other files call.
+/// `neutrals(context)` in `features/shared/neutrals.dart` does; `due.dart`'s
+/// twin takes a [Brightness] instead only because it is a context-free factory
+/// three other files call.
+///
+/// (CORRECTION 2026-08-25: that reference read `[_neutrals] above` until the
+/// helper was hoisted out of this file. The comparison itself is unchanged —
+/// the hoisted helper still takes a [BuildContext] and still resolves off
+/// `Theme.of`.)
 Color _warnAsText(BuildContext context) =>
     Theme.of(context).brightness == Brightness.light
     ? _warnOnLight
@@ -195,10 +174,16 @@ bool _twoUp(double width, int cardCount) =>
 /// wherever their own content does — they are not forced to equal heights,
 /// which would stretch whichever column has less in it.
 ///
-/// ⚠️ Duplicated verbatim in `budget_screen.dart`, for the reason `_neutrals`
-/// records above it: each P4 file-group increment has to stay independently
-/// compilable, and the hoist into `features/shared/` belongs to the campaign's
-/// closing cleanup.
+/// ⚠️ Duplicated verbatim in `budget_screen.dart`, for the reason the hoisted
+/// `neutrals` helper recorded when it stood above this one: each P4 file-group
+/// increment has to stay independently compilable, and the hoist into
+/// `features/shared/` belongs to the campaign's closing cleanup.
+///
+/// (CORRECTION 2026-08-25: `_neutrals` took that hoist —
+/// `features/shared/neutrals.dart`. THIS helper did NOT, and is still
+/// duplicated. It is a layout function with no theme input, and it was outside
+/// the file set of the due/neutrals cleanup. The duplication is unresolved,
+/// not resolved.)
 Widget _twoColumnCards(List<Widget> cards, double gap) {
   final List<Widget> left = <Widget>[];
   final List<Widget> right = <Widget>[];
@@ -243,7 +228,7 @@ class InsightsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
@@ -401,7 +386,7 @@ class InsightsScreen extends ConsumerWidget {
     List<CategoryTotal> cats,
     double total,
   ) {
-    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
       for (int i = 0; i < cats.length; i++)
         MapEntry<double, Color>(
@@ -561,7 +546,7 @@ class InsightsScreen extends ConsumerWidget {
     List<Subscription> unused,
     double savings,
   ) {
-    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: cardDecoration(context),

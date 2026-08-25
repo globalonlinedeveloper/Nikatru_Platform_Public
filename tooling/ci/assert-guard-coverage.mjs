@@ -200,7 +200,7 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'text-reductions.mjs',
-    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan. ⏱ APPENDED 2026-08-25 — the paragraph above is left exactly as written; this corpus appends dated corrections rather than rewriting them. Re-measured today with the recipe beside markerInCode further down this file, both flags kept: the bare-specifier form answers 47 and the stripSourceComments brace-clause form answers 44. On 2026-08-17 they were 39 and 36 — so the entry has not gone wrong a third time, but it had rotted by eight in eight days, which is exactly why the paragraph above tells you to re-measure rather than read. Breakdown of the 47: 4 test files, 41 flat in tooling/ci, and 2 elsewhere (tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) = 43 non-test; 4 of the 44 stripSourceComments importers are test files. Pipe the file list through tr to turn Windows separators into forward slashes before anchoring a count on tooling/ci, or the anchor matches nothing and the breakdown reads as zero. 🔴 AND THE -a CLAUSE ABOVE NO LONGER REPRODUCES: the two literal NUL bytes in assert-release-lane-generic.mjs were rewritten as escape sequences in the same change as this append, so both queries now answer 47 and 44 WITH -a and WITHOUT it. Measured immediately before that rewrite, without -a they answered 46 and 43 — one short each, and the one missing file was exactly assert-release-lane-generic.mjs. Keep -a anyway: three .mjs files under tooling still carry NUL bytes today (tooling/ci/assert-update-coverage.mjs, tooling/ci/flutter-stock-assets.mjs, tooling/scripts/assert-public-citations.mjs). None of the three imports text-reductions, so none of them moves these two counts, but any other un-flagged sweep of tooling can still lose them without a word. --multiline-dotall is untouched and still load-bearing.',
   ],
   // ── the three the PROSE GREP hid until 2026-08-17 ──────────────────────────
   // None of these is a new judgement. Each file's own header already said it was
@@ -386,6 +386,51 @@ if (!existsSync(CI) || !existsSync(TESTS)) {
 // (assert-ads-declarations, assert-policy-claims) spread the braces over
 // several lines, and a line-anchored pattern misses both.
 //
+// ⏱ APPENDED 2026-08-25 — the ⚠️ paragraph above is left EXACTLY as written; this
+// corpus appends dated corrections rather than rewriting them. Four of its
+// claims are now HISTORICAL and the removal it books is DISCHARGED. Every
+// number below was measured in this tree today, after that removal landed:
+//
+//   (a) THE NUL BYTES ARE GONE. tooling/ci/assert-release-lane-generic.mjs
+//       scans to ZERO NUL bytes today — a byte scan of the whole file returns
+//       count 0. The 2026-08-17 reading still reproduces AT THE SHA IT WAS
+//       TAKEN ON: byte-scan `git show 57e6e10:tooling/ci/assert-release-lane-generic.mjs`
+//       and you get count 2, offsets 22908 and 22916, both on line 379. So
+//       read that sentence as a statement about 57e6e10, not about this tree.
+//       The sentinel is now written with BACKSLASH-u ESCAPES rather than
+//       raw bytes, which is why this file can describe it without
+//       acquiring the same problem; find it with
+//       `grep -n '^const DYNAMIC' tooling/ci/assert-release-lane-generic.mjs`,
+//       which answers 421 today and not 379 — grep for it rather than trusting
+//       either number, since every edit above it moves the line. Its doc
+//       comment there records the rewrite and that the VALUE is byte-identical
+//       to what the line evaluated to at 57e6e10.
+//
+//   (b) THE OWED REMOVAL IS DISCHARGED. "worth removing on their own, in
+//       whichever change owns that file" was a booking, not a description.
+//       The change that owns that file made the removal on 2026-08-25, and
+//       this append closes the booking. Nothing is still owed here.
+//
+//   (c) "Without it ripgrep answers 35" AND "SKIPS it silently" NO LONGER
+//       REPRODUCE. Run the recipe above today and it answers 44 WITH `-a` and
+//       44 WITHOUT it; the bare-specifier form (drop the stripSourceComments
+//       brace clause, keep the module specifier) answers 47 both ways. No file
+//       in this sweep's domain is rescued by `-a` any more.
+//
+//   (d) KEEP `-a` ANYWAY — it is still load-bearing for OTHER sweeps of
+//       tooling, just not for this one. Three .mjs files under tooling carry
+//       literal NUL bytes today: tooling/ci/assert-update-coverage.mjs (2),
+//       tooling/ci/flutter-stock-assets.mjs (1), and
+//       tooling/scripts/assert-public-citations.mjs (2). None of the three
+//       imports text-reductions, so none of them moves the two counts above,
+//       but an un-flagged sweep of tooling still drops them without a word.
+//
+//   (e) `--multiline-dotall` is still load-bearing, and the count beside it
+//       has rotted from two to THREE. Measured today: 44 with the multiline
+//       flags and 41 without them. The three the line-anchored pattern misses
+//       are assert-ads-declarations.mjs, assert-policy-claims.mjs and
+//       test/text-reductions.test.mjs.
+//
 // The count is prose and prose rots; the check below does not. It fails on the
 // BEHAVIOUR, whatever the blast radius turns out to be on the day.
 const CANARY_COMMENT_ONLY = `// the caller must report ${COVERAGE_MARKER} rather than pass\nconst x = 1;\n`;
@@ -444,8 +489,23 @@ if (strayMjs.length) {
 // against 44 guards, TWO guards could be deleted outright with nothing said —
 // and `assert-gate-passed.mjs` and `record-deployment.mjs` were not even
 // anchored, because the old cross-check read ci.yml alone and those two are
-// invoked by the deploy workflows. Under the identity, deleting any one of the
-// forty-four fails, and the two deploy-only guards are anchored like the rest.
+// invoked by the deploy workflows. Under the identity, deleting ANY guard fails,
+// however many there are — the identity is COMPUTED FROM THE TREE on every run
+// and carries no number at all. That is precisely what replaced MIN_GUARDS: a
+// floor is a number somebody has to keep raising, and a number in prose is the
+// thing this file exists to distrust. The two deploy-only guards are anchored
+// like the rest.
+//
+// (Orientation only, dated because it rots — 2026-08-25 the tree held 144:
+//     git ls-files ':(glob)tooling/ci/*.mjs' | wc -l        -> 144
+//     find tooling/ci -maxdepth 1 -name '*.mjs' | wc -l     -> 144
+//  The `:(glob)` MAGIC PATHSPEC is load-bearing, not decoration: a bare
+//  `tooling/ci/*.mjs` lets `*` cross `/`, so it sweeps test/ in as well and
+//  answers 288 on that same tree — double, and confidently. Nothing below
+//  reads either figure; they are here so a reader knows the order of
+//  magnitude, and the run prints the live count on its own `ok` line anyway.
+//  This paragraph said "the forty-four" in the present tense until 2026-08-25,
+//  by which time the tree held 144.)
 // ─────────────────────────────────────────────────────────────────────────────
 if (!existsSync(WORKFLOWS)) {
   coverageLost([

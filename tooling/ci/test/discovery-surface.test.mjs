@@ -377,6 +377,102 @@
 //   by asking what input would slip past — which is the argument for writing the
 //   evasion before trusting the limb, not for trusting a limb that was fixed once.
 //
+//   M25  ADDED 2026-08-25 with the PAGE-QUALITY WIDENING — the accessibility
+//          limb, the served-<img> box limb and limb H stop ranging over
+//          DEPLOY_ROOT alone and range over PAGE_QUALITY_ROOTS, which is
+//          sites/nikatru plus the hand-written mirror sites/rajasekarselvam,
+//          and limb H's subject list gains each root's HAND-WRITTEN homepage.
+//
+//          🔴 THE REAL-TREE MEASUREMENT CAME FIRST, and it CORRECTS the note
+//          that asked for the change. That note recorded
+//          sites/rajasekarselvam/index.html as `skipLinkResolves: true`. Re-run
+//          with the guard's LITERAL matcher — an <a> whose class carries the
+//          token `skip-link` — it is FALSE: that page spells its class `skip`.
+//          The affordance is real (`<a class="skip" href="#main">` at :155 over
+//          `<main id="main" tabindex="-1">` at :175) and the class token is not.
+//          Measured the same way across the mirror's three served pages:
+//            index.html  lang ✓  <main> 1  :focus-visible ✓  skip-link ✗
+//                        1 served <img>, alt ✓, box ✓
+//            404.html    lang ✓  <main> 0  :focus-visible ✗  skip-link ✗
+//            cv.html     lang ✓  <main> 0  :focus-visible ✗  skip-link ✗
+//          404.html is the CUSTOM 404 every wrong URL on that host reaches, and
+//          it is the file the content half of the change repairs. cv.html is
+//          that site's template and is excused by name. index.html's ONE failing
+//          condition is excused by name, self-retiringly, because widening the
+//          matcher to accept `skip` would make every page in the contract
+//          satisfiable with a class tooling/sites/chrome.mjs never writes —
+//          one page's red turned green by turning eleven others' green cheap.
+//
+//          METHOD, the M24 discipline plus its one addition. A `git worktree
+//          add --detach` copy under the scratchpad (never the repo), seeded with
+//          the change's final files, reproduced GREEN first at 128 tests / 128
+//          pass / 0 fail — including the `real repository` suite, which a
+//          detached worktree satisfies. A driver applied ONE mutation to the
+//          guard, ran the WHOLE file, recorded the fail count AND the failing
+//          test names, then wrote the pristine bytes back; a find string that
+//          matched other than exactly once EXITED 2 as a NO-OP rather than being
+//          counted as green.
+//
+//          🔴 FOURTEEN MUTATIONS, FOURTEEN RED, ZERO SURVIVORS. Fail count per
+//          mutant, and for the singletons the case that is the sole reporter:
+//            a  PAGE_QUALITY_ROOTS pinned to [DEPLOY_ROOT] (the whole widening
+//               removed)                                              17
+//            b  the a11y subject filter back to `isChromePage`         11
+//            c  the box limb's domain clipped back to DEPLOY_ROOT       1
+//               — 'an unsized <img> on the MIRROR reflows the page it is on'
+//            d  limb H's subject list loses the hand-written homepages  7
+//            e  limb H reads ONE shared og-image.png for both roots     4
+//            f  the per-condition exemption made a no-op                7
+//            g  the SELF-RETIREMENT audit disabled                      1
+//               — 'SELF-RETIRING — the run after the page is fixed FAILS'
+//            h  the misspelled-key audit disabled                       1
+//               — 'a mirror root with NO index.html at all FAILS'
+//            i  the outlives-its-subject audit disabled                 1
+//               — 'an exemption that OUTLIVES its subject FAILS'
+//            j  the noindex premise of PAGE_QUALITY_EXCLUDED disabled   1
+//               — 'an excused page that LOSES its noindex FAILS'
+//            k  PAGE_QUALITY_EXCLUDED made a no-op                      8
+//            l  limb H skips a missing HAND-WRITTEN page in silence     1
+//               — 'a mirror root with NO index.html at all FAILS'
+//            m  the DEPLOY_ROOT half stops deferring to isChromePage   36
+//            n  the walk labels every page with DEPLOY_ROOT rather
+//               than the root it came from                            17
+//
+//          🔴 (a), (b) AND (n) ALSO REDDEN THREE PRE-EXISTING `real repository`
+//          CASES, and that is the ROOT CANARY firing rather than noise: with the
+//          mirror dropped from PAGE_QUALITY_ROOTS the own-repo refusal at the
+//          top of the guard exits COVERAGE LOST, which is exactly what must
+//          happen when a declared deploy root stops being swept HERE.
+//
+//          THE CANARY'S OWN DIRECTION was proved separately, because no fixture
+//          can reach it — SCANNING_OWN_REPO is `selfDir.startsWith(ROOT)`, and
+//          every fixture root is a temp directory. In a SECOND detached
+//          worktree, also seeded with the final files: guard EXIT 0 with the
+//          mirror present; `rm -rf sites/rajasekarselvam` there -> EXIT 1,
+//          "COVERAGE LOST — 1 declared page-quality root(s) are not directories
+//          in THIS repository: sites/rajasekarselvam"; and with `if
+//          (lost.length)` pinned to `if (false)` on that same mirrorless tree ->
+//          EXIT 0, printing "page(s) across sites/nikatru carry lang", "served
+//          <img> tag(s) across sites/nikatru" and "1 hand-written homepage(s)".
+//          That last line IS the failure the canary exists to refuse: the whole
+//          widening evaporating into a clean run.
+//
+//          NOT REDDENABLE BY ANY FIXTURE, recorded rather than shipped as though
+//          it were covered: `pageExcusalsAudited` and `conditionExcusalsAudited`
+//          are counters that appear ONLY in the ok line. Changing either moves a
+//          printed number and no verdict, so the mutation to make at that site
+//          is the number itself — and the two cases that read the ok line's
+//          counts ('a sound mirror is swept…' and 'cv.html is excused BY NAME…')
+//          are what would catch a wrong one for the page and homepage counts
+//          beside them. They exist because printing `PAGE_QUALITY_EXCLUDED.size`
+//          instead would have said "1 page(s) … excused by name, each audited"
+//          on a tree where the audit was skipped entirely.
+//
+//          ⏱ THE TABLE ABOVE WAS APPENDED AFTER THE RUN, and this comment is
+//          the only edit made to either file after it. It adds no test and
+//          executes nothing; the guard and the suite were re-run green with it
+//          in place.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -537,9 +633,28 @@ const SUBLY = {
  *  under the deploy root must. The chrome set is DERIVED from the tree, so any
  *  .html a fixture writes under sites/nikatru is in the contract - a stub without
  *  markers is not a smaller fixture, it is an invalid page, and the generator
- *  correctly refuses it. */
+ *  correctly refuses it.
+ *
+ *  🔴 THE og:image BLOCK IS PART OF THE FIXTURE AS OF 2026-08-25, and it is not
+ *  decoration. Limb H's subject list gained the HAND-WRITTEN homepage of every
+ *  page-quality root that day — until then it ranged over APPS_DIR alone, so the
+ *  two real homepages, the only pages that already carried all four properties,
+ *  were asserted by nothing. A fixture homepage with no og:image would make
+ *  every tree in this file a failing input for the widened limb, and the
+ *  house rule cuts the other way too: a fixture that never expresses the block
+ *  cannot be used to prove a page LOSING one property, which is what the
+ *  homepage cases below do by deleting from these very bytes.
+ *
+ *  `ogPx` is deliberately NOT threaded in here: the declared numbers stay
+ *  1200x630 while `tree({ ogPx })` changes what the PNG really is, which is the
+ *  disagreement M12 exists to catch and the only way a fixture can express it. */
 const chromed = (body) =>
-  '<html lang="en"><head><style>\n' +
+  '<html lang="en"><head>\n' +
+  '<meta property="og:image" content="https://nikatru.com/og-image.png">\n' +
+  '<meta property="og:image:width" content="1200">\n' +
+  '<meta property="og:image:height" content="630">\n' +
+  '<meta property="og:image:alt" content="Nikatru">\n' +
+  '<style>\n' +
   '  /* CHROME:a11y-css */\n  :focus-visible{outline:2px}\n  /* /CHROME:a11y-css */\n' +
   '  /* CHROME:footer-css */\n  /* /CHROME:footer-css */\n' +
   '</style></head><body>\n' +
@@ -548,6 +663,88 @@ const chromed = (body) =>
   '\n<!-- CHROME:footer -->\n<!-- /CHROME:footer -->\n</body></html>\n';
 
 const p = (root, ...rel) => join(root, 'sites', 'nikatru', ...rel);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE MIRROR DEPLOY ROOT — sites/rajasekarselvam, added 2026-08-25
+//
+// 🔴 WHY IT IS WRITTEN BY A SEPARATE HELPER AND NOT BY `tree()`. The guard gates
+// every page-quality limb on the mirror root EXISTING, precisely so a fixture
+// that models only the nikatru root is not read as a tree that LOST the mirror.
+// If `tree()` wrote one, that gate would have no failing input in this file and
+// the "a tree with no mirror sweeps one root" case below could not exist.
+//
+// 🔴 AND THE DEFAULT PAGE IS FAITHFUL TO WHAT THAT SITE REALLY SHIPS, WHICH IS
+// THE HOUSE RULE ABOUT FIXTURES THAT CANNOT EXPRESS THEIR INPUT CLASS. The real
+// sites/rajasekarselvam/index.html spells its skip link `class="skip"`, not
+// `class="skip-link"` — measured 2026-08-25 — and that is exactly why
+// PAGE_QUALITY_CONDITION_EXCLUDED carries one entry. A fixture homepage written
+// with `skip-link` would be a page the real one is not, and it would make the
+// exemption's self-retirement audit fire on every tree here; a fixture written
+// with `skip` reproduces the state the entry describes, so the audit is silent
+// for the right reason and the case that FLIPS it (rename to `skip-link`) is a
+// one-argument change away.
+const MIRROR_ROOT_REL = ['sites', 'rajasekarselvam'];
+const m = (root, ...rel) => join(root, ...MIRROR_ROOT_REL, ...rel);
+
+/**
+ * One hand-written mirror page. No chrome sentinels ON PURPOSE: that root is not
+ * a member of tooling/sites/chrome.mjs (CHROME_ROOT is sites/nikatru), so the
+ * chrome and drift limbs must not range over it and these fixtures prove they
+ * do not.
+ */
+const mirrored = ({
+  skipClass = 'skip',
+  main = true,
+  focusVisible = true,
+  lang = true,
+  og = true,
+  ogW = '1200',
+  ogH = '630',
+  robots = null,
+  body = '<h1>Rajasekar Selvam</h1>',
+} = {}) =>
+  `<!DOCTYPE html>\n<html${lang ? ' lang="en"' : ''}>\n<head>\n` +
+  (robots === null ? '' : `<meta name="robots" content="${robots}">\n`) +
+  (og
+    ? '<meta property="og:image" content="https://rajasekarselvam.com/og-image.png">\n' +
+      `<meta property="og:image:width" content="${ogW}">\n` +
+      `<meta property="og:image:height" content="${ogH}">\n` +
+      '<meta property="og:image:alt" content="Rajasekar Selvam">\n'
+    : '') +
+  `<style>\n${focusVisible ? '  :focus-visible{outline:2px solid #2E6FF2}\n' : ''}</style>\n` +
+  '</head>\n<body>\n' +
+  (skipClass === null ? '' : `<a class="${skipClass}" href="#main">Skip to content</a>\n`) +
+  // `id="main"` STAYS on the element even when it is a <div>, so the no-<main>
+  // case fails ONE condition and not two — a fixture that breaks two conditions
+  // at once cannot say which limb reported it.
+  (main ? `<main id="main">${body}</main>` : `<div id="main">${body}</div>`) +
+  '\n</body>\n</html>\n';
+
+/**
+ * Write the mirror deploy root into an existing fixture tree.
+ * `pages` is filename -> HTML; `ogPx` sets what that root's own og-image.png
+ * REALLY is, which is how a case makes a mirror page's declared box disagree
+ * with the mirror's own artwork rather than with the nikatru one.
+ */
+function withMirror(root, pages = { 'index.html': mirrored() }, opts = {}) {
+  mkdirSync(m(root), { recursive: true });
+  if (opts.ogImage !== false) {
+    writeFileSync(m(root, 'og-image.png'), pngHeader(opts.ogPx?.w ?? 1200, opts.ogPx?.h ?? 630));
+  }
+  for (const [name, html] of Object.entries(pages)) writeFileSync(m(root, name), html);
+  return root;
+}
+
+/** The mirror's own template — noindex, unlinked, and full of unfilled slots.
+ *
+ *  🔴 EVERY MIRROR FIXTURE BELOW SHIPS ONE, and the one that does not is the
+ *  case that proves why: PAGE_QUALITY_EXCLUDED names this file, and the audit
+ *  fails when an exemption outlives its subject. So a mirror without cv.html is
+ *  not a smaller fixture, it is the tree where the exemption has gone stale.
+ *  The real file says so in its first line; this is the shape of it the guard
+ *  classifies: excused BY NAME, and only while it stays noindex. */
+const CV = ({ robots = 'noindex, nofollow' } = {}) =>
+  mirrored({ robots, skipClass: null, main: false, focusVisible: false, og: false, body: '<h2>[Job title] — [Company]</h2>' });
 
 describe('the generator', () => {
   test('a generated tree passes the guard, and is idempotent', () => {
@@ -1463,7 +1660,13 @@ describe('the web accessibility chrome', () => {
     generate(root);
     const r = guard(root);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /carry lang \+ one <main> \+ a skip link that resolves/);
+    // ⚠️ THE SENTENCE NAMES ITS DOMAIN AS OF 2026-08-25, and these regexes were
+    // widened with it rather than loosened past it: the ok line reads
+    // "N page(s) across <roots> carry lang + …", and a fixture tree that models
+    // no mirror prints "across sites/nikatru" alone. House rule 2 in one line —
+    // the printed sentence has to stay literally true of what was swept, so the
+    // assertions that read it have to move when the domain does.
+    assert.match(r.out, /page\(s\) across sites\/nikatru carry lang \+ one <main> \+ a skip link that resolves/);
   });
   test('a deploy root where NOTHING is a chrome page is COVERAGE LOST, and the run stops there', () => {
     // 🔴 THIS CASE IS ALSO THE EVIDENCE FOR A DELETION, WHICH IS WHY IT SITS
@@ -1580,7 +1783,7 @@ describe('the web accessibility chrome', () => {
     const a = mutate(dataLang, (h) => h.replace('<html lang="en">', '<html data-lang="en">'));
     assert.equal(a.code, 1, a.out);
     assert.match(a.out, /has no <html lang/);
-    assert.doesNotMatch(a.out, /page\(s\) carry lang \+ one <main>/);
+    assert.doesNotMatch(a.out, /page\(s\) across sites\/nikatru carry lang \+ one <main>/);
 
     const xmlLang = tree([SUBLY]); generate(xmlLang);
     const b = mutate(xmlLang, (h) => h.replace('<html lang="en">', '<html xml:lang="en">'));
@@ -1610,7 +1813,7 @@ describe('the web accessibility chrome', () => {
     const root = tree([SUBLY]); generate(root);
     const r = mutate(root, (h) => h.replace('id="main"', 'id = "main"'));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /page\(s\) carry lang \+ one <main> \+ a skip link that resolves/);
+    assert.match(r.out, /page\(s\) across sites\/nikatru carry lang \+ one <main> \+ a skip link that resolves/);
   });
 
   test('🔴 `hreflang` is NOT `lang`, and a `lang` DEEPER IN THE PAGE is not the document language', () => {
@@ -1631,7 +1834,7 @@ describe('the web accessibility chrome', () => {
     const a = mutate(href, (h) => h.replace('<html lang="en">', '<html hreflang="en">'));
     assert.equal(a.code, 1, a.out);
     assert.match(a.out, /has no <html lang/);
-    assert.doesNotMatch(a.out, /page\(s\) carry lang \+ one <main>/);
+    assert.doesNotMatch(a.out, /page\(s\) across sites\/nikatru carry lang \+ one <main>/);
 
     // And the prefix. `[^>]+` cannot cross a `>`, so it is the only thing
     // confining the match to the <html> START TAG. Without it any `lang`
@@ -1660,7 +1863,7 @@ describe('the web accessibility chrome', () => {
     const root = tree([SUBLY]); generate(root);
     const r = mutate(root, (h) => h.replace('<html lang="en">', "<html lang = 'en'>"));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /page\(s\) carry lang \+ one <main>/);
+    assert.match(r.out, /page\(s\) across sites\/nikatru carry lang \+ one <main>/);
   });
 
   test("a skip target written id='main' RESOLVES — the other quoting form of the target pattern", () => {
@@ -2025,7 +2228,13 @@ describe('the og:image block is complete and its numbers are the file\'s', () =>
 
     const r = guard(root);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /2 generated page\(s\) carry all four og:image properties, sized 1200x630 from the IHDR/);
+    // ⚠️ 2 -> 3 ON 2026-08-25, and the shape of the sentence changed with the
+    // limb: the HAND-WRITTEN homepage of every page-quality root is now a
+    // subject, so this tree's three are apps/index.html, apps/subly.html and
+    // sites/nikatru/index.html. The count is not padding — before that day the
+    // two real homepages were the ONLY pages carrying all four properties and
+    // the ONLY pages nothing asserted.
+    assert.match(r.out, /3 page\(s\) — 2 generated landing\(s\) plus 1 hand-written homepage\(s\) — carry all four og:image properties, sized 1200x630 from the IHDR/);
   });
 
   test('🔴 THE M12 CASE — a page whose declared size disagrees with the real image FAILS', () => {
@@ -2189,7 +2398,10 @@ describe('the og:image block is complete and its numbers are the file\'s', () =>
     generate(root);
     const r = guard(root);
     assert.equal(r.code, 1);
-    assert.match(r.out, /og-image\.png is missing or is not a PNG whose IHDR can be read, and 2 generated page\(s\) point/);
+    // ⚠️ "2 generated page(s)" -> "3 page(s)", 2026-08-25: the subject list
+    // gained this root's hand-written homepage, and the word "generated" would
+    // now be false of one of the three.
+    assert.match(r.out, /og-image\.png is missing or is not a PNG whose IHDR can be read, and 3 page\(s\) point/);
   });
 
   test('🔴 a file that is not a PNG FAILS rather than being read as one', () => {
@@ -2227,5 +2439,279 @@ describe('the og:image block is complete and its numbers are the file\'s', () =>
     // THE DISCRIMINATING HALF: a crash also exits non-zero. The limb has to be
     // the thing that spoke.
     assert.doesNotMatch(r.out, /RangeError|ERR_OUT_OF_RANGE|readUInt32BE/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE PAGE-QUALITY CONTRACT REACHES THE MIRROR DEPLOY ROOT — added 2026-08-25
+//
+// 🔴 WHAT WAS UNPOLICED, MEASURED THAT DAY BEFORE ANY OF THIS WAS WRITTEN, by
+// re-running the guard's OWN matchers over the three served pages of
+// sites/rajasekarselvam:
+//     index.html  lang ✓  <main> 1  :focus-visible ✓  skip-link ✗ (class `skip`)
+//     404.html    lang ✓  <main> 0  :focus-visible ✗  skip-link ✗
+//     cv.html     lang ✓  <main> 0  :focus-visible ✗  skip-link ✗
+// `grep -rln 'focus-visible' tooling/` named only assert-discovery-surface.mjs,
+// tooling/sites/chrome.mjs and their two tests, and
+// `grep -n -i 'skip link|focus-visible|<main>' tooling/ci/check-site-integrity.mjs`
+// — the one guard that DOES range over both roots — returned ZERO. So the custom
+// 404 that every wrong URL on rajasekarselvam.com lands on had no landmark and
+// no visible focus, and nothing in this repository could say so.
+//
+// 🔴 AND WHAT THE BRIEF THAT ASKED FOR THIS GOT WRONG, CORRECTED HERE RATHER
+// THAN CARRIED. It recorded `index.html {… skipLinkResolves: true …}`. Re-run
+// with the guard's LITERAL matcher — `class="…\bskip-link\b…"` — that page does
+// NOT match: its class is `skip`. The affordance is real and works; the class
+// token is not the one tooling/sites/chrome.mjs emits and the one this limb
+// looks for. Renaming it is a change to sites/rajasekarselvam/index.html, a file
+// the 2026-08-25 change did not own, so it is a NAMED, SELF-RETIRING per-
+// condition exemption instead — and the case below proves the exemption
+// disappears by itself the moment that rename lands.
+//
+// 🔴 NOT WIDENED: the matcher. Accepting `skip` as well would turn one page's
+// red green by making EVERY page in the contract satisfiable with a class the
+// shared chrome never writes — the certifying-matcher defect class this file's
+// `\b` notes record five times over.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the page-quality contract reaches the mirror deploy root', () => {
+  test('a tree with NO mirror root sweeps ONE root, and the ok line says which', () => {
+    // The gate's failing input. Every other case in this file is this tree, so
+    // without this one the gate reads as "the mirror is optional" rather than as
+    // "a tree that does not model a root is not a tree that lost one".
+    const root = tree([SUBLY]); generate(root);
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /page\(s\) across sites\/nikatru carry lang/);
+    assert.doesNotMatch(r.out, /across sites\/nikatru \+ sites\/rajasekarselvam/);
+    assert.match(r.out, /1 hand-written homepage\(s\)/);
+  });
+
+  test('a sound mirror is swept, and the ok line NAMES both roots and BOTH images', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, {
+      'index.html': mirrored(),
+      '404.html': mirrored({ skipClass: 'skip-link' }),
+      'cv.html': CV(),
+    });
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /5 page\(s\) across sites\/nikatru \+ sites\/rajasekarselvam carry lang/);
+    assert.match(r.out, /2 hand-written homepage\(s\)/);
+    // 🔴 EACH ROOT AGAINST ITS OWN FILE. Both are 1200x630 in this fixture and
+    // in the real tree, which is exactly why the ASSET NAME is asserted twice:
+    // a single shared asset would print one clause and read identically.
+    assert.match(r.out, /1200x630 from the IHDR of sites\/nikatru\/og-image\.png itself, and 1200x630 from the IHDR of sites\/rajasekarselvam\/og-image\.png itself/);
+    // 🔴 AND THE GENERATED-ARTIFACT LIMBS DID NOT FOLLOW IT THERE. This is the
+    // other half of the widening and it is asserted by NUMBER, not by an
+    // alternation that would pass on either: the mirror adds three served .html
+    // to this tree, and the slot limb must still scan the 2 generated pages
+    // while the chrome limb still counts the 3 spliced ones. A widening that
+    // dragged those two along would print 5 and 6 and fail here.
+    assert.doesNotMatch(r.out, /DRIFTED/);
+    assert.match(r.out, /2 page\(s\) slot-scanned with the canary intact/);
+    assert.match(r.out, /3 page\(s\) carry shared chrome from tooling\/sites\/chrome\.mjs/);
+  });
+
+  test('🔴 a mirror page with <div> where <main> should be FAILS, naming the mirror path', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, {
+      'index.html': mirrored(),
+      '404.html': mirrored({ skipClass: 'skip-link', main: false }),
+      'cv.html': CV(),
+    });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/404\.html has 0 <main> element\(s\), expected exactly 1/);
+    // 🔴 THE DISCRIMINATING HALF. The mirror is generated by nothing and spliced
+    // by nothing, so neither the drift limb nor the chrome limb can co-fire —
+    // this limb is the ONLY thing that can have spoken, and the exit code alone
+    // would prove it whichever limb reported. Asserting the absence of the other
+    // two is what says the widening reached the page rather than the tree.
+    assert.doesNotMatch(r.out, /DRIFTED/);
+    assert.doesNotMatch(r.out, /sentinel/);
+    // and the certification sentence must not be printed over it.
+    assert.doesNotMatch(r.out, /page\(s\) across sites\/nikatru \+ sites\/rajasekarselvam carry lang/);
+  });
+
+  test('🔴 the mirror 404 owes :focus-visible and a skip link, exactly as sites/nikatru/404.html does', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, {
+      'index.html': mirrored(),
+      '404.html': mirrored({ skipClass: null, focusVisible: false }),
+      'cv.html': CV(),
+    });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/404\.html has no skip link/);
+    assert.match(r.out, /sites\/rajasekarselvam\/404\.html declares no :focus-visible rule/);
+  });
+
+  test('🔴 a mirror page with no <html lang> FAILS — every condition crossed the root, not just one', () => {
+    // Without this the widening could have carried ONE condition and read as
+    // though it carried five: the <main> case above would still be green.
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, {
+      'index.html': mirrored(),
+      '404.html': mirrored({ skipClass: 'skip-link', lang: false }),
+      'cv.html': CV(),
+    });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/404\.html has no <html lang/);
+  });
+
+  test('🔴 an unsized <img> on the MIRROR reflows the page it is on, and the box limb now sees it', () => {
+    const sized = tree([SUBLY]); generate(sized);
+    withMirror(sized, {
+      'index.html': mirrored({ body: '<img src="/me.jpg" alt="me" width="150" height="192">' }),
+      'cv.html': CV(),
+    });
+    const a = guard(sized);
+    assert.equal(a.code, 0, a.out);
+    assert.match(a.out, /1 served <img> tag\(s\) across sites\/nikatru \+ sites\/rajasekarselvam reserve their box/);
+
+    const unsized = tree([SUBLY]); generate(unsized);
+    withMirror(unsized, {
+      'index.html': mirrored({ body: '<img src="/me.jpg" alt="me">' }),
+      'cv.html': CV(),
+    });
+    const b = guard(unsized);
+    assert.equal(b.code, 1, b.out);
+    assert.match(b.out, /sites\/rajasekarselvam\/index\.html has a served <img> with no integer width and no integer height/);
+    assert.doesNotMatch(b.out, /1 served <img> tag\(s\) across sites\/nikatru \+ sites\/rajasekarselvam reserve their box/);
+  });
+
+  // ── limb H over the HAND-WRITTEN homepages ────────────────────────────────
+  test('🔴 a homepage that loses og:image:width FAILS — on BOTH roots', () => {
+    // The pages limb H praised in its own header comment and asserted with
+    // NOTHING until 2026-08-25: `landings` filtered on APPS_DIR, and neither
+    // homepage is under it.
+    const nk = tree([SUBLY]); generate(nk);
+    writeFileSync(p(nk, 'index.html'),
+      readFileSync(p(nk, 'index.html'), 'utf8').replace(/<meta property="og:image:width"[^>]*>\n/, ''));
+    const a = guard(nk);
+    assert.equal(a.code, 1, a.out);
+    assert.match(a.out, /sites\/nikatru\/index\.html carries og:image but no og:image:width\b/);
+
+    const mr = tree([SUBLY]); generate(mr);
+    withMirror(mr, { 'index.html': mirrored().replace(/<meta property="og:image:width"[^>]*>\n/, ''), 'cv.html': CV() });
+    const b = guard(mr);
+    assert.equal(b.code, 1, b.out);
+    assert.match(b.out, /sites\/rajasekarselvam\/index\.html carries og:image but no og:image:width\b/);
+    // 🔴 AND ON THE MIRROR NOTHING ELSE CO-FIRES. On the nikatru homepage the
+    // drift limb also speaks, because that page is spliced; on the mirror it
+    // cannot, so limb H is provably the reporter rather than probably.
+    assert.doesNotMatch(b.out, /DRIFTED/);
+    assert.doesNotMatch(b.out, /declares og:image .* is actually /);
+  });
+
+  test('🔴 a homepage declaring 1200x631 against a 1200x630 IHDR FAILS — one pixel is enough', () => {
+    // 🔴 THE M12 SHAPE ON A PAGE NO GENERATOR WROTE. Limb A compares a page to
+    // a fresh generator run; here there is no generator on either side, so the
+    // ONLY thing that can tell 631 from 630 is a limb that opens the PNG. And
+    // ONE pixel is the input class a fixture is tempted to skip: an 800x418
+    // artwork under a declared 1200x630 disagrees on both axes and on the order
+    // of magnitude, which any half-working comparison catches.
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored({ ogH: '631' }), 'cv.html': CV() });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/index\.html declares og:image 1200x631 and sites\/rajasekarselvam\/og-image\.png is actually 1200x630/);
+    assert.doesNotMatch(r.out, /DRIFTED/);
+  });
+
+  test('🔴 each root is compared to its OWN og-image.png — the two files are not one file', () => {
+    // The input class a single shared asset would hide, and the corrected M16
+    // is exactly this trap in prose: measured 2026-08-25, the two files are both
+    // 1200x630 and are 118,197 and 46,622 bytes. Here the MIRROR's artwork is
+    // 800x418 while the nikatru one stays 1200x630, and every page declares
+    // 1200x630. Only the mirror page may be faulted.
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV() }, { ogPx: { w: 800, h: 418 } });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/index\.html declares og:image 1200x630 and sites\/rajasekarselvam\/og-image\.png is actually 800x418/);
+    assert.doesNotMatch(r.out, /sites\/nikatru\/og-image\.png is actually/);
+    assert.doesNotMatch(r.out, /sites\/nikatru\/apps\/subly\.html declares og:image/);
+  });
+
+  test('🔴 a mirror root with NO og-image.png FAILS, counting the pages that point at it', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV() }, { ogImage: false });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    // ONE page points at the mirror asset — its homepage — where three point at
+    // the nikatru one. The count is per subject, not per tree.
+    assert.match(r.out, /sites\/rajasekarselvam\/og-image\.png is missing or is not a PNG whose IHDR can be read, and 1 page\(s\) point/);
+    assert.doesNotMatch(r.out, /sites\/nikatru\/og-image\.png is missing/);
+  });
+
+  test('🔴 a mirror root with NO index.html at all FAILS, and says nothing else would have said so', () => {
+    // The hand-written homepage is planned by no generator, diffed by no limb
+    // and walked to by nothing that reports — so `continue` on a missing file,
+    // which is right for a page limb A already named, would have been silence.
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { '404.html': mirrored({ skipClass: 'skip-link' }), 'cv.html': CV() });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/index\.html does not exist, and it is a HAND-WRITTEN page this limb names explicitly/);
+    // and the condition exemption that names that page notices it went away.
+    assert.match(r.out, /PAGE_QUALITY_CONDITION_EXCLUDED names sites\/rajasekarselvam\/index\.html#skip-link, and this limb evaluated no such condition/);
+  });
+
+  // ── the two exemption maps, and the audits that retire them ───────────────
+  test('cv.html is excused BY NAME, and nothing about it is reported', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV() });
+    const r = guard(root);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /cv\.html/);
+    // 4 subjects: the 3 chrome pages of this tree plus the mirror homepage. The
+    // excused page is NOT one of them, which is the number saying so.
+    assert.match(r.out, /4 page\(s\) across sites\/nikatru \+ sites\/rajasekarselvam carry lang/);
+  });
+
+  test('🔴 an excused page that LOSES its noindex FAILS — the excuse rests on nobody being sent there', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored(), 'cv.html': CV({ robots: null }) });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/cv\.html is excused from the page-quality contract by PAGE_QUALITY_EXCLUDED, and it has LOST its/);
+    // and it is still not GRADED — the exemption holds, the premise does not.
+    assert.doesNotMatch(r.out, /cv\.html has 0 <main>/);
+  });
+
+  test('🔴 an exemption that OUTLIVES its subject FAILS — a hole waiting for a future page', () => {
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored() }); // the mirror exists; cv.html does not
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PAGE_QUALITY_EXCLUDED names sites\/rajasekarselvam\/cv\.html, which is not served from any page-quality root/);
+  });
+
+  test('the condition exemption excuses ONE condition and not the page', () => {
+    // The homepage keeps its `skip` class (excused) AND loses its <main> (not).
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored({ main: false }), 'cv.html': CV() });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /sites\/rajasekarselvam\/index\.html has 0 <main> element\(s\)/);
+    assert.doesNotMatch(r.out, /sites\/rajasekarselvam\/index\.html has no skip link/);
+  });
+
+  test('🔴 SELF-RETIRING — the run after the page is fixed FAILS asking for the exemption back out', () => {
+    // 🔴 THIS IS WHAT SEPARATES A NAMED EXEMPTION FROM A HOLE. An exemption kept
+    // past its cause silently covers the NEXT regression on the same page. Here
+    // the fixture homepage is written with the class the real file should have
+    // — the whole of the outstanding repair — and the guard turns red demanding
+    // the entry be deleted rather than going quietly green.
+    const root = tree([SUBLY]); generate(root);
+    withMirror(root, { 'index.html': mirrored({ skipClass: 'skip-link' }), 'cv.html': CV() });
+    const r = guard(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PAGE_QUALITY_CONDITION_EXCLUDED still excuses sites\/rajasekarselvam\/index\.html#skip-link, and that page now SATISFIES the condition/);
+    // and nothing else is wrong with that tree — the audit is the only reporter.
+    assert.doesNotMatch(r.out, /has no skip link/);
+    assert.doesNotMatch(r.out, /DRIFTED/);
   });
 });

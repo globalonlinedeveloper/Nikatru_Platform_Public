@@ -3,7 +3,7 @@
 // to FAIL, and the four ways it fails must be four different ways.
 //
 // 🔴 WHY THIS FILE EXISTS, AND WHY IT IS NOT A FIXTURE SUITE.
-// `assert-guard-coverage.mjs:717-751` derives its subject set from the workflows:
+// `assert-guard-coverage.mjs` (the `staleExemptions` block; grep `^    staleExemptions.push(` — :762 today) derives its subject set from the workflows:
 // the moment ci.yml's `No dead tracked files` step landed, this guard acquired a
 // requirement for a test file naming it. The cheapest way to satisfy that check
 // is a single `test('…', () => assert.ok(true))` — measured 2026-08-17, it goes
