@@ -382,10 +382,17 @@ class SettingsScreen extends ConsumerWidget {
                     // 🔴 FOUR OF SETTINGS' EIGHTEEN KEYBOARD-DEAD CONTROLS
                     // ARE THESE CHIPS. `selected:` survives verbatim —
                     // `FocusableTap` re-emits it — and the `FocusNode` is what
-                    // is new. `borderRadius` matches the chip's own 12 so the
-                    // ring matches the chip's own 14 rather than the
-                    // primitive's 12 default, so it does not read as a
-                    // rendering fault round a rounded box.
+                    // is new. `borderRadius: 14` is passed because
+                    // `FocusableTap`'s own default is 12
+                    // (`focusable_tap.dart:88`) and this chip's
+                    // `BoxDecoration` below is `circular(14)` — so the ring
+                    // traces the chip's real corners instead of cutting a
+                    // tighter radius inside them, which reads as a rendering
+                    // fault round a rounded box. (The sentence here said
+                    // "matches the chip's own 12 so the ring matches the
+                    // chip's own 14" until 2026-08-25; it named two different
+                    // numbers for one corner and only the CODE was ever
+                    // right.)
                     child: FocusableTap(
                       selected: sel,
                       borderRadius: BorderRadius.circular(14),

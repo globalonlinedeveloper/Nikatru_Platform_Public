@@ -119,11 +119,30 @@
 // control ever falls out of the Tab orbit for a different reason.
 
 // ── THE SCOPE, STATED SO IT CANNOT BE READ AS MORE ───────────────────────────
-// THREE screens — login, settings, home — of the register's 22. On apps/subly,
-// the frozen rail-prover, NOT on a fresh stamp of `tooling/bricks/app`. The
-// 2.1.3 guard the register specifies is "on a fresh stamp, EVERY declared
-// route"; this is neither, and the register's `guardStatus` says PARTLY BUILT
-// for exactly that reason.
+// THREE screens — login, settings, home. ⚠️ TWO DENOMINATORS, AND THEY COUNT
+// DIFFERENT THINGS, so both are named rather than blended — this comment read
+// "of the register's 22" until 2026-08-25 and that number was stale by
+// nineteen days and belonged to neither domain:
+//
+//   · 25 — screens declared in `tooling/screen-register.json`. MEASURED
+//     2026-08-25: `node -e "console.log(JSON.parse(require('fs')
+//     .readFileSync('tooling/screen-register.json','utf8')).screens.length)"`
+//     -> 25, of which 24 are `present` and 1 is `blocked`. This is the domain
+//     the register's 2.1.3 guard specifies ("on a fresh stamp, EVERY declared
+//     route"), and 22 was this set's `present` count on 2026-08-06 — see
+//     `tooling/ci/assert-screen-set.mjs`, whose header quotes its own old
+//     output `22 present and anchored` and whose MIN_PRESENT floor now reads
+//     24. The number went UP; the stale figure UNDERSTATED the domain and so
+//     OVERSTATED this file's share of it.
+//   · 17 — screens `apps/subly/lib/core/router.dart` actually declares.
+//     MEASURED 2026-08-25: `grep -c 'GoRoute(' apps/subly/lib/core/router.dart`
+//     -> 19, two of which are redirect-only (`/` and `/login`) and carry no
+//     builder, so 17 build a screen. This is the domain THIS FILE sweeps 3 of,
+//     and 14 of it are unmeasured.
+//
+// On apps/subly, the frozen rail-prover, NOT on a fresh stamp of
+// `tooling/bricks/app`. This is neither the guard's tree nor its scope, and the
+// register's `guardStatus` says PARTLY BUILT for exactly that reason.
 //
 // The three were chosen because their files are stable, and because between
 // them they cover the three control idioms the app has: a form (login), a
@@ -599,35 +618,95 @@ void main() {
     // "reachable by Tab". The 2026-08-21 sweep, which presses only Tab, counted
     // the two non-focused tiles as keyboard-dead. They are not.
     //
-    // The count is pinned at EXACTLY 1 rather than `isNotEmpty`: this case must
-    // go red if the group ever stops moving on ArrowDown, and a "one or more"
-    // matcher would let a group that stopped responding at the second tile pass
-    // for the same reason a working one does.
-    testWidgets('ArrowDown moves within the language radio group', (
+    // ⚠️ THE WHOLE ORBIT, NOT THE FIRST STEP — CORRECTED 2026-08-25, AND THE
+    // COMMENT THAT STOOD HERE UNTIL TODAY WAS DISPROVABLE BY READING THE LOOP
+    // BELOW IT. It said the count was pinned at EXACTLY 1 rather than
+    // `isNotEmpty` because "a 'one or more' matcher would let a group that
+    // stopped responding at the second tile pass for the same reason a working
+    // one does". That justification was FALSE IN BOTH HALVES. The old loop
+    // re-focused its start node before EVERY ArrowDown and so never pressed a
+    // second one, and MEASURED 2026-08-25 exactly ONE orbit node of the 25 sits
+    // inside the `RadioGroup` (orbit[3]) while the other 24 land ArrowDown on a
+    // node the orbit already covers — so `reached` could not structurally
+    // exceed 1 and `== 1` and `isNotEmpty` were THE SAME ASSERTION. Worse, a
+    // group that stopped at the second tile still scores 1, so the strict
+    // matcher did not catch the very failure it was defended by, and the `ta`
+    // tile's operability was asserted NOWHERE.
+    //
+    // What is asserted now is the FULL orbit from the group's single Tab stop:
+    // three ArrowDowns must visit BOTH skipped tiles, once each, and the third
+    // must return focus to the Tab stop it started from. That is what evidences
+    // every member of the group rather than the first, and it is STRICTLY
+    // STRONGER than what it replaces — negative-tested 2026-08-25 in a scratch
+    // mirror, never the checkout: `ExcludeFocus` round the `ta` tile alone
+    // leaves the old `reached == 1` GREEN and turns this case RED.
+    //
+    // 🔴 IDENTITY, NEVER LABELS. Every assertion below compares ELEMENTS via
+    // [_isUnder]; `_label` appears only inside `reason:` strings. The header's
+    // rule holds — an .arb edit cannot turn this file red.
+    testWidgets('ArrowDown walks the whole language radio group', (
       WidgetTester tester,
     ) async {
       final _Sweep s = await _sweep(tester, const SettingsScreen());
-      int reached = 0;
-      for (final FocusNode start in s.orbit) {
-        start.requestFocus();
-        await tester.pump();
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-        await tester.pump();
-        final Element? landed =
-            tester.binding.focusManager.primaryFocus?.context as Element?;
-        reached += s.dead
-            .where((Element e) => _isUnder(e, landed) || _isUnder(landed, e))
-            .length;
-      }
+
+      // The group is ONE Tab stop BY DESIGN, and every count below depends on
+      // that being true rather than assumed: if a second orbit node ever lands
+      // inside a radio tile, "three ArrowDowns is the whole orbit" stops being
+      // the right walk and this case must say so instead of quietly measuring
+      // the wrong thing.
+      final List<FocusNode> inGroup = s.orbit
+          .where((FocusNode n) => _isUnderARadioTile(n.context! as Element))
+          .toList();
       expect(
-        reached,
+        inGroup.length,
         1,
         reason:
-            'ArrowDown from some node in the settings Tab orbit must land on '
-            'one of the tiles the orbit itself skips — that is what makes the '
-            'language RadioGroup keyboard-operable rather than keyboard-dead, '
-            'and it is the whole basis on which the 2 above are tolerated. '
-            'Skipped tiles: ${s.deadLabels}',
+            'the language RadioGroup must contribute EXACTLY ONE node to the '
+            'settings Tab orbit — that is the whole reason the ${s.dead.length} '
+            'tiles Tab skips are tolerated. Orbit nodes found inside a radio '
+            'tile: ${inGroup.map((FocusNode n) => _label(n.context! as Element)).toList()}',
+      );
+
+      final Element stop = inGroup.single.context! as Element;
+      inGroup.single.requestFocus();
+      await tester.pump();
+
+      // One press per member: 2 skipped tiles + the wrap back onto the Tab
+      // stop. NOT a bounded search — the length is the group's size, so a
+      // fourth tile added without a fourth press would fail the coverage
+      // assertion below rather than pass unnoticed.
+      final List<Element?> walk = <Element?>[];
+      for (int i = 0; i < s.dead.length + 1; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+        walk.add(tester.binding.focusManager.primaryFocus?.context as Element?);
+      }
+
+      for (final Element tile in s.dead) {
+        expect(
+          walk
+              .where((Element? l) => _isUnder(tile, l) || _isUnder(l, tile))
+              .length,
+          1,
+          reason:
+              '"${_label(tile)}" is skipped by Tab, so ArrowDown is the ONLY '
+              'key that can reach it and this walk is the only place it is '
+              'evidenced. Walking ${s.dead.length + 1} steps from the group\'s '
+              'Tab stop must land on it EXACTLY once. Landed on: '
+              '${walk.map((Element? l) => l == null ? "<focus lost>" : _label(l)).toList()}. '
+              'Skipped tiles: ${s.deadLabels}',
+        );
+      }
+
+      expect(
+        _isUnder(stop, walk.last) || _isUnder(walk.last, stop),
+        isTrue,
+        reason:
+            'the ${s.dead.length + 1}th ArrowDown must bring focus back to the '
+            "group's own Tab stop — a radio group cycles, and a walk that ran "
+            'off the end into the rest of the screen would have visited both '
+            'tiles above and still not be a radio group. Landed on: '
+            '${walk.last == null ? "<focus lost>" : _label(walk.last!)}',
       );
     });
 
