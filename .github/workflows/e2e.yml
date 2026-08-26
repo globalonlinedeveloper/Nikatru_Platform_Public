@@ -89,6 +89,26 @@ jobs:
     # slower and still finish, dependency install included. It is the BACKSTOP
     # and not the hang detector: the per-suite cap inside the run step below is
     # the finer instrument, and it names the suite that hung.
+    #
+    # 2026-08-26 — SIX wired suites, not five: giveup-verify.mjs came off the
+    # quarantine list below after three green re-measurements, and it is 113s
+    # on the same machine. The total is 798s (13m18s).
+    #
+    # 🔴 READ THE HEADROOM ON THE BASIS THE SENTENCE ABOVE USES — DEPENDENCY
+    # INSTALL INCLUDED. That is where its "three times" came from: 75 min
+    # against 685s is 6.6x raw, and roughly half the budget is reserved for
+    # npm ci and the Chromium download, which leaves the ~3x it quotes.
+    # Against 798s the same arithmetic is 5.6x raw and about 2.8x once install
+    # is reserved the same way. SO THE HEADROOM WENT DOWN — three times slower
+    # to 2.8 times slower — because the suite total went UP. An earlier version
+    # of this paragraph printed 5.6 here, which is 75*60/798 with install
+    # EXCLUDED: the method changed mid-comment, in the looser direction, and
+    # the printed figure rose while the thing it measures fell. A ratio here is
+    # meaningless without its basis beside it, so: 2.8x, INSTALL INCLUDED.
+    # The number below is unchanged deliberately — raising a backstop is how a
+    # hang stops being a NAMED per-suite failure and becomes an unreadable job
+    # timeout instead — but 2.8x is the figure to re-measure against when the
+    # seventh suite is wired, not 5.6x.
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -140,6 +160,13 @@ jobs:
       # downloads for suites measured at fifteen seconds to seven and a half
       # minutes each.
       #
+      # 2026-08-26 — the "8913 twice" above is still true of the DEFAULTS, and
+      # that pair is claim-reduction.mjs and adversarial-claim.mjs. The second
+      # of them now reads `PORT` from the environment (giveup-verify.mjs and
+      # v3acts-probe.mjs already did), so the collision — and an orphaned
+      # listener from a killed run, which is the same symptom — is escapable
+      # without editing a suite. claim-reduction.mjs still hard-codes it.
+      #
       # EVERY SUITE RUNS EVEN AFTER ONE FAILS, AND THE JOB STILL GOES RED. The
       # step collects failures and exits non-zero at the end. That is the
       # opposite of `continue-on-error`: stopping at the first red would hide
@@ -184,18 +211,62 @@ jobs:
                naming a file this directory no longer has FAILS the job, so the
                note cannot outlive its subject. Emptying this list is the goal.
                Adding to it without an exit code beside the name is not what it
-               is for, and neither is editing a suite until it goes quiet. */
-            const QUARANTINE = [
+               is for, and neither is editing a suite until it goes quiet.
+
+               🟢 RETIRED FROM THIS LIST, 2026-08-26 — giveup-verify.mjs, now
+               WIRED. THE ENTRY IS RETIRED IN WRITING RATHER THAN DELETED IN
+               SILENCE, and it is reproduced below VERBATIM as it stood in the
+               array on 6ee4c73 — the original dated sentence, byte for byte,
+               and not a summary of it. A paraphrase of a measurement is not
+               the measurement: it drops the evidence the finding rested on
+               and it leaves a later reader nothing to check the correction
+               AGAINST. Append beneath, never rewrite above — which is what the
+               redaction-claim.mjs and adversarial-claim.mjs entries in the
+               array below already do, in place, twice.
+
+               ── VERBATIM, AS COMMITTED AT 6ee4c73 ──
               { dir: "Extension/Full_Screen_Shot", file: "giveup-verify.mjs",
                 why: "2026-08-25, exit 1, 107 pass 5 fail. NOT a stale suite and NOT quiet: on iframe-door it reports 1 readable-but-unentered frame while matchedComplete stays true and the payload prints (whole count), with an address, a phone and a card still legible in the delivered PNG; on defercap the payload says (PARTIAL count) while the screen says a whole-count sentence. That is the spec 2.1.1 rule - anywhere the pipeline gives up on something, that fact is recorded, carried and reaches the surface - failing in the direction of a person believing more was covered than was. Left unwired because it is red today, NOT because the finding is doubted. Somebody who owns the source has to answer it; this note is here so the answer is not postponed by silence." },
+               ── END VERBATIM ──
+
+               APPENDED 2026-08-26 - the sentence above stood when it was
+               written and is left standing; this block says only what changed
+               and when. RE-MEASURED THREE TIMES on current main (6ee4c73),
+               alone, nothing else driving a browser: EXIT 0, 112 pass / 0 fail
+               / 3 note on every run, 113s on the third (the timed one). Both
+               shapes that reddened it - iframe-door and defercap - pass by
+               name now. So the suite is WIRED rather than quarantined, and it
+               is absent from the array below for that reason and no other.
+               The record is what is restored here; the un-quarantining stands.
+
+               THE ASYMMETRY THAT MAKES THIS COMMENT NECESSARY: the stale-entry
+               check below fails the job when a note outlives its FILE, and
+               nothing at all catches a note that outlives its MEASUREMENT. A
+               green re-measurement therefore has to be recorded in writing, or
+               wiring a suite is indistinguishable from quietly dropping a
+               skip. That gap is NAMED here and is deliberately NOT closed
+               here - closing it needs a new guard clause and a decision about
+               what makes a measurement stale.
+
+               THE 3 THAT REMAIN ARE NOTE, NOT FAIL, and NOTE is not graded.
+               Two verdict-shaped STRINGS survive FS_ENVELOPE_VERDICT, which
+               closes the acts block by allowlist and booleans by shape but
+               grades no string in a scope section 5 leaves open. The two are
+               NOT the same case: redaction.kinds.assessment="clean" sits
+               INSIDE the redaction block, in kinds, which is not an
+               ALLOWLISTED SCOPE (the suite labels it exactly so - a summary
+               string in kinds, which is not an allowlisted scope), and only
+               notes[0] is outside the redaction block. The third note is a
+               canvas-pii reference line. None of the three is a red. */
+            const QUARANTINE = [
               { dir: "Extension/Full_Screen_Shot", file: "privacy-verify.mjs",
                 why: "2026-08-25, exit 1, 297 pass 1 fail - canvas-pii check B2, stray=27 of 27. The 27 pixels are not a block the ledger missed: the canvas-pii fixture paints its canvas text with a fillStyle ONE STEP off the block literal (rgb 16,16,16 against a block of rgb 17,17,17), and the antialiasing ramp from that ink to white passes exactly through the block colour - which B2 counts by exact equality, on purpose, because PNG is lossless. test/e2e/README.md already states the rule the fixture breaks (no text colour may sit within tolerance of the block colour). The repair belongs to the FIXTURE, not to the suite and not to the product, and the suite wires the day it lands. Untested on Linux, where the ramp will produce a different count." },
               { dir: "Extension/Full_Screen_Shot", file: "review-keyboard.mjs",
                 why: "2026-08-25, exit 1. Grades the CURRENT record shape and is the only tier that presses real keys, so this is a live disagreement rather than a retired suite. On review-tall.html the capture comes back 1280x3708 with acts matched=null painted=0 ledger=partial and ZERO marks, on a fixture that carries an example.com address and a Luhn-valid card; P0 wants at least 2 marks past the 3136px tiling floor, so P1, P2 and the whole focus-trap block cascade off it and the run ends in a TimeoutError on the review zoom control. Cause NOT established from this side - either the pass really paints nothing on a capture that tall, or the record is read before it finishes. Compare privacy-verify on sr-only, which reports ledger=present matched=3 on a short page." },
               { dir: "Extension/Full_Screen_Shot", file: "redaction-claim.mjs",
-                why: "2026-08-25, exit 1, 151 pass 199 fail 30 open. RE-MEASURED 2026-08-26 on the same tree, alone, nothing else driving a browser: exit 1, 151 pass 199 fail 30 open - not one number moved. Retired, not broken: every failure reads redaction.state, redaction.pixels or the scan and bake ledgers, and REDACTION-CLAIM-SPEC.md 2.2 (Removed - do not leave the old field beside the new one) deletes all four. The product line it grades renders correctly in the same run. It cannot be repaired into green, only replaced: the sections every check cites (2.6, 3.7, 5.4, 6.1, 7.1, E8, E13) are sections of the PRE-REDUCTION REDACTION-CLAIM-SPEC.md, which was rewritten in place, and not one of them is in the file today - so there is nothing left to grade AGAINST. Replacing it is already done - reduction-corpus.mjs grades this identical fixture directory (test/e2e/fixtures, all 17 shapes) against the current spec, is wired, and is green." },
+                why: "2026-08-25, exit 1, 151 pass 199 fail 30 open. RE-MEASURED 2026-08-26 on the same tree, alone, nothing else driving a browser: exit 1, 151 pass 199 fail 30 open - not one number moved. Retired, not broken: every failure reads redaction.state, redaction.pixels or the scan and bake ledgers, and REDACTION-CLAIM-SPEC.md 2.2 (Removed - do not leave the old field beside the new one) deletes all four. The product line it grades renders correctly in the same run. It cannot be repaired into green, only replaced: the sections every check cites (2.6, 3.7, 5.4, 6.1, 7.1, E8, E13) are sections of the PRE-REDUCTION REDACTION-CLAIM-SPEC.md, which was rewritten in place, and not one of them is in the file today - so there is nothing left to grade AGAINST. Replacing it is already done - reduction-corpus.mjs grades this identical fixture directory (test/e2e/fixtures, all 17 shapes) against the current spec, is wired, and is green. APPENDED 2026-08-26 - the sentence above stood when it was written and is left standing, but its LAST CLAUSE IS WRONG BY MEASUREMENT and the correction goes here. all 17 shapes is not what reduction-corpus.mjs grades. Parsed from the registration table of every .mjs in the directory rather than grepped for filenames: this suite registers 17 fixtures/ shapes, reduction-corpus.mjs registers 13 of them, and the 4 it does not reach are before-content, clipped-ancestor, input-values and svg-text. before-content is covered by batch-artifact.mjs, which is wired. THE OTHER THREE - clipped-ancestor, input-values, svg-text - appear in NO other suite in this directory, wired or quarantined, so retiring this file would orphan them outright. Retiring it therefore does not cost nothing: it costs those three shapes, and the cost is recorded here so nobody derives it a fourth time. A second number in the same family: claim-reduction.mjs overlaps by 5 of the 17, not 8 - its corpus is 8 shapes, but 3 of those are fixtures-adv. ON THE SPEC SECTIONS the sentence above is right about the list it names and understates the rest: of the 35 distinct section numbers this suite cites, 27 have no heading in REDACTION-CLAIM-SPEC.md today, and E1 through E16 are all gone because the current spec carries no E-numbered list at all. The 8 numbers that do still resolve (2.1, 2.2, 2.3, 3, 3.2, 3.3, 3.4, 3.5) are numbers REUSED FOR DIFFERENT CONTENT rather than sections that stayed put - 3.3 is The marks today, and it is the clause that retired the rule adversarial-claim U9 grades." },
               { dir: "Extension/Full_Screen_Shot", file: "adversarial-claim.mjs",
-                why: "2026-08-25, exit 1. RE-MEASURED 2026-08-26, the number the entry never carried: exit 1, 102 pass 65 fail 3 open, 0 ESCAPES, 11 fixtures. The same retired record shape and the same spec 2.2 row as redaction-claim.mjs - 44 of the 65 failures are four universals repeated over the 11 fixtures (U2 state inside the closed set, U5 and U6 the scan and bake ledger sums, U7 the state sentence on a permanent surface), all reading fields 2.2 deleted. U9 (no rectangle geometry travels on the record) fails BECAUSE the spec amended that absolute: 3.3 now persists redaction.marks for verified-opaque blocks on purpose, so the check is grading a rule that was deliberately retired. Its own log shows the product answering correctly (Redaction on. 3 matched, 3 painted, 3 confirmed opaque in this image.) while the suite reads undefined off fields that no longer exist. CORRECTION to the note this replaces, which said it was superseded in coverage: only its ASSERTIONS are. it runs test/e2e/fixtures-adv, a DIFFERENT corpus - thirteen shapes in the directory, eleven of them in this suite - and reduction-corpus.mjs reaches five of the thirteen (details-closed, object-door, split-token, wrapped-token, mixed-owntext), claim-reduction.mjs three of those same five. canvas-combo, cv-tabs, frame-pii, honest-article, honest-pii, late-frame, late-swap and shadow-closed-frame are graded by NO wired suite today, and frame-pii is not in this suite either, so it has never had one. That is a live coverage hole and retiring this entry would close it by assertion rather than by test. AND TWO OF THE 65 ARE NOT RECORD-SHAPE AT ALL - they are read off the delivered PNG and they survive the retirement, so somebody who owns content/capture.js has to answer them: on cv-tabs the image comes back with the VISIBLE panel marker at 0 rows and 33 rows of block colour, on details-closed 23 rows of block colour with the PII marker at 0. Both are an opaque block painted at coordinates taken from a subtree the renderer never drew (a collapsed details, an inactive content-visibility tab panel), landing on rendered text that held no PII, while marks x43 y334 w189 h23 and kinds email 1 point a reader at a rect that never held the email. Under the reduced design that is not a false coverage claim - the acts 1/1/1 are all true - so it is not what reddens this suite and it must not be graded by re-arming it; it is a capture-fidelity defect and it needs an owner of that file." }
+                why: "2026-08-25, exit 1. RE-MEASURED 2026-08-26, the number the entry never carried: exit 1, 102 pass 65 fail 3 open, 0 ESCAPES, 11 fixtures. The same retired record shape and the same spec 2.2 row as redaction-claim.mjs - 44 of the 65 failures are four universals repeated over the 11 fixtures (U2 state inside the closed set, U5 and U6 the scan and bake ledger sums, U7 the state sentence on a permanent surface), all reading fields 2.2 deleted. U9 (no rectangle geometry travels on the record) fails BECAUSE the spec amended that absolute: 3.3 now persists redaction.marks for verified-opaque blocks on purpose, so the check is grading a rule that was deliberately retired. Its own log shows the product answering correctly (Redaction on. 3 matched, 3 painted, 3 confirmed opaque in this image.) while the suite reads undefined off fields that no longer exist. CORRECTION to the note this replaces, which said it was superseded in coverage: only its ASSERTIONS are. it runs test/e2e/fixtures-adv, a DIFFERENT corpus - thirteen shapes in the directory, eleven of them in this suite - and reduction-corpus.mjs reaches five of the thirteen (details-closed, object-door, split-token, wrapped-token, mixed-owntext), claim-reduction.mjs three of those same five. canvas-combo, cv-tabs, frame-pii, honest-article, honest-pii, late-frame, late-swap and shadow-closed-frame are graded by NO wired suite today, and frame-pii is not in this suite either, so it has never had one. That is a live coverage hole and retiring this entry would close it by assertion rather than by test. AND TWO OF THE 65 ARE NOT RECORD-SHAPE AT ALL - they are read off the delivered PNG and they survive the retirement, so somebody who owns content/capture.js has to answer them: on cv-tabs the image comes back with the VISIBLE panel marker at 0 rows and 33 rows of block colour, on details-closed 23 rows of block colour with the PII marker at 0. Both are an opaque block painted at coordinates taken from a subtree the renderer never drew (a collapsed details, an inactive content-visibility tab panel), landing on rendered text that held no PII, while marks x43 y334 w189 h23 and kinds email 1 point a reader at a rect that never held the email. Under the reduced design that is not a false coverage claim - the acts 1/1/1 are all true - so it is not what reddens this suite and it must not be graded by re-arming it; it is a capture-fidelity defect and it needs an owner of that file. APPENDED 2026-08-26 - the sentences above stood when they were written and are left standing; this block says what changed and when. NUMBERS: re-measured twice back to back on 6ee4c73, port 8913 confirmed free before each, exit 1, 106 pass 61 fail 3 open, 0 ESCAPES, 11 fixtures, both times. The 102/65/3 above was taken before PR #23; four checks that failed then pass now. THE CAPTURE-FIDELITY LIMB IS ANSWERED AND THAT PARAGRAPH IS NOW HISTORY: clause 3b in content/capture.js (commit 5121633, merged as 6ee4c73) gives measure() a liveness test, and the same two fixtures now come back details-closed block rows 0 with marks empty and kinds empty, cv-tabs block rows 10 with the VISIBLE panel phone marker at 10 - the residue of 10 is subpixel antialiasing on the fixture tab-button labels, which is fixtures-adv breaking the tolerance rule test/e2e/README.md states, not the product. So this entry no longer asks anyone to answer that; it has been answered. WHAT DID NOT MOVE is the record-shape limb. 61 failures still read fields 2.2 deleted, and U9 still fails on exactly ONE fixture of the eleven - honest-pii, the only shape in this corpus with a verified-opaque block - because 3.3 REQUIRES precisely the geometry U9 forbids: its ledger is marks x24 y165 w189 h23, x132 y253 w145 h23, x175 y392 w171 h23 beside acts matched 3 painted 3 verifiedOpaque 3. On the other ten fixtures nothing is verified opaque, no marks are persisted, and U9 passes - which is the cleanest available proof that U9 grades a retired absolute rather than a defect. THE COVERAGE HOLE IS UNCHANGED BY THE WIRING ABOVE: giveup-verify.mjs went from quarantined to wired on 2026-08-26 and reads fixtures-giveup and fixtures, not one fixtures-adv shape, so the eight named above are still eight. ALSO REPAIRED 2026-08-26, and it is not an assertion change: this suite hard-coded PORT 8913 with no override and shares that port with claim-reduction.mjs, so an orphan of its own earlier run left it unrunnable until somebody found and killed a process. It now reads PORT from the environment, the way giveup-verify.mjs and v3acts-probe.mjs already did. claim-lib.mjs does NOT hard-code it - serve(dir, port) takes the port as an argument - so nothing outside this unit had to change, and the counts above were re-measured after the change and did not move." }
             ];
             const here = process.env.SUITE_DIR || "";
             const files = fs.readdirSync(".").filter(f => f.endsWith(".mjs")).sort();

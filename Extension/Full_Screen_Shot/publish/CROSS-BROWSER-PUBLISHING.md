@@ -6,12 +6,12 @@ uploads, on-device QA); this walks each one end to end and reuses the copy alrea
 drafted in `STORE-LISTING.md` + `PRIVACY-POLICY.html`.
 
 Files in this folder:
-- `manifest.firefox.json` — the Firefox manifest, standalone. **This is a second, real manifest**: whenever `manifest.json` at the repo root is bumped, this file must be bumped with it in the same commit. It currently reads **1.10.1**, in step with the root.
+- `manifest.firefox.json` — the Firefox manifest, standalone. **This is a second, real manifest**: whenever `manifest.json` at the repo root is bumped, this file must be bumped with it in the same commit. It currently reads **1.10.1**, in step with the root. ⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, row *Line 9*: it is an RFC 7386 merge patch, it states no version at all (so it cannot drift), and the root is **1.10.2**.
 - `package.node.js` — the builder (`node publish/package.node.js`). Writes **both** zips from an allowlist, applies the Firefox `importScripts` guard while writing, and refuses to write an unguarded Firefox package. Use it; never hand-zip the source folder.
 - `verify-firefox-package.node.js` — the Firefox packaging gate (`node publish/verify-firefox-package.node.js`). Run it before every AMO upload; it exits non-zero and names the blocker. See §Firefox → *The packaging gate*.
 - `SUBMISSION-PACKET.md` — every field all three stores ask for, drafted or marked OWNER. `PRIVACY-POLICY-HOSTING.md` — hosting the policy and the exact Chrome data-declaration answers.
-- `fullshot-1.10.1.zip` — Chrome **and** Edge (same Chromium MV3 package). **Current.** md5 `c601e5ed7396cf6a078cc64c273e5a8e`.
-- `fullshot-1.10.1-firefox.zip` — the Firefox candidate. **Current** and a correct build: the gate reads the zip, confirms its packaged `background.js` carries the `importScripts` guard, and confirms its packaged manifest equals `manifest.firefox.json`. md5 `fb0c019994d9ca0d59f801583fc29146`.
+- `fullshot-1.10.1.zip` — Chrome **and** Edge (same Chromium MV3 package). **Current.** md5 `c601e5ed7396cf6a078cc64c273e5a8e`. ⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, row *Lines 13–15*: deleted 2026-08-20; 🔴 the md5 is deliberately not re-derived, because the file it describes is gone.
+- `fullshot-1.10.1-firefox.zip` — the Firefox candidate. **Current** and a correct build: the gate reads the zip, confirms its packaged `background.js` carries the `importScripts` guard, and confirms its packaged manifest equals `manifest.firefox.json`. md5 `fb0c019994d9ca0d59f801583fc29146`. ⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, row *Lines 13–15*, and `publish/STALE-FIREFOX-ARTIFACTS-2026-08-20.md`: deleted 2026-08-20; 🔴 the md5 is deliberately not re-derived.
 - `fullshot-1.9.7*.zip`, `1.9.11*`, `1.9.13*`, `1.10.0*` — superseded history. Keep or delete, but **do not upload one by mistake**; check the version in the filename against `manifest.json` every time.
 
 > **Version state:** both current zips are **1.10.1**, matching root
@@ -21,6 +21,10 @@ Files in this folder:
 > `_locales/<lang>/messages.json`, which arrived with the i18n phase.
 > One rebuild is still coming: setting the real `gecko.id` (below) changes
 > `manifest.firefox.json`, so the Firefox package must be rebuilt afterwards.
+> ⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, rows *Lines 13–15* and
+> *Lines 22–23*: the zips named above were deleted 2026-08-20, and no rebuild is
+> pending. `gecko.id` has read **`fullshot@nikatru.com`** since 2026-08-18 and
+> `node publish/verify-firefox-package.node.js` exits **0** (re-measured 2026-08-26).
 
 > **Verification boundary (read this):** the Firefox package is structurally
 > validated in a sandbox (`verify-firefox-package.node.js`: manifest schema,
@@ -103,11 +107,17 @@ remains: **build with the packager, never by hand-zipping the source folder**,
 because a hand-made zip would ship the unguarded file and the add-on would throw
 on load.)*
 
+⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, row *Lines 97–104 and line 189*:
+false on both halves. The guard is **in the source** — `background.js` line 24 reads
+`if (typeof importScripts === 'function') {` — committed 2026-08-20, and nothing rewrites
+the file on the way into a zip. ✅ The rule the parenthesis ends on — build with the
+packager, never by hand-zipping — is still correct and is why it stands here verbatim.
+
 ### Manifest differences (already applied in `manifest.firefox.json`)
 | Key | Chrome | Firefox |
 |---|---|---|
 | `background` | `{ "service_worker": "background.js" }` | `{ "service_worker": "background.js", "scripts": ["pages/db.js","pages/batch.js","background.js"] }` |
-| `browser_specific_settings.gecko.id` | — | **required** for MV3 signing → `⟨fullshot@your-domain⟩` |
+| `browser_specific_settings.gecko.id` | — | **required** for MV3 signing → `⟨fullshot@your-domain⟩` ⚠️ **RETIRED 2026-08-26** — see **§A.2** (*Line 110*): the real value is **`fullshot@nikatru.com`**. |
 | `browser_specific_settings.gecko.strict_min_version` | — | `"128.0"` (optional_host_permissions landed in FF 128) |
 | `browser_specific_settings.gecko.data_collection_permissions` | — | **required** since 2025-11-03 → `{ "required": ["none"] }` |
 | `minimum_chrome_version` | `"116"` | **removed** — a Chrome Web Store key with no meaning in Firefox; Gecko's equivalent is `strict_min_version` |
@@ -134,6 +144,13 @@ and the listing is that id from then on — change it later and you have publish
 a *different* add-on, not an update, so a placeholder shipped once cannot be
 walked back. The packaging gate refuses to pass while the placeholder is present.
 (https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings)
+
+⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, the row covering lines 110,
+128–135 and 260: `gecko.id` is **`fullshot@nikatru.com`** and the packaging gate
+`node publish/verify-firefox-package.node.js` exits **0** (re-measured 2026-08-26).
+The paragraph above is left standing verbatim because its *reasoning* is still
+exactly right: AMO fixes the add-on identity at first signing, which is now the
+reason the filled id matters rather than an open task.
 
 ### Data collection consent — `data_collection_permissions` (mandatory)
 Since **2025-11-03**, every *new* add-on submitted to AMO must declare what it
@@ -185,17 +202,24 @@ exits non-zero and prints a named action.
 **It is red today, on purpose.** As of 1.10.1 it reports two failures, but only
 **one is a submission blocker**:
 1. **OWNER (blocker)** — the placeholder `gecko.id` (above). Only the owner can
-   resolve it, and the gate says so by name.
+   resolve it, and the gate says so by name. ⚠️ **RETIRED 2026-08-26** — see **§A.2**: the id is **`fullshot@nikatru.com`**; this blocker is closed.
 2. **BUILD (not a blocker any more)** — source `background.js` still calls
    `importScripts` unguarded. The gate is right to flag the source, but
    `package.node.js` now guards the file as it writes the Firefox zip, so the
    *package* is correct; the gate's own package section confirms
    `packaged background.js guards importScripts` **PASS**. The failure to watch
    is the source line, and the rule it implies is "always build with the
-   packager".
+   packager". ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *Lines 97–104 and line 189*: the **source** is guarded (`background.js` line 24, 2026-08-20) and nothing rewrites it at pack time. The build-with-the-packager rule stands.
 
 Because it is red by design it is **not** part of the eleven test tiers and must
 not be added to the all-green set.
+
+⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.2**, row *Lines 185–198*: the gate is
+**not** red. `node publish/verify-firefox-package.node.js` exits **0** bare
+(`SOURCE PASSES — NO PACKAGE WAS GRADED.`) and **0** with `--zip` against a fresh build.
+Both named failures are gone — the placeholder id was filled 2026-08-18 and the source
+guard landed 2026-08-20. The rule underneath, that a red gate naming a real defect is
+the system working, is untouched; this gate is simply no longer naming one.
 
 ### API portability (audited — all good except the guard)
 FullShot uses the `chrome.*` namespace, which Firefox aliases. The one behavioral
@@ -242,7 +266,7 @@ Expected `web-ext lint` noise that is **not** a problem: the
 ## Consolidated submission checklist (all three stores)
 
 Before any store — the full field list is `SUBMISSION-PACKET.md`:
-- [x] ~~Rebuild both zips at the current version~~ — **done**, both are 1.10.1.
+- [x] ~~Rebuild both zips at the current version~~ — **done**, both are 1.10.1. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *Lines 13–15*: the rebuild happened, but its output was deleted 2026-08-20 and the tree is now **1.10.2**.
 - [ ] Settle the legal name and a domain you control — they feed five places at once (`SUBMISSION-PACKET.md` §0).
 - [ ] Declare **EU DSA trader status** in the Chrome dashboard; it is verified by Google and gates EEA distribution.
 - [ ] Host `PRIVACY-POLICY.html` publicly; fill in every `⟨…⟩`; note the URL (`PRIVACY-POLICY-HOSTING.md`).
@@ -257,7 +281,7 @@ Microsoft Edge:
 - [ ] Free Partner Center account · upload the same `fullshot-<ver>.zip` · same listing + privacy · submit.
 
 Firefox AMO:
-- [ ] Set a real `gecko.id` (owner-only) · apply the `importScripts` guard to the packaged `background.js` · `node publish/verify-firefox-package.node.js` **green** · `web-ext lint` + `run` (QA) + `build` · free AMO account · upload · privacy disclosures + policy URL · submit.
+- [ ] Set a real `gecko.id` (owner-only) · apply the `importScripts` guard to the packaged `background.js` · `node publish/verify-firefox-package.node.js` **green** · `web-ext lint` + `run` (QA) + `build` · free AMO account · upload · privacy disclosures + policy URL · submit. ⚠️ **RETIRED 2026-08-26** — see **§A.2**: `gecko.id` is `fullshot@nikatru.com`, the source `importScripts` guard landed 2026-08-20, and the gate is already **green** (EXIT 0).
 
 ## Notes
 - Keep **one version number** across stores so updates stay in lockstep — and remember that means **two files**: root `manifest.json` and `publish/manifest.firefox.json`. The packaging gate fails on drift between them.

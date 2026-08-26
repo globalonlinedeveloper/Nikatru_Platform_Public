@@ -40,6 +40,53 @@ the store metadata was over Chrome's limits in most locales.
   `node _locales/make-locales.mjs`, and `--check` fails on any drift, so a hand-edit would have been
   reverted by the next generator run. The sources were edited and the catalogues regenerated.
 
+*Appended 2026-08-26. Two privacy fixes landed in the source at this same version eleven days after
+the entry above was written. They are recorded here rather than folded into a later version because
+the manifest still reads 1.10.2 and nothing has been published at it. Everything written on
+2026-08-15 is left standing; where it is now wrong it is corrected beneath itself, not rewritten.*
+
+- **The redaction stats line reported a whole match count over text the pass had not read.** `scan()`
+  writes a counter the moment it meets an `<iframe>` whose `contentDocument` it could have read and
+  returns without descending — a door counted, openable, and not walked through. That counter was
+  written and never read: the pass observed itself declining to read a document and then sealed the
+  count as complete, so a capture containing such a frame put a whole-count sentence beside a
+  delivered PNG in which an address, a phone number and a card number were still legible. The AI
+  handoff payload said `(PARTIAL count)` about that same capture all along — two surfaces describing
+  one capture and disagreeing, and the silent one was the one with the picture next to it. The seal
+  in `content/capture.js` now also requires that every same-origin frame the pass counted was
+  walked, and `pages/result.js` and `pages/history.js` append the new `redactActsCountPartial`
+  string beside the counts whenever it is false: "This count may be short: FullShot did not read
+  some of the text in this capture." It is appended, never an arm, so it composes even with the zero
+  arm — "matched nothing" over text the pass never read is the sentence that most needs it beside
+  it. It carries no numbers deliberately: the gaps that can be counted have their own sentences and
+  this one covers the gaps that cannot. And it is a statement about what FullShot did, not about the
+  picture. The string's own description forbids *safe*, *clean*, *secure*, *protected* and *done*, in
+  every language, because FullShot cannot see the image and the reader can. No screen in this product
+  tells a reader that a capture is fit to share, and this entry does not either. All 55 catalogues
+  carry the key with an `AWAITING-TRANSLATION` marker and render the English until it is translated;
+  `test/i18n-sim` reddens if a translation memory carries the key while the marker is still there,
+  so the marker cannot outlive its translation.
+- **A redaction block was painted over text that never held the match.** The measurement in
+  `collectPIIBoxes` had no liveness test, and Chrome *lays out* a leaf inside a
+  `content-visibility: hidden` subtree and never paints it: the leaf still reports a full-size rect,
+  `visibility: visible`, `opacity: 1` and a font size that agrees with that rect, so every clause of
+  the box test passed and a block was emitted at coordinates belonging to text that is not in the
+  image. Where an inactive tab panel is absolutely positioned over the active one, the unpainted
+  text and the visible line share a rect to the pixel — so the ink landed on readable text that held
+  no match, destroyed it, and `marks` and `kinds` then pointed a reader at a rectangle where no
+  email had ever been. This is the opposite sign to the item above: each act was true, something
+  really was matched and really was painted, so it was not fixed by weakening a coverage assertion.
+  No ancestor walk could have found half of it either — for a collapsed `<details>` the declaration
+  lives on the `::details-content` **pseudo-element**, and not one node in the composed chain
+  carries it. The engine is asked instead, via `el.checkVisibility()`, and a subtree it did not draw
+  is now skipped before the detector: no box, no mark, no `kinds` entry, and the match is not moved
+  to the uncovered side either, which would have traded the over-paint for a false "1 match is not
+  covered in this image" about a closed accordion. Eight lines of code in `content/capture.js`, set
+  after the degenerate-rect clause so a 0×0 leaf keeps its seat in the deferred re-measure; the rest
+  of that diff is the comment explaining why the stylesheet is not consulted. The places skipped and
+  the characters in them are recorded as `notRendered` and `notRenderedChars`, so that "FullShot did
+  not look at that" is a fact a reader can check rather than a silence.
+
 ### Changed
 
 - **The version number moved because the package did.** No source behaviour changed between 1.10.1
@@ -47,6 +94,14 @@ the store metadata was over Chrome's limits in most locales.
   rather than becoming the fourth distinct package to be labelled 1.10.1. `docs/RELEASING.md` §2:
   "Bump before you rebuild, always." The 1.10.1 packages are left in `publish/` unmodified as the
   record of what that number was.
+
+*Appended 2026-08-26: the sentence above — "No source behaviour changed between 1.10.1 and 1.10.2
+beyond the metadata above" — was true when it was written and is no longer. It stands as the record
+of what 1.10.2 was on 2026-08-15. Two source fixes have since landed at this same version, both
+reaching `content/capture.js`, and they are the two items added under **Fixed** above. The version
+was not bumped again for them because there is no byte set left for a new number to distinguish
+this one from: all twelve packages were deleted on 2026-08-20, recorded in
+`publish/STALE-FIREFOX-ARTIFACTS-2026-08-20.md`, and none has been rebuilt since.*
 
 ### Known limitations at this version
 
@@ -56,6 +111,13 @@ the store metadata was over Chrome's limits in most locales.
 - `el` sits at exactly 132 of 132. The next edit to the Greek description, or any English change that
   makes Greek stale and falls back to English, fails `node scripts/policy-check.mjs fullshot` on the
   spot.
+
+*Appended 2026-08-26: the first bullet above no longer holds in full. Of 1.10.1's limitations, the
+one recorded as "content that is laid out but not painted (a closed `<details>`, an inactive tab
+panel) is treated as visible text" is fixed by the second item under **Fixed** above — and it was
+never only the recall gap it was recorded as, because the boxes measured from that text were then
+painted onto the image. The rest of 1.10.1's list still applies, the placeholder
+`browser_specific_settings.gecko.id` included.*
 
 *Packages: `publish/fullshot-1.10.2.zip` and `-firefox.zip`, 85 entries each, 55 locale catalogues.*
 

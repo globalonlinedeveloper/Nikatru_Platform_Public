@@ -7,7 +7,8 @@
     "test:claim": "node redaction-claim.mjs",
     "test:corpus": "node reduction-corpus.mjs",
     "test:review": "node review-keyboard.mjs",
-    "test:batch": "node batch-artifact.mjs"
+    "test:batch": "node batch-artifact.mjs",
+    "test:giveup": "node giveup-verify.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"
