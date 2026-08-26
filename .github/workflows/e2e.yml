@@ -268,6 +268,13 @@ jobs:
               { dir: "Extension/Full_Screen_Shot", file: "adversarial-claim.mjs",
                 why: "2026-08-25, exit 1. RE-MEASURED 2026-08-26, the number the entry never carried: exit 1, 102 pass 65 fail 3 open, 0 ESCAPES, 11 fixtures. The same retired record shape and the same spec 2.2 row as redaction-claim.mjs - 44 of the 65 failures are four universals repeated over the 11 fixtures (U2 state inside the closed set, U5 and U6 the scan and bake ledger sums, U7 the state sentence on a permanent surface), all reading fields 2.2 deleted. U9 (no rectangle geometry travels on the record) fails BECAUSE the spec amended that absolute: 3.3 now persists redaction.marks for verified-opaque blocks on purpose, so the check is grading a rule that was deliberately retired. Its own log shows the product answering correctly (Redaction on. 3 matched, 3 painted, 3 confirmed opaque in this image.) while the suite reads undefined off fields that no longer exist. CORRECTION to the note this replaces, which said it was superseded in coverage: only its ASSERTIONS are. it runs test/e2e/fixtures-adv, a DIFFERENT corpus - thirteen shapes in the directory, eleven of them in this suite - and reduction-corpus.mjs reaches five of the thirteen (details-closed, object-door, split-token, wrapped-token, mixed-owntext), claim-reduction.mjs three of those same five. canvas-combo, cv-tabs, frame-pii, honest-article, honest-pii, late-frame, late-swap and shadow-closed-frame are graded by NO wired suite today, and frame-pii is not in this suite either, so it has never had one. That is a live coverage hole and retiring this entry would close it by assertion rather than by test. AND TWO OF THE 65 ARE NOT RECORD-SHAPE AT ALL - they are read off the delivered PNG and they survive the retirement, so somebody who owns content/capture.js has to answer them: on cv-tabs the image comes back with the VISIBLE panel marker at 0 rows and 33 rows of block colour, on details-closed 23 rows of block colour with the PII marker at 0. Both are an opaque block painted at coordinates taken from a subtree the renderer never drew (a collapsed details, an inactive content-visibility tab panel), landing on rendered text that held no PII, while marks x43 y334 w189 h23 and kinds email 1 point a reader at a rect that never held the email. Under the reduced design that is not a false coverage claim - the acts 1/1/1 are all true - so it is not what reddens this suite and it must not be graded by re-arming it; it is a capture-fidelity defect and it needs an owner of that file. APPENDED 2026-08-26 - the sentences above stood when they were written and are left standing; this block says what changed and when. NUMBERS: re-measured twice back to back on 6ee4c73, port 8913 confirmed free before each, exit 1, 106 pass 61 fail 3 open, 0 ESCAPES, 11 fixtures, both times. The 102/65/3 above was taken before PR #23; four checks that failed then pass now. THE CAPTURE-FIDELITY LIMB IS ANSWERED AND THAT PARAGRAPH IS NOW HISTORY: clause 3b in content/capture.js (commit 5121633, merged as 6ee4c73) gives measure() a liveness test, and the same two fixtures now come back details-closed block rows 0 with marks empty and kinds empty, cv-tabs block rows 10 with the VISIBLE panel phone marker at 10 - the residue of 10 is subpixel antialiasing on the fixture tab-button labels, which is fixtures-adv breaking the tolerance rule test/e2e/README.md states, not the product. So this entry no longer asks anyone to answer that; it has been answered. WHAT DID NOT MOVE is the record-shape limb. 61 failures still read fields 2.2 deleted, and U9 still fails on exactly ONE fixture of the eleven - honest-pii, the only shape in this corpus with a verified-opaque block - because 3.3 REQUIRES precisely the geometry U9 forbids: its ledger is marks x24 y165 w189 h23, x132 y253 w145 h23, x175 y392 w171 h23 beside acts matched 3 painted 3 verifiedOpaque 3. On the other ten fixtures nothing is verified opaque, no marks are persisted, and U9 passes - which is the cleanest available proof that U9 grades a retired absolute rather than a defect. THE COVERAGE HOLE IS UNCHANGED BY THE WIRING ABOVE: giveup-verify.mjs went from quarantined to wired on 2026-08-26 and reads fixtures-giveup and fixtures, not one fixtures-adv shape, so the eight named above are still eight. ALSO REPAIRED 2026-08-26, and it is not an assertion change: this suite hard-coded PORT 8913 with no override and shares that port with claim-reduction.mjs, so an orphan of its own earlier run left it unrunnable until somebody found and killed a process. It now reads PORT from the environment, the way giveup-verify.mjs and v3acts-probe.mjs already did. claim-lib.mjs does NOT hard-code it - serve(dir, port) takes the port as an argument - so nothing outside this unit had to change, and the counts above were re-measured after the change and did not move." }
             ];
+            /* APPENDED 2026-08-26 — THE ASYMMETRY NAMED IN THE COMMENT ABOVE IS
+               CLOSED, BELOW, and that paragraph is left standing word for word
+               as the record of the day it was open and of what it cost. The
+               guard is the quarantine audit at the end of this step. The
+               argument for what STALE was taken to mean, the three designs that
+               were rejected and why, and the list of what the choice CANNOT
+               catch, are written there beside the code rather than here. */
             const here = process.env.SUITE_DIR || "";
             const files = fs.readdirSync(".").filter(f => f.endsWith(".mjs")).sort();
             const src = new Map(files.map(f => [f, fs.readFileSync(f, "utf8")]));
@@ -284,13 +291,54 @@ jobs:
               console.log(`::error::package.json runs ${lost.join(", ")}, which this step did not classify as a suite. Either the file is gone or the library rule swallowed it; either way it must not go unrun.`);
               process.exit(1);
             }
+            /* Every quarantine filter from here down is keyed on SUITE_DIR, so
+               an empty SUITE_DIR does not mean there is nothing quarantined, it
+               means this step cannot tell WHAT is quarantined and would sail
+               past the whole list reporting ok. Coverage lost is not a pass. */
+            if (!here) {
+              console.log(`::error::SUITE_DIR is empty, so no quarantine entry can be matched to this directory. Every quarantine check below would have scanned nothing and reported success.`);
+              process.exit(1);
+            }
             const mine = QUARANTINE.filter(q => q.dir === here);
             const stale = mine.filter(q => !all.includes(q.file));
             if (stale.length) {
               console.log(`::error::the quarantine names ${stale.map(q => q.file).join(", ")}, which is not a suite in ${here}/test/e2e any more. Delete the entry along with the file, or fix the name — a quarantine note that outlives its subject is how a skip becomes permanent.`);
               process.exit(1);
             }
-            for (const q of mine) console.log(`::warning::NOT RUN — ${q.file}: ${q.why}`);
+            /* An entry is a MEASUREMENT, and the comment on the array has said
+               in prose since the list existed that adding to it without an exit
+               code beside the name is not what it is for. From here down that
+               sentence is executable. The LAST date and the LAST exit code in an
+               entry are the claim being made TODAY, because this list is
+               append-only by law: a re-measurement is appended beneath the
+               sentence it corrects and never written over it, so the newest
+               number in the string is the live one and the older ones are the
+               record of how it got there. */
+            const claimOf = q => {
+              const dates = [...q.why.matchAll(/\b20\d\d-\d\d-\d\d\b/g)].map(m => m[0]);
+              const exits = [...q.why.matchAll(/\bexit\s+(\d+)\b/g)].map(m => Number(m[1]));
+              return { date: dates[dates.length - 1], exit: exits[exits.length - 1] };
+            };
+            const unmeasured = mine.filter(q => claimOf(q).date === undefined || claimOf(q).exit === undefined);
+            if (unmeasured.length) {
+              console.log(`::error::the quarantine entr(y/ies) for ${unmeasured.map(q => q.file).join(", ")} carry no measurement. A date and an exit code have to be IN the note: without them there is nothing for the audit below to check the note against, and the entry is an opinion with a filename on it rather than a finding.`);
+              process.exit(1);
+            }
+            const notRed = mine.filter(q => claimOf(q).exit === 0);
+            if (notRed.length) {
+              console.log(`::error::the quarantine entr(y/ies) for ${notRed.map(q => q.file).join(", ")} record exit 0. This list holds suites measured RED; an entry recording a GREEN measurement is a skip with a date on it. Wire the suite and retire the entry in writing.`);
+              process.exit(1);
+            }
+            /* Every entry still prints on every run. The wording moved from NOT
+               RUN to NOT GRADED on 2026-08-26, because the audit at the end of
+               this step now RE-RUNS these suites. It never GRADES them — a
+               quarantined suite that is still red is a warning and nothing
+               more — so the tick this job puts on the checks list means exactly
+               what it meant before. */
+            for (const q of mine) {
+              const c = claimOf(q);
+              console.log(`::warning::NOT GRADED — ${q.file} (recorded ${c.date}, exit ${c.exit}; re-run below, verdict only): ${q.why}`);
+            }
             const suites = all.filter(f => !mine.some(q => q.file === f));
             /* Zero suites is not a pass. A step that runs nothing exits 0, and
                on the checks list that is indistinguishable from every suite
@@ -299,6 +347,21 @@ jobs:
               console.log(`::error::every .mjs in ${here}/test/e2e is a library or quarantined — this step was about to run nothing and report success.`);
               process.exit(1);
             }
+            /* THE AUDIT AT THE END SPENDS ONLY WHAT THE WIRED SUITES DID NOT.
+               Half of the 75-minute job backstop is reserved for npm ci and the
+               Chromium download — that is the basis the timeout comment on this
+               job states, and it is used here in that form and not in a looser
+               one — which leaves this step about 37 minutes of its own. 35 is
+               taken, so the clock kept here always expires BEFORE the job
+               backstop and the log ends in a named budget line instead of an
+               unreadable job timeout. The wired loop below is never cut short by
+               it: the deadline is read only after that loop has finished, so the
+               headroom the wired suites might need on a slow runner is not
+               touched, the 2.8x figure the comment above quotes is unchanged,
+               and a run that leaves nothing over audits nothing and says so. */
+            const STEP_BUDGET_MS = 35 * 60 * 1000;
+            const AUDIT_FLOOR_MS = 2 * 60 * 1000;
+            const DEADLINE = Date.now() + STEP_BUDGET_MS;
             const failed = [];
             for (const s of suites) {
               const t = Date.now();
@@ -321,9 +384,123 @@ jobs:
             }
             if (failed.length) {
               console.log(`::error::${failed.length} of ${suites.length} e2e suite(s) failed: ${failed.join("; ")}`);
-              process.exit(1);
             }
-            console.log(`${suites.length} e2e suite(s) ran, all green${mine.length ? ` — and ${mine.length} quarantined above did NOT run` : ""}`);
+            /* ── QUARANTINE AUDIT — ADDED 2026-08-26 ───────────────────────────
+               THE GAP THIS CLOSES is the one the comment on the array names in
+               its own words: the stale-entry check above fails the job when a
+               note outlives its FILE, and until today nothing at all caught a
+               note that outlived its MEASUREMENT. Two of those had just been
+               found BY HAND, which is the only way they could be found.
+               giveup-verify.mjs sat on the list as failing and re-measured
+               GREEN — 112 pass, 0 fail, 3 note — and had been green for some
+               time with nobody the wiser. adversarial-claim.mjs recorded 102
+               pass 65 fail 3 open and measured 106 / 61 / 3 the next day. A
+               stale quarantine is worse than no quarantine, because it reads as
+               a considered decision and it is read by people who were not there.
+
+               WHAT STALE IS TAKEN TO MEAN HERE, and the whole check follows from
+               this one sentence: an entry ASSERTS THAT A SUITE IS RED, and it is
+               stale when that assertion is no longer true. So the audit re-runs
+               each quarantined suite and grades the NOTE — red against green,
+               and nothing finer than that.
+
+               WHY NOT AN AGE CEILING, which is the obvious design and which this
+               corpus already runs deliberately in assert-platform-proof-fresh.
+               It is refuted by the very evidence that motivated this check: BOTH
+               drifts above happened in ONE DAY, measured 2026-08-25 and
+               different on 2026-08-26. No ceiling that is not absurd catches a
+               one-day drift, so an age rule would have printed green through
+               both of the two cases it exists for. It reddens on the calendar,
+               and the calendar is not the thing that moved.
+
+               WHY NOT RE-AFFIRMATION BY HAND — a human touching the date when
+               the numbers move. That is precisely the discipline already in
+               force here, and it is the discipline that failed twice in one day.
+               A rule that is cheaper to satisfy by editing a date than by taking
+               a measurement is not a rule.
+
+               WHY THE NUMBERS ARE NOT COMPARED, ONLY THE VERDICT. Re-running and
+               diffing the COUNTS is the strongest-sounding option and it is
+               unavailable here, on a basis this file already carries the proof
+               of: the recorded counts were taken on the author machine, alone,
+               with nothing else driving a browser, and the paragraph above this
+               step records reduction-corpus.mjs at 1196 pass 0 fail run alone
+               against 612 pass 25 fail run third in this same step, on the same
+               tree, the same afternoon. A CI count set beside an author-machine
+               count differs for reasons that have nothing to do with staleness,
+               so a count comparison would redden on the RUNNER while calling it
+               a stale note — a figure quoted without its basis, which is the
+               exact mistake the timeout comment on this job spends a paragraph
+               on. Counts stay a human duty and this check does not pretend
+               otherwise.
+
+               WHY RUNNING A KNOWN-RED SUITE IN CI IS SAFE HERE: it is
+               non-blocking in the only direction that matters. A quarantined
+               suite that is still red produces a ::warning:: and CANNOT fail the
+               job, so nothing currently red is made to pass and no permanently
+               red weekly job is created — which is the reason the array gives
+               for not wiring these, and that reason still holds unchanged. The
+               job goes red on exactly one event: a suite exits 0 while the entry
+               beside it says it is red. That is not bad news about a suite, it
+               is good news about a suite and bad news about the note, and it is
+               the event nobody was watching for.
+
+               A RUN THAT DID NOT COMPLETE PROVES NOTHING AND MAY NOT CORROBORATE.
+               A suite killed by the budget exits non-zero, which is what a
+               still-red suite also looks like; counting that as agreement would
+               let a suite that has quietly gone green keep its entry forever, on
+               evidence that is really only evidence about the clock. Killed runs
+               are UNVERIFIED and are reported by name.
+
+               WHAT THIS CANNOT CATCH, written down so nobody has to derive it a
+               second time. (1) Count drift while the verdict holds — the second
+               case above, 102/65/3 to 106/61/3, would still sit here unnoticed,
+               for the basis reason given above. (2) A note whose PROSE reasoning
+               has been overtaken while its red is still real: adversarial-claim
+               U9 grades a retired absolute, and the suite is red either way, so
+               this audit would report STANDS on it. (3) An entry naming a `dir`
+               that no longer has a test/e2e suite at all — no matrix leg is
+               created for it, so no leg matches it, and it is invisible to the
+               per-directory checks here exactly as it is invisible to the
+               stale-entry check above. (4) Anything whatsoever on a run where
+               the wired suites use the whole budget, which is why that case says
+               COVERAGE LOST and never ok. */
+            const audited = { stands: [], contradicted: [], unverified: [] };
+            if (!mine.length) {
+              console.log(`::notice::quarantine audit: ${here}/test/e2e has NO quarantine entries, so this audit checked NOTHING. That is the goal state for the list and it is printed rather than passed over in silence, because a check that reached nothing must not be able to certify anything.`);
+            }
+            for (const q of mine) {
+              const c = claimOf(q);
+              const left = DEADLINE - Date.now();
+              if (left < AUDIT_FLOOR_MS) {
+                audited.unverified.push(`${q.file} (budget spent before it started, ${Math.round(left / 1000)}s left)`);
+                console.log(`e2e-quarantine UNVERIFIED  ${q.file}  not started`);
+                continue;
+              }
+              const qt = Date.now();
+              console.log(`::group::quarantine audit — node ${q.file} (recorded ${c.date}, exit ${c.exit})`);
+              const qr = cp.spawnSync(process.execPath, [q.file], { stdio: "inherit", timeout: Math.min(left, 20 * 60 * 1000) });
+              console.log("::endgroup::");
+              const qs = Math.round((Date.now() - qt) / 1000);
+              if (qr.error || qr.status === null) {
+                audited.unverified.push(`${q.file} (run did not complete: ${qr.error ? qr.error.message : "signal " + qr.signal})`);
+                console.log(`e2e-quarantine UNVERIFIED  ${q.file}  ${qs}s`);
+              } else if (qr.status === 0) {
+                audited.contradicted.push(`${q.file} (recorded exit ${c.exit} on ${c.date}, exited 0 here)`);
+                console.log(`e2e-quarantine CONTRADICTED  ${q.file}  recorded=${c.exit} observed=0  ${qs}s`);
+              } else {
+                audited.stands.push(q.file);
+                console.log(`e2e-quarantine STANDS  ${q.file}  recorded=${c.exit} observed=${qr.status}  ${qs}s`);
+              }
+            }
+            if (audited.unverified.length) {
+              console.log(`::warning::quarantine audit COVERAGE LOST — ${audited.unverified.length} of ${mine.length} entr(y/ies) in ${here} were NOT verified on this run: ${audited.unverified.join("; ")}. Those notes are unchecked, and unchecked is not confirmed.`);
+            }
+            if (audited.contradicted.length) {
+              console.log(`::error::the quarantine is out of date: ${audited.contradicted.join("; ")}. An entry here is a MEASUREMENT saying the suite is red, and this one just passed. Re-measure it, then either wire the suite and retire the entry IN WRITING beneath the original sentence, or append the number that keeps it here. Editing the sentence above it is not one of the options.`);
+            }
+            if (failed.length || audited.contradicted.length) process.exit(1);
+            console.log(`${suites.length} e2e suite(s) ran, all green${mine.length ? ` — and ${mine.length} quarantined suite(s) were re-run but NOT graded: ${audited.stands.length} still red as recorded, ${audited.unverified.length} unverified` : ` — the quarantine list for ${here} is empty, which is the goal`}`);
           '
 
       - uses: actions/upload-artifact@v7

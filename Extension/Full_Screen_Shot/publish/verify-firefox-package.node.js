@@ -99,7 +99,16 @@ const OPTIONAL_ONLY = ['technicalAndInteraction'];
 /* Top-level keys allowed to differ between the Chrome and Firefox manifests.
    Anything else that differs is drift, not a port. */
 const ALLOWED_DELTA = ['background', 'browser_specific_settings',
-  'minimum_chrome_version', 'options_page', 'options_ui'];
+  'content_security_policy', 'minimum_chrome_version', 'options_page', 'options_ui'];
+/* `content_security_policy` added 2026-08-26, when manifest.json began declaring one
+   and publish/manifest.firefox.json began deleting it with an RFC 7386 null member.
+   THIS IS A CLASSIFICATION, NOT A RELAXATION, and the check that matters is untouched:
+   the absent-check above still asserts Firefox carries NO CSP at all, which is
+   strictly stronger than the drift limb's "identical to Chrome" ever was. Without
+   this entry the two limbs are MUTUALLY UNSATISFIABLE — inherit the key and the
+   absent-check fails; delete it and the drift limb calls the deletion drift — so a
+   correct tree could not be green either way. `minimum_chrome_version` sits in both
+   lists for exactly the same reason and is the precedent. */
 
 let FAILS = 0;
 /* Whether the PACKAGE limb actually opened a zip. A run that graded no package

@@ -103,6 +103,37 @@ was not bumped again for them because there is no byte set left for a new number
 this one from: all twelve packages were deleted on 2026-08-20, recorded in
 `publish/STALE-FIREFOX-ARTIFACTS-2026-08-20.md`, and none has been rebuilt since.*
 
+### Security
+
+*Appended 2026-08-26, at this same version and for the same reason as the two items under **Fixed**
+above: `manifest.json` still reads 1.10.2, nothing has been published at it, and there is no byte set
+left for a new number to distinguish this one from. Everything written on 2026-08-15 stands.*
+
+- **The manifest now declares a content security policy for extension pages.**
+  `content_security_policy.extension_pages` was absent, so the MV3 default applied — and that default
+  constrains `script-src` and `object-src` and says nothing about `img-src`, `connect-src`, `frame-src`,
+  `base-uri` or `form-action`. The 8 extension pages and the service worker are now declared under
+  `script-src 'self'; object-src 'none'; img-src 'self' data: blob:; connect-src 'none'; frame-src
+  'none'; base-uri 'none'; form-action 'none'`. What this changes is who checks: a `fetch()` or an
+  injected `<img src=https://…>` from an extension page is now refused by the browser, where before it
+  was only absent from the source. That is the barrier 1.9.12's redaction fix assumed and that nothing
+  in the shipped package actually held. `node scripts/policy-check.mjs fullshot` went from
+  `15 passed · 1 warning(s)` to `16 passed`, EXIT 0 both ways — the warning it closed is
+  `no CSP connect-src to back the zero-network claim`.
+- 🔴 **What this entry does not cover, measured, because the line above is the kind that gets read as
+  more than it says.** (1) **Chromium only.** `publish/manifest.firefox.json` deletes the key again for
+  Gecko with an RFC 7386 `null` member, deliberately, so the AMO build keeps the strict MV3 default and
+  the Firefox package carries no `connect-src` at all. Counting the surface x browser grid — the 8
+  extension pages, `background.js`, and `content/capture.js` + `content/region.js` +
+  `content/frame-expand.js`, across Chromium and Firefox — two of the six cells are backed by the
+  browser. Under Firefox the zero-network claim rests on the source scan alone. (2) **This repo verifies
+  one of the seven declared directives.** `scripts/policy-check.mjs:589-607` reads `connect-src` and
+  nothing else, so `img-src` — the directive that answers 1.9.12's `<img src=https://evil…>` — can be
+  deleted, or set to `*`, and the gate still prints `16 passed` at EXIT 0. The browser honours all
+  seven; this project checks one. (3) `extension_pages` does not govern content scripts, so
+  `content/capture.js`, `content/region.js` and `content/frame-expand.js` are covered by neither limb
+  in either browser.
+
 ### Known limitations at this version
 
 - Everything under the same heading in 1.10.1 still applies except the store-metadata item, which is

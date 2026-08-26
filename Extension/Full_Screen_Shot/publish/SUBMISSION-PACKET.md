@@ -347,7 +347,7 @@ not name, the body stands.
 
 | Command | Exit | What it printed |
 |---|---|---|
-| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed` — including `name/short_name/description within store limits — checked across all 55 locale(s)` and `the Firefox add-on id is set — fullshot@nikatru.com`. It also prints warning(s); **the count is deliberately not recorded**, because `policy-check.mjs` is mid-edit to retire a false-positive locale warning and the same command can honestly print a different number depending on merge order. `EXIT 0` is the stable fact. |
+| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed` — including `name/short_name/description within store limits — checked across all 55 locale(s)` and `the Firefox add-on id is set — fullshot@nikatru.com`. It also prints warning(s); **the count is deliberately not recorded**, because `policy-check.mjs` is mid-edit to retire a false-positive locale warning and the same command can honestly print a different number depending on merge order. `EXIT 0` is the stable fact. ⚠️ **UPDATED 2026-08-26** — the cell above stands as the 2026-08-22 record. The count is no longer withheld and no longer 15: this command prints `16 passed` with **no warnings**, EXIT **0**, re-measured 2026-08-26. `manifest.json` gained `content_security_policy.extension_pages`, which closed the CSP `connect-src` warning; the locale false positive the cell anticipates was already closed by then. See the appended note below this table before repeating the number to a reviewer. |
 | `node scripts/check-version.mjs fullshot` | **0** | `3 passed` — `manifest.json declares v1.10.2`, `CHANGELOG top entry is [1.10.2]`, `publish/manifest.firefox.json is an overlay` |
 | `node scripts/check-store-metadata.mjs fullshot` | **0** | `25 passed · 1 owner action(s)`; `3 store row(s) graded, 15 listing file(s) read, across 1 tool(s)`. ⚠️ The owner action is A.4's **O5**, the empty `store/_shared/screenshots/` — a 0 beside a bare pass-count would hide it. |
 | `node scripts/check-core-sync.mjs fullshot` | **0** | `1 passed` |
@@ -356,6 +356,35 @@ not name, the body stands.
 | `node publish/verify-firefox-package.node.js --zip <scratch>/fullshot-firefox.zip` | **0** | `ALL PASS` — 85 entries, packaged manifest === merged Firefox manifest at 1.10.2 |
 | all eleven declared sims, each run separately on Node v24.18.0 | **0** each | ten `test/*.node.js` plus `test/pixel-sim/run.js` |
 | `node scripts/check-store-packages.mjs fullshot` | 0 | ⚠️ **read the print, not the code:** `ZERO PACKAGES WERE PRESENT, so this run proved nothing about any artifact.` **That print is conditional on the subject being absent, which is the state of a fresh checkout** — the script searches `publish/` and `dist/` (`DEFAULT_DIRS`), both of which are empty here. Run it on a machine that has just built, and it opens and grades whatever it finds; `ci.yml`'s `package` job relies on exactly that, invoking it as `--dir dist` four steps after the build. So the *structural* claim — bare, on a clean tree, this gate proves nothing about any artifact — is the durable one; the printed line is what a clean tree makes it say. |
+
+⚠️ **APPENDED 2026-08-26 — §A.1 above stands as written and is left verbatim as the 2026-08-22
+record.** One row is stale and is corrected here rather than in place: `node scripts/policy-check.mjs
+fullshot` now prints **`16 passed`, no warnings, EXIT 0** (it printed `15 passed · 1 warning(s)` at the
+2026-08-26 baseline, before `manifest.json` was touched). `manifest.json` now declares
+`content_security_policy.extension_pages` with `connect-src none`, which the browser enforces on
+extension pages rather than this repo merely asserting it.
+
+🔴 **THIS IS THE STORE-SUBMISSION DOCUMENT, so the limits ship with the claim.** A reviewer asking
+"does the browser enforce your zero-network claim?" must get both of these in the same breath, or the
+answer overclaims:
+
+- **CHROMIUM ONLY.** `publish/manifest.firefox.json` deletes the key again for Gecko with an RFC 7386
+  `null` member, deliberately: the AMO build stays on the strict MV3 default, and the Firefox package
+  carries no `connect-src` at all. Counting the surface x browser grid — the 8 extension pages,
+  `background.js`, and `content/capture.js` + `content/region.js` + `content/frame-expand.js`, across
+  Chromium and Firefox — **two of the six cells** are backed by the browser. Firefox users rely on the
+  source scan alone.
+- **SIX OF THE SEVEN DECLARED DIRECTIVES ARE GATED BY NOTHING HERE.** The policy declares `script-src`,
+  `object-src`, `img-src`, `connect-src`, `frame-src`, `base-uri` and `form-action`.
+  `scripts/policy-check.mjs:589-607` is the only site in this repo that reads a directive off this
+  manifest, and it reads `connect-src` only — deleting `img-src`, or setting it to `*`, leaves the gate
+  at `16 passed` EXIT 0. The browser honours all seven; this repo verifies one. And `extension_pages`
+  does not govern content scripts in either browser.
+
+**What can honestly be told to a reviewer:** FullShot declares `connect-src none` on extension pages in the
+Chromium package, and the packaged sources contain no network call in either package. What must not be
+said is that the browser blocks network access for every FullShot surface, or in Firefox.
+
 
 ## A.2 Claims in this document that are FALSE today
 
