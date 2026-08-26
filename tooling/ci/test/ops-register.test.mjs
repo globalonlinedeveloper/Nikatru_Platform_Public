@@ -1604,8 +1604,8 @@ describe('assert-ops-register — end to end, against the real repository', () =
   // MAY MAKE. From 2026-08-06 the [14]O-3 limb QUERIES each mechanism's own run
   // record, and on the Windows host two of the three Task Scheduler duties are
   // genuinely returning LastTaskResult = 1 — so a red run there is the guard
-  // working, not the register being malformed. On a Linux CI runner the same
-  // reader reports `unreadable` and the same register is green.
+  // working, not the register being malformed. On a Linux runner that reader is
+  // DARK, which on a row last seen FAILING is red too — the second shape below.
   //
   // Asserting 0 would therefore be asserting "no duty is currently failing",
   // which is a fact about the owner's laptop rather than about this file, and
@@ -1630,7 +1630,7 @@ describe('assert-ops-register — end to end, against the real repository', () =
     for (const p of problems) {
       assert.match(
         p,
-        /its record IS reachable and (holds NO SUCCESSFUL RUN AT ALL|the newest SUCCESSFUL run)|the mechanism its `recordQuery` names DOES NOT EXIST/,
+        /its record IS reachable and (holds NO SUCCESSFUL RUN AT ALL|the newest SUCCESSFUL run)|the mechanism its `recordQuery` names DOES NOT EXIST|reader `[^`]+` .+ AND the register holds its last readable observation as FAILING \(/,
         `a NON-record problem in the committed register — this is a structural break and must be fixed, not tolerated:\n${p}`,
       );
     }
