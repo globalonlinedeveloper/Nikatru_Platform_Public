@@ -685,7 +685,14 @@ void main() {
       forbidden: forbidden,
     );
 
-    await tester.tap(find.text('Calendar'));
+    // Scoped to the nav pill: home renders `calendarLink` — the same word on a
+    // different control — so an unscoped text finder matches two at 360x640.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(AppShell.navPillKey),
+        matching: find.text('Calendar'),
+      ),
+    );
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(CalendarScreen), findsWidgets);
     await captureFrame(
