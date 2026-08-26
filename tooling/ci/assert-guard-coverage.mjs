@@ -890,6 +890,11 @@ const executable = (text) =>
     .join('\n');
 
 const testCorpus = executable(rawCorpus);
+/** The same corpus KEPT SPLIT, comments stripped. The concatenation above can
+ *  say a name appears somewhere in test/; only the per-file map can say WHICH
+ *  file claims a subject, and an unattributable credit is how a test of one
+ *  guard came to be the recorded failing case of another file entirely. */
+const testSource = new Map(testFiles.map((f) => [f, executable(readFileSync(join(TESTS, f), 'utf8'))]));
 const countCases = (text) => (text.match(/^\s*(test|it)\s*\(/gm) ?? []).length;
 
 // A test file carrying no declaration is a file that runs nothing while still
@@ -1033,6 +1038,178 @@ for (const guard of guards) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT "HAS A NEGATIVE TEST" MEANS FOR A SCRIPT — and why `includes(basename)`
+// did not mean it.
+//
+// 🔴 2026-08-26. tooling/e2e/verify_purged.mjs was COUNTED AS COVERED, and the
+// only file naming it was tooling/ci/test/d1-sql-inventory.test.mjs, which edits
+// A COMMENT inside it: `edit(root, 'tooling/e2e/verify_purged.mjs', (s) =>
+// s.replace('any single statement that names sqlite_master/sqlite_schema', 'the
+// query'))`. That is a test of assert-d1-sql-inventory.mjs's R4 limb. It uses
+// the file as MATERIAL and asserts on that guard's stderr; nothing there ever
+// runs verify_purged.mjs, and assert-d1-sql-inventory.mjs spawns nothing at all
+// (it is a static read), so no behaviour of verify_purged.mjs can move that
+// assertion either way. A byte inside the file was touched; the file was never
+// run.
+//
+// The credit outranks the exemption map, so the consequence was silent in the
+// direction that matters: verify_purged.mjs's entry in NO_NEGATIVE_TEST_NEEDED
+// STOPPED BEING WHAT COVERED IT — the recorded reason went unread and unprinted
+// while a false one held, and the ⬜ line that exists to make that gap visible
+// never mentioned it. It is the golden-path leg-6 assertion: it re-reads live D1
+// and the live GoTrue admin API after the app deletes a real account, and it is
+// the only thing that can catch a server answering `{ ok: true }` over a row
+// that is still there.
+//
+// ⚠️ STRIPPING COMMENTS WOULD NOT HAVE CAUGHT IT, and neither would asking for a
+// behavioural mutation. That edit IS executable code, and a foreign test's side
+// effect on a file covers nothing however deep it cuts. What was missing is
+// ATTRIBUTION: some test file has to put the script in the position of the thing
+// being RUN.
+//
+// So the credit requires EXERCISED, not MENTIONED. A test file exercises a
+// script when it
+//   · IMPORTS it, statically or dynamically — its behaviour is under test; or
+//   · SPAWNS it — the script is the executable of a child process, named at the
+//     head of the argv either directly or through a runner defined in the same
+//     file (`function run(script) { spawnSync(process.execPath, [join(OPS,
+//     script), …]) }`, which is how tooling/ops/verify-*.mjs are exercised).
+// A path inside an assertion, a regex, a fixture edit or a workflow string built
+// for some other guard's fixture is the script being TALKED ABOUT, and is not
+// evidence about its failing path.
+//
+// THE LIMIT, IN ONE SENTENCE: this is a static reading of the test source, so it
+// establishes that the script is executed under test, not that some assertion
+// would go red if it stopped working.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Depth-0, quote-aware elements of a bracketed argument list. `text` starts
+ *  just INSIDE the bracket; scanning stops at the matching `close`. Written out
+ *  rather than regexed because the two shapes that matter here — `[join(OPS,
+ *  script), ...args]` and `(root, { workflow: '…' })` — both put commas inside
+ *  nested brackets, and a split on `,` reads `join(OPS` as the executable. */
+const argElements = (text, close) => {
+  const out = [];
+  let depth = 0;
+  let cur = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      cur += c;
+      if (c === quote && text[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; cur += c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; cur += c; continue; }
+    if (c === close && depth === 0) { out.push(cur); return out; }
+    if (c === ')' || c === ']' || c === '}') { depth--; cur += c; continue; }
+    if (c === ',' && depth === 0) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+};
+
+/** Every child-process call in `text`, reduced to the EXECUTABLE it runs: the
+ *  first argv element when the binary is node itself, the first argument
+ *  otherwise. Position is the whole point — a path in argv[1] is an ARGUMENT to
+ *  some other program, which is how a guard's own fixture path shows up. */
+const SPAWN_CALL = /(?:spawnSync|spawn|execFileSync|execFile|fork)\(/g;
+const spawnedExecutables = (text) => {
+  const heads = [];
+  for (const m of text.matchAll(SPAWN_CALL)) {
+    const args = argElements(text.slice(m.index + m[0].length), ')');
+    if (!args.length) continue;
+    const first = (args[0] ?? '').trim();
+    if (!/execPath/.test(first)) { heads.push(first); continue; }
+    const argv = (args[1] ?? '').trim();
+    heads.push(argv.startsWith('[') ? (argElements(argv.slice(1), ']')[0] ?? '') : argv);
+  }
+  return heads;
+};
+
+const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Does this ONE test file exercise `base` — or does it merely name it?
+ * Returns a short phrase naming HOW (so the credit can be attributed out loud)
+ * or null. Comments are already stripped by the caller.
+ */
+const exercisedBy = (text, base) => {
+  const b = reEscape(base);
+  const literal = new RegExp(`['"\`][^'"\`]*${b}['"\`]`);
+  if (new RegExp(`from\\s*['"\`][^'"\`]*${b}['"\`]`).test(text)) return 'imports it';
+  if (new RegExp(`import\\(\\s*['"\`][^'"\`]*${b}['"\`]`).test(text)) return 'imports it';
+
+  // Identifiers bound to a PATH ENDING IN the file — `const SCRIPT = resolve(
+  // CI_DIR, '..', 'scripts', 'provision-backend.mjs');`. The literal must be the
+  // last thing in the expression: `const root2 = seeded({ workflow: '… node
+  // tooling/scripts/provision-backend.mjs …' })` also mentions the name, and
+  // binding that identifier would credit a fixture root for being a script.
+  const bound = new Set();
+  for (const m of text.matchAll(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=([^;]*?);`, 'g'))) {
+    if (new RegExp(`['"\`][^'"\`]*${b}['"\`][\\s)]*$`).test(m[2].trim())) bound.add(m[1]);
+  }
+  const namesFile = (expr) => literal.test(expr) || [...bound].some((i) => new RegExp(`\\b${reEscape(i)}\\b`).test(expr));
+
+  for (const head of spawnedExecutables(text)) if (namesFile(head)) return 'runs it';
+  if ([...bound].some((i) => new RegExp(`import\\(\\s*${reEscape(i)}`).test(text))) return 'imports it';
+
+  // A runner defined in this file whose EXECUTABLE is built from one of its own
+  // parameters. The script is then handed to it at that position — as a bare
+  // literal or a bound identifier, never as one string inside a larger one.
+  const runners = new Map();
+  for (const re of [/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/g, /function\s+([A-Za-z_$][\w$]*)\s*\(/g]) {
+    for (const m of text.matchAll(re)) {
+      const after = text.slice(m.index + m[0].length);
+      const params = argElements(after, ')').map((p) => p.trim().split(/[\s=:]/)[0]).filter((p) => /^[A-Za-z_$][\w$]*$/.test(p));
+      if (!params.length) continue;
+      for (const head of spawnedExecutables(after.slice(0, 1200))) {
+        const idx = params.findIndex((p) => new RegExp(`\\b${reEscape(p)}\\b`).test(head));
+        if (idx >= 0) runners.set(m[1], idx);
+      }
+    }
+  }
+  const exactly = new RegExp(`^['"\`][^'"\`]*${b}['"\`]$`);
+  for (const [name, idx] of runners) {
+    for (const m of text.matchAll(new RegExp(`\\b${reEscape(name)}\\(`, 'g'))) {
+      const arg = (argElements(text.slice(m.index + m[0].length), ')')[idx] ?? '').trim();
+      if (arg && (exactly.test(arg) || bound.has(arg))) return `runs it via ${name}()`;
+    }
+  }
+  return null;
+};
+
+// ── the detector's OWN negative test, run on every invocation ───────────────
+// Same reason markerInCode carries one: if `exercisedBy` ever regressed to the
+// `includes(basename)` it replaced, this file would go back to crediting a
+// script for being named by a test of something else, and go on printing a
+// healthy covered count while doing it. The first canary is the SHAPE THAT
+// CAUSED THIS — a fixture edit naming the file, in executable code — and it must
+// come out uncovered; the second is a real spawn and must come out covered.
+const CANARY_NAMED_ONLY = [
+  "edit(root, 'tooling/e2e/canary_subject.mjs', (s) => s.replace('one sentence', 'another'));",
+  "assert.match(r.stderr, /tooling\\/e2e\\/canary_subject\\.mjs/);",
+  '',
+].join('\n');
+const CANARY_RUNS_IT = [
+  "const r = spawnSync(process.execPath, [join(E2E, 'canary_subject.mjs'), '--check'], { encoding: 'utf8' });",
+  'assert.equal(r.status, 1);',
+  '',
+].join('\n');
+if (exercisedBy(CANARY_NAMED_ONLY, 'canary_subject.mjs') || !exercisedBy(CANARY_RUNS_IT, 'canary_subject.mjs')) {
+  coverageLost([
+    'the negative-test DETECTOR no longer distinguishes a script that is RUN from one that is merely NAMED.',
+    `A fixture edit naming the file read as ${exercisedBy(CANARY_NAMED_ONLY, 'canary_subject.mjs') ?? 'null'} (must be null) and a`,
+    `spawn of it read as ${exercisedBy(CANARY_RUNS_IT, 'canary_subject.mjs') ?? 'null'} (must not be null).`,
+    'Until this holds, every "has a negative test" verdict for a script outside tooling/ci is the basename',
+    'grep that credited tooling/e2e/verify_purged.mjs to a test of assert-d1-sql-inventory.mjs, which edits a',
+    'COMMENT inside it and asserts on another guard entirely.',
+  ]);
+}
+
 // ── [pipeline S-12r] the workflow-invoked executables OUTSIDE tooling/ci ───── (absent from origins.lock.json by construction — S-12r is a residual id, never a pipeline heading)
 // DERIVED, not hand-listed: whatever the tracked workflows run under tooling/
 // that is not a guard must still carry a negative test, or appear in
@@ -1042,6 +1219,7 @@ for (const guard of guards) {
 // this scan reads. A filing accident was deciding what got covered.
 let covered = 0;
 const scriptExempt = [];
+const creditOverridesException = [];
 for (const rel of [...invokedOutside].sort()) {
   if (!existsSync(join(ROOT, rel))) {
     problems.push(
@@ -1065,15 +1243,45 @@ for (const rel of [...invokedOutside].sort()) {
   // false positive is worse than none, for the same reason as one that cannot
   // fail at all. The exemption is still self-checked below, against the DERIVED
   // signal — a workflow either invokes the script or it does not.
-  if (testCorpus.includes(base)) {
+  //
+  // ⏱ APPENDED 2026-08-26 — the paragraph above is left EXACTLY as written; this
+  // corpus appends dated corrections rather than rewriting them. The weak proxy
+  // it describes is no longer what credits a script HERE: the credit below is
+  // EXERCISED (spawned or imported), attributed to the test file that makes it.
+  // The excused-but-covered state is still not asserted on, for the reason the
+  // paragraph gives — it is PRINTED instead.
+  const claims = [];
+  const namesOnly = [];
+  for (const [f, text] of testSource) {
+    const how = exercisedBy(text, base);
+    if (how) claims.push(`${f} ${how}`);
+    else if (text.includes(base)) namesOnly.push(f);
+  }
+  if (claims.length) {
     covered++;
+    // The state this file was in for as long as nobody looked: a credit standing
+    // OVER a recorded exception, so the exception silently stopped being what
+    // covered the script and the ⬜ line that exists to make that gap visible
+    // never mentioned it again. Printed now, both ways round.
+    if (reason) {
+      creditOverridesException.push(
+        `${rel} — exercised by ${claims.join(', ')}, so its NO_NEGATIVE_TEST_NEEDED entry is no longer ` +
+          'what covers it. Delete the entry, or check the credit is not incidental.',
+      );
+    }
   } else if (reason) {
     scriptExempt.push(`${rel} — ${reason}`);
   } else {
     problems.push(
-      `${rel} — a workflow runs it and no test file mentions it. It has only ever run against valid ` +
-        'input, so nothing exercises its failing path. Give it a negative test, or record an exception ' +
-        'in NO_NEGATIVE_TEST_NEEDED with a reason that survives being read aloud.',
+      `${rel} — a workflow runs it and no test file EXERCISES it: nothing spawns it and nothing imports ` +
+        'it, so nothing has ever run its failing path' +
+        (namesOnly.length
+          ? `. ${namesOnly.join(', ')} name${namesOnly.length === 1 ? 's' : ''} it without running it — the ` +
+            'file used as MATERIAL by a test whose subject is something else, which is a byte touched and ' +
+            'not a behaviour exercised. '
+          : '. ') +
+        'Give it a negative test that spawns or imports it, or record an exception in ' +
+        'NO_NEGATIVE_TEST_NEEDED with a reason that survives being read aloud.',
     );
   }
 }
@@ -1118,6 +1326,10 @@ if (notCiRunnable.size) {
 if (scriptExempt.length) {
   console.log('⬜ workflow-invoked scripts outside tooling/ci with a recorded exception, printed not hidden:');
   for (const s of scriptExempt) console.log(`    ${s}`);
+}
+if (creditOverridesException.length) {
+  console.log('⬜ a real negative test now stands over a recorded exception — the entry has stopped being what covers the file:');
+  for (const c of creditOverridesException) console.log(`    ${c}`);
 }
 if (notes.length) {
   console.log('⬜ notes:');

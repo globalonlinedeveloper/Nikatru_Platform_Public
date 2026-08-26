@@ -16,14 +16,16 @@
 // route, the copy does not, and a green suite reports coverage of a set that no
 // longer exists.
 //
-// What IS written down here is three kinds of thing the router does NOT state,
+// What IS written down here is four kinds of thing the router does NOT state,
 // each of them a table this file must keep true:
 //   · [kAlreadySwept]   — which routes the SIBLING file pins, so they are not
 //                         measured twice under two sets of numbers.
 //   · [kCannotBeSwept]  — routes this rig genuinely cannot measure, each with
 //                         its reason.
 //   · [kExpected]       — the MEASURED counts, per route.
-// All three are keyed by route path, and every key is checked back against the
+//   · [kSweptAs]        — the STATE a route is swept in, where the default one
+//                         does not build the control the screen exists for.
+// All four are keyed by route path, and every key is checked back against the
 // router (see `the route tables name only routes that exist`). The load-bearing
 // half is the other direction: [kExpected] must cover every screen-bearing
 // route that is neither already swept nor excluded, so a NEW route added to the
@@ -50,13 +52,28 @@
 // route INPUTS, not a route list.
 //
 // ── 🔴 WHAT THIS SWEEP FOUND, MEASURED 2026-08-26 ────────────────────────────
-// 13 routes, 37 interactive controls, 34 reachable by Tab, 3 OUTSIDE THE TAB
+// 13 routes, 38 interactive controls, 35 reachable by Tab, 3 OUTSIDE THE TAB
 // ORBIT. Two screens carry all three, and every one of the three is a duplicate
 // hit target rather than a lost function:
 //
 //   /sign-up        7 of 9  — the two consent SENTENCES.
 //   /reaccept-terms 4 of 5  — the one consent sentence.
 //   /sub/:id        4 of 4  — nothing off the orbit.
+//
+// ── 🔴 37 -> 38 LATER THE SAME DAY, AND NO WIDGET MOVED. A SCREEN WAS SWEPT IN
+//    THE STATE THE CONTROL IT EXISTS FOR IS ABSENT FROM ───────────────────────
+// `/manage-plan` was pinned at `(controls: 2, reachable: 2)` — a full house, so
+// nothing was red and nothing could go red. Its cancel row is built under
+// `if (isPro)` and this rig resolves no entitlement, so the ROSCA control the
+// screen exists for was never built and never graded. [kSweptAs] now drives
+// `entitlementsProvider` on that route and the pair is `3 of 3`: the app-bar
+// back button, the restore row and the cancel row, each named by its own icon
+// in `/manage-plan · a keyboard reaches the cancel-plan row`.
+//
+// ⚠️ THE ROW TURNED OUT TO BE REACHABLE. Nothing in `lib/` was changed and no
+// count on any other route moved; what was false was the SENTENCE the pair
+// carried, exactly as it was for the nine below. Mutant F is the proof that the
+// difference is measurable rather than argued.
 //
 // ── 🔴 IT WAS 28 / 9 EARLIER THE SAME DAY. WHAT MOVED, AND WHY ───────────────
 // The nine split 6 + 3 (see the section below, written when the split was
@@ -196,7 +213,7 @@
 // this change does not own, so the duplication is declared here rather than
 // smuggled in. Each copy is verbatim; the reasons live in the sibling.
 //
-// ── 🔴 DIRECTION, PROVEN. THREE MUTANTS, 2026-08-26 ─────────────────────────
+// ── 🔴 DIRECTION, PROVEN. SIX MUTANTS, 2026-08-26 ───────────────────────────
 // A sweep that cannot fail is not a sweep, so each of this file's three loads
 // was driven red on purpose and then restored. Every mutation was made INSIDE
 // THIS FILE — no `lib/` file was edited, and none of the checked-in screens was
@@ -271,6 +288,25 @@
 //     whose two links are the SAME widget. The policy is scoped to one route,
 //     so the blast radius above is one screen's assertion set and not a
 //     suite-wide wobble. 80 of 82 green under the mutant; 82 of 82 restored.
+//   F · ADDED WITH [kSweptAs], AND IT IS THE ONE THAT MEASURES WHAT SWEEPING
+//     THE PRO STATE BOUGHT: THE CANCEL-PLAN ROW TAKEN OUT OF THE TAB ORDER.
+//     `/manage-plan` ALONE was wrapped in a `FocusTraversalGroup` whose policy
+//     drops every stop whose subtree paints `Icons.cancel_outlined` — the row
+//     stays present, painted and programmatically focusable, and simply leaves
+//     the Tab order. Mutation made INSIDE THIS FILE; no `lib/` file was edited.
+//     rc=1, TWO cases red, both naming the row rather than a number:
+//       · `/manage-plan · keyboard SC 2.1.1 · 3 of 3 controls are reachable by
+//         Tab` — "/manage-plan: 2 of 3 controls are reachable by Tab, not 3 …
+//         Off the orbit today: [Cancel subscription]".
+//       · `/manage-plan · a keyboard reaches the cancel-plan row` — "a control
+//         on manage-plan owns no stop on the Tab orbit … Off the orbit today:
+//         [Cancel subscription]".
+//     73 of 75 green under it; 75 of 75 restored.
+//     🔴 AND THE SAME MUTATION RUN AGAINST THE FILE AS IT STOOD THIS MORNING —
+//     `(controls: 2, reachable: 2)`, no [kSweptAs] — LEFT IT GREEN AT 73 OF 73,
+//     rc=0. It had nothing to remove: the row it takes off the Tab order is not
+//     built in the state that file swept. That is the whole finding, and it is
+//     the reason a full house is not evidence of anything on its own.
 //
 // ✅ THE RIG IS CROSS-CHECKED AGAINST THE SIBLING. `/sign-in`, `/home` and
 // `/settings` are in [kAlreadySwept] and NOT swept here, but the same rig was
@@ -284,7 +320,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:subly/core/app_config.dart';
 import 'package:subly/core/router.dart';
+import 'package:subly/state/money_providers.dart';
 
 import '../keyboard_traversal_test.dart' show kKeyboardSurface;
 import '../support/width_harness.dart';
@@ -332,6 +371,32 @@ const Map<String, Map<String, String>> kPathParameters =
 /// is the whole input; nothing about it is asserted.
 const Map<String, Object?> kExtra = <String, Object?>{
   '/check-inbox': 'keyboard-sweep@example.test',
+};
+
+/// The STATE a route is swept in, where the default state hides a control.
+///
+/// 🔴 A ROUTE INPUT, LIKE [kExtra] — AND THE ONE THAT DECIDES WHAT IS GRADED.
+/// `/manage-plan` builds its cancel row under `if (isPro)`
+/// (`manage_plan_screen.dart:179`), so a sweep of the default state — no
+/// entitlement resolved, `isPro` false — measures the screen with the ROSCA
+/// cancel control ABSENT and reports a full house for the two that remain.
+///
+/// The entitlement is driven through `entitlementsProvider`, the server's
+/// answer that the screen's own `isPro` is computed from, which is the seam
+/// `a11y_semantics_test.dart`'s manage-plan group already drives — not a second
+/// mechanism invented here. Keyed by path and checked back against the router by
+/// `the route tables name only routes that exist`, and the entry's reason is
+/// re-checked by `/manage-plan · the cancel row is only there in the Pro state`.
+final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
+  '/manage-plan': <Override>[
+    entitlementsProvider.overrideWith(
+      (_) async => const core.Entitlements(
+        appId: AppConfig.appId,
+        isPro: true,
+        items: <core.Entitlement>[],
+      ),
+    ),
+  ],
 };
 
 /// (interactive controls found, controls the Tab orbit reaches) per route.
@@ -383,7 +448,13 @@ const Map<String, ({int controls, int reachable})> kExpected =
       // `FocusableTap`.
       '/sub/:id': (controls: 4, reachable: 4),
       '/paywall': (controls: 0, reachable: 0),
-      '/manage-plan': (controls: 2, reachable: 2),
+      // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
+      // always built; this file was sweeping the state that does not build it.
+      // See [kSweptAs]: the cancel row is `if (isPro)`, so `2 of 2` was a full
+      // house for a screen with the ROSCA control absent. The three are the
+      // app-bar back button, the restore row and the cancel row, each named by
+      // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
+      '/manage-plan': (controls: 3, reachable: 3),
       '/calendar': (controls: 7, reachable: 7),
       '/insights': (controls: 3, reachable: 3),
       '/budget': (controls: 0, reachable: 0),
@@ -522,8 +593,9 @@ class _Sweep {
 Future<_Sweep> _sweepRoute(
   WidgetTester tester,
   GoRouter router,
-  GoRoute route,
-) async {
+  GoRoute route, {
+  List<Override>? overrides,
+}) async {
   final GoRouterState state = GoRouterState(
     router.configuration,
     uri: Uri.parse(route.path),
@@ -537,6 +609,7 @@ Future<_Sweep> _sweepRoute(
     tester,
     kKeyboardSurface,
     Builder(builder: (BuildContext c) => route.builder!(c, state)),
+    overrides: overrides ?? kSweptAs[route.path] ?? const <Override>[],
   );
   // See the header: a uniform, bounded advance of fake time, applied to every
   // route rather than to the one that needs it. Bounded on purpose —
@@ -695,6 +768,7 @@ void main() {
         ...kExpected.keys,
         ...kPathParameters.keys,
         ...kExtra.keys,
+        ...kSweptAs.keys,
       ]) {
         expect(
           screenPaths,
@@ -1363,5 +1437,134 @@ void main() {
             'lifted into it',
       );
     });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔴 THIS SCREEN WAS SWEPT IN THE STATE THE CONTROL IT EXISTS FOR IS ABSENT
+    // FROM, AND `(controls: 2, reachable: 2)` PINNED IT THERE. `2 of 2` is a
+    // full house, so nothing was red and nothing could go red: the cancel row is
+    // built under `if (isPro)` and the default sweep resolves no entitlement.
+    // [kSweptAs] now drives the entitlement, so the row is built and graded.
+    //
+    // ⚠️ NO WIDGET CHANGED AND THE ROW WAS ALREADY REACHABLE — what was false
+    // was the sentence attached to the number, the same shape this file's header
+    // records for 2026-08-26. So the three are NAMED here rather than counted:
+    // `3 of 3` is equally satisfied by three controls that traverse and by a
+    // screen whose cancel row was deleted again.
+    //
+    // ⚠️ ICONS, NOT LABELS. Each of the three is identified by the `IconData`
+    // `manage_plan_screen.dart` checks in, which is a const in the screen's own
+    // source — an .arb edit cannot move any assertion below.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// The one control on the pumped screen that contains [icon].
+    Element controlWith(_Sweep s, IconData icon) {
+      final Finder painted = find.byIcon(icon);
+      expect(
+        painted,
+        findsOneWidget,
+        reason:
+            'manage-plan paints no $icon, so the control it identifies is not '
+            'on the screen at all. A count of three would still be satisfied by '
+            'some other control taking its place',
+      );
+      final List<Element> owning = s.controls
+          .where((Element c) => _isUnder(painted.evaluate().single, c))
+          .toList();
+      expect(
+        owning,
+        hasLength(1),
+        reason:
+            'manage-plan paints $icon but ${owning.length} of the controls this '
+            'rig counts contain it, so the icon no longer names one control',
+      );
+      return owning.single;
+    }
+
+    testWidgets('/manage-plan · a keyboard reaches the cancel-plan row', (
+      WidgetTester tester,
+    ) async {
+      final _Sweep s = await _sweepRoute(
+        tester,
+        router,
+        routeAt('/manage-plan'),
+      );
+      final List<Element> named = <Element>[
+        // The only way off this screen — the route sits above the shell, so
+        // there is no bottom nav bar under it and nothing to pop.
+        controlWith(s, Icons.arrow_back),
+        controlWith(s, Icons.refresh),
+        // 🔴 THE ROSCA CONTROL, AND THE REASON THIS SCREEN EXISTS.
+        controlWith(s, Icons.cancel_outlined),
+      ];
+      expect(
+        named.map(identityHashCode).toSet(),
+        hasLength(3),
+        reason:
+            'two of back / restore / cancel resolved to the SAME control, so '
+            'one of the three rows is not the row this case thinks it is',
+      );
+      expect(
+        s.controls.length,
+        3,
+        reason:
+            'manage-plan carries ${s.controls.length} controls this rig counts '
+            'and only three of them are named above, so a control is being '
+            'graded by the pair in kExpected and by nothing else',
+      );
+      for (final Element c in named) {
+        expect(
+          stopsFor(s, c),
+          hasLength(1),
+          reason:
+              'a control on manage-plan owns no stop on the Tab orbit. If it is '
+              'the cancel row, a keyboard user cannot cancel a subscription '
+              'they can buy — ROSCA asks that cancelling be no harder than '
+              'subscribing, and unreachable is harder. Off the orbit today: '
+              '${s.deadLabels}',
+        );
+      }
+      expect(
+        s.dead,
+        isEmpty,
+        reason:
+            'manage-plan controls outside the Tab orbit: ${s.deadLabels}. NONE '
+            'is expected: this screen has three controls and a keyboard reaches '
+            'all three',
+      );
+    });
+
+    // The case that kills [kSweptAs]'s one entry when its reason expires — the
+    // same rule `the /onboarding exclusion still has its reason` applies to
+    // kCannotBeSwept. An entry that drives a state nothing depends on any more
+    // reads as a decision somebody made about today's code.
+    testWidgets('/manage-plan · the cancel row is only there in the Pro state', (
+      WidgetTester tester,
+    ) async {
+      final _Sweep free = await _sweepRoute(
+        tester,
+        router,
+        routeAt('/manage-plan'),
+        overrides: const <Override>[],
+      );
+      expect(
+        find.byIcon(Icons.cancel_outlined),
+        findsNothing,
+        reason:
+            'manage-plan builds its cancel row with no entitlement resolved, so '
+            'kSweptAs no longer buys anything on this route — DELETE the entry '
+            'rather than leave a state override describing code that changed '
+            'underneath it',
+      );
+      expect(
+        free.controls,
+        hasLength(2),
+        reason:
+            'the default state of manage-plan carries ${free.controls.length} '
+            'controls, not the two the Pro sweep is one more than. The '
+            'difference between the two states is what kSweptAs exists for, and '
+            'it is no longer exactly the cancel row',
+      );
+    });
   });
 }
+

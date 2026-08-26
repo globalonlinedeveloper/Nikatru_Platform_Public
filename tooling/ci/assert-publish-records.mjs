@@ -824,9 +824,19 @@ console.log(
     'from the YAML, on every run, whether or not anybody can log in.',
 );
 if (outsideDeclaredLanes.length > 0) {
+  // 🔴 THE PARENTHETICAL HERE ASSERTED SOMETHING THIS SCAN NEVER READ, AND IT WAS
+  // WRONG ABOUT A REAL LINE. Until 2026-08-26 it said these calls "are
+  // `serviceEnvironments` — backend Workers, not release channels". Two of the
+  // three are. `build-platforms.yml:1351` records `{app}-windows-direct`, which
+  // tooling/channel-register.json declares as a `channels` row with
+  // `kind: "direct"` — a RELEASE channel. The flat read finds a LINE: it never
+  // parsed the argument, so it had no basis for the claim, and the claim it made
+  // pointed the opposite way from the register. An unattributed call is evidence
+  // that this parse did not reach it, and of nothing else.
   console.log(
-    `⬜ ${outsideDeclaredLanes.length} record call(s) outside any register-declared channel lane, printed not hidden ` +
-      `(these are \`serviceEnvironments\` — backend Workers, not release channels): ${outsideDeclaredLanes.join(', ')}.`,
+    `⬜ ${outsideDeclaredLanes.length} record call(s) sit in a workflow no register row declares as a lane, printed not hidden. ` +
+      'This scan reached the LINE and did not attribute it to a channel lane, so it makes NO claim here about what any ' +
+      `of them records: ${outsideDeclaredLanes.join(', ')}.`,
   );
 }
 

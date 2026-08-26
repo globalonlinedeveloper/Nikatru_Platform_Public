@@ -107,6 +107,8 @@
 //     --url https://api.nikatru.com/v1/health --field build --expect <sha> --require-ok
 //   node tooling/ops/post-deploy-smoke.mjs \
 //     --play-package com.example.app --expect <versionCode>
+//   node tooling/ops/post-deploy-smoke.mjs \
+//     --release-repo owner/repo --release-tag <tag> --release-manifest dist/SHA256SUMS
 //
 // The third form is a DIFFERENT TRANSPORT over a store surface — see "THE PLAY
 // LIMB" further down for why it is in this file and what it reads.
@@ -136,7 +138,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createSign } from 'node:crypto';
+import { createSign, createHash } from 'node:crypto';
+// The ONE declaration of the SHA256SUMS format and of its name, imported rather
+// than re-parsed here: a second reader of that file is how the probe and the
+// manifest come to disagree about which assets a release is supposed to carry.
+import { parseManifest, MANIFEST_NAME } from '../ci/release-manifest.mjs';
 
 const ATTEMPTS = 6;
 const GAP_MS = 10_000;
@@ -692,6 +698,275 @@ export async function smokePlayTrack({ packageName, expected, canned }) {
   return false;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RELEASE LIMB — [14]O-7 for a DOWNLOAD-ORIGIN channel. Added 2026-08-26.
+//
+// 🔴 WHY IT IS BEING WRITTEN ONLY NOW. `build-platforms.yml:release` was not in
+// [14]O-7's domain at all until today: the shared workflow reader could not
+// match a QUOTED SHELL VARIABLE, so the recorder call in that job matched
+// nothing, the job left the census in silence, and the guard printed "7 deploy
+// job(s)" without it. With the reader widened the job appeared — and immediately
+// failed the rule it should always have been graded by. It publishes a GitHub
+// Release and reads NOTHING back.
+//
+// ── WHAT IS READ, AND WHY IT WOULD DIFFER HAD THE PUBLISH SHIPPED NOTHING ────
+// MEASURED 2026-08-26 against a real public release (cli/cli v2.92.0), because
+// "the API probably returns that" is how a probe ends up asserting nothing:
+//
+//   GET https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}
+//     -> assets[], each carrying  name . state ("uploaded") . size .
+//        digest ("sha256:<64 lowercase hex>")
+//
+//   $ curl -sSL .../releases/download/v2.92.0/gh_2.92.0_checksums.txt | sha256sum
+//     b7e6c0a13f753e673964add93a1df8aaf5ef8aea18d8073f65a54045db117262
+//   and that same asset's API digest is
+//     sha256:b7e6c0a13f753e673964add93a1df8aaf5ef8aea18d8073f65a54045db117262
+//
+// So the digest the API reports IS the sha256 of the bytes the release serves —
+// the SAME number this job's own SHA256SUMS already carries for every asset it
+// staged. That is the join, and it joins on something THIS RUN PRODUCED.
+//
+// ⚠️ "A RELEASE EXISTS AT THIS TAG" IS THE `Ping` TRAP AND IS NOT WHAT THIS
+// ASSERTS. A release created last month answers that question exactly as well as
+// one created ten seconds ago, so a probe built on it is green over precisely
+// the failure it exists to catch — the finding tooling/monitor-register.json
+// records, moved onto a release. This limb asserts the release carries THESE
+// FILES with THESE HASHES, in both directions: a manifest name the release does
+// not carry is a failure, and an asset the manifest does not name is a failure
+// too, because the release would then serve a file nothing checksummed.
+//
+// ⚠️ NOT THE SNAP ANSWER, AND THE DIFFERENCE WAS MEASURED RATHER THAN INHERITED.
+// tooling/ops/register.json exempts `subly-linux-snap` on three grounds and says
+// each one closing retires the entry: no machine-readable join key, no honest
+// negative read (a store review queue makes "not there yet" a documented state
+// of a GOOD upload), and no transport that is not `snapcraft` itself. A GitHub
+// Release has all three — the digest is the key, a release is live the instant
+// the create call returns and no reviewer stands between the publish and this
+// read, and the transport is the same REST API `gh` publishes through. It came
+// out the way the Play lane came out, and for the same kind of reason.
+//
+// ⚠️ THE EXPECTATION IS THE MANIFEST, NOT A LIST TYPED HERE. Names and hashes
+// come from `dist/SHA256SUMS` through release-manifest.mjs's OWN parser — the
+// one declaration of that format — so this probe cannot drift from the file the
+// release actually ships. An empty manifest is COVERAGE LOST, never a pass: a
+// release with nothing in it would otherwise satisfy every name in an empty set.
+//
+// Usage:
+//   node tooling/ops/post-deploy-smoke.mjs --release-repo <owner/repo> \
+//     --release-tag <tag> --release-manifest dist/SHA256SUMS
+//   ... --release-fixture <file>   offline: a JSON array of `{assets:[…]}` (or
+//                                  `{error:"…"}`), consumed one per attempt, so
+//                                  every branch is exercised with no network and
+//                                  no token. Prints a loud banner.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The documented read-by-tag endpoint's origin. */
+export const GITHUB_API_ORIGIN = 'https://api.github.com';
+/** The REST version header GitHub asks callers to pin. */
+export const GITHUB_API_VERSION = '2022-11-28';
+export const RELEASE_TOKEN_ENV = 'GH_TOKEN';
+
+/**
+ * The DECISION, kept pure so every branch is testable without a network or a
+ * token — the same rule `judge` and `judgePlayTracks` above are written to.
+ *
+ * `manifestDigest` is the sha256 of the manifest FILE itself, which cannot
+ * appear inside its own body; passing it in is what lets every asset in the
+ * release — SHA256SUMS included — be joined by hash rather than by name alone.
+ */
+export function judgeReleaseAssets({ assets, manifestText, manifestDigest }) {
+  const { entries } = parseManifest(manifestText ?? '');
+  if (entries.length === 0) {
+    return {
+      ok: false,
+      retry: false,
+      reason:
+        'COVERAGE LOST — the manifest handed to this probe names ZERO assets, so every check below would range over ' +
+        'an empty set and report success. An empty integrity record verifies an empty release.',
+    };
+  }
+  if (!Array.isArray(assets)) {
+    return {
+      ok: false,
+      retry: false,
+      reason: `the release read returned no \`assets\` array (got ${typeof assets}) — the shape this probe reads is not the shape the API answered with`,
+    };
+  }
+  const byName = new Map();
+  for (const a of assets) {
+    if (a && typeof a.name === 'string') byName.set(a.name, a);
+  }
+  const expected = entries.map((e) => ({ name: e.name, hash: e.hash }));
+  // The manifest is an asset too — `--emit-assets` puts it FIRST — and it is the
+  // one file that cannot name its own hash, so its digest is supplied by the
+  // caller rather than read out of the body.
+  expected.push({ name: MANIFEST_NAME, hash: manifestDigest ? String(manifestDigest).toLowerCase() : null });
+
+  const missing = [];
+  const pending = [];
+  const wrong = [];
+  for (const want of expected) {
+    const asset = byName.get(want.name);
+    if (!asset) {
+      missing.push(want.name);
+      continue;
+    }
+    if (asset.state !== 'uploaded') {
+      // An asset mid-upload is what propagation looks like from outside, and it
+      // is the one state here that resolves on its own.
+      pending.push(`${want.name} state=${JSON.stringify(asset.state ?? null)}`);
+      continue;
+    }
+    const digest = String(asset.digest ?? '').toLowerCase();
+    if (digest === '') {
+      pending.push(`${want.name} carries no \`digest\` yet`);
+      continue;
+    }
+    if (want.hash === null) {
+      // Only reachable when the caller could not hash the manifest file. Say so
+      // rather than pass quietly: presence is a weaker read than a hash, and a
+      // weaker read that reports itself as a pass is how a probe stops probing.
+      pending.push(`${want.name} could be matched by NAME only — the caller supplied no digest for it`);
+      continue;
+    }
+    if (digest !== `sha256:${want.hash}`) {
+      wrong.push(`${want.name}: the release carries ${digest}, this run built sha256:${want.hash}`);
+    }
+  }
+  const expectedNames = new Set(expected.map((e) => e.name));
+  const extra = [...byName.keys()].filter((n) => !expectedNames.has(n));
+
+  if (wrong.length > 0 || extra.length > 0) {
+    // NOT RETRYABLE. An asset's digest is fixed at upload and an asset nobody
+    // staged does not appear by propagation, so waiting could only turn a real
+    // divergence into a slower real divergence.
+    const parts = [];
+    if (wrong.length > 0) parts.push(`the release serves DIFFERENT BYTES than this run built — ${wrong.join('; ')}`);
+    if (extra.length > 0) {
+      parts.push(
+        `the release carries asset(s) the manifest does not name: ${extra.join(', ')} — a file in the release that ` +
+          'nothing checksummed is a file no downloader can verify',
+      );
+    }
+    return { ok: false, retry: false, reason: parts.join('. ') };
+  }
+  if (missing.length > 0 || pending.length > 0) {
+    // RETRYABLE, for the reason `judge` states one screen up: from outside, an
+    // asset that has not landed yet and one that never will look identical, and
+    // the only honest way to tell them apart is whether it resolves inside the
+    // ceiling. A publish that genuinely shipped nothing still exits 1 — later.
+    const parts = [];
+    if (missing.length > 0) parts.push(`the release does NOT carry: ${missing.join(', ')}`);
+    if (pending.length > 0) parts.push(`not yet readable: ${pending.join('; ')}`);
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        `${parts.join('. ')}. If this persists to the ceiling, the publish step reported success over a release that ` +
+        'does not carry what this job built — which is the state this check exists to end.',
+    };
+  }
+  return { ok: true, matched: expected.length };
+}
+
+/** One attempt: read the release by tag and hand back its asset array. A 404 is
+ *  thrown like any other unreadable answer, so the retry loop treats "no release
+ *  at this tag yet" the way it treats every other not-yet state. */
+async function readReleaseAssetsOnce(repo, tag, token) {
+  const url = `${GITHUB_API_ORIGIN}/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`;
+  const headers = {
+    accept: 'application/vnd.github+json',
+    'x-github-api-version': GITHUB_API_VERSION,
+    'user-agent': 'nikatru-post-deploy-smoke',
+  };
+  // 🔴 NEVER PRINTED, on any path — the same rule the Play limb's token follows.
+  if (token) headers.authorization = `Bearer ${token}`;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(url, { signal: ac.signal, headers, cache: 'no-store' });
+  } finally {
+    clearTimeout(t);
+  }
+  if (res.status !== 200) {
+    throw new Error(
+      res.status === 404 ? `no release is readable at tag ${tag} (HTTP 404)` : `releases/tags answered HTTP ${res.status}`,
+    );
+  }
+  return JSON.parse(await res.text()).assets;
+}
+
+/**
+ * The limb. Fails CLOSED on every path: an unreadable manifest, an unreadable
+ * API, a body that will not parse, a shape that is not the documented one, a
+ * missing asset and a digest that does not match are ALL failures. "I could not
+ * tell" must never read as "it is fine".
+ */
+export async function smokeReleaseAssets({ repo, tag, manifestPath, canned }) {
+  let manifestText;
+  let manifestDigest = null;
+  try {
+    const raw = readFileSync(manifestPath);
+    manifestText = raw.toString('utf8');
+    manifestDigest = createHash('sha256').update(raw).digest('hex');
+  } catch (e) {
+    console.error(
+      `✗ RELEASE ASSET SMOKE FAILED for ${repo}@${tag} — the manifest ${manifestPath} could not be read (${e.message}). ` +
+        'A probe with no expectation is not a probe.',
+    );
+    return false;
+  }
+  const token = canned ? null : process.env[RELEASE_TOKEN_ENV] ?? process.env.GITHUB_TOKEN ?? '';
+  if (!canned && token === '') {
+    console.error(
+      `✗ RELEASE ASSET SMOKE FAILED for ${repo}@${tag} — ${RELEASE_TOKEN_ENV} is empty, so the only surface that can ` +
+        'confirm this publish would be read unauthenticated, rate-limited by an IP every runner shares. A probe that ' +
+        'cannot run reliably is a failure, never a pass.',
+    );
+    return false;
+  }
+
+  let last = 'no attempt was made';
+  for (let i = 0; i < ATTEMPTS; i += 1) {
+    let assets;
+    try {
+      if (canned) {
+        const c = canned[Math.min(i, canned.length - 1)] ?? {};
+        if (c.error) throw new Error(c.error);
+        assets = c.assets;
+      } else {
+        // eslint-disable-next-line no-await-in-loop
+        assets = await readReleaseAssetsOnce(repo, tag, token);
+      }
+    } catch (e) {
+      last = `the release could not be read: ${e.message}`;
+      // eslint-disable-next-line no-await-in-loop
+      if (i < ATTEMPTS - 1 && !canned) await new Promise((r) => setTimeout(r, GAP_MS));
+      continue;
+    }
+    const verdict = judgeReleaseAssets({ assets, manifestText, manifestDigest });
+    if (verdict.ok) {
+      console.log(
+        `ok  ${repo}@${tag} carries all ${verdict.matched} asset(s) this run built, every one matched by sha256 digest (attempt ${i + 1}/${ATTEMPTS})`,
+      );
+      return true;
+    }
+    last = verdict.reason;
+    if (!verdict.retry) break;
+    // eslint-disable-next-line no-await-in-loop
+    if (i < ATTEMPTS - 1 && !canned) await new Promise((r) => setTimeout(r, GAP_MS));
+  }
+  console.error(`✗ RELEASE ASSET SMOKE FAILED for ${repo}@${tag} — ${last}`);
+  console.error('');
+  console.error('    The publish step reported success and the GitHub API does not agree that this release');
+  console.error('    carries the files this run staged and checksummed. Until this check existed the last act');
+  console.error('    of this job was to WRITE a claim about what had shipped, and nothing read one — so a');
+  console.error('    publish that shipped nothing produced a green tick AND a record naming the new SHA.');
+  console.error(`    Ceiling: ${ATTEMPTS} attempt(s) ${GAP_MS / 1000}s apart. Both are judgement, not a vendor SLA.`);
+  return false;
+}
+
 async function main() {
   const url = flag(process.argv, '--url');
   const field = flag(process.argv, '--field');
@@ -701,6 +976,10 @@ async function main() {
   const cacheFixture = flag(process.argv, '--cache-fixture');
   const playPackage = flag(process.argv, '--play-package');
   const playFixture = flag(process.argv, '--play-fixture');
+  const releaseRepo = flag(process.argv, '--release-repo');
+  const releaseTag = flag(process.argv, '--release-tag');
+  const releaseManifest = flag(process.argv, '--release-manifest');
+  const releaseFixture = flag(process.argv, '--release-fixture');
 
   // ── the PLAY branch, taken BEFORE the --url usage check ────────────────────
   // The two modes are different transports over different surfaces and share
@@ -730,6 +1009,44 @@ async function main() {
     // libuv assertion the edge-cache branch below documents. The probe has just
     // opened and closed several keep-alive sockets against googleapis.com.
     const good = await smokePlayTrack({ packageName: playPackage, expected, canned: playCanned });
+    if (!good) process.exitCode = 1;
+    return;
+  }
+
+  // ── the RELEASE branch, also taken BEFORE the --url usage check ───────────
+  // Same reasoning as the Play branch above: a different transport over a
+  // different surface, sharing none of the HTTP mode's arguments. Any ONE of the
+  // three flags selects this mode, so a half-written invocation exits 2 instead
+  // of falling through and being reported as a missing --url.
+  if (releaseRepo || releaseTag || releaseManifest || releaseFixture) {
+    if (!releaseRepo || !releaseTag || !releaseManifest) {
+      console.error(
+        '✗ usage: post-deploy-smoke.mjs --release-repo <owner/repo> --release-tag <tag> --release-manifest <SHA256SUMS> [--release-fixture <json>]',
+      );
+      process.exit(2);
+    }
+    let releaseCanned = null;
+    if (releaseFixture) {
+      console.log('!!  OFFLINE RELEASE FIXTURE MODE — --release-fixture is set. This must NEVER appear in a real CI log.');
+      try {
+        releaseCanned = JSON.parse(readFileSync(releaseFixture, 'utf8'));
+      } catch (e) {
+        console.error(`✗ could not read release fixture ${releaseFixture}: ${e.message}`);
+        process.exit(2);
+      }
+      if (!Array.isArray(releaseCanned) || releaseCanned.length === 0) {
+        console.error('✗ the release fixture must be a non-empty array of {assets} or {error}');
+        process.exit(2);
+      }
+    }
+    // ⚠️ `process.exitCode`, NOT `process.exit(1)` — the same measured Windows
+    // libuv assertion the branches around it document.
+    const good = await smokeReleaseAssets({
+      repo: releaseRepo,
+      tag: releaseTag,
+      manifestPath: releaseManifest,
+      canned: releaseCanned,
+    });
     if (!good) process.exitCode = 1;
     return;
   }

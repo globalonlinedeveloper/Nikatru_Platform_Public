@@ -223,10 +223,37 @@ export const shellSegments = (text) => text.split(/&&|\|\||[;|]/);
 // repair is not a wider character class in three files.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// 🔴 AND IT DROPPED A SECOND JOB THE SAME WAY, FOUND 2026-08-26. The class above
+// admitted neither `"` nor `$`, so build-platforms.yml's release job —
+//     node tooling/ci/record-deployment.mjs "$environment" "$RELEASE_URL"
+// looping over `release-manifest.mjs --emit-environments` — matched NOTHING, and
+// assert-ops-register.mjs's `if (envs.length === 0) continue;` dropped it out of
+// [14]O-7's domain in silence, exactly as the matrix leg had. The reader was
+// widened for `${{ … }}` and never for a shell variable, and that `continue` was
+// never turned into a floor — so the same regex-and-continue pair did the same
+// thing to a different job. Both halves are repaired: the token below admits a
+// shell variable, and that `continue` is now a coverage floor.
+//
+// ⚠️ A SHELL VARIABLE IS NOT A SURFACE NAME. `$environment` holds its value only
+// when the job runs, so this reader returns it AS WRITTEN and the guard that owns
+// the domain decides what an unresolvable one means. Seeing the call and being
+// unable to name its environment is a state a reader can report; not seeing the
+// call at all is not.
+
 /** Every `record-deployment.mjs <env>` call in a blob of workflow text, with the
  *  environment argument AS WRITTEN. Whole `${{ … }}` expressions are part of the
- *  token because they legally contain spaces. Global — callers use `matchAll`. */
-export const RECORD_CALL = /record-deployment\.mjs\s+((?:\$\{\{[^}]*\}\}|[A-Za-z0-9._-])+)/g;
+ *  token because they legally contain spaces, and a shell variable — `$e`,
+ *  `${e}`, or either wrapped in quotes the shell strips — is part of it because a
+ *  reader that cannot see the call cannot report anything about it. Global —
+ *  callers use `matchAll`. */
+export const RECORD_CALL =
+  /record-deployment\.mjs\s+['"]?((?:\$\{\{[^}]*\}\}|\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z0-9._-])+)['"]?/g;
+
+/** True when an environment token is a SHELL variable, whose value exists only
+ *  when the job runs. Deliberately NOT the same thing as a `${{ … }}` matrix leg,
+ *  which `expandMatrixEnvironment` resolves against a list this repository holds;
+ *  the lookahead is what keeps the two apart. */
+export const isShellVariableEnvironment = (raw) => /\$(?!\{\{)/.test(String(raw ?? ''));
 
 /**
  * A matrix-parameterised environment, expanded over the app set: with
