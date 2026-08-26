@@ -320,6 +320,212 @@ shapes" (above). Its corpus is eight shapes, but three of them (`object-door`,
 `split-token`, `mixed-owntext`) come from `fixtures-adv/`. It overlaps `fixtures/` by
 **five** of the seventeen, not eight.
 
+### 2026-08-26, later — re-derived a fourth time. The eight is SEVEN, the hole is FIFTEEN, and it is machine-checked from now on
+
+Every sentence above stays as written. This block says only what changed and how it was
+measured, and it exists because the same count has now been derived by hand four times —
+in commit `5121633`'s message, in `redaction-claim.mjs`, in `.github/workflows/e2e.yml`
+and above in this file — with four different answers.
+
+**Re-measured first, so the correction rests on a measurement rather than on a reading.**
+`adversarial-claim.mjs` run alone on this tree, `PORT=8332` (the override the section on
+ports below describes, exercised here for the first time since it landed):
+
+```
+node adversarial-claim.mjs   →  exit 1 · 106 pass / 61 fail / 3 open · 0 ESCAPES · 11 fixtures
+```
+
+Identical to the numbers appended above. Nothing about the suite moved, and the
+`fixtures-adv/` directory still holds thirteen `.html` files, eight of which are named by
+no wired suite. **At the level of filenames the count has not moved. At the level of page
+shapes it was never right.**
+
+#### 🔴 `frame-pii` is not a page shape, and three records count it as one
+
+`fixtures-adv/frame-pii.html` was written down three times as a shape that has *never* had
+a grader. It is not a shape. **Nothing navigates to it.** It is the child document that
+three other fixtures load:
+
+```
+fixtures-adv/late-frame.html:55           f.src = 'frame-pii.html';
+fixtures-adv/object-door.html:27          <object type="text/html" data="frame-pii.html"></object>
+fixtures-adv/object-door.html:30          <embed  type="text/html" src="frame-pii.html">
+fixtures-adv/shadow-closed-frame.html:46  f.src = 'frame-pii.html';
+```
+
+`object-door.html` is registered by **two wired suites** (`reduction-corpus.mjs` and
+`claim-reduction.mjs`), and `object-door.html` **carries no PII of its own** — read it: the
+host page is a nav, an `<h1>`, **three** `<h2>`s and **three** filler paragraphs. (An earlier
+draft of this paragraph said *two and two*, in this file and in two others, from memory
+rather than from `grep -c`.) Every **PII** token in its capture comes out of
+`frame-pii.html` — the host page's own text is chrome and filler the detector matches
+nothing in, which is precisely why the fixture is shaped that way. So `frame-pii` is loaded
+and captured inside runs those two wired suites grade, which is the only way it is ever
+used, and it is off the ungraded list for that reason.
+
+**That is not the same sentence as “its content is graded”, and the difference is the whole
+disease this file keeps catching.** Nothing asserts a word about the PII `frame-pii`
+contributes. `reduction-corpus.mjs`'s `object-door` row (line 210) quotes `visible: 6` — a
+count the host page cannot supply on its own, which is the mechanical proof that the child
+document is in the picture — but that row carries no `det`, its `gone` and `kept` maps are
+both `{}` so the pixel grader returns before it looks at the image, and `visible` is consumed
+**only** by `note(...)`. The workflow states elsewhere, in its own words, that NOTE is not
+graded. What the guard below means by GRADED is **reaches a graded suite**; it has never
+meant **its content is asserted**, and a row that asserts it still has to be written.
+
+The same mistake in the same family, caught by the same parse: `fixtures/iframe-child.html`
+is registered by nothing either, because it is the child of `iframe-host.html`, which
+`reduction-corpus.mjs` and `giveup-verify.mjs` both run. Neither file is an orphan; both
+were counted as one by a parse that only ever looked at filenames.
+
+**So the `fixtures-adv/` figure is SEVEN top-level shapes, not eight** — `canvas-combo`,
+`cv-tabs`, `honest-article`, `honest-pii`, `late-frame`, `late-swap`, `shadow-closed-frame`.
+This is *not* a hole closed by assertion: nothing was retired, deleted or quarantined, one
+name moved out of the list because it was mis-classified, and the reason is a mechanical
+fact anybody can re-check in four lines of `grep`.
+
+#### And the hole is much bigger than eight — it was only ever counted inside `fixtures-adv/`
+
+Every record above scopes the question to one directory. Asked of the whole directory —
+*which fixtures reach a suite that is actually graded* — the answer is **fifteen of
+forty-two**, because `privacy-verify.mjs` and `review-keyboard.mjs` are quarantined too and
+they are the only suites that run **five** of these shapes (three under `privacy-verify.mjs`,
+two under `review-keyboard.mjs` — count the rows). *Eight* stood here in the first draft of
+this very block: a hand-derived number inside the section announcing the end of hand-derived
+numbers, and the guard's own output says five. The other ten of the fifteen are
+`redaction-claim.mjs`'s three and `adversarial-claim.mjs`'s seven:
+
+| shape | only suite that runs it | state | what would close it |
+|---|---|---|---|
+| `fixtures-verify/race-pii.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** — quarantined on a *fixture* defect (`canvas-pii` B2 antialiasing), not on the suite and not on the product |
+| `fixtures-verify/wrap-cancel.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** — same, one repair closes all three |
+| `fixtures-verify/wrap-covered.html` | `privacy-verify.mjs` | quarantined | **WIREABLE** — same |
+| `fixtures/review-tall.html` | `review-keyboard.mjs` | quarantined | **WIREABLE** — quarantined on a live disagreement (P0 wants ≥2 marks past the tiling floor, gets 0), which somebody has to answer either way |
+| `fixtures/review-tall-clean.html` | `review-keyboard.mjs` | quarantined | **WIREABLE** — same suite, so wiring it closes both at once |
+| `fixtures/clipped-ancestor.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — needs a `reduction-corpus.mjs` row; its own suite grades deleted fields |
+| `fixtures/input-values.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — same |
+| `fixtures/svg-text.html` | `redaction-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — same |
+| `fixtures-adv/honest-pii.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE, and the most valuable of the seven** — see below |
+| `fixtures-adv/honest-article.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — a clean-article control; the row mirrors `control-clean` |
+| `fixtures-adv/canvas-combo.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `canvas-pii` already establishes the pattern |
+| `fixtures-adv/shadow-closed-frame.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `shadow-closed` and `iframe-host` exist separately; this is the combination |
+| `fixtures-adv/late-frame.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **GRADEABLE** — `late-inject` establishes the pattern |
+| `fixtures-adv/cv-tabs.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **NOT YET — the fixture must be repaired first.** It measures 10 rows of block colour in a plain browser with no extension loaded, which breaks the colour-tolerance rule this README states. A grading row written today would encode the fixture's own defect |
+| `fixtures-adv/late-swap.html` | `adversarial-claim.mjs` | quarantined, unrepairable | **NOT YET — it does not reproduce reliably.** On the run above its own setup check came back `L3 inconclusive run — not graded  — setup=false legible=true`, i.e. the swap did not fire. A shape that does not reproduce cannot be graded by anybody; making the trigger deterministic comes first |
+
+**`honest-pii` is the one to do first.** It is the only shape in either corpus that produces
+a *verified-opaque* block, so it is the only shape that exercises §3.3's mark persistence at
+all — the clause that retired `U9` and the one no wired suite currently touches. It also
+carries a Luhn-invalid decoy that must be left alone, which is the check that separates a
+working feature from a product that protects the user by blacking out everything. Its row is
+a single declarative entry in `reduction-corpus.mjs`'s table, in the shape that file already
+uses:
+
+```js
+{ name: 'honest-pii', url: ADV + 'honest-pii.html', det: true,
+  why: 'contact details marked up the way real pages mark them — a mailto anchor, a table cell, a list item',
+  spec: '§3.3 The marks (the only fixture producing a verified-opaque block)', visible: 3,
+  gone: { email: [255, 90, 90], phone: [90, 200, 120], card: [90, 130, 255] },
+  kept: { decoy: [245, 205, 45] } },
+```
+
+**None of the fifteen was closed here**, and none of the rows above was written: every one
+of them lands in a file this unit does not own. What was added is the thing that stops the
+count from being derived by hand a fifth time.
+
+#### The guard: `.github/workflows/e2e.yml` now counts this, every run
+
+A `fixture-coverage` guard sits in the `Run every suite` step, ahead of the suite loop. It
+derives suites and libraries the way the step already does, subtracts the quarantine, parses
+every registration idiom this directory uses (a quoted filename, `fixture('x'`,
+`{ name: 'x'`, `['x',`) with comments stripped first — a grep counts the prose headers — and
+then **resolves parents**: a shape loaded through a quoted `src=` or `data=` by a shape that
+reaches a wired suite is counted as reaching one too, transitively. That last limb is the
+whole reason `frame-pii` and `iframe-child` come out on the right side.
+
+**Say the limits of that limb, because they are narrower than the word *transitively*.** The
+value has to be a **quoted literal**; a URL built from a variable is invisible, and the child
+is then reported UNGRADED, which is a *false red* rather than a missed cover — no fixture
+here builds one today, measured, not assumed. HTML comments are stripped from the fixtures
+before parents are matched, so a commented-out `<!-- <iframe src="x.html"> -->` does **not**
+count (an earlier draft stripped comments from the `.mjs` sources and not from the fixture
+HTML — the same disease, one file type over; none was present in the tree either way). The
+value is resolved against the loading fixture's own directory, `../` and all, so a
+cross-directory parent is seen; an earlier draft matched only a bare or `./` filename inside
+one directory, and `src="../fixtures/x.html"` produced a false REGRESSED under it —
+reproduced and then fixed, both rows in the table below.
+
+It reddens the job when the ungraded set **grows**, prints a `::notice::` when it shrinks so
+the baseline is trimmed in the same commit, reddens on a baseline name that is no longer a
+fixture, and reports COVERAGE LOST rather than ok if it scanned nothing. It grades nothing
+and closes nothing — it makes the hole countable and makes growing it loud.
+
+**Two things that sentence must not be read as promising.**
+
+1. **The coverage reds do not stop the run.** Both of them — REGRESSED and a stale baseline
+   name — are *found* before the suite loop and *cashed* after it, so the six wired suites
+   and the four quarantine audits all still execute and the job still ends red. The first
+   draft called `process.exit(1)` where it found them, and one new ungraded fixture bought
+   **zero** `e2e-suite` lines in the log: a coverage-bookkeeping finding cost the product its
+   entire test run. COVERAGE LOST is the one that still exits on the spot, because a guard
+   that scanned nothing genuinely cannot certify anything.
+2. **A newly ungraded fixture is not caught at the commit that adds it.** This workflow is
+   weekly / `workflow_dispatch` / `run-e2e` label, and its own header says it never blocks a
+   PR by default. "Fails the job" means the job it runs in: the next Monday 04:17 UTC run,
+   or whenever somebody dispatches it or labels a PR. Between those, the hole is countable
+   but uncounted.
+
+The baseline is keyed on `dir` and filtered by `SUITE_DIR`, exactly as the quarantine list
+is, so each matrix leg judges its own tool directory and no other. It was a flat **global**
+array of ids in the first draft, which is a scope break with a hard consequence rather than a
+blind one: run against a trivial second-tool `test/e2e` it exited 1 with
+`::error::the ungraded baseline names fixtures/clipped-ancestor.html … which is not a fixture
+in Extension/Second_Tool/test/e2e any more` — fifteen Full_Screen_Shot fixture names read out
+at a directory that never held one of them. The cost of the fix, stated rather than hidden: a
+tool directory with **no** baseline entry thereby asserts that nothing in it is ungraded, so
+the first run over a new tool that has an ungraded fixture reddens and names it. That is the
+guard working, and it is a red somebody answers with a baseline entry.
+
+Proven to bite before it was left in place, each mutation applied to a copy of this
+directory and then discarded. The whole `node -e` body was lifted verbatim out of the
+installed workflow with `spawnSync` stubbed, so no browser ran; the `suites ran` column is
+the count of `e2e-suite` lines in the log, which is the column the first draft of this guard
+would have failed:
+
+| mutation | verdict | suites ran |
+|---|---|---|
+| control — this tree, untouched | 42 shapes, 6 wired, 4 quarantined, 15 ungraded, baseline 15 for this dir · **no coverage red** | 6 |
+| unregister `wrapped-token` from `reduction-corpus.mjs` | REGRESSED, names `fixtures-adv/wrapped-token.html` · job red | 6 |
+| add a new fixture nobody grades | REGRESSED, names `fixtures-adv/brand-new.html` · job red | 6 |
+| delete `fixtures-verify/race-pii.html` | baseline names a fixture that is gone · job red | 6 |
+| un-quarantine `privacy-verify.mjs` | IMPROVED, names the three shapes to remove from the baseline · no coverage red | 7 |
+| remove every fixture directory | COVERAGE LOST · job red, **and this one still exits on the spot** | 0 |
+| unregister `object-door` from **both** wired suites | REGRESSED on `object-door.html` **and `frame-pii.html`** — the transitive limb, doing the work | 6 |
+| load `../fixtures-verify/xchild.html` from `object-door.html` | GRADED, `loaded-by=[object-door.html]` · no coverage red | 6 |
+| …the same load, under the **first draft** of the guard | UNGRADED · **false** REGRESSED — the same-directory, bare-filename-only match | 6 |
+| …the same load, commented out | UNGRADED · REGRESSED, correctly — a commented-out tag loads nothing | 6 |
+
+Row 3 against the first draft is the one worth keeping in mind: it read `exit 1` and **0**
+`e2e-suite` lines. One ungraded fixture, and the product's entire test run was gone.
+
+#### The stale-measurement asymmetry is closed, and it catches one of the two cases it was built for
+
+The quarantine audit added earlier the same day was tested against both real cases, driving
+the `claimOf` and audit-loop code lifted verbatim out of the installed workflow:
+
+| case | recorded | observed | audit says | job |
+|---|---|---|---|---|
+| `giveup-verify.mjs` — on the list as failing, actually green (112/0/3) | exit 1 | exit 0 | **CONTRADICTED** | **red** |
+| `adversarial-claim.mjs` — 102/65/3 recorded, 106/61/3 measured | exit 1 | exit 1 | STANDS | green |
+
+So it catches the case that matters — a suite that has quietly gone green while its note
+still calls it red — and it does not catch pure count drift while the verdict holds. That
+limit is not a gap somebody forgot: the comment beside the audit argues it at length, on the
+grounds that a CI count and an author-machine count differ for reasons that have nothing to
+do with staleness (this file records `reduction-corpus.mjs` at 1196/0 alone against 612/25
+run third in the same step, same tree, same afternoon). **No second guard was built for it.**
+Counts stay a human duty, and the audit says so rather than pretending otherwise.
+
 ### Both quarantined claim suites cite a spec that was rewritten under them
 
 `REDACTION-CLAIM-SPEC.md` was reduced **in place**, so the § numbers in the two quarantined

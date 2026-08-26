@@ -134,6 +134,107 @@
    THE COVERAGE HOLE IS UNCHANGED. giveup-verify.mjs was wired on 2026-08-26,
    and it reads `fixtures-giveup/` and `fixtures/` — no `fixtures-adv/` shape —
    so the eight named at line 26 are still eight, still graded by nothing.
+   ─────────────────────────────────────────────────────────────────────────
+   APPENDED 2026-08-26, LATER. Everything above stood when it was written and
+   is left standing verbatim, including the sentence this block corrects. Not
+   one assertion in this file was touched: the counts below are the third and
+   fourth measurements of the same code.
+
+   MEASURED AGAIN, alone, `PORT=8332` (8913 confirmed free, and the override
+   this file gained earlier today exercised for the first time since):
+   exit 1, 106 pass / 61 fail / 3 open, 0 ESCAPES, 11 fixtures. Unmoved.
+
+   🔴 LINE 26 AND LINE 28 ARE WRONG ABOUT frame-pii, AND SO ARE THE TWO OTHER
+   PLACES THAT COPY THEM. "frame-pii is not in the list below either, so it
+   has never had one" counts frame-pii.html as a PAGE SHAPE. It is not one.
+   Nothing navigates to it. It is the CHILD DOCUMENT that three fixtures in
+   this corpus load:
+
+     late-frame.html:55           f.src = 'frame-pii.html';
+     object-door.html:27          <object type="text/html" data="frame-pii.html">
+     object-door.html:30          <embed  type="text/html" src="frame-pii.html">
+     shadow-closed-frame.html:46  f.src = 'frame-pii.html';
+
+   object-door.html is registered by TWO WIRED SUITES — reduction-corpus.mjs
+   and claim-reduction.mjs — and object-door.html carries NO PII OF ITS OWN:
+   read it, the host page is a nav, an <h1>, THREE <h2>s and THREE filler
+   paragraphs. (An earlier draft of this block said two and two, in three
+   files at once, from memory rather than from grep -c. Corrected here and in
+   both of the others.) Every PII TOKEN in its capture comes out of
+   frame-pii.html — the host page text is chrome and filler the detector
+   matches nothing in, which is why the fixture is shaped that way. So
+   frame-pii is LOADED AND CAPTURED inside runs those two wired suites grade,
+   the only way it is ever used, and it is off the ungraded list for that.
+
+   🔴 THAT IS NOT THE SAME SENTENCE AS ITS CONTENT IS GRADED, and an earlier
+   draft of this block wrote the second one. NOTHING ASSERTS THE PII
+   frame-pii CONTRIBUTES. The object-door row in reduction-corpus.mjs (line
+   210 of that file) carries no `det`; its `gone` and `kept` maps are both
+   `{}`, so the pixel grader returns before it looks at the image; and its
+   `visible: 6` — a count the host page cannot supply on its own, which is
+   the mechanical proof the child document is in the picture — is consumed
+   ONLY by `note(...)`. The workflow that runs these suites states in its own
+   words that NOTE IS NOT GRADED. So GRADED, in the guard below, means
+   REACHES A GRADED SUITE and has never meant ITS CONTENT IS ASSERTED; a row
+   that asserts it still has to be written by somebody who owns that file.
+   THE FIGURE IS SEVEN TOP-LEVEL SHAPES, NOT EIGHT:
+   canvas-combo, cv-tabs, honest-article, honest-pii, late-frame, late-swap,
+   shadow-closed-frame. Nothing was retired, deleted or quarantined to get
+   there — one name was mis-classified by three filename-level parses in a
+   row, and fixtures/iframe-child.html was mis-classified the same way for the
+   same reason.
+
+   frame-pii.html IS DELIBERATELY NOT ADDED TO THE LIST BELOW, and the
+   argument matters more than the decision. Registering it here would add
+   nine or so assertions against the eight-state ladder — guaranteed red,
+   manufactured on purpose, in a suite this header says to harvest and not to
+   repair — and it would move the 106/61/3 that three other files quote,
+   while moving the shape not one inch closer to a WIRED grader. A shape is
+   covered when a graded suite runs it. This suite is not one.
+
+   🔬 late-swap DID NOT REPRODUCE ON THIS RUN, and the suite says so itself
+   rather than reporting a finding:
+
+     late-swap :: L3 inconclusive run — not graded  — setup=false legible=true
+
+   L1 exists precisely for this: `setupOk` demands `fixture.fired === true`
+   AND `matched === 0`, and without both the run is inconclusive. So the
+   trigger did not fire. THAT IS A PROPERTY OF THE FIXTURE, NOT OF THE
+   RETIRED ASSERTIONS AROUND IT, and it outlives the retirement exactly the
+   way the capture-fidelity limb did: whoever writes the replacement suite
+   over fixtures-adv/ inherits a shape that cannot be graded by anybody until
+   its swap is made deterministic. It is recorded here because a reader
+   harvesting this corpus would otherwise write a row for it and get an
+   intermittent green.
+
+   THE COUNT IS NO LONGER DERIVED BY HAND. A `fixture-coverage` guard in
+   .github/workflows/e2e.yml parses every registration idiom in this
+   directory, subtracts the quarantine, resolves child documents through a
+   quoted `src=` / `data=` value, and reddens the job when the set of shapes
+   reaching no wired suite GROWS. Measured by that guard on this tree: 42
+   shapes, 6 wired suites, 4 quarantined, 15 shapes reaching no wired suite —
+   of which seven are this corpus. The eight-that-are-seven above went three
+   derivations without anybody noticing; that is what the guard exists to
+   prevent, and it grades nothing and closes nothing.
+
+   THREE LIMITS OF THAT SENTENCE, because this file has been burned by
+   sentences that promised more than they delivered.
+   (a) The parent has to write the URL as a QUOTED LITERAL. One built from a
+       variable is invisible, and the child is then called UNGRADED — a FALSE
+       RED, not a missed cover. No fixture here builds one today; measured.
+       A quoted value IS resolved against the directory of the file that
+       loads it, `../` and all, so a cross-directory parent is seen.
+   (b) HTML comments are stripped from the fixtures first, so a commented-out
+       <iframe src="x.html"> does not mark x.html covered. An earlier draft
+       stripped comments from the .mjs sources and not from the fixture HTML,
+       which is the same disease one file type over. None was present either
+       way.
+   (c) WHEN it bites is NOT the commit that breaks it. That workflow is
+       weekly / workflow_dispatch / run-e2e label and its own header says it
+       never blocks a PR by default, so the red arrives on the next Monday
+       run, or whenever somebody dispatches it or labels a PR. Between those,
+       a newly orphaned shape is countable but uncounted.
+   ─────────────────────────────────────────────────────────────────────────
    ───────────────────────────────────────────────────────────────────────── */
 /* FullShot — ATTEMPT SIX at the redaction claim. Adversarial corpus.
  *

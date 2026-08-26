@@ -108,7 +108,11 @@ function buildBase(root) {
     version: '1.0.0',
     description: '__MSG_appDescription__',
     permissions: ['storage', 'activeTab'],
-    content_security_policy: { extension_pages: "default-src 'self'; script-src 'self'; connect-src 'none'" },
+    /* The posture the project intends, MINUS img-src, which is deliberately
+       absent: it falls back to default-src 'self', which is a SAFE policy, and
+       the CSP-fallback pair below asserts the gate reads it that way instead of
+       reporting a hole this manifest does not have. */
+    content_security_policy: { extension_pages: "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" },
     action: {
       default_popup: 'popup/popup.html',
       default_icon: { 16: 'icons/icon16.png', 32: 'icons/icon32.png', 48: 'icons/icon48.png', 128: 'icons/icon128.png' }
@@ -337,6 +341,278 @@ expect('a remote <script src> fails', {
 expect('an external <a href> does NOT fail (it navigates, it does not load)', {
   script: 'policy-check.mjs', argv: ['goodtool'], root: fixture(), code: 0, contains: 'external <a href>'
 });
+
+/* ---------------- the CSP posture gate ----------------
+
+   THE GATE THESE PAIRS EXIST FOR. Until 2026-08-26 policy-check.mjs read ONE
+   of the seven directives FullShot's manifest declares. Measured on a scratch
+   copy of the real tree that day, exit codes captured one per line: deleting
+   img-src printed `16 passed` at EXIT 0, and `img-src *` — which reopens
+   exactly the thing the directive claims to close — printed `16 passed` at
+   EXIT 0 as well. Six directives were a sentence the manifest asserted and
+   nothing checked, so six mutations of the manifest were invisible.
+
+   THE FIXTURE'S POLICY DELIBERATELY OMITS img-src. It declares default-src
+   'self', and an absent img-src FALLS BACK to it, which is a SAFE policy. The
+   clean-tree case below asserts the gate says so rather than reporting the
+   hole it does not have: a guard that cries wolf about a correct manifest is a
+   guard someone deletes, and getting CSP3's fallback backwards is the easiest
+   way to build one. The other half of that rule is pinned too — base-uri and
+   form-action have NO fallback, and default-src must NOT be read as covering
+   them.
+
+   AND THE ONE THAT MATTERS. `img-src 'none' https://tracker.example` does not
+   mean none: CSP3 ignores 'none' beside any other source. A check that greps
+   for the token passes on that exact string, which is why two cases sit side
+   by side below — the reopened policy must FAIL, and a genuine 'none' must
+   still PASS. Either one alone proves nothing about the other. */
+const setCsp = (root, value) => {
+  const m = readJson(root, TOOL + '/manifest.json');
+  if (value === null) delete m.content_security_policy;
+  else m.content_security_policy = { extension_pages: value };
+  writeJson(root, TOOL + '/manifest.json', m);
+};
+/* The fixture's policy, minus one directive, so a case can delete exactly one
+   thing without restating the other five. */
+const cspWithout = (drop, extra) => (
+  "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'none'; " +
+  "frame-src 'none'; base-uri 'none'; form-action 'none'")
+  .split('; ').filter(p => p.split(' ')[0] !== drop).concat(extra || []).join('; ');
+
+/* THE PAIR BELOW IS ONE CASE, NOT TWO, AND THE FIRST HALF ALONE WAS NOT A BITE.
+   `contains: 'default-src (inherited by img-src)'` on an UNMUTATED tree goes red
+   against a script that never printed that string — which is every script that
+   predates this line — while saying nothing about whether the inheritance was
+   READ. Exit 0 is the verdict it does assert (a gate with CSP3's fallback
+   backwards reports a hole this manifest does not have and exits 1), and the
+   second half is what makes the reading itself falsifiable: widen the default-src
+   img-src inherits and the finding must name img-src, not default-src. */
+expect('an absent img-src that falls back to default-src is NOT reported as a hole', {
+  script: 'policy-check.mjs', argv: ['goodtool'], root: fixture(), code: 0,
+  contains: 'default-src (inherited by img-src)'
+});
+expect('and the inheritance is READ, not just printed: widening that default-src fails, naming img-src', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'img-src: NOT DECLARED, and the default-src it falls back to does not cover it',
+  root: fixture(root => setCsp(root, cspWithout('default-src', 'default-src *')))
+});
+expect('a declared directive widened to * fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'permitted and not intended: *',
+  root: fixture(root => setCsp(root, cspWithout(null, 'img-src *')))
+});
+expect("'none' beside another source is INERT, and the gate says so rather than passing", {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'is INERT',
+  root: fixture(root => setCsp(root, cspWithout(null, "img-src 'none' https://tracker.example")))
+});
+expect('and it names the source that is actually permitted, not the token it read', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'permitted and not intended: https://tracker.example',
+  root: fixture(root => setCsp(root, cspWithout(null, "img-src 'none' https://tracker.example")))
+});
+expect("a genuine 'none' still PASSES — the case above is not just 'any list containing none'", {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'hold the intended posture',
+  root: fixture(root => setCsp(root, cspWithout(null, "img-src 'none'")))
+});
+expect('a directive with nothing left to fall back to fails as ABSENT, not as widened', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'img-src: NOT DECLARED',
+  root: fixture(root => setCsp(root, cspWithout('default-src')))
+});
+expect('base-uri has NO fallback, and a present default-src does not cover it', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'base-uri: NOT DECLARED, and it has NO fallback at all',
+  root: fixture(root => setCsp(root, cspWithout('base-uri')))
+});
+expect('form-action has NO fallback either', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'form-action: NOT DECLARED, and it has NO fallback at all',
+  root: fixture(root => setCsp(root, cspWithout('form-action')))
+});
+expect('frame-src falls back to child-src before default-src, and child-src none is enough', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0,
+  contains: "child-src (inherited by frame-src) 'none'",
+  root: fixture(root => setCsp(root, cspWithout('frame-src', "child-src 'none'")))
+});
+expect("but inheriting default-src 'self' where 'none' was intended is a hole", {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: "permitted and not intended: 'self'",
+  root: fixture(root => setCsp(root, cspWithout('frame-src')))
+});
+expect('keyword case and source order do not change the verdict', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'hold the intended posture',
+  root: fixture(root => setCsp(root,
+    "form-action 'NONE'; base-uri 'None'; frame-src 'none'; connect-src 'none'; " +
+    "img-src BLOB: 'SELF' data:; object-src 'none'; script-src 'self'"))
+});
+expect('no content_security_policy at all is a FAILURE, not an empty pass', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'THIS GATE HAS NO SUBJECT',
+  root: fixture(root => setCsp(root, null))
+});
+/* SAME SHAPE AS THE img-src PAIR ABOVE, AND FOR THE SAME REASON. On its own,
+   the case below asserts a NOTE string on an unmutated tree — and note() in
+   lib/report.mjs only console.log()s: it never enters the counts and cannot
+   move the exit code, so nothing about that line was ever falsifiable. The two
+   cases after it are the verdict: an untabled directive DECLARED WIDE is a
+   failure, and a closed one is not. */
+expect('a declared directive the table does not grade is named on every run', {
+  script: 'policy-check.mjs', argv: ['goodtool', '--warnings-as-errors'], code: 0,
+  contains: 'declared but NOT graded by CSP_POSTURE: default-src',
+  root: fixture()
+});
+expect('an untabled directive DECLARED WIDE is a FAILURE, not a note nobody reads', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'every declared CSP directive outside CSP_POSTURE is closed',
+  root: fixture(root => setCsp(root, cspWithout(null, 'media-src *')))
+});
+expect('and a closed one is not — the limb reads the sources, it does not fail on being untabled', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'hold the intended posture',
+  root: fixture(root => setCsp(root, cspWithout(null, "media-src 'self' blob:")))
+});
+
+/* 🔴 FIRST-WINS, WHICH IS WHAT THE BROWSER DOES. The parse used to be
+   last-wins — `cspDirectives.set(...)` on every occurrence — so a LATER copy of
+   a directive overwrote an earlier one, while CSP3 and Chromium enforce the
+   FIRST and ignore the rest. Measured on Extension/Full_Screen_Shot 2026-08-26:
+   `"script-src *; script-src 'self'; ..."` printed `17 passed` at EXIT 0 while
+   the browser enforced `script-src *`. One token bought a clean gate over a
+   policy the browser does not use.
+
+   THREE CASES, BECAUSE ONE PROVES NOTHING. "the duplicate fails" would also be
+   true of a gate that simply rejects any repeat; the reverse order must PASS,
+   or the direction is untested. The third pins that the ignored copy is NAMED —
+   a FAIL reporting `found: script-src *` over a manifest whose text visibly
+   contains `script-src 'self'` reads as a bug in the checker. */
+expect('a repeated directive is graded on the FIRST occurrence, which is the one enforced', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'permitted and not intended: *',
+  root: fixture(root => setCsp(root, 'script-src *; ' + cspWithout(null)))
+});
+expect('and the reverse order PASSES — first-wins, not "any repeat fails"', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'hold the intended posture',
+  root: fixture(root => setCsp(root, cspWithout(null, 'script-src *')))
+});
+expect('and the copy the browser ignores is named, so the verdict does not read as a checker bug', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: "repeated and therefore IGNORED by the browser (first occurrence wins): script-src 'self'",
+  root: fixture(root => setCsp(root, 'script-src *; ' + cspWithout(null)))
+});
+
+/* 🔴 THE DIRECTIVE CHROMIUM ACTUALLY CONSULTS. script-src-elem is preferred
+   over script-src for <script> element loads, so a table that grades script-src
+   alone grades the directive that does not apply: measured 2026-08-26,
+   `"script-src 'self'; script-src-elem *; ..."` printed `6 more CSP directive(s)
+   hold the intended posture` at EXIT 0. worker-src is the same shape one step
+   further out — its CSP3 fallback runs through child-src BEFORE script-src, and
+   getting that order backwards would report a child-src widened for framing as
+   covered by a script-src nobody touched. */
+expect('script-src-elem is graded in its own right, not left to script-src', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'script-src-elem: DECLARED, and it permits more than the intent',
+  root: fixture(root => setCsp(root, cspWithout(null, 'script-src-elem *')))
+});
+expect('worker-src falls back through child-src BEFORE script-src', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: 'child-src (inherited by worker-src) *',
+  root: fixture(root => setCsp(root, cspWithout(null, 'child-src *')))
+});
+
+/* 🔴 THE THREE FINDING KINDS ARE COUNTED APART, AND ONE USED TO BE MISFILED.
+   `kind: eff.via ? 'absent' : 'widened'` filed an absent-but-INHERITING
+   directive under "absent and uncovered" — a phrase the same failure message
+   defines as "no fallback reaches it", while the finding one line above it read
+   "the default-src it falls back to does not cover it". The tally and the
+   finding it summarised contradicted each other inside one run. */
+expect('an absent directive whose fallback is too wide counts as INHERITED, not absent-and-uncovered', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: '0 widened, 1 inherited too wide, 0 absent and uncovered',
+  root: fixture(root => setCsp(root, cspWithout('frame-src')))
+});
+expect('and one with no fallback left counts as absent and uncovered', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1,
+  contains: '0 widened, 0 inherited too wide, 1 absent and uncovered',
+  root: fixture(root => setCsp(root, cspWithout('base-uri')))
+});
+expect('a directive READ AS A FALLBACK is named as such, not listed as flatly ungraded', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 0,
+  contains: 'child-src (read only as the fallback for frame-src, worker-src)',
+  root: fixture(root => setCsp(root, cspWithout('frame-src', "child-src 'none'")))
+});
+
+/* 🔴 THE LIMIT IS PRINTED, AND THE PRINTING IS GRADED. CSP_POSTURE models nine
+   directives; the browser honours more. The note that lists the untabled
+   DECLARED ones is structurally blind to a directive that is neither declared
+   nor tabled — which is the state that leaves one unrestricted, and is
+   Extension/Full_Screen_Shot's state today: no default-src, so style-src,
+   font-src, media-src, manifest-src and child-src fall back to nothing.
+   Both halves are graded through --warnings-as-errors, because this limb warns
+   rather than fails and an exit code is the only thing that separates
+   "reported" from "not reported". */
+expect('the unmodelled directives are named every run, with what each one resolves to', {
+  script: 'policy-check.mjs', argv: ['goodtool', '--warnings-as-errors'], code: 0,
+  contains: 'style-src: absent, inherits default-src',
+  root: fixture()
+});
+expect('and with no default-src umbrella they are UNRESTRICTED, and the gate says so', {
+  script: 'policy-check.mjs', argv: ['goodtool', '--warnings-as-errors'], code: 1,
+  contains: 'CSP directive(s) this gate does not model are UNRESTRICTED',
+  root: fixture(root => setCsp(root, cspWithout('default-src', "img-src 'self' data: blob:")))
+});
+
+/* 🔴 AN EMPTY TABLE IS A GATE WITH NO SUBJECT. Measured 2026-08-26: emptying
+   CSP_POSTURE and changing nothing else printed `PASS 0 more CSP directive(s)
+   hold the intended posture`, 17 passed, EXIT 0 — the manifest side of that hole
+   was already guarded ("THIS GATE HAS NO SUBJECT"), the table side was not.
+   Mutates the SCRIPT, like the rival-declaration case below, because the defect
+   it guards against is a defect in the script. */
+{
+  const emptied = path.join(TMP, 'empty-posture-scripts');
+  copyDir(SCRIPTS, emptied);
+  const target = path.join(emptied, 'policy-check.mjs');
+  const src = fs.readFileSync(target, 'utf8');
+  const open = src.indexOf('const CSP_POSTURE = [');
+  const close = src.indexOf('\n];', open);
+  if (open === -1 || close === -1) {
+    bad('an EMPTY CSP_POSTURE makes the gate REFUSE TO RUN',
+      'CSP_POSTURE is no longer a bracketed array literal; this case is not testing what it claims to.');
+  } else {
+    fs.writeFileSync(target, src.slice(0, open) + 'const CSP_POSTURE = [' + src.slice(close), 'utf8');
+    const res = spawnSync(process.execPath, [target, 'goodtool', '--repo-root', fixture()], { encoding: 'utf8', cwd: REPO });
+    const out = (res.stdout || '') + (res.stderr || '');
+    if (res.status === 2 && out.includes('CSP_POSTURE is empty')) {
+      ok('an EMPTY CSP_POSTURE makes the gate REFUSE TO RUN rather than pass over nothing', 'exit 2');
+    } else {
+      bad('an EMPTY CSP_POSTURE makes the gate REFUSE TO RUN rather than pass over nothing',
+        'expected exit 2 naming the empty table, got exit ' + res.status + '\n--- output ---\n' + out.trim());
+    }
+  }
+}
+
+/* THE INTENDED VALUES MUST LIVE IN ONE PLACE, AND THAT IS ENFORCED RATHER THAN
+   REMEMBERED. connect-src's intended value is derived from tool.json's
+   policy.networkAllowlist; CSP_POSTURE declares the other nine. If connect-src
+   ever appears in BOTH, the run would grade one directive against two
+   expectations that are free to disagree — so policy-check refuses to run at
+   all. This is the only case here that mutates the SCRIPT rather than the tree,
+   because the defect it guards against is a defect in the script. */
+{
+  const rival = path.join(TMP, 'rival-scripts');
+  copyDir(SCRIPTS, rival);
+  const target = path.join(rival, 'policy-check.mjs');
+  const src = fs.readFileSync(target, 'utf8');
+  const anchor = "  { name: 'script-src', intent: [\"'self'\"], fallback: ['default-src'],";
+  if (!src.includes(anchor)) {
+    bad('the one-declaration guard can be mutated', 'CSP_POSTURE no longer starts with script-src; this case is not testing what it claims to.');
+  } else {
+    fs.writeFileSync(target, src.replace(anchor,
+      "  { name: 'connect-src', intent: [\"'none'\"], fallback: ['default-src'], why: 'a rival declaration' },\n" + anchor), 'utf8');
+    const res = spawnSync(process.execPath, [target, 'goodtool', '--repo-root', fixture()], { encoding: 'utf8', cwd: REPO });
+    const out = (res.stdout || '') + (res.stderr || '');
+    if (res.status === 2 && out.includes('CSP_POSTURE declares "connect-src"')) {
+      ok('declaring connect-src in CSP_POSTURE too makes the gate REFUSE TO RUN', 'exit 2');
+    } else {
+      bad('declaring connect-src in CSP_POSTURE too makes the gate REFUSE TO RUN',
+        'expected exit 2 naming the duplicate declaration, got exit ' + res.status + '\n--- output ---\n' + out.trim());
+    }
+  }
+}
 expect('an unjustified permission fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'no justification at all: downloads',
   root: fixture(root => { const m = readJson(root, TOOL + '/manifest.json'); m.permissions.push('downloads'); writeJson(root, TOOL + '/manifest.json', m); })

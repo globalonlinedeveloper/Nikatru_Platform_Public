@@ -76,7 +76,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { Report, parseArgs } from './lib/report.mjs';
+import { Report, parseArgs, die } from './lib/report.mjs';
 import {
   repoRoot, resolveTool, packagedFiles, readText, readJson, walk,
   localeMessageFiles, resolveMessages, versionProblem
@@ -585,15 +585,49 @@ const allowHosts = [];
    than grepped: /connect-src\s+'none'/ matches `connect-src 'none' https://evil`,
    where CSP3 makes 'none' inert, which is the prose-grep failure this file's own
    banner forbids. */
-{
-  const csp = (mf.content_security_policy || {}).extension_pages;
-  const directives = new Map();
-  if (typeof csp === 'string') {
-    for (const part of csp.split(';')) {
-      const bits = part.trim().split(/\s+/).filter(Boolean);
-      if (bits.length) directives.set(bits[0].toLowerCase(), bits.slice(1));
-    }
+/* PARSED ONCE, AT MODULE SCOPE, because TWO blocks grade this one string now
+   — the connect-src/allowlist agreement below, and the posture gate after it.
+   A second private copy of this split would be a second answer to "what does
+   the manifest say", and the two would drift the first time one was edited.
+
+   FIRST-WINS, BECAUSE THAT IS WHAT THE BROWSER DOES — AND THIS USED TO BE
+   LAST-WINS, WHICH IS A ONE-TOKEN BYPASS OF THE WHOLE POSTURE GATE.
+   `cspDirectives.set(name, ...)` on every occurrence lets a LATER copy of a
+   directive overwrite an earlier one. CSP3 and Chromium do the opposite: the
+   FIRST occurrence of a directive name is the one enforced and every later one
+   is ignored (Chromium logs "Ignoring duplicate Content-Security-Policy
+   directive"). Measured on Extension/Full_Screen_Shot 2026-08-26, exit captured
+   on its own line, with everything else in the manifest left alone:
+
+     "script-src *; script-src 'self'; object-src 'none'; ..."
+       ->  PASS  6 more CSP directive(s) hold the intended posture
+       ->  17 passed
+       ->  EXIT 0
+
+   while the browser enforces `script-src *`. THE GATE GRADED A POLICY THE
+   BROWSER DOES NOT USE, which is the same failure as grading a smaller file set
+   than the one that ships — a true sentence about the wrong subject.
+
+   The ignored repeats are kept rather than dropped, and printed beside any
+   finding: a failure that reports `found: script-src *` over a manifest whose
+   text visibly contains `script-src 'self'` otherwise reads as a bug in the
+   checker, and a checker people think is buggy is a checker people switch off. */
+const cspDeclared = (mf.content_security_policy || {}).extension_pages;
+const cspDirectives = new Map();
+const cspIgnoredRepeats = [];
+if (typeof cspDeclared === 'string') {
+  for (const part of cspDeclared.split(';')) {
+    const bits = part.trim().split(/\s+/).filter(Boolean);
+    if (!bits.length) continue;
+    const name = bits[0].toLowerCase();
+    if (cspDirectives.has(name)) { cspIgnoredRepeats.push(bits.join(' ')); continue; }
+    cspDirectives.set(name, bits.slice(1));
   }
+}
+
+{
+  const csp = cspDeclared;
+  const directives = cspDirectives;
   const fromConnect = directives.has('connect-src');
   const effective = fromConnect ? directives.get('connect-src')
     : directives.has('default-src') ? directives.get('default-src') : null;
@@ -634,6 +668,421 @@ const allowHosts = [];
         'enforces; the CSP is what the browser enforces. They cannot name different sets.');
     } else {
       r.pass('the CSP connect-src matches policy.networkAllowlist', shown);
+    }
+  }
+}
+
+/* ---------------- 1b. THE OTHER DIRECTIVES THE BROWSER HONOURS ----------------
+
+   THE MANIFEST DECLARES SEVEN AND THIS FILE READ ONE. Measured against
+   Extension/Full_Screen_Shot on 2026-08-26, exit codes captured one per line:
+   delete img-src from the manifest -> `16 passed`, EXIT 0. Set `img-src *`,
+   which reopens exactly the thing the directive claims to close -> `16 passed`,
+   EXIT 0. Open script-src, object-src, frame-src, base-uri AND form-action all
+   the way to `*` in one edit, leaving only connect-src alone -> `16 passed`,
+   EXIT 0. The browser honours all seven; this repo verified one, so six of the
+   seven were a posture the manifest asserted and nothing checked.
+
+   WHERE THE INTENDED VALUES LIVE — ONE PLACE PER DIRECTIVE, AND connect-src IS
+   NOT ONE OF THEM
+
+   CSP_POSTURE is this project's declaration of what each directive is meant to
+   say, in the same shape as LIMITS further down: the rule written once, beside
+   the gate that enforces it. connect-src is deliberately NOT in the table. Its
+   intended value is already derived, in the block above, from tool.json's
+   policy.networkAllowlist — and a copy here would be a second answer to one
+   question, the kind that agrees on the day it is written and disagrees forever
+   after. That is not left to anybody's memory: POSTURE_ELSEWHERE is checked
+   below and this gate REFUSES TO RUN if the two ever name the same directive.
+
+   'none' IS INERT THE MOMENT ANY OTHER SOURCE SITS BESIDE IT
+
+   `img-src 'none' https://tracker.example` does not mean none: CSP3 ignores
+   'none' in a source list of length > 1, so that policy permits the tracker. A
+   check that greps for the token 'none' passes on exactly that string — the
+   prose-grep failure this file's own banner forbids, and the one the block
+   above already had to be rewritten for. So every list here is parsed into its
+   sources and the SOURCES are judged; and when 'none' is dropped as inert the
+   message says so, because a failure printed over a string that visibly
+   contains 'none' otherwise reads as a bug in the checker.
+
+   ABSENT IS NOT WIDENED, AND ABSENT IS NOT AUTOMATICALLY UNRESTRICTED
+
+   Three kinds of finding, counted apart on purpose, plus the case that is no
+   finding at all:
+     - "widened": DECLARED and permitting more than the intent -> somebody took
+       a fence down;
+     - ABSENT, and a fallback reaches it CARRYING NO MORE THAN THE INTENT -> not
+       a finding at all. An absent img-src falls back to default-src, and
+       frame-src falls back to child-src and then to default-src. `default-src
+       'self'` with no img-src is a SAFE policy, and a gate that calls it
+       unrestricted is a gate people switch off. So the fallback is resolved
+       before anything is judged;
+     - "inherited too wide": ABSENT, a fallback reaches it, and the fallback
+       permits more than the intent -> a fence borrowed from a wider one. Closed
+       either by declaring the directive or by narrowing the fallback. This is
+       the kind that used to be counted as the next one, contradicting its own
+       finding text in the same run;
+     - "absent and uncovered": ABSENT with nothing to fall back to ->
+       unrestricted, but nobody widened anything: this fence was never built,
+       and there is nothing to narrow. base-uri and form-action have NO fallback
+       — default-src does not cover them — which is the half of the CSP3 rule a
+       hand-written table gets backwards in the dangerous direction, reporting a
+       hole as covered.
+
+   WHAT THIS TABLE DOES NOT MODEL, SAID HERE BECAUSE THE GATE SAYS IT AND A
+   COMMENT THAT DISAGREES WITH THE OUTPUT IS THE DEFECT
+
+   CSP_POSTURE grades nine directives; connect-src is graded above; the browser
+   honours more than ten on an extension page. The rest — style-src and its
+   -elem/-attr children, font-src, media-src, manifest-src, child-src,
+   frame-ancestors — are NOT modelled here, and this file does not pretend they
+   are: UNMODELLED below is the list, and the gate prints it together
+   with what each one actually resolves to in the manifest being graded.
+
+   That matters on the tree this repo ships. Extension/Full_Screen_Shot's
+   manifest declares NO default-src (templates/tool/manifest.json's does), so
+   all eight names in that list fall back to nothing and are UNRESTRICTED on
+   FullShot's extension pages today. Measured 2026-08-26.
+
+   Seven of the eight are WARNED about, because one line — `default-src 'self'`
+   in manifest.json — closes all seven and changes nothing about the directives
+   graded above. frame-ancestors is the eighth
+   and is stated in the note instead: it has NO fallback in ANY manifest, so
+   "absent means unrestricted" is its permanent condition rather than this
+   tool's configuration, and it governs who may EMBED the page rather than what
+   the page loads. A warning and not a failure, because the fix is an edit to a
+   manifest this gate does not own; a warning that NAMES the seven is still a
+   truer sentence than a table that grades nine and reads as though it had
+   covered the policy.
+
+   THE UNTABLED-BUT-DECLARED CASE IS DIFFERENT AND IS A FAILURE. A directive the
+   table does not model but the manifest DOES declare used to earn a note and
+   nothing else — and note() in lib/report.mjs only console.log()s: it never
+   pushes to `warns`, never reaches the counts, and cannot move the exit code.
+   Measured 2026-08-26, against the six-entry table of that day: `default-src *`
+   added beside all six correct graded directives -> `17 passed`, EXIT 0, one
+   note. default-src is the umbrella every one of those six falls back to, so
+   that is a wildcard underneath the whole policy. Untabled declared directives
+   are now checked for sources that are not CLOSED — see CLOSED_SOURCE — and a
+   wildcard, a remote host or 'unsafe-inline' there FAILS. It is still not
+   graded against an intent: this gate has none for those directives, and
+   saying only what it checked is the point.
+
+   IT GRADES manifest.json, WHICH IS THE CHROMIUM MANIFEST. publish/
+   manifest.firefox.json deletes content_security_policy again for Gecko with an
+   RFC 7386 null member, deliberately, so the AMO build keeps the strict MV3
+   default. That is recorded in the tool's own tool.json and is not this gate's
+   subject: nothing below reads the overlay, and a Firefox package carrying no
+   CSP is not a finding here. */
+const CSP_POSTURE = [
+  { name: 'script-src', intent: ["'self'"], fallback: ['default-src'],
+    why: 'packaged script only. A remote or inline source here is the MV3 remote-code rule broken at the browser, where the scans above cannot see it.' },
+  { name: 'object-src', intent: ["'none'"], fallback: ['default-src'],
+    why: '<object>/<embed> are a plugin-shaped hole straight through every other directive.' },
+  { name: 'img-src', intent: ["'self'", 'data:', 'blob:'], fallback: ['default-src'],
+    why: 'packaged icons plus the data:/blob: URLs the capture pipeline builds. A remote image URL is a beacon that no network API appears in: it leaves the machine and carries the referrer, which is what "nothing leaves your machine" forbids.' },
+  { name: 'frame-src', intent: ["'none'"], fallback: ['child-src', 'default-src'],
+    why: 'an extension page frames nothing. A frame is a second origin running inside the trusted one.' },
+  { name: 'base-uri', intent: ["'none'"], fallback: [],
+    why: 'an injected <base> silently re-points every relative URL on the page. NOT covered by default-src.' },
+  { name: 'form-action', intent: ["'none'"], fallback: [],
+    why: 'the exfiltration path that is not a network API and that connect-src does not touch. NOT covered by default-src.' },
+  /* THE THREE BELOW EXIST BECAUSE GRADING script-src ALONE GRADES THE DIRECTIVE
+     THAT DOES NOT APPLY. Measured 2026-08-26 on Extension/Full_Screen_Shot:
+     "script-src 'self'; script-src-elem *; ..." printed `6 more CSP
+     directive(s) hold the intended posture` at EXIT 0, and Chromium prefers
+     script-src-elem over script-src for element loads — so the one the gate
+     read was the one the browser ignored. Each is absent from every manifest in
+     this repo and INHERITS script-src, which is why adding them costs no
+     manifest edit: they hold today and they bite the moment one is widened. */
+  { name: 'script-src-elem', intent: ["'self'"], fallback: ['script-src', 'default-src'],
+    why: 'Chromium PREFERS this over script-src for <script> element loads. `script-src \'self\'; script-src-elem *` is remote script executing under a script-src that still reads \'self\'.' },
+  { name: 'script-src-attr', intent: ["'self'"], fallback: ['script-src', 'default-src'],
+    why: 'preferred over script-src for inline event-handler attributes. \'self\' does not permit them; \'unsafe-inline\' or a hash does, and that widening would be invisible to a script-src-only reading.' },
+  { name: 'worker-src', intent: ["'self'"], fallback: ['child-src', 'script-src', 'default-src'],
+    why: 'a Worker is a second script context with its own fetch. Its fallback runs through child-src BEFORE script-src, so a child-src opened for framing silently opens workers too.' }
+];
+/* Directive -> where its intended value is ALREADY declared. Anything named
+   here must never appear in CSP_POSTURE. */
+const POSTURE_ELSEWHERE = new Map([
+  ['connect-src', 'tool.json policy.networkAllowlist, graded by the block above']
+]);
+
+/* THE LIMIT, WRITTEN DOWN. Directives the browser honours on an extension page
+   that CSP_POSTURE does NOT model, with the CSP3 fallback chain each one
+   actually walks. Nothing here is graded against an intent — the gate prints
+   what each resolves to and warns when the chain reaches nothing. Keeping the
+   chains here rather than in prose is the point: a fallback list in a comment
+   is a claim, and this one is executed. */
+const UNMODELLED = [
+  { name: 'style-src', fallback: ['default-src'] },
+  { name: 'style-src-elem', fallback: ['style-src', 'default-src'] },
+  { name: 'style-src-attr', fallback: ['style-src', 'default-src'] },
+  { name: 'font-src', fallback: ['default-src'] },
+  { name: 'media-src', fallback: ['default-src'] },
+  { name: 'manifest-src', fallback: ['default-src'] },
+  { name: 'child-src', fallback: ['default-src'] },
+  { name: 'frame-ancestors', fallback: [] }
+];
+
+/* Sources an untabled DECLARED directive may carry without this gate objecting:
+   none of them can reach the network or introduce code. Anything else there —
+   `*`, a host, a remote scheme, 'unsafe-inline', 'unsafe-eval' — is a source
+   the browser honours and no line in this file grades against an intent. */
+const CLOSED_SOURCE = new Set(["'self'", 'data:', 'blob:', 'filesystem:']);
+
+{
+  /* AN EMPTY TABLE IS A GATE WITH NO SUBJECT, AND IT USED TO PRINT A PASS.
+     Measured 2026-08-26: empty CSP_POSTURE, everything else untouched ->
+     `PASS  0 more CSP directive(s) hold the intended posture`, 17 passed,
+     EXIT 0 — verbatim the failure the banner at the top of this file is about,
+     and the manifest side of the same hole is already guarded twelve lines down
+     ("THIS GATE HAS NO SUBJECT, so it must not print a pass"). die() rather
+     than fail() because an empty table is a defect in THIS SCRIPT, not in the
+     tool it grades — the same class, and the same exit 2, as the duplicate
+     declaration guarded immediately below. */
+  if (!CSP_POSTURE.length) {
+    die('CSP_POSTURE is empty, so the CSP posture gate has nothing to grade.\n' +
+      'It would print "0 more CSP directive(s) hold the intended posture" and exit 0 — a pass over an\n' +
+      'empty subject, which inflates apparent coverage and is the one failure this whole file is\n' +
+      'written against. Restore the table or delete the gate; do not run it empty.');
+  }
+
+  for (const d of CSP_POSTURE) {
+    if (!POSTURE_ELSEWHERE.has(d.name)) continue;
+    die('CSP_POSTURE declares "' + d.name + '", whose intended value is already declared in ' +
+      POSTURE_ELSEWHERE.get(d.name) + '.\n' +
+      'Two declarations of one intent is the defect this table exists to avoid: they agree on the day\n' +
+      'they are written and disagree forever after, and the run then reports whichever one it read\n' +
+      'last. Delete one. This gate refuses to run rather than grade a directive twice against two\n' +
+      'expectations that are free to differ.');
+  }
+
+  /* CSP3 evaluation, not substring reading. 'none' beside any other source is
+     ignored by the browser; an empty source list matches nothing, which is what
+     'none' alone means; keywords, schemes and hosts are all ASCII
+     case-insensitive, so the comparison is done lowercased and the ORIGINAL
+     spelling is what gets printed. */
+  const sourcesOf = list => {
+    const seen = [];
+    for (const s of list) { const v = String(s).toLowerCase(); if (!seen.includes(v)) seen.push(v); }
+    if (!seen.includes("'none'")) return { sources: seen, inertNone: false };
+    if (seen.length === 1) return { sources: [], inertNone: false };
+    return { sources: seen.filter(s => s !== "'none'"), inertNone: true };
+  };
+
+  /* The directive's own list, or the first fallback that IS declared, or
+     nothing. `via` is null when the directive itself is declared. */
+  const effectiveOf = d => {
+    if (cspDirectives.has(d.name)) return { list: cspDirectives.get(d.name), via: null };
+    for (const f of d.fallback) if (cspDirectives.has(f)) return { list: cspDirectives.get(f), via: f };
+    return null;
+  };
+
+  const findings = [], held = [];
+  for (const d of CSP_POSTURE) {
+    const want = sourcesOf(d.intent).sources;
+    const wantShown = d.intent.join(' ');
+    const eff = effectiveOf(d);
+    if (!eff) {
+      findings.push({ kind: 'absent', text: d.name + ': NOT DECLARED' +
+        (d.fallback.length
+          ? ', and neither is ' + d.fallback.join(' nor ') + ', so nothing falls back to it'
+          : ', and it has NO fallback at all — default-src does not cover ' + d.name) + '.\n' +
+        '    the browser therefore permits everything here.\n' +
+        '    intended: ' + d.name + ' ' + wantShown + '\n' +
+        '    why it matters: ' + d.why });
+      continue;
+    }
+    const got = sourcesOf(eff.list);
+    const shown = (eff.via ? eff.via + ' (inherited by ' + d.name + ') ' : d.name + ' ') + eff.list.join(' ');
+    const extra = got.sources.filter(s => !want.includes(s));
+    if (!extra.length) {
+      held.push(shown +
+        (got.inertNone ? " [contains 'none', INERT here, ignored]" : '') +
+        (got.sources.length < want.length ? ' [narrower than intended, which is not a widening]' : ''));
+      continue;
+    }
+    /* THREE KINDS, NOT TWO, AND THE THIRD USED TO BE FILED UNDER THE WRONG ONE.
+       `kind: eff.via ? 'absent' : 'widened'` counted an absent-but-INHERITING
+       directive as "absent and uncovered" — while the body text two lines up
+       says "NOT DECLARED, and the <fallback> it falls back to does not cover
+       it", i.e. a fallback DID reach it. The summary line and the finding it
+       summarised contradicted each other inside one run, and the tally line
+       goes on to define "absent and uncovered" as "no fallback reaches it".
+       They are also fixed by different edits: 'inherited' is closed by
+       declaring the directive OR by narrowing the fallback; 'absent' has
+       nothing to narrow. */
+    findings.push({ kind: eff.via ? 'inherited' : 'widened', text: d.name + ': ' +
+      (eff.via
+        ? 'NOT DECLARED, and the ' + eff.via + ' it falls back to does not cover it'
+        : 'DECLARED, and it permits more than the intent') + '.\n' +
+      '    found:    ' + shown + '\n' +
+      (got.inertNone
+        ? "    NOTE:     'none' is in that list and is INERT — CSP3 ignores it beside another source,\n" +
+          '              so this policy is NOT none, whatever it reads like.\n'
+        : '') +
+      '    intended: ' + d.name + ' ' + wantShown + '\n' +
+      '    permitted and not intended: ' + extra.join(', ') + '\n' +
+      '    why it matters: ' + d.why });
+  }
+
+  /* Declared directives this table says nothing about. TWO THINGS WERE WRONG
+     HERE, AND THE FIRST IS THE ONE THAT COST A HOLE.
+
+     ONE: the only consequence was a note, and note() in lib/report.mjs merely
+     console.log()s — it never pushes to `warns`, never enters the counts, and
+     cannot move the exit code. Measured 2026-08-26 on Extension/Full_Screen_
+     Shot, exit captured on its own line: `default-src *` added beside all six
+     correct graded directives -> `17 passed`, EXIT 0, one note. default-src is
+     the umbrella every graded directive falls back to, so that wildcard sits
+     underneath the entire policy and nothing here objected. A declared
+     directive carrying a source this posture would refuse anywhere else is now
+     a FAILURE, not a line of prose.
+
+     TWO: the list did not say that a directive was read as a FALLBACK, so one
+     run printed both `child-src (inherited by frame-src) 'none'` and `declared
+     but NOT graded by CSP_POSTURE: child-src`. Both sentences are true —
+     child-src's OWN source list is graded against no intent here — but printed
+     bare they read as a contradiction, and a checker that looks self-
+     contradictory is a checker people stop reading. The attribution is now
+     printed beside the name. */
+  const gradedByTable = k => CSP_POSTURE.some(d => d.name === k) || POSTURE_ELSEWHERE.has(k);
+  const ungraded = [...cspDirectives.keys()].filter(k => !gradedByTable(k));
+  const ungradedShown = ungraded.map(k => {
+    const used = CSP_POSTURE.filter(d => {
+      const e = effectiveOf(d);
+      return e && e.via === k;
+    }).map(d => d.name);
+    return k + (used.length ? ' (read only as the fallback for ' + used.join(', ') + ')' : '');
+  });
+  const ungradedOpen = [];
+  for (const k of ungraded) {
+    const got = sourcesOf(cspDirectives.get(k));
+    const open = got.sources.filter(s => !CLOSED_SOURCE.has(s));
+    if (open.length) ungradedOpen.push({ name: k, list: cspDirectives.get(k), open, inertNone: got.inertNone });
+  }
+
+  if (cspIgnoredRepeats.length) {
+    r.note('CSP directive(s) repeated and therefore IGNORED by the browser (first occurrence wins): ' +
+      cspIgnoredRepeats.join(' · ') + ' — every verdict below is about the FIRST occurrence, which is the one enforced.');
+  }
+
+  if (typeof cspDeclared !== 'string' || cspDirectives.size === 0) {
+    r.fail('every intended CSP directive is declared and unwidened',
+      'content_security_policy.extension_pages is ' +
+      (cspDeclared === undefined ? 'not declared at all'
+        : 'not a policy this script can parse: ' + JSON.stringify(cspDeclared)) + '.\n' +
+      'THIS GATE HAS NO SUBJECT, so it must not print a pass — a guard that grades nothing and reports\n' +
+      '"ok" is the exact failure the banner at the top of this file exists about. All ' +
+      CSP_POSTURE.length + ' intended directive(s)\nare unenforced by the browser:\n' +
+      CSP_POSTURE.map(d => '  ' + d.name + ' ' + d.intent.join(' ')).join('\n') +
+      '\n\nDeclare them in manifest.json under content_security_policy.extension_pages.\n' +
+      'templates/tool/manifest.json already carries this posture, and the browser is the only thing\n' +
+      'that ENFORCES it — every scan above only asserts it.');
+  } else if (findings.length) {
+    const count = k => findings.filter(f => f.kind === k).length;
+    r.fail('every intended CSP directive is declared and unwidened',
+      findings.length + ' of ' + CSP_POSTURE.length + ' graded directive(s) do not hold — ' +
+      count('widened') + ' widened, ' + count('inherited') + ' inherited too wide, ' +
+      count('absent') + ' absent and uncovered:\n' +
+      findings.map(f => '  ' + f.text).join('\n') +
+      '\nTHOSE THREE WORDS ARE DIFFERENT FINDINGS ON PURPOSE, AND ONE OF THEM USED TO BE MISFILED.\n' +
+      '"widened" means the manifest still declares the directive and somebody made it permit more — a\n' +
+      'fence taken down. "inherited too wide" means the directive is absent and a fallback DOES reach\n' +
+      'it, carrying more than the intent — a fence borrowed from a wider one; it is closed either by\n' +
+      'declaring the directive or by narrowing the fallback. "absent and uncovered" means nothing\n' +
+      'declares it and NO fallback reaches it — a fence never built, with nothing to narrow. Until\n' +
+      '2026-08-26 the middle case was counted as "absent and uncovered", contradicting its own finding\n' +
+      'text ("the X it falls back to does not cover it") in the same run.\n' +
+      'The intended values are declared in exactly one place: CSP_POSTURE in this file. connect-src is\n' +
+      'not among them by design — it comes from tool.json policy.networkAllowlist, above.');
+  } else {
+    r.pass(CSP_POSTURE.length + ' more CSP directive(s) hold the intended posture',
+      'connect-src is graded separately, above, against policy.networkAllowlist');
+    r.note('graded: ' + held.join(' · '));
+  }
+
+  /* A DECLARED DIRECTIVE THE TABLE DOES NOT MODEL IS STILL ENFORCED BY THE
+     BROWSER. It is not graded against an intent — this gate has none for it —
+     but a wildcard, a remote host or 'unsafe-inline' there is a source no line
+     in this file vouches for, and in default-src's case it is the umbrella
+     under every graded directive. That is a failure, not a note. */
+  if (ungradedOpen.length) {
+    r.fail('every declared CSP directive outside CSP_POSTURE is closed',
+      ungradedOpen.length + ' declared directive(s) this table does not model carry sources that are not closed:\n' +
+      ungradedOpen.map(u => '  ' + u.name + ' ' + u.list.join(' ') + '\n' +
+        (u.inertNone ? "      NOTE: 'none' is in that list and is INERT — CSP3 ignores it beside another source.\n" : '') +
+        '      not closed: ' + u.open.join(', ')).join('\n') +
+      '\n\nCLOSED means a source that can neither reach the network nor introduce code: ' +
+      [...CLOSED_SOURCE].join(', ') + " (and 'none' alone).\n" +
+      'This gate holds no intent for these directives — see the NOT-modelled note below for the whole\n' +
+      'list — so it cannot say what they SHOULD permit. It can say that a wildcard or a remote host\n' +
+      'here is enforced by the browser and graded by nothing. default-src is the worst case: every\n' +
+      'directive in CSP_POSTURE falls back to it, so `default-src *` is a wildcard underneath the whole\n' +
+      'policy, and it used to print one note and exit 0.\n' +
+      'TO RESOLVE: narrow the directive, or — if this tool genuinely needs that source — add the\n' +
+      'directive to CSP_POSTURE in this file with the intent it is meant to hold, so the value is\n' +
+      'declared once and graded from then on. Turning red until the table catches up with the manifest\n' +
+      'is the direction to be wrong in: the alternative is the manifest quietly outgrowing the table,\n' +
+      'which is what this whole section exists about.');
+  }
+
+  if (ungraded.length) {
+    r.note('declared but NOT graded by CSP_POSTURE: ' + ungradedShown.join(', ') +
+      ' — checked only for sources that are not closed, never against an intent.' +
+      ' Printed because a table that falls behind the manifest it grades still prints clean.');
+  }
+
+  /* ---- THE LIMIT ----
+     The note above can only name directives the manifest DECLARES, so it is
+     structurally blind to a directive that is neither declared NOR tabled —
+     which is exactly the state that leaves one unrestricted. UNMODELLED is that
+     blind spot, written down and resolved against this manifest.
+
+     On Extension/Full_Screen_Shot this is not hypothetical: its manifest
+     declares no default-src (templates/tool/manifest.json's does), so every
+     name below falls back to nothing. Measured 2026-08-26. */
+  if (typeof cspDeclared === 'string' && cspDirectives.size) {
+    const lines = [], unrestricted = [];
+    for (const u of UNMODELLED) {
+      if (cspDirectives.has(u.name)) {
+        lines.push(u.name + ': declared (' + cspDirectives.get(u.name).join(' ') + '), checked for open sources only');
+        continue;
+      }
+      const via = u.fallback.find(f => cspDirectives.has(f));
+      if (via) { lines.push(u.name + ': absent, inherits ' + via + ' ' + cspDirectives.get(via).join(' ')); continue; }
+      lines.push(u.name + ': absent, ' +
+        (u.fallback.length ? 'and so is ' + u.fallback.join(' and ') : 'and it has NO fallback, ever') +
+        ' — UNRESTRICTED');
+      unrestricted.push(u.name);
+    }
+    r.note('NOT modelled by CSP_POSTURE, so never graded against an intent — ' + UNMODELLED.length +
+      ' directive(s): ' + lines.join(' · '));
+
+    /* frame-ancestors is excluded from the warning on purpose: it has NO
+       fallback in any manifest, so "absent means unrestricted" is its permanent
+       state rather than this tool's configuration, and it governs who may EMBED
+       the page rather than what the page loads — on extension pages only a
+       web_accessible_resources entry can be framed by a web page at all, and
+       the warning below says how many this tool declares. It is stated in the
+       note above rather than warned about. */
+    const war = Array.isArray(mf.web_accessible_resources) ? mf.web_accessible_resources.length : 0;
+    const noUmbrella = unrestricted.filter(n => n !== 'frame-ancestors');
+    if (noUmbrella.length) {
+      r.warn(noUmbrella.length + ' CSP directive(s) this gate does not model are UNRESTRICTED',
+        noUmbrella.join(', ') + '\n' +
+        'None of them is declared, none has a declared fallback, and this manifest declares NO\n' +
+        'default-src — so the browser permits everything for each of them on this tool\'s extension\n' +
+        'pages. This is a COVERAGE STATEMENT, not a regression: no gate here ever graded them, and\n' +
+        'saying so is the point. `default-src \'self\'` in manifest.json closes all ' + noUmbrella.length + ' in one line and\n' +
+        'changes nothing about the ' + CSP_POSTURE.length + ' directives graded above.\n' +
+        'A warning rather than a failure: the fix is an edit to manifest.json, the packaged-HTML gate\n' +
+        'below already refuses a remote subresource in a shipped page, and frame-ancestors — absent\n' +
+        'here too, with no fallback in any manifest — is stated in the note above instead, because ' +
+        (war ? war + ' web_accessible_resources entry/entries exist so a web page could frame them'
+             : 'this manifest declares no web_accessible_resources, so no web page can frame these pages at all') + '.');
     }
   }
 }
