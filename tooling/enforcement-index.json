@@ -732,6 +732,18 @@
   },
   {
     "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-modal-detection.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 039",
       "M-1",
       "M-12"

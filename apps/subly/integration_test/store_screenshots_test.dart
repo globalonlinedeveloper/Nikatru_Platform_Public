@@ -96,6 +96,34 @@ void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
       IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  // ⬜ THE WHOLE-FILE VERSION OF THE `hitTestable()` LIMBS BELOW, IN ONE LINE.
+  // With this true, `WidgetController.getCenter` THROWS a FlutterError at any
+  // tap whose derived offset would not hit-test onto the target, instead of
+  // printing a warning (see the seeding loop for where that warning goes and
+  // why nobody saw it). It covers all ELEVEN `tester.tap(` calls in this file,
+  // including the eight that carry no explicit reachability limb of their own,
+  // and costs nothing on a run where every target is reachable.
+  //
+  // 🔴 IT IS NOT A REPLACEMENT FOR THOSE LIMBS, AND HERE IS EXACTLY WHAT IT
+  // MISSES — three gaps, each of which has already cost this repository a run:
+  //   · `tester.enterText` NEVER TAPS. It resolves the EditableText and sets
+  //     focus directly (`WidgetTester.showKeyboard`), so an off-screen text
+  //     field still accepts text with no warning and no throw. That is the
+  //     half that let run 32961461714 type six subscriptions into a sheet it
+  //     could not submit, and this setting would not have caught one of them.
+  //   · A tap that REACHES its target and then achieves nothing — a disabled
+  //     button, a handler that swallowed, a POST that failed — is not a
+  //     hit-test miss and is invisible here. The per-row receipt is that half.
+  //   · The framework's message names an offset and a RenderBox. It cannot say
+  //     "the previous row's sheet is still up, and its barrier is over the
+  //     FAB". The `reason:` strings below are that half, and they fire BEFORE
+  //     the tap rather than inside it.
+  //
+  // Static and process-wide, so it is set here rather than in a `setUp` — this
+  // file registers one `testWidgets` and there is no other suite in the
+  // process to surprise.
+  WidgetController.hitTestWarningShouldBeFatal = true;
+
   const String email = String.fromEnvironment('E2E_EMAIL');
   const String password = String.fromEnvironment('E2E_PASSWORD');
 
@@ -400,22 +428,241 @@ void main() {
     //
     // Skipped on a demo build: SeedApiClient already holds twelve rows, and
     // adding to them proves nothing. A demo capture is a mechanism proof.
+    //
+    // ⬜ COVERAGE LOST ON `--proof`, AND THE NEW GUARDS INHERIT THE SKIP. Every
+    // limb added inside this block on 2026-08-26 — the FAB reachability check,
+    // the sheet-open check, the `ensureVisible` + submit hit-test check, the
+    // per-row receipt — is behind this same `if`. So a `--proof` run scans NONE
+    // of them and still exits 0. The skip itself is right and predates them;
+    // what was wrong was that it said so nowhere a reader would see it.
+    // `capture-play-screenshots.mjs` now PRINTS a COVERAGE LOST notice on every
+    // `--proof` run naming exactly these guards, because a notice inside this
+    // build is a notice the demo build never reaches — and because
+    // `debugPrint` from the app under `-d web-server` does not land in the step
+    // log anyway (the reason run 32961461714's missed tap went unread; see the
+    // seeding loop). The runner's stdout is the only channel that reaches a
+    // reader here.
     if (AppConfig.isBackendLive) {
       for (final List<String> row in kIllustrative) {
+        // The FAB, asked the REACHABILITY question rather than the presence
+        // one — the rule this file already states for `Skip` 200 lines up, now
+        // applied to every control the seeding loop touches. A row whose save
+        // failed leaves the sheet UP (`_save`'s catch in
+        // `add_subscription_sheet.dart` keeps the typed draft rather than
+        // throwing it away), and that sheet's barrier then covers this FAB.
+        // Without this limb the next iteration types into the STALE sheet and
+        // six iterations report nothing at all.
+        expect(
+          find.byKey(E2EKeys.fabAdd).hitTestable(),
+          findsOneWidget,
+          reason:
+              'The add FAB is not reachable before seeding "${row[0]}". The '
+              'usual cause is the PREVIOUS row: its sheet is still up because '
+              'its save failed, and the sheet covers the FAB. On screen: '
+              '${onScreen(tester)}',
+        );
         await tester.tap(find.byKey(E2EKeys.fabAdd));
         await pumpFor(tester, const Duration(seconds: 2));
+        expect(
+          find.byKey(E2EKeys.addName),
+          findsOneWidget,
+          reason:
+              'The add sheet did not open for "${row[0]}". On screen: '
+              '${onScreen(tester)}',
+        );
         await tester.enterText(find.byKey(E2EKeys.addName), row[0]);
         await tester.enterText(find.byKey(E2EKeys.addPrice), row[1]);
         await pumpFor(tester, const Duration(milliseconds: 400));
+
+        // 🔴 THE SHIP-BLOCKER, AND IT IS THE CONSENT-SCRIM CLASS AGAIN: A TAP
+        // THAT MISSES WITHOUT FAILING. Run 32961461714 (2026-08-26) failed
+        // twelve lines below this one with `Found 0 widgets with text "Video
+        // streaming"`, and nothing in this loop had thrown, because as the loop
+        // stood that day nothing in it could. (It can now — every guard below,
+        // plus the fatal hit-test setting at the top of `main`.)
+        //
+        // ⚠️ "IN SILENCE" IS WHAT THIS COMMENT SAID FIRST, AND IT WAS FALSE —
+        // the correction is kept because it names where to look next time.
+        // `tester.tap` takes `warnIfMissed`, which DEFAULTS TO TRUE
+        // (flutter_test/lib/src/controller.dart, `WidgetController.tap`), and
+        // on a miss `getCenter` prints the whole diagnosis: "…derived an Offset
+        // (…) that would not hit test on the specified widget", and — because
+        // this offset is off the render tree entirely — "Indeed, … is outside
+        // the bounds of the root of the render tree, Size(360.0, 640.0)". The
+        // framework SAYS it. The true claim is narrower: it does not say it
+        // HERE. `WidgetTester.printToConsole` routes through
+        // `binding.debugPrintOverride`, which `LiveTestWidgetsFlutterBinding`
+        // leaves as plain `debugPrint` — the APP's console, which under
+        // `flutter drive -d web-server` is the BROWSER's, not the terminal the
+        // step log is capturing. Recorded when this was diagnosed: no such
+        // warning appears anywhere in run 32961461714's 154-line step log.
+        // So — loud in a console nobody was reading, absent from the only log
+        // anybody reads, and never fatal until this suite made it fatal
+        // (`hitTestWarningShouldBeFatal`, set at the top of `main`).
+        //
+        // The genuinely silent half is `tester.enterText`, and it is why six
+        // rows were TYPED: it does not tap at all, so the two fields above
+        // accepted text while off-screen without any warning to suppress.
+        //
+        // ⛔ AND THE MEASUREMENT IS PART OF THE LESSON: the first repro of this
+        // called `tester.tap(submit.first, warnIfMissed: false)`, which
+        // SUPPRESSED the framework output it then reported as absent. An
+        // instrument that mutes the channel cannot be evidence about the
+        // channel.
+        //
+        // MEASURED on this machine at the exact geometry the phone set is
+        // photographed at — `--browser-dimension=360x640@3`, i.e. 360x640
+        // LOGICAL — by pumping the real `showAddSubscriptionSheet` and typing
+        // this suite's own two fields into it:
+        //
+        //   360x640   addSubmit in tree: 1   hitTestable: 0
+        //             rect L160.6 T800.0 R342.0 B852.0  ← 160 px BELOW the
+        //                                                 bottom of the screen
+        //             createSubscription calls after tap: 0, sheet still open
+        //   430x932   hitTestable: 1 → 1 call, sheet closes  ← the nightly
+        //                                                      E2E's window
+        //   800x1280  hitTestable: 1 → 1 call, sheet closes
+        //
+        // 🔬 THE INSTRUMENT, SO THOSE NUMBERS ARE READ FOR WHAT THEY ARE. That
+        // was a WIDGET test: the real sheet pumped over an IN-MEMORY fake
+        // client whose `createSubscription` returns immediately. So
+        // "createSubscription calls after tap: 0" is a statement about LAYOUT —
+        // the tap never reached the button, at a viewport where a reached tap
+        // demonstrably produces exactly one call — and it is NOT a statement
+        // about the Worker. A fake that answers in zero time cannot refute a
+        // slow POST, and no measurement recorded here has ever exercised the
+        // live create path's TIMING. That distinction is why the wait below is
+        // a wait and not a proof; see the receipt.
+        //
+        // So the button is IN THE TREE at every viewport — `find.byKey`
+        // matches and `tap` throws nothing — and is off the bottom of the
+        // screen at the phone one. The sheet is capped at
+        // `MediaQuery…size.height * 0.86` (550 at 640) around a column that
+        // measures ~807, and this Row is its LAST child, so on a short phone it
+        // starts below the fold. THAT IS NOT A DEFECT IN THE SHEET:
+        // `isScrollControlled: true` plus the `SingleChildScrollView` mean the
+        // height that runs out becomes SCROLL rather than clip — the six-window
+        // measurement recorded at that Row in `add_subscription_sheet.dart`
+        // (2026-08-21), which found nothing clipped and the row wholly on
+        // screen AFTER an `ensureVisible`. A user scrolls and taps. A test does
+        // not scroll unless it is told to.
+        //
+        // ⬜ AND NOTHING IN `test/` MEASURES THIS, WHICH IS WHY THE GUARD IS
+        // HERE AND NOT THERE. `width_add_sheet_test.dart` is named for this
+        // sheet and measures WIDTH only — three cases, all `getSize(...).width`
+        // — so the height that hid this button was never anybody's subject. A
+        // widget test at 360x640 asserting `find.byKey(E2EKeys.addSubmit)
+        // .hitTestable()` would see it on every push instead of on the two or
+        // three runs a year this lane gets; it belongs in `test/`, which this
+        // increment does not own.
+        //
+        // 📌 SO IT WAS HANDED OVER RATHER THAN LEFT AS PROSE. A disclosure in a
+        // comment nobody greps, in a lane that has run three times in three
+        // weeks, closes nothing. The exact case — pump `showAddSubscriptionSheet`
+        // at 360x640, expect `find.byKey(E2EKeys.addSubmit).hitTestable()` to
+        // be `findsOneWidget`, and expect it to FAIL before the `ensureVisible`
+        // that this loop now performs — was returned as this increment's
+        // unowned-file request against `apps/subly/test/width_add_sheet_test.dart`.
+        // ⬜ IF YOU ARE READING THIS AND `test/` STILL HAS NO SUCH CASE, IT WAS
+        // NEVER FILED: the guard below is the only thing measuring it, and it
+        // measures it on this lane's schedule, not on every push.
+        //
+        // 🔬 WHY NO OTHER LANE SEES IT. `integration_test/app_test.dart` drives
+        // this same sheet nightly and is green (E2E live 32928885582, 04:05Z
+        // the same morning): `e2e.yml` launches Chrome with
+        // `--window-size=430,932`, where the button is on screen. This is the
+        // only lane that runs at 360x640, and it has run three times in three
+        // weeks. Same shape as the `Dialog` detector above — correct at every
+        // size anybody ever looked at.
+        //
+        // `ensureVisible` is the fix; the assertion after it is the guard.
+        // Scrolling alone would go silent again the day the sheet is re-laid
+        // out, which is precisely how this lane lost the consent prompt.
+        //
+        // It is kept even though `hitTestWarningShouldBeFatal` (top of `main`)
+        // would now throw at the tap below on its own, because the framework's
+        // throw names an offset and a RenderBox and this one names the
+        // geometry, the run, and the fix.
+        await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+        await pumpFor(tester, const Duration(milliseconds: 400));
+        expect(
+          find.byKey(E2EKeys.addSubmit).hitTestable(),
+          findsOneWidget,
+          reason:
+              'The add sheet submit button is in the tree but a finger could '
+              'not reach it, so tapping it would create NOTHING — and in run '
+              '32961461714 it also RAISED nothing this lane could see: '
+              '`tester.tap` only warns on a miss, to the app-side console, '
+              'which `flutter drive -d web-server` does not forward here. At '
+              '360x640 it lays out at y 800-852, below the bottom of the '
+              'screen, until the sheet is scrolled. On screen: '
+              '${onScreen(tester)}',
+        );
         await tester.tap(find.byKey(E2EKeys.addSubmit));
         await pumpFor(tester, const Duration(seconds: 6));
+
+        // ── THE PER-ROW RECEIPT ──────────────────────────────────────────────
+        // The sheet pops on the SUCCESS arm of `_save` and only there, so its
+        // absence is the closest thing this suite has to a 201 from the Worker
+        // — and it names WHICH row failed, instead of leaving one assertion at
+        // the end of six silent iterations to report an empty board.
+        //
+        // ⚠️ ITS LIMIT, STATED SO IT IS NOT MIS-READ AS A VERDICT ON THE POST.
+        // What this checks is "the sheet closed inside the fixed 6 s wait",
+        // which is NOT the same proposition as "the create failed". A POST that
+        // succeeds in 7 s leaves the sheet up at the moment of the read and
+        // reds this line, and the `reason:` must not then assert a cause it did
+        // not observe — that is precisely the failure this whole increment is
+        // repairing. It is a receipt with a deadline, and both halves are load-
+        // bearing: dropping the deadline is what made the loop silent, and
+        // over-reading it is what would make the next diagnosis wrong. No
+        // measurement in this file bounds the live create latency (the numbers
+        // above came from an in-memory fake), so 6 s is a working figure
+        // inherited from the pump that was already here, not a budget anyone
+        // has verified against the Worker.
+        expect(
+          find.byKey(E2EKeys.addName),
+          findsNothing,
+          reason:
+              'The add sheet is still up 6s after submitting "${row[0]}". '
+              '`_save` pops the sheet on the SUCCESS arm and only there, so '
+              'this is either a POST that FAILED (the sheet is kept, with the '
+              'typed draft) or one that had not ANSWERED yet — this assertion '
+              'cannot tell those apart and is not claiming to. If a re-run '
+              'shows the row on Home, the create is fine and the 6s wait above '
+              'is too short. On screen: ${onScreen(tester)}',
+        );
       }
+      // ⚠️ ASSERTED WHERE IT LIES, NOT AFTER A SCROLL, AND THE DIFFERENCE FROM
+      // `app_test.dart` IS DELIBERATE. That suite scrolls before its read-back
+      // and is right to — it reads back a row it created at an arbitrary price
+      // into a lazy `ListView`. This one must not: the very next thing it does
+      // is photograph `01-home`, and a scroll here would put a mid-list frame
+      // on the store listing. It is safe BECAUSE OF WHERE THIS PARTICULAR ROW
+      // LANDS, measured rather than hoped. `SubMath.upcoming` takes the four
+      // soonest and every row seeded above renews on the same day (one monthly
+      // cycle from today, the sheet's default), so the stable sort leaves
+      // `kIllustrative.first` FIRST in the upcoming block: pumped at 360x640
+      // with these six rows its TREE position is y=507.5, inside the 640 the
+      // viewport has.
+      //
+      // ⚠️ READ THAT AS "NOT SCROLLED OUT OF THE LIST", NOT AS "A FINGER COULD
+      // REACH IT". y=507.5 is a layout coordinate and nothing here has checked
+      // it against the bottom navigation bar, which is drawn over that region.
+      // The assertion is `findsWidgets` — PRESENCE — and presence is the right
+      // question for a row that is about to be PHOTOGRAPHED rather than tapped,
+      // which is why this one carries no `hitTestable()` limb while every
+      // control above it does. Adding one here would be asserting something
+      // the capture does not need and the number does not support.
       expect(
         find.text(kIllustrative.first[0]),
         findsWidgets,
         reason:
             'The illustrative rows did not round-trip to Home, so the capture '
-            'would photograph an empty board and call it the product.',
+            'would photograph an empty board and call it the product. Every '
+            'row above was receipted individually, so reaching this line means '
+            'the sheets closed and the board still does not show them. On '
+            'screen: ${onScreen(tester)}',
       );
     }
 

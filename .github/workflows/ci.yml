@@ -1545,6 +1545,43 @@ jobs:
       - name: Every reachable surface has an accessibility sweep, and every sweep a surface
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-a11y-coverage.mjs
+      # The DPDP analytics-consent prompt covers the app on first launch, and a
+      # suite that does not answer it has every subsequent tap swallowed
+      # SILENTLY -- no exception, no warning -- then fails several lines later
+      # naming the wrong widget. All three times the run page said, byte for
+      # byte, `Found 0 widgets with text "Welcome back"`: a login-screen error
+      # for a consent-prompt problem. 2026-07-27, 2026-08-08, and 2026-08-26 on
+      # run 32947223120, the second run that lane has EVER had.
+      #
+      # Three competent corrections were made and the fourth occurrence was
+      # still available, because each was scoped to the FILE that had failed --
+      # #236 fixed app_test.dart and left store_screenshots_test.dart carrying
+      # the same line for 18 days, invisible because that lane does not run on
+      # push. So this is a rule over every .dart file under test/ and
+      # integration_test/ in BOTH roots, and not a fourth per-file correction.
+      # It does not make a fourth outage impossible and does not claim to: it
+      # makes these two shapes, in those directories, unwritable without
+      # somebody reading a failure first. The guard's header lists what it
+      # cannot see, including a poll helper hoisted outside those directories.
+      #
+      # What the three share is not a TYPE, it is a SITE: the finder was the
+      # DETECTOR of a dismissal, and a widget type is the wrong key for that
+      # question because the type is an implementation detail of the prompt
+      # while the CONTROL is its contract. `find.text('No thanks')` survived a
+      # showDialog route becoming an inline scrim; `find.byType(Dialog)` did
+      # not. `find.byType` itself stays legal -- 155 of the corpus's 329 sites
+      # are assertions, and the first thing a type-based rule would redden is
+      # the fix for this very bug.
+      #
+      # Scans BOTH roots (the app suites and the brick that stamps every future
+      # app; the brick has no Dart suite runner, so a static read is the only
+      # reading it ever gets) and refuses when a root goes missing rather than
+      # scanning a smaller corpus in silence. Carries its recorded failing case
+      # and the shipped correction as canaries, re-classified on every run.
+      # [pipeline F-10] [ADR 037 P2.6/P2.6a]
+      - name: A first-run gate is found by its CONTROL, never by its widget type
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-modal-detection.mjs
       # ── THE CLIENT MONEY RAIL ([pipeline 5]M-6/M-8/M-9/M-10/M-15) ───────────
       # Every limb here replaces an acceptance criterion that COULD NOT FAIL:
       # M-15 was satisfied by six rows of `false` (a rail dead everywhere
