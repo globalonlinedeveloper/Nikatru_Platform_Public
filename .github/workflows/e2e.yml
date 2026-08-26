@@ -347,6 +347,295 @@ jobs:
               console.log(`::error::every .mjs in ${here}/test/e2e is a library or quarantined — this step was about to run nothing and report success.`);
               process.exit(1);
             }
+            /* ── FIXTURE-COVERAGE GUARD — ADDED 2026-08-26 ──────────────────────
+               A DIFFERENT QUESTION FROM THE AUDIT BELOW, and the reason both
+               exist. The audit asks whether a quarantined SUITE is still red.
+               This asks whether a FIXTURE still reaches a suite that is
+               GRADED — and that question has been answered by hand, from
+               scratch, FOUR times in two days: once in commit 5121633s
+               message, once in redaction-claim.mjs, once in this file, once in
+               test/e2e/README.md. The four answers do not agree, and the one
+               repeated most confidently was wrong.
+
+               WHAT THE HAND DERIVATIONS GOT WRONG, and what this guard has to
+               model to avoid repeating it: fixtures-adv/frame-pii.html was
+               recorded three times as a page shape that has NEVER had a
+               grader. It is not a page shape. Nothing navigates to it. It is
+               the CHILD DOCUMENT that late-frame.html, object-door.html and
+               shadow-closed-frame.html load, and object-door.html carries no
+               PII OF ITS OWN — every PII token in its capture comes from
+               frame-pii.html. The host page has plenty of text of its own (a
+               nav, an h1, THREE h2s and THREE filler paragraphs, counted in
+               the file and not from memory) and none of it is PII, which is
+               the whole reason the fixture is shaped that way.
+               object-door.html is registered by TWO wired suites, so
+               frame-pii is LOADED AND CAPTURED inside runs those two suites
+               grade — the only way it is ever used, and the reason it is not
+               on the baseline below. THAT IS NOT A CLAIM THAT ITS CONTENT IS
+               ASSERTED. Nothing asserts it; see limitation (1). A
+               filename-level parse cannot see any of this, and all four hand
+               derivations were filename-level parses. So this guard resolves
+               parents: a shape LOADED by a shape that reaches a wired suite is
+               counted as reaching one too, transitively.
+
+               THE OTHER DIRECTION IS WHY IT REDDENS THE JOB RATHER THAN ONLY
+               WARNING. A fixture added with no grader costs nothing today and
+               is invisible tomorrow; the eight-that-are-seven went three
+               derivations without anybody noticing. The baseline below is the
+               set that reaches no wired suite TODAY, and it is a CEILING, not
+               a target: the guard reddens when the set GROWS, and prints a
+               notice when it shrinks so the list is trimmed in the same commit
+               rather than drifting into a lie the way the quarantine did. IT
+               DOES NOT EXIT WHERE IT FINDS THAT — the finding is held and
+               cashed at the END of this step, after the suites have run. The
+               argument for holding it is written where the holding happens.
+
+               IT DOES NOT CLOSE ANY HOLE. Nothing here grades anything. It
+               only makes the hole countable and makes growing it loud. A shape
+               on the baseline is a shape NOBODY IS GRADING, and the list is
+               meant to be emptied by writing tests, never by editing the list.
+
+               WHAT IT CANNOT SEE, written down so nobody derives it a fifth
+               time.
+
+               (1) A suite that REGISTERS a shape and grades nothing on it —
+               registration is the strongest signal available to a static parse
+               and it is not the same as coverage. THE TRANSITIVE LIMB INHERITS
+               THAT LIMIT AND SHARPENS IT, so read this before quoting the word
+               GRADED out of the listing below. frame-pii.html counts as GRADED
+               because object-door.html loads it and two wired suites run
+               object-door.html. NOTHING ASSERTS A WORD ABOUT THE PII THAT
+               FRAME-PII CONTRIBUTES. The object-door row in
+               reduction-corpus.mjs (line 210 of that file) carries no det, its
+               gone and kept maps are both empty so the pixel grader returns
+               before it ever looks at the image, and its visible: 6 is
+               consumed only by note(...) — and NOTE IS NOT GRADED, which is
+               this step in its own words about the quarantine audit below.
+               GRADED here means REACHES A GRADED SUITE. It has never meant
+               ITS CONTENT IS ASSERTED.
+
+               (2) A shape loaded by a URL this parse cannot resolve. A quoted
+               value IS resolved against the directory of the fixture that
+               loads it, ../ and all, so a cross-directory parent is seen. A
+               URL built from a variable is not, and the child is then reported
+               UNGRADED — a FALSE RED rather than a blind spot, because a
+               child that drops out of the covered set GROWS the ungraded set.
+               No fixture in this directory builds one today; that was
+               measured, not assumed.
+
+               (3) Whether a wired suite is asking a useful question at all;
+               the quarantine list is full of suites that grade a design
+               deleted under them.
+
+               (4) Coverage this workflow is not looking at on this run.
+               UNGRADED_BASELINE is keyed on dir and filtered by SUITE_DIR
+               below, exactly as QUARANTINE is, so each matrix leg judges its
+               own tool directory and no other. THE COST OF THAT, SAID PLAINLY:
+               a tool directory with NO baseline entry thereby asserts that
+               nothing in it is ungraded, so the first run over a new tool that
+               has an ungraded fixture reddens and names it. That is the guard
+               working rather than misfiring, and it is loud rather than
+               silent — but it is a red somebody has to answer with a baseline
+               entry. AN EARLIER DRAFT OF THIS VERY LIST SAID THE OPPOSITE OF
+               THE TRUTH: it claimed everything here was scoped to SUITE_DIR
+               while the baseline was a flat GLOBAL array. It was not scoped,
+               and the consequence was not blindness but a hard red carrying a
+               nonsense message. Measured with SUITE_DIR pointed at a trivial
+               second tool directory: exit 1, ::error:: the ungraded baseline
+               names fixtures/clipped-ancestor.html … which is not a fixture in
+               Extension/Second_Tool/test/e2e any more — fifteen
+               Full_Screen_Shot fixture names read out at a directory that
+               never held one of them.
+
+               (5) A load hidden inside an HTML comment WOULD have counted, in
+               an earlier draft, because the .mjs sources went through
+               decomment() and the fixture HTML did not — the same disease
+               decomment exists to cure, one file type over. Fixture HTML is
+               now stripped of comments before parents are matched. Measured:
+               no fixture in this directory carries a commented-out src= or
+               data= today, so the strip moves no number below, and it is there
+               so that it cannot start to.
+
+               (6) WHEN any of this is caught, which is NOT the commit that
+               breaks it. This workflow is weekly / dispatch / run-e2e label,
+               and its own header says it never blocks a PR by default. So
+               fails the job means the job it runs in: a newly ungraded fixture
+               is caught on the next Monday run, or the moment somebody
+               dispatches this workflow or labels a PR — and not before. */
+            /* EVERY ENTRY CARRIES ITS dir, exactly as a QUARANTINE entry does,
+               and the list is filtered by SUITE_DIR below. It was a flat GLOBAL
+               array of ids until this was written, which is a scope break the
+               comment above used to describe backwards; the measurement is in
+               limitation (4). */
+            const UNGRADED_BASELINE = [
+              /* fixtures/ — the only suite registering these three is
+                 redaction-claim.mjs, quarantined. Retiring it orphans them
+                 outright; that cost is recorded in its quarantine entry. */
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures/clipped-ancestor.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures/input-values.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures/svg-text.html" },
+              /* fixtures/ — the review pair. NOT named nowhere before today,
+                 which an earlier draft of this comment said and the same
+                 checkout disproves: the review-keyboard quarantine entry above
+                 names review-tall.html and its whole measurement, and
+                 test/e2e/README.md carried a passage on both fixtures before
+                 any of this landed. What is new is only that they are COUNTED
+                 — no coverage derivation before today put either of them on a
+                 list of shapes nothing grades. Their only suite is
+                 review-keyboard.mjs, quarantined, so wiring that one suite
+                 closes both at once. */
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures/review-tall.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures/review-tall-clean.html" },
+              /* fixtures-adv/ — SEVEN, not the eight recorded three times.
+                 frame-pii.html is off this list because it is a child document
+                 of object-door.html, which two wired suites register — off it
+                 for REACHING a graded suite, not for having its content
+                 asserted; see limitation (1). These seven are top-level shapes
+                 whose only registration is adversarial-claim.mjs,
+                 quarantined. */
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/canvas-combo.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/cv-tabs.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/honest-article.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/honest-pii.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/late-frame.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/late-swap.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/shadow-closed-frame.html" },
+              /* fixtures-verify/ — named in privacy-verify.mjs, which is the
+                 suite that runs them, and in no coverage record before today.
+                 That suite is quarantined on a FIXTURE defect (canvas-pii B2),
+                 so these three are the cheapest on this list to win back. */
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-verify/race-pii.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-verify/wrap-cancel.html" },
+              { dir: "Extension/Full_Screen_Shot", id: "fixtures-verify/wrap-covered.html" }
+            ];
+            const baseline = UNGRADED_BASELINE.filter(b => b.dir === here).map(b => b.id);
+            /* Comments are stripped before anything is matched, because this
+               directory writes its findings in enormous prose headers naming
+               every fixture they discuss — a grep counts those and a parse must
+               not. Line comments go only when the two slashes are not preceded
+               by a colon, so a URL scheme survives. */
+            const decomment = s => {
+              let o = "", i = 0;
+              while (i < s.length) {
+                if (s[i] === "/" && s[i + 1] === "*") { const e = s.indexOf("*/", i + 2); i = e < 0 ? s.length : e + 2; o += " "; continue; }
+                if (s[i] === "/" && s[i + 1] === "/" && s[i - 1] !== ":") { const e = s.indexOf("\n", i); i = e < 0 ? s.length : e; o += " "; continue; }
+                o += s[i++];
+              }
+              return o;
+            };
+            /* The apostrophe is BUILT rather than typed: this whole step is a
+               node -e inside a single-quoted shell string. */
+            const QUOTES = [String.fromCharCode(34), String.fromCharCode(39), String.fromCharCode(96)];
+            const SHAPE = /\.(html|txt)$/;
+            const fixDirs = fs.readdirSync(".", { withFileTypes: true })
+              .filter(d => d.isDirectory() && /^fixtures(-|$)/.test(d.name)).map(d => d.name).sort();
+            const shapes = [];
+            for (const fd of fixDirs)
+              for (const f of fs.readdirSync(fd).filter(n => SHAPE.test(n)).sort())
+                shapes.push({ dir: fd, file: f, id: fd + "/" + f, base: f.replace(SHAPE, "") });
+            /* Whitespace is removed so the idioms match however a suite wraps
+               its table. Fixture names contain none. */
+            const flat = new Map(all.map(f => [f, decomment(src.get(f)).replace(/\s+/g, "")]));
+            /* The four registration idioms this directory actually uses: a
+               quoted filename (BASE + a quoted x.html), a fixture( call keyed
+               by name, a { name: ... , url: ... } row, and a [ name, URL, ... ]
+               tuple. The last three exist because redaction-claim.mjs builds
+               its URL from the name, so a filename-only parse reports NONE for
+               seventeen shapes it actually runs. */
+            const registers = (body, sh) => QUOTES.some(q =>
+                 body.includes(q + sh.file) || body.includes("/" + sh.file)
+              || body.includes("fixture(" + q + sh.base + q)
+              || body.includes("name:" + q + sh.base + q)
+              || body.includes("[" + q + sh.base + q + ","));
+            /* A PARENT is a fixture that LOADS this one — src= or data= only.
+               href= is excluded deliberately: a link is not in the picture. An
+               earlier draft matched any mention of the filename and marked
+               review-tall.html graded because canvas-pii.html discusses it in a
+               comment, which is the same disease as the grep — so HTML comments
+               go FIRST here, the way decomment() already treats the .mjs
+               sources. Leaving fixture HTML uncommented while stripping .mjs
+               was an asymmetry that would have marked a child graded off a
+               commented-out tag; no fixture here carries one today.
+               THE VALUE IS RESOLVED, not compared as a bare filename: it is
+               joined onto the directory of the fixture that loads it and ../
+               is walked, so a cross-directory parent is seen. The earlier draft
+               matched only a bare or ./ filename and only within ONE directory,
+               so src=../fixtures/x.html would have left x.html reported
+               UNGRADED — a FALSE REGRESSED rather than a missed cover. */
+            const LOADS = new RegExp("(?:src|data)=([" + QUOTES.join("") + "])([^" + QUOTES.join("") + "]+)", "g");
+            const uncomment = t => t.replace(/<!--[\s\S]*?-->/g, " ");
+            const resolveRef = (fromDir, ref) => {
+              const bare = ref.split("#")[0].split("?")[0];
+              if (!bare || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(bare) || bare.startsWith("/")) return null;
+              const out = [];
+              for (const seg of (fromDir + "/" + bare).split("/")) {
+                if (!seg || seg === ".") continue;
+                if (seg === "..") { if (!out.length) return null; out.pop(); continue; }
+                out.push(seg);
+              }
+              return out.join("/");
+            };
+            const text = new Map(shapes.map(sh => [sh.id, uncomment(fs.readFileSync(sh.dir + "/" + sh.file, "utf8")).replace(/\s+/g, "")]));
+            const loadsOf = new Map(shapes.map(sh => [sh.id, new Set(
+              [...text.get(sh.id).matchAll(LOADS)].map(m => resolveRef(sh.dir, m[2])).filter(Boolean))]));
+            for (const sh of shapes) {
+              sh.by = all.filter(f => registers(flat.get(f), sh));
+              sh.wired = sh.by.filter(f => suites.includes(f));
+              sh.parents = shapes.filter(p => p !== sh && loadsOf.get(p.id).has(sh.id));
+            }
+            const covered = new Set(shapes.filter(s => s.wired.length).map(s => s.id));
+            for (let pass = 0; pass < shapes.length; pass++) {
+              let grew = false;
+              for (const sh of shapes)
+                if (!covered.has(sh.id) && sh.parents.some(p => covered.has(p.id))) { covered.add(sh.id); grew = true; }
+              if (!grew) break;
+            }
+            /* A guard clause that scans nothing reports COVERAGE LOST, never ok
+               — the rule the SUITE_DIR check above already follows. */
+            if (!fixDirs.length || !shapes.length) {
+              console.log(`::error::fixture-coverage guard COVERAGE LOST — ${fixDirs.length} fixture director(y/ies) and ${shapes.length} shape(s) found in ${here}/test/e2e. It graded nothing and must not certify anything.`);
+              process.exit(1);
+            }
+            const ungraded = shapes.filter(s => !covered.has(s.id)).map(s => s.id);
+            const known = new Set(baseline);
+            const grown = ungraded.filter(id => !known.has(id));
+            const shrunk = baseline.filter(id => !ungraded.includes(id));
+            const phantom = baseline.filter(id => !shapes.some(s => s.id === id));
+            console.log(`::group::fixture coverage — ${shapes.length} shape(s) across ${fixDirs.join(" ")}`);
+            for (const sh of shapes)
+              console.log(`fixture-coverage ${covered.has(sh.id) ? "GRADED  " : "UNGRADED"}  ${sh.id}  wired=[${sh.wired.join(" ") || "-"}]  registered=[${sh.by.join(" ") || "-"}]  loaded-by=[${sh.parents.map(p => p.file).join(" ") || "-"}]`);
+            console.log("::endgroup::");
+            console.log(`fixture-coverage ${shapes.length} shape(s), ${suites.length} wired suite(s), ${mine.length} quarantined — ${ungraded.length} reach no wired suite (baseline ${baseline.length} for ${here}, of ${UNGRADED_BASELINE.length} recorded across all directories)`);
+            /* ── WHY THESE TWO REDS ARE HELD HERE AND CASHED AT THE END ──────
+               EVERY OTHER pre-loop process.exit(1) in this step is a THIS STEP
+               CANNOT TELL WHAT IT IS DOING condition: SUITE_DIR empty, a
+               package.json script naming a file the classifier lost, nothing
+               left to run, no fixture directory found at all. A guard in that
+               state must not certify anything, so it stops.
+               COVERAGE BOOKKEEPING IS NOT THAT CONDITION. The step can run all
+               six wired suites and all four quarantine audits perfectly with
+               one new ungraded fixture sitting in the tree, and an exit here
+               would spend the entire test run of the product to report a stale
+               list. It was measured doing exactly that: one new ungraded
+               fixture dropped in, ZERO e2e-suite lines in the log, exit 1.
+               So both findings are PRINTED here, where the coverage group is
+               and where they are cheap to read, and CASHED at the end of the
+               step beside the suite failures. The job still goes red on either
+               one; nothing is downgraded to a warning. COVERAGE LOST above
+               stays fatal and stays where it is, because that one really is
+               the cannot-tell condition. */
+            const coverageRed = [];
+            if (phantom.length) {
+              coverageRed.push(`the ungraded baseline for ${here} names ${phantom.join(", ")}, which is not a fixture there any more`);
+              console.log(`::error::the ungraded baseline names ${phantom.join(", ")}, which is not a fixture in ${here}/test/e2e any more. Delete the entry with the fixture — a coverage note that outlives its subject is how a hole stops being visible. The suites still run; this reddens the job at the end of this step.`);
+            }
+            if (shrunk.length) {
+              console.log(`::notice::fixture-coverage IMPROVED — ${shrunk.join(", ")} now reach a wired suite. Remove them from UNGRADED_BASELINE in the same commit that wired them, so the list keeps meaning what it says.`);
+            }
+            if (grown.length) {
+              coverageRed.push(`fixture-coverage REGRESSED — ${grown.join(", ")} reach no wired suite and are not on the baseline for ${here}`);
+              console.log(`::error::fixture-coverage REGRESSED — ${grown.join(", ")} reach no wired suite and are not on the baseline for ${here}. Either wire a suite over the shape or, if it is genuinely ungraded, add it to UNGRADED_BASELINE with its dir and the reason beside it. Adding it silently is how the last seven got there. The suites still run; this reddens the job at the end of this step.`);
+            }
             /* THE AUDIT AT THE END SPENDS ONLY WHAT THE WIRED SUITES DID NOT.
                Half of the 75-minute job backstop is reserved for npm ci and the
                Chromium download — that is the basis the timeout comment on this
@@ -499,7 +788,10 @@ jobs:
             if (audited.contradicted.length) {
               console.log(`::error::the quarantine is out of date: ${audited.contradicted.join("; ")}. An entry here is a MEASUREMENT saying the suite is red, and this one just passed. Re-measure it, then either wire the suite and retire the entry IN WRITING beneath the original sentence, or append the number that keeps it here. Editing the sentence above it is not one of the options.`);
             }
-            if (failed.length || audited.contradicted.length) process.exit(1);
+            if (coverageRed.length) {
+              console.log(`::error::fixture coverage is red, and it is cashed HERE rather than where it was found so that finding it cost nothing but the tick: ${coverageRed.join("; ")}.`);
+            }
+            if (failed.length || audited.contradicted.length || coverageRed.length) process.exit(1);
             console.log(`${suites.length} e2e suite(s) ran, all green${mine.length ? ` — and ${mine.length} quarantined suite(s) were re-run but NOT graded: ${audited.stands.length} still red as recorded, ${audited.unverified.length} unverified` : ` — the quarantine list for ${here} is empty, which is the goal`}`);
           '
 
