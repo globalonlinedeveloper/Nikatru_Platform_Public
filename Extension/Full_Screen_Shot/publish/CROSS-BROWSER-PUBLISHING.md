@@ -316,11 +316,41 @@ bare, on Node **v24.18.0**, with the exit code read on its own line.
 | `node publish/verify-firefox-package.node.js --zip <scratch>/fullshot-1.10.2-firefox.zip` | **0** | `ALL PASS` — including `packaged background.js guards importScripts` and `no test/dev/scratch files in the package` |
 | `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` (from the repo root) | **0** | `6 passed`; `85 file(s) to pack — manifest included, 55 locale catalogue(s)`; `firefox manifest — publish/manifest.firefox.json applied as a merge patch — gecko.id fullshot@nikatru.com` |
 | `node scripts/verify-refs.mjs --zip <scratch>/fullshot-firefox.zip --strict --leaks` | **0** | `4 passed · 1 warning(s)` |
-| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)` — including `the Firefox add-on id is set — fullshot@nikatru.com -- and agrees with publish/identity.json` |
+| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)` — including `the Firefox add-on id is set — fullshot@nikatru.com -- and agrees with publish/identity.json` ⚠️ **UPDATED 2026-08-26** — now `16 passed`, **no warnings**, EXIT **0**. `manifest.json` gained `content_security_policy.extension_pages`, closing the CSP `connect-src` warning this row counted. The add-on id clause is unchanged and still passes. See the note below the table: this is the Firefox walkthrough, and the new CSP is the one thing on this page that does **not** reach the Gecko package. |
 | `node scripts/check-version.mjs fullshot` | **0** | `3 passed` — `CHANGELOG top entry is [1.10.2]`, and `publish/manifest.firefox.json is an overlay — it does not restate the version, so it cannot drift from it` |
 | `node scripts/run-tests.mjs fullshot` | **0** | `12 passed` |
 | `node publish/package.node.js` (the full build, run in a **scratch `git worktree` copy** so no zip lands in `publish/`) | **0** | `ALL PASS — packaging + reference integrity`; `85 files` byte-identical to the tree, for both targets |
 | `node publish/package.node.js --verify` | **1** | ⚠️ **read the print, not the code.** `2 FAIL — packaging + reference integrity`, and both FAILs are the same one: `FAIL package exists — …publish/fullshot-1.10.2.zip` / `…-firefox.zip`. `--verify` grades zips it does not build, and **no zip exists in `publish/` on a fresh checkout** (A.2, row 2). This is what a tree with no build output makes it say; it is not a statement about any artifact. Build first — or run the bare form above, which builds — and it exits 0. |
+
+⚠️ **APPENDED 2026-08-26 — §A.1 above stands as written and is left verbatim as the 2026-08-25
+record.** The `policy-check` row is stale: the command now prints **`16 passed`, no warnings, EXIT 0**,
+re-measured 2026-08-26 with the exit code read on its own line.
+
+🔴 **THE CHANGE THAT CLOSED THAT WARNING IS DELIBERATELY ABSENT FROM THE FIREFOX PACKAGE, and on this
+page that is the headline rather than a footnote.** `manifest.json` now declares
+`content_security_policy.extension_pages` with `connect-src 'none'`. `publish/manifest.firefox.json`
+**deletes it again for Gecko** with an RFC 7386 `null` member — `"content_security_policy": null` — so
+the AMO build keeps the strict MV3 default. That is a decision, not an oversight:
+`publish/verify-firefox-package.node.js` asserts `no content_security_policy override`, and the `null`
+member is what keeps that gate honest instead of relaxing it to admit a new key. Measured on the built
+package: the Chromium manifest has **15** top-level keys and carries the CSP; the Gecko manifest read
+back out of the zip has **14**, and `'content_security_policy' in manifest` is **false**.
+
+**So a Firefox reviewer must not be told that the browser enforces the zero-network claim.** Under Gecko
+nothing this project ships restricts a `fetch()` from a FullShot extension page, and the claim rests on
+the source scan alone. Two limits, both measured:
+
+- **CHROMIUM ONLY.** The `null` member above is why. Counting the surface x browser grid — the 8
+  extension pages, `background.js`, and `content/capture.js` + `content/region.js` +
+  `content/frame-expand.js`, across Chromium and Firefox — **two of the six cells** are backed by the
+  browser, and both are Chromium cells.
+- **SIX OF THE SEVEN DECLARED DIRECTIVES ARE GATED BY NOTHING HERE.** The policy declares `script-src`,
+  `object-src`, `img-src`, `connect-src`, `frame-src`, `base-uri` and `form-action`.
+  `scripts/policy-check.mjs:589-607` is the only site in this repo that reads a directive off this
+  manifest, and it reads `connect-src` only — deleting `img-src`, or setting it to `*`, leaves the gate
+  at `16 passed` EXIT 0. The browser honours all seven; this repo verifies one. And `extension_pages`
+  does not govern content scripts in either browser.
+
 
 ## A.2 Claims in this document that are FALSE today
 

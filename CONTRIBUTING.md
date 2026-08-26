@@ -343,7 +343,7 @@ characters against the store's 132-character cap (recorded in its own `tool.json
 | Command | Exit | What it printed |
 | --- | --- | --- |
 | `node scripts/lint.mjs fullshot` | **0** | — |
-| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)`, including `name/short_name/description within store limits — checked across all 55 locale(s)` |
+| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)`, including `name/short_name/description within store limits — checked across all 55 locale(s)` ⚠️ **UPDATED 2026-08-26** — now `16 passed`, no warnings, EXIT **0**: `manifest.json` gained `content_security_policy.extension_pages` and that closed the CSP `connect-src` warning. Re-measured 2026-08-26. See the appended note below the next table for the two limits that go with it. |
 | `node scripts/check-version.mjs fullshot` | **0** | `3 passed` |
 
 The description is **111** characters, not 137 — count it yourself with
@@ -362,12 +362,47 @@ for `fullshot`, bare, exit code on its own line:
 | Command | Exit | What it printed |
 | --- | --- | --- |
 | `node scripts/lint.mjs fullshot` | **0** | `1 passed` — `26 file(s) parse` |
-| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)` — the warning is the absent CSP `connect-src`, a second barrier that is wanted and not a defect |
+| `node scripts/policy-check.mjs fullshot` | **0** | `15 passed · 1 warning(s)` — the warning is the absent CSP `connect-src`, a second barrier that is wanted and not a defect ⚠️ **UPDATED 2026-08-26** — now `16 passed`, no warnings, EXIT **0**. The barrier is no longer absent, so this cell's premise is discharged: `manifest.json` declares `connect-src 'none'` and there is nothing left to want. Note below. |
 | `node scripts/check-version.mjs fullshot` | **0** | `3 passed` |
 | `node scripts/run-tests.mjs fullshot` | **0** | `12 passed` — zero `FAIL` lines across the whole run |
 | `node scripts/check-core-sync.mjs fullshot` | **0** | `1 passed` — `this tool vendors no core … consistent` |
 | `node scripts/check-store-metadata.mjs fullshot` | **0** | prints the empty-screenshots note as **owner work** and exits 0 rather than blocking |
 | `node scripts/check-store-packages.mjs fullshot` | **0** | `5 passed` |
+
+⚠️ **APPENDED 2026-08-26 — both `policy-check` rows above stand as written and were true when they
+were measured; the correction is recorded here rather than folded into them.** `manifest.json` now
+declares `content_security_policy.extension_pages`, so the CSP `connect-src` warning both rows name is
+**closed**: `node scripts/policy-check.mjs fullshot` prints `16 passed`, no warnings, EXIT **0**,
+re-measured 2026-08-26 with the exit code read on its own line. The row above calls that warning *"a
+second barrier that is wanted and not a defect"* — the barrier now exists, so that sentence has nothing
+left to want.
+
+🔴 **Do not read `16 passed` as more coverage than it buys.** Two limits are measured and both belong
+beside any sentence claiming the browser enforces the zero-network claim:
+
+- **Chromium only.** `publish/manifest.firefox.json` deletes the key again for Gecko with an RFC 7386
+  `null` member, deliberately: the AMO build stays on the strict MV3 default and the Firefox package
+  carries no `connect-src` at all. Counting the surface x browser grid — the 8 extension pages,
+  `background.js`, and `content/capture.js` + `content/region.js` + `content/frame-expand.js`, across
+  Chromium and Firefox — **two of the six cells** are backed by the browser. Firefox users rely on the
+  source scan alone.
+- **One of the seven declared directives is gated here.** The policy declares `script-src`, `object-src`,
+  `img-src`, `connect-src`, `frame-src`, `base-uri` and `form-action`. `scripts/policy-check.mjs:589-607`
+  is the only site in this repo that reads a directive off this manifest, and it reads `connect-src`
+  only — deleting `img-src`, or setting it to `*`, leaves the gate at `16 passed` EXIT 0. The browser
+  honours all seven; this repo verifies one. And `extension_pages` does not govern content scripts
+  in either browser.
+
+Also stale in the 2026-08-25 block above, found by sweeping this file rather than by being told, and
+corrected here for the same append-never-rewrite reason: the line **"`CHANGELOG.md` exists: 12874
+bytes"** (~line 352). It was 12874 when measured on 2026-08-25 and it is not now — `wc -c
+Extension/Full_Screen_Shot/CHANGELOG.md` → **20984** on 2026-08-26. It had already grown to **18415**
+before today's CSP work, when the two privacy fixes were appended to the `[1.10.2]` entry, and this
+change added the `### Security` entry beside them. The claim the sentence is making — that the file
+exists, which is why the old `absent.CHANGELOG.md` entry was retired — is still true; only the byte
+count moved. ⚠️ `docs/ARCHITECTURE.md:284` carries the same **12874** figure and is **not corrected
+here**: that file is not owned by this change.
+
 
 ⚠️ **Read `check-store-metadata`'s print, not its silence.** It exits 0 while telling you
 `store/_shared/screenshots holds no images yet`. That is a real, unfinished submission prerequisite

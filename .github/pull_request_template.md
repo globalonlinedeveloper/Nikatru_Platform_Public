@@ -59,7 +59,7 @@ node scripts\verify-refs.mjs --zip dist\<id>-chromium.zip --strict --leaks
 
 - [ ] **No build step.** Clone → load unpacked → it runs. (A per-tool bundler is an opt-in with its own `tool.json` `build` block, never a repo-wide requirement.)
 - [ ] **No runtime dependency.** Nothing from npm ends up inside a shipped zip.
-- [ ] **No network.** No `fetch` / `XMLHttpRequest` / `WebSocket` / `sendBeacon` / remote `src` in any packaged file. These extensions collect no analytics; `tool.json` → `policy.networkAllowlist` is the machine-readable form of that claim, and the gate must read the packaged bytes rather than grep the prose — the only current "hit" in FullShot is a comment saying there are none.
+- [ ] **No network.** No `fetch` / `XMLHttpRequest` / `WebSocket` / `sendBeacon` / remote `src` in any packaged file. These extensions collect no analytics; `tool.json` → `policy.networkAllowlist` is the machine-readable form of that claim, and the gate must read the packaged bytes rather than grep the prose — the only current "hit" in FullShot is a comment saying there are none. On **Chromium** the manifest CSP (`connect-src 'none'`) additionally backs this for extension pages and the service worker, but **not** for the three `content/` scripts — `extension_pages` does not govern them. On **Firefox** neither half is browser-backed: the Gecko package ships no CSP at all, by design, so the claim there rests on the source scan alone.
 - [ ] **Nothing forbidden committed:** secrets, `.pem`/`.key`, `node_modules/`, generated `out/`, built zips, third-party screenshots.
 - [ ] Signed off (`git commit -s`).
 

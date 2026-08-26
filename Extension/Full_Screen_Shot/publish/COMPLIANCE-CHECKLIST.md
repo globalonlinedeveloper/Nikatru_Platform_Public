@@ -25,7 +25,7 @@ this file is the short version; those two are the working documents.
 the i18n phase — the 55 `_locales/<lang>/messages.json` files, which are now
 part of the package (the `test/`, `Reference/`, `i18n/` and `*.md` trees are
 excluded from the package and from these claims). Findings:
-- **Zero network calls** — no `fetch`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`, or `EventSource` anywhere. (The only "fetch" strings are code comments.)
+- **Zero network calls** — no `fetch`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`, or `EventSource` anywhere. (The only "fetch" strings are code comments.) **Since 2026-08-26 the browser enforces this too on CHROMIUM, and not only this audit — on FIREFOX it does not, and the source scan is still the whole fence there (§B.1.4)** — `manifest.json` declares `content_security_policy.extension_pages` with `connect-src 'none'`. Read **§B.1** before leaning on that sentence: it states exactly what the directive does and does **not** reach, and content scripts are outside it.
 - **Zero remote code** — every `importScripts(...)` and `<script src>` is a local relative path (`pages/db.js`, `pages/batch.js`, `common.js`, etc.). No CDN, no `eval`, no `new Function`, no WASM.
 - **Zero analytics / telemetry / ads.**
 - **Only external URLs in code** are two string guards in `popup.js` (`chromewebstore.google.com` / `chrome.google.com/webstore`, used to detect uncapturable protected pages) and placeholder text — none are network endpoints.
@@ -41,7 +41,7 @@ excluded from the package and from these claims). Findings:
 | A1 | `manifest_version: 3` | ✅ | `manifest.json` line 2 |
 | A2 | Background is a service worker (no persistent page) | ✅ | `"background": { "service_worker": "background.js" }` |
 | A3 | **No remotely hosted code** (the core MV3 rule) | ✅ | Audit: all scripts local; no remote import/fetch/eval/WASM |
-| A4 | Default MV3 Content Security Policy (no `unsafe-eval`, no remote script) | ✅ | No `content_security_policy` override in `manifest.json` → strict MV3 default applies |
+| A4 | Default MV3 Content Security Policy (no `unsafe-eval`, no remote script) | ✅ | No `content_security_policy` override in `manifest.json` → strict MV3 default applies ⚠️ **SUPERSEDED 2026-08-26** — see **§B.1**: `manifest.json` now declares an explicit `content_security_policy.extension_pages`. It is **stricter than the MV3 default in six directives, identical in one (`script-src`) and looser in none**, so what A4 actually requires (no `unsafe-eval`, no remote script) still holds — `script-src 'self'` is now stated rather than inherited. ⚠️ **That sentence describes the CHROMIUM package only.** The Firefox package deliberately carries **no** `content_security_policy` at all, so A4 as originally written stays literally true of the Gecko build — see **§B.1.4**. |
 | A5 | No developer `key` or self-hosted `update_url` in manifest | ✅ | Neither field present — clean for CWS upload |
 | A6 | Icons 16/32/48/128 all present and packaged | ✅ | `icons/` has all four; referenced in `icons` + `action.default_icon` |
 | A7 | `minimum_chrome_version` declared | ✅ | `"116"` (optional but good practice; MV3 + optional host perms supported). Chrome/Edge only — deliberately **absent** from `publish/manifest.firefox.json`, where Gecko's `strict_min_version: "128.0"` does the job |
@@ -422,7 +422,7 @@ Each exit code captured on its own line, not printed beside a command substituti
 
 | Command | Exit |
 |---|---|
-| `node scripts/policy-check.mjs fullshot` | **0** — `15 passed`, and it also prints warning(s). **The warning count is deliberately not written down here** — `policy-check.mjs` is being edited to retire a false-positive locale warning, so the same command can honestly print a different number depending on merge order. Read the run. `tool.json` `NOTES."gate status today"` says the same and names the standing one (no CSP `connect-src`). `EXIT 0` is the stable fact. |
+| `node scripts/policy-check.mjs fullshot` | **0** — `15 passed`, and it also prints warning(s). **The warning count is deliberately not written down here** — `policy-check.mjs` is being edited to retire a false-positive locale warning, so the same command can honestly print a different number depending on merge order. Read the run. `tool.json` `NOTES."gate status today"` says the same and names the standing one (no CSP `connect-src`). `EXIT 0` is the stable fact. ⚠️ **UPDATED 2026-08-26** — the CSP warning this cell names as *the standing one* is **closed**. The same command now prints `16 passed` with **no warnings**, EXIT **0**, measured 2026-08-26. See **§B.1**. |
 | `node scripts/check-version.mjs fullshot` | **0** — `3 passed` |
 | `node scripts/check-store-metadata.mjs fullshot` | **0** — `25 passed · 1 owner action(s)` — the owner action is the empty `store/_shared/screenshots/` — in **this** file that is §A.3 item 7, *"Create store visual assets"*. ⚠️ This cell used to say "A.4's O5", which is a pointer into a different document: `grep -n 'O5' COMPLIANCE-CHECKLIST.md` returns nothing but that phrase, this file has no O-numbering at all, and its §A.4 is *"The one genuinely pending store account"* (Microsoft Partner Center). The **O**-numbers live in `SUBMISSION-PACKET.md`, where "A.4's O5" is correct. Recorded here for the same reason the `check-catalog` row records its own: an exit code of 0 beside a bare pass-count hides work that is owed, and this table is what a reader trusts instead of re-running. |
 | `node scripts/check-core-sync.mjs fullshot` | **0** — `1 passed` |
@@ -438,3 +438,512 @@ warning — 8 locales missing 9 CLDR plural-form keys each, which fall back to `
 in `policy-check.mjs` as a false positive, so the same command can honestly print one or two
 warnings depending on merge order. **EXIT 0 is the stable fact; neither warning is a failure and
 neither blocks a submission.**
+
+⚠️ **APPENDED 2026-08-26 — the paragraph above stands as written and was true when written.**
+The `no CSP connect-src to back the zero-network claim` warning it calls *surviving* is **closed**:
+`manifest.json` now declares `connect-src 'none'` and `node scripts/policy-check.mjs fullshot` prints
+`16 passed`, **no warnings**, EXIT **0**. The locale warning it describes as *being closed* was already
+closed before this change — the 2026-08-26 baseline run, taken before the manifest was touched, printed
+`15 passed · 1 warning(s)` and that one warning was the CSP one. See **§B.1**.
+
+⚠️ **APPENDED 2026-08-26 — the §A.6 table above stands as written; these two of its rows were
+re-run and are corrected here rather than edited in place.**
+
+| §A.6 row | What it records | Re-run 2026-08-26, exit code captured on its own line |
+|---|---|---|
+| `node publish/verify-firefox-package.node.js` (bare) | **0** — `SOURCE PASSES — NO PACKAGE WAS GRADED` | 🔴 **EXIT 1** · `FAILURES: 1`. True when written; **false from the moment `manifest.json` gained a CSP key**, because the merge patch carried it into the Gecko manifest. The null-delete in `publish/manifest.firefox.json` fixed the assertion it broke — `no content_security_policy override (strict MV3 default applies)` **PASSES** — but a *second* limb, the `ALLOWED_DELTA` drift check at `:101-102`/`:410`, now fails on the same key. That file is not owned by this change. **§B.1.4 carries the one-line fix and the proof that it restores EXIT 0.** |
+| `node publish/verify-firefox-package.node.js --zip <scratch>/fullshot-firefox.zip` | **0** — `ALL PASS` | 🔴 **EXIT 1** · `FAILURES: 1` — the *same single failure*, not a second one. The zip itself is sound: built fresh by `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` (EXIT **0**, 85 entries), and every package-limb check PASSES — `package reads as a zip — 85 entries`, `packaged manifest === the merged Firefox manifest`, `packaged background.js guards importScripts`, `no test/dev/scratch files in the package`. |
+
+Recorded this way on purpose. Both rows were **false as of the regression**, and the tempting move was
+to fix the regression and write `0` back in — but the second limb means `0` is still not what the
+command prints on this tree. **A row whose truth depends on a fix that has not landed does not belong
+in this table**, which is the same rule §A.6 already applies to `check-store-packages.mjs` printing a 0
+while grading nothing.
+
+---
+
+# APPENDIX B — DATED ADDITION, 2026-08-26
+
+*Appendix A above is a dated correction and is untouched by this one. This appendix adds a control;
+it retires nothing in A. Where a row in the body of this file became false on 2026-08-26 it carries a
+pointer here, and its original text is left standing verbatim.*
+
+## B.1 The zero-network claim is now enforced by the browser, not only by a grep
+
+### What changed
+
+`manifest.json` gained exactly one key (three lines):
+
+```json
+"content_security_policy": {
+  "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+}
+```
+
+### Why — what a grep cannot do
+
+Until today, "FullShot sends nothing anywhere" rested entirely on a **source scan**: the audit bullet
+at the head of this file, `policy.networkAllowlist: []` in `tool.json`, and the packaged-byte scans in
+`scripts/policy-check.mjs` and `publish/package.node.js`. Every one of those reads the bytes that
+exist on the day it runs. A scan cannot stop a URL assembled at runtime, a `fetch` reached through an
+alias or a property lookup, or a line somebody adds next year. **`connect-src 'none'` makes the
+browser refuse the request**, whether or not any scanner saw it coming.
+
+The scan is not replaced. Both run now, and they fail in different directions, which is the point.
+
+### What the MV3 default actually was — the baseline this replaces
+
+The MV3 default for extension pages is **`script-src 'self'; object-src 'self';` and nothing else.**
+Five directives — `connect-src`, `img-src`, `frame-src`, `base-uri` and `form-action` — were
+**unrestricted**. A sixth, `object-src`, had a value (`'self'`) that the declared policy tightens to
+`'none'`. Row A4 of this file called that default "strict"; it is strict about *script*, and silent
+about everything else.
+
+**The true count is 6 stricter, 1 identical, 0 looser.** Seven directives are declared. `script-src
+'self'` is byte-identical to the MV3 default; the other **six** are stricter than what they replace.
+⚠️ An earlier draft of this appendix called the policy *"stricter in four directives"* — in the
+same section that called five directives unrestricted, and directly above a table that showed six —
+and row A4 repeated the four. **Six** is the measured number. The table below now carries an explicit
+column for it, and row A4 has been made to agree.
+
+The three numbers — **five unrestricted, six stricter, one identical** — are consistent because
+`object-src` was restricted-but-looser rather than unrestricted. That one directive is the whole
+difference between the 5 and the 6.
+
+| # | Directive | Value | vs the MV3 default | Gated by a check in this repo? | Why it is safe here — re-measured 2026-08-26 |
+|---|---|---|---|---|---|
+| 1 | `script-src` | `'self'` | **identical** | ❌ **no** | Identical to the MV3 default, now stated rather than inherited. Every `<script src>` and both `importScripts(...)` targets (`pages/db.js`, `pages/batch.js`) are local relative paths. No inline `<script>` and no `on*` attribute exists in any of the 8 extension pages. |
+| 2 | `object-src` | `'none'` | **stricter** (default was `'self'`) | ❌ **no** | A grep for `<object` and `<embed` over `pages/` and `popup/` returns nothing. |
+| 3 | `img-src` | `'self' data: blob:` | **stricter** (was unrestricted) | ❌ **no** | Re-counted from the tree on 2026-08-26, not carried over. **Exactly FOUR** static `<img src>` exist in the whole extension — `pages/history.html:100`, `pages/options.html:158`, `pages/result.html:149`, `popup/popup.html:47` — all four pointing at `../icons/icon32.png` (`'self'`). **`popup.html` IS one of the four, not a fifth.** An earlier draft wrote *"4 `<img src=...>` plus `popup.html`"* and double-counted it. `fsLoadImage(f.dataUrl)` fed from `chrome.tabs.captureVisibleTab` supplies the `data:` token. For `blob:`: **four** `URL.createObjectURL(...)` call sites exist in the shipped set (`pages/common.js:384`, `pages/history.js:166`, `pages/result.js:1063`, `pages/result.js:1570`), of which **TWO** — `history.js:166` and `result.js:1063` — assign to an image source. The other two build a **download** URL and never reach `img-src`. The earlier draft's *"4 `URL.createObjectURL(blob)` assignments"* counted every call site as an image load; the number this directive actually rests on is **two**. Nothing else sets an image source. **See CAVEAT 3 — this directive, not `connect-src`, closes the hole 1.9.12 actually fell through.** |
+| 4 | `connect-src` | `'none'` | **stricter** (was unrestricted) | ✅ **YES — the only one** · `scripts/policy-check.mjs:589-607` | The subject of this appendix. `policy-check` reports `zero network calls in 15 packaged script(s) — allowlist is empty, as claimed`, so nothing in the shipped set needs a connection. |
+| 5 | `frame-src` | `'none'` | **stricter** (was unrestricted) | ❌ **no** | No `<iframe>` element exists on any extension page. `options.html` and `popup.html` mention iframes only in **user-facing label text** about expanding frames on the *captured* page — prose, not an element. |
+| 6 | `base-uri` | `'none'` | **stricter** (was unrestricted) | ❌ **no** | No `<base>` element anywhere. |
+| 7 | `form-action` | `'none'` | **stricter** (was unrestricted) | ❌ **no** | No `<form>` element anywhere. |
+
+**Written down so the summary and the table cannot drift apart again: 7 declared = 1 identical + 6
+stricter + 0 looser. Gated by anything in this repo: 1 of 7.**
+
+### 🔴 SIX OF THE SEVEN DIRECTIVES ARE DECLARATIONS, NOT CLAIMS THIS REPO VERIFIES
+
+Given its own heading because the table above is easy to read as "seven directives, seven checks". It
+is not. **`scripts/policy-check.mjs:589-607` is the only site in the entire repository that reads a CSP
+directive at all, and it reads `connect-src` only** — falling back to `default-src`, which this policy
+does not declare. A `grep -rn` for the other six directive names across `scripts/`, `publish/` and
+`.github/` returns exactly one hit, and that hit is a **fixture string** in
+`scripts/test/selftest.node.js:111` — test data, not a check.
+
+The other six directives are real: **the browser honours them.** What does not exist is anything in
+this repository that would notice if one were weakened or deleted. Proved by mutation on this tree,
+2026-08-26, exit codes captured on their own line — see **M3** and **M4** in §B.1.1.
+
+Gating them means changing `scripts/policy-check.mjs`, which this change does **not** own. It is
+listed in §B.1.3 as an unowned follow-up. Until that lands the honest sentence is the one above:
+**one directive of seven is checked here; six are declared, and no gate in this repo verifies them.**
+
+---
+
+### CAVEAT 1 — `'none'` is inert the moment any other source sits beside it
+
+`connect-src 'none' https://x` **does not mean "none"**. CSP3 discards `'none'` as soon as the source
+list has any other member, and the directive then silently permits `https://x`. There is no error, no
+console warning, and the word `'none'` is still sitting in the manifest for a reader to find and be
+reassured by.
+
+So the rule is: **the day anything here needs a host, this directive stops protecting anything at
+all** — it does not degrade to "almost none". If that day comes, the honest move is to change the
+claim in this file and in the store listing in the same commit, not to append a host and leave the
+prose alone.
+
+This is not hypothetical pedantry. `scripts/policy-check.mjs` **parses** the directive instead of
+grepping it for exactly this reason, and its own comment says so: `/connect-src\s+'none'/` would match
+`connect-src 'none' https://evil` and certify it. Mutation **M1** below is that exact string, and the
+gate catches it.
+
+### CAVEAT 2 — `extension_pages` does NOT cover content scripts
+
+**This control covers less than the claim it supports. The gap is named here rather than left for a
+reviewer to find.**
+
+`content_security_policy.extension_pages` governs the extension's *own* pages — `popup/popup.html`,
+`pages/options.html`, `result.html`, `history.html`, `editor.html`, `beautify.html`, `batch.html`,
+`scrollclip.html` — and, in Chrome, the service worker. It **does not govern content scripts.**
+
+FullShot ships three:
+
+- `content/capture.js`
+- `content/region.js`
+- `content/frame-expand.js`
+
+These are injected into the host page and **inherit the CSP of the page they run in**, not this one.
+A host page with a permissive CSP therefore imposes no `connect-src` restriction on them whatsoever —
+and `capture.js` is by far the largest script in the product and the one that touches page content.
+
+For those three files the zero-network claim still rests **entirely on the source scan**, exactly as
+it did before today. Nothing in this change strengthened them. The honest shape of the fence:
+
+| Surface | Zero-network enforced by |
+|---|---|
+| the 8 extension pages | source scan **+ the browser** (`connect-src 'none'`) |
+| service worker (`background.js`, Chrome) | source scan **+ the browser** |
+| `content/capture.js`, `content/region.js`, `content/frame-expand.js` | **source scan only** |
+
+### CAVEAT 3 — `connect-src` does not govern image loads, and that is the hole that already fired
+
+`connect-src` covers `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon`. It does
+**not** cover `<img src>`, which is `img-src`; nor navigation; nor `<iframe>`.
+
+This is a caveat and not a footnote because **it is the hole this product actually fell through.**
+`CHANGELOG.md` [1.9.12], 2026-08-12:
+
+> MV3's content security policy blocks the script half, but images are unrestricted, so a crafted
+> entry produced **a real network request from an extension page** — breaking the zero-network claim
+> the listing, the privacy policy and the compliance checklist all make.
+
+A `connect-src 'none'` added *alone* would have left that class of bug wide open while reading, in the
+manifest, as though "zero network" were now enforced — the sentence and the directive agreeing while
+only one of them had been checked. That is why `img-src 'self' data: blob:` is in the policy above and
+is not decoration. The 1.9.12 input-handling fix stands on its own; this is the second barrier behind
+it.
+
+### What is deliberately NOT in the policy, and why
+
+**`style-src` and `default-src` are both omitted on purpose. This was measured, not overlooked.**
+
+Seven of the eight extension pages carry a real inline `<style>` block — `batch.html` (two),
+`beautify.html`, `editor.html`, `history.html`, `options.html`, `result.html` and `scrollclip.html`;
+only `popup/popup.html` is fully externalised. `style-src 'self'` would blank the styling on all
+seven, and a `default-src` of any value becomes the fallback `style-src` and breaks them the same way.
+The alternative — `style-src 'self' 'unsafe-inline'` — permits precisely what it appears to forbid,
+which is a decorative directive, and this file will not add one.
+
+The consequence, stated plainly: **inline styles on extension pages are unrestricted, exactly as they
+were before this change.** Closing that means moving seven `<style>` blocks into `.css` files, which
+is a real change to a shipping product and is not in scope here.
+
+`templates/tool/manifest.json` *does* carry `style-src 'self'`, which is why the template's options
+layout lives in `pages/options.css` as a FILE. Its policy was therefore **not** copied wholesale into
+FullShot: copying it would have stopped the product rendering. `tool.json`'s
+`absent.content_security_policy` predicted that "adopting it is a copy rather than a design"; that
+turned out to be false, and the difference is this paragraph.
+
+`child-src` is likewise omitted: it is deprecated in favour of `frame-src`/`worker-src`, and a
+`child-src 'none'` is the fallback for `worker-src` — unnecessary risk next to a service worker that
+uses `importScripts`.
+
+### B.1.1 Mutation evidence — the gate was seen to fail before it was trusted
+
+Both mutations were applied to `manifest.json`, graded, then reverted. `diff` against the pre-mutation
+copy is empty, and `git diff --stat` reports the intended **3 insertions** and nothing else. Exit
+codes captured on their own line.
+
+| # | State | Result |
+|---|---|---|
+| — | *baseline, before any change* | `WARN no CSP connect-src to back the zero-network claim` · `found: no connect-src and no default-src` · **15 passed · 1 warning(s)** · EXIT **0** |
+| — | *shipped state* | `PASS content_security_policy declares connect-src 'none'` · **16 passed**, no warnings · EXIT **0** |
+| **M1** | `connect-src 'none'` → `connect-src 'none' https://evil.example` | back to `WARN` · `found: connect-src 'none' https://evil.example` · **15 passed · 1 warning(s)** · EXIT **0** — CAVEAT 1, caught because the gate parses rather than greps |
+| **M2** | `connect-src` directive deleted, rest of the policy intact | back to `WARN` · `found: no connect-src and no default-src` · **15 passed · 1 warning(s)** · EXIT **0** |
+| **M3** | 🔴 `img-src 'self' data: blob:` **deleted outright** | **16 passed**, no warnings, EXIT **0** — *unchanged from the shipped state.* `lint.mjs` EXIT **0** too. **Nothing noticed.** |
+| **M4** | 🔴 `img-src` set to **`*`** — i.e. re-opening the exact hole 1.9.12 fell through | **16 passed**, no warnings, EXIT **0** — *unchanged.* `lint.mjs` EXIT **0**. **Nothing noticed.** |
+
+**M3 and M4 were added 2026-08-26 and are the evidence behind the "six of seven" heading above.**
+M1 and M2 mutate `connect-src` and the gate catches both. M3 and M4 mutate `img-src` — the directive
+this file calls *"not decoration"* and *"the second barrier"* behind the 1.9.12 fix — and **the gate is
+silent for both**, including when the directive is set to `*`, which permits every host on the
+internet. Both mutations were reverted; `git diff --stat` on `manifest.json` reports the intended
+**3 insertions** and nothing else.
+
+⚠️ **Read the pass-count, not the exit code.** `policy-check.mjs` treats a warning as a warning:
+**EXIT 0 in all four rows above, both mutations included.** This control's regression signal is
+`16 passed` collapsing back to `15 passed · 1 warning(s)`. A CI job gating on the exit code alone
+would not notice if `connect-src 'none'` were deleted tomorrow. That is a property of the script,
+which this change does not own and did not alter to suit itself.
+
+### B.1.2 Gate results, 2026-08-26, each exit code on its own line
+
+Every row below was **re-run on the repaired tree** (`content_security_policy` declared in
+`manifest.json`, `"content_security_policy": null` in `publish/manifest.firefox.json`). Exit codes were
+captured on a line of their own, never printed beside a command substitution.
+
+| Command | Exit | Result |
+|---|---|---|
+| `node scripts/lint.mjs fullshot` | **0** | `1 passed` — `26 file(s) parse`, 15 shipped; unchanged from baseline |
+| `node scripts/policy-check.mjs fullshot` | **0** | `16 passed`, no warnings — was `15 passed · 1 warning(s)` at baseline, measured on this tree by restoring the `HEAD` manifest |
+| `node scripts/run-tests.mjs fullshot` | **0** | `12 passed`; unchanged from baseline |
+| `node scripts/check-catalog.mjs` | **0** | `7 passed · 1 owner action(s)`; `fullshot` still unlisted, which is owner work |
+| `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` | **0** | `6 passed`; `85 file(s) to pack`; `firefox manifest — publish/manifest.firefox.json applied as a merge patch` |
+| `node publish/verify-firefox-package.node.js` (bare) | 🔴 **1** | `FAILURES: 1` — **and the one failure is NOT the CSP override gate.** See §B.1.4: it is the drift limb, and closing it needs a one-line change to a file this change does not own. |
+| `node publish/verify-firefox-package.node.js --zip <scratch>/fullshot-firefox.zip` | 🔴 **1** | `FAILURES: 1` — the same single failure. Every package-limb check PASSES: `package reads as a zip — 85 entries`, `packaged manifest === the merged Firefox manifest`, `no test/dev/scratch files in the package`. |
+| `JSON.parse(manifest.json)` | **0** | parses. **15** top-level keys **in the shipped Chromium manifest as this change leaves it**; it was **14** at `HEAD` (`ccef0f3`) and the CSP key is the 15th. `connect-src` resolves to a one-element source list whose sole member is `'none'`. |
+| `JSON.parse(<scratch>/unpacked-firefox/manifest.json)` | **0** | parses. **14** top-level keys, and `'content_security_policy' in manifest` is **`false`**. This is the *built* Gecko manifest, read back out of the package `pack.mjs` wrote — not the patch, and not an assumption about RFC 7386. |
+
+Each manifest was **re-parsed rather than grepped**, and the `connect-src` directive was split and
+inspected as a source **list** — one element, `'none'` — because a matching substring is not a matching
+directive. That is CAVEAT 1 restated as a test.
+
+**Both manifests parse and the tree still packages.** A malformed `content_security_policy` makes an
+extension fail to LOAD, so that was checked as a property and not assumed: `pack.mjs` built an 85-entry
+Firefox zip at EXIT 0, and the verifier's package limb read that zip back and confirmed
+`packaged manifest === the merged Firefox manifest`.
+
+### B.1.3 Records this change makes stale that it does NOT own
+
+Recorded here so the next reader finds them from this side. **None of these was edited** — each is a
+separate writer's or the owner's action:
+
+- **`Extension/Full_Screen_Shot/tool.json` → `absent.content_security_policy`** — reads "`manifest.json`
+  declares none". **False as of 2026-08-26.** That same file's `NOTES.corrections` states the rule this
+  now breaks: *"an absence is recorded rather than stubbed, and it is removed the day the real thing
+  lands, because A STALE ABSENCE IS THE SAME LIE POINTING THE OTHER WAY."* The entry should be removed,
+  not rewritten in place, and its removal recorded in `NOTES.corrections` under a 2026-08-26 heading.
+- **`tool.json` → `NOTES."gate status today"`** — names "the standing one" warning as the missing CSP
+  `connect-src`. Closed. Per the append-never-rewrite rule this wants a dated addition, not an edit.
+- **`CONTRIBUTING.md:346`** — a *second* gate table in the same file, also stating
+  `15 passed · 1 warning(s)` for `node scripts/policy-check.mjs fullshot`. An earlier draft of this
+  appendix listed only line 365 and missed this one. Both rows are stale; both want the same dated
+  addition.
+- **`CONTRIBUTING.md`, the gate table (~line 365)** — states `15 passed · 1 warning(s)` for
+  `node scripts/policy-check.mjs fullshot` and calls the warning "a second barrier that is wanted and
+  not a defect". The barrier now exists; the command prints `16 passed`.
+- **`Extension/Full_Screen_Shot/CHANGELOG.md`** — this is a shipped-behaviour change to `manifest.json`
+  with no entry, and the tree is still stamped `1.10.2`. A manifest that gains a CSP is a user-visible
+  security change and belongs in the changelog under a new version.
+- 🔴 **`Extension/Full_Screen_Shot/publish/SUBMISSION-PACKET.md:350`** — states `15 passed` for
+  `node scripts/policy-check.mjs fullshot`. **This is the STORE-SUBMISSION document** — the one a reviewer
+  and the owner read at the moment of submitting — which makes it the most expensive of these to leave
+  stale, and it was the one an earlier draft of this list omitted.
+- **`Extension/Full_Screen_Shot/publish/CROSS-BROWSER-PUBLISHING.md:319`** — same `15 passed · 1
+  warning(s)` string for the same command, in the Firefox publishing walkthrough.
+- 🔴 **`Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js:101-102`** — `ALLOWED_DELTA`
+  does not list `content_security_policy`, so the drift limb fails on a *correct* tree. **This is the one
+  item on this list that is currently RED in CI**, and §B.1.4 carries the exact one-line change and the
+  proof that it is sufficient. It is a file this change does not own.
+- **`scripts/policy-check.mjs:589-607`** — reads `connect-src` and nothing else, which is why six of the
+  seven declared directives are ungated (mutations **M3**/**M4** in §B.1.1). Gating `img-src` at minimum
+  would close the 1.9.12 class of bug for real rather than by declaration. Not owned by this change.
+- **`.github/pull_request_template.md`, the "No network" checkbox (~line 62)** — describes the claim as
+  resting on `tool.json` → `policy.networkAllowlist` and a packaged-bytes gate. For extension pages and
+  the service worker it now also rests on the manifest CSP; for the three content scripts it does not
+  (CAVEAT 2), and the checkbox is the natural place to say which half is which.
+
+---
+
+## B.1.4 🔴 FIREFOX IS DELIBERATELY EXCLUDED, AND THE GUARANTEE THEREFORE COVERS CHROMIUM ONLY
+
+### What was shipped, and what it broke
+
+`publish/manifest.firefox.json` is **not a second manifest**. Since 2026-08-18 it is an **RFC 7386
+merge patch**, and `scripts/pack.mjs` applies it to `manifest.json` to build the Gecko package. A key
+added to `manifest.json` therefore lands in the **Firefox** manifest too, unless the patch says
+otherwise.
+
+So the CSP key merged straight through into the AMO build, and
+`publish/verify-firefox-package.node.js:389` asserts the opposite:
+
+```js
+check('no content_security_policy override (strict MV3 default applies)',
+  !('content_security_policy' in ff));
+```
+
+Measured on this tree: pre-change **EXIT 0**; with the CSP key and no patch entry, **EXIT 1**,
+`FAILURES: 1`, bare and with `--zip`. `ci.yml` runs this script, so the change as first written was a
+**CI-breaking regression**.
+
+### The fix, and why it is not "edit the verifier"
+
+That assertion is a **documented decision**, not an accident: Firefox stays on the strict MV3 default.
+Relaxing it to accommodate a new key would be weakening a guard to make a red go away. The fix is
+**RFC 7386's own mechanism instead** — a `null` member DELETES the key — so
+`publish/manifest.firefox.json` now carries:
+
+```json
+"content_security_policy": null,
+```
+
+beside the `"minimum_chrome_version": null` and `"options_page": null` that were already doing exactly
+this for other Chrome-only keys. **RFC 7386 semantics were not assumed.** Both `scripts/pack.mjs:280`
+and the verifier carry their own `mergePatch`, the verifier self-tests it against RFC 7386 §3's worked
+examples on every run, and the result was confirmed by *building the package and reading the manifest
+back out of it*:
+
+| Artifact | `content_security_policy` present? | Top-level keys |
+|---|---|---|
+| `Extension/Full_Screen_Shot/manifest.json` (Chromium, as shipped) | **yes** · `script-src 'self'; object-src 'none'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'` | **15** |
+| `<scratch>/unpacked-firefox/manifest.json` (built by `pack.mjs`) | **no** · `'content_security_policy' in manifest` === `false` | **14** |
+
+That is *shown*, not asserted: the second row was read out of the tree `pack.mjs` inflated from the
+85-entry zip it had just written, and the verifier's own package limb PASSES
+`packaged manifest === the merged Firefox manifest`.
+
+### Why Firefox is excluded — as a decision, not an oversight
+
+Two reasons, and neither is "we forgot":
+
+1. **The Gecko package is asserted to carry no CSP override.** `verify-firefox-package.node.js:389` is
+   the written form of that decision. The document says Firefox runs on the strict MV3 default; the
+   guard holds it to it.
+2. **A stricter policy on a browser this project cannot test is a change to a shipping product, not a
+   tightening.** Nothing in this repo runs FullShot under Gecko. `web-ext lint` grades the package; it
+   does not load the add-on and click through eight pages. Shipping a seven-directive CSP into a
+   runtime nobody here exercises risks a blank options page or a dead image in the hands of Firefox
+   users, in exchange for a hardening nobody here could verify. That trade is not available to this
+   change.
+
+### 🔴 THE CONSEQUENCE, STATED PLAINLY
+
+**The browser-enforced zero-network guarantee covers CHROMIUM ONLY. Firefox users rely on the source
+scan alone.**
+
+Not "mostly covers". The Gecko package has **no** `connect-src` at all: a `fetch()` from a FullShot
+extension page under Firefox is restricted by nothing this project ships. Everything §B.1 says about
+the browser refusing the request is a statement about Chrome and Edge.
+
+**A control that covers less than the claim it supports is the exact defect this corpus keeps finding**,
+and it is named here rather than left for a reviewer. The full fence, with CAVEAT 2 folded in:
+
+| Surface | Chromium (Chrome/Edge) | Firefox (AMO) |
+|---|---|---|
+| the 8 extension pages | source scan **+ the browser** (`connect-src 'none'`) | 🔴 **source scan only** |
+| background (`background.js`) | source scan **+ the browser** | 🔴 **source scan only** |
+| `content/capture.js`, `content/region.js`, `content/frame-expand.js` | 🔴 **source scan only** (CAVEAT 2) | 🔴 **source scan only** |
+
+So of six cells, **two** are backed by the browser. Any sentence in the store listing, the privacy
+policy or the head of this file that reads "the browser enforces it" must carry "on Chromium" with it,
+or it overclaims for Firefox users in exactly the way this appendix exists to prevent.
+
+### Why the rationale is recorded HERE and not in either manifest
+
+The instruction this repair worked from was to record the reason in the manifests themselves. **It
+cannot be done, and that was tested rather than argued:**
+
+- `manifest.firefox.json` is a merge patch, so a `"_comment"` key **merges into the shipped Gecko
+  manifest**. Tried on 2026-08-26: the verifier's drift limb fails with
+  `FAIL identical to the Chrome manifest: _comment`, and AMO would receive an unrecognized manifest key.
+- `manifest.json` is worse: a comment key there is **inherited** by the Firefox build, ships to two
+  stores, and `web-ext lint --warnings-as-errors` (run by `ci.yml` and `release.yml`) treats
+  `UNKNOWN_MANIFEST_KEY` as an error.
+
+Neither file can hold a sentence. The decision therefore lives in this section, and row **A4** and
+§B.1 both point at it.
+
+### 🔴 STILL RED: one line, in a file this change does not own
+
+The null-delete fixes the assertion it was aimed at — `no content_security_policy override (strict
+MV3 default applies)` now **PASSES**. But `verify-firefox-package.node.js` grades the merged manifest
+**twice**, and the second limb is a drift check:
+
+```js
+const ALLOWED_DELTA = ['background', 'browser_specific_settings',
+  'minimum_chrome_version', 'options_page', 'options_ui'];          // :101-102
+...
+keys.filter(k => ALLOWED_DELTA.indexOf(k) === -1).forEach(k =>      // :410
+  check('identical to the Chrome manifest: ' + k, deepEqual(ff[k], ch[k])));
+```
+
+`content_security_policy` is not in `ALLOWED_DELTA`, so the key now fails as undocumented drift:
+
+```
+FAIL  identical to the Chrome manifest: content_security_policy
+        firefox undefined vs root {"extension_pages":"script-src 'self'; ..."}
+FAILURES: 1
+```
+
+**The two limbs are mutually unsatisfiable the moment `manifest.json` declares a CSP.** Line 389 demands
+the key be **absent** from the Firefox manifest; line 410 demands it be **identical** to Chrome's. There
+is no value of `publish/manifest.firefox.json` that satisfies both:
+
+| Patch says | :389 (`not in ff`) | :410 (drift) |
+|---|---|---|
+| nothing (inherit) | ❌ FAIL — *this was the shipped regression* | ✅ pass |
+| restate the same CSP | ❌ FAIL | ✅ pass |
+| `"content_security_policy": null` | ✅ **pass** | ❌ FAIL — *where the tree stands now* |
+
+**The remaining fix is one line, and it is not a weakening.** `ALLOWED_DELTA` is the register of
+*documented* Firefox deltas; this is a newly documented Firefox delta. Adding it leaves the `:389`
+assertion completely untouched — Firefox is still required to carry no CSP override:
+
+```diff
+-const ALLOWED_DELTA = ['background', 'browser_specific_settings',
++const ALLOWED_DELTA = ['background', 'browser_specific_settings', 'content_security_policy',
+   'minimum_chrome_version', 'options_page', 'options_ui'];
+```
+
+**Proved sufficient, 2026-08-26**, by running a scratch copy of the verifier carrying only that line
+(the repo file was not edited — this change does not own it):
+
+| Run | Exit | Result |
+|---|---|---|
+| scratch verifier, bare | **0** | `SOURCE PASSES — NO PACKAGE WAS GRADED`; zero `FAIL` lines |
+| scratch verifier, `--zip <scratch>/fullshot-firefox.zip` | **0** | `ALL PASS` · **62 PASS**, zero `FAIL` lines, including `no content_security_policy override (strict MV3 default applies)` |
+
+Until that line lands, `node publish/verify-firefox-package.node.js` is **EXIT 1** on this tree, and
+§A.6's two `verify-firefox-package` rows are corrected accordingly in the dated append beneath them.
+**No row in this file claims a passing Firefox verifier that has not been observed.**
+
+---
+
+## §B.1.5 — ✅ DATED CLOSE, 2026-08-26 (later same day): THE DRIFT LIMB IS FIXED AND THE VERIFIER IS GREEN
+
+**Everything in §B.1.1–§B.1.4 above stands verbatim.** Every 🔴 EXIT 1 row in this
+appendix — at :454, :455, :674 and :675 — was TRUE WHEN WRITTEN and is now
+SUPERSEDED. This block says what changed and when; the rows are not edited, because a
+dated measurement that is later overtaken is still an accurate record of what the tree
+did at that hour.
+
+### What landed
+
+§B.1.4 named the one-line fix and proved it sufficient in a scratch copy. It has now
+been applied to the real file:
+
+```js
+const ALLOWED_DELTA = ['background', 'browser_specific_settings',
+  'content_security_policy', 'minimum_chrome_version', 'options_page', 'options_ui'];
+```
+
+### Re-measured on the real tree, exit code captured on its own line
+
+| command | exit | printed |
+|---|---|---|
+| `node publish/verify-firefox-package.node.js` (bare) | **0** | `SOURCE PASSES — NO PACKAGE WAS GRADED` |
+| `node scripts/pack.mjs fullshot --target firefox --out <scratch> --release` | **0** | `6 passed`, 85 entries |
+| `node publish/verify-firefox-package.node.js --zip <scratch>/fullshot-firefox.zip` | **0** | **`ALL PASS`**, incl. `PASS no content_security_policy override (strict MV3 default applies)` |
+
+### 🔴 WHY THIS IS A CLASSIFICATION AND NOT A RELAXATION
+
+`ALLOWED_DELTA`'s own header states its job: *"Top-level keys allowed to differ between
+the Chrome and Firefox manifests. Anything else that differs is drift, not a port."*
+The key now differs **on purpose** — Chromium declares a CSP, Gecko deletes it with an
+RFC 7386 `null` member — so the entry records an intentional delta rather than excusing
+an accident.
+
+**The check that matters was never touched.** The absent-check at `:389` still asserts
+the Gecko manifest carries **no** `content_security_policy` at all, and it still passes.
+That assertion is strictly STRONGER than the drift limb's *"identical to Chrome"* ever
+was on this key: drift would have been satisfied by Firefox carrying the same CSP;
+`:389` refuses any CSP whatsoever.
+
+📌 **AND THE PRECEDENT IS IN THE SAME FILE.** `minimum_chrome_version` sits in
+`ALLOWED_DELTA` **and** carries its own absent-check at `:385`, whose FIX text spells
+out the identical mechanism: *"Add `\"minimum_chrome_version\": null` … under RFC 7386 a
+null member DELETES the key. Do NOT simply remove the line: an absent member INHERITS
+the Chrome value."* The CSP now follows that pattern exactly, key for key.
+
+⚠️ **WITHOUT THE ENTRY THE TWO LIMBS WERE MUTUALLY UNSATISFIABLE**, which is the real
+finding here and the reason this took two passes: inherit the key and `:389` fails;
+delete it and the drift limb calls the deletion drift; restate it and `:389` fails
+again. **No value of `manifest.firefox.json` could make a correct tree green.** A guard
+pair in that state does not report a defect — it reports that the question cannot be
+answered, and it is indistinguishable in the output from a real finding.
+
+### What is still true from §B.1.4 and is NOT closed by this
+
+- **The CSP reaches CHROMIUM ONLY.** Gecko deliberately carries none, so Firefox users
+  rely on the source scan alone. Two of six surface × browser cells are browser-backed.
+- **Six of the seven declared directives are gated by nothing in this repo.**
+  `scripts/policy-check.mjs:589-607` reads `connect-src` only (with `default-src` as its
+  fallback), and it is the only site that reads a directive **off this manifest**.
+  Measured by mutation: deleting `img-src` → `16 passed`, EXIT 0; setting `img-src *`,
+  reopening exactly what it claims to close → still green.
+  ⚠️ `templates/tool/test/skeleton-sim.node.js` DOES gate five of them — but against
+  `templates/tool/manifest.json` via `SK_ROOT`, not FullShot's, and it is not in
+  FullShot's test set. Reading it as coverage here would be the blind-spot error this
+  corpus keeps finding: a check that ran, over some other tree.
