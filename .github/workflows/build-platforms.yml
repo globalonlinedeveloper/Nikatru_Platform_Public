@@ -44,6 +44,20 @@ on:
   # build and fails past 14 days, which is what turns this silence into a signal.
   schedule:
     - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+    # SECOND CHANCE, added 2026-08-26. ONE weekly slot gives the 14-day ceiling
+    # in assert-platform-proof-fresh.mjs exactly ONE chance per fortnight to be
+    # renewed, and a miss reddens `ci-gate` REPO-WIDE until a SCHEDULED run
+    # succeeds — `gh workflow run` cannot clear it, because the guard counts only
+    # `event === 'schedule'`. Measured on this very workflow: the anchor run
+    # 32003607931 landed 2026-08-17T06:55:35Z, so the ceiling expires
+    # 2026-08-31T06:55:35Z and the Monday slot fires 06:00Z — 55 minutes of
+    # margin. GitHub's measured queue drift HERE was +56, +59, +102 and +226
+    # minutes on the last four scheduled runs: THREE OF FOUR WOULD HAVE MISSED.
+    # A second weekday costs one extra build a week and turns a single point of
+    # failure into two independent ones. It does NOT touch MAX_AGE_DAYS, which
+    # stays 14 — raising the ceiling would hide rot, whereas firing more often
+    # proves the timer more often. That is the whole difference.
+    - cron: '0 6 * * 4'   # Thursdays 06:00 UTC
 
 env:
   FLUTTER_VERSION: '3.44.9'
