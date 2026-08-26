@@ -1129,6 +1129,55 @@ describe('assert-ops-register — [14]O-3 · the record-query limb, whose domain
     assert.equal(r.stats.unreadable, 1);
   });
 
+  // ── C-6, applied to the sticky-fail branch with the register's own convention ──
+  // The gate lifts the BLOCK on a runner that could not read the record. It does
+  // not lift the verdict, the word, or the count: `tally.fail` is the same
+  // counter either way, so the summary can never read `0 FAILING` about a duty
+  // this register knows is failing.
+  const gatedRows = (over = { ownerGated: true, ownerGap: 'CI cannot see a laptop.' }) => {
+    const rows = heldRows(OBS_FAIL);
+    Object.assign(rows[0], over);
+    return rows;
+  };
+
+  test('🔴 THE GATE: an `ownerGated` row with a written `ownerGap` PRINTS its held failure instead of blocking — and the print names it FAILING, not merely unreadable', () => {
+    const r = evaluateRunRecords(reg3(gatedRows()), probesOf({ 'duty.win': dark }), NOW3);
+    assert.deepEqual(r.errors, [], 'owner-only work must not redden every runner — CLAUDE.md C-6');
+    const p = r.prints.join(' | ');
+    assert.match(p, /🔴 KNOWN FAILING, NOT BLOCKING HERE: duty\.win — reader `windows-scheduled-task` could not run here/);
+    assert.match(p, /holds its last readable observation as FAILING/, 'a gated line that said only "unreadable" would give back the visibility the gate is paid for');
+    assert.match(p, /4294770688/, 'the held evidence travels with the printed verdict too');
+    assert.match(p, /OWNER-GATED, so it prints here and does not block \(CLAUDE\.md C-6\): CI cannot see a laptop\./);
+  });
+
+  test('🔴 THE COUNT IS THE SAME COUNTER: a gated failure is still inside `FAILING`, and the summary says how many of them are gated — a gate that shrank the number would be the old `0 FAILING` by another route', () => {
+    const r = evaluateRunRecords(reg3(gatedRows()), probesOf({ 'duty.win': dark }), NOW3);
+    assert.equal(r.stats.fail, 1, 'gating changes the exit code, never the verdict');
+    assert.equal(r.stats.gatedFail, 1);
+    assert.equal(r.stats.unreadable, 0, 'a known-bad row is never laundered back into "could not tell"');
+    const summary = r.prints.find((l) => /scheduled duty\(ies\) ·/.test(l));
+    assert.match(summary, /1 FAILING \(1 of them OWNER-GATED: printed, not blocking\)/);
+    assert.doesNotMatch(summary, /0 FAILING/);
+  });
+
+  test('🔴 THE TEETH SURVIVE: the SAME dark reader and the SAME held failure still BLOCK without the gate — absent, half-declared, or on a readable failure the gate never reaches', () => {
+    const ungated = evaluateRunRecords(reg3(gatedRows({})), probesOf({ 'duty.win': dark }), NOW3);
+    assert.match(ungated.errors.join(' | '), /duty\.win — reader `windows-scheduled-task` could not run here/, 'no `ownerGated`: sticky-fail keeps its teeth');
+
+    for (const half of [{ ownerGated: true }, { ownerGated: true, ownerGap: '   ' }, { ownerGated: 'true', ownerGap: 'a gap' }]) {
+      const r = evaluateRunRecords(reg3(gatedRows(half)), probesOf({ 'duty.win': dark }), NOW3);
+      assert.equal(r.errors.length, 1, `a gap nobody wrote is a waiver: ${JSON.stringify(half)}`);
+      assert.equal(r.stats.gatedFail, 0);
+    }
+
+    // The gate is scoped to the DARK branch alone. On the host that CAN read the
+    // record, an owner-gated row fails exactly as it did before — which is why
+    // this change leaves the Windows runner red on the real backup duty.
+    const readable = evaluateRunRecords(reg3(gatedRows()), probesOf({ 'duty.win': { lastSuccessMs: NaN, detail: 'LastTaskResult 4294770688 (0xFFFD0000).' } }), NOW3);
+    assert.match(readable.errors.join(' | '), /its record IS reachable and holds NO SUCCESSFUL RUN AT ALL/);
+    assert.equal(readable.stats.gatedFail, 0, 'gating a READABLE failure would be the weakening this is not');
+  });
+
   test('🔴 A HELD FAILURE IS CLEARED ONLY WHERE THE RECORD CAN BE READ — a live healthy read FAILS until the row is updated, so the sticky state cannot rot into a permanent red', () => {
     const r = evaluateRunRecords(reg3(heldRows(OBS_FAIL)), probesOf({ 'duty.win': { lastSuccessMs: NOW3 - 3_600_000, detail: 'ok' } }), NOW3);
     assert.match(r.errors.join(' | '), /its record was QUERIED and is healthy .* still reads FAILING/);
@@ -1173,8 +1222,23 @@ describe('assert-ops-register — [14]O-3 · the record-query limb, whose domain
     for (const r of scheduled) if (!probes.has(r.id)) probes.set(r.id, { lastSuccessMs: NOW3 - 3_600_000, detail: 'stubbed healthy' });
     const r = evaluateRunRecords(real, probes, NOW3);
     for (const row of win) {
-      assert.match(r.errors.join(' | '), new RegExp(`${row.id.replace(/\./g, '\\.')} — reader \`windows-scheduled-task\``), `${row.id} must not go green by going dark on a Linux runner`);
+      const held = row.mechanism.recordQuery.lastObserved?.verdict === 'fail';
+      if (!held) continue;
+      // NOT GOING GREEN BY GOING DARK is the property; BLOCKING is only one of
+      // its two channels. An `ownerGated` row prints the same verdict under the
+      // KNOWN FAILING marker and does not block (CLAUDE.md C-6) — so the channel
+      // is chosen by the row's own declaration, and the WORD is asserted either way.
+      const gated = row.ownerGated === true;
+      const channel = (gated ? r.prints : r.errors).join(' | ');
+      const idRe = row.id.replace(/\./g, '\\.');
+      assert.match(channel, new RegExp(`${gated ? '🔴 KNOWN FAILING, NOT BLOCKING HERE: ' : ''}${idRe} — reader \`windows-scheduled-task\``), `${row.id} must not go green by going dark on a Linux runner`);
+      assert.match(channel, new RegExp(`${idRe}[^|]*holds its last readable observation as FAILING`), `${row.id} must be named FAILING, not merely unreadable`);
+      if (gated) assert.doesNotMatch(r.errors.join(' | '), new RegExp(idRe), `${row.id} declares \`ownerGated\`, so it must not block CI on work only the owner can do`);
     }
+    // The summary is the line a reader scans, and it is what said `0 FAILING`
+    // through run 33001960316 while this duty was failing every night.
+    const summary = r.prints.find((l) => /scheduled duty\(ies\) ·/.test(l));
+    assert.doesNotMatch(summary, /0 FAILING/, 'the shipped register knows a duty is failing; the count must say so on the Linux runner too');
   });
 
   test('a query that ANSWERS "the mechanism does not exist" is a hard failure — a stale row reads as coverage', () => {

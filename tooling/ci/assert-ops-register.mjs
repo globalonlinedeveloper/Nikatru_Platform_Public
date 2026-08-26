@@ -436,13 +436,21 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
   // `fail`, a reader that cannot run here is a FAILURE on it rather than a print.
   // Cleared only by a host that reads a success — see the pass branch below.
   const held = q.lastObserved?.verdict === 'fail' ? q.lastObserved : null;
+  // CLAUDE.md C-6, applied with the register's OWN `ownerGated` + `ownerGap`: on a
+  // runner that could not read the record, a held failure still COUNTS as FAILING
+  // and still prints the word — only the block is lifted, and only here. Nothing
+  // below this line is gated, so the host that CAN read the record still fails on
+  // it. Gating the readable branches would be the weakening; this is not that.
+  const gated = held !== null && row.ownerGated === true && nonEmpty(row.ownerGap);
   const dark = (why) =>
     held
       ? {
           verdict: 'fail',
+          gated,
           line:
             `${id} — reader \`${q.reader}\` ${why} AND the register holds its last readable observation as ` +
-            `FAILING (${held.at}): ${held.detail} A reader going dark does not clear a duty last seen failing.`,
+            `FAILING (${held.at}): ${held.detail} A reader going dark does not clear a duty last seen failing.` +
+            (gated ? ` OWNER-GATED, so it prints here and does not block (CLAUDE.md C-6): ${row.ownerGap}` : ''),
         }
       : { verdict: 'unreadable', line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` ${why}` };
 
@@ -616,11 +624,15 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   const tally = { pass: 0, fail: 0, unreadable: 0, unreachable: 0 };
   const unreachableLines = [];
   const unreadableLines = [];
+  // 🔴 THE GATED LINES ARE STILL IN `tally.fail`. A gate that moved them to their
+  // own counter would put the word FAILING next to a smaller number every time a
+  // row was gated — the count, not the exit code, is what a reader scans.
+  const gatedFailLines = [];
   for (const r of scheduled) {
     if (!r?.mechanism?.recordQuery?.reader || !readerNames.has(r.mechanism.recordQuery.reader)) continue;
     const c = classifyRunRecord(r, probes.get(r.id), nowMs, multiplier);
     tally[c.verdict] = (tally[c.verdict] ?? 0) + 1;
-    if (c.verdict === 'fail') errors.push(c.line);
+    if (c.verdict === 'fail') (c.gated ? gatedFailLines : errors).push(c.line);
     else if (c.verdict === 'unreachable') unreachableLines.push(c.line);
     else if (c.verdict === 'unreadable') unreadableLines.push(c.line);
     else if (c.verdict === 'pass') prints.push(`[14]O-3 — ${c.line}`);
@@ -639,7 +651,8 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // records" is precisely the state that was green for a day and a half.
   prints.push(
     `[14]O-3 — ${scheduled.length} scheduled duty(ies) · ${tally.pass} record(s) QUERIED and inside window · ` +
-      `${tally.fail} FAILING · ${tally.unreadable} reader(s) unreadable on this runner (ceiling ${readCap}) · ` +
+      `${tally.fail} FAILING (${gatedFailLines.length} of them OWNER-GATED: printed, not blocking) · ` +
+      `${tally.unreadable} reader(s) unreadable on this runner (ceiling ${readCap}) · ` +
       `${tally.unreachable} declared unreachable (ceiling ${cap})`,
   );
   if (tally.pass === 0 && tally.fail === 0) {
@@ -649,10 +662,11 @@ export function evaluateRunRecords(reg, probes, nowMs) {
         'could have failed. This line exists so that state can never be mistaken for a clean result.',
     );
   }
+  for (const l of gatedFailLines) prints.push(`[14]O-3 — 🔴 KNOWN FAILING, NOT BLOCKING HERE: ${l}`);
   for (const l of unreadableLines) prints.push(`[14]O-3 — ${l}`);
   for (const l of unreachableLines) prints.push(`[14]O-3 — ${l}`);
 
-  return { errors, prints, stats: { scheduled: scheduled.length, ...tally } };
+  return { errors, prints, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
