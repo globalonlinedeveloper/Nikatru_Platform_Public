@@ -1327,6 +1327,45 @@ jobs:
           } > dist-notes.md
           gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file dist-notes.md $(node tooling/ci/release-manifest.mjs --emit-assets dist)
           echo "RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)" >> "$GITHUB_ENV"
+      # ── the read-back — [14]O-7, IN THIS JOB, ON WHAT THIS JOB UPLOADED ─────
+      # 🔴 THE FINDING THAT PUT IT HERE, 2026-08-26. This job was INVISIBLE to
+      # [14]O-7 until today. The shared workflow reader could not match a QUOTED
+      # SHELL VARIABLE, so the ledger call at the end of this job matched nothing,
+      # the job dropped out of that limb's domain in silence, and the census
+      # printed "7 deploy job(s)" without it. Widening the reader made the job
+      # appear — and it failed the rule immediately, because it published a
+      # GitHub Release and read NOTHING back.
+      #
+      # WHAT THE PROBE JOINS ON, and it is deliberately not "a release exists at
+      # this tag": the GitHub API reports every release asset's `digest` as
+      # `sha256:<hex>`, MEASURED 2026-08-26 to be exactly the sha256 of the bytes
+      # the release serves — cli/cli v2.92.0's checksums asset read back through
+      # the API and hashed with `sha256sum` agreed to the character. dist/SHA256SUMS
+      # already carries that same number for every asset this run staged, so the
+      # probe asserts THE RELEASE CARRIES THESE FILES WITH THESE HASHES, in both
+      # directions. A release published last month answers "does a release exist"
+      # exactly as well as one published ten seconds ago, which is why that is not
+      # the question being asked.
+      #
+      # ⬜ NOT YET LOAD-BEARING, WHICH IS PRECISELY WHY IT IS BEING CLOSED NOW:
+      # with a staged `dist`, `release-manifest.mjs --emit-environments` omits
+      # `subly-windows-direct` while that channel's signing posture is SENTINEL, so
+      # the loop in the step below iterates over nothing and no ledger row is
+      # written today — the blind spot arms itself the day the code-signing pin is
+      # filled in, and closing it then costs a release.
+      #
+      # ⚠️ IT RUNS BEFORE THE LEDGER STEP AND DOES NOT GUARD IT — the ordering
+      # submit-play.yml:submit uses, for the same reason. A red here still fails
+      # the job; a release that IS published must still be recorded as published.
+      - name: The release must carry the assets this job just uploaded
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "⬜ [14]O-7 reading back the release ${REPO}@${RELEASE_TAG}"
+          node tooling/ops/post-deploy-smoke.mjs --release-repo "$REPO" --release-tag "$RELEASE_TAG" --release-manifest dist/SHA256SUMS
       # ── record what shipped — [10]D-9, through the script that already does it ─
       # 🔴 EXTENDED, NOT DUPLICATED. tooling/ci/record-deployment.mjs already
       # writes the [10]D-9 ledger entry and already resolves an environment

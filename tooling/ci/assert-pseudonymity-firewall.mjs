@@ -131,7 +131,8 @@ const REQUIRED_EVENTS = [
   { symbol: 'onPurchaseFailed', what: 'every refusal, with an enumerable reason' },
 ];
 
-const dartFiles = ['apps', 'packages', 'tooling/bricks']
+const DART_PARENTS = ['apps', 'packages', 'tooling/bricks'];
+const dartFiles = DART_PARENTS
   .flatMap((r) => walk(join(ROOT, r), ['.dart']))
   .filter((f) => !SKIP_PATH.some((s) => f.startsWith(join(ROOT, s) + sep)));
 
@@ -143,6 +144,115 @@ if (dartFiles.length < MIN_DART) {
 } else {
   ok(`scan reaches ${dartFiles.length} dart file(s)`);
 }
+
+// ── COVERAGE, PER ROOT ──────────────────────────────────────────────────────
+// 🔴 THE FLOOR ABOVE IS ONE NUMBER OVER A UNION, AND A UNION FLOOR IS NOT A
+// COVERAGE CHECK. It answers "did I see enough files somewhere"; the question is
+// "did I see every root I am supposed to see". `apps/subly` and the brick each
+// call all four REQUIRED_EVENTS, so `apps/subly` can leave the scan entirely,
+// part A still resolves four symbols against the brick's copy, and part B stops
+// looking at app code for a pairing while printing ok.
+//
+// The roots are DERIVED, because a list written here is the next thing to rot.
+// Two sources, each already maintained for its own reasons:
+//   · the `workspace:` block in the root `pubspec.yaml` — what `melos run gate`
+//     ranges over, kept in step with disk by assert-workspace-coverage.mjs;
+//   · the directories that exist under the scan roots (the same relationship
+//     assert-vendor-portability.mjs uses for `services/*`).
+// The declaration is what covers a root that is GONE: a deleted or renamed
+// directory contributes zero BY NAME instead of dropping out of the list.
+//
+// ⚠️ Residual: a scan root that is absent AND declares nothing under it is not
+// floored here.
+const SKIP_REL = SKIP_PATH.map((p) => p.split(sep).join('/'));
+
+// A root that legitimately holds no source file of the kind being scanned is
+// DECLARED, never inferred from its own count — zero is the signal this section
+// exists to read.
+const NO_SOURCE = new Map([
+  [
+    'packages/tokens',
+    'a Node package (style-dictionary) that emits design tokens. It contains no Dart at all, which is also why assert-workspace-coverage.mjs cannot see it.',
+  ],
+]);
+
+/** Members declared by the root `pubspec.yaml`'s `workspace:` block. */
+function workspaceMembers() {
+  const p = join(ROOT, 'pubspec.yaml');
+  if (!existsSync(p)) return [];
+  const text = readFileSync(p, 'utf8');
+  const ws = text.match(/^workspace:\s*$/m);
+  if (!ws) return [];
+  const out = [];
+  for (const raw of text.slice(ws.index + ws[0].length).split('\n')) {
+    const line = raw.replace(/#.*$/, '');
+    if (/^\s*-\s+\S/.test(line)) out.push(line.replace(/^\s*-\s+/, '').trim().replace(/\/+$/, ''));
+    else if (line.trim() !== '') break; // the first non-item, non-blank line ends the block
+  }
+  return out;
+}
+
+/** Every root under `parents` that is either declared or present on disk. */
+function derivedRoots(parents) {
+  const roots = new Set(workspaceMembers());
+  for (const parent of parents) {
+    let entries;
+    try {
+      entries = listDir(join(ROOT, parent), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith('.') || SKIP_DIR.has(e.name)) continue;
+      roots.add(`${parent}/${e.name}`);
+    }
+  }
+  return [...roots]
+    .filter((r) => parents.some((p) => r.startsWith(`${p}/`)))
+    .filter((r) => !SKIP_REL.some((s) => r === s || r.startsWith(`${s}/`)))
+    .sort();
+}
+
+/**
+ * Every derived root must have contributed at least one scanned file. A root
+ * that contributed none is named, not absorbed by a sibling's count.
+ */
+function assertPerRoot(label, parents, scanned, floorName) {
+  const roots = derivedRoots(parents);
+  const relFiles = scanned.map(rel);
+  const contributed = new Map(roots.map((r) => [r, 0]));
+  for (const f of relFiles) {
+    for (const r of roots) if (f.startsWith(`${r}/`)) contributed.set(r, contributed.get(r) + 1);
+  }
+  const quiet = roots.filter((r) => contributed.get(r) === 0 && !NO_SOURCE.has(r));
+  if (quiet.length) {
+    problems.push(
+      `COVERAGE LOST — ${quiet.join(', ')} contributed ZERO file(s) to the ${label}. The ${floorName} floor above is a UNION and stayed green because a sibling root covered for it; nothing under the named root(s) was read, and every clean result below is a claim about a tree that no longer includes them.`,
+    );
+  } else if (roots.length === 0) {
+    problems.push(
+      `COVERAGE LOST — no root could be derived for the ${label} from \`pubspec.yaml\`'s \`workspace:\` block or from the directories under ${parents.join(', ')}, so the per-root check ranged over nothing.`,
+    );
+  } else {
+    const seen = roots.filter((r) => !NO_SOURCE.has(r));
+    const free = roots.filter((r) => NO_SOURCE.has(r));
+    ok(
+      `${label} per root: ${seen.map((r) => `${r} (${contributed.get(r)})`).join(', ')}` +
+        (free.length ? ` · declared source-free: ${free.join(', ')}` : ''),
+    );
+  }
+  // A source-free declaration that has started producing source is a stale
+  // exemption, and a stale exemption inflates apparent coverage.
+  for (const [r, why] of NO_SOURCE) {
+    if ((contributed.get(r) ?? 0) > 0) {
+      problems.push(
+        `\`${r}\` is declared source-free (${why}) but contributed ${contributed.get(r)} file(s) to the ${label}. Delete the entry — it is now excusing a root this guard should be flooring.`,
+      );
+    }
+  }
+}
+
+assertPerRoot('dart scan', DART_PARENTS, dartFiles, `${MIN_DART}-dart-file`);
 
 const bodies = new Map(dartFiles.map((f) => [f, code(readFileSync(f, 'utf8'))]));
 
@@ -247,6 +357,13 @@ if (srcFiles.length < MIN_SRC) {
 } else {
   ok(`pairing scan reaches ${srcFiles.length} dart/ts/sql file(s)`);
 }
+
+// Same shape, same reason: 80 is a union over dart AND ts AND sql, and the dart
+// side alone clears it many times over — so both Workers can drop out of the
+// pairing scan while the number stays comfortable. `services/*` is the
+// relationship assert-vendor-portability.mjs already ranges over: every
+// directory under it is a deployed Worker.
+assertPerRoot('pairing scan', [...DART_PARENTS, 'services'], srcFiles, `${MIN_SRC}-file`);
 
 // 🔴 THE MATCHER IS PROVEN AGAINST A CONSTRUCTED PAIRING BEFORE IT IS TRUSTED.
 // The tree is (correctly) clean, so a clean result and a broken regex are

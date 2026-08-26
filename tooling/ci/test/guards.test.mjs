@@ -7634,3 +7634,133 @@ describe('assert-responsive-coverage', () => {
     assert.match(out, /`_Hollow` is a route builder declared inside/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A UNION FLOOR IS NOT A COVERAGE CHECK — assert-no-price-literals.mjs and
+// assert-pseudonymity-firewall.mjs.
+//
+// Both guards floored ONE NUMBER over the union of their scan roots, so a root
+// contributing nothing was absorbed by a sibling's count. Measured on a scratch
+// copy of the tracked tree, 2026-08-26, with `apps/` DELETED:
+//   · assert-no-price-literals    printed "scan reaches 128 non-test dart
+//     file(s)" and "no price literals in shipping source", exit 0.
+//   · assert-pseudonymity-firewall printed "ok  scan reaches 194 dart file(s)"
+//     and resolved all four REQUIRED_EVENTS against the brick's copy of the
+//     paywall, exit 0 — 121 of 315 dart files gone, nothing said.
+// Both now assert PER ROOT, over roots derived from the `workspace:` block and
+// from the directories present under each scan root.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('per-root coverage — a root that contributes nothing is named', () => {
+  const BRICK_PAYWALL =
+    'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/monetization/paywall_screen.dart';
+
+  const OFFERING = [
+    'class Offering {',
+    '  final int amountMinor;',
+    '  final String currencyCode;',
+    '',
+    '  String get formattedPrice {',
+    '    final String major = (amountMinor / 100).toStringAsFixed(2);',
+    '    return _symbols[currencyCode] ?? major;',
+    '  }',
+    '',
+    "  static const Map<String, String> _symbols = <String, String>{'USD': 'usd'};",
+    '}',
+  ].join('\n');
+
+  const FUNNEL = [
+    'class MoneyFunnel {',
+    "  Future<void> onPaywallViewed(String trigger) => _log('paywall_viewed');",
+    "  Future<void> onCheckoutStarted(String sku) => _log('checkout_started');",
+    "  Future<void> onPurchaseSuccess(String sku) => _log('purchase_success');",
+    "  Future<void> onPurchaseFailed(String reason) => _log('purchase_failed');",
+    '}',
+  ].join('\n');
+
+  const CALLERS = [
+    'class PaywallScreen extends StatelessWidget {',
+    '  Future<void> buy(Offering offering) async {',
+    "    await funnel.onPaywallViewed('gate');",
+    "    await funnel.onCheckoutStarted('sku');",
+    "    await funnel.onPurchaseSuccess('sku');",
+    "    await funnel.onPurchaseFailed('declined');",
+    '    render(offering.formattedPrice);',
+    '  }',
+    '}',
+  ].join('\n');
+
+  /** A tree that satisfies both guards' other limbs, so each case below is
+   *  measuring per-root coverage and nothing else. `appDart` false is the
+   *  mutation: `apps/subly` is still a declared workspace member and still the
+   *  only thing under `apps/`, but it contributes no dart file. */
+  function tree(name, { appDart = true, tokensDart = false } = {}) {
+    const files = {
+      'pubspec.yaml': rootPubspec(['packages/core', 'packages/purchases', 'apps/subly']),
+      [BRICK_PAYWALL]: CALLERS,
+      'packages/purchases/lib/src/offering.dart': OFFERING,
+      'packages/purchases/lib/src/money_funnel.dart': FUNNEL,
+      // A Node package under packages/ with no dart in it at all — the shape the
+      // guards' NO_DART / NO_SOURCE declaration exists for.
+      'packages/tokens/package.json': '{"name":"tokens"}\n',
+    };
+    // Enough filler to clear BOTH union floors (40 dart, 80 dart/ts/sql) from a
+    // single root — which is precisely why the floors cannot see a quiet one.
+    for (let i = 0; i < 70; i += 1) {
+      files[`packages/core/lib/src/filler_${i}.dart`] = `class Filler${i} {}\n`;
+    }
+    for (let i = 0; i < 20; i += 1) {
+      files[`services/platform/src/filler_${i}.ts`] = `export const f${i} = ${i};\n`;
+    }
+    if (appDart) files['apps/subly/lib/app.dart'] = CALLERS;
+    if (tokensDart) files['packages/tokens/lib/generated.dart'] = 'class Tokens {}\n';
+    return fixture(name, files);
+  }
+
+  for (const guard of ['assert-no-price-literals.mjs', 'assert-pseudonymity-firewall.mjs']) {
+    const short = guard.replace('assert-', '').replace('.mjs', '');
+
+    test(`${short} — PASSES when every derived root contributes`, () => {
+      const { code, out } = run(guard, { args: [tree(`proot-ok-${short}`)] });
+      assert.equal(code, 0, out);
+      assert.match(out, /per root|per-root coverage/);
+      assert.match(out, /apps\/subly \(1\)/);
+    });
+
+    test(`🔴 ${short} — COVERAGE LOST names apps/subly when it contributes nothing`, () => {
+      const { code, out } = run(guard, { args: [tree(`proot-quiet-${short}`, { appDart: false })] });
+      assert.equal(code, 1, out);
+      assert.match(out, /COVERAGE LOST — apps\/subly contributed ZERO/);
+      // The union floor stayed green throughout: that is the defect, not a
+      // second symptom of it.
+      assert.doesNotMatch(out, /COVERAGE LOST — scanned only/);
+      assert.doesNotMatch(out, /COVERAGE LOST — the pairing scan reaches only/);
+    });
+
+    test(`${short} — a root DECLARED dart-free is not reported quiet`, () => {
+      const { out } = run(guard, { args: [tree(`proot-declared-${short}`)] });
+      assert.doesNotMatch(out, /packages\/tokens contributed ZERO/);
+      assert.match(out, /declared (dart|source)-free: packages\/tokens/);
+    });
+
+    test(`🔴 ${short} — the dart-free declaration goes stale when the root grows dart`, () => {
+      // An exemption for a root that no longer needs one inflates apparent
+      // coverage, and hides the day that root starts mattering.
+      const { code, out } = run(guard, {
+        args: [tree(`proot-stale-${short}`, { tokensDart: true })],
+      });
+      assert.equal(code, 1, out);
+      assert.match(out, /`packages\/tokens` is declared (dart|source)-free/);
+    });
+  }
+
+  test('🔴 pseudonymity-firewall — a services root that contributes nothing is named', () => {
+    // The 80-file floor is a union over dart AND ts AND sql, and the dart side
+    // alone clears it many times over.
+    const dir = tree('proot-svc');
+    rmSync(join(dir, 'services', 'platform', 'src'), { recursive: true, force: true });
+    mkdirSync(join(dir, 'services', 'platform', 'src'), { recursive: true });
+    const { code, out } = run('assert-pseudonymity-firewall.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — services\/platform contributed ZERO/);
+  });
+});

@@ -193,6 +193,10 @@ import { stripSourceComments } from './text-reductions.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
+/** The script whose PRESENCE in a job puts that job in [14]O-7's domain, held
+ *  apart from `RECORD_CALL`'s reading of its ARGUMENT so the two can disagree —
+ *  which is the whole of the coverage floor at the deploy-job loop below. */
+const RECORD_SCRIPT = 'record-deployment.mjs';
 
 /** Any repo-relative path a row NAMES, in the fields that make a claim about a
  *  mechanism: the detector, the record, and the thing that reads it. `Private/`
@@ -2184,7 +2188,29 @@ async function main() {
       const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
       RECORD_CALL.lastIndex = 0;
       const envs = [...text.matchAll(RECORD_CALL)].flatMap((m) => expandEnv(m[1]));
-      if (envs.length === 0) continue;
+      // 🔴 THE FLOOR THAT WAS MISSING, AND ITS ABSENCE DROPPED A JOB TWICE.
+      // The line below used to be a bare `continue`, and a bare `continue` cannot
+      // tell "this job records nothing" from "this job records something I could
+      // not read". [10]D-2b's matrix leg hit it in 2026-08-07 and the reader was
+      // widened; the `continue` was left, so build-platforms.yml's
+      // `record-deployment.mjs "$environment"` hit the SAME line on 2026-08-26
+      // and this limb's census printed 7 deploy jobs without the release job in
+      // it. Widening the reader a second time fixes one call site. THIS fixes the
+      // shape: a job whose text names the recorder and whose argument this reader
+      // cannot parse is COVERAGE LOST, the same verdict the matrix-expansion path
+      // one branch up already reaches — so the third unparseable argument shape
+      // stops the build instead of shrinking the domain.
+      if (envs.length === 0) {
+        if (text.includes(RECORD_SCRIPT)) {
+          coverageLost([
+            `${wf.rel ?? wf.file ?? '?'}:${jobName} runs \`${RECORD_SCRIPT}\` and this scan could not read the environment it records.`,
+            'That job would leave [14]O-7\'s domain silently and the census below would print the smaller number as a',
+            'pass — the exact way the web deploy job was lost in 2026-08-07 and the release job in 2026-08-26. Widen',
+            '`RECORD_CALL` in tooling/ci/workflow-scan.mjs to read the new argument shape.',
+          ]);
+        }
+        continue;
+      }
       const smokes = (text.match(/post-deploy-smoke\.mjs/g) ?? []).length;
       for (const environment of new Set(envs)) {
         deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });

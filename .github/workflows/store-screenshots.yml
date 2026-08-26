@@ -344,11 +344,39 @@ jobs:
           MSG
 
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          # ── 🔴 `gh pr create` CAN BE REFUSED, AND A REFUSAL IS NOT A LISTING ─
+          # "Allow GitHub Actions to create and approve pull requests"
+          # (repository Settings → Actions → General) gates every `gh pr create`
+          # run by GITHUB_TOKEN. Measured OFF on 2026-08-26
+          # (`can_approve_pull_request_reviews: false`), and this call site had
+          # never executed: the one green run (30922349590, 2026-08-04) predates
+          # this step, and the two runs since both failed in `Capture the set`
+          # and skipped it. This job is the ONLY producer of the Play tablet
+          # set, so a silent refusal here is a submission that stays blocked
+          # with a green tick over it.
+          set +e
           gh pr create \
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
             --title "chore(play): the captured screenshot set, for review" \
-            --body "Captured by run \`${{ github.run_id }}\`. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing, and Google requires screenshots to demonstrate the actual in-app experience. Merging is the human decision this PR exists to ask for."
+            --body "Captured by run \`${{ github.run_id }}\`. **Look at the images in the Files changed tab** — the guard proves size, count, format, aspect and that no demo banner is present in the pixels; it cannot judge whether these are the screens worth showing, and Google requires screenshots to demonstrate the actual in-app experience. Merging is the human decision this PR exists to ask for." > "${RUNNER_TEMP}/gh-pr-create.log" 2>&1
+          PR_RC=$?
+          set -e
+          cat "${RUNNER_TEMP}/gh-pr-create.log"
+
+          if [ "$PR_RC" -ne 0 ]; then
+            if grep -qiF 'not permitted to create or approve pull requests' "${RUNNER_TEMP}/gh-pr-create.log"; then
+              CAUSE='the repository setting "Allow GitHub Actions to create and approve pull requests" is OFF.'
+              REMEDY='REMEDY (owner work — no workflow can set this for itself): Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests". API equivalent: gh api -X PUT "repos/'"${GITHUB_REPOSITORY}"'/actions/permissions/workflow" -F can_approve_pull_request_reviews=true'
+            else
+              CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+
+            echo "::error title=The screenshot set was captured but the pull request could not be opened::${CAUSE} THE CAPTURE IS NOT LOST — branch ${BRANCH} is pushed and the same pixels are already uploaded as this run's play-screenshots-subly artifact; open the pull request by hand from ${BRANCH} into ${GITHUB_REF_NAME}. ${REMEDY}"
+            exit 1
+          fi
 
       # `always()` — a capture that failed halfway may still have created rows in
       # live D1, and a throwaway user that outlives its run is exactly the kind of
