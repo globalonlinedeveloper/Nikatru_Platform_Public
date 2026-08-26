@@ -120,7 +120,18 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluate, evaluateRunRecords, cadenceDays, parseJsonc, findWranglerConfigs, stripComments, DURABLE_ID } from '../assert-ops-register.mjs';
+import {
+  evaluate,
+  evaluateRunRecords,
+  cadenceDays,
+  parseJsonc,
+  findWranglerConfigs,
+  stripComments,
+  DURABLE_ID,
+  readScheduledTaskProbe,
+  classifyScheduledTaskRow,
+  formatTaskResult,
+} from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-ops-register.mjs');
@@ -1145,6 +1156,204 @@ describe('assert-ops-register — [14]O-3 · the record-query limb, whose domain
   test('a window multiplier under 1 FAILS — a window shorter than the cadence reports a healthy duty dead', () => {
     const r = evaluateRunRecords(reg3(two(), { _windowMultiplier: 0.5 }), new Map(), NOW3);
     assert.match(r.errors.join(' | '), /_windowMultiplier` must be a number >= 1/);
+  });
+});
+
+describe('assert-ops-register — [14]O-3 · the Windows scheduled-task probe, and THE INVERSION it used to perform', () => {
+  // ══ 🔴 WHAT THIS SUITE PINS · MEASURED ON THE LAPTOP 2026-08-26 ═════════════
+  // `probeWindowsTasks` emitted `result=[int]$i.LastTaskResult`. `LastTaskResult`
+  // is a System.UInt32 holding an HRESULT-shaped value, and this host's real
+  // value for "NIKATRU daily backup" is 4294770688 (0xFFFD0000).
+  //
+  //     [int]4294770688  ->  THROWS "Value was either too large or too small
+  //                          for an Int32."
+  //
+  // The throw landed in the probe's OWN catch, the catch wrote `found=$false`,
+  // and the guard printed `no scheduled task named "NIKATRU daily backup"
+  // exists on this host` — while Get-ScheduledTask showed it Ready at TaskPath
+  // `\` with LastRunTime 2026-08-26 10:00:00 and NextRunTime the same evening.
+  //
+  // 🔴 THE INVERSION, which is what these cases exist to pin: a task that
+  // SUCCEEDS carries a small result (0) that casts fine and reports healthy; a
+  // task that FAILS carries a large HRESULT that overflowed and was reported as
+  // NOT EXISTING. The probe was reliable ONLY while nothing was wrong. It
+  // converted its most important possible finding — "your scheduled duty is
+  // running and failing" — into a quieter and WRONG one, "you never set it up",
+  // which sends a reader off to create a task that already exists.
+  //
+  // These drive the PURE seam (`readScheduledTaskProbe` / `classifyScheduledTaskRow`)
+  // with fixture rows, exactly as the block above drives `evaluateRunRecords`
+  // with `probesOf`. NOTHING here touches this host's real Task Scheduler:
+  // `probeWindowsTasks` short-circuits on `process.platform !== 'win32'` and CI
+  // runs on Linux, so a suite that depended on a real task would be vacuous
+  // there and non-deterministic here.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const NAME = 'NIKATRU daily backup';
+  // The exact JSON the fixed PowerShell emitter produces, per state.
+  const spawnOf = (rows) => ({ platform: 'win32', error: null, status: 0, stdout: JSON.stringify(rows) });
+  const probeOne = (row, names = [NAME]) => readScheduledTaskProbe(names, spawnOf([row])).get(names[0]);
+
+  test('🔴 THE REGRESSION THAT MATTERS — a LastTaskResult too large for Int32 is "EXISTS AND IS FAILING", NEVER "missing". RED before the [int]->[long] fix: [int]4294770688 threw, the throw hit the probe\'s own catch, and 0xFFFD0000 was reported as an absent task.', () => {
+    const p = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00.0000000Z', result: 4294770688, why: null });
+    assert.equal(p.missing, undefined, 'a FAILING task reported as MISSING is the whole defect — it sends a reader to create a task that already exists');
+    assert.equal(p.unreadable, undefined, 'the query answered; this is not "I could not tell"');
+    assert.ok(Number.isNaN(p.lastSuccessMs), 'a non-zero result is no successful run');
+    assert.match(p.detail, /EXISTS AND IS FAILING/);
+    assert.match(p.detail, /THIS IS NOT A MISSING TASK/);
+    assert.match(p.detail, /RAN at 2026-08-26T04:30:00\.0000000Z/, 'the run time proves the schedule fired — "dead" and "firing and failing" are different facts');
+  });
+
+  test('🔴 the decimal ALONE is unactionable — the failing verdict prints the HRESULT shape 0xFFFD0000 beside it, and claims nothing about what the code means', () => {
+    const p = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00.0000000Z', result: 4294770688, why: null });
+    assert.match(p.detail, /4294770688 \(0xFFFD0000\)/);
+    assert.equal(formatTaskResult(4294770688), '4294770688 (0xFFFD0000)');
+    assert.equal(formatTaskResult(0), '0 (0x00000000)');
+    assert.equal(formatTaskResult(267011), '267011 (0x00041303)');
+    // A signed Int32 carrying the same bit pattern decodes to the SAME hex, which
+    // is the point of [long]: both shapes survive and print identically.
+    assert.equal(formatTaskResult(-131072), '-131072 (0xFFFE0000)');
+  });
+
+  test('🔴 THE OTHER END OF THE RANGE, which `[uint32]` would have reintroduced: a NEGATIVE Int32 result is also "exists and failing", not missing and not unreadable', () => {
+    const p = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00Z', result: -131072, why: null });
+    assert.equal(p.missing, undefined);
+    assert.match(p.detail, /EXISTS AND IS FAILING/);
+    assert.match(p.detail, /-131072 \(0xFFFE0000\)/);
+  });
+
+  test('STATE 1 — the task does not exist: an ANSWERED ObjectNotFound is `missing`, the hard failure a stale register row deserves', () => {
+    const p = probeOne({ task: NAME, state: 'absent', lastRun: null, result: null, why: 'CimException: The system cannot find the file specified.' });
+    assert.equal(p.missing, true);
+    assert.equal(p.unreadable, undefined);
+    assert.match(p.why, /no scheduled task named "NIKATRU daily backup" exists on this host/);
+    assert.match(p.why, /answered ObjectNotFound, it did not merely fail to be read/);
+  });
+
+  test('STATE 2 — the task exists and its last result is 0: the ONLY healthy outcome, and it carries a real lastSuccessMs', () => {
+    const p = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00Z', result: 0, why: null });
+    assert.equal(p.missing, undefined);
+    assert.equal(p.unreadable, undefined);
+    assert.equal(p.lastSuccessMs, Date.parse('2026-08-26T04:30:00Z'));
+    assert.match(p.detail, /SUCCEEDED \(LastTaskResult = 0 \(0x00000000\)\)/);
+  });
+
+  test('STATE 3 — the task exists and has NEVER RUN: 267011 = SCHED_S_TASK_HAS_NOT_RUN is not a failure and not an absence, and it is named as itself', () => {
+    const byCode = probeOne({ task: NAME, state: 'read', lastRun: '1899-12-30T00:00:00Z', result: 267011, why: null });
+    assert.equal(byCode.missing, undefined);
+    assert.equal(byCode.unreadable, undefined);
+    assert.ok(Number.isNaN(byCode.lastSuccessMs));
+    assert.match(byCode.detail, /HAS NEVER RUN/);
+    // 267011 with a plausible LastRunTime must still read as never-run: the code
+    // is the authority, not the timestamp.
+    const codeWins = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00Z', result: 267011, why: null });
+    assert.match(codeWins.detail, /HAS NEVER RUN — LastTaskResult = 267011 \(0x00041303\) = SCHED_S_TASK_HAS_NOT_RUN/);
+    // And a missing LastRunTime is never-run even with no code at all.
+    const noTime = probeOne({ task: NAME, state: 'read', lastRun: null, result: null, why: null });
+    assert.match(noTime.detail, /HAS NEVER RUN — it reports no usable LastRunTime/);
+    assert.equal(noTime.unreadable, undefined, 'a null LastTaskResult with a null LastRunTime is "never ran", not "unreadable"');
+  });
+
+  test('🔴 STATE 0 — a catch that is NOT "no such task" is `unreadable` WITH the message, never `missing`. This is the collapse that let an overflow impersonate an absent task.', () => {
+    const p = probeOne({ task: NAME, state: 'threw', lastRun: null, result: null, why: 'InvalidCastException: Value was either too large or too small for an Int32.' });
+    assert.equal(p.missing, undefined, '"something else threw" must NEVER be reported as "the task does not exist"');
+    assert.equal(p.unreadable, true);
+    assert.match(p.why, /was NOT "no such task"/);
+    assert.match(p.why, /Value was either too large or too small for an Int32/, 'the message must survive, or the next reader cannot tell what broke');
+    assert.match(p.why, /neither "it is fine" nor "it is absent"/);
+  });
+
+  test('a row with NO recognisable state at all is `unreadable` — the row-classifier has no default that means "fine" and none that means "absent"', () => {
+    for (const bad of [undefined, null, '', 'found', true]) {
+      const p = classifyScheduledTaskRow({ task: NAME, state: bad, lastRun: null, result: null, why: null });
+      assert.equal(p.unreadable, true, 'state=' + JSON.stringify(bad ?? null) + ' must be unreadable');
+      assert.equal(p.missing, undefined);
+      assert.equal(p.lastSuccessMs, undefined);
+      assert.match(p.why, /no usable state for "NIKATRU daily backup"/);
+    }
+  });
+
+  test('powershell unavailable is `unreadable` for every name — a probe that could not run is not a probe that found nothing', () => {
+    const byError = readScheduledTaskProbe([NAME, 'Other'], { platform: 'win32', error: new Error('spawnSync powershell ENOENT'), status: null, stdout: '' });
+    for (const n of [NAME, 'Other']) {
+      assert.equal(byError.get(n).unreadable, true);
+      assert.equal(byError.get(n).missing, undefined);
+      assert.match(byError.get(n).why, /powershell could not be run here \(spawnSync powershell ENOENT\)/);
+    }
+    const byStatus = readScheduledTaskProbe([NAME], { platform: 'win32', error: null, status: 1, stdout: '' });
+    assert.match(byStatus.get(NAME).why, /powershell could not be run here \(exit 1\)/);
+  });
+
+  test('a NON-WINDOWS runner is `unreadable`, which is why this suite never asks the host for a real task — CI runs on Linux and would otherwise assert nothing', () => {
+    const p = readScheduledTaskProbe([NAME], { platform: 'linux' });
+    assert.equal(p.get(NAME).unreadable, true);
+    assert.equal(p.get(NAME).missing, undefined);
+    assert.match(p.get(NAME).why, /this runner is linux, and Task Scheduler exists only on the Windows host/);
+  });
+
+  test('output that is not the expected JSON is `unreadable`, in BOTH its shapes — unparseable, and parseable-but-not-an-array', () => {
+    const junk = readScheduledTaskProbe([NAME], { platform: 'win32', error: null, status: 0, stdout: 'Get-ScheduledTaskInfo : boom' });
+    assert.equal(junk.get(NAME).unreadable, true);
+    assert.match(junk.get(NAME).why, /output was not JSON/);
+    const notArray = readScheduledTaskProbe([NAME], { platform: 'win32', error: null, status: 0, stdout: '{"task":"x"}' });
+    assert.equal(notArray.get(NAME).unreadable, true);
+    assert.match(notArray.get(NAME).why, /parsed as JSON but was not the array of task rows/);
+  });
+
+  test('🔴 SILENCE ABOUT A NAME IS `unreadable`, NOT `missing` — a dropped row must not impersonate an absent task any more than an overflow may', () => {
+    const p = readScheduledTaskProbe([NAME, 'Never mentioned'], spawnOf([{ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00Z', result: 0, why: null }]));
+    assert.equal(p.get(NAME).lastSuccessMs, Date.parse('2026-08-26T04:30:00Z'));
+    assert.equal(p.get('Never mentioned').unreadable, true);
+    assert.equal(p.get('Never mentioned').missing, undefined);
+    assert.match(p.get('Never mentioned').why, /returned no row for "Never mentioned" at all/);
+  });
+
+  test('🔴 A RESULT THAT ARRIVES AS A STRING IS `unreadable`, NOT a failure — `=== 0` against "0" is silently false and would report a HEALTHY task as failing', () => {
+    const p = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00Z', result: '0', why: null });
+    assert.equal(p.unreadable, true);
+    assert.equal(p.missing, undefined);
+    assert.ok(!('lastSuccessMs' in p), 'no verdict may be produced from a value that cannot be compared');
+    assert.match(p.why, /arrived as a string \("0"\) rather than a number/);
+  });
+
+  test('a task that RAN but returned no LastTaskResult at all is `unreadable` — "it ran" without "how it ended" is not a success', () => {
+    const p = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00Z', result: null, why: null });
+    assert.equal(p.unreadable, true);
+    assert.equal(p.missing, undefined);
+    assert.match(p.why, /no LastTaskResult came back at all/);
+  });
+
+  test('🔴 END TO END THROUGH `evaluateRunRecords`: the overflowing result reaches the guard as a RED "no successful run", and the printed line says EXISTS AND IS FAILING rather than DOES NOT EXIST', () => {
+    const NOWW = Date.parse('2026-08-26T12:00:00Z');
+    const readers = {
+      _maxUnreachable: 1,
+      _windowMultiplier: 1.5,
+      'windows-scheduled-task': { queries: 'Get-ScheduledTaskInfo', needs: 'win32' },
+      unreachable: { queries: 'nothing', needs: 'n/a' },
+    };
+    const row = (id, recordQuery) => ({
+      id,
+      kind: 'duty',
+      what: 'a scheduled duty',
+      detector: 'x',
+      response: 'y',
+      cadence: '1d',
+      mechanism: { substrate: 'windows-task-scheduler', anchor: 'renovate.json', record: 'r', failingValue: 'f', readBy: 'b', recordQuery },
+    });
+    const reg = {
+      _recordReaders: readers,
+      rows: [
+        row('duty.laptop.nikatru-daily-backup', { reader: 'windows-scheduled-task', task: NAME }),
+        row('duty.box', { reader: 'unreachable', why: 'on a host nothing here can reach' }),
+      ],
+    };
+    const probe = probeOne({ task: NAME, state: 'read', lastRun: '2026-08-26T04:30:00.0000000Z', result: 4294770688, why: null });
+    const r = evaluateRunRecords(reg, new Map([['duty.laptop.nikatru-daily-backup', probe]]), NOWW);
+    const joined = r.errors.join(' | ');
+    assert.match(joined, /duty\.laptop\.nikatru-daily-backup — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL/);
+    assert.match(joined, /EXISTS AND IS FAILING/);
+    assert.match(joined, /4294770688 \(0xFFFD0000\)/);
+    assert.doesNotMatch(joined, /DOES NOT EXIST/, 'THE INVERSION: the old code path put this exact row here, as an absent task');
   });
 });
 

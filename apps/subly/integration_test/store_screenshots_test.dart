@@ -127,6 +127,46 @@ void main() {
     return false;
   }
 
+  /// [waitFor]'s twin, for an ABSENCE.
+  ///
+  /// ⚠️ Used to wait, never to conclude. A poll that returns on the first
+  /// matching frame can be satisfied by a state the app is merely passing
+  /// THROUGH — the shape that let the nightly E2E pass on a transiting login
+  /// screen for weeks (`test/sign_out_destination_test.dart`, and the note at
+  /// `settings_screen.dart:896`). Every destination assertion below is made
+  /// after this returns AND after a further fixed settle, never on first sight.
+  Future<bool> waitGone(
+    WidgetTester tester,
+    Finder f, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final DateTime end = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(end)) {
+      await tester.pump(const Duration(milliseconds: 200));
+      if (f.evaluate().isEmpty) return true;
+    }
+    return false;
+  }
+
+  /// WHAT IS ON SCREEN, for a failure message that would otherwise only say
+  /// what is NOT.
+  ///
+  /// `findsNothing`-style failures name the missing widget and stop, so
+  /// `Found 0 widgets with text "Welcome back"` reads identically whether the
+  /// app is still in the carousel (the tap was swallowed), on an interstitial
+  /// (a gate fired) or on `NotFoundScreen` (a redirect loop). Those need three
+  /// different fixes, and this lane produces one data point every few weeks —
+  /// so the run page has to tell them apart on its own. Copied in spirit from
+  /// `app_test.dart`, which added it for the same reason.
+  String onScreen(WidgetTester tester) {
+    final Iterable<String> texts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((Text t) => t.data ?? '')
+        .where((String s) => s.trim().isNotEmpty)
+        .take(25);
+    return texts.isEmpty ? '(no Text widgets in the tree)' : texts.join(' | ');
+  }
+
   // 🔴 THERE IS NO `shot(name)` WRAPPER ANY MORE, AND ITS ABSENCE IS LOAD-
   // BEARING. Every frame below calls `captureFrame` directly, on the line after
   // the `find.byType(...)` that says WHICH SCREEN it is photographing. That is
@@ -160,25 +200,64 @@ void main() {
     await pumpFor(tester, const Duration(seconds: 3));
 
     // The DPDP analytics-consent prompt opens over the first live launch. It is
-    // answered rather than waited out: a ModalBarrier swallows every tap aimed
+    // answered rather than waited out: an opaque scrim swallows every tap aimed
     // at the app beneath it SILENTLY, so leaving it up would make the next
     // failure blame the wrong widget (six lost nightlies, see app_test.dart).
     // "No thanks" on purpose — capturing a listing must not point a stream of
     // analytics events at production.
+    //
+    // 🔴 IT IS FOUND BY ITS ANSWER CONTROL, NOT BY A WIDGET TYPE — AND THIS
+    // LINE COST RUN 32947223120 (2026-08-26), THE SECOND RUN THIS LANE HAS EVER
+    // HAD. It polled `find.byType(Dialog)`, which was correct on 2026-08-04
+    // when the prompt was `ConsentGate`, a `showDialog` ROUTE — the only day
+    // this lane had ever run. Four days later #217 (P2.6a) replaced it with the
+    // stamped `_ConsentPrompt` in `app.dart`: `Positioned.fill` + opaque
+    // `ColoredBox` inside `MaterialApp.builder`, which is ABOVE the router's
+    // Navigator, where `showDialog` has no Navigator to push onto. It is not a
+    // route and it is not a `Dialog`. So this poll timed out with the prompt
+    // plainly on screen, the block was SKIPPED, the scrim ate `tap('Skip')`,
+    // and the suite failed eleven lines down with `Found 0 widgets with text
+    // "Welcome back"` — a login-screen error for a consent-prompt problem.
+    //
+    // 🔬 THE THIRD TIME THIS EXACT CLASS LANDED, and the fix already existed.
+    // `app_test.dart` hit it on 2026-07-27 and again on 2026-08-08, and #236
+    // ("consent helpers see the inline prompt (the outage class, recurring)")
+    // corrected ITS helpers on 2026-08-09 to key on the decline control. This
+    // file was not touched by that fix and kept the stale detector for 18 days,
+    // invisible because the lane never ran. The decline control is the right
+    // thing to key on: it is the affordance this suite actually uses, it exists
+    // in BOTH shapes, and it survives the prompt being restyled or re-parented.
+    //
+    // Reproduced without a device, and now guarded on every push, by
+    // `test/first_run_destination_test.dart`.
+    final Finder consentDecline = find.text('No thanks');
     if (await waitFor(
       tester,
-      find.byType(Dialog),
-      timeout: const Duration(seconds: 8),
+      consentDecline,
+      timeout: const Duration(seconds: 10),
     )) {
+      // A second opinion, not the detector: the prompt this suite knows carries
+      // both answers, equally weighted — itself the DPDP dark-pattern rule the
+      // app is keeping.
       expect(
-        find.text('No thanks'),
-        findsOneWidget,
+        find.text('Allow'),
+        findsWidgets,
         reason:
-            'A modal came up on first launch but it is not the consent prompt — '
-            'this suite only knows how to answer that one.',
+            'Something offering "No thanks" came up on first launch but it does '
+            'not also offer "Allow" — that is not the consent prompt, and this '
+            'suite only knows how to answer that one.',
       );
-      await tester.tap(find.text('No thanks'));
+      await tester.tap(consentDecline.first);
       await pumpFor(tester, const Duration(seconds: 2));
+      expect(
+        await waitGone(tester, consentDecline),
+        isTrue,
+        reason:
+            'The consent prompt did not close after "No thanks" was tapped. It '
+            'is an inline scrim over the whole app (app.dart `_ConsentPrompt`), '
+            'so until it goes every tap beneath it is swallowed silently and '
+            'every frame below would photograph it.',
+      );
     }
 
     // ── onboarding → login → scan → dashboard ────────────────────────────────
@@ -187,10 +266,42 @@ void main() {
       findsOneWidget,
       reason: 'App did not land on the onboarding screen',
     );
+    // 🔴 PRESENCE IS NOT REACHABILITY, AND THE GAP BETWEEN THEM IS THE WHOLE
+    // SILENT FAILURE. The carousel is BUILT underneath a scrim, so the check
+    // above passes in exactly the state that defeats the tap below. This limb
+    // asks the only question that matters — would a finger get there — and it
+    // needs to know nothing about what is doing the covering, which is why it
+    // is the one that survives the next time the modal changes shape. That
+    // shape-independence is the lesson `app_test.dart` wrote down after this
+    // class of failure got through a type-based guard twice.
+    expect(
+      find.text('Skip').hitTestable(),
+      findsOneWidget,
+      reason:
+          'Something is drawn over the app: a tap aimed at "Skip" would NOT '
+          'reach it and would be swallowed silently, so the next assertion '
+          'would blame the login screen. On screen: ${onScreen(tester)}',
+    );
     await tester.tap(find.text('Skip'));
+
+    // ── ASSERTED AFTER A SETTLE, NEVER ON FIRST SIGHT ────────────────────────
+    // `waitGone` is the WAIT (bounded, so a swallowed tap fails here rather
+    // than eleven lines later); the fixed pump after it is the SETTLE; the
+    // assertion comes last. A poll that returned the first time "Welcome back"
+    // matched could be satisfied by a frame the app was transiting — the shape
+    // that hid a real regression for weeks (sign_out_destination_test.dart).
+    await waitGone(tester, find.text('Skip'));
     await pumpFor(tester, const Duration(seconds: 2));
 
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(
+      find.text('Welcome back'),
+      findsOneWidget,
+      reason:
+          'Skip did not settle on the login form. The string is not missing — '
+          '`welcomeBack` renders at login_screen.dart:371 whenever LoginScreen '
+          'is mounted — so the app is somewhere else. On screen: '
+          '${onScreen(tester)}',
+    );
     // Hoisted out of the `enterText` call because the capture guard needs the
     // SAME string: what this suite types is, by definition, the address the
     // frames below would carry.

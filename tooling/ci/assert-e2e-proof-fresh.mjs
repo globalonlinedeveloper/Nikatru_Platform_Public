@@ -73,6 +73,109 @@
 // That ceiling is under a standing owner lock. This one is derived from a
 // different cron and means something different.
 //
+// ── THE RUN WINDOW IS LOAD-BEARING — `per_page` IS NOT A TIDYING KNOB ────────
+// RUNS_PAGE_SIZE is 100, matching assert-platform-proof-fresh.mjs. It read 20
+// until 2026-08-26, and the whole reason that was a CLIFF is one word in the
+// query string: `status=success`.
+//
+// The window is therefore a window over SUCCESSES, not over runs. Every green
+// hand-pressed `workflow_dispatch` permanently occupies a slot in it, and
+// nothing ages a slot out except a NEWER success. So the long red streak this
+// guard exists to detect is also the condition that fills the page: a failing
+// nightly is exactly what makes people press dispatch, over and over, and each
+// one that goes green consumes a row above the last scheduled success. Push
+// enough of them and that scheduled success falls off the end of the page. The
+// guard then sees a success list with no `event === 'schedule'` in it at all and
+// HARD-FAILS ci-gate saying the timer has stopped — a verdict indistinguishable,
+// from the outside, from a genuinely dead cron. It was measured at the shipped
+// width before this change: with a scheduled success ONE DAY OLD at position 25,
+// per_page=20 reported "20 successful run(s), but NONE was triggered by the
+// schedule" and exited 1.
+//
+// Note the asymmetry, and note exactly how far it reaches, because it bounds
+// what this can corrupt: truncation drops the rows at the END of the page, and
+// the page is ordered by `created_at` DESCENDING. So a short page can hide a
+// scheduled run ENTIRELY — that is the cliff above.
+//
+// ⚠️ IT DOES NOT FOLLOW THAT A STALE-AGE VERDICT IS WINDOW-PROOF, AND THIS FILE
+// CLAIMED IT DID UNTIL 2026-08-26. The page is ordered by `created_at`; this
+// guard grades freshness by `updated_at` (see `evaluateFreshness`). Those are
+// two different orderings, and a run CREATED earlier can UPDATE later — a slow
+// run finishes after a fast one that started behind it. A scheduled run
+// truncated by `created_at` could therefore hold a NEWER `updated_at` than any
+// scheduled run left on the page, making the newest visible one look older than
+// the newest one really is. The old "therefore never a window artifact" inferred
+// recency from page position, and page position is not recency here.
+//
+// MEASURED, because this is not a claim to settle from the API docs. Over the
+// full retained success history on main (27 rows, 2026-08-26): the page IS
+// `created_at` DESC, and the `created_at` and `updated_at` orderings agree
+// EXACTLY — zero inversions. The margin is wide, too: the smallest gap between
+// adjacent runs is 9,303s while the entire spread of run DURATIONS is 175s, so
+// nothing observed comes within ~53x of overtaking its neighbour.
+//
+// ⛔ THAT IS A BOUND, NOT A LAW. 27 agreeing rows cannot establish a "never",
+// and the state that breaks it — two runs created close together with very
+// different durations — is exactly what a debugging burst produces, which this
+// header documents a few lines up. So the claim is NOT restored on the strength
+// of the measurement; the CAVEAT is extended instead. Both the zero-scheduled
+// branch AND the stale-age branch now report window saturation when the page
+// came back full.
+//
+// ⛔ THE VERDICT IS UNCHANGED IN BOTH BRANCHES. This splits the DIAGNOSIS only —
+// `ok` is still `ageDays <= maxAgeDays`. Nothing here makes the guard pass in
+// any case where it previously failed.
+//
+// §7.10 item 5 of Private/notes/HANDOFF-2026-08-26.md is where this change was
+// ORDERED, and is the ONLY place `per_page` occurs in that handoff: it records
+// this guard reading `per_page=20` "where its sibling reads 100" and names the
+// consequence — "Enough dispatch runs push the last scheduled success off the
+// page and hard-fail `ci-gate`."
+//
+// 🔴 DO NOT CITE §7.1 FOR THIS, and do not trust §7.10's own pointer to it.
+// §7.10 item 5 calls this "the SAME cliff §7.1 just fixed", but §7.1 is titled
+// "§1'S DEADLINE IS DISCHARGED — A SECOND CRON, NOT A RAISED CEILING": it adds a
+// Thursday slot to build-platforms.yml with MAX_AGE_DAYS untouched at 14, is
+// about CADENCE, and mentions no page, window or `per_page` anywhere. The
+// sibling's own 20→100 is real but happened 2026-08-11 in 4384ab6, as a side
+// effect of dropping `branch=main` — not this week, and not a saturation cliff
+// anybody hit. An earlier draft of this header cited §7.1 here and was wrong on
+// all three counts. Private/notes/DEAD-CITATIONS-2026-08-26.md exists because of
+// this class of defect, and a guard header nobody re-reads for years is the
+// worst place to leave one.
+//
+// ⚠️ WIDENING MOVES THE CLIFF; IT DOES NOT REMOVE ONE, and this file would rather
+// say so than declare the problem solved. `per_page` is capped at 100 on this
+// endpoint — removing the cliff outright needs PAGINATION, and pagination is not
+// what landed. What was actually measured, live, on 2026-08-26
+// (`gh run list --workflow=e2e.yml --branch main --status success --limit 200`):
+//   · 27 successes in the ENTIRE retained history on main — 20 `schedule` and
+//     7 `workflow_dispatch`. The whole list is smaller than a single page.
+//   · the deepest run of consecutive dispatch successes sitting above a
+//     scheduled one, anywhere in that history: 2 — the streaks are [1],[2],[2],
+//     [1]. (A fifth lone dispatch is the OLDEST row in the whole history and
+//     sits above no scheduled run at all, so it is not one of these; counting it
+//     changes nothing, it is length 1.) RE-MEASURED 2026-08-26 — an earlier
+//     draft of this header said 3, which no streak in the history reaches. The
+//     old width of 20 was therefore carrying 18 rows of headroom, not the 17
+//     that a 3 implies, and not the 0 that a red would imply.
+//   · the worst burst genuinely observed: 4 green dispatches in 3 days, while
+//     the 2026-08-08…08-11 red streak was being debugged.
+// Exhausting 100 needs ~100 green dispatches with not one green scheduled run
+// among them — on the order of seventy-five days at that peak burst rate,
+// against a 90-day run retention that today holds 27 successes in total. That is
+// not a reachable state. It is a BOUND, though, not a proof, and the honest
+// description of this change is "the cliff is five times further away and it
+// announces itself when reached", not "fixed".
+//
+// AND IF IT IS EVER REACHED, IT NOW SAYS SO. `evaluateFreshness` reports
+// `windowSaturated` when the page came back FULL. "No scheduled run in the
+// window" and "no scheduled run exists" are DIFFERENT FACTS and only the second
+// is a finding about the cron. ⛔ The VERDICT is unchanged — it still fails,
+// because a guard that cannot see the timer must never certify the timer — this
+// splits the DIAGNOSIS only. Nothing here makes the guard pass in any case where
+// it previously failed.
+//
 // ── WHAT HAPPENS ON THE DAY THE NIGHTLY LEGITIMATELY FAILS ──────────────────
 // Stated here because a merge-blocking guard whose subject is an unattended cron
 // owes an explicit answer, and because "it went red and nobody knew why" is the
@@ -126,6 +229,14 @@ const MAX_AGE_DAYS = 3;
 // reports on it as if it were ours. Verify a repo name with `gh repo list`, never
 // with `gh api repos/<owner>/<name>` — the redirect makes the dead name answer.
 const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
+// 🔴 LOAD-BEARING, NOT COSMETIC — read 'THE RUN WINDOW IS LOAD-BEARING' in the
+// header before touching this. The query filters `status=success`, so this sizes
+// a window over SUCCESSES: every green hand-press consumes a slot and can push
+// the last scheduled success off the page, at which point this guard reports a
+// dead cron that is not dead. Was 20 until 2026-08-26; now matches
+// assert-platform-proof-fresh.mjs. 100 is this endpoint's MAXIMUM — it cannot be
+// raised, and tidying it back down re-opens the cliff.
+export const RUNS_PAGE_SIZE = 100;
 
 /** The work the run must still be doing, or its green tick means nothing.
  *
@@ -273,10 +384,16 @@ export function assertWatchedWorkflowIntact(root = ROOT) {
 
 // The decision, kept pure so it can be tested without network. This is where the
 // real defects live — the API call is the boring half.
-export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
+export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS, pageSize = RUNS_PAGE_SIZE) {
   if (!Array.isArray(runs)) {
     return { ok: false, reason: 'run list was not an array — treating an unreadable answer as a failure' };
   }
+  // THE PAGE CAME BACK FULL. Computed ONCE, up here, because it qualifies BOTH
+  // failing verdicts and not only the zero-scheduled one. A full page means the
+  // API had more successes to give and this query never asked for them — which
+  // is a coverage loss in this file's own sense: rows the guard is meant to see
+  // and did not.
+  const windowSaturated = runs.length >= pageSize;
   const successes = runs.filter((r) => r && r.conclusion === 'success' && r.updated_at);
   if (successes.length === 0) {
     return { ok: false, reason: `no successful ${WORKFLOW} run found on ${BRANCH}` };
@@ -298,12 +415,30 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
   // timer that has STOPPED, and it fails immediately.
   const scheduled = successes.filter((r) => r.event === 'schedule');
   if (scheduled.length === 0) {
+    // TWO DIFFERENT FACTS, AND ONLY ONE OF THEM IS ABOUT THE CRON. A page that
+    // came back FULL means the API had more successes to give and this query
+    // never asked for them, so "no scheduled run here" is a statement about the
+    // WINDOW. A short page IS the whole retained success history, so the same
+    // emptiness is a statement about the TIMER.
+    //
+    // ⛔ BOTH STILL FAIL, and that is deliberate. A guard that cannot see the
+    // timer must not report the timer healthy — "I could not tell" reading as
+    // "it is fine" is the original defect this whole file exists to remove. What
+    // changes is only what the operator is sent to look at, which is the
+    // difference between fixing a cron and chasing one that was never broken.
     return {
       ok: false,
       manualCount: successes.length,
-      reason:
-        `${successes.length} successful run(s), but NONE was triggered by the schedule — every one was manual. ` +
-        'A dead cron is invisible behind a hand-press, which is exactly what freshness exists to detect.',
+      windowSaturated,
+      reason: windowSaturated
+        ? `COVERAGE LOST — ${successes.length} successful run(s) came back and NONE was triggered by the schedule, but THE PAGE WAS FULL ` +
+          `(${runs.length} rows >= per_page ${pageSize}), so older successes exist that this query never saw. ` +
+          'That is a statement about the WINDOW, not yet about the cron: because the query filters `status=success`, a green ' +
+          'scheduled run can be sitting just past the end of the page, pushed there by hand-pressed dispatches. ' +
+          'It still FAILS — a guard that cannot see the timer must not certify it — but confirm with ' +
+          `\`gh run list --workflow=${WORKFLOW} --branch ${BRANCH} --status success\` before blaming the schedule.`
+        : `${successes.length} successful run(s), but NONE was triggered by the schedule — every one was manual. ` +
+          'A dead cron is invisible behind a hand-press, which is exactly what freshness exists to detect.',
     };
   }
   const newest = scheduled.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a));
@@ -312,20 +447,54 @@ export function evaluateFreshness(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
     return { ok: false, reason: `newest run has an unparseable timestamp: ${newest.updated_at}` };
   }
   const ageDays = (nowMs - stamp) / 86_400_000;
+  const stale = ageDays > maxAgeDays;
+
+  // ⚠️ THE AGE BRANCH CARRIES THE SATURATION CAVEAT TOO, since 2026-08-26. This
+  // file used to argue it could never need one: truncation drops the oldest
+  // rows, so whichever scheduled run survives must be the newest. That inferred
+  // recency from PAGE POSITION — and the page is ordered by `created_at` while
+  // `newest` above is chosen by `updated_at`. A run created earlier can update
+  // later, so the two orderings can disagree, and a truncated scheduled run can
+  // in principle be the genuinely newest one. Measured over the whole retained
+  // history they agree exactly (see the header), but that is a BOUND, NOT A LAW,
+  // and this guard does not certify what it cannot see.
+  //
+  // ⛔ `ok` IS UNTOUCHED — still `ageDays <= maxAgeDays`. A stale run stays
+  // stale, saturated or not; only the DIAGNOSIS gains a sentence.
   return {
-    ok: ageDays <= maxAgeDays,
+    ok: !stale,
     ageDays,
     runId: newest.id,
     updatedAt: newest.updated_at,
-    reason: ageDays <= maxAgeDays ? null : `newest green scheduled run is ${ageDays.toFixed(1)} days old, ceiling is ${maxAgeDays}`,
+    windowSaturated: stale ? windowSaturated : false,
+    reason: !stale
+      ? null
+      : windowSaturated
+        ? `COVERAGE LOST — the newest VISIBLE green scheduled run is ${ageDays.toFixed(1)} days old, ceiling is ${maxAgeDays} — ` +
+          `and THE PAGE WAS FULL (${runs.length} rows >= per_page ${pageSize}), so older successes exist that this query never ` +
+          'saw. This is a statement about the WINDOW as well as the age: the page is ordered by `created_at` but this age is ' +
+          'graded by `updated_at`, and a run created earlier can update later, so a truncated scheduled run could in principle ' +
+          'be newer than this one. It still FAILS — a guard that cannot see the timer must not certify it — but confirm with ' +
+          `\`gh run list --workflow=${WORKFLOW} --branch ${BRANCH} --status success\` before blaming the schedule.`
+        : `newest green scheduled run is ${ageDays.toFixed(1)} days old, ceiling is ${maxAgeDays}`,
   };
+}
+
+/** The run-history query.
+ *
+ *  Exported, and built here rather than written inline, so a test can pin the
+ *  window width against the REAL query string. A constant reading 100 beside a
+ *  URL still reading 20 is the failure this shape removes: the guard would look
+ *  fixed in the place anybody reads and be unfixed in the place it runs. */
+export function buildRunsUrl(repo) {
+  return `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=success&per_page=${RUNS_PAGE_SIZE}`;
 }
 
 async function fetchRuns() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!token) throw new Error('no GITHUB_TOKEN / GH_TOKEN in the environment — cannot read run history, so this fails closed');
   const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=success&per_page=20`;
+  const url = buildRunsUrl(repo);
   const res = await fetch(url, {
     headers: {
       authorization: `Bearer ${token}`,
@@ -375,6 +544,24 @@ async function main() {
 
   if (!verdict.ok) {
     fail(`the nightly golden-path proof is not fresh — ${verdict.reason}`);
+    if (verdict.windowSaturated) {
+      console.error('');
+      console.error(`      ⚠️ THE RUN PAGE CAME BACK FULL (per_page=${RUNS_PAGE_SIZE}, this endpoint's maximum), so older`);
+      console.error('      successes exist that this query never saw. THIS VERDICT MAY BE A WINDOW ARTIFACT.');
+      if (verdict.ageDays === undefined) {
+        console.error('      HERE THAT MEANS: the query filters `status=success`, so every green hand-press occupies a');
+        console.error('      slot and can push the last scheduled success off the end of the page — a cron that fired');
+        console.error('      last night can look stopped.');
+      } else {
+        console.error('      HERE THAT MEANS: the page is ordered by `created_at` but freshness is graded by');
+        console.error('      `updated_at`, and a run created earlier can update later — so a scheduled run truncated');
+        console.error('      by created_at can hold a newer updated_at than any row left on the page. Measured');
+        console.error('      2026-08-26 the two orderings agreed exactly over the whole retained history, but that is');
+        console.error('      a BOUND, NOT A LAW, which is why this is printed rather than assumed away.');
+      }
+      console.error('      It still fails — a guard that cannot see the timer must not certify it — but LOOK AT THE RUN');
+      console.error('      LIST before touching the schedule. Closing this properly means paginating, not widening.');
+    }
     console.error('');
     console.error(`      The live E2E has not gone green on a SCHEDULED run on ${BRANCH} recently enough.`);
     console.error('      ⚠️ A MANUAL RUN DOES NOT SATISFY THIS. Freshness is a claim about the timer, so');
