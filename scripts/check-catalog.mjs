@@ -66,9 +66,8 @@
    through `readText`, which STRIPS a UTF-8 BOM. That is deliberate and correct
    for a tool.json — a byte order mark should report as a byte order mark, not as
    "corrupt JSON". But it means every content limb in this file is blind to the
-   file's actual first three bytes, and this catalogue's actual bytes ARE the
-   contract: the storefront fetches them over https and byte-compares its
-   vendored copy against them.
+   file's actual first three bytes — and those bytes are what any consumer of
+   this catalogue parses. (Whether one exists: scripts/publish-catalog.mjs:16.)
 
    Measured on the real tree: prepend EF BB BF to catalog/extensions.json and
    `publish-catalog.mjs --check`, this script, and `lint.mjs` all exited 0, while
@@ -179,10 +178,9 @@ const rawCatalogueBytes = fs.readFileSync(catalogueAbs);
 if (rawCatalogueBytes.subarray(0, 3).equals(Buffer.from([0xEF, 0xBB, 0xBF]))) {
   r.fail(catalogueRel + ' starts with a UTF-8 byte order mark (EF BB BF)',
     'The first three bytes are EF BB BF, before the opening `[`.\n' +
-    'These bytes are a published interface: Nikatru_Storefront_Public fetches this exact file over https,\n' +
-    'byte-compares its vendored copy against it, and parses it. `JSON.parse` throws on a leading U+FEFF in\n' +
-    'every path Node offers — string and Buffer alike — so with the BOM present the storefront reports\n' +
-    '"not valid JSON", vendors nothing and renders no extensions at all.\n' +
+    '`JSON.parse` throws on a leading U+FEFF in every path Node offers — string and Buffer alike — so a\n' +
+    'consumer that fetches these bytes reports "not valid JSON" and reads no extensions at all.\n' +
+    '(Which consumer, if any: see the dated CORRECTION at scripts/publish-catalog.mjs:16.)\n' +
     'No other gate in this repository sees it: readJson() reads through readText(), which strips a BOM by\n' +
     'design so that a BOM\'d tool.json reports as a BOM rather than as corrupt JSON. Right for tool.json,\n' +
     'wrong for the one file whose raw bytes are the contract — hence this limb, on the Buffer, first.\n' +
@@ -265,6 +263,7 @@ const shapeProblems = [];
 const statusProblems = [];
 const urlProblems = [];
 const slugsSeen = new Map();
+const unlistedRows = [];
 let rowsChecked = 0;
 let listedRows = 0;
 
@@ -353,6 +352,7 @@ catalogue.forEach((row, i) => {
     }
   }
   if (listedHere > 0) listedRows += 1;
+  else unlistedRows.push(str(row.slug) ? row.slug : '#' + i);
 
   /* ── LIMB 3: STATUS ── */
   if (!PUBLISHED_STATUS.includes(row.status)) {
@@ -410,16 +410,15 @@ r.check('every tool.json status agrees with its own listings', sourceProblems.le
   sourceProblems.join('\n'));
 
 /* ── THE GAP ONLY THE OWNER CAN CLOSE ─────────────────────────────────────── */
-const unlisted = extensions.filter((t) => {
-  const l = t.listings && typeof t.listings === 'object' && !Array.isArray(t.listings) ? t.listings : {};
-  return Object.values(l).every((v) => !(typeof v === 'string' && v.trim() !== ''));
-});
-if (unlisted.length === extensions.length && extensions.length > 0) {
-  r.owner('no extension is listed in any store, so the whole catalogue publishes "' + PUBLISHED_STATUS[1] + '"',
-    'Every row the storefront renders from this file is a card with no install route. That is the true state and this\n' +
+/* Counted from the parsed rows, not from the tool.json set, because the message
+   is about the rows this file publishes and --file can point at a catalogue the
+   tools on disk do not derive. */
+if (rowsChecked > 0 && listedRows === 0) {
+  r.owner('no row in ' + catalogueRel + ' carries a store listing, so the whole catalogue publishes "' + PUBLISHED_STATUS[1] + '"',
+    'Every row a storefront would render from this file is a card with no install route. That is the true state and this\n' +
     'guard will not fail the build over it — creating store listings is owner work, and a build permanently red on work\n' +
     'only one person can do teaches everyone that red is negotiable.\n' +
-    'Unlisted: ' + unlisted.map((t) => t.id).join(', '));
+    'Unlisted: ' + unlistedRows.join(', '));
 }
 
 r.blank();

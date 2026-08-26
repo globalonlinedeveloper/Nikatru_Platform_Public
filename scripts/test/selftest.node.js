@@ -52,9 +52,13 @@ const FAILURES = [];
 function ok(label, extra) { PASS++; console.log('  PASS  ' + label + (extra ? '  — ' + extra : '')); }
 function bad(label, why) { FAILURES.push({ label, why }); console.log('  FAIL  ' + label + '\n        ' + String(why).split('\n').join('\n        ')); }
 
-function run(script, argv, root) {
+/* `env` is for a gate whose offline affordance is an environment variable
+   rather than a flag; as a function it is handed the root, so a case can point
+   it at a file inside its own fixture tree. */
+function run(script, argv, root, env) {
+  const extra = typeof env === 'function' ? env(root) : env;
   const res = spawnSync(process.execPath, [path.join(SCRIPTS, script), ...argv, '--repo-root', root], {
-    encoding: 'utf8', cwd: REPO
+    encoding: 'utf8', cwd: REPO, env: extra ? { ...process.env, ...extra } : process.env
   });
   return { code: res.status, out: (res.stdout || '') + (res.stderr || '') };
 }
@@ -63,8 +67,8 @@ function run(script, argv, root) {
    of the message. A gate that fails for an unrelated reason is not the gate
    working — that is how three "caught" mutations turned out to be compile
    errors in an earlier project in this family. */
-function expect(label, { script, argv, root, code, contains }) {
-  const r = run(script, argv, root);
+function expect(label, { script, argv, root, code, contains, env }) {
+  const r = run(script, argv, root, env);
   const codeOk = r.code === code;
   const textOk = !contains || r.out.includes(contains);
   if (codeOk && textOk) return ok(label, 'exit ' + r.code + (contains ? ' · says "' + contains + '"' : ''));
@@ -1584,6 +1588,100 @@ expect('an emptied store set CANNOT RUN rather than passing', {
 expect('a tool with targets but NO storeMetadata is caught', {
   script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'checked by nothing',
   root: withStores(t => { delete t.storeMetadata; })
+});
+
+/* =====================================================================
+   assert-e2e-proof-fresh.mjs
+
+   Network-backed and ADVISORY, so every case drives its offline affordance:
+   PROOF_ALARM_FIXTURE injects the run history, PROOF_ALARM_NOW pins the clock,
+   and the ceiling stays DERIVED from the fixture tree's own e2e.yml cron.
+   ===================================================================== */
+console.log('\nassert-e2e-proof-fresh.mjs');
+
+const PROOF_NOW = '2026-08-26T00:00:00Z';
+const PROOF_HISTORY = 'proof-history.json';
+const proofAgo = d => new Date(Date.parse(PROOF_NOW) - d * 86400000).toISOString();
+const proofEnv = root => ({ PROOF_ALARM_FIXTURE: path.join(root, PROOF_HISTORY), PROOF_ALARM_NOW: PROOF_NOW });
+
+/* A weekly cron and a matrix job named at the 4-space job indent: the two facts
+   the gate re-derives its ceiling and its GREEN matcher from. */
+const E2E_WEEKLY = [
+  'name: e2e',
+  'on:',
+  '  schedule:',
+  "    - cron: '17 4 * * 1'",
+  'jobs:',
+  '  e2e:',
+  '    name: e2e (${{ matrix.dir }})',
+  '    runs-on: ubuntu-latest',
+  '    steps:',
+  '      - run: echo fixture',
+  ''
+].join('\n');
+
+const proofLeg = c => [{ name: 'e2e (Good_Tool)', conclusion: c }];
+/* Three weekly scheduled runs, all green, the newest 2 days old. */
+function withProof(mutate = () => {}) {
+  return fixture(root => {
+    const h = {
+      workflow_runs: [
+        { id: 3, event: 'schedule', created_at: proofAgo(2) },
+        { id: 2, event: 'schedule', created_at: proofAgo(9) },
+        { id: 1, event: 'schedule', created_at: proofAgo(16) }
+      ],
+      jobs: { 3: proofLeg('success'), 2: proofLeg('success'), 1: proofLeg('success') }
+    };
+    const wf = { yaml: E2E_WEEKLY };
+    mutate(h, wf, root);
+    if (wf.yaml !== null) w(root, '.github/workflows/e2e.yml', wf.yaml);
+    writeJson(root, PROOF_HISTORY, h);
+  });
+}
+
+expect('a fired timer and a green scheduled run pass', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
+  root: withProof(), env: proofEnv
+});
+expect('a dead cron is caught — no scheduled run inside the ceiling', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'THE CRON IS DEAD OR DISABLED',
+  root: withProof(h => { h.workflow_runs.forEach((r, i) => { r.created_at = proofAgo(30 + i * 7); }); }),
+  env: proofEnv
+});
+expect('a firing cron whose every run was red is caught', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'NO GREEN SCHEDULED RUN',
+  root: withProof(h => { for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('failure'); }),
+  env: proofEnv
+});
+expect('a green proof past the ceiling is caught while the timer is still fresh', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'THE WEEKLY PROOF IS STALE',
+  root: withProof(h => { h.jobs[3] = proofLeg('failure'); h.jobs[2] = proofLeg('failure'); }),
+  env: proofEnv
+});
+/* 🔴 THE VACUITY LIMB. A run with ZERO matching legs must not read as green —
+   a vacuous `every` over an empty list is how a renamed job reports health. */
+expect('a run whose e2e legs no longer match is not-green rather than green', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'legs=0  not-green',
+  root: withProof(h => { for (const k of Object.keys(h.jobs)) h.jobs[k] = [{ name: 'Discover e2e suites', conclusion: 'success' }]; }),
+  env: proofEnv
+});
+
+/* The two self-checks: the ceiling and the matcher are derived, so the facts
+   they are derived FROM are load-bearing. */
+expect('a cron that stopped being weekly reddens the derived ceiling', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'are not weekly',
+  root: withProof((h, wf) => { wf.yaml = wf.yaml.replace('17 4 * * 1', '17 4 1 * *'); }),
+  env: proofEnv
+});
+expect('a renamed e2e job reddens the matcher the GREEN limb keys on', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'no job in e2e.yml carries a name starting e2e at the job indent',
+  root: withProof((h, wf) => { wf.yaml = wf.yaml.replace('    name: e2e (', '    name: suite ('); }),
+  env: proofEnv
+});
+expect('an unreadable e2e.yml CANNOT RUN rather than reporting freshness', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2, contains: 'nothing to derive it from',
+  root: withProof((h, wf) => { wf.yaml = null; }), env: proofEnv
 });
 
 /* =====================================================================

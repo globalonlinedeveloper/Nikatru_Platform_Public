@@ -47,7 +47,7 @@ import { chromium } from 'playwright';
 import { serve, prepareTestExtension, setSettings, EXT_DIR, OUT_DIR } from './claim-lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = 8127;
+const PORT = Number(process.env.PORT || 8127);
 const BASE = 'http://127.0.0.1:' + PORT;
 const FIX = BASE + '/test/e2e/fixtures/';
 const ADV = BASE + '/test/e2e/fixtures-adv/';

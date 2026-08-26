@@ -343,10 +343,10 @@ jobs:
       - run: node scripts/secret-scan.mjs .
 
   catalogue:
-    # The catalogue is a PUBLISHED INTERFACE, not an internal file: the storefront
-    # (Nikatru_Storefront_Public - repointed 2026-08-19) fetches catalog/extensions.json over https and byte-
-    # compares its vendored copy against it. So the bytes here are somebody else's
-    # build input, and a hand-edit is their red build, not our merge conflict.
+    # The catalogue is GENERATED, not hand-edited, and this job proves the
+    # generator can still produce it. The Nikatru_Storefront_Public consumer
+    # the sentence here used to name is gone, measured and recorded in
+    # publish-catalog.mjs (2026-08-19).
     name: catalogue
     runs-on: ubuntu-latest
     steps:
@@ -982,7 +982,7 @@ jobs:
   # output rather than leaving the reader to assume repo-wide coverage.
   ci-required:
     name: ci-required
-    needs: [gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates]
+    needs: [gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates, e2e-proof-fresh]
     if: always()
     runs-on: ubuntu-latest
     env:
@@ -1001,6 +1001,7 @@ jobs:
       R_PACKAGE: ${{ needs.package.result }}
       R_SELFTEST: ${{ needs.selftest.result }}
       R_TEMPLATES: ${{ needs.templates.result }}
+      R_E2E_PROOF_FRESH: ${{ needs.e2e-proof-fresh.result }}
     steps:
       - uses: actions/checkout@v7
       - name: Every job in this workflow is accounted for, and every outcome is graded
@@ -1058,6 +1059,7 @@ jobs:
             "package=$R_PACKAGE"
             "selftest=$R_SELFTEST"
             "templates=$R_TEMPLATES"
+            "e2e-proof-fresh=$R_E2E_PROOF_FRESH"
           )
 
           # ── STRUCTURAL: NO JOB MAY ESCAPE THIS AGGREGATOR ───────────────────
@@ -1143,3 +1145,32 @@ jobs:
             exit 1
           fi
           echo "ci-required: ${#pairs[@]} job(s) accounted for, every outcome in the allowed set."
+
+  # Appended at the bottom for the reason written above `templates`: inserting a
+  # job higher in this file shifts every `ci.yml:NNN` citation below it.
+  e2e-proof-fresh:
+    name: e2e proof freshness (is the weekly cron alive?)
+    runs-on: ubuntu-latest
+    # e2e.yml's own `proof-fresh` job already asks this, but only from INSIDE
+    # e2e.yml — which fires on its weekly cron, on dispatch, or on a `run-e2e`
+    # label this repository does not define. A dead cron therefore silences its
+    # own alarm. This asks the same question on every push to main and every PR.
+    #
+    # ⚠️ ADVISORY, AND SAYING SO IS THE POINT. main here has no branch
+    # protection and no rulesets, so a red from this reddens a check on the
+    # checks page and blocks nothing. That is an owner action, not this job's.
+    #
+    # The workflow-level block at the top of this file is `contents: read`, and
+    # a job-level block REPLACES it wholly rather than adding to it.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - name: The weekly e2e proof must be RECENT, SCHEDULED and GREEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: node scripts/assert-e2e-proof-fresh.mjs

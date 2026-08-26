@@ -87,6 +87,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write        # the only write in the repo: creating the release
+      actions: read          # read-only, and it buys the ci-conclusion check
+                             # below. A `permissions:` block makes every scope
+                             # it does not name `none`.
       # ⬜ RESIDUAL, STATED RATHER THAN GLOSSED, 2026-08-25. A dispatch writes
       # nothing — the one step that would is fenced off — but the job token it
       # runs under still carries this `write`, because `permissions:` takes no
@@ -123,10 +126,9 @@ jobs:
       # step has never run, so nothing downstream of it can go red when its
       # guard goes missing. This step is what notices.
       #
-      # It reads THIS FILE and requires that every line carrying a publishing
-      # command sits in a step whose own `if:` tests the dry-run input. That is
-      # the structural property the dry run rests on, stated once, in a form
-      # that fails loudly rather than silently.
+      # It reads THIS FILE and requires that `if:` on every step that is a
+      # `uses:` the exemption list does not name, or whose body carries a
+      # store-publish command or a store upload URL.
       #
       # ⚠️ THE PATTERN IS BUILT BY ALTERNATION SO NO LINE OF THIS BODY IS ITSELF
       # A LITERAL PUBLISHING COMMAND. `gh release (create|upload|edit|delete)`
@@ -147,49 +149,94 @@ jobs:
       # prose mention in the Checksums comment — so the anchored form would have
       # reported "0 unguarded" over a file it had not actually read.
       #
-      # ⚠️ AND `found == 0` IS A FAILURE, NOT A PASS. If a publishing command is
-      # renamed or a store upload arrives under a name this pattern does not
-      # know, the guard this step exists to assert simply goes unasserted. Same
-      # rule as the AMO step's `grep -q '^ALL PASS$'` further down: assert the
-      # positive, because a tripwire that can only fire on wording it already
-      # knows goes quietly green the day the wording changes.
+      # 🔴 GRADING `run:` BODY TEXT WAS THE WHOLE CHECK UNTIL 2026-08-26, AND A
+      # STEP SPELLED `uses:` HAS NO BODY TO GRADE. Measured in a scratch tree on
+      # 2026-08-26 against the old body: a step `uses: <org>/chrome-extension-
+      # upload@v5` appended with NO `if:` at all, and separately a `curl -X PUT`
+      # at a store upload URL, each printed `1 publishing command(s), all 1
+      # guarded` and EXIT 0. Both would have EXECUTED during a dry_run=true
+      # rehearsal — the one event this guard exists to make safe. So `uses:` is
+      # now DEFAULT-DENY: anything not on the exemption list must carry the
+      # guard, which is a rule an unfamiliar action name cannot walk past.
+      #
+      # ⚠️ AND EACH EXEMPTION MUST BE USED, because an exemption outlives the
+      # step it was written for and is then a standing pre-authorisation for
+      # whatever takes that name next.
+      #
+      # ⚠️ BUILTINS, NOT A `grep` PER LINE. The per-line spawn form measured
+      # over 200s on a Windows checkout of this file — too slow to rehearse by
+      # hand, and a check nobody can run by hand is a check nobody checks.
+      # `[[ =~ ]]` and `case` need `shell: bash`, which is declared above.
       - name: Every publishing step carries the dry-run guard
         shell: bash
         run: |
           set -euo pipefail
+          allow='actions/checkout actions/setup-node'
           pub='gh release (create|upload|edit|delete)'
           pub="$pub"'|web-ext (sign|submit)'
           pub="$pub"'|chrome-webstore-(upload|api)'
-          pub="$pub"'|addons\.mozilla\.org/(api|addon)'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*addons\.mozilla\.org'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*chromewebstore\.googleapis\.com'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*googleapis\.com/upload'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*clients2\.google\.com/service/update2'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*addons\.microsoftedge\.microsoft\.com'
           guard='inputs.dry_run != true'
-          step='(no step yet)'
-          seen=''
-          found=0
-          bad=0
-          while IFS= read -r line; do
-            case "$line" in
-              '      - '*)   step=$line; seen='' ;;
-              '        if:'*) seen=$line ;;
-            esac
-            bare=${line#"${line%%[![:space:]]*}"}
-            case "$bare" in ''|'#'*) continue ;; esac
-            printf '%s\n' "$bare" | grep -qE "$pub" || continue
+          name='' ; sif='' ; suses='' ; shit=''
+          steps=0 ; found=0 ; bad=0 ; usedallow=''
+          grade() {
+            [ -n "$name" ] || return 0
+            steps=$((steps + 1))
+            why=''
+            if [ -n "$suses" ]; then
+              case " $allow " in
+                *" $suses "*) usedallow="$usedallow $suses" ;;
+                *)            why="third-party action  $suses" ;;
+              esac
+            fi
+            if [ -n "$shit" ]; then why="${why:+$why + }publishing surface  $shit"; fi
+            [ -n "$why" ] || return 0
             found=$((found + 1))
-            case "$seen" in
-              *"$guard"*) printf 'GUARDED    %s\n             step: %s\n' "$bare" "$step" ;;
-              *)          printf 'UNGUARDED  %s\n             step: %s\n' "$bare" "$step"
+            # THE if: TEST IS SUBSTRING CONTAINMENT, NOT EVALUATION: it proves the text in $guard
+            # appears somewhere in the step's if:, so `inputs.dry_run != true || true` — measured
+            # 2026-08-27 in a scratch tree — is reported GUARDED and exits 0.
+            case "$sif" in
+              *"$guard"*) printf 'GUARDED    %s\n             step: %s\n' "$why" "$name" ;;
+              *)          printf 'UNGUARDED  %s\n             step: %s\n' "$why" "$name"
                           bad=$((bad + 1)) ;;
             esac
+          }
+          while IFS= read -r line; do
+            case "$line" in '      - '*) grade ; name=$line ; sif='' ; suses='' ; shit='' ;; esac
+            bare=${line#"${line%%[![:space:]]*}"}
+            case "$bare" in ''|'#'*) continue ;; esac
+            case "$bare" in
+              'if:'*)     sif=$bare ;;
+              '- uses:'*) suses=${bare#'- uses:'} ;;
+              'uses:'*)   suses=${bare#'uses:'} ;;
+            esac
+            suses=${suses#"${suses%%[![:space:]]*}"}
+            suses=${suses%%@*}
+            if [ -z "$shit" ] && [[ $bare =~ $pub ]]; then shit=$bare; fi
           done < .github/workflows/release.yml
-          if [ "$found" -eq 0 ]; then
-            echo "::error::this step graded nothing: it found no publishing command in release.yml at all. Its pattern names the commands that ship bytes to the public, so a zero here means one was renamed or a new one was added under a name the pattern does not know — and the dry-run guard on it, if any, went unasserted. Widen the pattern; do not delete this step."
+          grade
+          if [ "$steps" -lt 10 ]; then
+            echo "::error::this step matched only $steps step boundaries in release.yml, which cannot be right — it graded almost nothing. Its step boundary is the literal six-space '      - ', so a re-indent of this file empties it. Fix the boundary; do not delete this step."
             exit 1
           fi
+          if [ "$found" -lt 1 ]; then
+            echo "::error::this step read $steps step boundaries in release.yml and graded NO publishing surface at all. ZERO IS NOT A PASS: a scan that finds nothing to grade has proved nothing about what this workflow publishes, and the likely cause is a publishing command respelled past the pattern above. Fix the pattern; do not delete this step while the lane still publishes."
+            exit 1
+          fi
+          for a in $allow; do
+            case " $usedallow " in *" $a "*) continue ;; esac
+            echo "::error::'$a' is on this step's exemption list but no step in release.yml uses it. An exemption outlives the step it was written for and then pre-authorises whatever takes that name next. Delete the line."
+            exit 1
+          done
           if [ "$bad" -gt 0 ]; then
-            echo "::error::$bad of $found publishing command(s) above sit in a step whose if: does not contain '$guard'. A workflow_dispatch rehearsal would reach them, and a published release cannot be un-published."
+            echo "::error::$bad of $found publishing-surface step(s) above have no if: containing '$guard'. A workflow_dispatch rehearsal would EXECUTE them."
             exit 1
           fi
-          echo "$found publishing command(s) in this file, all $found behind an if: that tests the dry-run input."
+          echo "$steps step boundaries read; $found publishing-surface step(s), all $found behind an if:."
 
       # Derived from this file, not listed beside it: whatever this workflow
       # actually calls is what gets checked, so the two can never disagree.
@@ -286,6 +333,37 @@ jobs:
         run: |
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      # 🔴 ANCESTRY IS NOT A GRADE. The step above proves this commit is on
+      # main; it does not prove anything ever graded it. `scripts/test/
+      # selftest.node.js` — the gate that grades whether the gates still bite —
+      # runs in ci.yml and NOWHERE ELSE, and this repository's main carries no
+      # branch protection and no rulesets (measured 2026-08-26: protection 404,
+      # rulesets []), so a commit can reach main without ci ever completing on
+      # it and a tag can then point at it. Every gate below would run and go
+      # green over gates nobody had checked still bite.
+      #
+      # Deliberately carries NO `if:`: a dispatch rehearsal must exercise it too,
+      # or this becomes one more step in this lane that has never executed. And
+      # the gh call is checked separately from its answer, because "I could not
+      # ask" is not "it is fine".
+      - name: ci graded THIS commit, so its gate results can be trusted
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! ok=$(gh api \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=100" \
+                --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'); then
+            echo "::error::could not ask GitHub whether ci.yml ran on $GITHUB_SHA. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
+            exit 1
+          fi
+          if [ "$ok" -lt 1 ]; then
+            echo "::error::ci.yml has no successful run for $GITHUB_SHA, so selftest.node.js never graded these gates on these bytes. Push the commit to main, let ci finish green on it, then tag."
+            exit 1
+          fi
+          echo "ci.yml: $ok successful run(s) on $GITHUB_SHA."
 
       # 🔴 A RELEASE USED TO RUN FEWER GATES THAN A PULL REQUEST. Measured
       # 2026-08-20 by diffing the `node scripts/*.mjs` calls in the two files:
@@ -564,7 +642,13 @@ jobs:
             echo "::error::dist/unpacked-firefox does not exist — pack.mjs did not leave an unpacked Firefox tree for web-ext to lint, so the AMO package is going out ungraded."
             exit 1
           fi
-          npx --yes web-ext@8 lint --source-dir dist/unpacked-firefox --warnings-as-errors
+          # ⚠️ EXACT, NOT `web-ext@8`. A range resolves at run time, so the
+          # rehearsal and the tag push that follows it can lint under different
+          # releases of the linter and the rehearsal's green would be about a
+          # tool the publish never ran. 8.10.0 is what `web-ext@8` resolved to
+          # on 2026-08-26 (`npm view web-ext@8 version` → 8.7.0 8.7.1 8.8.0
+          # 8.9.0 8.10.0), so this pin changes no behaviour today.
+          npx --yes web-ext@8.10.0 lint --source-dir dist/unpacked-firefox --warnings-as-errors
 
       # 🔴 THIS STEP DECLARED NO `shell:` AND ITS ONLY COMMAND WAS A PIPE, SO
       # ITS STATUS WAS `tee`'s AND NEVER `sha256sum`'s. GitHub runs a bare

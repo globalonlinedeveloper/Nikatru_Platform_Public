@@ -94,6 +94,10 @@ jobs:
     # quarantine list below after three green re-measurements, and it is 113s
     # on the same machine. The total is 798s (13m18s).
     #
+    # 2026-08-27 — SEVEN wired suites, not six: privacy-verify.mjs came off
+    # the quarantine list below. The backstop is unchanged, for the reason the
+    # sentence below gives.
+    #
     # 🔴 READ THE HEADROOM ON THE BASIS THE SENTENCE ABOVE USES — DEPENDENCY
     # INSTALL INCLUDED. That is where its "three times" came from: 75 min
     # against 685s is 6.6x raw, and roughly half the budget is reserved for
@@ -248,6 +252,51 @@ jobs:
                here - closing it needs a new guard clause and a decision about
                what makes a measurement stale.
 
+               🟢 RETIRED FROM THIS LIST, 2026-08-27 - privacy-verify.mjs,
+               now WIRED, and retired the same way: the dated entry is
+               reproduced below VERBATIM as it stood in the array at 906d8c0,
+               with the correction APPENDED beneath rather than written over
+               it.
+
+               ── VERBATIM, AS COMMITTED AT 906d8c0 ──
+              { dir: "Extension/Full_Screen_Shot", file: "privacy-verify.mjs",
+                why: "2026-08-25, exit 1, 297 pass 1 fail - canvas-pii check B2, stray=27 of 27. The 27 pixels are not a block the ledger missed: the canvas-pii fixture paints its canvas text with a fillStyle ONE STEP off the block literal (rgb 16,16,16 against a block of rgb 17,17,17), and the antialiasing ramp from that ink to white passes exactly through the block colour - which B2 counts by exact equality, on purpose, because PNG is lossless. test/e2e/README.md already states the rule the fixture breaks (no text colour may sit within tolerance of the block colour). The repair belongs to the FIXTURE, not to the suite and not to the product, and the suite wires the day it lands. Untested on Linux, where the ramp will produce a different count." },
+               ── END VERBATIM ──
+
+               APPENDED 2026-08-27 - the sentence above stood when it was
+               written and is left standing; this block says only what
+               changed. THE FIXTURE REPAIR IT SAYS IT IS WAITING ON LANDED
+               THE NEXT DAY: commit 5ee0d03 changed fixtures/canvas-pii.html
+               from fillStyle #101010 to #181818 - the FIXTURE repair that
+               entry names, not a suite change and not a product change.
+               RE-MEASURED 2026-08-27 on 906d8c0: EXIT 0, 298 pass /
+               0 fail / 28 note. B2 on canvas-pii passes by name. Re-measured
+               again after the PORT change on the default port: EXIT 0, the
+               same 298 / 0 / 28, 207s.
+               ⚠ TWO OF FOUR ATTEMPTS TODAY NEVER REACHED A CHECK. Both died
+               in claim-lib.mjs setSettings - never stuck after ~19s, 1 write,
+               1-2 reads - on a host driving several browsers at once. Read
+               that message carefully before blaming this suite for it: it
+               prints wanted {redactPII:true}, storage held {redactPII:true},
+               which is the SAME value. EVERY claim-lib suite calls that
+               function, wired or quarantined, so this is not a property of
+               this suite - but it is the shape that would make this leg flaky
+               on a slow runner, and it is claim-lib.mjs:220 that owns it, not
+               this file.
+               ⚠ THAT GREEN IS A WINDOWS GREEN, playwright chromium-1228.
+               This job runs on ubuntu-latest and the last sentence of the
+               entry above warns that the Linux ramp produces a different
+               count, so B2 on canvas-pii is UNMEASURED on the platform that
+               will grade it. The wiring rests on the Windows measurement and
+               on the statement in that entry that the defect was the
+               fixture; the first ubuntu run is what settles it. A wired
+               suite that reddens there reddens the job, which is the
+               intended direction and is not what the audit below covers.
+               Wiring it also moves fixtures-verify/race-pii.html,
+               wrap-cancel.html and wrap-covered.html from ungraded to
+               graded, so their three UNGRADED_BASELINE rows go in this same
+               commit - see the note left where they were.
+
                THE 3 THAT REMAIN ARE NOTE, NOT FAIL, and NOTE is not graded.
                Two verdict-shaped STRINGS survive FS_ENVELOPE_VERDICT, which
                closes the acts block by allowlist and booleans by shape but
@@ -259,8 +308,6 @@ jobs:
                notes[0] is outside the redaction block. The third note is a
                canvas-pii reference line. None of the three is a red. */
             const QUARANTINE = [
-              { dir: "Extension/Full_Screen_Shot", file: "privacy-verify.mjs",
-                why: "2026-08-25, exit 1, 297 pass 1 fail - canvas-pii check B2, stray=27 of 27. The 27 pixels are not a block the ledger missed: the canvas-pii fixture paints its canvas text with a fillStyle ONE STEP off the block literal (rgb 16,16,16 against a block of rgb 17,17,17), and the antialiasing ramp from that ink to white passes exactly through the block colour - which B2 counts by exact equality, on purpose, because PNG is lossless. test/e2e/README.md already states the rule the fixture breaks (no text colour may sit within tolerance of the block colour). The repair belongs to the FIXTURE, not to the suite and not to the product, and the suite wires the day it lands. Untested on Linux, where the ramp will produce a different count." },
               { dir: "Extension/Full_Screen_Shot", file: "review-keyboard.mjs",
                 why: "2026-08-25, exit 1. Grades the CURRENT record shape and is the only tier that presses real keys, so this is a live disagreement rather than a retired suite. On review-tall.html the capture comes back 1280x3708 with acts matched=null painted=0 ledger=partial and ZERO marks, on a fixture that carries an example.com address and a Luhn-valid card; P0 wants at least 2 marks past the 3136px tiling floor, so P1, P2 and the whole focus-trap block cascade off it and the run ends in a TimeoutError on the review zoom control. Cause NOT established from this side - either the pass really paints nothing on a capture that tall, or the record is read before it finishes. Compare privacy-verify on sr-only, which reports ledger=present matched=3 on a short page." },
               { dir: "Extension/Full_Screen_Shot", file: "redaction-claim.mjs",
@@ -500,13 +547,11 @@ jobs:
               { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/late-frame.html" },
               { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/late-swap.html" },
               { dir: "Extension/Full_Screen_Shot", id: "fixtures-adv/shadow-closed-frame.html" },
-              /* fixtures-verify/ — named in privacy-verify.mjs, which is the
-                 suite that runs them, and in no coverage record before today.
-                 That suite is quarantined on a FIXTURE defect (canvas-pii B2),
-                 so these three are the cheapest on this list to win back. */
-              { dir: "Extension/Full_Screen_Shot", id: "fixtures-verify/race-pii.html" },
-              { dir: "Extension/Full_Screen_Shot", id: "fixtures-verify/wrap-cancel.html" },
-              { dir: "Extension/Full_Screen_Shot", id: "fixtures-verify/wrap-covered.html" }
+              /* fixtures-verify/ — THREE ROWS REMOVED 2026-08-27, and removed
+                 by WIRING rather than by editing the list: privacy-verify.mjs
+                 came off the quarantine above, so race-pii.html,
+                 wrap-cancel.html and wrap-covered.html now reach a wired
+                 suite. The IMPROVED notice below is what asked for this. */
             ];
             const baseline = UNGRADED_BASELINE.filter(b => b.dir === here).map(b => b.id);
             /* Comments are stripped before anything is matched, because this
@@ -930,6 +975,34 @@ jobs:
               err(`COVERAGE LOST — no job in ${WORKFLOW} carries a name starting e2e at the job indent, which is the prefix the GREEN limb matches run jobs on. Rename the matcher in the same commit as the job.`);
             }
 
+            /* ── HOW MANY LEGS A GREEN RUN HAS TO CARRY ──────────────
+               `legs.every(success)` is vacuously true over an EMPTY list, and
+               the length test beside it catches exactly that. It is ALSO true
+               over ONE leg on a run whose matrix used to be four legs wide: a
+               proof that quietly stopped covering three tool directories reads
+               GREEN, and keeps reading green for as long as the one leg that
+               survived keeps passing. Today the matrix is one leg wide, so
+               `1 > 0` and `1 === 1` agree BY COINCIDENCE and not by check.
+               THE EXPECTED COUNT IS DERIVED, NOT TYPED: it is a COPY of the
+               rule the discover job at the top of this file uses - a
+               <Category>/<Tool>/test/e2e/package.json - re-run over the
+               checkout this job already has. WHAT IT COSTS, said plainly:
+               adding a tool reddens this until the next scheduled run covers
+               it, and that red is a TRUE sentence - the last green proof did
+               not run the new tool. */
+            const LEG_SKIP = new Set(["templates", "_skeleton", "node_modules"]);
+            const legDirs = p => fs.readdirSync(p, { withFileTypes: true })
+              .filter(d => d.isDirectory() && !d.name.startsWith(".") && !LEG_SKIP.has(d.name)).map(d => d.name);
+            let EXPECT_LEGS = 0;
+            for (const cat of legDirs("."))
+              for (const tool of legDirs(cat))
+                if (fs.existsSync(cat + "/" + tool + "/test/e2e/package.json")) EXPECT_LEGS++;
+            if (!EXPECT_LEGS) {
+              err(`COVERAGE LOST — this checkout carries no <Category>/<Tool>/test/e2e/package.json, so the expected leg count is 0 and every run below would be graded against nothing.`);
+            } else {
+              console.log(`proof-fresh expects ${EXPECT_LEGS} e2e leg(s) per run — derived from this checkout by the discover rule, not typed here`);
+            }
+
             /* Offline injection, so the decision logic is exercisable without a
                token or a network. It prints a banner, because its presence in a
                real CI log would mean nothing below is about this repository. */
@@ -1004,12 +1077,12 @@ jobs:
                 if (walked >= WALK_BACK) break;
                 walked++;
                 const legs = (await jobsOf(r.id)).filter(j => j && LEG.test(String(j.name)));
-                const ok = legs.length > 0 && legs.every(j => j.conclusion === "success");
-                console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}  ${ok ? "GREEN" : "not-green"}  [${legs.map(j => j.name + "=" + j.conclusion).join(", ") || "no e2e leg"}]`);
+                const ok = EXPECT_LEGS > 0 && legs.length === EXPECT_LEGS && legs.every(j => j.conclusion === "success");
+                console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}/${EXPECT_LEGS}  ${ok ? "GREEN" : "not-green"}  [${legs.map(j => j.name + "=" + j.conclusion).join(", ") || "no e2e leg"}]`);
                 if (ok) { green = r; break; }
               }
               if (!green) {
-                err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ""}. The weekly proof has been red, or has run nothing, for every one of them.`);
+                err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ""}. The weekly proof has been red, has run nothing, or did not run the ${EXPECT_LEGS} leg(s) this checkout expects, for every one of them.`);
               } else {
                 const age = (NOW - Date.parse(green.created_at)) / DAY;
                 if (age > MAX_AGE_DAYS) err(`THE WEEKLY PROOF IS STALE — the newest scheduled run whose e2e legs all passed is ${green.id} (${green.created_at}), ${age.toFixed(1)} day(s) old, ceiling ${MAX_AGE_DAYS}. The cron may well be firing; what it produces is red.`);

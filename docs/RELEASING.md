@@ -952,3 +952,58 @@ a tag push would stop publishing releases entirely.
 🔴 **A green rehearsal moves this lane from *never parsed, never started* to *runs on the dispatch
 path*. It does not make it a proven release lane.** The first real tag push is still a first execution,
 and it is still irreversible.
+
+### A.9 — CORRECTION to A.8 and to §5, 2026-08-27: the rehearsal RAN, and it was green
+
+A.8 measured `gh run list --workflow=release.yml` → **0** rows and read §5's *"exists and has never
+run"* as still standing. The rehearsal A.8.1 proposed was dispatched and finished green.
+Re-measured 2026-08-27, exit codes on their own lines:
+
+```
+gh run list --workflow=release.yml --limit 30 | wc -l   ->  1        row
+gh api repos/{owner}/{repo}/releases --jq 'length'      ->  0        EXIT 0
+git ls-remote --tags origin  | wc -l                    ->  0
+git tag                      | wc -l                    ->  0
+```
+
+**The run.** From
+`gh run view 32947219834 --json event,conclusion,status,headBranch,headSha,createdAt,updatedAt`:
+
+| field | value |
+|---|---|
+| id | `32947219834` |
+| event | `workflow_dispatch` |
+| conclusion | `success`, status `completed` |
+| ref | `main` @ `ccef0f36236abfa23a3d8fcf82b6ae062072758d` |
+| window | `2026-08-26T08:20:11Z` → `08:23:14Z` (3m3s) |
+
+The dispatched tag is not in that JSON. It is in the log, verbatim:
+
+```
+rehearsing fullshot-v1.10.2 (workflow_dispatch; nothing will be published)
+```
+
+**Exactly two steps skipped.**
+`gh run view 32947219834 --json jobs` returns **23** step entries — the job’s 20, numbered 1–20, plus
+three `Post`/`Complete` entries. Exactly two are `skipped`:
+
+| # | step | conclusion |
+|---|---|---|
+| 2 | `A dispatch is a rehearsal, so dry_run must stay checked` | **skipped** — the A.8.3 refusal never fired, because `dry_run` was `true` |
+| 19 | `Publish GitHub Release` | **skipped** — its `if:` held |
+| 20 | `Rehearsal complete — nothing was published` | `success` |
+
+The remaining 21 entries are `success`. Step 20 is what makes step 19's skip readable: A.8.4 warned that
+a skipped step renders identically whether it was skipped on purpose or skipped because an earlier step
+died, and a step *after* it that ran separates the two.
+
+**One consequence for A.4.** Item **3** says of `Checksums` that *"no runner has ever run this step"*.
+That is superseded: step **17** is `Checksums`, and it is `success`. Item **4** is not superseded by
+this run.
+
+🔴 **What moved, and what did not.** The **dispatch path** of `release.yml` is proven on a runner by one
+named run. The **push-tag path is not**: `Parse tag`'s `GITHUB_REF_NAME` limb, `gh release create`, its
+`--title` and its `notes.md` argument, and A.4 item **4** were never executed —
+`gh release create` was *skipped*, not run. The three measurements at the top of this section are the
+standing proof: no release exists, and no tag exists locally or on the remote. The first real tag push
+is still a first execution, and it is still irreversible.
