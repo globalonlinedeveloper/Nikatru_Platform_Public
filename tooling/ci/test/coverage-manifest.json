@@ -16,6 +16,7 @@
   "artifact-signed-apple.test.mjs": 35,
   "artifact-signed-msix.test.mjs": 39,
   "assert-deploy-triggers-deploy.test.mjs": 11,
+  "await-pr-checks.test.mjs": 46,
   "capability-register-seams.test.mjs": 27,
   "capability-register.test.mjs": 29,
   "catalog-contract.test.mjs": 39,
