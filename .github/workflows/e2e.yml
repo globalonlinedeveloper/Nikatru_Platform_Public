@@ -802,3 +802,227 @@ jobs:
           path: ${{ matrix.suite.dir }}/test/e2e/out/**
           retention-days: 7
           if-no-files-found: ignore
+
+  # ── PROOF FRESHNESS ALARM — ADDED 2026-08-26 ────────────────────────────────
+  # A RED WEEKLY RUN AND A DEAD CRON LOOK IDENTICAL, AND BOTH LOOK LIKE NOTHING.
+  # Every check above this line runs INSIDE the weekly run, so none of them says
+  # anything when the weekly run stops happening — or when it happens, goes red,
+  # and lands in a list nobody opens. Six wired suites can be red every Monday
+  # for months and no build anywhere turns a colour.
+  #
+  # This job asks the two questions the run cannot ask about itself: did the
+  # TIMER fire, and was the last thing it produced GREEN. It reads the run
+  # history over the API, which is the shape Platform_Public solves this with in
+  # tooling/ci/assert-e2e-proof-fresh.mjs and assert-platform-proof-fresh.mjs.
+  # It is copied from those, with three forced divergences.
+  #
+  # 1. THE QUERY FILTERS `event=schedule`, NOT `status=success`. The siblings
+  #    size a window over SUCCESSES, so every green hand-press eats a slot and
+  #    can push the last scheduled success off the page — which is why
+  #    assert-e2e-proof-fresh.mjs carries a load-bearing per_page paragraph.
+  #    (Its own 20 → 100 was 4384ab6, 2026-08-11, a side effect of dropping the
+  #    branch filter; HANDOFF-2026-08-26 §7.11 withdraws the sentence that
+  #    called it a saturation incident.) Filtering on the EVENT means a dispatch
+  #    cannot occupy a slot at all, and 100 rows is ~100 weeks of this cron.
+  #
+  # 2. GREEN IS READ OFF THE `e2e ·` MATRIX JOBS OF PAST RUNS, NOT OFF THE RUN
+  #    CONCLUSION — because this job is IN the run it grades. Grading run
+  #    conclusions would DEADLOCK: this job going red makes the run red, which
+  #    makes it not a success, which keeps this job red forever. A run with ZERO
+  #    matching legs is NOT green; a vacuous `every` over an empty list is
+  #    exactly how a renamed job would report health.
+  #
+  # 3. AGES ARE `created_at` — WHEN THE TIMER FIRED. That is the quantity both
+  #    limbs are about, and it is the field the page is ordered by, so the
+  #    created_at/updated_at ordering caveat the sibling carries cannot arise.
+  #
+  # MAX_AGE_DAYS = 15, DERIVED FROM THE CRON RATHER THAN CHOSEN. One weekly slot
+  # gives a 14-day ceiling exactly ONE reliable chance to renew, because the
+  # day-14 slot fires AT the ceiling and measured GitHub schedule drift in this
+  # org reaches +226 minutes (HANDOFF-2026-08-26 §1, four samples). 15 leaves
+  # that second slot a full day of drift room. A second cron slot is the lever
+  # that brings this DOWN; raising it is not a lever, it is a retreat.
+  #
+  # ⚠️ IT LIVES IN THE WORKFLOW IT WATCHES, so a dead cron reddens a build only
+  # when somebody dispatches this workflow or labels a PR `run-e2e` — catching
+  # it unprompted needs a guard in `scripts/` called from `ci.yml`, and this
+  # change owns neither.
+  # ⛔ Its red CANNOT be cleared by pressing the button. `workflow_dispatch` runs
+  # are excluded by the query, so a hand-press REVEALS a dead cron instead of
+  # renewing it — the scar both siblings record.
+  # ⛔ It never weakens the suites: it can add a red and can remove none.
+  proof-fresh:
+    name: Weekly proof freshness
+    # Same gate as `discover`: on a PR this is silent unless somebody asks for
+    # e2e by label. It deliberately does NOT `needs: e2e` — it grades PAST runs,
+    # so waiting ~798s for this run would only delay the alarm.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-e2e'
+    runs-on: ubuntu-latest
+    # The workflow-level block is `contents: read`, and a job block replaces it
+    # wholly, so both lines are needed. `actions: read` is what reads run history.
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: The weekly proof must be RECENT, SCHEDULED and GREEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const WORKFLOW = "e2e.yml";
+            const BRANCH = "main";
+            /* Derived above from the cron, and re-derived by the self-check
+               below, which reddens if the cadence stops being weekly. */
+            const MAX_AGE_DAYS = 15;
+            /* The maximum this endpoint accepts. With event=schedule that is
+               ~100 weeks, and a hand-press cannot consume a row — divergence 1. */
+            const RUNS_PAGE_SIZE = 100;
+            /* How far back the GREEN limb looks before reporting that it did not
+               find one. Bounded, so a long red streak costs a bounded number of
+               API calls, and named in the message when it is exhausted. */
+            const WALK_BACK = 12;
+            /* The matrix legs, named `e2e · <dir>` above. Matched by prefix
+               rather than whole name because the dir comes from discovery.
+               "Discover e2e suites" does not match, and neither does this job. */
+            const LEG = /^e2e[^A-Za-z0-9]/;
+            const DAY = 86400000;
+
+            const red = [];
+            const err = m => { console.log("::error::" + m); red.push(m); };
+
+            /* ── SELF-CHECK: THE CEILING IS DERIVED, SO THE CRON IS LOAD-BEARING.
+               Full-line comments go first: this file writes its findings in very
+               large prose headers and a raw scan would read a cron out of one. */
+            const raw = fs.readFileSync(".github/workflows/" + WORKFLOW, "utf8");
+            const yaml = raw.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
+            const Q = String.fromCharCode(34) + String.fromCharCode(39);
+            const crons = [...yaml.matchAll(new RegExp("cron:\\s*[" + Q + "]([^" + Q + "]+)", "g"))].map(m => m[1].trim());
+            const weekly = e => { const f = e.trim().split(/\s+/); return f.length === 5 && f[2] === "*" && f[3] === "*" && /^[0-6]$/.test(f[4]); };
+            if (!crons.length) {
+              err(`COVERAGE LOST — ${WORKFLOW} declares no cron. MAX_AGE_DAYS = ${MAX_AGE_DAYS} is derived from a weekly cadence, and with no timer at all this is a countdown rather than a guard.`);
+            } else {
+              const odd = crons.filter(c => !weekly(c));
+              if (odd.length) err(`COVERAGE LOST — ${WORKFLOW} cron(s) ${odd.join(", ")} are not weekly. MAX_AGE_DAYS = ${MAX_AGE_DAYS} is DERIVED from one slot every 7 days plus a day of drift room; against another cadence it stops describing anything.`);
+              if (crons.length > 1) console.log(`::notice::${crons.length} cron slots (${crons.join(", ")}). More slots than the derivation assumes is safe but LOOSE — re-derive MAX_AGE_DAYS downward rather than leaving it at ${MAX_AGE_DAYS}.`);
+            }
+            /* The GREEN limb keys on the matrix job name. If that name changes,
+               no leg matches, every run reads not-green and this job reddens —
+               loudly wrong rather than vacuously green. This catches it at the
+               source instead of a week later.
+
+               ⚠️ ANCHORED TO THE 4-SPACE JOB INDENT, BECAUSE IT HAS TO BE. This
+               was written ^\s*name:\s*e2e and it PASSED the mutation it exists
+               to fail: renaming the matrix job to `suites · <dir>` returned exit
+               0, because `name: e2e-out-...` in the upload step at the bottom of
+               this file matched instead — the check certified health across the
+               exact rename that blinds the limb. Measured both ways on
+               2026-08-26: exit 0 loose, exit 1 anchored. Re-indenting this file
+               reddens it, which is the safe direction. */
+            if (!/^ {4}name:\s*e2e[^A-Za-z0-9]/m.test(yaml)) {
+              err(`COVERAGE LOST — no job in ${WORKFLOW} carries a name starting e2e at the job indent, which is the prefix the GREEN limb matches run jobs on. Rename the matcher in the same commit as the job.`);
+            }
+
+            /* Offline injection, so the decision logic is exercisable without a
+               token or a network. It prints a banner, because its presence in a
+               real CI log would mean nothing below is about this repository. */
+            const FIXTURE = process.env.PROOF_ALARM_FIXTURE || "";
+            const NOW = process.env.PROOF_ALARM_NOW ? Date.parse(process.env.PROOF_ALARM_NOW) : Date.now();
+            let fixture = null;
+            if (FIXTURE) {
+              fixture = JSON.parse(fs.readFileSync(FIXTURE, "utf8"));
+              console.log(`::warning::PROOF_ALARM_FIXTURE is set (${FIXTURE}) — run history is INJECTED and nothing below is a statement about this repository.`);
+            }
+            if (Number.isNaN(NOW)) err("PROOF_ALARM_NOW is not a parseable date.");
+
+            const api = async path => {
+              const token = process.env.GH_TOKEN;
+              if (!token) throw new Error("no GH_TOKEN in the environment — run history is unreadable, so this fails closed rather than certifying a timer it cannot see");
+              const res = await fetch("https://api.github.com" + path, {
+                headers: { authorization: "Bearer " + token, accept: "application/vnd.github+json", "user-agent": "nikatru-proof-fresh" }
+              });
+              if (!res.ok) throw new Error(`GitHub API returned ${res.status} for ${path}`);
+              return res.json();
+            };
+
+            (async () => {
+              const repo = process.env.REPO;
+              if (!repo) throw new Error("REPO is empty — the query would have been built against nothing");
+
+              const runsPath = `/repos/${repo}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&event=schedule&per_page=${RUNS_PAGE_SIZE}`;
+              const bodyJson = fixture ? fixture : await api(runsPath);
+              const rows = bodyJson && bodyJson.workflow_runs;
+              if (!Array.isArray(rows)) throw new Error("run list was not an array — an unreadable answer is a failure, not a pass");
+
+              /* The server-side event filter is re-checked here. A filter that
+                 quietly stopped filtering would let hand-presses back in, which
+                 is the one thing this whole job exists to exclude. */
+              const sched = rows.filter(r => r && r.event === "schedule" && r.created_at)
+                                .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+              if (sched.length !== rows.length) {
+                err(`the query asked for event=schedule and ${rows.length - sched.length} of ${rows.length} row(s) came back otherwise. The window is not what it says it is.`);
+              }
+              if (rows.length >= RUNS_PAGE_SIZE) {
+                console.log(`::notice::the run page came back full (${rows.length} >= per_page ${RUNS_PAGE_SIZE}, the maximum). Only the GREEN limb can be affected, and only if its walk reaches the end.`);
+              }
+
+              /* ── LIMB 1: DID THE TIMER FIRE ─────────────────────────────────
+                 On a scheduled run THIS run is the newest row and the age is ~0,
+                 which is correct rather than a loophole: the timer demonstrably
+                 fired. The limb bites on a dispatch or a labelled PR, where the
+                 newest SCHEDULED row is whatever the cron last produced. */
+              if (!sched.length) {
+                err(`no scheduled run of ${WORKFLOW} on ${BRANCH} is in the run history at all. Either the timer has never fired, or the workflow was renamed and this query is watching a name nothing uses.`);
+              }
+              let timerAge = null;
+              if (sched.length) {
+                timerAge = (NOW - Date.parse(sched[0].created_at)) / DAY;
+                if (Number.isNaN(timerAge)) err(`newest scheduled run ${sched[0].id} has an unparseable created_at: ${sched[0].created_at}`);
+                else if (timerAge > MAX_AGE_DAYS) err(`THE CRON IS DEAD OR DISABLED — the newest scheduled ${WORKFLOW} run (${sched[0].id}, ${sched[0].created_at}) fired ${timerAge.toFixed(1)} day(s) ago, ceiling ${MAX_AGE_DAYS}. A dispatch cannot clear this; only the timer can.`);
+                else console.log(`proof-fresh TIMER ok  newest scheduled run ${sched[0].id} fired ${timerAge.toFixed(1)} day(s) ago (ceiling ${MAX_AGE_DAYS})`);
+              }
+
+              /* ── LIMB 2: WAS THE LAST THING IT PRODUCED GREEN ───────────────
+                 Read off the matrix legs of past runs and never off run
+                 conclusions — divergence 2. An in-progress run is simply not
+                 green yet, and the walk continues past it. */
+              const jobsOf = async id => {
+                if (fixture) return (fixture.jobs && fixture.jobs[String(id)]) || [];
+                const j = await api(`/repos/${repo}/actions/runs/${id}/jobs?per_page=100`);
+                return Array.isArray(j.jobs) ? j.jobs : [];
+              };
+              let green = null;
+              let walked = 0;
+              for (const r of sched) {
+                if (walked >= WALK_BACK) break;
+                walked++;
+                const legs = (await jobsOf(r.id)).filter(j => j && LEG.test(String(j.name)));
+                const ok = legs.length > 0 && legs.every(j => j.conclusion === "success");
+                console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}  ${ok ? "GREEN" : "not-green"}  [${legs.map(j => j.name + "=" + j.conclusion).join(", ") || "no e2e leg"}]`);
+                if (ok) { green = r; break; }
+              }
+              if (!green) {
+                err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ""}. The weekly proof has been red, or has run nothing, for every one of them.`);
+              } else {
+                const age = (NOW - Date.parse(green.created_at)) / DAY;
+                if (age > MAX_AGE_DAYS) err(`THE WEEKLY PROOF IS STALE — the newest scheduled run whose e2e legs all passed is ${green.id} (${green.created_at}), ${age.toFixed(1)} day(s) old, ceiling ${MAX_AGE_DAYS}. The cron may well be firing; what it produces is red.`);
+                else console.log(`proof-fresh GREEN ok  scheduled run ${green.id} passed every e2e leg ${age.toFixed(1)} day(s) ago (ceiling ${MAX_AGE_DAYS})`);
+              }
+
+              if (red.length) {
+                console.log(`::error::${red.length} freshness finding(s): ${red.join(" | ")}`);
+                process.exit(1);
+              }
+              console.log(`proof-fresh ok — timer ${timerAge.toFixed(1)}d, green proof ${((NOW - Date.parse(green.created_at)) / DAY).toFixed(1)}d, both inside ${MAX_AGE_DAYS}d`);
+            })().catch(e => {
+              console.log(`::error::proof-fresh COVERAGE LOST — ${e.message}. It could not read the run history, and a guard that cannot see the timer must not certify it.`);
+              process.exit(1);
+            });
+          '
