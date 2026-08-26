@@ -221,10 +221,45 @@ git push origin subly-v1.0.0
 
 That is the whole release. Nothing else is typed by hand: the tag is the trigger, the
 workflow does the rest, and the Release appears at
-`https://github.com/globalonlinedeveloper/Nikatru_Android_Apps_Public/releases/tag/subly-v1.0.0`.
+`https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/releases/tag/subly-v1.0.0`.
 *(Repointed 2026-08-19 — the repo was `Project_Cross_Platform_Apps` until the renames landed. The
 old URL still resolves through GitHub's rename redirect, which is exactly why it is not left
 standing: a rename FREES the old name, so the redirect dies the moment anything re-claims it.)*
+*(Repointed again 2026-08-26 — the note above stands as written; it is still true of the
+2026-08-19 rename. But the name that rename landed on, `Nikatru_Android_Apps_Public`, has since
+been renamed too. The live name is `globalonlinedeveloper/Nikatru_Platform_Public`, and the URL
+above now says that. This is a tag-day hazard, not a cosmetic one: §5 is the whole release, and an
+owner who opens the freed `Nikatru_Android_Apps_Public` link to confirm the Release landed is
+trusting a redirect off a name anyone could have claimed since.)*
+
+**Confirm the name with `gh repo list globalonlinedeveloper`, and with nothing else.** That command
+enumerates the repositories the org **owns**, which is the only question being asked, so a freed
+name is simply *absent* from the output rather than redirected into it.
+
+* **Positive result:** a line reading `globalonlinedeveloper/Nikatru_Platform_Public`. That string,
+  and only that string, is the one to put in a URL.
+* **Negative result:** no line in the output contains `Nikatru_Android_Apps_Public`. Absence from
+  the list *is* the disproof. Nothing errors and nothing 404s, because you are reading a whole
+  enumeration rather than a status code — so a negative here looks like nothing happening, and that
+  is what it is supposed to look like.
+
+**Do not confirm with `git remote -v`**, and do not confirm with `gh api repos/<owner>/<name>` or
+`gh repo view <owner>/<name>`. `git remote -v` prints a string out of local `.git/config`: a GitHub
+rename never touches it, and the stale URL goes on fetching through the redirect — so it is not
+evidence about the remote at all, it is a local config string agreeing with itself. The two
+single-repo `gh` forms fail from the other direction. Measured on this host on 2026-08-26, **both
+exit 0 on the freed `Nikatru_Android_Apps_Public`, and both report `full_name` =
+`globalonlinedeveloper/Nikatru_Platform_Public`** — they resolved the redirect instead of answering
+the question. All three make a dead name look live, which is exactly the hazard this note exists to
+warn about: *"it resolved" is the trap, not the proof.*
+
+*(Residue, measured 2026-08-26 with `grep -rIl "Nikatru_Android_Apps_Public" .` from the repo root:
+**19 files match** — this runbook, the repo-root `README.md`, and **17 others**. Those 17 are dated
+historical records: the rename/deletion rows in `catalog/store-matrix.json`, prose in
+`.github/workflows/submit-play.yml`, guard comments under `tooling/ci/`, and `.claude/` backup logs.
+They are **deliberately left standing** — a dated record naming the name it recorded is correct, and
+rewriting one falsifies it. 19 is the whole population, not a sample: if you grep and find those
+hits, there is nothing to fix.)*
 
 **Bump `1.0.0` to whatever `apps/subly/pubspec.yaml` declares** — the workflow derives its
 build name from pubspec, and a tag that disagrees with it is two release lines.

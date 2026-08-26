@@ -1534,6 +1534,148 @@ describe('assert-workflow-hardening', () => {
       assert.match(broken.out, /C3 NON-WORKFLOW PATH/);
     });
   });
+
+  // ── limb 6: an Actions expression opens with TWO braces ───────────────────
+  // 🔴 EVERY CASE HERE IS MUTATED FROM THE REAL `.github/workflows/submit-snap.yml`
+  // AND NOT ONE OF THEM IS HAND-WRITTEN, because the defect this limb exists for
+  // was invisible precisely to the kind of fixture whoever writes the guard
+  // would invent. On 2026-08-26 that file's line 352 read
+  // `flutter-version: ${ env.FLUTTER_VERSION }` — ONE brace — while line 142,
+  // the dry-run lane's byte-identical step, read `${{ … }}`. GitHub does not
+  // interpolate a single brace, so the Snap Store PUBLISH job handed
+  // `subosito/flutter-action` the literal string as a Flutter version, and it
+  // survived a merge and five days of green CI because nothing in this tree had
+  // ever looked at expression syntax.
+  //
+  // THE HARD HALF IS THE PASSING DIRECTION, WHICH IS WHY IT IS TESTED FIRST AND
+  // TESTED FROM THE SAME FILE. Measured over all twelve workflows the same day:
+  // 70 lines carry a `${` that is not `${{`, and 69 of them are legal SHELL
+  // inside a `run:` body (`${deps}`, `${RUNNER_TEMP}`, `${GITHUB_SHA::7}`). A
+  // naive scan reddens all 70 — the false red that gets a guard switched off
+  // before it has ever caught anything — so a fixture that only ever proves the
+  // failing direction proves the wrong half.
+  describe('Actions expressions open with two braces', () => {
+    const SNAP_REL = '.github/workflows/submit-snap.yml';
+    const REAL_SNAP = readFileSync(resolve(CI_DIR, '..', '..', SNAP_REL), 'utf8');
+    /** The step as both lanes read it TODAY, and as the publish lane read it
+     *  until 2026-08-26. Byte-identical in the two lanes, so an anchor taken at
+     *  the FIRST occurrence would mutate the dry-run job instead. */
+    const GOOD = '          flutter-version: ${{ env.FLUTTER_VERSION }}\n';
+    const BAD = '          flutter-version: ${ env.FLUTTER_VERSION }\n';
+
+    /** The real snap workflow beside two ordinary ones — three files, which is
+     *  what clears the scan's own no-manifest floor. */
+    const withSnap = (name, snap) =>
+      fixture(name, {
+        [SNAP_REL]: snap,
+        '.github/workflows/b.yml': wf([`actions/x@${SHA}`]),
+        '.github/workflows/c.yml': wf([`actions/y@${SHA}`]),
+      });
+
+    test('the control: the REAL submit-snap.yml passes, and BOTH lanes read `${{ … }}`', () => {
+      // The byte assertions are the regression: they fail if either lane ever
+      // loses its second brace again, whatever this guard happens to do.
+      assert.equal(REAL_SNAP.split(GOOD).length - 1, 2, 'both flutter-action steps must read `${{ env.FLUTTER_VERSION }}`');
+      assert.equal(REAL_SNAP.includes(BAD), false, 'no lane may read the single-brace form');
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [withSnap('wh-expr-real', REAL_SNAP)] });
+      assert.equal(code, 0, out);
+      assert.match(out, /limb 6 — no single-brace/);
+    });
+
+    test('FAILS on the single-brace expression that actually shipped, naming file, line and literal', () => {
+      // The publish lane put back the way it was. The reported line is DERIVED
+      // from the mutated bytes rather than typed, so this stays a statement
+      // about the limb after the workflow is next edited — it was 352 the day
+      // the defect was found.
+      const at = REAL_SNAP.lastIndexOf(GOOD);
+      const broken = REAL_SNAP.slice(0, at) + BAD + REAL_SNAP.slice(at + GOOD.length);
+      const line = broken.slice(0, at).split('\n').length;
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [withSnap('wh-expr-bug', broken)] });
+      assert.equal(code, 1, out);
+      assert.match(out, new RegExp(`submit-snap\\.yml:${line} \`\\$\\{ env\\.FLUTTER_VERSION \\}\` opens with ONE brace`));
+      assert.match(out, /reaches the step as the literal text/);
+    });
+
+    test('a `${VAR}` INSIDE a `run:` body passes — legal shell, and 69 lines of this tree are exactly that', () => {
+      // ADDED TO THE REAL FILE'S OWN `run: |` BLOCK rather than fixtured beside
+      // it, so the case exercises the fold `joinBlockScalars` performs on the
+      // bytes CI actually runs. A function replacement, because `$` in a string
+      // replacement is a substitution pattern and would eat the very braces
+      // under test.
+      const anchor = '          echo "installing: ${deps}"\n';
+      assert.equal(REAL_SNAP.split(anchor).length - 1, 2, 'the run: body this case extends must still be there');
+      const shellier = REAL_SNAP.replace(
+        anchor,
+        () => `${anchor}          echo "\${SNAP_NAME:-subly}" "\${RUNNER_TEMP}/x" "\${#deps}"\n`,
+      );
+      const { code, out } = run('assert-workflow-hardening.mjs', { args: [withSnap('wh-expr-shell', shellier)] });
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /opens with ONE brace/);
+    });
+
+    // ── the two conditions a canary cannot reach ──────────────────────────────
+    // A canary returns a value; it cannot take a `process.exit` path. Both cases
+    // below therefore COPY the guard and its two local imports into a temp dir
+    // and cut one line out of the copy. The repository is never mutated, and an
+    // unmutated copy is run first as a control so a broken copy mechanism cannot
+    // make either case pass for the wrong reason. Same mechanism, and the same
+    // reasoning, as limb 5's canary-wiring case above.
+    const copyHarness = () => {
+      const src = readFileSync(join(CI_DIR, 'assert-workflow-hardening.mjs'), 'utf8');
+      const modules = {};
+      for (const m of ['tree-walk.mjs', 'workflow-scan.mjs']) modules[m] = readFileSync(join(CI_DIR, m), 'utf8');
+      const root = build('wh-expr-harness-root');
+      const copy = (name, body) => join(fixture(name, { ...modules, 'g.mjs': body }), 'g.mjs');
+      const exec = (script) => {
+        const r = spawnSync(process.execPath, [script, root], { cwd: ROOT, encoding: 'utf8' });
+        return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+      };
+      /** 🔴 THE ANCHOR IS FOUND IN CODE, NEVER IN BYTES. That guard quotes its
+       *  own source in prose — the coverage note names the very line this cuts —
+       *  and a quotation is not a subject. `stripSourceComments` blanks in
+       *  place, so an offset in the blanked copy is the same offset in the real
+       *  bytes, which is where the cut is made. If an anchor ever stops matching
+       *  exactly once this fails LOUDLY, rather than quietly running an
+       *  unmutated copy and passing. */
+      const cut = (subject, replacement) => {
+        const code = stripSourceComments(src, '.mjs');
+        assert.equal(code.split(subject).length - 1, 1, `the subject \`${subject}\` must appear exactly once outside comments`);
+        const at = code.indexOf(subject);
+        return `${src.slice(0, at)}${replacement}${src.slice(at + subject.length)}`;
+      };
+      return { src, copy, exec, cut };
+    };
+
+    test('COVERAGE LOST when limb 6 reaches no workflow at all, instead of certifying its own silence', () => {
+      // "No single-brace expression" is a NEGATIVE, and a negative is worth
+      // exactly what the subject behind it is worth. With the counter cut out,
+      // the limb reads every file and certifies nothing — which is the shape
+      // this whole guard's header spends forty lines on, one limb further down.
+      const { src, copy, exec, cut } = copyHarness();
+      const control = exec(copy('wh-expr-cov-control', src));
+      assert.equal(control.code, 0, control.out);
+      const broken = exec(copy('wh-expr-cov-off', cut('exprWorkflowsScanned++;', ';')));
+      assert.equal(broken.code, 1, broken.out);
+      assert.match(broken.out, /COVERAGE LOST — limb 6 judged \d+ line\(s\) across 0 of 3 workflow\(s\) — it reached nothing/);
+    });
+
+    test('REFUSES when limb 6\'s own canaries fail, so E1-E4 are not decoration', () => {
+      // The subject broken here is the `run:` separation itself — the one thing
+      // this limb has to get right in two opposite directions. Widened to match
+      // every line, every line becomes "shell", nothing is judged, and a tree
+      // with a live defect in it reads clean. Four canaries run inside that
+      // guard on every invocation and all four reach the process through ONE
+      // `if (exprSelfTestFailures.length)`; without this case they could all be
+      // switched off and nothing here would notice.
+      const { src, copy, exec, cut } = copyHarness();
+      const control = exec(copy('wh-expr-canary-control', src));
+      assert.equal(control.code, 0, control.out);
+      const broken = exec(copy('wh-expr-canary-off', cut('const RUN_LINE = /^\\s*(?:-\\s+)?run:/;', 'const RUN_LINE = /^/;')));
+      assert.equal(broken.code, 2, broken.out);
+      assert.match(broken.out, /limb 6's own canaries failed \(\d+\)/);
+      assert.match(broken.out, /E3 MIXED FILE/);
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

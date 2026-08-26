@@ -38,7 +38,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -180,7 +180,62 @@ const DATA_SAFETY = () => ({
   inventory: { register: 'tooling/legal/data-inventory.json', notFromThisApp: {} },
   androidPermissions: {
     declaredInRepo: { 'apps/subly/android/app/src/main/AndroidManifest.xml': [] },
-    cannotSee: 'the merged manifest is not readable here',
+    // THE MEASURED UNION. Deliberately three rows and not four: one per GRADE the
+    // block actually uses (`read`, `inferred`, and the row that admits it has no
+    // attribution at all), because every obligation limb 7a enforces hangs off
+    // the grade. A fourth `read` row would add a copy, not a case.
+    merged: {
+      measuredFrom: {
+        runId: '1',
+        runName: 'Build all 6 platforms — run #1',
+        commit: '0000000000000000000000000000000000000000',
+        artifact: 'subly-android-release-signed',
+        file: 'app/outputs/bundle/release/app-release.aab',
+        entry: 'base/manifest/AndroidManifest.xml',
+        method: 'decoded from the aapt2 XmlNode protobuf, cross-checked with `aapt2 dump permissions`',
+        measuredOn: '2026-08-26',
+      },
+      releaseManifest: 'apps/subly/android/app/src/main/AndroidManifest.xml',
+      lockfile: 'pubspec.lock',
+      permissions: [
+        {
+          name: 'android.permission.VIBRATE',
+          attributedTo: 'flutter_local_notifications',
+          attribution: 'direct',
+          evidenceGrade: 'read',
+          evidence: "the package's own plugin AndroidManifest.xml declares it",
+          collectionSignal: false,
+          why: 'a hardware effect with no read side',
+        },
+        {
+          name: 'android.permission.INTERNET',
+          attributedTo: null,
+          attribution: 'unattributed',
+          evidenceGrade: null,
+          evidence: null,
+          collectionSignal: false,
+          why: 'a transport, not a collector',
+        },
+        {
+          name: 'com.example.subly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+          attributedTo: 'androidx.core',
+          attribution: 'transitive',
+          evidenceGrade: 'inferred',
+          evidence: 'the merged manifest carries androidx.core\'s own appComponentFactory',
+          residual: 'the AAR manifest itself was not read — no gradle cache on the measuring host',
+          collectionSignal: false,
+          why: 'signature-level, so nothing outside the app can hold it',
+        },
+      ],
+      unattributed: {
+        'android.permission.INTERNET': 'nothing here says which library declares it, and naming one would be a guess',
+      },
+      expectedButAbsent: {
+        'android.permission.ACCESS_NETWORK_STATE': 'predicted by the reasoning this block replaced, and measurably not there',
+      },
+      pinned: { flutter_local_notifications: '17.2.4' },
+    },
+    cannotSee: 'which library contributed which merged permission is not readable here',
   },
   dependencySurface: {
     manifest: 'apps/subly/pubspec.yaml',
@@ -288,6 +343,13 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_local_notifications:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications
+      url: "https://pub.dev"
+    source: hosted
+    version: "17.2.4"
   sentry_flutter:
     dependency: transitive
     description:
@@ -411,7 +473,14 @@ describe('assert-play-declarations — the happy path really passes', () => {
   test('it prints what it CANNOT see, so green is not read as "the form is right"', () => {
     const r = run(makeRoot());
     assert.match(out(r), /what this guard CANNOT see/);
-    assert.match(out(r), /MERGED Android manifest/);
+    // 🔴 THIS LINE USED TO ASSERT THAT THE GUARD SAID THE MERGED MANIFEST HAD
+    // NEVER BEEN READ. It has been read (2026-08-26, off a signed .aab) and limb
+    // 7a now asserts that reading, so the printed caveat NARROWED rather than
+    // disappeared — what is unseen is which library contributed which
+    // permission, not the set itself. A caveat that outlives the gap it
+    // describes is the same defect as a claim with no check behind it.
+    assert.match(out(r), /WHO CONTRIBUTED EACH MERGED PERMISSION/);
+    assert.match(out(r), /merged\.unattributed/);
     assert.match(out(r), /TRANSITIVE Dart dependencies/);
     assert.match(out(r), /the IARC rating — assigned by the rating authorities/);
   });
@@ -1083,7 +1152,15 @@ describe('assert-play-declarations — the crash-SDK version pin', () => {
     const r = run(makeRoot({ files: (f) => { f['pubspec.lock'] = null; } }));
     assert.equal(r.status, 1);
     assert.match(out(r), /COVERAGE LOST/);
-    assert.match(out(r), /crashSdkSurface\.lockfile names pubspec\.lock, which does not exist/);
+    // ⚠️ THIS ASSERTED crashSdkSurface's MESSAGE UNTIL LIMB 7a WAS WRITTEN.
+    // Both limbs pin against the same lock and both COVERAGE LOST when it is
+    // gone; 7a simply reaches it first, and coverageLost() exits on the spot.
+    // The assertion moved rather than being loosened to match either — a check
+    // that accepts whichever message happens to arrive stops being able to say
+    // WHICH limb noticed. 7b's own missing-lock branch is unreachable while 7a
+    // guards the same file, and that is stated here rather than left as a
+    // silently dead line in the guard.
+    assert.match(out(r), /androidPermissions\.merged\.lockfile names pubspec\.lock, which does not exist/);
   });
 
   test('FAILS when the surface block stops saying what it cannot see', () => {
@@ -1142,5 +1219,278 @@ describe('assert-play-declarations — a settled question cannot drift back', ()
     const r = run(makeRoot({ ds: (x) => { const e = RESOLVED(); e.settledOn = 'August 2026'; x.resolved = [e]; } }));
     assert.equal(r.status, 1);
     assert.match(out(r), /settledOn is not an ISO date/);
+  });
+});
+
+// ═════ limb 7a — the MERGED manifest measurement ═════════════════════════════
+// 🔴 THE BLOCK THIS COVERS SPENT ITS FIRST DAY MAKING TWO PROMISES NOTHING KEPT.
+// androidPermissions.merged said in prose that `expectedButAbsent` was "an
+// equality with teeth" and that `pinned` was what stopped the reading "going
+// quietly stale" — while NOTHING READ EITHER KEY. The measurement itself was
+// correct; the sentences beside it were claims with no check behind them, which
+// is this corpus's signature defect. These tests exist so that stays fixed.
+//
+// RECORDED MUTATION RUN AGAINST THE REAL TREE, 2026-08-26 — 10/10 caught,
+// baseline PASS before and after, data-safety.json restored from an in-memory
+// original and sha256-compared byte-identical:
+//   pin drifts 17.2.4→17.9.0 · pinned package leaves the graph · an
+//   expectedButAbsent permission APPEARS · merged deleted · permissions emptied
+//   · pinned emptied · the unattributed row loses its named finding · the
+//   `inferred` row loses its residual · a `read` row loses its evidence ·
+//   measuredFrom loses its runId.
+// The fixture cases below are the regression net that pins the MESSAGES; the
+// real-tree block at the end is what stops the fixture drifting away from the
+// declaration it claims to model.
+describe('assert-play-declarations — limb 7a: the merged manifest, as measured', () => {
+  test('the happy path counts what it graded, so a reader can see it ranged over something', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /3 MERGED manifest permission\(s\) graded \(measured from run 1, 2026-08-26\)/);
+    assert.match(out(r), /1 merged-manifest version pin\(s\) match pubspec\.lock/);
+    assert.match(out(r), /1 predicted-but-absent permission\(s\) still absent/);
+  });
+
+  // ── the pin: the one drift no other limb in this file can see ──────────────
+  test('🔴 FAILS when a pinned plugin version drifts in the lock', () => {
+    // The bump that changes the merged set with NO other file moving: the
+    // pubspec range is unchanged, the manifest equality is unchanged, the
+    // dependency equality is unchanged. Only the resolution moved.
+    const r = run(makeRoot({ files: (f) => { f['pubspec.lock'] = LOCK.replace('17.2.4', '17.9.0'); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /resolves `flutter_local_notifications` to 17\.9\.0/);
+    assert.match(out(r), /A bump is the one way this measurement rots/);
+  });
+
+  test('FAILS when the pinned package has left the dependency graph entirely', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.pinned = { gone_package: '1.0.0' }; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /androidPermissions\.merged\.pinned names `gone_package` and pubspec\.lock resolves no such package/);
+  });
+
+  // ── expectedButAbsent: the receipt with teeth ──────────────────────────────
+  test('🔴 FAILS when an `expectedButAbsent` permission APPEARS in the merged set', () => {
+    const r = run(makeRoot({
+      ds: (x) => {
+        x.androidPermissions.merged.permissions.push({
+          name: 'android.permission.ACCESS_NETWORK_STATE',
+          attributedTo: 'sentry_flutter',
+          attribution: 'transitive',
+          evidenceGrade: 'read',
+          evidence: 'it turned up in a later re-measurement',
+          collectionSignal: false,
+          why: 'appended silently, which is the thing the block forbids',
+        });
+      },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /under `expectedButAbsent` AND carries it in `permissions`/);
+    assert.match(out(r), /Do NOT append it silently/);
+  });
+
+  test('FAILS when an expectedButAbsent entry loses the write-up that makes it actionable', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.expectedButAbsent['android.permission.ACCESS_NETWORK_STATE'] = ''; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /expectedButAbsent\["android\.permission\.ACCESS_NETWORK_STATE"\] carries no reason/);
+  });
+
+  // ── what each grade obliges ────────────────────────────────────────────────
+  test('FAILS when a `read` row carries no evidence — the grade is then just a word', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions[0].evidence = ''; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /is graded `read` and carries no `evidence`/);
+  });
+
+  test('FAILS when an `inferred` row carries no residual — that residual IS the difference from `read`', () => {
+    const r = run(makeRoot({ ds: (x) => { delete x.androidPermissions.merged.permissions[2].residual; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /is graded `inferred` and carries no `residual`/);
+  });
+
+  test('FAILS on an evidence grade the block does not use', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions[0].evidenceGrade = 'probably'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /which is not one of read, inferred/);
+  });
+
+  test('FAILS on an attribution the block does not use', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions[0].attribution = 'probably flutter'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /which is not one of direct, transitive, unattributed/);
+  });
+
+  test('FAILS when a row carries no boolean collectionSignal — silence must not read as "no"', () => {
+    const r = run(makeRoot({ ds: (x) => { delete x.androidPermissions.merged.permissions[0].collectionSignal; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /has no boolean `collectionSignal`/);
+  });
+
+  // ── unattributed, in BOTH directions ───────────────────────────────────────
+  test('🔴 FAILS when an unattributed row has no named finding — a blank filled in with silence', () => {
+    const r = run(makeRoot({ ds: (x) => { delete x.androidPermissions.merged.unattributed['android.permission.INTERNET']; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /`merged\.unattributed` carries no finding for it/);
+  });
+
+  test('FAILS when an unattributed row is quietly given a source without closing the finding', () => {
+    const r = run(makeRoot({
+      ds: (x) => {
+        const row = x.androidPermissions.merged.permissions[1];
+        row.attribution = 'transitive';
+        row.attributedTo = 'sentry_flutter';
+        row.evidenceGrade = 'read';
+        row.evidence = 'a guess, dressed';
+      },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /still carries an open finding for `android\.permission\.INTERNET`/);
+  });
+
+  test('FAILS when a finding outlives the row it was about', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.unattributed['android.permission.GONE'] = 'x'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /names `android\.permission\.GONE`, which is in no `permissions` row/);
+  });
+
+  test('FAILS when an unattributed row half-names a source', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions[1].attributedTo = 'probably sentry'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /graded `unattributed` while still carrying an attributedTo/);
+  });
+
+  // ── the provenance, and the "it all came from dependencies" sentence ───────
+  test('FAILS when the measurement loses the receipt it was taken from', () => {
+    const r = run(makeRoot({ ds: (x) => { delete x.androidPermissions.merged.measuredFrom.runId; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /measuredFrom has no `runId`/);
+  });
+
+  test('FAILS when measuredOn is not an ISO date', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.measuredFrom.measuredOn = 'August 2026'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /measuredFrom\.measuredOn is not an ISO date/);
+  });
+
+  test('FAILS when the release manifest starts hand-declaring one of the merged permissions', () => {
+    // `merged._why` asserts that not ONE of these arrived from this repository.
+    const r = run(makeRoot({
+      ds: (x) => { x.androidPermissions.declaredInRepo['apps/subly/android/app/src/main/AndroidManifest.xml'] = ['android.permission.VIBRATE']; },
+      files: (f) => { f['apps/subly/android/app/src/main/AndroidManifest.xml'] = MANIFEST.replace('<application', '<uses-permission android:name="android.permission.VIBRATE"/>\n    <application'); },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /no longer arrived wholly from dependencies/);
+  });
+
+  test('FAILS when the named release manifest is not one the walk found', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.releaseManifest = 'apps/subly/android/app/src/nope/AndroidManifest.xml'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /is not one of the manifests this walk found/);
+  });
+
+  test('FAILS when one permission is listed twice — a merged manifest is a SET', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions.push({ ...x.androidPermissions.merged.permissions[0] }); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /appears TWICE/);
+  });
+
+  // ── COVERAGE: a limb that ranges over nothing must never certify anything ──
+  test('COVERAGE LOST when the whole `merged` block is deleted', () => {
+    const r = run(makeRoot({ ds: (x) => { delete x.androidPermissions.merged; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /androidPermissions carries no `merged` block/);
+  });
+
+  test('COVERAGE LOST when merged.permissions is emptied — not "no permissions merged"', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.permissions = []; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /androidPermissions\.merged\.permissions is empty or not an array/);
+  });
+
+  test('COVERAGE LOST when merged.pinned is emptied — the pin is the anti-rot, not decoration', () => {
+    const r = run(makeRoot({ ds: (x) => { x.androidPermissions.merged.pinned = {}; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /androidPermissions\.merged\.pinned is missing or empty/);
+  });
+
+  test('COVERAGE LOST when the lock parses to ZERO versions — a moved format is not "no drift"', () => {
+    // Every package heading loses its two-space indent, so the shared
+    // parseLockVersions() anchor matches nothing. A subset check would read that
+    // as "no pin drifted" and pass.
+    const r = run(makeRoot({ files: (f) => { f['pubspec.lock'] = LOCK.replace(/^ {2}(\S)/gm, '$1'); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /parsed to ZERO resolved package versions/);
+  });
+});
+
+// ═════ the REAL declaration — the anti-drift check ═══════════════════════════
+// ⚠️ A FIXTURE AGREES WITH WHATEVER MISUNDERSTANDING WROTE IT, and the fixture
+// above is a THREE-row miniature of a FOUR-row measurement. These read the real
+// file, so the miniature cannot quietly stop modelling the thing it stands in for.
+describe('assert-play-declarations — limb 7a against the REAL data-safety.json', () => {
+  const REPO = resolve(CI_DIR, '..', '..');
+  const DS_PATH = join(REPO, 'apps', 'subly', 'store', 'android-play', 'data-safety.json');
+  const realMerged = () => {
+    assert.ok(existsSync(DS_PATH), `${DS_PATH} does not exist — this limb reads it and cannot be checked against it`);
+    const m = JSON.parse(readFileSync(DS_PATH, 'utf8')).androidPermissions?.merged;
+    assert.ok(m, 'the real declaration carries no androidPermissions.merged — limb 7a would COVERAGE LOST');
+    return m;
+  };
+
+  test('🔴 the REAL tree passes, and the merged limb ranged over something while it did', () => {
+    const r = run(REPO);
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /assert-play-declarations: ok/);
+    const m = out(r).match(/(\d+) MERGED manifest permission\(s\) graded/);
+    assert.ok(m, `the ok summary does not report the merged limb at all:\n${out(r)}`);
+    assert.ok(Number(m[1]) > 0, 'the merged limb graded ZERO rows and still reported ok');
+  });
+
+  test('every pinned package still resolves to the pinned version in the real pubspec.lock', () => {
+    // Read independently of the guard's own parse: a shared parse that is wrong
+    // agrees with itself, and this is the check that would notice.
+    const lock = readFileSync(join(REPO, 'pubspec.lock'), 'utf8');
+    const pinned = realMerged().pinned;
+    assert.ok(Object.keys(pinned).length > 0, 'merged.pinned is empty on the real declaration');
+    for (const [pkg, version] of Object.entries(pinned)) {
+      const block = lock.match(new RegExp(`^ {2}${pkg}:\\n(?: {4,}.*\\n)+`, 'm'));
+      assert.ok(block, `pubspec.lock has no entry for the pinned package ${pkg}`);
+      assert.match(block[0], new RegExp(`^ {4}version: "?${version.replace(/\./g, '\\.')}"?\\s*$`, 'm'), `${pkg} is pinned to ${version} and the lock says otherwise`);
+    }
+  });
+
+  test('every expectedButAbsent permission is still absent from the real merged set', () => {
+    const m = realMerged();
+    const names = new Set(m.permissions.map((p) => p.name));
+    const absent = Object.keys(m.expectedButAbsent ?? {});
+    assert.ok(absent.length > 0, 'expectedButAbsent is empty — the receipt with teeth has no teeth');
+    for (const name of absent) {
+      assert.equal(names.has(name), false, `${name} was predicted, measured absent, and has now appeared — re-take the reading`);
+    }
+  });
+
+  test('every real row carries the fields its own grade obliges', () => {
+    for (const p of realMerged().permissions) {
+      if (p.attribution === 'unattributed') {
+        assert.equal(p.attributedTo, null, `${p.name} is unattributed and still names a source`);
+        assert.equal(p.evidenceGrade, null, `${p.name} is unattributed and still carries a grade`);
+      } else {
+        assert.ok(['read', 'inferred'].includes(p.evidenceGrade), `${p.name} has grade ${p.evidenceGrade}`);
+        assert.ok(typeof p.evidence === 'string' && p.evidence.trim() !== '', `${p.name} is graded ${p.evidenceGrade} with no evidence`);
+        if (p.evidenceGrade === 'inferred') {
+          assert.ok(typeof p.residual === 'string' && p.residual.trim() !== '', `${p.name} is inferred with no residual`);
+        }
+      }
+      assert.equal(typeof p.collectionSignal, 'boolean', `${p.name} does not say whether it is a collection signal`);
+    }
+  });
+
+  test('every unattributed row has a named finding, and every finding has a row', () => {
+    const m = realMerged();
+    const unattributed = m.permissions.filter((p) => p.attribution === 'unattributed').map((p) => p.name);
+    const findings = Object.keys(m.unattributed ?? {});
+    assert.deepEqual([...unattributed].sort(), [...findings].sort(), 'the unattributed rows and the named findings have drifted apart');
   });
 });

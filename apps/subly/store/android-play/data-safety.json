@@ -905,7 +905,103 @@
       "apps/subly/android/app/src/debug/AndroidManifest.xml": ["android.permission.INTERNET"],
       "apps/subly/android/app/src/profile/AndroidManifest.xml": ["android.permission.INTERNET"]
     },
-    "cannotSee": "⚠️ THE MERGED MANIFEST. Gradle merges permissions contributed by every plugin's own AndroidManifest.xml, and none of those files is in this repository. Reading the locked plugin set, the expected additions are VIBRATE and POST_NOTIFICATIONS (flutter_local_notifications) and INTERNET / ACCESS_NETWORK_STATE (the sentry-android AAR pulled in by sentry_flutter) — none of which is a collection signal on its own. That set was NOT read from a built artefact and is not asserted anywhere: Android cannot be built on the maintainer's machine, and the guard says so on every run instead of pretending. To settle it, run `bundletool dump manifest` on a CI-built .aab. What the guard CAN do about it is `dependencySurface` below — a permission-bearing plugin cannot arrive without a new dependency, and a new dependency fails the build."
+    "merged": {
+      "_why": [
+        "🔴 THE SET GOOGLE ACTUALLY READS, MEASURED OFF A BUILT ARTEFACT RATHER THAN REASONED ABOUT.",
+        "`declaredInRepo` above is what this tree declares. Gradle merges in a permission from every",
+        "dependency's own AndroidManifest.xml, and the union is what lands in the .aab and what a Play",
+        "reviewer sees beside this form. Until 2026-08-26 nothing had read that union and `cannotSee` below",
+        "said so honestly — while every `Build all 6 platforms` run had been uploading a signed .aab the",
+        "whole time. Run 32869814582's was downloaded and decoded; `measuredFrom` says exactly how.",
+        "",
+        "🔴 NOT ONE OF THESE FOUR IS DECLARED IN THIS REPOSITORY. apps/subly/android/app/src/main/",
+        "AndroidManifest.xml declares NO permission at all — see `declaredInRepo` above. The two manifests",
+        "that do declare INTERNET are debug and profile, which a release build never merges. So the WHOLE of",
+        "the merged set arrived from dependencies, which is exactly the mechanism `dependencySurface` below",
+        "exists to watch, and the first direct evidence that it is the right thing to be watching.",
+        "",
+        "⚠️ A MEASUREMENT IS A SNAPSHOT AND THE THING IT SNAPSHOTS MOVES. Neither the manifest equality",
+        "above nor the dependency equality below can see a permission that arrives in a VERSION BUMP of a",
+        "package already declared — Renovate taking flutter_local_notifications to a release that adds",
+        "SCHEDULE_EXACT_ALARM would change this set and fail nothing. That is what `pinned` is for: it ties",
+        "this reading to the resolved versions it was taken against, the same way crashSdkSurface.pinned ties",
+        "the device-identifier answer to the SDK whose source was read."
+      ],
+      "measuredFrom": {
+        "runId": "32869814582",
+        "runName": "Build all 6 platforms — run #53 (workflow_dispatch, main)",
+        "commit": "a19bfca553a2b03e867194a193f88483aad7dc7b",
+        "builtOn": "2026-08-25",
+        "artifact": "subly-linux-web-android-release-signed",
+        "file": "app/outputs/bundle/release/app-release.aab",
+        "entry": "base/manifest/AndroidManifest.xml",
+        "measuredOn": "2026-08-26",
+        "method": "🔬 HOW IT WAS READ, BECAUSE THE DOCUMENTED ROUTE WAS NOT AVAILABLE AND SAYING SO IS THE POINT. `bundletool dump manifest` is the documented route and bundletool is not installed on the measuring host. An .aab does NOT carry the binary AXML an .apk carries: base/manifest/AndroidManifest.xml is a serialized aapt2 `XmlNode` protobuf, and aapt2 itself refuses the container (`app-release.aab: error: could not identify format of APK`). It was decoded straight from the protobuf wire format — a short reader over the four XmlNode/XmlElement/XmlAttribute fields that carry element names and attribute values — and the manifest was then walked as a TREE, not grepped for strings. CROSS-CHECKED WITH A DOCUMENTED TOOL ON A DOCUMENTED FORMAT: `aapt2 dump permissions` (build-tools 36.0.0) against app-release.apk from the SAME run returns the identical five lines — one <permission> and four <uses-permission>. Two independent decoders, two artefacts of one build, one set. The .aab's own versionCode is 53 and the run number is 53, which is a third tie between the file read and the run cited.",
+        "treeUnchangedSince": "`git diff a19bfca5 HEAD` is EMPTY for pubspec.lock, apps/subly/android/ and apps/subly/pubspec.yaml — so nothing that determines the merged manifest moved between the commit that was built and the commit this record was written on. That is what makes a reading of a yesterday artefact a statement about today's tree."
+      },
+      "releaseManifest": "apps/subly/android/app/src/main/AndroidManifest.xml",
+      "lockfile": "pubspec.lock",
+      "permissions": [
+        {
+          "name": "android.permission.VIBRATE",
+          "attributedTo": "flutter_local_notifications",
+          "attribution": "direct",
+          "evidenceGrade": "read",
+          "evidence": "flutter_local_notifications-17.2.4/android/src/main/AndroidManifest.xml in the local pub cache declares it, in two lines beside POST_NOTIFICATIONS and nothing else. Read 2026-08-26. ⚠️ The package's EXAMPLE app manifest declares six more (RECEIVE_BOOT_COMPLETED, USE_EXACT_ALARM, USE_FULL_SCREEN_INTENT, FOREGROUND_SERVICE…) and not one of them is in the merged set: an example app's manifest is merged into nothing, and reading the wrong file in that directory would have invented four permissions this app does not hold.",
+          "collectionSignal": false,
+          "why": "Vibrates the handset when a renewal reminder fires. It is a hardware effect with no read side — there is no API behind it returning anything about the device or the person holding it — so no Play data type moves."
+        },
+        {
+          "name": "android.permission.POST_NOTIFICATIONS",
+          "attributedTo": "flutter_local_notifications",
+          "attribution": "direct",
+          "evidenceGrade": "read",
+          "evidence": "The same file and the same reading as VIBRATE above; the two are declared together and are the entire permission content of that package's plugin manifest.",
+          "collectionSignal": false,
+          "why": "The API 33 runtime permission to show a notification at all. Subly's notifications are LOCAL and scheduled on-device (see dependencySurface.flutter_local_notifications): no push service, no token registration, no Firebase. Nothing is registered with anybody and nothing is transmitted to earn it."
+        },
+        {
+          "name": "android.permission.INTERNET",
+          "attributedTo": null,
+          "attribution": "unattributed",
+          "evidenceGrade": null,
+          "evidence": null,
+          "collectionSignal": false,
+          "why": "A transport, not a collector. WHAT travels over the socket is the entire subject of `answers` above and is declared there per posture; the permission itself distinguishes nothing, which is why almost every Android app holds it. It is recorded as unattributed rather than assumed — see `unattributed` below."
+        },
+        {
+          "name": "com.nikatru.subly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+          "attributedTo": "androidx.core",
+          "attribution": "transitive",
+          "evidenceGrade": "inferred",
+          "evidence": "Two tells, both inside the measured artefact. (1) The merged manifest declares the matching `<permission android:protectionLevel=\"signature\">` with the application id already substituted into the name — an ${applicationId} placeholder resolved by the manifest merger, which is a LIBRARY-manifest construct; nothing in this repository names the string. (2) The same merged manifest carries `android:appComponentFactory=\"androidx.core.app.CoreComponentFactory\"` on <application>, which is androidx.core's own manifest contribution, and `androidx/core/app/CoreComponentFactory` survives R8 into classes.dex — so androidx.core's AndroidManifest.xml is provably one of the files that was merged. It reaches the build transitively through the Flutter Android embedding; no pubspec entry names it.",
+          "residual": "The androidx.core AAR's own AndroidManifest.xml was NOT read — there is no Gradle cache on the measuring host. The two tells above put androidx.core's manifest in the merge and match its documented construct, which is why this is graded `inferred` and not `read`. Settle it by reading that AAR manifest on a machine which has resolved the Android dependency graph, or — better, because it would settle every row of this table at once — by having the Android lane upload build/outputs/logs/manifest-merger-release-report.txt, which names the contributing file for every merged node.",
+          "collectionSignal": false,
+          "why": "A self-defined signature-level permission androidx.core uses so that a runtime-registered BroadcastReceiver can be marked not-exported on older API levels. Signature protection means only this app's own signing key can hold it, so nothing outside the app can use it and no data type moves. The permission string does not appear anywhere in classes.dex either, so no shipped code path even requests it: it is a manifest contribution and nothing more."
+        }
+      ],
+      "unattributed": {
+        "android.permission.INTERNET": "🔴 IT IS IN THE MERGED SET AND NOTHING HERE SAYS WHO PUT IT THERE. Several libraries the merged manifest PROVES are present each plausibly declare it — sentry-android (its SentryPerformanceProvider and SentryNdkPreloadProvider are both in the merged <application>), play-services-basement (GoogleApiActivity) and play-core (PlayCoreDialogWrapperActivity) — and naming one of them would be a guess dressed as a reading, which is the exact failure this whole file is built against. What WAS read: sentry_flutter's own android/src/main/AndroidManifest.xml, which declares NO <uses-permission> of any kind — so the sentry candidate is the AAR it pulls (io.sentry:sentry-android 8.51.0, sentry_flutter-9.26.0/android/build.gradle:65), not the Dart plugin. Settle it the same way as the androidx.core row above: read the AAR manifests on a host with a resolved Gradle cache, or have CI upload manifest-merger-release-report.txt, which attributes every merged node to the file it came from. Until then this stays a NAMED FINDING on a sworn declaration rather than a blank quietly filled in. It changes no answer: INTERNET is a transport and the posture columns already declare what travels over it."
+      },
+      "expectedButAbsent": {
+        "android.permission.ACCESS_NETWORK_STATE": "🔴 PREDICTED BY THE ABSTENTION THIS BLOCK REPLACED, AND MEASURABLY NOT THERE. `cannotSee` reasoned from the locked plugin set that the sentry-android AAR would contribute INTERNET *and* ACCESS_NETWORK_STATE. INTERNET is present; ACCESS_NETWORK_STATE is not — under either decoder, in either artefact of run 32869814582. It is kept here rather than deleted for two reasons: it is the receipt showing what careful reasoning about a plugin list got wrong, and it is an equality with teeth — if a later sentry-android brings it in, a re-measurement finds this key contradicting the permission list and FAILS, which forces somebody to say what the new permission changes instead of appending it silently."
+      },
+      "pinned": {
+        "flutter_local_notifications": "17.2.4"
+      },
+      "_pinned_why": [
+        "THE RESOLVED VERSIONS THIS READING WAS TAKEN AGAINST, compared to `lockfile` — the lock, not the",
+        "pubspec range, because `^17.2.0` is satisfied by 17.9.0 and that is not the package whose manifest",
+        "was read. A bump is the one way the merged set can change with no other file in this repository",
+        "changing, so it is the one way this measurement can rot in silence.",
+        "",
+        "⚠️ ONLY THE PACKAGE WHOSE MANIFEST WAS ACTUALLY READ IS PINNED HERE. sentry_flutter is a candidate",
+        "for the unattributed INTERNET row above and is ALREADY pinned, with its own argument, in",
+        "crashSdkSurface.pinned. Two pins on one package are two things that can disagree about one fact, and",
+        "the second one is always the one nobody updates — so it is not re-declared here."
+      ]
+    },
+    "cannotSee": "⚠️ THE MERGED MANIFEST. Gradle merges permissions contributed by every plugin's own AndroidManifest.xml, and none of those files is in this repository. Reading the locked plugin set, the expected additions are VIBRATE and POST_NOTIFICATIONS (flutter_local_notifications) and INTERNET / ACCESS_NETWORK_STATE (the sentry-android AAR pulled in by sentry_flutter) — none of which is a collection signal on its own. That set was NOT read from a built artefact and is not asserted anywhere: Android cannot be built on the maintainer's machine, and the guard says so on every run instead of pretending. To settle it, run `bundletool dump manifest` on a CI-built .aab. What the guard CAN do about it is `dependencySurface` below — a permission-bearing plugin cannot arrive without a new dependency, and a new dependency fails the build.  ┃  APPENDED 2026-08-26 — MEASURED, AND THE GUESS ABOVE WAS 3-FOR-4. The sentence in front of this one stands exactly as it was written, because it was true the day it was written; this says what changed and when. The merged set has now been read — from the signed .aab of CI run 32869814582 — and is recorded in `merged` above. VIBRATE and POST_NOTIFICATIONS arrived from flutter_local_notifications as predicted, and INTERNET arrived; ACCESS_NETWORK_STATE DID NOT, and a fourth permission nobody predicted did: com.nikatru.subly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, an ${applicationId}-substituted signature permission contributed by androidx.core. Three named right, one named wrong, one missed — which is the whole argument for reading an artefact instead of reasoning about a plugin list. WHAT IS STILL NOT VISIBLE FROM HERE, and it is narrower than it was: (1) WHICH library declares INTERNET. No AAR manifest is in this repository and none is on the measuring host (no Gradle cache; Android builds in CI), so the reading says INTERNET is in the merged set and nothing here says who put it there — it is carried as a named finding in `merged.unattributed`, not as a footnote. (2) That the reading is one build's snapshot rather than a standing derivation: nothing in CI downloads its own .aab back to re-read it, so `merged.pinned` and `merged.expectedButAbsent` are what stop it going quietly stale — re-take it from a fresh .aab whenever either of them fires."
     },
 
   "dependencySurface": {
@@ -938,7 +1034,7 @@
       "introduces": [],
       "why": "First-party wrapper (packages/notifications) over the flutter_local_notifications + timezone pair already declared below — [13]T-9 routes the retention-touch attribution through it so a tap is attributable to its reminder. It schedules LOCAL notifications only: no new permission, no network, no data category beyond what its two wrapped deps (both already in this surface) declare. Added 2026-08-08 with PR #195 under [ADR 036]."
     },
-    "flutter_local_notifications": { "introduces": [], "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions." },
+    "flutter_local_notifications": { "introduces": [], "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions — which stopped being an inference on 2026-08-26: both were read out of a built .aab and both were traced back to this package's own plugin manifest. See androidPermissions.merged." },
       "timezone": { "introduces": [], "why": "Local timezone database for scheduling the reminders above. Offline data, no I/O." },
       "intl": { "introduces": [], "why": "Number formatting. Subly's entire use is one NumberFormat in lib/core/format/currency.dart." },
       "cupertino_icons": { "introduces": [], "why": "An icon font." },
