@@ -9,10 +9,40 @@
    the person the picture. Running this file today reddens on the absence of
    fields whose absence is the deliverable.
 
-   ITS REPLACEMENT IS test/e2e/claim-reduction.mjs, which runs the same corpus
-   of defeating page shapes and grades what replaced the ladder. This file is
-   kept, unrun, for one reason: the FIXTURES are the accumulated record of
-   fourteen shapes that beat six fixes, and they are worth more than the
+   MEASURED 2026-08-25 and again 2026-08-26 on the same tree, alone:
+   exit 1, 102 pass / 65 fail / 3 open, 0 ESCAPES, over 11 fixtures. 44 of the
+   65 are four universals repeated per fixture (U2 the closed state set, U5 and
+   U6 the scan and bake ledger sums, U7 the state sentence). U9 fails because
+   §3.3 now persists `redaction.marks` for verified-opaque blocks ON PURPOSE —
+   it grades an absolute the spec deliberately retired.
+
+   QUARANTINED in .github/workflows/e2e.yml, which carries the same numbers.
+
+   ITS ASSERTIONS ARE REPLACED by reduction-corpus.mjs (wired, green), which
+   grades the reduced design. ITS SHAPES ARE NOT. `fixtures-adv/` holds
+   THIRTEEN shapes, eleven of them in the list below; reduction-corpus.mjs
+   reaches five of the thirteen — details-closed, object-door, split-token,
+   wrapped-token, mixed-owntext — and claim-reduction.mjs three of those same
+   five. canvas-combo, cv-tabs, frame-pii, honest-article, honest-pii,
+   late-frame, late-swap and shadow-closed-frame reach NO wired suite, and
+   frame-pii is not in the list below either, so it has never had one.
+   That hole closes by writing a suite from the CURRENT
+   REDACTION-CLAIM-SPEC.md over `fixtures-adv/`, not by re-arming this file:
+   the § numbers below (§2.6, §3.7, §5.4, §6.1, §7.1, E8, E13) are sections of
+   the pre-reduction spec, rewritten in place, and none of them exists today.
+
+   TWO FAILURES HERE ARE NOT RECORD-SHAPE and outlive the retirement, because
+   they are read off the delivered PNG: on cv-tabs the VISIBLE panel's marker
+   is 0 rows beside 33 rows of block colour, and on details-closed 23 rows of
+   block colour beside a PII marker of 0 — an opaque block painted at
+   coordinates taken from a subtree the renderer never drew, landing on
+   rendered text that held no PII. Under the reduced design that is NOT a false
+   coverage claim (`1 matched / 1 painted / 1 verifiedOpaque` are each true), so
+   it is not what reddens this suite and must not be graded by re-arming it. It
+   belongs to whoever owns content/capture.js.
+
+   This file is kept, unrun, for one reason: the FIXTURES are the accumulated
+   record of shapes that beat six fixes, and they are worth more than the
    assertions wrapped around them. Harvest from it; do not repair it.
    ========================================================================== */
 /* FullShot — ATTEMPT SIX at the redaction claim. Adversarial corpus.

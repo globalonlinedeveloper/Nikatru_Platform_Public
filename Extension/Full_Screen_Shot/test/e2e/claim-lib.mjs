@@ -107,8 +107,127 @@ export function prepareTestExtension() {
   return tmp;
 }
 
-export async function setSettings(sw, patch) {
-  await sw.evaluate(async (p) => { await chrome.storage.sync.set(p); }, patch);
+/* ---------------- settings, written and PROVEN ----------------
+   This used to be one line: `await sw.evaluate(p => chrome.storage.sync.set(p))`
+   — fire the write and return. Awaiting that resolves when OUR write commits,
+   which is not the same thing as our value being the one in storage.
+
+   The extension's own `chrome.runtime.onInstalled` handler writes its whole
+   defaults object on 'install', and the opt-in redaction flag is OFF in it.
+   A suite that calls this the instant the service worker appears is racing
+   that write, and whichever lands second wins. When the defaults land second
+   the capture runs with redaction OFF while the suite believes it asked for
+   it ON: no scan is recorded, the result page hands a null scan to the acts
+   reducer alongside a live bake ledger, and the run reports matched=null,
+   painted=0, a 'partial' ledger and zero marks — a red that reads like a
+   product defect and is not one. On the other branch of the same race the run
+   is green. That is what quarantined review-keyboard.mjs on 2026-08-25.
+
+   Neither a sleep in the caller nor a retry around the failing suite is a
+   repair — .github/workflows/e2e.yml's own step comment names both as the
+   wrong move, because both convert a race CI has just exposed back into a
+   green tick. The repair is to make the write verified at its source, once,
+   for every suite that calls it.
+
+   Two phases, and neither is decorative:
+
+     1. Wait, briefly and without extension source knowledge, for storage to
+        stop being empty. A fresh profile starts with nothing in it, so the
+        first non-empty read is the install-time defaults write having landed
+        — after which our patch cannot be overwritten by it. This phase never
+        throws: it is an optimisation, and on the second and later calls (or
+        against a build that seeds no defaults) it is a no-op. Phase 2 is the
+        guarantee.
+
+     2. Write, read back, and keep reading. A single agreeing read is not
+        enough — a write already in flight can clobber it a millisecond later,
+        and on a second call phase 1 is satisfied by OUR earlier write rather
+        than by the defaults — so the patch must read as asked across several
+        consecutive polls, and any disagreement re-writes and restarts the
+        count.
+
+   On expiry this THROWS, and that is the load-bearing part. Returning quietly
+   after failing to set redactPII would put a green tick over an unredacted
+   capture, which is precisely the failure this harness exists to make
+   impossible.
+
+   The re-write is capped. `chrome.storage.sync` enforces a writes-per-minute
+   quota, and an unbounded "write until it sticks" loop against a writer that
+   never yields will hit it — measured, not assumed: a probe that clobbered the
+   key in a tight loop made this function fail on the quota rather than on its
+   own deadline, which is still a throw but an illegible one, and it spends
+   quota later suites in the same browser would want. So the writes stop after
+   a handful and the polling continues to the deadline, so the failure that
+   arrives is this function's own, naming what was wanted and what storage
+   actually held. In the ordinary case it is a single write. */
+export const SETTINGS_DEADLINE_MS = 15000;
+const SETTINGS_SEED_WAIT_MS = 3000;   // phase 1, advisory
+const SETTINGS_POLL_MS = 60;
+const SETTINGS_STABLE_POLLS = 5;      // ≈300 ms of agreement, re-set on any dissent
+const SETTINGS_MAX_WRITES = 12;       // sync-quota guard; see above
+
+export async function setSettings(sw, patch, opts = {}) {
+  const cfg = {
+    p: patch,
+    deadlineMs: opts.deadlineMs || SETTINGS_DEADLINE_MS,
+    seedWaitMs: opts.seedWaitMs != null ? opts.seedWaitMs : SETTINGS_SEED_WAIT_MS,
+    pollMs: opts.pollMs || SETTINGS_POLL_MS,
+    stablePolls: opts.stablePolls || SETTINGS_STABLE_POLLS,
+    maxWrites: opts.maxWrites || SETTINGS_MAX_WRITES
+  };
+  const outcome = await sw.evaluate(async ({ p, deadlineMs, seedWaitMs, pollMs, stablePolls, maxWrites }) => {
+    const keys = Object.keys(p);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const same = (a, b) => JSON.stringify(a === undefined ? null : a) ===
+                           JSON.stringify(b === undefined ? null : b);
+    const t0 = Date.now();
+
+    /* phase 1 — let the install-time defaults write land, if it is coming */
+    let seeded = false;
+    while (Date.now() - t0 < seedWaitMs) {
+      const all = await chrome.storage.sync.get(null);
+      if (Object.keys(all).length > 0) { seeded = true; break; }
+      await sleep(pollMs);
+    }
+
+    /* phase 2 — write until it sticks, and stays stuck */
+    let stable = 0, writes = 0, reads = 0, last = null, writeErr = null;
+    while (Date.now() - t0 < deadlineMs) {
+      if (stable === 0 && writes < maxWrites) {
+        writes++;
+        try { await chrome.storage.sync.set(p); }
+        catch (e) { writeErr = String((e && e.message) || e); }
+      }
+      await sleep(pollMs);
+      const got = await chrome.storage.sync.get(keys);
+      reads++; last = got;
+      if (keys.every(k => same(got[k], p[k]))) {
+        stable++;
+        if (stable >= stablePolls) {
+          return { ok: true, seeded, writes, reads, ms: Date.now() - t0 };
+        }
+      } else {
+        stable = 0;
+      }
+    }
+    const wanted = {}, actual = {};
+    for (const k of keys) { wanted[k] = p[k]; actual[k] = last ? last[k] : undefined; }
+    return { ok: false, seeded, writes, reads, ms: Date.now() - t0, wanted, actual, writeErr,
+             writeCapped: writes >= maxWrites };
+  }, cfg);
+
+  if (!outcome.ok) {
+    throw new Error(
+      'setSettings never stuck after ' + outcome.ms + 'ms (' + outcome.writes +
+      ' writes' + (outcome.writeCapped ? ', write cap reached' : '') + ', ' + outcome.reads +
+      ' reads, defaults seen=' + outcome.seeded + '): wanted ' +
+      JSON.stringify(outcome.wanted) + ', storage held ' + JSON.stringify(outcome.actual) +
+      (outcome.writeErr ? ', last write error: ' + outcome.writeErr : '') +
+      '. Something else is writing these keys — do NOT paper over this with a sleep ' +
+      'or a retry; the capture would run with the wrong settings and pass.'
+    );
+  }
+  return outcome;
 }
 
 /* ---------------- ledger accessors ----------------

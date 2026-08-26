@@ -1172,6 +1172,32 @@
         'FullShot did not finish walking this page.');
       if (more != null) text = (text == null ? '' : text + ' ') + more;
     }
+    /* ---- THE COMPLETENESS THAT TRAVELS WITH THE COUNT --------------------
+       §2.1.1: A COUNT WITHOUT ITS COMPLETENESS FLAG IS NOT A COUNT. The payload
+       has always said "(PARTIAL count)" for this record; this screen said
+       nothing, so the two surfaces described one capture and only one of them
+       admitted the number might be short. The reader believes whichever they
+       saw, and the silent one was the one with the picture next to it.
+
+       APPENDED, NEVER AN ARM. It composes with all three arms above, including
+       the zero arm — "matched nothing" over text the pass never read is exactly
+       the sentence that most needs this beside it.
+
+       IT IS NOT REDUNDANT WITH THE FOUR GAP SENTENCES, and that is why it is
+       not gated on them being silent. Every gap counter can be zero while this
+       is false: `declined.other` — a span the second measurement had no room to
+       hold — and an unwalked same-origin frame both reach the seal and neither
+       reaches `textRefused`, by design in both cases (the first because
+       `textRefused` stays exact, the second because no leaf was refused at all).
+       Gating this on "no other sentence rendered" would restore the silence on
+       the two shapes it was written for. It carries no counts because the thing
+       it reports is precisely the part that was not counted; the sentences
+       below carry the parts that were. */
+    if (a.matchedComplete === false) {
+      const more = msg('redactActsCountPartial', null,
+        'This count may be short: FullShot did not read some of the text in this capture.');
+      if (more != null) text = (text == null ? '' : text + ' ') + more;
+    }
     /* ---- WHERE THE PASS GAVE UP, AND ON WHAT ----------------------------
        Two sentences, appended to whichever arm rendered, and each one only
        when it has something to report. They exist because a shortfall tells a

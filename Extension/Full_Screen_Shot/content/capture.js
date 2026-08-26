@@ -1613,13 +1613,36 @@
                                      where the two directions differ this takes
                                      the one that claims less. `textRefused`
                                      stays exact, and leaves `other` out.
+         frames.scanned < .sameOrigin  a door we counted, could have opened,
+                                     and did not walk through — §5.4. The
+                                     counter above is written at the moment
+                                     `scan()` meets an IFRAME whose
+                                     contentDocument is readable and returns
+                                     without descending, and until this clause
+                                     existed it was WRITTEN AND NEVER READ: the
+                                     pass positively observed itself declining
+                                     to read a document, counted the refusal,
+                                     and then sealed the count as whole. That is
+                                     the exact shape §2.1.1 forbids, and it
+                                     failed toward the reader believing more was
+                                     covered than was. Written as
+                                     `scanned === sameOrigin` and not
+                                     `sameOrigin === 0` so that the day the walk
+                                     DOES descend, this clause stops being a
+                                     permanent false instead of having to be
+                                     found and deleted. Cross-origin doors are
+                                     not in it: nothing in this pass could have
+                                     read them, so there is no act here that was
+                                     given up on — the standing limits the
+                                     payload carries say that separately.
 
        It is a conjunction rather than a count because it answers ONE question —
        is this number the whole number — and the reasons stay separately
        counted above so a reader can still see WHICH giving-up cost them what. */
     L.matchedComplete = !L.truncated.walk && !L.truncated.time &&
                         !L.truncated.ceiling && !L.truncated.error &&
-                        L.walksCompleted === L.walks && L.declined.total === 0;
+                        L.walksCompleted === L.walks && L.declined.total === 0 &&
+                        L.frames.scanned === L.frames.sameOrigin;
     /* THE SEAL, in the return statement. Not in a `finally`, not by the caller:
        a throw anywhere above must leave this false, because "the pass reached
        its own last line" is the one thing a `finally` cannot honestly say. */
