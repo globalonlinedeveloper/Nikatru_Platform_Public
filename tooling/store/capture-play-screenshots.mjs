@@ -262,6 +262,39 @@ if (!PROOF && missing.length) {
   ]);
 }
 
+// ── ⬜ COVERAGE LOST ON `--proof`, PRINTED RATHER THAN LEFT TO BE DEDUCED ────
+// The seeding block in store_screenshots_test.dart is wrapped in
+// `if (AppConfig.isBackendLive)`, and a proof run is a demo build by
+// definition, so on `--proof` NONE of it executes: the create flow itself, and
+// every guard added around it on 2026-08-26 (the FAB reachable before each row,
+// the sheet actually open, the submit button hit-testable after
+// `ensureVisible`, the per-row receipt that the sheet closed, and the final
+// round-trip read-back). A green `--proof` run therefore says the capture
+// MECHANISM works — drive, dimension, shutter, identity guard, flatten, verify
+// — and says NOTHING about whether a subscription can be created, or whether
+// any of those guards would fire if it could not.
+//
+// The skip predates the guards and stays: SeedApiClient already holds twelve
+// rows, and adding to them proves nothing about the shipping app. What changes
+// is that the loss is ANNOUNCED. This lane runs a handful of times a year, and
+// a reader who sees `--proof` come back green and infers the add flow was
+// exercised is making exactly the inference this notice exists to block.
+//
+// Printed on stdout, not thrown: a proof run is a legitimate mode and failing
+// it would only delete the mode. Printed HERE — above the chromedriver probe,
+// the first thing that can refuse for an environmental reason — so the notice
+// survives a run that never reaches a browser. Printed by the RUNNER rather
+// than by the suite, because the suite's own `debugPrint` under
+// `flutter drive -d web-server` goes to the browser console and not to this
+// log; that is the same channel gap that hid the missed tap in run 32961461714.
+if (PROOF) {
+  console.log('');
+  console.log('⬜ COVERAGE LOST (--proof): demo build ⇒ AppConfig.isBackendLive is false, so the');
+  console.log('   seeding block in store_screenshots_test.dart does NOT run. The add-flow guards');
+  console.log('   (FAB reachable · sheet open · submit hit-testable · per-row receipt · round-trip');
+  console.log('   read-back) are SKIPPED. This run exercises the capture mechanism only.');
+}
+
 // ── chromedriver ────────────────────────────────────────────────────────────
 function chromedriverPath() {
   const fromEnv = process.env.CHROMEDRIVER;
@@ -508,7 +541,54 @@ try {
     ];
     console.log('');
     console.log(`── ${cap.type}: ${cap.cssWidth}x${cap.cssHeight}@${cap.dpr} → ${dir.replace(ROOT, '.')}`);
-    console.log(`flutter ${args.filter((a) => !/=(?:ey|https?:\/\/|.*password)/i.test(a)).join(' ')}`);
+    // 🔴 THE VALUE IS REDACTED, THE KEY IS NOT — AND THAT USED TO BE THE OTHER
+    // WAY ROUND, WHICH COST A DIAGNOSIS ON 2026-08-26 AND PRINTED A PASSWORD.
+    // This line was
+    // `args.filter((a) => !/=(?:ey|https?:\/\/|.*password)/i.test(a))`. It
+    // dropped a whole `KEY=value` TOKEN whenever the VALUE began `ey` or
+    // `http(s)://`, or contained the string "password" — and left the bare
+    // `--dart-define` that preceded it. Re-run against this script's own
+    // `defines` array (measured, not remembered — the real values stand in for
+    // themselves), that filter emits:
+    //
+    //   flutter drive … --driver-port=4444 --dart-define --dart-define
+    //   --dart-define --dart-define E2E_EMAIL=subly-e2e+7@nikatru.com
+    //   --dart-define E2E_PASSWORD=<the password, in clear>
+    //
+    // TWO defects in one line, and the second is the serious one:
+    //
+    //   1. DIAGNOSTIC. SUPABASE_URL, SUPABASE_ANON_KEY and API_BASE_URL vanish
+    //      from a line that still shows four of their flags. That reads exactly
+    //      like a lane launched with API_BASE_URL missing — a real and very
+    //      different failure (an app that signs in and can reach no API) — and
+    //      it was chased as one before `need` above was re-read: this script
+    //      REFUSES to start without all five, so they cannot be absent here. A
+    //      redaction whose output is indistinguishable from a bug is worse than
+    //      no line at all.
+    //   2. SECRET. `.*password` can only match text that follows an `=`, so the
+    //      KEY name in `E2E_PASSWORD=…` never triggered it — the VALUE was
+    //      printed in full, into a CI step log, on every live run. It was
+    //      redacted only by accident, on the runs where the password happened
+    //      to start with `ey`. E2E_EMAIL was printed in full for the same
+    //      reason. So the mapper below is a leak fix, not only a legibility
+    //      one.
+    //
+    // ⬜ WHAT THE MAPPER COVERS, EXACTLY, AND WHAT IT DOES NOT. It rewrites a
+    // token that is `KEY=value`, and a token that is `--dart-define=KEY=value`.
+    // Those are the two shapes Flutter accepts for a define: this script builds
+    // only the first today (`pass()` pushes the flag and the pair as SEPARATE
+    // argv entries), and the second is handled.
+    // It does NOT cover a secret carried in any other shape: a bare positional,
+    // or a flag whose value is a SEPARATE token (`--flag secret`), which is
+    // indistinguishable here from `web-server`. Nothing in `args` is built that
+    // way; a future one must be redacted where it is added, not here.
+    // `true`/`false` values are left visible so STORE_CAPTURE_ALLOW_DEMO reads.
+    const redactDefine = (a) => {
+      const m = /^(--dart-define=)?([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/.exec(a);
+      if (!m) return a;
+      return m[3] === 'true' || m[3] === 'false' ? a : `${m[1] ?? ''}${m[2]}=<redacted>`;
+    };
+    console.log(`flutter ${args.map(redactDefine).join(' ')}`);
     // `shell: true` on Windows is REQUIRED, not sloppiness, and Node prints a
     // deprecation warning about it that invites exactly the wrong fix. `flutter`
     // on Windows is `flutter.bat`, and Node has refused to spawn `.bat`/`.cmd`
@@ -533,6 +613,21 @@ try {
         'over the tree, a sign-in that did not complete, or a backend that is down. A failure on ONE viewport',
         'and not the other is the interesting case — it means the app behaves differently at that width, which',
         'is precisely what a second device type was added to photograph.',
+        '',
+        'THE THIRD ANSWER, ADDED AFTER RUN 32961461714 (2026-08-26): the SUITE, tapping a control that is in',
+        'the tree and off the screen. That run typed six subscriptions into the add sheet and submitted none',
+        'of them, because at 360x640 the sheet submit button lays out 160 px below the bottom of the screen.',
+        'The phone viewport is the SHORTEST geometry anything in this repository drives (the nightly E2E runs',
+        'Chrome at 430x932), so this lane is where that class surfaces first.',
+        '',
+        'That run produced no error because `tester.tap` only WARNS on a miss, and the warning goes to the',
+        'app-side console (browser) rather than to this log — it is not that the framework said nothing, it',
+        'is that it did not say it here. Two things changed after it: the suite now sets',
+        '`WidgetController.hitTestWarningShouldBeFatal = true`, so a missed tap THROWS at the tap, and the',
+        'add flow carries explicit reachability limbs. Note `tester.enterText` still does not tap at all, so',
+        'an off-screen FIELD accepts text silently either way — that is the half that let six rows be typed.',
+        'Read the failing assertion for a control that was FOUND: `findsOneWidget` on a finder and',
+        '`hitTestable()` on the same finder are different questions, and only the second one is about a finger.',
       ]);
     }
   }
