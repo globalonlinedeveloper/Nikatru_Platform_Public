@@ -808,3 +808,147 @@ its own count — A.4 says so itself. Re-measured 2026-08-25 with A.4's own lite
 The other ten rows reproduce A.4's figures exactly, and every zero in the `ci.yml` column — the
 load-bearing half of that table — is unchanged: `\-\-expect` 0, `changelog-section` 0, `sha256sum` 0,
 `gh release` 0.
+
+### A.8 — CORRECTION to A.6 and to §5, 2026-08-26: the dry run is IMPLEMENTED, and the lane is still UNEXERCISED
+
+Two dated claims above are now false. Both are left standing exactly as written; this block is the
+correction.
+
+**(a) A.6 says the `workflow_dispatch` dry run is “PROPOSED, not implemented”.** It is implemented.
+`release.yml` carries a `workflow_dispatch:` trigger at **line 62** with two required inputs — `dry_run`
+(boolean, default `true`) and `tag` (string, deliberately not defaulted).
+
+**(b) §5 says “there is no throwaway tag and no rehearsal: pushing one *is* the publish”.** The first
+half still holds — there is still no throwaway tag, and a tag push is still irreversible. The second
+half no longer does: a rehearsal exists, and it is not a tag push.
+
+**What has NOT changed: the lane has never run.** Measured 2026-08-26, exit codes on their own lines:
+
+```
+gh workflow list --all                                    ->  EXIT 0   (Release  active  334596083)
+gh run list --workflow=release.yml --limit 100 | wc -l    ->  0        rows
+gh run list --workflow=ci.yml      --limit 3   | wc -l    ->  3        rows  (control)
+git tag                      | wc -l                      ->  0
+git for-each-ref refs/tags   | wc -l                      ->  0
+git ls-remote --tags origin  | wc -l                      ->  0
+```
+
+⚠️ **The control row is the whole reason this measurement is worth anything.**
+`gh run list --workflow=release.yml` prints nothing and exits **0** — and a workflow name that failed to
+resolve would *also* print nothing and exit 0. The identical query shape against `ci.yml` returns rows,
+and `gh workflow list --all` shows `Release` registered and `active`, so the empty result is a measured
+**zero runs**, not a lookup that quietly missed.
+
+🔴 **A release lane that has never run is not a proven lane.** Everything this document says about
+`release.yml`’s behaviour was derived by *reading* it, or from off-runner fixture work (A.5, A.7). No
+runner has ever executed any of it. Read the sections above with that in front of you.
+
+#### A.8.1 — the rehearsal command
+
+Pasteable as written, from the repository root. Nothing in it needs editing today:
+
+```bash
+gh workflow run release.yml --ref main -f dry_run=true -f tag=fullshot-v1.10.2
+```
+
+Three parts are load-bearing, and none is decoration:
+
+- **`--ref main`** — a dispatch runs the copy of `release.yml` on the ref you name, and the step
+  `Tag must be reachable from main` runs `git merge-base --is-ancestor "$GITHUB_SHA" origin/main`.
+  Dispatched from an unmerged branch that step fails for a reason that has nothing to do with the
+  release, which reads like a defect in the lane rather than a mistake in the dispatch. `origin/main`’s
+  `release.yml` is byte-identical to the one described here — **695** lines, same line numbers, and
+  `git diff --stat origin/main -- .github/workflows/release.yml` returns empty — so `--ref main`
+  rehearses exactly this file.
+- **`-f tag=fullshot-v1.10.2`** — required, and it must be the *current* version: `check-version.mjs`
+  compares it against `manifest.json` (**1.10.2** today) and the top CHANGELOG entry, so a stale value
+  fails in a gate rather than at the input. `Parse tag` rejects anything not matching
+  `^[a-z0-9][a-z0-9-]*-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$`, and rejects `core-v*` by name, *before* the
+  value is interpolated into any later step.
+- **`-f dry_run=true`** — required. Unchecking it does not select a second, publishing mode; it makes
+  the run **refuse**. See A.8.3.
+
+#### A.8.2 — what it does, and what it does not do
+
+It runs on real bytes: the two guard steps, the gate preflight, tag parse, the ancestry check, the full
+gate set, the secret scan, the sims, a real `--release` pack of **both** targets, the store-package
+check, the tool’s AMO gate on the built zip, verify-refs, web-ext lint, and the checksums. Then it
+stops, and prints `Rehearsal complete — nothing was published`.
+
+**It creates NO tag.** A dispatch is not a tag push, and nothing in the file tags anything:
+`grep -n 'git tag' .github/workflows/release.yml` → **1** hit, line **38**, and it is a comment.
+
+**It reaches NO publish step.** The entire publishing surface of this lane is a single executable line —
+`gh release create` at line **683** — and the step carrying it is gated. Verbatim, at **line 679**:
+
+```yaml
+        if: github.event_name == 'push' && inputs.dry_run != true
+```
+
+⚠️ **grep says three; the file means one.** `grep -n 'gh release create' .github/workflows/release.yml`
+returns lines **145**, **592** and **683**. The first two are comment prose. Parse before you count —
+and note that `release.yml`’s own guard step makes exactly this distinction, by stripping indentation
+and testing the first character rather than by an anchored regex.
+
+#### A.8.3 — why a dispatch cannot publish under ANY input
+
+Both limbs of line 679 are load-bearing, and they fail differently:
+
+- **`github.event_name == 'push'` is the *total* guard.** A dispatch is `workflow_dispatch`, so this
+  limb is false whatever `dry_run` holds — unset, `true`, or the string `"false"`. **No dispatch input
+  reaches the publish step.**
+- **`inputs.dry_run != true` is the declared switch**, and it is the limb that the step
+  `Every publishing step carries the dry-run guard` asserts by reading this file’s own text. It is what
+  keeps the property *stated* rather than surviving as an event-name coincidence.
+
+So, to answer the question directly and in the form it is usually asked: **a `workflow_dispatch` with
+`dry_run` unset, or set to the string `"false"`, cannot reach a publish step.** It is stopped twice
+over, by two independent things that would both have to be removed — the event-name limb at line 679,
+and, before that, the first step of the job, which refuses outright:
+
+```yaml
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
+```
+
+(line **109**, whose body is an `::error::` and `exit 1`).
+
+⚠️ **The refusal fails CLOSED, which is the property that matters here.** Any value that is not the
+boolean `true` **refuses the run** rather than advancing it. However the input arrives — a checkbox, a
+string through `-f`, a coercion surprise — the cost is a refused rehearsal, never a release. There is no
+input that turns a dispatch into a publish.
+
+⚠️ **`inputs.dry_run` is null on a push, not false.** The `inputs` context is empty for any event but a
+dispatch. That is why both gates spell it `!= true` and never `== false`: `null == false` is false, and
+a tag push would stop publishing releases entirely.
+
+#### A.8.4 — what a green rehearsal proves, and what it does not
+
+**A green rehearsal PROVES:**
+
+- `release.yml` parses and its job starts at all — never once observed to date.
+- Every step on the **dispatch path** runs on a runner, in order, under the runner’s real shell flags,
+  against a real `--release` build of both targets.
+- The gates that so far exist only as off-runner fixture measurements (A.5, A.7) hold on a runner, on
+  bytes a runner built.
+- The guards hold in practice: `Publish GitHub Release` is skipped by its `if:`, and the counterpart
+  step prints. That distinction matters, because a skipped step renders identically whether it was
+  skipped on purpose or skipped because an earlier step died.
+
+**A green rehearsal does NOT prove:**
+
+- **Anything about the push-tag path.** `Parse tag`’s `else` limb reads `GITHUB_REF_NAME`; a dispatch
+  takes the `if` limb and never executes it. A.4’s items **1** and **2** remain unexecuted in the form a
+  real release runs them.
+- **Anything about the publish step.** `gh release create` is *skipped*, not run. A.4 item **4** is
+  untouched. A green rehearsal is not evidence that the release command, its argument list, its
+  `--title`, or `notes.md` are correct — none of them is evaluated.
+- **Anything about the artifact a real release would publish.** The rehearsal builds and checksums
+  packages on a runner and then discards them. It says nothing about what a store accepts, and nothing
+  about the contents of a release that has never existed.
+- **That the job’s permissions are narrow.** `contents: write` is still on the job. The residual is
+  stated at the top of the job rather than glossed: `permissions:` takes no expression, so a dispatch
+  runs under a token carrying write even though no step reachable on a dispatch uses it.
+
+🔴 **A green rehearsal moves this lane from *never parsed, never started* to *runs on the dispatch
+path*. It does not make it a proven release lane.** The first real tag push is still a first execution,
+and it is still irreversible.

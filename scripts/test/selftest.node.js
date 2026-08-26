@@ -756,7 +756,12 @@ function zipOf(files) {
   const locals = [], centrals = [];
   let offset = 0;
   for (const [name, text] of Object.entries(files)) {
-    const nb = Buffer.from(name, 'utf8'), body = Buffer.from(text, 'utf8');
+    /* A Buffer body is passed through untouched. The freshness cases below put
+       the fixture's real icon PNGs into a package and hash them back out, and
+       Buffer.from(<png>, 'utf8') is a DIFFERENT FILE — it would report every
+       package as stale and the case would "pass" for the wrong reason. */
+    const nb = Buffer.from(name, 'utf8');
+    const body = Buffer.isBuffer(text) ? text : Buffer.from(text, 'utf8');
     const lh = Buffer.alloc(30);
     lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4);
     lh.writeUInt32LE(body.length, 18); lh.writeUInt32LE(body.length, 22);
@@ -945,6 +950,117 @@ expect('a tool declaring no targets CANNOT RUN rather than passing', {
     const t = readJson(root, TOOL + '/tool.json');
     delete t.targets;
     writeJson(root, TOOL + '/tool.json', t);
+  })
+});
+
+/* ---------------------------------------------------------------------------
+   THE FRESHNESS LIMB — "is this package the tree, or a photograph of it?"
+
+   🔴 THE RECORDED DEFECT, MEASURED 2026-08-26 ON THE REAL TREE. dist/ held a
+   build that predated two privacy fixes — content/capture.js, pages/history.js,
+   pages/result.js and all 55 locale catalogues differed from the source beside
+   it — and `node scripts/check-store-packages.mjs fullshot` printed five PASS
+   lines and exited 0. Nothing in that output was false; the missing sentence was
+   about age, and a reader seeing 5-PASS concluded the shipping package contained
+   the current code.
+
+   The pair below is deliberately a pair with the SAME EXIT CODE, which is
+   unusual in this file and is the point: staleness must be LOUD and must NOT
+   redden the lane, because opening a package you built earlier is a supported
+   use of this command. So the mutation is proven by the WORDS, not by the code,
+   and the fresh case proves the words are not printed unconditionally.
+   --------------------------------------------------------------------------- */
+
+/* The exact set of files buildBase() writes that goodtool's package.include
+   selects. WRITTEN OUT rather than re-derived: a test that computes its
+   expectation with the same rules as the code under test proves only that one
+   function agrees with itself. The count is asserted below, so a packaged file
+   added to the fixture turns this case red instead of quietly shrinking it. */
+const PACKAGED = [
+  '_locales/en/messages.json',
+  'background.js',
+  'icons/icon128.png', 'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png',
+  'manifest.json',
+  'popup/popup.css', 'popup/popup.html', 'popup/popup.js'
+];
+
+/* Writes a package that genuinely IS the fixture tree, into dist/ at the repo
+   root — where `pack.mjs --out dist` writes and what ci.yml passes.
+   DELIBERATELY NOT the tool's publish/: a zip there is a golden master, the
+   bytes a store received, and the limb says something different (and opposite)
+   about those — it must never tell anyone to rebuild over one. */
+function withBuiltPackage(mutateAfterBuild) {
+  return fixture(root => {
+    const files = {};
+    for (const rel of PACKAGED) files[rel] = fs.readFileSync(path.join(root, TOOL, rel));
+    const abs = path.join(root, 'dist', 'goodtool-chromium.zip');
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, zipOf(files));
+    if (mutateAfterBuild) mutateAfterBuild(root);
+  });
+}
+
+expect('a package built from the tree is reported as carrying it', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], code: 0,
+  contains: '10 packaged file(s) hashed',
+  root: withBuiltPackage()
+});
+
+/* THE MUTATION IS TO THE SOURCE, NOT TO THE ZIP, because that is the shape the
+   defect actually has: nobody edits an artifact. The tree moves on underneath
+   one that is still sitting there. */
+const staleRoot = withBuiltPackage(root => {
+  fs.appendFileSync(path.join(root, TOOL, 'background.js'),
+    "chrome.runtime.onStartup.addListener(function () {});\n");
+});
+expect('a package the tree has moved on from is called stale', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], root: staleRoot, code: 0, contains: 'is STALE'
+});
+expect('...it names the file that is newer than the package', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], root: staleRoot, code: 0,
+  contains: 'newest differing file: background.js'
+});
+/* 🔴 AND IT STAYS EXIT 0. Asserted as its own line rather than left implicit in
+   the two above, because "warns" and "does not fail" are two claims and the one
+   that would be silently lost is the second. If this limb is ever "strengthened"
+   into a failure, this is the case that says no. */
+expect('...and grading an old artifact does NOT redden the lane', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], root: staleRoot, code: 0, contains: '1 warning(s)'
+});
+
+/* 🔴 THE ANTI-VACUITY PAIR FOR THIS LIMB. A freshness check that examined
+   nothing must never be reachable from the word "fresh", and there are two ways
+   to examine nothing. */
+expect('a package sharing no file with the tree is not reported as fresh', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], code: 0,
+  contains: 'shares no file with the tree that would pack it',
+  root: withPackage('goodtool-1.0.0-firefox.zip', goodFfManifest)
+});
+
+/* The other way: the RULER is empty. include patterns that have stopped
+   matching, in a tree with no _locales/ for the unconditional collector to
+   union in. This one FAILS while staleness only warns — deliberately, and the
+   reason is in the limb's own comment: "this package is old" is a fact about an
+   artifact, and "I compared zero files" is the check not running. */
+expect('a freshness limb with no file set at all FAILS rather than certifying', {
+  script: 'check-store-packages.mjs', argv: ['goodtool'], code: 1,
+  contains: 'has a file set to compare packages against',
+  root: fixture(root => {
+    const t = readJson(root, TOOL + '/tool.json');
+    t.package.include = ['nothing-here/*.js'];
+    writeJson(root, TOOL + '/tool.json', t);
+    fs.rmSync(path.join(root, TOOL, '_locales'), { recursive: true });
+    const m = readJson(root, TOOL + '/manifest.json');
+    delete m.default_locale;
+    delete m.name;
+    delete m.short_name;
+    delete m.description;
+    writeJson(root, TOOL + '/manifest.json', m);
+    const abs = path.join(root, 'dist', 'goodtool-chromium.zip');
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, zipOf({
+      'manifest.json': JSON.stringify({ manifest_version: 3, version: '1.0.0', name: 'x' })
+    }));
   })
 });
 

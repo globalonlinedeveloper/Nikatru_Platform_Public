@@ -29,7 +29,50 @@
    This file is kept, unrun, for one reason: the FIXTURES are the accumulated
    record of shapes that beat six fixes, and they are worth more than the
    assertions wrapped around them. Harvest from it; do not repair it.
-   ========================================================================== */
+
+   ─────────────────────────────────────────────────────────────────────────
+   APPENDED 2026-08-26. Everything above stands as written; this block is the
+   correction, and it lands on one clause only.
+
+   🔴 "Retiring this file therefore costs no shape coverage" IS FALSE, AND SO
+   IS "all seventeen shapes". Measured by parsing the fixture registration of
+   every `.mjs` in this directory — not by grepping for filenames, which does
+   not see `BASE + name + '.html'`:
+
+     this suite registers          17 shapes of fixtures/
+     reduction-corpus.mjs reaches  13 of those 17
+     it does NOT reach              4 — before-content, clipped-ancestor,
+                                        input-values, svg-text
+
+   `before-content` is picked up by batch-artifact.mjs, which is wired. THE
+   OTHER THREE — **clipped-ancestor, input-values and svg-text** — appear in
+   no other suite in this directory, wired or quarantined. Retiring this file
+   orphans them outright: three page shapes that beat an earlier fix, graded
+   by nothing at all. That is the cost, it is not zero, and it is written here
+   so the next reader does not derive it a fourth time.
+
+   ⚠️ A note on one piece of evidence that points the other way: commit
+   5121633's message lists reduction-corpus.mjs as covering `clipped-ancestor`.
+   It does not — the name occurs in no `.mjs` in this directory except this
+   one. Trust the parse over the prose.
+
+   A SECOND NUMBER IN THE SAME FAMILY: "claim-reduction.mjs runs only eight of
+   the seventeen" is off in the same direction. Its corpus is 8 shapes, but 3
+   of them (object-door, split-token, mixed-owntext) come from `fixtures-adv/`.
+   It overlaps this suite by **5** of the 17, not 8.
+
+   ON THE § NUMBERS, line 24 names the right sections and understates the rest.
+   Parsed: this file cites 35 distinct § numbers and 27 have no heading in
+   REDACTION-CLAIM-SPEC.md today; E1 through E16 are all gone, because the
+   current spec carries no E-numbered list at all. The 8 that still resolve
+   (2.1, 2.2, 2.3, 3, 3.2, 3.3, 3.4, 3.5) are numbers REUSED for different
+   content, not sections that stayed put — §3.3 is "The marks" now.
+
+   NONE OF THIS ARGUES FOR RE-ARMING THE FILE. It still cannot be graded
+   against a spec that no longer contains its sections. It argues that the
+   three orphaned shapes need a home in a suite written from the CURRENT spec
+   before anyone deletes this one.
+   ───────────────────────────────────────────────────────────────────────── */
 /* FullShot REAL-BROWSER redaction-claim suite.
 
    Written FROM REDACTION-CLAIM-SPEC.md, against the real extension in real

@@ -7,6 +7,11 @@ Every line is graded against the **shipped code**, not the trackers. The A–E
 audit was performed at v1.9.11 and re-checked at **1.10.1** — root
 `manifest.json` and `publish/manifest.firefox.json` both read 1.10.1, and both
 packages in this folder are built from that source.
+
+⚠️ **RETIRED 2026-08-26** — see **APPENDIX A §A.1** at the foot of this file: the basis has
+moved to **1.10.2**, `publish/manifest.firefox.json` is now a version-less RFC 7386 merge
+patch, and there are **no packages in this folder** (all twelve deleted 2026-08-20).
+
 Legend: ✅ PASS · ⚠️ OWNER ACTION · ➖ N/A.
 
 Companion documents added since the last revision:
@@ -40,9 +45,9 @@ excluded from the package and from these claims). Findings:
 | A5 | No developer `key` or self-hosted `update_url` in manifest | ✅ | Neither field present — clean for CWS upload |
 | A6 | Icons 16/32/48/128 all present and packaged | ✅ | `icons/` has all four; referenced in `icons` + `action.default_icon` |
 | A7 | `minimum_chrome_version` declared | ✅ | `"116"` (optional but good practice; MV3 + optional host perms supported). Chrome/Edge only — deliberately **absent** from `publish/manifest.firefox.json`, where Gecko's `strict_min_version: "128.0"` does the job |
-| A8 | Package excludes tests/dev/scratch files | ✅ | Zip = **85 entries** (30 shipping files + 55 `_locales/<lang>/messages.json`), leak check clean (no `test/`, `Reference/`, `i18n/`, `*.md`, `node_modules`, `*.node.js`, `DELETE`). Re-read from both 1.10.1 zips for this revision. |
+| A8 | Package excludes tests/dev/scratch files | ✅ | Zip = **85 entries** (30 shipping files + 55 `_locales/<lang>/messages.json`), leak check clean (no `test/`, `Reference/`, `i18n/`, `*.md`, `node_modules`, `*.node.js`, `DELETE`). Re-read from both 1.10.1 zips for this revision. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *A8 / E1*: the 1.10.1 zips this cell was re-read from are gone (deleted 2026-08-20). The count is still **85**; it now rests on a fresh `scripts/pack.mjs` build, not on those files. |
 | A9 | All in-package references resolve (self-contained) | ✅ | Reference-integrity script: every `<script src>`, `<link href>`, icon, `importScripts` target resolves inside the zip |
-| A10 | `description` ≤ 132 chars (store display limit) | ⚠️ | **137 chars → Chrome truncates.** Cosmetic, not a blocker. **Where it lives has changed** — see A10-fix. |
+| A10 | `description` ≤ 132 chars (store display limit) | ⚠️ | **137 chars → Chrome truncates.** Cosmetic, not a blocker. **Where it lives has changed** — see A10-fix. ⚠️ **RETIRED 2026-08-26** — the en `appDescription` is **111 chars** today and `node scripts/policy-check.mjs fullshot` PASSES `name/short_name/description within store limits — checked across all 55 locale(s)` (EXIT **0**, measured 2026-08-26). This file has no appendix row for A10; the retirement is recorded in `SUBMISSION-PACKET.md` **§A.2**, row §6 **N1**. |
 | A11 | `default_locale` set ⇒ `_locales/` present in the package | ✅ | `"default_locale": "en"` with all 55 catalogues packaged. Chrome **rejects** a package that names a `default_locale` it cannot find, so this is a hard upload gate, not a nicety. `publish/package.node.js` enumerates `_locales` through a dedicated path that bypasses the allowlist pattern language entirely, precisely so no future pattern edit can silently un-ship it. |
 
 **A10-fix (drop-in replacement, 123 chars — verified):**
@@ -121,10 +126,10 @@ without it is rejected at upload.
 | F1 | `data_collection_permissions` declared | ✅ | `publish/manifest.firefox.json` → `{ "required": ["none"] }` |
 | F2 | The declaration is honest | ✅ | Zero network calls; every byte stays in the add-on's own storage on the machine |
 | F3 | `"none"` used correctly (exclusive — never alongside a data type) | ✅ | `required` is exactly `["none"]`; no `optional` array |
-| F4 | An add-on id the owner controls | ⚠️ | **OWNER ACTION** — `gecko.id` is still `fullshot@REPLACE-WITH-YOUR-DOMAIN.example`. AMO checks the id for uniqueness at first signing and the listing *is* that id afterwards; changing it later publishes a different add-on, not an update. `node publish/verify-firefox-package.node.js` refuses to pass until it is replaced. |
+| F4 | An add-on id the owner controls | ⚠️ | **OWNER ACTION** — `gecko.id` is still `fullshot@REPLACE-WITH-YOUR-DOMAIN.example`. AMO checks the id for uniqueness at first signing and the listing *is* that id afterwards; changing it later publishes a different add-on, not an update. `node publish/verify-firefox-package.node.js` refuses to pass until it is replaced. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row **F4**: the id is **`fullshot@nikatru.com`** and `node publish/verify-firefox-package.node.js` exits **0**. AMO permanence is still true; it no longer names an open item. |
 | F5 | Firefox background fallback present | ✅ | `background.scripts` beside `service_worker` — required by the AMO linter (`BACKGROUND_SERVICE_WORKER_NOFALLBACK`, an error) |
-| F6 | Packaged `background.js` guards `importScripts` | ✅ (with a standing rule) | Source `background.js` is **still unguarded** — `node publish/verify-firefox-package.node.js` reports that, correctly, as a build prerequisite. It is no longer a manual step: `publish/package.node.js` applies the guard while writing the Firefox zip and **refuses to write an unguarded one at all**. Confirmed by the gate reading `fullshot-1.10.1-firefox.zip`. **The standing rule: build the Firefox package with the packager, never by hand-zipping the source folder.** |
-| F7 | Manifest versions in step | ✅ | `publish/manifest.firefox.json` **1.10.1** = root `manifest.json` **1.10.1**; the gate fails on drift |
+| F6 | Packaged `background.js` guards `importScripts` | ✅ (with a standing rule) | Source `background.js` is **still unguarded** — `node publish/verify-firefox-package.node.js` reports that, correctly, as a build prerequisite. It is no longer a manual step: `publish/package.node.js` applies the guard while writing the Firefox zip and **refuses to write an unguarded one at all**. Confirmed by the gate reading `fullshot-1.10.1-firefox.zip`. **The standing rule: build the Firefox package with the packager, never by hand-zipping the source folder.** ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row **F6**: the **source** is guarded — `background.js` line 24. The standing rule under this row is unaffected and still stands. |
+| F7 | Manifest versions in step | ✅ | `publish/manifest.firefox.json` **1.10.1** = root `manifest.json` **1.10.1**; the gate fails on drift ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row **F7**, and **§A.1**: still ✅, by a stronger mechanism — the overlay states no version at all to compare, and the tree is **1.10.2**. |
 
 ### Why Chrome gets "Website content" and Firefox gets "none"
 Both answers are honest, because the two stores are asking different questions.
@@ -213,10 +218,10 @@ matched patterns in the image, not to gather them."*
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| E1 | Zip contains only shipping files | ✅ | **85 entries**, not 30 — the previous revision predated i18n. 30 shipping files (`manifest.json`, `background.js`, `content/`×3, `icons/`×4, `pages/`×18, `popup/`×3) **+ 55 `_locales/<lang>/messages.json`**. Re-confirmed by reading the central directory of both 1.10.1 zips: no `test/`, `Reference/`, `i18n/`, `*.md`, `*.node.js`, `node_modules/` or `DELETE` entries in either. |
-| E2 | Package version matches manifest | ✅ | **No longer stale.** Both zips are `1.10.1`, matching root `manifest.json` and `publish/manifest.firefox.json`. `fullshot-1.10.1.zip` md5 `c601e5ed7396cf6a078cc64c273e5a8e` · `fullshot-1.10.1-firefox.zip` md5 `fb0c019994d9ca0d59f801583fc29146`. The packager writes fixed DOS timestamps, so these md5s are reproducible from the same tree — see `GIT-SETUP.md` step 11, which uses exactly that property to prove a clone is byte-faithful. Older zips (1.9.7, 1.9.11, 1.9.13, 1.10.0) are still in this folder as history; **do not upload one by mistake.** |
+| E1 | Zip contains only shipping files | ✅ | **85 entries**, not 30 — the previous revision predated i18n. 30 shipping files (`manifest.json`, `background.js`, `content/`×3, `icons/`×4, `pages/`×18, `popup/`×3) **+ 55 `_locales/<lang>/messages.json`**. Re-confirmed by reading the central directory of both 1.10.1 zips: no `test/`, `Reference/`, `i18n/`, `*.md`, `*.node.js`, `node_modules/` or `DELETE` entries in either. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *A8 / E1*: the 1.10.1 zips whose central directories this cell was read from are gone (deleted 2026-08-20). The **85** count survives, re-verified against a fresh `scripts/pack.mjs` build. |
+| E2 | Package version matches manifest | ✅ | **No longer stale.** Both zips are `1.10.1`, matching root `manifest.json` and `publish/manifest.firefox.json`. `fullshot-1.10.1.zip` md5 `c601e5ed7396cf6a078cc64c273e5a8e` · `fullshot-1.10.1-firefox.zip` md5 `fb0c019994d9ca0d59f801583fc29146`. The packager writes fixed DOS timestamps, so these md5s are reproducible from the same tree — see `GIT-SETUP.md` step 11, which uses exactly that property to prove a clone is byte-faithful. Older zips (1.9.7, 1.9.11, 1.9.13, 1.10.0) are still in this folder as history; **do not upload one by mistake.** ⚠️ **RETIRED 2026-08-26** — see **§A.1**: there are **no packages in this folder**, and no older zips either — all twelve went on 2026-08-20. 🔴 The two md5 hashes are deliberately **not** re-derived: they describe files that no longer exist. The tree is **1.10.2**. |
 | E3 | Service worker present in package | ✅ | `background.js` present (caught + fixed a first-build omission) |
-| E4 | No leftover scratch in the source folder that could get re-zipped | ⚠️ | `shipprobe-DELETE-ME.txt` (0 bytes) still in the working folder. **Not** in either zip — the packager works from an allowlist, so an unexpected file cannot ride along. Now also matched by the new root `.gitignore`, so it cannot reach the repository either. Still worth deleting: `GIT-SETUP.md` step 0c. |
+| E4 | No leftover scratch in the source folder that could get re-zipped | ⚠️ | `shipprobe-DELETE-ME.txt` (0 bytes) still in the working folder. **Not** in either zip — the packager works from an allowlist, so an unexpected file cannot ride along. Now also matched by the new root `.gitignore`, so it cannot reach the repository either. Still worth deleting: `GIT-SETUP.md` step 0c. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row **E4**, and **§A.3 item 13**: already gone. |
 | E5 | The Firefox package is a *different build*, not a copy | ✅ | Its zipped `manifest.json` must equal `publish/manifest.firefox.json` and its `background.js` must carry the `importScripts` guard — both enforced by `verify-firefox-package.node.js`, which reads the zip, and both produced automatically by `package.node.js` |
 | E6 | Build artifacts are excluded from version control | ✅ | The new root `.gitignore` excludes `*.zip`, `node_modules/`, `Reference/`, the two test `out/` directories, OS droppings — and, four different ways, `.claude/secrets.env`, which holds a live token inside the tree. Verification commands: `GIT-SETUP.md` steps 6, 8 and 10. **No git command has been run; there is no repository yet.** |
 
@@ -231,6 +236,10 @@ answer that can be drafted already drafted, is `SUBMISSION-PACKET.md`.
    feeding five places: the EU DSA trader details, the `LICENSE` Required Notice,
    `PRIVACY-POLICY.html` §1 and its footer, the store publisher name, and (the
    domain) the Firefox `gecko.id`. *(C11, F4)*
+   ⚠️ **RETIRED 2026-08-26**, the domain half — see **§A.3 item 1** and **§A.2 F4**:
+   the domain is `nikatru.com` (chosen 2026-08-18) and `gecko.id` is
+   `fullshot@nikatru.com`. The legal-name half is still open; §A.5 carries the exact
+   `LICENSE` line, because four of the five lines a grep returns must not be touched.
 2. **Declare EU DSA trader status** in the Chrome dashboard → Account. If
    Trader, your legal name, address, email and phone are **published to EEA
    users**, and Google verifies them — start this early; it is the longest pole
@@ -267,12 +276,17 @@ answer that can be drafted already drafted, is `SUBMISSION-PACKET.md`.
     item 1, run `node publish/package.node.js`, then
     `node publish/verify-firefox-package.node.js` until green. The id is
     permanent once AMO signs it. *(F4)*
+    ⚠️ **RETIRED 2026-08-26** — see **§A.2 F4** and **§A.3 item 1**: the id already
+    reads `fullshot@nikatru.com` and `node publish/verify-firefox-package.node.js`
+    exits **0**. The build command has also moved to `scripts/pack.mjs`.
 11. **Register the three developer accounts** — Chrome (Google, **US$5
     one-time**), Edge (Microsoft Partner Center, free), Firefox (free).
 12. **Pick a category** — Productivity for Chrome/Edge; AMO's list has no exact
     equivalent, pick from what it offers.
 13. *(Housekeeping)* Delete `shipprobe-DELETE-ME.txt` from the working folder.
     *(E4)*
+    ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row **E4**, and **§A.3 item 13**: already
+    gone; `find . -name shipprobe*` over the repository returns nothing.
 14. *(Optional, low priority — and no longer a one-liner)* Apply the 123-char
     `description` fix. It now lives in `_locales/en/messages.json` and 54 sibling
     catalogues, behind the locale generator's guard — see A10-fix. Fold into a
@@ -281,6 +295,10 @@ answer that can be drafted already drafted, is `SUBMISSION-PACKET.md`.
 **Removed from this list since the last revision:** *"rebuild both zips at the
 current version"* — done. Both `publish/fullshot-1.10.1*.zip` are built from
 1.10.1 source and verified. *(E2)*
+
+⚠️ **RETIRED 2026-08-26** — see **§A.1**: those zips no longer exist. The rebuild was
+genuinely done, but its output was deleted 2026-08-20 along with the other ten;
+packages are built on demand now.
 
 ## What is already compliant (no action needed)
 Manifest V3 structure, no remote code, strict default CSP, minimum/least-privilege

@@ -20,6 +20,11 @@ Package under discussion: **v1.10.1**, built and verified.
 85 entries each: 30 shipping files + 55 locales. No test, Reference, `.md`, or
 `node_modules` entries in either.
 
+⚠️ **RETIRED 2026-08-26** — see **§A.2** in APPENDIX A, row *Header, lines 18–22*: the tree
+is **1.10.2** and **neither zip exists** — all twelve packages in `publish/` were deleted
+2026-08-20 (`publish/STALE-FIREFOX-ARTIFACTS-2026-08-20.md` is the surviving record).
+Packages are built on demand with `scripts/pack.mjs`. The 85-entry count still holds.
+
 ---
 
 ## 0. The 🔴 OWNER list — start here, everything else waits on these
@@ -28,7 +33,7 @@ Package under discussion: **v1.10.1**, built and verified.
 |---|---|---|---|
 | O1 | **Legal name** (person or company) | Chrome trader details · Edge publisher · AMO account · `LICENSE` Required Notice · `PRIVACY-POLICY.html` §1 and footer | Must be **identical in all five**. This is the single most-repeated OWNER value in the project; decide it once and write it down. |
 | O2 | **Trader address + phone + email** for the EU DSA | Chrome dashboard → **Account → Trader status** | If you declare **Trader**, Google **publishes your legal name, physical address, email and phone to EEA users on the listing**. That is the law's intent, not an oversight. A home address becomes public — if that is not acceptable, the usual answers are a registered business address, a company formation with a registered office, or a virtual-office/agent address you are entitled to use. Google verifies the details; **budget days, not minutes**, and do it before you need to publish. Non-trader status is only correct if the extension is genuinely outside any trade, business or profession — that is a call for you, not an agent. |
-| O3 | **A domain you control** → the Firefox `gecko.id` | `publish/manifest.firefox.json` | 🚧 **BLOCKER for AMO.** Currently `fullshot@REPLACE-WITH-YOUR-DOMAIN.example`. Format `^[a-zA-Z0-9-._]*@[a-zA-Z0-9-._]+$`, ≤80 chars. **Permanent once AMO signs it** — changing it later publishes a *different* add-on, not an update. `node publish/verify-firefox-package.node.js` refuses to pass while the placeholder stands, by design. **This is the same domain decision as hosting the privacy policy** (`PRIVACY-POLICY-HOSTING.md` §3d) — one purchase settles both. |
+| O3 | **A domain you control** → the Firefox `gecko.id` | `publish/manifest.firefox.json` | 🚧 **BLOCKER for AMO.** Currently `fullshot@REPLACE-WITH-YOUR-DOMAIN.example`. Format `^[a-zA-Z0-9-._]*@[a-zA-Z0-9-._]+$`, ≤80 chars. **Permanent once AMO signs it** — changing it later publishes a *different* add-on, not an update. `node publish/verify-firefox-package.node.js` refuses to pass while the placeholder stands, by design. **This is the same domain decision as hosting the privacy policy** (`PRIVACY-POLICY-HOSTING.md` §3d) — one purchase settles both. ⚠️ **RETIRED 2026-08-26** — see **§A.2** in APPENDIX A: `gecko.id` is **`fullshot@nikatru.com`** (derived from `publish/identity.json`, domain chosen 2026-08-18) and `node publish/verify-firefox-package.node.js` exits **0**, re-measured 2026-08-26. The AMO-permanence warning above is still a true fact; it just no longer names an open item. |
 | O4 | **Store developer accounts** | ×3 | Chrome: Google account + **US$5 one-time** registration. Edge: Microsoft account, Partner Center, free. Firefox: Firefox account, free. Register all three before you need them; each has its own verification step. |
 | O5 | **Screenshots and promo tiles** | All three listings | 🚧 **BLOCKER — no store accepts a listing without at least one screenshot.** Specs in §5. `Reference/*.png` are development comparison shots at the wrong dimensions; they are a starting point, not assets. |
 | O6 | **Support email** (and optional homepage/support URL) | All three listings + `PRIVACY-POLICY.html` | Becomes public. A role address (`support@…`) ages better than a personal one. Chrome additionally requires a **verified** contact email at account level. |
@@ -38,7 +43,7 @@ Two more that are owner-gated but are work rather than facts:
 | | | |
 |---|---|---|
 | O7 | **On-device QA pass** | 🚧 Batch capture, Beautify, Scroll→Clip, and the `test/redact-e2e.html` fixture are implemented and pass the sandbox sims but have not been exercised by hand in a real browser. Every store penalises description-vs-behaviour mismatch, and your screenshots have to show something true. Do this before you write the listing copy, not after. |
-| O8 | **Rebuild the Firefox zip after setting the gecko id** | The zip in `publish/` was built with the placeholder id inside it. Setting O3 changes `manifest.firefox.json`, so the package must be rebuilt (`node publish/package.node.js`) and re-verified before upload. |
+| O8 | **Rebuild the Firefox zip after setting the gecko id** | The zip in `publish/` was built with the placeholder id inside it. Setting O3 changes `manifest.firefox.json`, so the package must be rebuilt (`node publish/package.node.js`) and re-verified before upload. ⚠️ **RETIRED 2026-08-26** — see **§A.2**: moot as written. O3 is set, no zip survives in `publish/` to go stale, and CI builds with `scripts/pack.mjs`, not `publish/package.node.js`. |
 
 ---
 
@@ -48,7 +53,7 @@ Two more that are owner-gated but are work rather than facts:
 |---|---|---|
 | Product name | `FullShot - Full Page Screen Capture` | ⚙️ matches `_locales/en/messages.json` → `appName`. 35 chars. |
 | Short name | `FullShot` | ⚙️ `appShortName`. |
-| Version | `1.10.1` | ⚙️ `manifest.json` **and** `publish/manifest.firefox.json` — the gate fails on drift. |
+| Version | `1.10.1` | ⚙️ `manifest.json` **and** `publish/manifest.firefox.json` — the gate fails on drift. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *§1, Version row*: the tree is **1.10.2**, and `publish/manifest.firefox.json` is an overlay that restates no version, so the two cannot drift. |
 | Price | Free | ✍️ |
 | In-app purchases | None | ✍️ |
 | Ads | None | ✍️ |
@@ -165,7 +170,7 @@ Edge runs the **identical Chromium package**. No manifest change, no code change
 |---|---|
 | Developer account | 🔴 O4 — Microsoft account, Partner Center, **free** |
 | Publisher display name | 🔴 O1 |
-| Package | ⚙️ `publish/fullshot-1.10.1.zip` — the same file Chrome gets |
+| Package | ⚙️ `publish/fullshot-1.10.1.zip` — the same file Chrome gets ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *Header, lines 18–22*: no zip exists in `publish/`; build one with `scripts/pack.mjs`. Still the same file Chrome gets. |
 | Display name | ✍️ `FullShot - Full Page Screen Capture` |
 | Short description | ✍️ `STORE-LISTING.md` § Summary |
 | Description | ✍️ `STORE-LISTING.md` § Detailed description |
@@ -195,9 +200,9 @@ the manifest** rather than a dashboard.
 
 | | |
 |---|---|
-| 🚧 O3 | Real `gecko.id` on a domain you control. Permanent once signed. |
-| 🚧 | `node publish/verify-firefox-package.node.js` must exit **green**. It is red today on purpose and names each blocker. |
-| ⚠️ BUILD | Source `background.js` still calls `importScripts` unguarded. `publish/package.node.js` applies the guard when it writes the Firefox zip and refuses to write an unguarded one — so **build with the packager, never by hand-zipping the source folder**. |
+| 🚧 O3 | Real `gecko.id` on a domain you control. Permanent once signed. ⚠️ **RETIRED 2026-08-26** — see **§A.2**: the id is **`fullshot@nikatru.com`**. |
+| 🚧 | `node publish/verify-firefox-package.node.js` must exit **green**. It is red today on purpose and names each blocker. ⚠️ **RETIRED 2026-08-26** — see **§A.2**: it exits **0** bare and **0** with `--zip` against a fresh build, re-measured 2026-08-26. |
+| ⚠️ BUILD | Source `background.js` still calls `importScripts` unguarded. `publish/package.node.js` applies the guard when it writes the Firefox zip and refuses to write an unguarded one — so **build with the packager, never by hand-zipping the source folder**. ⚠️ **RETIRED 2026-08-26** — see **§A.2**: `background.js` line 24 guards `importScripts` in the **source**. The build-with-the-packager rule under it still stands. |
 
 ### 4b. Listing fields
 
@@ -294,8 +299,8 @@ Practical notes:
 
 | # | Item | Status |
 |---|---|---|
-| N1 | Manifest description is **137 chars**, over the 132 the store displays | Cosmetic, not a submission blocker. **No longer a one-line manifest edit** — since the i18n phase the string lives at `_locales/en/messages.json` → `appDescription`, and changing it means changing it in 55 locales. `_locales/make-locales.mjs` has a guard that refuses to replace real translations with English fallback, with `--adopt` as the remedy. Read that file before touching `_locales`. Fold into a version bump, not into submission week. |
-| N2 | `shipprobe-DELETE-ME.txt` (0 bytes) at the repo root | Not in either zip (the packager uses an allowlist). Delete it — `GIT-SETUP.md` step 0c. |
+| N1 | Manifest description is **137 chars**, over the 132 the store displays | Cosmetic, not a submission blocker. **No longer a one-line manifest edit** — since the i18n phase the string lives at `_locales/en/messages.json` → `appDescription`, and changing it means changing it in 55 locales. `_locales/make-locales.mjs` has a guard that refuses to replace real translations with English fallback, with `--adopt` as the remedy. Read that file before touching `_locales`. Fold into a version bump, not into submission week. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *§6 **N1***: fixed in 1.10.2. The en `appDescription` is **111 chars** and `policy-check.mjs` PASSES the store-limit check across all 55 locales (EXIT **0**, re-measured 2026-08-26). |
+| N2 | `shipprobe-DELETE-ME.txt` (0 bytes) at the repo root | Not in either zip (the packager uses an allowlist). Delete it — `GIT-SETUP.md` step 0c. ⚠️ **RETIRED 2026-08-26** — see **§A.2**, row *§6 **N2***: already gone; `find . -name shipprobe*` over the repository returns nothing. |
 | N3 | `verify-firefox-package.node.js` red | By design, and correctly red: one OWNER blocker (O3) and one BUILD note. Not one of the eleven test tiers; do not add it to the all-green set. |
 
 ---
@@ -314,6 +319,9 @@ Practical notes:
 7. Set `gecko.id` from O3, rebuild both packages
    (`node publish/package.node.js`), and get
    `node publish/verify-firefox-package.node.js` **green** (**O8**).
+   ⚠️ **RETIRED 2026-08-26** — see **§A.2** (**O3**, **O8**, and the §4a row):
+   this step is already done. `gecko.id` is `fullshot@nikatru.com`, the gate exits
+   **0**, and packages are built on demand with `scripts/pack.mjs`.
 8. Submit **Chrome** first — it has the strictest data disclosure, so anything
    it questions is worth knowing before the other two.
 9. Submit **Edge** with the same package and the same answers.

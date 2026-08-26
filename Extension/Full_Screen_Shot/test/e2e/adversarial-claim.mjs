@@ -44,7 +44,97 @@
    This file is kept, unrun, for one reason: the FIXTURES are the accumulated
    record of shapes that beat six fixes, and they are worth more than the
    assertions wrapped around them. Harvest from it; do not repair it.
-   ========================================================================== */
+
+   ─────────────────────────────────────────────────────────────────────────
+   APPENDED 2026-08-26. Everything above stood when it was written and is left
+   standing verbatim; this block says only what changed since, and when.
+
+   THE NUMBERS MOVED. Re-measured twice back to back on 6ee4c73, alone, 8913
+   confirmed free before each: exit 1, **106 pass / 61 fail / 3 open**, 0
+   ESCAPES, 11 fixtures, identical both times. `102 / 65 / 3` above was taken
+   before PR #23; four checks that failed then pass now.
+
+   🟢 THE CAPTURE-FIDELITY LIMB IS ANSWERED — read the "TWO FAILURES HERE ARE
+   NOT RECORD-SHAPE" paragraph as history, not as an open ask. Clause 3b in
+   content/capture.js (5121633, merged as 6ee4c73) gave `measure()` a liveness
+   test, and those two shapes now come back:
+
+     details-closed  block rows 0 · marks [] · kinds {} (was 23 rows)
+     cv-tabs         block rows 10 · marks [] · kinds {} · and the VISIBLE
+                     panel's phone marker at 10 rows, not 0 (was 33 / 0)
+
+   The residue of 10 on cv-tabs is the FIXTURE, not the product: subpixel
+   antialiasing on its tab-button labels breaks the tolerance rule
+   test/e2e/README.md states, and it measures 10 in a plain browser with no
+   extension at all. The owner of content/capture.js was asked by that
+   paragraph and has replied.
+
+   🔬 THAT LAST CLAUSE IS THE LOAD-BEARING ONE — "10 in a plain browser with no
+   extension at all" is the whole reason these rows are the fixture's fault and
+   not the product's — so HOW IT WAS MEASURED is written here beside it, and
+   not only what it came to. It was asserted before it was ever run, which is
+   this corpus's most expensive recurring defect: a number and a claim that
+   agree while only the NUMBER was ever checked. Re-run it; do not trust it.
+
+   MEASURED 2026-08-26. Recipe, in full:
+     · headless Chromium — this directory's own playwright — with NO extension
+       loaded. No --load-extension, no persistent context, nothing from
+       prepareTestExtension(). A default browser.
+     · viewport 1280x800, matching the capture width the suite drives.
+     · the fixture served from the extension root over plain HTTP at
+       /test/e2e/fixtures-adv/cv-tabs.html; waitUntil networkidle, then 400ms.
+     · page.screenshot() straight to a PNG buffer. Nothing in content/capture.js
+       or result.js touches the pixels — that is the point of the control.
+     · rows counted by the SAME predicate claim-lib.mjs countColours() uses, so
+       the two numbers are commensurable rather than merely similar: block
+       colour [17,17,17], per-channel tolerance 20, sampled x += 4, and a row
+       counts ONCE if any sample in it hits. The inner test, verbatim:
+
+         Math.abs(d[o]   - 17) <= 20 &&
+         Math.abs(d[o+1] - 17) <= 20 &&
+         Math.abs(d[o+2] - 17) <= 20
+
+   RESULT — identical for viewport and fullPage screenshots, both 1280x800:
+
+     cv-tabs          10 rows of block colour
+     details-closed    0 rows of block colour     <- the control
+
+   details-closed is what makes the pair mean anything. It is the other shape
+   whose extension-side residue went to 0 under clause 3b, and the same recipe
+   over it finds NOTHING — so 10 is a property of cv-tabs, not an artefact of
+   the tolerance, the sampling stride, or the screenshot path. Had the control
+   also come back non-zero, the claim above would be unsupported and the ten
+   rows would still be owed to content/capture.js.
+
+   WHAT DID NOT MOVE is the record-shape limb, and U9 is the sharpest case.
+   It fails on exactly ONE fixture of the eleven — honest-pii, the only shape
+   in this corpus that produces a verified-opaque block. Its ledger reads:
+
+     acts  matched 3 · painted 3 · verifiedOpaque 3
+     marks [{x:24,y:165,w:189,h:23},{x:132,y:253,w:145,h:23},
+            {x:175,y:392,w:171,h:23}]
+
+   U9 asserts `no rectangle geometry travels on the record` and matches on
+   `{"x":<int>,"y":`. Spec §3.3 today REQUIRES exactly that geometry — "Only
+   verified-opaque blocks are marked, and only verified-opaque blocks are
+   persisted … The old absolute — *the rectangles never travel* — held because
+   the stored set included both kinds." So U9 is red BECAUSE THE PRODUCT IS
+   NOW CORRECT. On the other ten fixtures nothing is verified opaque, no marks
+   are persisted, and U9 passes — which is the cleanest proof available that
+   it grades a retired absolute and not a defect.
+
+   ON THE § NUMBERS, line 31 names the right sections and understates the
+   drift. Parsed: this file cites 24 distinct § numbers, 17 of which have no
+   heading in REDACTION-CLAIM-SPEC.md today (1.1, 2.4, 2.5, 2.6, 3.7, 3.9,
+   3.9.1, 3.9.2, 4.2, 5.1, 5.2, 5.4, 6.1, 6.3, 7.1, 7.4, 7.6), and E8 · E12 ·
+   E13 · E16 are gone with them — the current spec carries no E-numbered list
+   at all. The 7 that still resolve (2.1, 2.2, 2.3, 3, 3.2, 3.3, 3.4) are
+   numbers REUSED for different content, not sections that stayed put.
+
+   THE COVERAGE HOLE IS UNCHANGED. giveup-verify.mjs was wired on 2026-08-26,
+   and it reads `fixtures-giveup/` and `fixtures/` — no `fixtures-adv/` shape —
+   so the eight named at line 26 are still eight, still graded by nothing.
+   ───────────────────────────────────────────────────────────────────────── */
 /* FullShot — ATTEMPT SIX at the redaction claim. Adversarial corpus.
  *
  * Premise, taken from the brief and from the bug's own history: five fixes have
@@ -80,7 +170,15 @@ import {
   begin, check, open, note, results, num, totalOf, MUTATION_PROBE
 } from './claim-lib.mjs';
 
-const PORT = 8913;                       /* run.mjs 8907, redaction-claim 8911 */
+/* run.mjs 8907, redaction-claim 8911. 8913 is SHARED with claim-reduction.mjs,
+   so the two can never run at once — and until 2026-08-26 this was a bare
+   literal, which made the commoner failure unescapable: a run killed mid-flight
+   leaves its listener holding 8913, and the next run dies on EADDRINUSE with no
+   way out but hunting the orphan process down. Overridable now, the way
+   giveup-verify.mjs and v3acts-probe.mjs already were. The DEFAULT is unchanged
+   and no assertion is touched — re-measured either side of this line, the suite
+   is exit 1, 106 pass / 61 fail / 3 open, 0 ESCAPES, both times. */
+const PORT = Number(process.env.PORT || 8913);
 const BASE = 'http://localhost:' + PORT + '/test/e2e/fixtures-adv/';
 const ONLY = (process.env.ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 fs.mkdirSync(OUT_DIR, { recursive: true });

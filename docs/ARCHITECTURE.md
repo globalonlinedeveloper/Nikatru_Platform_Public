@@ -316,3 +316,43 @@ the evidence.
 - Releasing a version: [RELEASING.md](RELEASING.md)
 - Getting a package in front of a store reviewer: [STORE-PLAYBOOK.md](STORE-PLAYBOOK.md)
 - Deciding whether something may become shared code: [CORE-POLICY.md](CORE-POLICY.md)
+
+---
+
+## ⚠️ APPENDED CORRECTION — 2026-08-26: the release lane, and the one word that went stale
+
+**No claim in this document said the release path was proven, and none has been softened.** Both places
+that mention it already say `release.yml` has never run — the `CI` row of the §3 table, and the
+2026-08-25 correction beneath it — and **that conclusion is still true**, re-measured 2026-08-26:
+
+```
+gh workflow list --all                                    ->  EXIT 0   (Release  active  334596083)
+gh run list --workflow=release.yml --limit 100 | wc -l    ->  0        rows
+gh run list --workflow=ci.yml      --limit 3   | wc -l    ->  3        rows  (control)
+git tag | wc -l                                           ->  0
+```
+
+The control row is why the zero counts: an unresolvable workflow name would also print nothing and exit
+0, so the same query shape was run against `ci.yml`, which returns rows.
+
+**What HAS gone stale, in both places, is the *reasoning* — and it is one word: “so”.**
+
+- §3’s `CI` row: *“no tag exists, **so** `release.yml` has never run.”*
+- The 2026-08-25 correction: *“`git tag | wc -l` → **0**, **so** `release.yml` has still never run.”*
+
+Both sentences are left standing exactly as written. The **conclusion** still holds; the **inference**
+no longer does. `release.yml` has gained a `workflow_dispatch` trigger (line **62**) with a required
+`dry_run` input, so **a tagless run is now possible**: the absence of tags no longer entails the absence
+of runs. The two facts happen to coincide today only because nobody has taken the dispatch either — and
+that is a *separate* measurement, which now has to be made separately.
+
+**The practical rule this changes.** `git tag` no longer answers “has the release lane run”; it answers
+only “has anything been released”. For the first question, ask GitHub:
+`gh run list --workflow=release.yml`. Anyone re-deriving the §3 table should run both, not one.
+
+🔴 **The lane is still UNEXERCISED, and reading it is not running it.** The dispatch rehearsal exists but
+has never been taken. What it does, what it deliberately does not touch — it creates no tag and reaches
+no publish step — and precisely what a green run would and would not prove, are recorded in
+[RELEASING.md](RELEASING.md) **Appendix A.8**, with the gate condition quoted verbatim. Do not treat a
+green rehearsal, if one is taken, as a proven release path: the publish step is skipped rather than run,
+and the first real tag push is still a first execution.

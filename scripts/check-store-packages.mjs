@@ -76,12 +76,22 @@
    carries `browser_specific_settings.gecko` IS an AMO package whatever it is
    called, and one that does not is a Chrome/Edge package.
 
+   ── AND A PACKAGE IS ALSO GRADED FOR AGE, WHICH WARNS RATHER THAN FAILS ────
+   Every limb here grades the bytes that are on disk; until 2026-08-26 none of
+   them asked WHEN those bytes were written, so a build predating a source fix
+   was certified 5-PASS and a reader concluded the shipping package contained the
+   current code. Each package is now also hashed file-by-file against the set
+   packagedFiles() selects — the same function scripts/pack.mjs packs from — and
+   a mismatch prints a WARN naming what is newer. It is a WARN because opening an
+   artifact built earlier is deliberate and supported; see the limb itself for
+   why that is a decision and not timidity.
+
    Exit codes: 0 everything agrees · 1 something disagrees · 2 could not run. */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { Report, parseArgs, die } from './lib/report.mjs';
-import { repoRoot, resolveTool, loadAllTools, readJson } from './lib/toolinfo.mjs';
+import { repoRoot, resolveTool, loadAllTools, readJson, packagedFiles, sha256 } from './lib/toolinfo.mjs';
 import { readZipEntry, listZipEntries, ZipUnreadable } from './lib/zip.mjs';
 
 /* The placeholder the first Firefox manifest shipped with. Same test
@@ -180,6 +190,42 @@ for (const tool of tools) {
         found.push({ rel: path.relative(root, path.join(abs, name)).split(path.sep).join('/'), abs: path.join(abs, name), name });
       }
     }
+  }
+
+  /* ---------------- the file set THIS TREE would pack ----------------------
+     The ruler the freshness limb below measures each package against. Derived
+     once per tool, because it is a property of the tree and not of any zip.
+
+     🔴 IT IS packagedFiles(), THE FUNCTION scripts/pack.mjs ITSELF CALLS
+     (pack.mjs:387), NOT A SECOND READING OF package.include/exclude. A private
+     copy of those rules here would be the second declaration of what ships and
+     therefore the first one to be wrong — and it would be wrong in the
+     direction that matters, reporting "fresh" over a file the packer selects
+     and this gate does not know about. NOT_A_SCANNER'S RULE, WHICH THIS REPO
+     LEARNED EXPENSIVELY: find the existing helper before writing a rival. */
+  const pack = packagedFiles(root, tool);
+
+  /* THE LIMB'S OWN COVERAGE SELF-CHECK — AND IT IS A FAIL, WHILE STALENESS
+     BELOW IS ONLY A WARN. Those are two different questions and they deserve
+     two different volumes. "This package is old" is a fact about an artifact,
+     and opening an old artifact on purpose is what `--dir` is for. "I compared
+     zero files" is this check NOT RUNNING, and a freshness check that examined
+     nothing must never be reachable from the word "fresh" — an empty subject
+     that prints clean is the exact defect the whole header above is about.
+
+     Reachable, and therefore testable: any tool.json whose package.include
+     patterns have stopped matching, in a tree with no _locales/ to be unioned
+     in by the unconditional collector. That is the same rot pack.mjs's FLOOR 1
+     refuses to write a zip over, arriving here one build later — the zip it
+     refused to overwrite is still on disk, and something has to grade it. */
+  if (found.length && pack.files.length === 0) {
+    r.fail('the freshness limb has a file set to compare packages against',
+      'package.include in ' + tool.rel + '/tool.json selects ZERO files from ' + tool.rel + '/, so there is\n' +
+      'nothing to hash a package against and every freshness verdict below would be computed over an\n' +
+      'empty set. An empty comparison does not mean "the package matches the tree" — it means this limb\n' +
+      'did not run, and it must not be able to say "fresh" from here.\n' +
+      'Check the patterns against the tree: paths are relative to ' + tool.rel + '/ and a directory prefix\n' +
+      'needs its trailing slash ("pages/" not "pages").');
   }
 
   const perTarget = new Map(targets.map(t => [t, 0]));
@@ -343,6 +389,159 @@ for (const tool of tools) {
     if (tool.manifest && manifest.version && manifest.version !== tool.manifest.version) {
       r.warn(pkg.rel + ' is v' + manifest.version + ', the tree is v' + tool.manifest.version,
         'a stale artifact sitting beside a current one is the thing that gets uploaded by hand.');
+    }
+
+    /* ------------- FRESHNESS: IS THIS PACKAGE THE TREE, OR A PHOTOGRAPH OF IT? --
+       🔴 ADDED 2026-08-26. EVERY LIMB ABOVE GRADES WHATEVER IS ON DISK AND NOT
+       ONE OF THEM ASKS HOW OLD IT IS. Measured the same day on this tree:
+       dist/fullshot-chromium.zip and dist/fullshot-firefox.zip predated two
+       privacy fixes — content/capture.js, pages/history.js, pages/result.js and
+       all 55 locale catalogues differed from the tree — and this gate printed
+       five PASS lines and exited 0 over them. A reader who sees 5-PASS concludes
+       that the shipping package contains the current code. That inference was
+       unsound, and nothing in the output said so.
+
+       IT ASKS ABOUT CONTENT, NEVER ABOUT TIMESTAMPS. An mtime answers "was this
+       file touched", which a fresh clone and a `cp -r` both answer yes to over a
+       byte-identical tree, and which a restored file answers no to after a real
+       edit. A hash answers the question actually being asked. mtimes ARE printed
+       below — but only to NAME which file is newer, after the hashes have
+       already disagreed, never to decide that they have.
+
+       🔴 IT WARNS. IT MUST NOT FAIL, AND THAT IS A DESIGN DECISION RATHER THAN
+       TIMIDITY. Grading a package built earlier is a SUPPORTED use of this
+       command — `--dir` exists so that yesterday's artifact can be opened and
+       read — so a red lane here would punish the thing the command is for, and a
+       gate that is red on its own documented invocation is a gate people stop
+       running. Staleness therefore prints a loud WARN naming what is newer than
+       the package, and leaves the exit code exactly as the identity limbs above
+       left it. Those limbs fail; this one tells you what you are looking at.
+
+       THE FIREFOX MANIFEST IS DELIBERATELY NOT COMPARED, AND THAT IS NOT A HOLE.
+       pack.mjs ships the chromium manifest byte for byte and BUILDS the Firefox
+       one by applying targets.firefox.overlay as an RFC 7386 merge patch, so
+       those packaged bytes are SUPPOSED to differ from manifest.json on disk.
+       Comparing them would report every Firefox package ever built as stale,
+       and a warning that is wrong every time is one nobody reads the third time.
+       The part of that manifest a stale package gets wrong — the identity — is
+       already graded above, against publish/identity.json. */
+    if (pack.files.length > 0) {
+      let entryNames = null;
+      try { entryNames = new Set(listZipEntries(pkg.abs)); }
+      catch (e) { if (!(e instanceof ZipUnreadable)) throw e; }
+
+      if (entryNames === null) {
+        /* The manifest read above succeeded, so this is not "an unreadable
+           archive" — it is one that stopped being readable between two reads.
+           Reported rather than skipped, for the reason the whole file states:
+           a check that could not look must not print like one that looked. */
+        r.warn(pkg.rel + ' could not be listed for a freshness comparison',
+          'its manifest.json was read but its central directory would not enumerate, so nothing below\n' +
+          'is known about whether this package carries the current code.');
+      } else {
+        /* Firefox: see the merge-patch paragraph above. Chromium ships the
+           manifest verbatim, so there it is compared like any other file. */
+        const skipRel = isFirefox ? tool.manifestRel : null;
+        const differs = [], absent = [], unreadable = [];
+        let compared = 0;
+        for (const rel of pack.files) {
+          if (rel === skipRel) continue;
+          if (!entryNames.has(rel)) { absent.push(rel); continue; }
+          let inZip;
+          try { inZip = readZipEntry(pkg.abs, rel); }
+          catch (e) {
+            if (!(e instanceof ZipUnreadable)) throw e;
+            unreadable.push(rel);
+            continue;
+          }
+          if (inZip === null) { absent.push(rel); continue; }
+          compared++;
+          if (sha256(inZip) !== sha256(fs.readFileSync(path.join(tool.dirAbs, rel)))) differs.push(rel);
+        }
+
+        /* mtimes, used for NAMING ONLY — the verdict is already decided by the
+           hashes above. A file that cannot be stat'd contributes no timestamp
+           rather than a zero, which would sort to the front and name the wrong
+           file as the newest thing the package has missed. */
+        const mtimeOf = (abs) => { try { return fs.statSync(abs).mtimeMs; } catch { return null; } };
+        const newestOf = (list) => {
+          let best = null;
+          for (const rel of list) {
+            const ms = mtimeOf(path.join(tool.dirAbs, rel));
+            if (ms !== null && (best === null || ms > best.ms)) best = { rel, ms };
+          }
+          return best;
+        };
+        const iso = (ms) => (ms === null ? 'unknown' : new Date(ms).toISOString());
+        const some = (list) => list.slice(0, 6).map(f => '    ' + f).join('\n') +
+          (list.length > 6 ? '\n    ...and ' + (list.length - 6) + ' more' : '');
+
+        if (compared === 0) {
+          /* NOT "fresh". The ruler itself is fine — that is the coverage
+             self-check above, and it did not fire — so this is a statement about
+             THIS package: it and the tree have no file in common, which is what
+             a package for another tool, for another version's file set, or a
+             hand-assembled archive looks like from here. */
+          r.warn(pkg.rel + ' shares no file with the tree that would pack it',
+            'none of the ' + pack.files.length + ' file(s) package.include selects from ' + tool.rel + '/ is present in\n' +
+            'this archive, so NOTHING about its freshness was measured — do not read the lines above as\n' +
+            'saying it carries the current code. It carries some other file set entirely.');
+        } else if (differs.length === 0 && absent.length === 0 && unreadable.length === 0) {
+          r.pass(pkg.rel + ' carries this tree\'s bytes',
+            compared + ' packaged file(s) hashed, every one identical to ' + tool.rel + '/');
+        } else {
+          const newest = newestOf([...differs, ...absent]);
+          const pkgMs = mtimeOf(pkg.abs);
+
+          /* 🔴 WHERE THE PACKAGE LIVES CHANGES WHAT "OUT OF DATE" MEANS, AND
+             GETTING THAT BACKWARDS WOULD MAKE THIS FILE CAUSE THE HARM IT EXISTS
+             TO PREVENT. A zip in the tool's publish/ is a GOLDEN MASTER —
+             .gitignore's own words, quoted in pack.mjs §4: "the exact artifact a
+             store received, and what pack.mjs diffs the next build against". It
+             is SUPPOSED to freeze at the version it shipped and to stop matching
+             the tree the moment the tree moves on, so "rebuild over it" is the
+             one instruction that must never be printed about it: the next build
+             would overwrite the only local record of what the store actually
+             holds, and the dropped-file floor would then be diffing against
+             itself. Everywhere else — dist/, a scratch --dir — a package is a
+             BUILD OUTPUT, and a build output that no longer matches its source
+             is simply old and should be rebuilt. Same measurement, same
+             loudness, opposite advice. */
+          const isGolden = path.dirname(pkg.abs) === path.join(tool.dirAbs, 'publish');
+
+          const evidence =
+            (differs.length ? differs.length + ' packaged file(s) DIFFER from the tree:\n' + some(differs) + '\n' : '') +
+            (absent.length ? absent.length + ' file(s) the tree would pack are NOT IN this archive:\n' + some(absent) + '\n' : '') +
+            (unreadable.length ? unreadable.length + ' entry/entries could not be inflated and were not compared:\n' + some(unreadable) + '\n' : '') +
+            (newest ? 'newest differing file: ' + newest.rel + '  ' + iso(newest.ms) + '\n' : '') +
+            'this package:          ' + iso(pkgMs) + '\n' +
+            (newest && pkgMs !== null && newest.ms < pkgMs
+              ? 'NOTE: nothing that differs is NEWER than this package, so the difference is not an edit\n' +
+                'made after the build. This archive was built from a different tree, or by another packer.\n'
+              : '') +
+            '(The verdict is the hashes. Those two timestamps are printed to name what is newer, not to\n' +
+            'decide that anything is.)\n';
+
+          if (isGolden) {
+            r.warn(pkg.rel + ' is a RELEASE artifact and is NOT this tree',
+              '🔴 A WARN AND NOT A FAILURE, AND HERE NOT EVEN A DEFECT: a package in ' + tool.rel + '/publish/ is a\n' +
+              'golden master — the bytes a store received — so it is MEANT to stop matching the tree. This\n' +
+              'line exists so that nobody reads the PASS lines above as saying it carries the current code.\n' +
+              evidence +
+              'DO NOT REBUILD OVER IT. It is the only local record of what was shipped, and pack.mjs diffs\n' +
+              'the next build against it to catch a dropped file. Build into dist/ instead.');
+          } else {
+            r.warn(pkg.rel + ' is STALE — it was built from a tree that is no longer this one',
+              '🔴 A WARN AND NOT A FAILURE, ON PURPOSE: grading an artifact you built earlier is what this\n' +
+              'command is for, and `--dir` exists to do it. It is loud because the PASS lines above say\n' +
+              'nothing whatever about age, and five of them beside a stale zip read as "the package that\n' +
+              'ships contains the current code".\n' +
+              evidence +
+              'FIX: rebuild before anyone uploads this — node scripts/pack.mjs ' + tool.id +
+              ' --target ' + target + ' --out dist');
+          }
+        }
+      }
     }
   }
 
