@@ -1176,6 +1176,26 @@
       unplacedChars: 0,
       inkPx: 0,
       nonText: 0,
+      /* LEAVES THE RENDERER SKIPPED, and the characters in them — clause 3b.
+         A pre-detector skip, so it is here rather than in `unplaced`: those
+         counters grade spans the detector was handed and have to keep summing
+         to `fed`. Two numbers because they carry different units and answer
+         different questions — how many places on this page are behind a
+         `content-visibility: hidden` (a closed accordion, an inactive tab), and
+         how much text that came to. Written at the skip, like every other
+         counter in this ledger, and read by no predicate: nothing infers safety
+         from it, it exists so that "FullShot did not look at that" is a fact
+         somebody can check rather than a silence. */
+      notRendered: 0, notRenderedChars: 0,
+      /* CAN THE RENDERER BE ASKED WHETHER IT DREW A NODE — clause 3b's one
+         precondition, measured once below and recorded because the answer
+         changes what the numbers beside it mean. 1: `checkVisibility` exists
+         and every leaf was put to it. 0: it does not, clause 3b abstained, and
+         `notRendered` is 0 for want of an instrument rather than for want of a
+         `content-visibility: hidden` on the page. Two ledgers that both read
+         `notRendered: 0` are not saying the same thing, and this is the field
+         that tells them apart. */
+      liveness: 0,
       frames: { sameOrigin: 0, scanned: 0, crossOrigin: 0 },
       matched: 0, boxes: 0, boxesFromUnplaced: 0, matchedNoBox: 0,
       /* WHAT THE PASS PRODUCED AND COULD NOT KEEP. `blocksLost` counts BLOCKS —
@@ -1213,6 +1233,16 @@
       matchedComplete: false,
       sealed: false
     };
+    /* Clause 3b's instrument, probed ONCE on a node this pass did not choose.
+       Per-element `typeof` guards still stand at the call site — a node handed
+       in from a frame or an XML document may not carry the method even where
+       the host engine does — but the ENGINE-level fact belongs in the ledger,
+       and re-deciding it per leaf would put a fact about the browser inside a
+       loop that runs thousands of times. */
+    try {
+      const liveProbe = (typeof document !== 'undefined' && document) ? document.documentElement : null;
+      if (liveProbe && typeof liveProbe.checkVisibility === 'function') L.liveness = 1;
+    } catch (_) { L.liveness = 0; }
     const decline = (why, n) => { L.declined[why]++; L.declined.total++; L.declinedChars += n; };
     const unplace = (why, n) => { L.unplaced[why]++; L.unplaced.total++; L.unplacedChars += n; };
     /* Element references for the §2.3 re-measure. They NEVER leave this
@@ -1275,6 +1305,79 @@
       if (r.width < 1 || r.height < 1) return { why: 'degenerate', rect: r, deferrable: true };
       // 3 — did the page take it out of what is drawn?
       if (cs.visibility === 'hidden' || cs.display === 'none') return { why: 'hidden', rect: r };
+      /* 3b — DID THE RENDERER DRAW THIS SUBTREE AT ALL, and it is the one
+         question in this list that no arrangement of the others can answer.
+
+         `content-visibility: hidden` SKIPS a subtree's contents: Chrome lays
+         them out and never paints them. The leaf therefore reports a full-size
+         rect, `visibility: visible`, `opacity: 1`, a font-size that agrees with
+         the rect perfectly, and — for a collapsed <details>, where the UA
+         stylesheet puts the declaration on the `::details-content`
+         PSEUDO-element — not one composed ancestor carrying
+         `content-visibility: hidden` either. Measured on Chrome 149 over
+         test/e2e/fixtures-adv/details-closed.html and cv-tabs.html: every one
+         of clauses 1-6 passes, `placed` counts the span, and a block is emitted
+         at coordinates belonging to text that is not in the picture.
+
+         THAT BLOCK IS NOT HARMLESS, and this is the half of the defect the
+         "over-masking is safe" note above does not cover. In cv-tabs the
+         inactive tab panel is absolutely positioned over the active one, so the
+         hidden panel's email and the visible panel's own line share a rect to
+         the pixel: the block lands on rendered text that held no PII, destroys
+         it, and the record then carries a mark and a `kinds` entry pointing a
+         reader at a rectangle where no email ever was. Over-masking is safe
+         only while the ink stays over the text it was measured from. Ink
+         measured from a subtree the renderer skipped has no such guarantee, and
+         it is the ONE case in this function where emitting the box is worse
+         than withholding it — so this clause is `skipped`, not a `why`, and
+         `skipped` is the only answer here that suppresses the box.
+
+         WHY THE ENGINE IS ASKED INSTEAD OF THE STYLESHEET. Walking ancestors
+         for `contentVisibility: hidden` finds cv-tabs and misses the collapsed
+         <details> entirely — the declaration is not on any node in the chain.
+         `checkVisibility()` is the renderer's own answer to "did I draw this",
+         so it does not have to be kept in step with the next mechanism nobody
+         has enumerated. Its DEFAULTS are the reason it is called bare:
+         `contentVisibilityAuto` is false, so a `content-visibility: auto`
+         section that is skipped right now still answers `true` — which is
+         correct here, because those sections ARE painted during the scroll
+         loop and §2.3(b) below is what covers them. Measured on
+         test/e2e/fixtures/contentvis.html: `true`. `opacityProperty` and
+         `visibilityProperty` are false too, so this clause cannot quietly
+         duplicate clause 3 or clause 6 and steal their reasons.
+
+         ORDER IS LOAD-BEARING: this sits AFTER clause 2, so a 0x0 leaf — a
+         `display: contents` element, a `hidden` attribute, a not-yet-rendered
+         `content-visibility: auto` row — keeps `degenerate` and keeps its seat
+         in the §2.3(b) re-measure. `checkVisibility()` answers `false` for all
+         three of those as well, and reaching them first would silently retire
+         the deferral machinery.
+
+         AND WHEN THE ENGINE IS ASKED AND WILL NOT ANSWER — the call throws —
+         this returns `null`, which is declined.unmeasurable: the leaf's text is
+         treated as UNREAD, `matchedComplete` goes false at the seal, and
+         pages/result.js appends `redactActsCountPartial` beside the counts.
+         That is the safe direction stated as a rule: a paint state that cannot
+         be determined must not become a speculative block, and it must not
+         become a silent omission either. The one thing this clause may never do
+         is answer "drawn" because it could not find out.
+
+         THE OTHER GAP IS THE ENGINE ITSELF, and it is a fact about the pass
+         rather than about any leaf, so it is measured once and recorded as
+         `L.liveness` where the walks start rather than re-decided per element.
+         Where `checkVisibility` does not exist there is no per-leaf question to
+         refuse — the renderer cannot be asked about ANY node — and clause 3b
+         abstains, leaving clauses 4-6 to measure the leaf exactly as they did
+         before it existed. `liveness: 0` in the ledger is what says the pass ran
+         without this reading, so the abstention is on the record and not a
+         silence. In the shipped product it is unreachable: manifest.json floors
+         this build at Chrome 116 and publish/manifest.firefox.json at Firefox
+         128, and `checkVisibility` shipped in Chrome 105 and Firefox 106. */
+      if (L.liveness && typeof el.checkVisibility === 'function') {
+        let drawn;
+        try { drawn = el.checkVisibility(); } catch (_) { return null; }
+        if (!drawn) return { skipped: true, rect: r };
+      }
       // 4 — is the box consistent with the text the DOM says is inside it?
       const fsz = parseFloat(cs.fontSize);
       if (!isFinite(fsz) || fsz <= 0) return null;
@@ -1331,6 +1434,35 @@
       if (!cs) { decline('unmeasurable', n); return; }
       const pl = measure(el, cs, ox, oy, sx, sy, maxY, scope);
       if (!pl) { decline('unmeasurable', n); return; }
+      /* CLAUSE 3b'S ONE CONSEQUENCE, AND IT IS BEFORE THE DETECTOR ON PURPOSE.
+         The renderer did not draw this subtree, so its text is not this image's
+         text — the same standing as text in a document this capture never
+         opened. Returning here is what keeps three separate things true at
+         once, and each of them broke a different way when this was tried
+         further down:
+
+           · no box is emitted, so no ink is laid at coordinates that belong to
+             whatever the renderer DID draw there;
+           · `kinds` and `marks` stay empty for it, so the record cannot point a
+             reader at a rect that never held the match (both are built from the
+             emitted boxes, in pages/result.js);
+           · `matched` is not moved, so the product does not go on to say
+             "1 match is not covered in this image" about a closed accordion.
+             That sentence is computed as `matched - covered`, and counting the
+             match while emitting nothing would make it fire — trading an
+             over-painted block for a false exposure warning on one of the most
+             ordinary shapes on the web, which is the alarm budget §3.4 warns
+             turns into wallpaper.
+
+         NOT SILENT, AND NOT INSIDE `unplaced`. `unplaced` grades spans the
+         detector WAS handed, and its per-reason counters must keep summing to
+         `fed`; this span is not handed to it, so it is counted here beside
+         `nonText` — the other pre-detector skip — in leaves and in characters,
+         and it is written on the line that performs the skip. `matchedComplete`
+         is deliberately NOT disturbed: nothing was given up on. The pass
+         positively established that this text is not in the picture, which is a
+         measurement and not a refusal. */
+      if (pl.skipped) { L.notRendered++; L.notRenderedChars += n; return; }
 
       L.fed++; L.chars += n;                 // the line before the detector call
       if (pl.why) {
@@ -1583,7 +1715,13 @@
         try { cs = getComputedStyle(ent.el); } catch (_) { continue; }
         if (!cs) continue;
         const pl = measure(ent.el, cs, f.ox, f.oy, f.sx, f.sy, ent.maxY, f.scope);
-        if (!pl || pl.why) continue;
+        /* `pl.skipped` is clause 3b, and it belongs in this test for the same
+           reason `pl.why` does: a span held here was 0x0 at scan time and has
+           since been laid out, but laid out inside a subtree the renderer
+           skips is still not in the picture. Without this it would count as
+           `lateTextPlaced` — text this pass credits itself with having read in
+           the image — which is the over-claim, arriving by the back door. */
+        if (!pl || pl.why || pl.skipped) continue;
         let txt = '';
         try { txt = fsOwnLeafText(ent.el); } catch (_) {}
         if (!txt || !/\S/.test(txt)) continue;
