@@ -142,6 +142,7 @@
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#platform",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -1700,11 +1701,13 @@
     "claims": [
       "D-3"
     ],
-    "invokedBy": [],
+    "invokedBy": [
+      ".github/workflows/submit-play.yml#submit"
+    ],
     "kind": "guard",
     "ref": "tooling/ci/read-identity.mjs",
     "references": [],
-    "state": "LIBRARY"
+    "state": "WIRED"
   },
   {
     "claims": [
@@ -1715,7 +1718,9 @@
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subly-api"
+      ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/record-deployment.mjs",
@@ -1937,7 +1942,8 @@
     "invokedBy": [
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subly-api"
+      ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "script",
     "ref": "tooling/ops/post-deploy-smoke.mjs",

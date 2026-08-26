@@ -27,7 +27,9 @@ import {
   assertWatchedWorkflowIntact,
   isDailyCron,
   cronExpressions,
+  buildRunsUrl,
   REQUIRED_WORK,
+  RUNS_PAGE_SIZE,
 } from '../assert-e2e-proof-fresh.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -375,5 +377,151 @@ describe('coverage self-check — against a MUTATED REAL workflow, not a fixture
       },
       (v) => assert.match(v, /no longer contains/),
     );
+  });
+});
+
+describe('the run window — `per_page` sizes a window over SUCCESSES, not over runs', () => {
+  // 🔴 THE DEFECT THESE TESTS EXIST FOR LIVES IN THE FETCH, NOT IN THE DECISION.
+  // `evaluateFreshness` can only ever see the rows the query left it, so a test
+  // that hands it a whole history proves nothing about the window. Everything
+  // below therefore models the truncation explicitly: build the history the API
+  // holds, then hand over only the page the query would have asked for.
+
+  // The exact shape the cliff has: a burst of green hand-presses sitting ON TOP
+  // of the newest green SCHEDULED run, newest first, as the API returns them.
+  // `deep` is the 1-based position of that scheduled success.
+  const historyWith = (deep, length = 140) =>
+    Array.from({ length }, (_, i) => ({
+      id: 1000 + i,
+      conclusion: 'success',
+      event: i === deep - 1 ? 'schedule' : 'workflow_dispatch',
+      updated_at: daysAgo(i === deep - 1 ? 1 : 0),
+    }));
+  // What the API hands back for a given per_page: the newest N rows, oldest dropped.
+  const pageOf = (history, n) => history.slice(0, n);
+
+  test('🔴 THE CLIFF — through the OLD 20-row page a scheduled success at position 25 is INVISIBLE', () => {
+    const history = historyWith(25);
+    assert.equal(history[24].event, 'schedule', 'fixture is not the shape this test claims');
+    // …and that run went green YESTERDAY. The cron is perfect; the page was too
+    // short. The resulting red is indistinguishable from a dead cron, which is
+    // what made this worth fixing rather than tolerating.
+    const v = evaluateFreshness(pageOf(history, 20), NOW_MS, undefined, 20);
+    assert.equal(v.ok, false);
+    assert.match(v.reason, /NONE was triggered by the schedule/);
+  });
+
+  test('🟢 …and VISIBLE through the shipped window. THIS TEST IS WHY RUNS_PAGE_SIZE IS 100.', () => {
+    // Deliberately NOT `slice(0, 100)`. It slices by the guard's OWN constant, so
+    // tidying that constant back down turns this red instead of leaving a green
+    // suite sitting over a re-opened cliff.
+    const v = evaluateFreshness(pageOf(historyWith(25), RUNS_PAGE_SIZE), NOW_MS);
+    assert.equal(v.ok, true, `RUNS_PAGE_SIZE=${RUNS_PAGE_SIZE} cannot reach a scheduled success at position 25`);
+    assert.ok(Math.abs(v.ageDays - 1) < 0.01);
+  });
+
+  test('the width is pinned to the query the guard ACTUALLY SENDS, not merely to a constant', () => {
+    // A constant reading 100 beside a URL still reading 20 would look fixed
+    // everywhere anybody reads and be unfixed in the one place it runs.
+    const url = buildRunsUrl('owner/repo');
+    assert.match(url, new RegExp(`per_page=${RUNS_PAGE_SIZE}(?:&|$)`));
+    // `status=success` is the filter that makes the width load-bearing at all —
+    // without it the page is a window over RUNS, where a red nightly still
+    // occupies a slot and the scheduled run cannot be pushed out by hand-presses.
+    assert.match(url, /status=success/);
+    assert.match(url, /branch=main/);
+    assert.equal(RUNS_PAGE_SIZE, 100, 'parity with assert-platform-proof-fresh.mjs, and the endpoint maximum');
+  });
+
+  test('⛔ A FULL PAGE STILL FAILS — the DIAGNOSIS splits, the VERDICT never does', () => {
+    const v = evaluateFreshness(pageOf(historyWith(105), RUNS_PAGE_SIZE), NOW_MS);
+    assert.equal(v.ok, false, 'a saturated window must never soften into a pass');
+    assert.equal(v.windowSaturated, true);
+    assert.match(v.reason, /THE PAGE WAS FULL/);
+    assert.match(v.reason, /statement about the WINDOW/);
+  });
+
+  test('a SHORT page with no scheduled run is a stopped TIMER, and still says exactly that', () => {
+    const v = evaluateFreshness(
+      [{ id: 1, conclusion: 'success', event: 'workflow_dispatch', updated_at: daysAgo(0) }],
+      NOW_MS,
+    );
+    assert.equal(v.ok, false);
+    assert.equal(v.windowSaturated, false);
+    assert.match(v.reason, /every one was manual/);
+    assert.doesNotMatch(v.reason, /THE PAGE WAS FULL/);
+  });
+
+  // 🔴 THIS BLOCK REPLACES A TEST THAT ENCODED A FALSE LAW. Until 2026-08-26 it
+  // asserted `windowSaturated === undefined` on an age verdict, under the
+  // heading "a stale AGE is never a window artifact". The reasoning was that
+  // truncation drops the OLDEST rows so the surviving scheduled run must be the
+  // newest — which infers recency from PAGE POSITION. The page is ordered by
+  // `created_at`; the guard grades by `updated_at`. A run created earlier can
+  // update later, so the orderings can disagree and the "therefore" does not
+  // follow. A test asserting the false law is worse than no test: it pins it.
+  test('a stale age on a FULL page reports the window too — DIAGNOSIS only', () => {
+    const history = historyWith(1);
+    history[0].updated_at = daysAgo(30);
+    const page = pageOf(history, RUNS_PAGE_SIZE);
+    assert.equal(page.length, RUNS_PAGE_SIZE, 'fixture must be a saturated page for this test to mean anything');
+    const v = evaluateFreshness(page, NOW_MS);
+    // ⛔ THE VERDICT IS THE POINT: still false. The caveat must never soften it.
+    assert.equal(v.ok, false, 'a saturated window must never turn a stale age into a pass');
+    assert.match(v.reason, /30\.0 days old/);
+    assert.equal(v.windowSaturated, true);
+    assert.match(v.reason, /THE PAGE WAS FULL/);
+    assert.match(v.reason, /created_at/);
+    assert.match(v.reason, /updated_at/);
+  });
+
+  test('a stale age on a SHORT page is a plain stale age — no window caveat', () => {
+    // The complement, and the reason the caveat is not simply printed always: a
+    // short page IS the whole retained history, so nothing was truncated and
+    // there is no window to blame. Saying otherwise would send an operator
+    // hunting a pagination bug behind a genuinely stale nightly.
+    const v = evaluateFreshness(
+      [{ id: 7, conclusion: 'success', event: 'schedule', updated_at: daysAgo(30) }],
+      NOW_MS,
+    );
+    assert.equal(v.ok, false);
+    assert.match(v.reason, /30\.0 days old/);
+    assert.equal(v.windowSaturated, false);
+    assert.doesNotMatch(v.reason, /THE PAGE WAS FULL/);
+  });
+
+  test('⛔ THE CAVEAT NEVER REACHES A PASSING VERDICT', () => {
+    // A fresh scheduled run on a saturated page still passes clean, with no
+    // saturation noise attached — the split is a diagnosis for FAILURES only.
+    const v = evaluateFreshness(pageOf(historyWith(1), RUNS_PAGE_SIZE), NOW_MS);
+    assert.equal(v.ok, true);
+    assert.equal(v.windowSaturated, false);
+    assert.equal(v.reason, null);
+  });
+
+  test('THE CLIFF AND THE FIX, THROUGH THE CLI — the two pages CI could have been handed', () => {
+    const history = historyWith(25);
+
+    // page20: what per_page=20 returned before 2026-08-26. The scheduled success
+    // one day old at position 25 is off the end, so ci-gate goes red accusing a
+    // cron that fired last night.
+    const r20 = run(fixture('window-page20.json', pageOf(history, 20)));
+    assert.equal(r20.status, 1);
+    assert.match(r20.stderr, /NONE was triggered by the schedule/);
+
+    // page100: the SAME history through the shipped window. Same repo, same
+    // cron, same nightly — the only difference in the world is the page width.
+    const r100 = run(fixture('window-page100.json', pageOf(history, RUNS_PAGE_SIZE)));
+    assert.equal(r100.status, 0, r100.stderr);
+    assert.match(r100.stdout, /nightly golden-path proof fresh/);
+  });
+
+  test('a genuinely saturated page tells the operator so — and still exits 1', () => {
+    const r = run(fixture('window-saturated.json', pageOf(historyWith(105), RUNS_PAGE_SIZE)));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /THE RUN PAGE CAME BACK FULL/);
+    assert.match(r.stderr, /LOOK AT THE RUN/);
+    // …and it must not sell widening as the remedy a second time.
+    assert.match(r.stderr, /paginating, not widening/);
   });
 });

@@ -110,13 +110,35 @@
 // to a call this parse also found. A parser that silently stops seeing lines is
 // the one failure mode a parser-based guard cannot self-diagnose any other way.
 //
-// ⚠️ THE PUBLISH BRANCH HAS NO INSTANCES TODAY AND THE GUARD SAYS SO ON EVERY
-// RUN rather than passing quietly. All six submission invocations are rehearsals;
-// no publisher account exists ([10]D-4 / OWNER_QUEUE A-2, A-3, A-4, A-6), so a
-// real submission is owner-gated and cannot be produced by any amount of agent
-// work. Printing the census is what keeps rule 2 from being an assertion that
-// cannot fail: the moment a `--dry-run` is removed, the count moves and the rule
-// bites.
+// ── 🔴 2026-08-26 — THE PARAGRAPH THAT USED TO SIT HERE WAS FALSE, AND IT WAS
+//    THIS GUARD'S OWN FAILURE MODE WEARING THIS GUARD'S OWN WORDS ────────────
+// It read, verbatim:
+//
+//   "⚠️ THE PUBLISH BRANCH HAS NO INSTANCES TODAY AND THE GUARD SAYS SO ON EVERY
+//    RUN rather than passing quietly. All six submission invocations are
+//    rehearsals; no publisher account exists ([10]D-4 / OWNER_QUEUE A-2, A-3,
+//    A-4, A-6), so a real submission is owner-gated and cannot be produced by any
+//    amount of agent work. Printing the census is what keeps rule 2 from being an
+//    assertion that cannot fail: the moment a `--dry-run` is removed, the count
+//    moves and the rule bites."
+//
+// Every clause about owner-gating is still true. The claim that made it false is
+// "all six submission invocations are rehearsals". There were SEVEN, and two of
+// them were real: `submit-play.yml` and `submit-snap.yml` each carry a `submit:`
+// job whose last step runs its script with `--submit` and no `--dry-run`, and
+// NEITHER WROTE A RECORD. The census could not see them because it ranged over
+// the register's `submission.job` — "dry-run" — instead of over the jobs of the
+// declared submission WORKFLOW. So rule 2 had zero instances, printed that it had
+// zero instances, and that printout was the reassurance that stopped anybody
+// looking. See the block above the submittable loop for the full account.
+//
+// WHAT IS TRUE NOW: the census ranges over every job of each declared submission
+// workflow and LISTS the jobs it ranged over; both `submit:` jobs write a
+// `[10]D-9` record as their last step; rule 2 has two instances and is graded on
+// every run. When the count IS zero the run says "RULE 2 WAS NOT EXERCISED" out
+// loud and stamps the ok line with it, because a rule that cannot fail prints
+// exactly what a rule that passed prints, and those two must never look alike
+// here again.
 //
 // Usage:  node tooling/ci/assert-publish-records.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -434,9 +456,46 @@ for (const row of servedRows) {
 }
 
 // ── 2. SUBMITTABLE CHANNELS — rehearsal vs. real, and what each may claim ────
+//
+// 🔴 THE CENSUS RANGES OVER EVERY JOB OF THE DECLARED SUBMISSION WORKFLOW, AND
+// UNTIL 2026-08-26 IT RANGED OVER EXACTLY ONE — WHICH IS HOW THIS FILE ENDED UP
+// SITTING IN THE TRAP ITS OWN HEADER DESCRIBES.
+//
+// `submission.job` in the register names the job a channel's submission is
+// DECLARED in. For all five submittable rows that value is "dry-run", and this
+// loop read that job and nothing else. But `submit-play.yml` and
+// `submit-snap.yml` each carry a SECOND job — `submit:` — whose last step runs
+//
+//     node tooling/release/submit-play.mjs --submit --app subly …
+//     node tooling/release/submit-snap.mjs --submit --app subly …
+//
+// with no `--dry-run` anywhere on the command, gated on an `environment:` and a
+// typed confirmation rather than on anything static. Neither job wrote a record.
+// So rule 2 — "a step that CAN PUBLISH, in a job that can finish without a
+// record" — had ZERO INSTANCES, and the guard PRINTED that it had zero instances
+// on every run as evidence that the branch was honestly empty, while the two
+// real publish paths sat one job away, invisible to the census reporting on them.
+//
+// A branch with no instances is a rule that CANNOT FAIL, and the output of a rule
+// that cannot fail is byte-identical to the output of a rule that passed. That is
+// the failure mode this whole file exists to catch, and the census was the shape
+// of it.
+//
+// The register's declaration is still load-bearing and is still checked: the
+// COVERAGE LOST below is asserted against the DECLARED job, so a register
+// pointing at a job that runs nothing is still a broken register. What changed is
+// that the declaration is now a FLOOR under the census rather than its ceiling.
 let rehearsals = 0;
 let publishing = 0;
 const censusByRow = [];
+/** Which (workflow, job) pairs the census actually ranged over — LISTED, never
+ *  counted. A matching count is not a matching set, and the defect above was
+ *  exactly a job missing from the set while every printed number looked sane. */
+const censusJobsListed = [];
+/** Rules 4 and 5 now see every record call in every censused job of a submission
+ *  workflow. Two register rows can declare the SAME workflow (both Apple rows
+ *  do), so a line already graded is not graded twice into two identical problems. */
+const gradedRecordLines = new Set();
 
 for (const row of submittableRows) {
   const sub = row?.submission;
@@ -447,96 +506,157 @@ for (const row of submittableRows) {
     ]);
   }
   const wf = openWorkflow(sub.workflow, `the "${row.id}" channel's submission workflow`);
-  const job = openJob(wf, sub.job, `the "${row.id}" channel's submission job`);
+  const declaredJob = openJob(wf, sub.job, `the "${row.id}" channel's submission job`);
   const scriptName = sub.script.split('/').pop();
 
-  const invocations = [];
-  for (const line of jobRunLines(job)) {
-    for (const seg of shellSegments(line.text)) {
-      if (!seg.includes(scriptName)) continue;
-      // ONE SCRIPT CAN SERVE TWO ROWS — submit-appstore.mjs takes `--channel`
-      // and validates whichever of the two Apple rows it is pointed at, because
-      // both authenticate with the same App Store Connect key. A `--channel`
-      // naming a DIFFERENT register row is that row's invocation, not this
-      // one's; counting it here would grade macOS's rehearsal against iOS twice
-      // and inflate the census the emptiness argument rests on.
-      const channelFlag = (seg.match(/--channel\s+([A-Za-z0-9._-]+)/) ?? [])[1] ?? null;
-      if (channelFlag !== null && channelFlag !== row.id && rows.some((r) => r?.id === channelFlag)) continue;
-      const interpolated = /\$\{\{/.test(seg);
-      const literalDryRun = /(^|\s)--dry-run(\s|$)/.test(seg);
-      invocations.push({ n: line.n, canPublish: !(literalDryRun && !interpolated), literalDryRun, interpolated, seg: seg.trim() });
+  /** Every invocation of THIS ROW's submission script inside ONE job. */
+  const invocationsIn = (job) => {
+    const out = [];
+    for (const line of jobRunLines(job)) {
+      for (const seg of shellSegments(line.text)) {
+        if (!seg.includes(scriptName)) continue;
+        // ONE SCRIPT CAN SERVE TWO ROWS — submit-appstore.mjs takes `--channel`
+        // and validates whichever of the two Apple rows it is pointed at, because
+        // both authenticate with the same App Store Connect key. A `--channel`
+        // naming a DIFFERENT register row is that row's invocation, not this
+        // one's; counting it here would grade macOS's rehearsal against iOS twice
+        // and inflate the census the emptiness argument rests on.
+        const channelFlag = (seg.match(/--channel\s+([A-Za-z0-9._-]+)/) ?? [])[1] ?? null;
+        if (channelFlag !== null && channelFlag !== row.id && rows.some((r) => r?.id === channelFlag)) continue;
+        const interpolated = /\$\{\{/.test(seg);
+        const literalDryRun = /(^|\s)--dry-run(\s|$)/.test(seg);
+        out.push({ n: line.n, canPublish: !(literalDryRun && !interpolated), literalDryRun, interpolated, seg: seg.trim() });
+      }
     }
-  }
-  if (invocations.length === 0) {
+    return out;
+  };
+
+  if (invocationsIn(declaredJob).length === 0) {
     coverageLost([
       `${REGISTER_REL} says the "${row.id}" channel submits via ${sub.script} in ${wf.rel} job "${sub.job}", and no step there runs it.`,
       'Either the register points at nothing or this parse has stopped seeing run steps. Both are the scan breaking, not the tree.',
     ]);
   }
 
-  const calls = recordCalls(job);
-  for (const c of calls) seenRecordLines.add(`${wf.rel}:${c.n}`);
-  const rowEnvTemplate = row.deploymentEnvironment;
+  /** EVERY job of the declared workflow whose `run:` lines name this script —
+   *  the declared one included, and it is no longer privileged. */
+  const censusJobs = [...wf.jobs.values()]
+    .filter((job) => jobRunLines(job).some((l) => l.text.includes(scriptName)))
+    .map((job) => ({ job, invocations: invocationsIn(job) }));
 
-  for (const inv of invocations) {
-    if (!inv.canPublish) {
-      rehearsals++;
-      const after = calls.filter((c) => c.n !== null);
-      if (after.length > 0) {
+  // ── THE CENSUS'S OWN REACH, CHECKED BY A DELIBERATELY DIFFERENT READER ──────
+  // `wf.lines` is the comment-blanked WHOLE FILE: no job structure, no shell
+  // splitting, no block-scalar folding. Every line of it that names this row's
+  // script and falls inside SOME job must fall inside a job the structured
+  // reader above also reached. The two disagree exactly when `jobRunLines` or
+  // `joinBlockScalars` has stopped seeing lines — and an invocation the census
+  // cannot see is a publish path rule 2 cannot grade, which this guard would then
+  // report as an EMPTY BRANCH. That report is indistinguishable from a pass,
+  // which is why this is COVERAGE LOST and not a printed note.
+  const jobOfLine = new Map();
+  for (const j of wf.jobs.values()) for (const l of j.lines) jobOfLine.set(l.n, j.name);
+  const reachedJobNames = new Set(censusJobs.map((e) => e.job.name));
+  const unreachedInvocationLines = wf.lines
+    .filter((l) => l.text.includes(scriptName) && jobOfLine.has(l.n) && !reachedJobNames.has(jobOfLine.get(l.n)))
+    .map((l) => `${wf.rel}:${l.n} — inside job "${jobOfLine.get(l.n)}"`);
+  if (unreachedInvocationLines.length > 0) {
+    coverageLost([
+      `${unreachedInvocationLines.length} line(s) of ${wf.rel} name ${scriptName} inside a job this census never reached:`,
+      ...unreachedInvocationLines,
+      `Jobs censused for "${row.id}": ${[...reachedJobNames].map((j) => `"${j}"`).join(', ') || '(none)'}.`,
+      'A flat read of the file can see them and the structured read cannot, so the parse is broken, not the tree.',
+    ]);
+  }
+
+  const rowEnvTemplate = row.deploymentEnvironment;
+  const perJob = [];
+
+  for (const { job, invocations } of censusJobs) {
+    censusJobsListed.push(`${wf.rel}#${job.name}`);
+    const calls = recordCalls(job);
+    for (const c of calls) seenRecordLines.add(`${wf.rel}:${c.n}`);
+
+    for (const inv of invocations) {
+      if (!inv.canPublish) {
+        rehearsals++;
+        const after = calls.filter((c) => c.n !== null);
+        if (after.length > 0 && !invocations.some((i) => i.canPublish)) {
+          problems.push(
+            `[10]D-9 · ${wf.rel}:${after[0].n} — job "${job.name}" writes a deployment record, and its only ` +
+              `invocation(s) of ${scriptName} are rehearsals (\`--dry-run\`, which contacts nobody). A ledger row ` +
+              'for a submission that never happened is worse than a missing one: a gap is visible, a fiction is not.',
+          );
+        }
+        continue;
+      }
+      publishing++;
+      const record = calls.find((c) => {
+        const r = resolveEnvironment(register, c.environment);
+        return r !== null && r.channel?.id === row.id && c.n > inv.n;
+      });
+      if (!record) {
         problems.push(
-          `[10]D-9 · ${wf.rel}:${after[0].n} — job "${sub.job}" writes a deployment record, and its only ` +
-            `invocation(s) of ${scriptName} are rehearsals (\`--dry-run\`, which contacts nobody). A ledger row ` +
-            'for a submission that never happened is worse than a missing one: a gap is visible, a fiction is not.',
+          `[10]D-9 · ${wf.rel}:${inv.n} — job "${job.name}" can perform a REAL submission on the "${row.id}" ` +
+            `channel (${inv.interpolated ? 'its mode is assembled from a `${{ … }}` expression, so it is not statically a rehearsal' : 'no `--dry-run` on this command'}) ` +
+            `and no later step records it. Add, as the last step of the job:\n` +
+            `      run: node tooling/ci/${RECORDER} ${String(rowEnvTemplate).replace('{app}', '<app>')} --state ${SUBMIT_TIME_STATES[0]} --listing-url <url>`,
+        );
+        continue;
+      }
+      gradeSkippability(wf.rel, job.name, record, `the record step for a real "${row.id}" submission`, `the "${row.id}" submission`);
+    }
+
+    // Rules 4 and 5 apply to EVERY record call in a submission workflow, whether
+    // or not this run classified a publishing invocation — the overstatement is
+    // wrong in a rehearsal lane too, and cheaper to catch before it is copied.
+    for (const c of calls) {
+      const key = `${wf.rel}:${c.n}`;
+      if (gradedRecordLines.has(key)) continue;
+      gradedRecordLines.add(key);
+      if (c.state !== null && !SUBMIT_TIME_STATES.includes(c.state) && !/\$\{\{/.test(c.state)) {
+        problems.push(
+          `[10]D-9 · ${wf.rel}:${c.n} records \`--state ${c.state}\` from the "${row.id}" SUBMISSION workflow. ` +
+            `A submitting run knows one fact — it submitted — and "${SUBMIT_TIME_STATES[0]}" is the only state that ` +
+            `says it. "${c.state}": ${STATE_MEANING[c.state] ?? 'not a state at all — expected one of ' + STATES.join(', ')} ` +
+            'A later run (a status poll, or a dispatch a human triggers on the review email) writes that transition.',
         );
       }
-      continue;
+      if (c.state === null) {
+        problems.push(
+          `[10]D-9 · ${wf.rel}:${c.n} records a store environment with no \`--state\`. There is no default for a ` +
+            'store channel on purpose: a forgotten flag must not be the difference between "we submitted it" and ' +
+            '"the store approved it".',
+        );
+      }
+      if (c.listingUrl === null) {
+        problems.push(
+          `[10]D-9 · ${wf.rel}:${c.n} records a store environment with no \`--listing-url\`. A store record whose ` +
+            'listing nobody can open says something shipped and gives no way to look at it — and [12]\'s cross-promo ' +
+            'and G-31\'s openStoreListing() fallback both consume exactly that field.',
+        );
+      }
     }
-    publishing++;
-    const record = calls.find((c) => {
-      const r = resolveEnvironment(register, c.environment);
-      return r !== null && r.channel?.id === row.id && c.n > inv.n;
-    });
-    if (!record) {
-      problems.push(
-        `[10]D-9 · ${wf.rel}:${inv.n} — job "${sub.job}" can perform a REAL submission on the "${row.id}" ` +
-          `channel (${inv.interpolated ? 'its mode is assembled from a `${{ … }}` expression, so it is not statically a rehearsal' : 'no `--dry-run` on this command'}) ` +
-          `and no later step records it. Add, as the last step of the job:\n` +
-          `      run: node tooling/ci/${RECORDER} ${String(rowEnvTemplate).replace('{app}', '<app>')} --state ${SUBMIT_TIME_STATES[0]} --listing-url <url>`,
-      );
-      continue;
-    }
-    gradeSkippability(wf.rel, sub.job, record, `the record step for a real "${row.id}" submission`, `the "${row.id}" submission`);
-  }
 
-  // Rules 4 and 5 apply to EVERY record call in a submission workflow, whether
-  // or not this run classified a publishing invocation — the overstatement is
-  // wrong in a rehearsal lane too, and cheaper to catch before it is copied.
-  for (const c of calls) {
-    if (c.state !== null && !SUBMIT_TIME_STATES.includes(c.state) && !/\$\{\{/.test(c.state)) {
-      problems.push(
-        `[10]D-9 · ${wf.rel}:${c.n} records \`--state ${c.state}\` from the "${row.id}" SUBMISSION workflow. ` +
-          `A submitting run knows one fact — it submitted — and "${SUBMIT_TIME_STATES[0]}" is the only state that ` +
-          `says it. "${c.state}": ${STATE_MEANING[c.state] ?? 'not a state at all — expected one of ' + STATES.join(', ')} ` +
-          'A later run (a status poll, or a dispatch a human triggers on the review email) writes that transition.',
-      );
-    }
-    if (c.state === null) {
-      problems.push(
-        `[10]D-9 · ${wf.rel}:${c.n} records a store environment with no \`--state\`. There is no default for a ` +
-          'store channel on purpose: a forgotten flag must not be the difference between "we submitted it" and ' +
-          '"the store approved it".',
-      );
-    }
-    if (c.listingUrl === null) {
-      problems.push(
-        `[10]D-9 · ${wf.rel}:${c.n} records a store environment with no \`--listing-url\`. A store record whose ` +
-          'listing nobody can open says something shipped and gives no way to look at it — and [12]\'s cross-promo ' +
-          'and G-31\'s openStoreListing() fallback both consume exactly that field.',
+    if (invocations.length > 0) {
+      perJob.push(
+        `job "${job.name}" ${invocations.length} invocation(s), ` +
+          `${invocations.filter((i) => i.canPublish).length} PUBLISHING / ${invocations.filter((i) => !i.canPublish).length} rehearsal`,
       );
     }
   }
+  censusByRow.push(`${row.id}: ${perJob.join(' + ') || 'no invocation in any job'}`);
+}
 
-  censusByRow.push(`${row.id}: ${invocations.length} invocation(s), ${invocations.filter((i) => !i.canPublish).length} rehearsal`);
+// ── THE CENSUS FLOOR — a rule that ranged over nothing may not certify ───────
+// The declared job is proven non-empty per row above, so this can only fire if
+// `wf.jobs` itself came back empty for every row. It is here anyway because the
+// number it guards is the number the emptiness report below rests on, and a zero
+// here would make that report vacuous rather than merely empty.
+if (censusJobsListed.length === 0) {
+  coverageLost([
+    'the submission census ranged over ZERO jobs, so every statement it is about to make about the publish',
+    'branch would be a statement about nothing. That is the shape this limb spent a month in.',
+  ]);
 }
 
 // ── SELF-CHECK: the accounting identity ──────────────────────────────────────
@@ -661,12 +781,47 @@ console.log(
     'across EVERY workflow, including the `serviceEnvironments` ones rule 6 cannot see. Recorded failing input, run ' +
     "against the REAL tree 2026-08-09: renaming deploy-workers.yml's `id: deploy` to `id: deployy` ⇒ exit 1.",
 );
+// ── THE CENSUS, AND WHETHER RULE 2 WAS EXERCISED AT ALL ──────────────────────
+// 🔴 THE JOBS RANGED OVER ARE LISTED, NOT COUNTED. Until 2026-08-26 this block
+// printed "the branch has NO instances today and passes over nothing" while two
+// `submit:` jobs carrying `--submit` sat in workflows the census never opened.
+// The count looked right because the census's SCOPE was wrong, and a count is
+// exactly the thing that cannot show a missing subject. So the set is printed.
+console.log(
+  // De-duplicated for the PRINT only: two register rows can declare the same
+  // workflow and the same job (both Apple rows do), and printing that job twice
+  // would make the listed set look like something it is not.
+  `⬜ SUBMISSION-RECORD CENSUS ranged over ${new Set(censusJobsListed).size} job(s), listed: ${[...new Set(censusJobsListed)].join(', ')}. ` +
+    'The register names ONE job per row and that is a floor, not a ceiling: every job of each declared submission ' +
+    'workflow whose `run:` lines name the row\'s script is censused.',
+);
 console.log(
   `⬜ SUBMISSION-RECORD LIMB: ${publishing} of ${rehearsals + publishing} submission invocation(s) can perform a REAL ` +
-    `submission${publishing === 0 ? ' — so the "must write a record" branch has NO instances today and passes over nothing' : ''}. ` +
-    `Per channel — ${censusByRow.join(' · ')}. No publisher account exists ([10]D-4 / OWNER_QUEUE A-2, A-3, A-4, A-6), ` +
-    'so a real submission is OWNER-GATED and cannot be produced by agent work. This branch bites the moment a ' +
-    '`--dry-run` is removed or made conditional.',
+    `submission. Per channel — ${censusByRow.join(' · ')}.`,
+);
+if (publishing === 0) {
+  // 🔴 NOT AN `ok`. A branch with zero instances is a rule that CANNOT FAIL, and
+  // a rule that cannot fail prints exactly what a rule that passed prints. This
+  // guard was in that state for the whole of its life until 2026-08-26 and said
+  // so in language ("passes over nothing") that read as reassurance. It now
+  // reads as what it is: this run made NO statement about the publish branch.
+  console.log('⚠️  RULE 2 WAS NOT EXERCISED — ZERO PUBLISHING INVOCATION(S) IN ANY CENSUSED JOB.');
+  console.log('    Nothing above certifies that a real submission writes a record. It certifies only that no command');
+  console.log('    in any censused job is STATICALLY a real submission today, which is a different and much weaker claim.');
+  console.log('    A rule with no instances cannot fail, and its output is indistinguishable from a rule that passed —');
+  console.log('    which is why this is printed as a GAP rather than folded into the ok line. If you expected a publish');
+  console.log('    path here, the census scope is the first thing to doubt: that is the defect fixed on 2026-08-26.');
+} else {
+  console.log(
+    `⬜ RULE 2 IS LIVE: ${publishing} publishing invocation(s) were graded, each required to be followed IN THE SAME JOB ` +
+      'by a record step for its own channel, and each such step then graded by rule 6. A `--dry-run` removed, made ' +
+      'conditional, or assembled from a `${{ … }}` expression moves this number.',
+  );
+}
+console.log(
+  '⬜ No publisher account exists ([10]D-4 / OWNER_QUEUE A-2, A-3, A-4, A-6), so a real submission is OWNER-GATED and ' +
+    'cannot be produced by agent work. That gates the ACT, not this check: the publish branch is graded statically ' +
+    'from the YAML, on every run, whether or not anybody can log in.',
 );
 if (outsideDeclaredLanes.length > 0) {
   console.log(
@@ -681,9 +836,15 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+// 🔴 THE OK LINE CARRIES RULE 2's EXERCISE STATE, because this is the line a
+// reader scanning a CI log actually sees. "ok" over an unexercised branch is the
+// sentence this guard spent its life printing, and the fix is not to stop
+// passing — the tree can legitimately hold no publish path — it is to stop
+// letting "ok" mean two different things.
 console.log(
-  `ok  publish records — ${REQUIRED_COVERAGE.servedRows} served channel(s) → ${REQUIRED_COVERAGE.requiredEnvironments} ` +
+  `ok  publish records${publishing === 0 ? ' ⚠️ (RULE 2 NOT EXERCISED — 0 publishing invocation(s))' : ` (rule 2 exercised on ${publishing} publishing invocation(s))`} — ` +
+    `${REQUIRED_COVERAGE.servedRows} served channel(s) → ${REQUIRED_COVERAGE.requiredEnvironments} ` +
     `required environment(s), all recorded by their declared lane job (${deployRecordCalls} call(s)); ` +
     `${REQUIRED_COVERAGE.submittableRows} submittable channel(s) → ${rehearsals + publishing} submission invocation(s) ` +
-    `classified in their declared job; ${flatHits.length} record call(s) found flat, all attributed.`,
+    `classified across ${new Set(censusJobsListed).size} censused job(s); ${flatHits.length} record call(s) found flat, all attributed.`,
 );

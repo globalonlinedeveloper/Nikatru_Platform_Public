@@ -1653,6 +1653,170 @@ async function ghJson(path) {
   return res.json();
 }
 
+// 267011 = 0x00041303 = SCHED_S_TASK_HAS_NOT_RUN. Task Scheduler's own "it is
+// registered and the trigger has not fired yet" code, and the ONLY non-zero
+// LastTaskResult that is not a failure.
+const SCHED_S_TASK_HAS_NOT_RUN = 267011;
+
+/** `4294770688` tells a reader nothing they can act on; `4294770688 (0xFFFD0000)`
+ *  gives them a string they can search. Both forms, always, because the decimal
+ *  is what PowerShell and this file's own comparisons print and the hex is what
+ *  every HRESULT table is indexed by. This decodes the SHAPE of the number and
+ *  deliberately asserts NOTHING about what a particular code means — the guard
+ *  does not own that mapping and inventing one would be a claim it cannot check. */
+export function formatTaskResult(n) {
+  if (!Number.isInteger(n)) return String(n);
+  return `${n} (0x${(n < 0 ? n >>> 0 : n).toString(16).toUpperCase().padStart(8, '0')})`;
+}
+
+/** THE THREE STATES A SCHEDULED TASK CAN BE IN, kept apart because they are three
+ *  different facts and exactly one of them is "fine":
+ *
+ *    1. IT DOES NOT EXIST          -> `missing`     (hard failure: a stale register row)
+ *    2. IT EXISTS AND LAST FAILED  -> `lastSuccessMs: NaN` + a LOUD detail  ← this host, today
+ *    3. IT EXISTS AND NEVER RAN    -> `lastSuccessMs: NaN` + a different detail
+ *
+ *  and, cutting across all three, the fourth outcome that is not a state of the
+ *  TASK at all but a state of the READER:
+ *
+ *    0. THE READ ITSELF FAILED     -> `unreadable`  (a print, never a pass, NEVER `missing`)
+ *
+ *  🔴 4 IS NOT 1. "I could not tell" is not "it is fine" and it is ALSO not "it is
+ *  absent" — the distinction this file already draws in its [14]O-3 header and in
+ *  `classifyRunRecord`. Collapsing 0 into 1 is precisely the defect fixed on
+ *  2026-08-26 and described at length on `probeWindowsTasks` below. */
+export function classifyScheduledTaskRow(row) {
+  const task = row?.task;
+  const state = row?.state;
+
+  // ── 0 · THE READ FAILED, and NOT because the task is absent. ───────────────
+  if (state === 'threw') {
+    return {
+      unreadable: true,
+      why:
+        `Get-ScheduledTaskInfo threw for "${task}", and what it threw was NOT "no such task": ${row.why}. ` +
+        'That is "I could not tell whether this task exists or ran", which is neither "it is fine" nor "it is absent".',
+    };
+  }
+  if (state !== 'read' && state !== 'absent') {
+    return {
+      unreadable: true,
+      why: `the probe returned no usable state for "${task}" (state=${JSON.stringify(state ?? null)}), so nothing about it was actually read`,
+    };
+  }
+
+  // ── 1 · THE TASK DOES NOT EXIST. An ANSWERED query, so a hard failure. ─────
+  if (state === 'absent') {
+    return {
+      missing: true,
+      why: `no scheduled task named "${task}" exists on this host — Get-ScheduledTaskInfo answered ObjectNotFound, it did not merely fail to be read`,
+    };
+  }
+
+  // ── The task EXISTS and was read. Everything below is about its RESULT. ────
+  const result = row.result;
+  if (result !== null && result !== undefined && typeof result !== 'number') {
+    // A string here would make `result === 0` silently false and report a
+    // HEALTHY task as failing. Refuse to compare rather than compare wrongly.
+    return {
+      unreadable: true,
+      why:
+        `"${task}" EXISTS, but its LastTaskResult arrived as a ${typeof result} (${JSON.stringify(result)}) rather ` +
+        'than a number, so it cannot be compared to 0 and no verdict about the run is available',
+    };
+  }
+
+  const ran = row.lastRun ? Date.parse(row.lastRun) : NaN;
+  const noRunTime = !row.lastRun || Number.isNaN(ran) || new Date(ran).getUTCFullYear() < 2000;
+
+  // ── 3 · IT EXISTS AND HAS NEVER RUN. ──────────────────────────────────────
+  if (noRunTime || result === SCHED_S_TASK_HAS_NOT_RUN) {
+    const why =
+      result === SCHED_S_TASK_HAS_NOT_RUN
+        ? `LastTaskResult = ${formatTaskResult(result)} = SCHED_S_TASK_HAS_NOT_RUN`
+        : `it reports no usable LastRunTime (${JSON.stringify(row.lastRun ?? null)})`;
+    return {
+      lastSuccessMs: NaN,
+      detail: `"${task}" EXISTS and is scheduled, and HAS NEVER RUN — ${why}. The trigger has not fired even once.`,
+    };
+  }
+
+  if (result === null || result === undefined) {
+    return {
+      unreadable: true,
+      why: `"${task}" EXISTS and reports a LastRunTime of ${row.lastRun}, but no LastTaskResult came back at all, so whether that run succeeded is unknown`,
+    };
+  }
+
+  // ── The only "fine" outcome in this whole function. ────────────────────────
+  if (result === 0) {
+    return {
+      lastSuccessMs: ran,
+      detail: `"${task}" EXISTS and its last run at ${row.lastRun} SUCCEEDED (LastTaskResult = ${formatTaskResult(0)}).`,
+    };
+  }
+
+  // ── 2 · IT EXISTS AND IT IS FAILING. THE LOUD ONE. ────────────────────────
+  return {
+    lastSuccessMs: NaN,
+    detail:
+      `"${task}" EXISTS AND IS FAILING. It RAN at ${row.lastRun} and returned LastTaskResult = ` +
+      `${formatTaskResult(result)}, which is not 0, so that run did not succeed. ` +
+      'THIS IS NOT A MISSING TASK: the schedule is firing on time and the work under it is failing, and those ' +
+      'two have opposite fixes — creating a task that already exists fixes nothing and leaves the real failure ' +
+      'running. Search the hex form above for the code; this guard reports the value and deliberately does not ' +
+      'interpret it. Task Scheduler keeps only the MOST RECENT result, so this record contains no successful ' +
+      'run at all — not merely a stale one.',
+  };
+}
+
+/** Pure. Turns ONE `spawnSync` outcome into the per-task probe map, so every
+ *  branch below — wrong OS, powershell missing, non-JSON output, and each of the
+ *  four states above — is reachable from a test on any platform without this
+ *  host needing to own any particular scheduled task. `probeWindowsTasks` is the
+ *  impure shell around it and holds no verdict logic of its own. */
+export function readScheduledTaskProbe(names, spawned = {}) {
+  const out = new Map();
+  const everyName = (v) => {
+    for (const n of names) out.set(n, v);
+    return out;
+  };
+
+  const platform = spawned.platform ?? process.platform;
+  if (platform !== 'win32') {
+    return everyName({
+      unreadable: true,
+      why: `this runner is ${platform}, and Task Scheduler exists only on the Windows host the task runs on`,
+    });
+  }
+  if (spawned.error || spawned.status !== 0) {
+    return everyName({
+      unreadable: true,
+      why: `powershell could not be run here (${spawned.error?.message ?? `exit ${spawned.status}`})`,
+    });
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(spawned.stdout);
+  } catch (e) {
+    return everyName({ unreadable: true, why: `Get-ScheduledTaskInfo output was not JSON (${e.message})` });
+  }
+  if (!Array.isArray(parsed)) {
+    return everyName({ unreadable: true, why: 'Get-ScheduledTaskInfo output parsed as JSON but was not the array of task rows the probe emits' });
+  }
+
+  for (const row of parsed) out.set(row?.task, classifyScheduledTaskRow(row));
+  // 🔴 A NAME THE SCRIPT NEVER ANSWERED FOR IS `unreadable`, NOT `missing`.
+  // Silence is not an answer, and the same rule that forbids an overflow from
+  // impersonating an absent task forbids a dropped row from doing it.
+  for (const n of names) {
+    if (!out.has(n)) {
+      out.set(n, { unreadable: true, why: `the probe returned no row for "${n}" at all, so nothing was read about it` });
+    }
+  }
+  return out;
+}
+
 /** Windows Task Scheduler. ONE PowerShell process for every task, and the
  *  script is passed as -EncodedCommand so a task name containing spaces or
  *  quotes cannot become a shell-quoting bug that reads as "task not found".
@@ -1661,13 +1825,74 @@ async function ghJson(path) {
  *  red verdict means: it keeps only the MOST RECENT result. `LastTaskResult = 1`
  *  therefore does not merely mean "the last run failed" — it means THERE IS NO
  *  RECORD OF ANY SUCCESS to return, which is exactly what the acceptance asks
- *  for and exactly what these two rows cannot produce today. */
+ *  for and exactly what these two rows cannot produce today.
+ *
+ *  ══ 🔴 THE INVERSION THIS PROBE USED TO PERFORM · FIXED 2026-08-26 ══════════
+ *  `LastTaskResult` is a `System.UInt32` carrying an HRESULT-shaped value. The
+ *  emitter below used to read `result=[int]$i.LastTaskResult`, and on this host
+ *
+ *      [int]4294770688   ->  THROWS "Value was either too large or too small
+ *                             for an Int32."
+ *
+ *  4294770688 is 0xFFFD0000, the REAL current value for "NIKATRU daily backup".
+ *  The throw landed in this probe's OWN catch, the catch wrote `found=$false`,
+ *  and the guard printed:
+ *
+ *      the mechanism its `recordQuery` names DOES NOT EXIST: no scheduled task
+ *      named "NIKATRU daily backup" exists on this host
+ *
+ *  while, measured by hand the same minute, `Get-ScheduledTask -TaskName
+ *  "*NIKATRU*"` returned that task at TaskPath `\` in State `Ready`, and
+ *  `Get-ScheduledTaskInfo` returned LastRunTime 2026-08-26 10:00:00,
+ *  LastTaskResult 4294770688, NextRunTime 2026-08-26 18:00:00. It had fired that
+ *  morning. It never vanished.
+ *
+ *  🔴 THE INVERSION IS THE POINT, and it is why this is not a typo worth a
+ *  one-line fix and no comment. A task that SUCCEEDS carries a small result (0)
+ *  that casts fine and reports healthy. A task that FAILS carries a large
+ *  HRESULT that overflows Int32 and was reported as NOT EXISTING. So the probe
+ *  was reliable ONLY while there was nothing wrong: it was blindest exactly when
+ *  there was something to see, and it silently converted the most important
+ *  finding it can make — "your scheduled duty is running and failing" — into a
+ *  different, quieter and actively misleading one: "you never set it up".
+ *  Anybody acting on that message goes and creates a task that already exists,
+ *  and the real failure survives the fix that was supposed to end it. It also
+ *  corrupts the project record: "the backup has been dead six days, the task
+ *  points at a pre-rename path" and "the backup fires on schedule and fails" are
+ *  different facts with different fixes, and this probe asserted the first while
+ *  the host was in the second.
+ *
+ *  THE CAST IS `[long]`, chosen against the alternatives rather than by default:
+ *    · `[int]`    — Int32. Cannot hold 0x80000000..0xFFFFFFFF. THIS DEFECT.
+ *    · `[uint32]` — covers the whole documented range, but THROWS on a negative
+ *                   input, so the day this property is handed back already
+ *                   signed (-131072 for 0xFFFE0000) the identical
+ *                   overflow-into-catch reappears at the other end of the range.
+ *                   A cast that can throw inside a try whose catch means
+ *                   "absent" is the bug, not the width.
+ *    · no cast    — leaves the JSON type to whatever the CIM provider hands
+ *                   back. A value arriving as a STRING makes `result === 0` and
+ *                   `result === SCHED_S_TASK_HAS_NOT_RUN` silently false and
+ *                   would report a HEALTHY task as failing. The comparisons
+ *                   downstream are strict, so the type must be guaranteed here.
+ *    · `[long]`   — Int64. TOTAL over the full UInt32 range AND the full Int32
+ *                   range, so it cannot throw for either shape; every value it
+ *                   can produce is exactly representable as an IEEE754 double,
+ *                   so JSON.parse round-trips it losslessly and the `=== 0` and
+ *                   `=== 267011` tests stay exact. CHOSEN.
+ *  `$null` is passed through as `$null` instead of being cast, because
+ *  `[long]$null` is 0 and would turn "has never run" into "the last run
+ *  succeeded" — the same class of lie, one branch over.
+ *
+ *  AND THE CATCH IS NOW HONEST. It used to collapse EVERY exception into "does
+ *  not exist", which is what let a numeric overflow impersonate an absent task.
+ *  It now separates the ObjectNotFound that Get-ScheduledTaskInfo raises for a
+ *  genuinely absent task (measured on this host: CategoryInfo.Category =
+ *  ObjectNotFound, FullyQualifiedErrorId = "HRESULT 0x80070002,Get-ScheduledTaskInfo")
+ *  from anything else, and reports anything else as `unreadable` WITH the message.
+ *  ═══════════════════════════════════════════════════════════════════════════ */
 function probeWindowsTasks(names) {
-  const out = new Map();
-  if (process.platform !== 'win32') {
-    for (const n of names) out.set(n, { unreadable: true, why: `this runner is ${process.platform}, and Task Scheduler exists only on the Windows host the task runs on` });
-    return out;
-  }
+  if (process.platform !== 'win32') return readScheduledTaskProbe(names, { platform: process.platform });
   const list = names.map((n) => `'${String(n).replace(/'/g, "''")}'`).join(',');
   const ps = [
     "$ErrorActionPreference='Stop'",
@@ -1678,9 +1903,18 @@ function probeWindowsTasks(names) {
     '    $i = Get-ScheduledTaskInfo -TaskName $n -ErrorAction Stop',
     '    $lr = $null',
     "    if ($i.LastRunTime) { $lr = $i.LastRunTime.ToUniversalTime().ToString('o') }",
-    '    $out += [pscustomobject]@{ task=$n; found=$true; lastRun=$lr; result=[int]$i.LastTaskResult }',
+    // 🔴 [long], NOT [int]. See the block comment above: [int] overflows on an
+    // HRESULT-shaped UInt32 and the throw would be caught below as "absent".
+    '    $rc = $null',
+    '    if ($null -ne $i.LastTaskResult) { $rc = [long]$i.LastTaskResult }',
+    "    $out += [pscustomobject]@{ task=$n; state='read'; lastRun=$lr; result=$rc; why=$null }",
     '  } catch {',
-    '    $out += [pscustomobject]@{ task=$n; found=$false; lastRun=$null; result=$null }',
+    // 🔴 THE HONEST CATCH. "No such task" and "something else went wrong" are
+    // different answers and only the first one is about the task.
+    "    $absent = ($_.CategoryInfo.Category -eq 'ObjectNotFound') -or ($_.FullyQualifiedErrorId -like '*0x80070002*') -or ($_.FullyQualifiedErrorId -like '*NotFound*')",
+    "    $state = if ($absent) { 'absent' } else { 'threw' }",
+    '    $msg = ("" + $_.Exception.GetType().Name + ": " + $_.Exception.Message)',
+    '    $out += [pscustomobject]@{ task=$n; state=$state; lastRun=$null; result=$null; why=$msg }',
     '  }',
     '}',
     'ConvertTo-Json -InputObject @($out) -Compress',
@@ -1690,42 +1924,7 @@ function probeWindowsTasks(names) {
     encoding: 'utf8',
     timeout: LOCAL_PROBE_TIMEOUT_MS,
   });
-  if (r.error || r.status !== 0) {
-    const why = `powershell could not be run here (${r.error?.message ?? `exit ${r.status}`})`;
-    for (const n of names) out.set(n, { unreadable: true, why });
-    return out;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(r.stdout);
-  } catch (e) {
-    const why = `Get-ScheduledTaskInfo output was not JSON (${e.message})`;
-    for (const n of names) out.set(n, { unreadable: true, why });
-    return out;
-  }
-  for (const row of parsed) {
-    if (!row.found) {
-      out.set(row.task, { missing: true, why: `no scheduled task named "${row.task}" exists on this host` });
-      continue;
-    }
-    // 267011 = SCHED_S_TASK_HAS_NOT_RUN.
-    const ran = row.lastRun ? Date.parse(row.lastRun) : NaN;
-    if (!row.lastRun || Number.isNaN(ran) || new Date(ran).getUTCFullYear() < 2000 || row.result === 267011) {
-      out.set(row.task, { lastSuccessMs: NaN, detail: `"${row.task}" is scheduled and has NEVER RUN.` });
-      continue;
-    }
-    if (row.result === 0) {
-      out.set(row.task, { lastSuccessMs: ran, detail: `"${row.task}" LastTaskResult = 0 at ${row.lastRun}.` });
-      continue;
-    }
-    out.set(row.task, {
-      lastSuccessMs: NaN,
-      detail:
-        `"${row.task}" LastTaskResult = ${row.result} at ${row.lastRun}. Task Scheduler keeps only the MOST ` +
-        'RECENT result, so this record contains no successful run at all — not merely a stale one.',
-    });
-  }
-  return out;
+  return readScheduledTaskProbe(names, { platform: 'win32', error: r.error, status: r.status, stdout: r.stdout });
 }
 
 /** The newest SUCCESSFUL run for the declared event. `event=schedule` matters:
