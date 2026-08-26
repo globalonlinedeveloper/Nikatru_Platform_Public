@@ -50,16 +50,50 @@
 // route INPUTS, not a route list.
 //
 // ── 🔴 WHAT THIS SWEEP FOUND, MEASURED 2026-08-26 ────────────────────────────
-// 13 routes, 37 interactive controls, 28 reachable by Tab, 9 OUTSIDE THE TAB
-// ORBIT. Three screens carry all nine:
+// 13 routes, 37 interactive controls, 34 reachable by Tab, 3 OUTSIDE THE TAB
+// ORBIT. Two screens carry all three, and every one of the three is a duplicate
+// hit target rather than a lost function:
 //
-//   /sign-up        5 of 9  — the two inline legal links (Terms, Privacy) and
-//                             the two consent SENTENCES.
-//   /reaccept-terms 2 of 5  — the same two links and the one consent sentence.
-//   /sub/:id        2 of 4  — "Back" and "More options", the app-bar actions.
-//                             The same pair home carried until 2026-08-25.
+//   /sign-up        7 of 9  — the two consent SENTENCES.
+//   /reaccept-terms 4 of 5  — the one consent sentence.
+//   /sub/:id        4 of 4  — nothing off the orbit.
 //
-// ── 🔴 AND SIX OF THOSE NINE ARE A DEFECT. THREE ARE NOT, AND THIS FILE SAID
+// ── 🔴 IT WAS 28 / 9 EARLIER THE SAME DAY. WHAT MOVED, AND WHY ───────────────
+// The nine split 6 + 3 (see the section below, written when the split was
+// found). THE SIX ARE FIXED. `legal_consent_fields.dart`'s `_LegalLink` and
+// `subscription_detail_screen.dart`'s `_iconButton` were rebuilt on
+// `packages/design_system`'s `FocusableTap` — the same primitive, and the same
+// one-line substitution, that took `/sign-in` from 4-of-8 to 8-of-8 and
+// `/settings` from 9-of-27 to 25-of-27 on 2026-08-25, and that the footer
+// `_LegalLink` in `features/shared/widgets.dart` took in that increment.
+//
+//   /sign-up        5 -> 7  — Terms and Privacy joined the orbit.
+//   /reaccept-terms 2 -> 4  — the SAME two links: one widget, two routes.
+//   /sub/:id        2 -> 4  — "Back" and "More options", the app bar.
+//
+// ⚠️ NO CONTROL COUNT MOVED ON ANY ROUTE, and that is the shape of an
+// inoperable-control fix as opposed to a deletion. 37 controls before, 37
+// after: `FocusableTap` wraps each control in a `FocusableActionDetector` and
+// keeps the `GestureDetector` with an `onTap` that this rig counts, so what
+// changed is which side of the reachable/dead line each one falls on. A fix
+// that had moved `controls` too would have been a control removed, and the
+// `SC 2.1.1` case says so in its own `reason`.
+//
+// ⚠️ AND THE THREE DUPLICATES ARE STILL OFF THE ORBIT ON PURPOSE. Making the
+// consent sentences focusable would have taken the numbers to 37 / 37 and
+// FIXED NOTHING: a Tab stop that activates a `Checkbox` the previous Tab stop
+// already reached is a second stop for one function, which costs a keyboard
+// user a press and tells a screen-reader user nothing new. The 3 is a pin on
+// the duplicates staying duplicates.
+//
+// 🔴 SO WHAT IS LEFT IS A ZERO, AND IT IS THE HALF WORTH SAYING PLAINLY: across
+// the 13 routes this file sweeps there is now NO control whose FUNCTION a
+// keyboard cannot reach. That is not a claim about the app — the sibling file's
+// three routes and the shell's own nav bar are measured elsewhere and the
+// register carries the rest — it is a claim about these thirteen, and the
+// numbers above are how it is checked.
+//
+// ── 🔴 SIX OF THE NINE WERE A DEFECT. THREE WERE NOT, AND THIS FILE SAID
 //    THEY WERE. CORRECTED 2026-08-26, BY MEASUREMENT, NOT BY ARGUMENT ─────────
 // Being outside the Tab orbit is what the rig can see. "Keyboard-dead" is a
 // claim about a FUNCTION, and the two are not the same thing when a screen
@@ -91,32 +125,38 @@
 // than not measuring: somebody "fixes" a working consent box, or stops
 // believing the sweep.
 //
-// 🔴 SO THE HONEST SPLIT OF THE NINE IS 6 + 3, AND BOTH HALVES ARE ASSERTED:
-//   · 6 GENUINELY KEYBOARD-INOPERABLE FUNCTIONS. The four `_LegalLink`s (Terms
-//     and Privacy, on both consent screens) and the two `/sub/:id` app-bar
-//     actions. Every one is the shape the sibling file named —
-//     `Semantics(link:/button: true)` over a hand-rolled `GestureDetector`,
-//     which tells a screen reader what a control IS and creates no `FocusNode`,
-//     so it does nothing whatever for a keyboard. A keyboard user cannot open
-//     the document they are being asked to agree to, and cannot leave the
-//     detail screen by any door on it. The fix is the one that already landed
-//     for login and home: `design_system`'s `FocusableTap`.
+// 🔴 SO THE HONEST SPLIT OF THE NINE WAS 6 + 3, AND BOTH HALVES ARE ASSERTED:
+//   · 6 GENUINELY KEYBOARD-INOPERABLE FUNCTIONS — ✅ FIXED, see the section
+//     above. The four `_LegalLink`s (Terms and Privacy, on both consent
+//     screens) and the two `/sub/:id` app-bar actions. Every one was the shape
+//     the sibling file named — `Semantics(link:/button: true)` over a
+//     hand-rolled `GestureDetector`, which tells a screen reader what a control
+//     IS and creates no `FocusNode`, so it did nothing whatever for a keyboard.
+//     A keyboard user could not open the document they were being asked to
+//     agree to, and could not leave the detail screen by any door on it. The
+//     fix is the one that had already landed for login and home:
+//     `design_system`'s `FocusableTap`.
 //   · 3 DUPLICATE HIT TARGETS whose function is reachable — the consent
-//     sentences. Counted, named as duplicates, and PROVEN redundant by the
-//     Space-key cases below rather than argued away. If the box they duplicate
-//     ever stops being reachable, those cases go red and these three become a
-//     defect for real.
+//     sentences. NOT fixed, because there is nothing to fix. Counted, named as
+//     duplicates, and PROVEN redundant by the Space-key cases below rather than
+//     argued away. If the box they duplicate ever stops being reachable, those
+//     cases go red and these three become a defect for real.
 //
-// ⚠️ THE COUNTS DID NOT MOVE, AND THAT IS THE POINT OF RECORDING THIS. 37 / 28
-// / 9 were correct measurements the whole time; what was false was the sentence
-// attached to them. The file was GREEN BECAUSE ITS EXPECTATIONS AGREED WITH ITS
-// OWN FALSE BELIEF — the number and the claim matched each other and only one
-// of them was checked against the widgets.
+// ⚠️ THE COUNTS DID NOT MOVE WHEN THE SPLIT WAS FOUND, AND THAT IS THE POINT OF
+// RECORDING IT. 37 / 28 / 9 were correct measurements the whole time; what was
+// false was the sentence attached to them. The file was GREEN BECAUSE ITS
+// EXPECTATIONS AGREED WITH ITS OWN FALSE BELIEF — the number and the claim
+// matched each other and only one of them was checked against the widgets. The
+// counts moved LATER THE SAME DAY, when the widgets changed, and the two events
+// are kept apart here on purpose: one was a correction to prose, the other is a
+// fix to code, and a file that ran them together would look like a number
+// edited to suit an argument.
 //
-// ⚠️ THESE ARE PINS ON A FAILING STATE, exactly as the sibling file's are. Each
-// goes red when a control is ADDED and when one is FIXED, and the second is the
-// point: a sweep that only fires on regression records today's failure as the
-// standard.
+// ⚠️ THESE ARE STILL PINS IN BOTH DIRECTIONS, exactly as the sibling file's
+// are. Each goes red when a control is ADDED and when one is FIXED, and the
+// second half is still the point even now that the six are done: the remaining
+// three are pinned AT THREE so that "fixing" a duplicate — adding a redundant
+// Tab stop — is as loud as regressing a real one.
 //
 // ── ⚠️ TWO SCREENS REPORT ZERO CONTROLS, AND THAT IS A MEASUREMENT ───────────
 // `/budget` builds no tap-control at all (it is a read-only surface) and
@@ -205,6 +245,32 @@
 //     stronger, nothing loosened. Mutant A was re-run after the correction and
 //     still reddens unchanged: rc=1, one case,
 //     "/verify-email: 2 of 3 controls are reachable by Tab, not 3".
+//   E · ADDED LATER THE SAME DAY, WITH THE FIX, AND IT IS THE ONE THAT MATTERS
+//     FOR IT: A NOW-REACHABLE CONTROL PUT BACK OUTSIDE THE ORBIT. A sweep whose
+//     mutant stops reddening once the defect is fixed has been broken BY the
+//     fix, so the regression these new numbers exist to prevent was driven for
+//     real. `/sign-up` ALONE was wrapped in a `FocusTraversalGroup` whose policy
+//     drops the first link-role node from `sortDescendants` — one of the two
+//     legal links stays present, painted and programmatically focusable, and
+//     simply leaves the Tab order, which is the exact user-visible shape of the
+//     defect fixed today. Mutation made INSIDE THIS FILE; no `lib/` file was
+//     edited. rc=1.
+//     🔴 TWO CASES RED, NOT ONE, AND THAT IS THE DESIGN RATHER THAN NOISE:
+//       · `/sign-up · keyboard SC 2.1.1 · 7 of 9 controls are reachable by Tab`
+//         — "/sign-up: 6 of 9 controls are reachable by Tab, not 7". The COUNT.
+//       · `/sign-up · Tab reaches the consent box and Space ticks it` — the
+//         NAMING half, on `dead.length` and on the dropped link owning no stop.
+//     Neither is redundant, and mutant A is the proof of that rather than an
+//     assertion of it: `/verify-email` carries no named case, so the SAME
+//     mutation there reddens EXACTLY ONE. A route that carries both halves
+//     reddens both — which is what "a count does not convey WHICH control"
+//     means once it is finally exercised. A mutant that reddened only the count
+//     would leave `7 of 9` satisfiable by deleting two controls; one that
+//     reddened only the naming case would leave the per-route table unpinned.
+//     ⚠️ AND THE OTHER TWELVE ROUTES STAYED GREEN, `/reaccept-terms` INCLUDED —
+//     whose two links are the SAME widget. The policy is scoped to one route,
+//     so the blast radius above is one screen's assertion set and not a
+//     suite-wide wobble. 80 of 82 green under the mutant; 82 of 82 restored.
 //
 // ✅ THE RIG IS CROSS-CHECKED AGAINST THE SIBLING. `/sign-in`, `/home` and
 // `/settings` are in [kAlreadySwept] and NOT swept here, but the same rig was
@@ -270,14 +336,25 @@ const Map<String, Object?> kExtra = <String, Object?>{
 
 /// (interactive controls found, controls the Tab orbit reaches) per route.
 ///
-/// 🔴 MEASURED 2026-08-26, NOT INTENDED. Nine of these thirty-seven controls
-/// sit OUTSIDE the Tab orbit and the numbers say so. ⚠️ `reachable` is exactly
-/// that — how many controls the orbit lands on — and it is NOT a count of
-/// keyboard-operable FUNCTIONS: six of the nine are genuinely inoperable and
-/// three are duplicate hit targets for a `Checkbox` a keyboard reaches and
-/// ticks. The header carries the split and the cases below assert both halves;
-/// reading these pairs as a defect count is the error this file itself
-/// published until 2026-08-26.
+/// 🔴 MEASURED 2026-08-26, NOT INTENDED. THREE of these thirty-seven controls
+/// sit OUTSIDE the Tab orbit and the numbers say so.
+///
+/// ⚠️ IT WAS NINE UNTIL THE SAME DAY, AND THE SIX THAT LEFT ARE THE SIX THIS
+/// FILE CALLED GENUINELY INOPERABLE. `legal_consent_fields.dart`'s four
+/// `_LegalLink`s and `subscription_detail_screen.dart`'s two `_iconButton`s
+/// were rebuilt on `design_system`'s `FocusableTap`, so `/sign-up` went 5 -> 7,
+/// `/reaccept-terms` 2 -> 4 and `/sub/:id` 2 -> 4. No control count moved on
+/// any route: the fix is a substitution INSIDE each control, and `FocusableTap`
+/// still builds the `GestureDetector` with an `onTap` that this rig counts.
+///
+/// ⚠️ `reachable` is exactly that — how many controls the orbit lands on — and
+/// it is NOT a count of keyboard-operable FUNCTIONS. The three that remain are
+/// ALL duplicate hit targets for a `Checkbox` a keyboard reaches and ticks, and
+/// they are deliberately still off the orbit: making them focusable would add a
+/// Tab stop that activates something the user has already reached. The header
+/// carries the split and the cases below assert both halves; reading these
+/// pairs as a defect count is the error this file itself published earlier on
+/// 2026-08-26.
 /// Each pair goes red in BOTH directions — a control added, and a control
 /// fixed — because a number that only moves on regression is a record of
 /// today's failure rather than a measurement of it.
@@ -290,13 +367,21 @@ const Map<String, Object?> kExtra = <String, Object?>{
 const Map<String, ({int controls, int reachable})> kExpected =
     <String, ({int controls, int reachable})>{
       '/scan': (controls: 1, reachable: 1),
-      '/sign-up': (controls: 9, reachable: 5),
+      // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
+      // control count did NOT move — `FocusableTap` still builds a
+      // `GestureDetector` with an `onTap`, so the rig counts the same nine.
+      '/sign-up': (controls: 9, reachable: 7),
       '/check-inbox': (controls: 1, reachable: 1),
       '/verify-email': (controls: 3, reachable: 3),
-      '/reaccept-terms': (controls: 5, reachable: 2),
+      // 2 -> 4, and it is the SAME TWO LINKS: this screen renders
+      // `LegalConsentFields` too, so one widget fix moved two routes.
+      '/reaccept-terms': (controls: 5, reachable: 4),
       '/reset-password': (controls: 1, reachable: 1),
       '/notifications': (controls: 1, reachable: 1),
-      '/sub/:id': (controls: 4, reachable: 2),
+      // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
+      // and `More options` are the app bar; `_iconButton` now builds on
+      // `FocusableTap`.
+      '/sub/:id': (controls: 4, reachable: 4),
       '/paywall': (controls: 0, reachable: 0),
       '/manage-plan': (controls: 2, reachable: 2),
       '/calendar': (controls: 7, reachable: 7),
@@ -375,6 +460,38 @@ String _label(Element e) {
 
   e.visitChildren(down);
   return painted ?? e.widget.runtimeType.toString();
+}
+
+/// True when the nearest ancestor of [e] that DECLARES a link role declares it
+/// true.
+///
+/// ⚠️ THE ROLE, NOT THE LABEL — which is why this is not `_label` with a
+/// different return type. `_label` skips past any `Semantics` whose label is
+/// null, and `FocusableTap` deliberately leaves `label` null for a control whose
+/// own painted text is its name, so a label-hunting walk sails straight past the
+/// very annotation that says "this is a link". Roles are compared here and
+/// labels never are: `properties.link` is a bool the widget code sets, not a
+/// translated string an .arb edit could move.
+///
+/// 🔴 "DECLARES", NOT "NEAREST". MEASURED 2026-08-26: a walk that stopped at the
+/// first `Semantics` ancestor found NOTHING, because `Focus` contributes a
+/// `Semantics` of its own between the control and its annotation — the ancestor
+/// chain under a `FocusableTap` reads `DecoratedBox, Semantics, Focus, …,
+/// Semantics, FocusableTap`, and the FIRST of those two says nothing about a
+/// role. `link == null` is exactly the difference between "this annotation is
+/// silent on the question" and "this annotation answers it", so the walk skips
+/// the silent ones and stops at the first that answers.
+bool _declaresLink(Element e) {
+  bool? declared;
+  e.visitAncestorElements((Element a) {
+    final Widget w = a.widget;
+    if (w is Semantics && w.properties.link != null) {
+      declared = w.properties.link;
+      return false;
+    }
+    return true;
+  });
+  return declared ?? false;
 }
 
 /// One route's measurement.
@@ -816,14 +933,22 @@ void main() {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 🔴 THE THREE SCREENS THAT CARRY ALL NINE OFF-ORBIT CONTROLS, NAMED — AND
-  // THE TWO WHERE OFF-ORBIT DOES NOT MEAN INOPERABLE.
+  // 🔴 THE THREE SCREENS THAT CARRIED ALL NINE OFF-ORBIT CONTROLS, NAMED — AND
+  // THE TWO WHERE OFF-ORBIT NEVER MEANT INOPERABLE.
   //
   // The counts above go red if a dead control is fixed, but a count does not
-  // convey WHICH control — `/sign-up` at `5 of 9` would also be satisfied by
-  // deleting four controls, and deleting the consent checkbox is not a fix. So
-  // each of the three screens gets a case that names what a keyboard cannot
-  // reach on it, in the terms the screen itself uses.
+  // convey WHICH control — `/sign-up` at `7 of 9` would also be satisfied by
+  // deleting two controls, and deleting the consent checkbox is not a fix. So
+  // each of the three screens gets a case that names what a keyboard reaches on
+  // it and what it does not, in the terms the screen itself uses.
+  //
+  // ⚠️ THE GROUP KEEPS ITS NAME THOUGH SIX OF THE NINE ARE FIXED, because two
+  // of the three cases still name something a keyboard does not reach and the
+  // third now asserts the opposite of what it used to. A `/sub/:id` that
+  // asserts nothing is dead is doing MORE work than the one that asserted two
+  // were: it has to name the pair and put them on the orbit, not merely count
+  // an absence — an empty dead set is also what deleting both buttons looks
+  // like.
   //
   // 🔴 AND ON THE TWO CONSENT SCREENS THE CASE ALSO PRESSES SPACE. A count of
   // off-orbit `GestureDetector`s cannot tell a keyboard-dead control from a
@@ -843,13 +968,31 @@ void main() {
     GoRoute routeAt(String path) =>
         screenBearing.firstWhere((GoRoute r) => r.path == path);
 
-    /// The Tab stops that lie inside [box].
+    /// The Tab stops that belong to [control] — in EITHER direction of
+    /// containment.
     ///
-    /// A `Checkbox` is not itself a focus node: `ToggleableStateMixin` builds
-    /// one inside a `FocusableActionDetector`, so the orbit stop sits BENEATH
-    /// the `Checkbox` element rather than on it. Identity, never a label.
-    List<FocusNode> stopsInside(_Sweep s, Element box) => s.orbit
-        .where((FocusNode n) => _isUnder(n.context as Element?, box))
+    /// 🔴 BOTH DIRECTIONS, WHICH IS THE SAME RULE `_sweepRoute` USES TO DECIDE
+    /// WHAT IS DEAD, and it has to be: the two shapes put the focus node on
+    /// opposite sides of the control. A `Checkbox` is not itself a focus node —
+    /// `ToggleableStateMixin` builds one inside a `FocusableActionDetector`, so
+    /// the orbit stop sits BENEATH the `Checkbox` element. A `FocusableTap` is
+    /// the other way round: the node is in the `FocusableActionDetector` it
+    /// WRAPS the control in, so the stop sits ABOVE the `GestureDetector` this
+    /// file counts as the control.
+    ///
+    /// ⚠️ THIS WAS ONE-DIRECTIONAL AND CALLED `stopsInside` UNTIL 2026-08-26,
+    /// WHEN THE SECOND SHAPE ARRIVED. Measured: the detail app bar reported
+    /// `0 stops` for two controls the sweep had just measured as reachable —
+    /// the helper and `_sweepRoute` disagreeing about the same node, which is
+    /// the disagreement that makes two numbers on one screen worthless. It is
+    /// renamed rather than patched so no call site keeps reading it as "under".
+    /// Identity, never a label.
+    List<FocusNode> stopsFor(_Sweep s, Element control) => s.orbit
+        .where(
+          (FocusNode n) =>
+              _isUnder(n.context as Element?, control) ||
+              _isUnder(control, n.context as Element?),
+        )
         .toList();
 
     /// Whether the single gated `FilledButton` on the current screen is live.
@@ -887,7 +1030,7 @@ void main() {
       );
       for (final Element b in boxes) {
         expect(
-          stopsInside(s, b),
+          stopsFor(s, b),
           hasLength(1),
           reason:
               'a consent Checkbox on sign-up owns no stop on the Tab orbit. '
@@ -910,7 +1053,7 @@ void main() {
       // position: it is the box whose ticking unlocks the submit button. If the
       // two rows were ever reordered, the first Checkbox would be the marketing
       // opt-in, submit would stay disabled, and this goes red.
-      stopsInside(s, boxes.first).single.requestFocus();
+      stopsFor(s, boxes.first).single.requestFocus();
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump();
@@ -933,30 +1076,76 @@ void main() {
             'sweep can find. Rebuild the consent row on design_system\'s '
             'FocusableTap, as login was on 2026-08-25',
       );
+      // 🔴 4 -> 2 ON 2026-08-26, AND THE TWO THAT LEFT ARE THE TWO THAT WERE A
+      // DEFECT. `legal_consent_fields.dart`'s `_LegalLink` was rebuilt on
+      // `FocusableTap`, so Terms and Privacy now own Tab stops and a keyboard
+      // user can open the documents they are being asked to agree to. What is
+      // still off the orbit is the pair the same file builds as SECOND HIT
+      // TARGETS for the boxes beside them, and pinning that at 2 rather than
+      // deleting the assertion is deliberate: it goes red if somebody
+      // "completes" the fix by making the sentences focusable, which would add
+      // a Tab stop that ticks a box the previous Tab stop already reached.
       expect(
         s.dead.length,
-        4,
+        2,
         reason:
-            'sign-up controls outside the Tab orbit: ${s.deadLabels}. FOUR are '
-            'expected and they are NOT the consent boxes, which the assertions '
-            'above prove a keyboard operates. They are the two inline legal '
-            'links — genuinely keyboard-dead, so a keyboard user cannot open '
-            'the documents they are agreeing to — and the two consent '
-            'SENTENCES, which are duplicate hit targets for the boxes and cost '
-            'no function. Only the links are a defect; the fix is the same '
-            'hand-rolled Semantics + GestureDetector -> FocusableTap swap login '
-            'took on 2026-08-25',
+            'sign-up controls outside the Tab orbit: ${s.deadLabels}. TWO are '
+            'expected and they are the two consent SENTENCES — duplicate hit '
+            'targets for the boxes the assertions above prove a keyboard '
+            'operates, costing no function. They are NOT the consent boxes and '
+            'they are NOT the two inline legal links, which joined the orbit '
+            'on 2026-08-26 when _LegalLink moved onto design_system\'s '
+            'FocusableTap. If this went UP, say WHICH control left the orbit '
+            'and whether its function went with it; if it went DOWN to 0 or 1, '
+            'a consent sentence became separately focusable and that is a '
+            'redundant Tab stop, not a fix',
       );
       expect(
         s.controls.length - s.dead.length,
-        5,
+        7,
         reason:
-            'sign-up reachable: the two text fields, the two consent boxes and '
-            'the "Already have an account?" button. NOT the submit button — it '
-            'is disabled at rest, so it is not a control this rig counts at '
-            'all. Reaching ${s.controls.length - s.dead.length} instead means '
-            'the split moved and the sentence above is stale',
+            'sign-up reachable: the two text fields, the two consent boxes, the '
+            '"Already have an account?" button and — since 2026-08-26 — the '
+            'Terms and Privacy links. NOT the submit button: it is disabled at '
+            'rest, so it is not a control this rig counts at all. Reaching '
+            '${s.controls.length - s.dead.length} instead means the split '
+            'moved and the sentence above is stale',
       );
+      // 🔴 AND THE LINKS ARE NAMED, NOT JUST COUNTED. `7 of 9` is equally
+      // satisfied by two links that traverse and by two links that were
+      // deleted, and a consent screen with no route to the documents is worse
+      // than one whose route is keyboard-dead. So: the screen carries exactly
+      // two link-role controls, and each owns exactly one Tab stop.
+      final List<Element> links = s.controls
+          .where(
+            (Element e) => _declaresLink(e),
+          )
+          .toList();
+      expect(
+        links,
+        hasLength(2),
+        reason:
+            'sign-up is expected to carry exactly two link-role controls — the '
+            'Terms document and the Privacy document, which AppConfig points at '
+            'the live nikatru.com pages. It carries ${links.length}. Either a '
+            'document link was removed from the clickwrap, or one stopped '
+            'announcing as a link, and in both cases the counts above are '
+            'about a screen that no longer exists',
+      );
+      for (final Element l in links) {
+        expect(
+          stopsFor(s, l),
+          hasLength(1),
+          reason:
+              'a legal document link on sign-up owns no stop on the Tab orbit, '
+              'so a keyboard user is being asked to agree to a document they '
+              'cannot open. That is SC 2.1.1 at Level A on the clickwrap '
+              'itself, and it is exactly the state this screen was in until '
+              '2026-08-26. Rebuild _LegalLink on design_system\'s FocusableTap '
+              '- do NOT hand-roll a Focus widget at the call site. Off-orbit '
+              'today: ${s.deadLabels}',
+        );
+      }
     });
 
     testWidgets('/reaccept-terms · a keyboard can agree, not only sign out', (
@@ -973,7 +1162,7 @@ void main() {
       // Checkbox and the sign-out button, and Space on the first unlocks
       // Accept. Both doors open from the keyboard.
       final Element box = find.byType(Checkbox).evaluate().single;
-      final List<FocusNode> boxStops = stopsInside(s, box);
+      final List<FocusNode> boxStops = stopsFor(s, box);
       expect(
         boxStops,
         hasLength(1),
@@ -1014,58 +1203,164 @@ void main() {
             'on a screen the router puts in front of EVERY signed-in user when '
             'kTermsVersion moves',
       );
+      // 🔴 3 -> 1 ON 2026-08-26, FROM A FIX MADE IN NEITHER OF THIS SCREEN'S
+      // OWN FILES. This gate renders the same `LegalConsentFields` as
+      // `/sign-up`, so rebuilding `_LegalLink` on `FocusableTap` moved two
+      // routes at once — which is the argument for the shared primitive stated
+      // as a measurement rather than as a preference. The one that remains is
+      // the consent sentence, a duplicate hit target, pinned so that making it
+      // focusable is as red as losing a link.
       expect(
         s.dead.length,
-        3,
+        1,
         reason:
             'reaccept-terms controls outside the Tab orbit: ${s.deadLabels}. '
-            'THREE are expected: the two inline legal links, which are '
-            'genuinely keyboard-dead — a user is being asked to agree to two '
-            'documents a keyboard cannot open — and the consent SENTENCE, '
-            'which is a duplicate hit target for the box the assertions above '
-            'prove a keyboard ticks',
+            'ONE is expected: the consent SENTENCE, a duplicate hit target for '
+            'the box the assertions above prove a keyboard ticks. The two '
+            'inline legal links used to be here too and were genuinely '
+            'keyboard-dead; they joined the orbit on 2026-08-26. If this is '
+            'back at 3, a user held at this gate is again being asked to agree '
+            'to two documents a keyboard cannot open',
       );
+      // The same naming assertion `/sign-up` carries, for the same reason: a
+      // count of 1 is equally satisfied by two links that traverse and by two
+      // links that were removed from the gate altogether.
+      final List<Element> links = s.controls
+          .where(
+            (Element e) => _declaresLink(e),
+          )
+          .toList();
+      expect(
+        links,
+        hasLength(2),
+        reason:
+            'the re-acceptance gate is expected to carry exactly two link-role '
+            'controls — the two documents it is re-taking consent to. It '
+            'carries ${links.length}, so the screen is asking for agreement to '
+            'a set of documents it does not link',
+      );
+      for (final Element l in links) {
+        expect(
+          stopsFor(s, l),
+          hasLength(1),
+          reason:
+              'a legal document link on the re-acceptance gate owns no stop on '
+              'the Tab orbit. This screen is the one the router puts in front '
+              'of EVERY signed-in user when kTermsVersion moves, and it cannot '
+              'be left except by agreeing or signing out — so a keyboard user '
+              'is made to choose between agreeing to a document they cannot '
+              'open and losing access to an account they are paying for. '
+              'Off-orbit today: ${s.deadLabels}',
+        );
+      }
     });
 
-    testWidgets('/sub/:id · a keyboard cannot reach the app-bar actions', (
+    // 🔴 THIS CASE WAS `a keyboard cannot reach the app-bar actions` UNTIL
+    // 2026-08-26 AND NOW ASSERTS THE OPPOSITE, BECAUSE THE WIDGET CHANGED.
+    // `subscription_detail_screen.dart`'s `_iconButton` was
+    // `Semantics(button: true)` over a bare `GestureDetector` — a role for a
+    // screen reader and no `FocusNode` for anybody — so "Back" and "More
+    // options" were both off the orbit and this screen was one a keyboard user
+    // could read in full and leave by no door on. It is built on
+    // `design_system`'s `FocusableTap` now, exactly as home's identical pair
+    // was on 2026-08-25.
+    //
+    // ⚠️ AND THE CASE GOT LONGER RATHER THAN SHORTER, WHICH IS THE WHOLE POINT.
+    // `dead.isEmpty` on its own is WEAKER than the `dead.length == 2` it
+    // replaces: deleting both buttons satisfies it. So the pair is now
+    // identified by the screen's own published key, required to exist, required
+    // to own one Tab stop each, and required to be the FIRST two stops — the
+    // mirror of the positional assertion this case used to make about the dead
+    // set, and the one that says "the app bar is the top of the keyboard path"
+    // rather than merely "nothing is missing".
+    testWidgets('/sub/:id · a keyboard reaches the app-bar actions first', (
       WidgetTester tester,
     ) async {
       final _Sweep s = await _sweepRoute(tester, router, routeAt('/sub/:id'));
       expect(
-        s.dead.length,
-        2,
+        s.dead,
+        isEmpty,
         reason:
-            'detail keyboard-dead controls: ${s.deadLabels}. TWO are expected '
-            '— "Back" and "More options", the app-bar pair. Home carried the '
-            'identical defect until 2026-08-25: a keyboard user can read the '
-            'screen and leave by no door on it',
+            'detail keyboard-dead controls: ${s.deadLabels}. NONE is expected '
+            'since 2026-08-26 — every control this rig counts on the detail '
+            'screen is on the Tab orbit. Anything here is a control whose '
+            'function a keyboard cannot reach, on a screen whose only exits are '
+            'in the app bar',
       );
-      // 🔴 THE POSITIONAL HALF, WHICH THE COUNT CANNOT SAY. Both dead controls
-      // sit ABOVE every reachable one — they are the app bar. A screen whose
-      // whole top row is keyboard-dead is a different failure from two dead
-      // controls scattered through a list, and only this assertion tells them
-      // apart.
-      final double lowestDead = s.dead
-          .map(
-            (Element e) => tester
-                .getRect(
-                  find.byElementPredicate((Element x) => identical(x, e)),
-                )
-                .bottom,
-          )
+      // The hero is identified by the key the SCREEN publishes, not by a label
+      // and not by a widget class: `detail-hero-gradient` is checked in, and if
+      // it is renamed this goes red with a sentence rather than silently
+      // measuring nothing.
+      final Finder heroFinder = find.byKey(const Key('detail-hero-gradient'));
+      expect(
+        heroFinder,
+        findsOneWidget,
+        reason:
+            'the detail screen no longer publishes a `detail-hero-gradient` '
+            'key, so this case cannot tell the app bar from the body and every '
+            'sentence below is about a screen it can no longer find',
+      );
+      final Element hero = heroFinder.evaluate().single;
+      final List<Element> heroControls = s.controls
+          .where((Element e) => _isUnder(e, hero))
+          .toList();
+      expect(
+        heroControls,
+        hasLength(2),
+        reason:
+            'the detail hero is expected to carry exactly two controls — '
+            '"Back" and "More options". It carries ${heroControls.length}. If '
+            'it carries none, the exits were DELETED rather than fixed, which '
+            'the empty dead set above would happily report as success',
+      );
+      final List<FocusNode> heroStops = <FocusNode>[
+        for (final Element e in heroControls) ...stopsFor(s, e),
+      ];
+      expect(
+        heroStops,
+        hasLength(2),
+        reason:
+            'the detail app bar owns ${heroStops.length} stops on the Tab '
+            'orbit, not one each. THAT is the SC 2.1.1 failure this case was '
+            'written to report and reported until 2026-08-26: a keyboard user '
+            'can read the whole screen and leave by no door on it. Rebuild '
+            '_iconButton on design_system\'s FocusableTap — do NOT hand-roll a '
+            'Focus widget at the call site',
+      );
+      // 🔴 THE POSITIONAL HALF, WHICH THE COUNTS CANNOT SAY. The app bar is the
+      // top of the screen, so it must be the top of the keyboard path too: two
+      // exits that traverse LAST are reachable and still make a keyboard user
+      // walk the whole body to leave. SC 2.4.3 asks focus order to preserve
+      // meaning, and the meaning of an app bar is that it comes first.
+      expect(
+        <bool>[
+          identical(s.orbit[0], heroStops[0]),
+          identical(s.orbit[1], heroStops[1]),
+        ],
+        everyElement(isTrue),
+        reason:
+            'the detail screen\'s first two Tab stops are not "Back" then '
+            '"More options". The app bar is the first thing on the screen and '
+            'the only way off it, so it has to be the first thing the keyboard '
+            'reaches; a Tab order that puts the exits after the body is '
+            'reachable-but-buried. Orbit: '
+            '${s.orbit.map((FocusNode n) => _label(n.context! as Element)).toList()}',
+      );
+      final double lowestHero = heroStops
+          .map((FocusNode n) => n.rect.bottom)
           .reduce((double a, double b) => a > b ? a : b);
-      final double highestLive = s.orbit
+      final double highestBody = s.orbit
+          .where((FocusNode n) => !heroStops.any((FocusNode h) => identical(h, n)))
           .map((FocusNode n) => n.rect.top)
           .reduce((double a, double b) => a < b ? a : b);
       expect(
-        lowestDead,
-        lessThanOrEqualTo(highestLive),
+        lowestHero,
+        lessThanOrEqualTo(highestBody),
         reason:
-            'the keyboard-dead controls on the detail screen are meant to be '
-            'the app bar — everything a keyboard CAN reach sits below them. '
-            'They no longer do, so the dead set is not the pair this case '
-            'describes and the sentence above has stopped being true. Dead: '
-            '${s.deadLabels}',
+            'the two app-bar stops no longer sit above every other stop on the '
+            'detail screen, so "first two" above is an ordering that no longer '
+            'matches the page. Either the hero moved or a body control was '
+            'lifted into it',
       );
     });
   });

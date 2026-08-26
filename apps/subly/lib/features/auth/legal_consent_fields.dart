@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show FocusableTap, TapRole;
 
 import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
@@ -203,17 +205,53 @@ class _LegalLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return Semantics(
-      link: true,
-      child: GestureDetector(
-        onTap: () => openExternalUrl(url),
-        child: Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w700,
-            decoration: TextDecoration.underline,
-          ),
+    // 🔴 `FocusableTap`, NOT `Semantics(link: true)` + `GestureDetector` — AND
+    // THIS PAIR WAS THE MOST POINTED SC 2.1.1 (LEVEL A) FAILURE LEFT IN THE
+    // APP. Four instances, because both consent surfaces render this widget:
+    // Terms and Privacy on `/sign-up`, and the same two again on
+    // `/reaccept-terms`. `Semantics(link: true)` tells a screen reader what the
+    // control IS and creates no `FocusNode`, so Tab passed straight over all
+    // four — A KEYBOARD USER COULD NOT OPEN THE DOCUMENT THEY WERE BEING ASKED
+    // TO AGREE TO, on the one screen in the app where agreeing is the point and
+    // on the gate the router puts in front of every signed-in user when
+    // `kTermsVersion` moves. Measured by `test/a11y/keyboard_sweep_test.dart`,
+    // which named these four among its nine off-orbit controls and (from
+    // 2026-08-26) separated them from the three harmless duplicates below.
+    //
+    // The primitive is `packages/design_system`'s, deliberately: it is the same
+    // substitution that took login from 4-of-8 to 8-of-8 and settings from
+    // 9-of-27 to 25-of-27 on 2026-08-25, and `apps/subly/lib/features/shared/
+    // widgets.dart`'s own `_LegalLink` — the footer trio, a different widget
+    // with the same name and the same defect — took it in the same increment.
+    //
+    // ⚠️ NOTHING A READER HEARS CHANGES. `role: TapRole.link` re-emits the
+    // `Semantics(link: true)` this replaces, unchanged; `link` rather than
+    // `button` because `openExternalUrl` hands the URL to the platform browser
+    // and "link" is the warning a user wants BEFORE activating something that
+    // leaves the app.
+    //
+    // `deferToChild`, NOT the primitive's `opaque` default: these two sit in a
+    // `Wrap` in the gutter beneath the consent sentence, and the note above
+    // records why that gutter must NOT toggle the box. An opaque box round each
+    // link would claim the run spacing between them and widen the target into
+    // ground the layout deliberately left inert. The pointer behaviour is
+    // therefore byte-identical to what it replaced.
+    //
+    // No `focusColor`: both consent surfaces are ordinary light/dark pages, so
+    // the ring takes `colorScheme.primary` on the scaffold — the ground
+    // `test/a11y/focus_ring_contrast_test.dart` measured at 6.16:1 (light) and
+    // 10.87:1 (dark), both clear of SC 1.4.11's 3:1.
+    return FocusableTap(
+      onTap: () => openExternalUrl(url),
+      role: TapRole.link,
+      behavior: HitTestBehavior.deferToChild,
+      borderRadius: BorderRadius.circular(4),
+      child: Text(
+        label,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.underline,
         ),
       ),
     );
