@@ -9,10 +9,25 @@
    the person the picture. Running this file today reddens on the absence of
    fields whose absence is the deliverable.
 
-   ITS REPLACEMENT IS test/e2e/claim-reduction.mjs, which runs the same corpus
-   of defeating page shapes and grades what replaced the ladder. This file is
-   kept, unrun, for one reason: the FIXTURES are the accumulated record of
-   fourteen shapes that beat six fixes, and they are worth more than the
+   MEASURED 2026-08-25 and again 2026-08-26 on the same tree, alone:
+   exit 1, 151 pass / 199 fail / 30 open — not one number moved between them.
+
+   QUARANTINED in .github/workflows/e2e.yml, which carries the same numbers.
+
+   ITS REPLACEMENT IS test/e2e/reduction-corpus.mjs — wired and green, and it
+   runs THIS SUITE'S ENTIRE CORPUS: both read `fixtures/`, all seventeen
+   shapes. Retiring this file therefore costs no shape coverage, which is what
+   separates it from adversarial-claim.mjs beside it. (claim-reduction.mjs runs
+   only eight of the seventeen; it is an overlap, not the replacement.)
+
+   IT CANNOT BE REPAIRED INTO GREEN, ONLY REPLACED — and it already has been.
+   The § numbers every check below cites (§2.6, §3.7, §5.4, §6.1, §7.1, E8,
+   E13) are sections of the PRE-REDUCTION REDACTION-CLAIM-SPEC.md, which was
+   rewritten in place; not one of them exists in that file today, so there is
+   no longer anything for these assertions to be graded against.
+
+   This file is kept, unrun, for one reason: the FIXTURES are the accumulated
+   record of shapes that beat six fixes, and they are worth more than the
    assertions wrapped around them. Harvest from it; do not repair it.
    ========================================================================== */
 /* FullShot REAL-BROWSER redaction-claim suite.

@@ -67,7 +67,23 @@ engine code under test is byte-identical to the shipped one; only the
 manifest differs. (This also enables the cross-origin iframe expansion path,
 so the test covers it.)
 
-## The redaction-claim suite (`npm run test:claim`)
+## The redaction-claim suite (`npm run test:claim`) — QUARANTINED, RED
+
+> **This suite does not run in CI and does not pass locally.** Measured
+> 2026-08-25 and re-measured 2026-08-26 on the same tree, alone: **exit 1,
+> 151 pass / 199 fail / 30 open**, unmoved between the two runs. It grades the
+> eight-state ladder — `redaction.state`, `redaction.pixels`, `redaction.severity`
+> and the `scan` / `bake` ledgers — every one of which `REDACTION-CLAIM-SPEC.md`
+> §2.2 deletes. The § numbers each check cites (§2.6, §3.7, §5.4, §6.1, §7.1,
+> E8, E13) are sections of the **pre-reduction** `REDACTION-CLAIM-SPEC.md`,
+> rewritten in place; none of them exists in the file today, so the suite has
+> nothing left to be graded against.
+> **It cannot be repaired into green, only replaced, and the replacement already
+> exists**: `reduction-corpus.mjs` grades the identical `fixtures/` directory —
+> all seventeen shapes — against the current spec, is wired, and is green.
+> Its quarantine entry in `.github/workflows/e2e.yml` carries the measurement.
+> `npm run test:claim` still works and is left deliberately: read it as a
+> historical record, not as a gate.
 
 A second, independent real-browser suite written **from `REDACTION-CLAIM-SPEC.md`**,
 not from the implementation. Seventeen adversarial page shapes plus a locale pass,
@@ -152,10 +168,25 @@ ONLY=control-pii,sr-only npm run test:corpus
 SKIPOLD=1 npm run test:corpus          # skip the §4 old-record populations
 ```
 
-It supersedes `redaction-claim.mjs` and `adversarial-claim.mjs` in coverage (both grade
-fields §2.2 deletes) and overlaps `claim-reduction.mjs`, which runs eight of the same
-shapes. Both are kept: the fixtures are the accumulated record of what beat six fixes,
-and two independent readings of the same corpus is the point rather than duplication.
+It supersedes the **assertions** of `redaction-claim.mjs` and `adversarial-claim.mjs`
+(both grade fields §2.2 deletes) and overlaps `claim-reduction.mjs`, which runs eight of
+the same shapes. Both are kept: the fixtures are the accumulated record of what beat six
+fixes, and two independent readings of the same corpus is the point rather than
+duplication.
+
+**It does not supersede their SHAPES, and this is a live hole — do not read the two
+quarantine entries as saying otherwise.** `redaction-claim.mjs` runs `fixtures/`, which
+this suite runs whole, so retiring it costs nothing. `adversarial-claim.mjs` runs
+`fixtures-adv/`, a *different* corpus built by combining features rather than exercising
+them one at a time — thirteen shapes in the directory, eleven of which that suite runs —
+and only **five** of the thirteen reach a wired suite: `details-closed`, `object-door`,
+`split-token`, `wrapped-token` and `mixed-owntext` here (three of those five again in
+`claim-reduction.mjs`). **`canvas-combo`, `cv-tabs`, `frame-pii`, `honest-article`,
+`honest-pii`, `late-frame`, `late-swap` and `shadow-closed-frame` are graded by no wired
+suite today** — and `frame-pii` is not even in `adversarial-claim.mjs`'s own list, so it
+has never had one. Closing that needs a suite written from the current spec over
+`fixtures-adv/`; it does not need, and must not be answered by, un-quarantining a suite
+that reads deleted fields.
 
 **Why almost every check is an invariant.** Under the old design each of these shapes
 could make the product say something false about the picture, so each needed its own

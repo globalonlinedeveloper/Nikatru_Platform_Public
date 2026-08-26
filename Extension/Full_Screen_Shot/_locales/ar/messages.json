@@ -957,6 +957,10 @@
     "message": "FullShot did not finish walking this page.",
     "placeholders": {}
   },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
   "redactActsScanLimits": {
     "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
     "placeholders": {

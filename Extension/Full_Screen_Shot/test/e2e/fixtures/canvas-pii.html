@@ -10,7 +10,21 @@
      one character of it. This is the shape the product must never call clean.
      The painting script lives in <head> deliberately: collectPIIBoxes walks
      document.body (§5.4), and a body <script> would change what `fed` counts.
-     Escape #3 gets its own fixture (inline-code.html). -->
+     Escape #3 gets its own fixture (inline-code.html).
+
+     MARKER CONVENTION, the half of it this fixture can break (control-pii.html,
+     review-tall.html, wrapped-token.html and _kit.css each carry the same rule):
+     no ink colour may sit within tolerance of the block colour rgb(17,17,17).
+     B2 and countBlocks compare against that literal by EXACT equality on
+     purpose, so an antialiased glyph edge that happens to land on 17 in all
+     three channels is counted as a stray block. The canvas ink below is
+     #181818 = rgb(24,24,24): every surface it can blend against here has all
+     channels >= 24 (the white page and the three marker bars rgb(255,90,90),
+     rgb(90,130,255), rgb(90,200,120)), so no blend anywhere on this canvas can
+     round to 17 in any channel. #101010 = rgb(16,16,16) was the earlier value
+     and DID break it — its ramp toward the green bar has a narrow alpha window
+     where all three channels round to 17. #000000 is no safer: a pure-black
+     ramp to white passes straight through 17. -->
 <style>
   html, body { margin: 0; background: #fff; }
   .band { height: 260px; }
@@ -28,7 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
   cx.fillStyle = 'rgb(255,90,90)'; cx.fillRect(0, 40, cv.width, 90);
   cx.fillStyle = 'rgb(90,130,255)'; cx.fillRect(0, 170, cv.width, 90);
   cx.fillStyle = 'rgb(90,200,120)'; cx.fillRect(0, 300, cv.width, 90);
-  cx.fillStyle = '#101010';
+  /* ink stays clear of the block colour rgb(17,17,17) — see MARKER CONVENTION */
+  cx.fillStyle = '#181818';
   cx.font = '30px system-ui, sans-serif';
   cx.fillText('Account holder: jane.doe@example.com', 24, 96);
   cx.fillText('Card on file: 4242 4242 4242 4242', 24, 226);

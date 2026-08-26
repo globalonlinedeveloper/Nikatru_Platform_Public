@@ -334,6 +334,19 @@
         'FullShot did not finish walking this page.');
       if (more != null) text = (text == null ? '' : text + ' ') + more;
     }
+    /* §2.1.1's completeness sentence, in the same position and the same wording
+       as pages/result.js — a person picking an old screenshot to share is the
+       reader least likely to remember that this capture's count was never whole.
+       Appended, never an arm, and NOT gated on the four gap sentences below:
+       every one of their counters can be zero while `matchedComplete` is false
+       (an unwalked same-origin frame and a span the re-measure had no room for
+       both reach the seal and neither reaches `textRefused`). The anti-drift
+       check in test/pixel-sim compares this string against result.js's. */
+    if (a.matchedComplete === false) {
+      const more = fsMessage('redactActsCountPartial', null,
+        'This count may be short: FullShot did not read some of the text in this capture.');
+      if (more != null) text = (text == null ? '' : text + ' ') + more;
+    }
     /* WHERE THE PASS GAVE UP, on the surface a person meets a week later —
        which is the surface that needs it most, for the same reason the
        shortfall sentence does. Four counts, two sentences, each rendered only
