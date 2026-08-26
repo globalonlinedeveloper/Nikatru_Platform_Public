@@ -1251,7 +1251,11 @@
           "parsed rather than grepped. Limb (ii) is the runbook below — Private/ is gitignored so no CI",
           "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
           "is in one place a guard could reach if Private/ ever ships. Limb (iii) — a submission record",
-          "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
+          "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission.",
+          "",
+          "⚠️ `job` NAMES THE DRY RUN AND IS A FLOOR, NOT A CENSUS: submit-play.yml also carries an",
+          "owner-approved `submit:` job that runs this script with `--submit`. Reading `job` as the whole",
+          "file is the defect assert-publish-records.mjs's header records for 2026-08-26."
         ],
         "script": "tooling/release/submit-play.mjs",
         "workflow": ".github/workflows/submit-play.yml",
@@ -2009,7 +2013,12 @@
           "row's signing.keyKind is \"none\": Canonical signs the binary.",
           "",
           "⚠️ THE OWNER-GATED STEP HERE IS NOT AN ACCOUNT, IT IS A NAME. `snapcraft register <name>`",
-          "claims a GLOBAL namespace, one per app, and it is the whole of OWNER_QUEUE A-6."
+          "claims a GLOBAL namespace, one per app, and it is the whole of OWNER_QUEUE A-6.",
+          "",
+          "⚠️ `job` NAMES THE DRY RUN AND IS A FLOOR, NOT A CENSUS: submit-snap.yml also carries an",
+          "owner-approved `submit:` job that runs this script with `--submit` — which is why that file's",
+          "own name says so. Reading `job` as the whole file is the defect assert-publish-records.mjs's",
+          "header records for 2026-08-26."
         ],
         "_whyRecipeScript": [
           "🔴 THE STEP THAT HAS TO HAPPEN BEFORE `snapcraft upload` HAS ANYTHING TO UPLOAD, and until",

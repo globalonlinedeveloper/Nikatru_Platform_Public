@@ -416,6 +416,21 @@ const GUARDS = [
   { name: 'assert-session-index', speed: 'fast', needsPrivate: true,
     rel: ['requirements/tooling/assert-session-index.mjs', 'Private/requirements/tooling/assert-session-index.mjs', 'Private/spec/tooling/assert-session-index.mjs', 'tooling/assert-session-index.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
     what: 'every `## ` entry in session-notes.md has an index row, every row resolves, and the titles are byte-identical' },
+  /* ADDED 2026-08-27. `Private/requirements/index.json` is a hand-kept second copy
+     of the tree here. Measured with `fs` instrumented
+     rather than grepped: assert-spec, assert-research-archive and assert-session-index touch
+     it zero times, assert-index-complete only existsSync()s it, and assert-adr-citations
+     readFileSync()s it but text-scans for `ADR NNN` and `Private/` paths. Setting an `entries`
+     count to 1 and a `perStage` cell to 999 left all five at exit 0.
+     ⚠️ It checks `entries` and `perStage` ONLY. The `bytes` figures it used to carry are
+     DELETED, not guarded — three of the seven were stale on the day, and index.json's own
+     `_generated` note records why: a byte count re-measured while other writers hold the
+     checkout open is stale before it is read. One `rel` candidate, corpus-relative: this guard
+     never existed under the pre-2026-08-18 layouts, so it has no legacy spellings to fall back
+     to and adding dead ones would be citing paths that do not resolve. */
+  { name: 'assert-requirements-index', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/assert-requirements-index.mjs'],
+    what: "requirements/index.json's `entries` and `perStage` counts are the counts in the kind files" },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');

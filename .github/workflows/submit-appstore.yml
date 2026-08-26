@@ -8,32 +8,29 @@ name: Apple App Store submission path (dry run)
 #
 # 🔴 DISPATCH-ONLY, AND THAT IS THE CORRECT SHAPE WHILE `served: false`.
 # Both rows are owner-deferred behind OWNER_QUEUE A-4 (Apple Developer Program,
-# $99/yr, plus an Apple device). There is no account to submit TO, so there is
-# nothing for a push trigger to do that ci.yml's per-push dry run does not
-# already do more cheaply.
+# $99/yr, plus an Apple device). There is no account to submit TO.
 #
 # ⚠️ IT BUILDS WHAT CAN BE BUILT WITHOUT A CERTIFICATE, AND SAYS SO.
 # This is the one place this workflow deliberately differs from
 # submit-windows-store.yml. Microsoft re-signs the MSIX, so that job packages a
 # real, submittable artifact. Apple does not: a `.ipa` and a Mac App Store `.pkg`
 # require a distribution certificate and a provisioning profile that OWNER_QUEUE
-# A-4 gates, and NO SIGNING IS WIRED ANYWHERE IN THIS REPO. So the job builds
-# UNSIGNED — `flutter build ios --no-codesign` and `flutter build macos` — which
-# proves the Apple toolchain path still compiles this app, and then runs the dry
-# run with `--allow-missing-artifact`, which makes the script SAY it validated
-# the listing and the bundle identifier and NOT the package. A job that claimed
-# to validate an artifact it cannot produce would be the more dangerous shape.
+# A-4 gates. So the job builds UNSIGNED — `flutter build ios --no-codesign` and
+# `flutter build macos` — which proves the Apple toolchain path still compiles
+# this app, and then runs the dry run with `--allow-missing-artifact`, which
+# makes the script SAY it validated the listing and the bundle identifier and
+# NOT the package. A job that claimed to validate an artifact it cannot produce
+# would be the more dangerous shape.
 #
-# Nothing here contacts Apple. `--dry-run` has no network path at all, and the
-# script's `--submit` mode refuses with UNVERIFIED rather than guessing at App
-# Store Connect's endpoints.
+# The script's `--submit` mode refuses with UNVERIFIED rather than guessing at
+# App Store Connect's endpoints.
 #
-# 🔴 SOURCED FLOOR THIS JOB DOES NOT YET MEET: uploads to App Store Connect
-# "must be built with Xcode 26 or later" (developer.apple.com/news/upcoming-requirements/,
-# in force 28 April 2026). `macos-26` pins the runner IMAGE LABEL, which names an
-# image family and not an immutable toolchain, and tooling/versions.json has no
-# `xcode` key. submit-appstore.mjs PRINTS that gap on every run.
-# Also sourced: the macos-26 runner is arm64-only.
+# 🔴 SOURCED FLOOR, AND THE RUNNER LABEL DOES NOT PIN IT: uploads to App Store
+# Connect "must be built with Xcode 26 or later" (developer.apple.com/news/upcoming-requirements/,
+# in force 28 April 2026). `macos-26` names an image family; on run 32947213393
+# it carried Xcode 26.6 / macOS 26.5.2 / arm64. tooling/versions.json declares
+# `xcode: "26"`, so submit-appstore.mjs prints no floor warning here —
+# build-platforms.yml's assert-xcode-floor.mjs is what compares runner to key.
 
 on:
   workflow_dispatch:
@@ -72,12 +69,10 @@ jobs:
   dry-run:
     name: Validate the submission path
     runs-on: macos-26
-    # ⬜ NEVER RUN — no dispatch of this workflow has ever completed, so there is
-    # no observation to size this from. The nearest measured neighbour is
-    # build-platforms.yml's `apple` job, which builds the same two Apple targets
-    # on the same runner label in 10m52s worst case; 45 is that with room for a
-    # cold Xcode/CocoaPods cache. Re-pin it against the first real run.
-    timeout-minutes: 45
+    # 30, and the number is headroom over a measurement rather than a neighbour:
+    # run 32947213393 (2026-08-26) completed this job in 12m04s with all 12
+    # steps green — iOS build 5m07s, macOS build 4m47s, no other step over 90s.
+    timeout-minutes: 30
     needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -89,9 +84,8 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
-      # The same three lines build-platforms.yml carries, for the same reason:
-      # nothing pins Xcode, and when an Apple build breaks the first question is
-      # "what toolchain was this?" — unrecoverable after the fact without this.
+      # When an Apple build breaks the first question is "what toolchain was
+      # this?" — unrecoverable after the fact without this.
       - name: Toolchain under test
         run: |
           sw_vers
@@ -128,8 +122,7 @@ jobs:
           --dart-define=GLITCHTIP_DSN=${{ secrets.GLITCHTIP_DSN }}
       # The credentials do not exist yet — OWNER_QUEUE A-4 creates the Apple
       # Developer account that issues the App Store Connect API key — and the
-      # script reports their ABSENCE as a printed gap rather than a failure. They
-      # are wired now so that the day they exist, nothing about this job changes.
+      # script reports their ABSENCE as a printed gap rather than a failure.
       # `secrets` are empty strings when unset, which is what the script's
       # presence check reads. The .p8 key is never read by the script, only
       # tested for presence.

@@ -60,13 +60,8 @@
 //      read `uses:`, `permissions:`, `timeout-minutes:` and job ids, and a
 //      `with:` value is none of those. See "limb 6" below for why this cannot
 //      be a grep and for what it does not catch.
-//      ⚠️ AND NO REQUIREMENT ID DECLARES IT YET, said here rather than left for
-//      a reader to discover, because limb 4 spent a day in exactly this state
-//      and the paragraph below records how that went. `invariants.json` lives in
-//      `Private/requirements/`, which is not in this public checkout, so the
-//      INV row cannot be written from here — it is the one part of this change
-//      that is owed and outstanding, and limb 6 is unreviewable until it exists:
-//      nobody can say whether a rule the guard invented for itself is right.
+//      INV-125 (`Private/requirements/invariants.json`, added 2026-08-26) states
+//      this rule, names this script as its guard, and limb 6 answers to that.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
@@ -889,25 +884,25 @@ if (exprWorkflowsScanned === 0 || exprLinesScanned === 0) {
 // GitHub TODAY: they can be dispatched, they hold whatever `permissions:` their
 // own bytes declare, and not one of limbs 1-4 has ever read a line of them. 11
 // of 13 is 85% of the workflow surface, reported as 100%.
+// APPENDED 2026-08-27: neither file is on any of the 135 branches enumerated that
+// day, so "they can be dispatched" above was assumed, never measured.
 //
 // ⚠️ WHAT THIS LIMB DOES NOT CATCH, stated plainly because an overclaiming
 // coverage check is the exact failure this file was written against:
-//   · IT DOES NOT RUN UNLESS IT IS GIVEN THE LIST. `ci.yml` invokes this guard
-//     with no arguments and is not part of this change, so on every CI run today
-//     limb 5 reports NOT CONSULTED — in the ok line, out loud. That is a bucket,
-//     not a gate; the hole is now named on every run instead of being absent.
+//   · IT DOES NOT RUN UNLESS IT IS GIVEN THE LIST. MEASURED 2026-08-27: this
+//     checkout holds 12 workflow files, `gh api …/actions/workflows` returns 14,
+//     and `ci.yml:636` passes no `--live-workflows` — so limb 5 prints NOT
+//     CONSULTED, and a green here says those 12 files are SHA-pinned, never
+//     that the 14 GitHub lists are.
 //   · IT CANNOT DERIVE THE LIST LOCALLY. The obvious alternative — walk
-//     `refs/remotes/origin` and union the workflow files — fails twice: 155 refs
-//     here made it too slow to run in a gate, and `actions/checkout` fetches a
-//     single branch, so in CI those refs do not exist at all.
-//   · IT READS NAMES, NOT BYTES. An orphan is reported as EXISTING; whether its
-//     actions are pinned, its permissions scoped or its jobs bounded is
-//     unanswerable from this checkout, because the file is on another branch.
+//     `refs/remotes/origin` and union the workflow files — fails: `actions/checkout`
+//     fetches a single branch, so in CI those refs do not exist at all.
+//   · IT READS NAMES, NOT BYTES. Whether an orphan's actions are pinned, its
+//     permissions scoped or its jobs bounded is unanswerable from this checkout.
 //   · IT CANNOT SEE A NEVER-RUN ORPHAN. GitHub lists a workflow once it has run
 //     or once it is on the default branch; a workflow file sitting on a stale
 //     branch that has never run appears in neither the API list nor the tree.
-//   · IT DELETES NOTHING. Removing the two probe branches is a write to a remote
-//     and is operator work, deliberately not done from here.
+//   · IT DELETES NOTHING.
 //   · IT IS ONE-DIRECTIONAL, AND THIS BULLET IS ADDED 2026-08-21 BECAUSE A
 //     REPORT CLAIMED IT WAS ALREADY HERE AND IT WAS NOT. `orphanWorkflows` walks
 //     the LIVE list and asks whether the scan saw each entry; it never walks the
@@ -1135,9 +1130,8 @@ function liveVerdict(label, raw, scanned) {
         kind: 'coverageLost',
         lines: [
           `GitHub lists ${considered} workflow(s) under ${WF_PREFIX} and this scan opened ${scanned.length}; it never saw: ${orphans.map((o) => `${o.base} (id ${o.id}, "${o.name}", state \`${o.state}\`)`).join(', ')}.`,
-          'GitHub will run these — dispatchable, schedulable, holding whatever permissions their own bytes',
-          'declare — and no limb above has read one line of them, because they are not in this checkout. They',
-          'live on branches; deleting those branches is the repair, and it is a write to the remote.',
+          'GitHub lists these and no limb above has read one line of them, because they are not in this',
+          'checkout. What each one is is not answerable from here.',
         ],
       },
       liveLine,

@@ -701,7 +701,14 @@ void main() {
       forbidden: forbidden,
     );
 
-    await tester.tap(find.text('Insights'));
+    // `insightsTitle` is the same word as `navInsights`, and `statBudget` is
+    // the same word as `navBudget`.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(AppShell.navPillKey),
+        matching: find.text('Insights'),
+      ),
+    );
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(
@@ -710,7 +717,12 @@ void main() {
       forbidden: forbidden,
     );
 
-    await tester.tap(find.text('Budget'));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(AppShell.navPillKey),
+        matching: find.text('Budget'),
+      ),
+    );
     await pumpFor(tester, const Duration(seconds: 4));
     expect(find.byType(BudgetScreen), findsWidgets);
     await captureFrame(
