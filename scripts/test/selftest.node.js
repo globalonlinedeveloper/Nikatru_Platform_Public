@@ -927,6 +927,76 @@ expect('a null listing never becomes an invented URL', {
 });
 
 /* =====================================================================
+   check-catalog + publish-catalog
+
+   The two consumers of gen-catalog's family, and the two gates whose recorded
+   reason for having no case here described a THIRD script: check-catalog never
+   opens README.md — grading the README markers is gen-catalog's job.
+
+   The base fixture's tool.json keys `listings` for three stores while its
+   `targets` builds for two, which publish-catalog refuses to turn into a row at
+   all. The alignment below makes the fixture PUBLISHABLE; it does not soften
+   the subject. Without it every case here would exit 1 for that unrelated
+   reason while naming a limb it never reached — the exact vacuity an exit code
+   alone cannot see, which is why every case states a message too.
+   ===================================================================== */
+console.log('\ncheck-catalog.mjs + publish-catalog.mjs');
+const CATALOGUE = 'catalog/extensions.json';
+const CAT_SEED = fixture(root => {
+  const t = readJson(root, TOOL + '/tool.json');
+  t.listings = { chrome: null, edge: null };
+  writeJson(root, TOOL + '/tool.json', t);
+});
+expect('publish writes the catalogue the tool.json files derive', {
+  script: 'publish-catalog.mjs', argv: [], root: CAT_SEED, code: 0, contains: 'wrote ' + CATALOGUE
+});
+expect('and --check then finds no drift', {
+  script: 'publish-catalog.mjs', argv: ['--check'], root: CAT_SEED, code: 0, contains: CATALOGUE + ' is up to date'
+});
+expect('and what it wrote is an honest catalogue', {
+  script: 'check-catalog.mjs', argv: [], root: CAT_SEED, code: 0,
+  contains: 'the catalogue publishes exactly the extensions on disk'
+});
+
+/* Copies of the SEED, not of BASE. Both mutations below are only meaningful
+   against a catalogue that passed both gates one line ago. */
+const catFixture = mutate => {
+  const root = path.join(TMP, 'catalogue-' + (++caseNo));
+  copyDir(CAT_SEED, root);
+  mutate(root);
+  return root;
+};
+
+/* 🔴 `[]` is the cheapest way for this guard to stop guarding: every per-row
+   limb below limb 0 is vacuously true over zero rows, and publish --check
+   cannot see it — regenerating an empty catalogue over an empty one is not
+   drift. */
+expect('an empty catalogue is COVERAGE LOST, not a vacuous pass', {
+  script: 'check-catalog.mjs', argv: [], code: 1,
+  contains: 'COVERAGE LOST — ' + CATALOGUE + ' holds zero rows',
+  root: catFixture(root => { w(root, CATALOGUE, '[]\n'); })
+});
+
+/* 🔴 THREE BYTES, AND THE CONTENT PERFECT. Both fixtures differ from the seed
+   by EF BB BF and nothing else, so a red here is the byte order mark and cannot
+   be drift, a missing file or an unparseable tool.json. These two read the raw
+   Buffer, and a consumer's JSON.parse throws on the U+FEFF they would keep. */
+const bomIt = root => {
+  const abs = path.join(root, CATALOGUE);
+  fs.writeFileSync(abs, Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), fs.readFileSync(abs)]));
+};
+expect('a UTF-8 BOM on the published bytes is caught by check-catalog', {
+  script: 'check-catalog.mjs', argv: [], code: 1,
+  contains: CATALOGUE + ' starts with a UTF-8 byte order mark (EF BB BF)',
+  root: catFixture(bomIt)
+});
+expect('and by publish --check, whose content comparison alone would call it up to date', {
+  script: 'publish-catalog.mjs', argv: ['--check'], code: 1,
+  contains: CATALOGUE + ' starts with a UTF-8 byte order mark (EF BB BF)',
+  root: catFixture(bomIt)
+});
+
+/* =====================================================================
    new-tool
    ===================================================================== */
 console.log('\nnew-tool.mjs');
@@ -1620,7 +1690,13 @@ const E2E_WEEKLY = [
   ''
 ].join('\n');
 
-const proofLeg = c => [{ name: 'e2e (Good_Tool)', conclusion: c }];
+/* THE REAL LEG SHAPE. e2e.yml:84 names the matrix job `e2e · <Category>/<Tool>`,
+   and the gate now parses that payload and compares it as a SET — so a fixture
+   carrying a made-up name would prove nothing about the real one. The separator
+   is the real U+00B7, written as itself so the character makes the whole trip:
+   this source, a utf8 fixture write, a JSON parse, the gate. The case below
+   drives what happens when that trip mangles it. */
+const proofLeg = (c, dirs = [TOOL]) => dirs.map(d => ({ name: 'e2e · ' + d, conclusion: c }));
 /* Three weekly scheduled runs, all green, the newest 2 days old.
 
    `wf.suites` is the DISK side of the subject and it is separate from `h` on
@@ -1647,6 +1723,11 @@ function withProof(mutate = () => {}) {
   });
 }
 
+/* 🔴 ALSO THE path.sep SEAM, AND WINDOWS IS THE SIDE THAT CAN SEE IT. The gate
+   derives `Extension/Good_Tool` from a directory walk and compares it to a leg
+   name a Linux runner built from `${cat}/${tool}`. Joined with path.sep instead
+   of '/', this case is RED here and GREEN on Ubuntu — so the local recipe is
+   the one that catches it, which is the rarer direction and worth saying. */
 expect('a fired timer and a green scheduled run pass', {
   script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
   root: withProof(), env: proofEnv
@@ -1685,6 +1766,45 @@ expect('a proof covering FEWER suites than the checkout is not-green', {
   root: withProof((h, wf) => { wf.suites = [TOOL, 'Extension/Second_Tool']; }),
   env: proofEnv
 });
+/* 🔴 THE SET LIMB — the one a CARDINALITY cannot have. One suite in the
+   checkout, one green leg in every run, count 1 === 1 — and the leg names a
+   tool this checkout does not carry, so Good_Tool has never been exercised by
+   any run in that history. MEASURED 2026-08-27 against the count this replaced:
+   exit 0, `legs=1/1  GREEN`. Both directions of the difference are asserted in
+   one string, because naming only the missing side would let a gate that
+   silently accepted foreign legs still pass this. */
+expect('a proof whose legs name a DIFFERENT tool of the same count is not-green', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'NEVER EXERCISED: Extension/Good_Tool  NOT IN THIS CHECKOUT: Extension/GONE_Tool',
+  root: withProof(h => {
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', ['Extension/GONE_Tool']);
+  }),
+  env: proofEnv
+});
+/* 🔴 THE ENCODING BOUNDARY, DRIVEN RATHER THAN ASSUMED. `·` is U+00B7 and it
+   crosses the GitHub API and a source-encoding boundary to reach the gate. The
+   separator is matched as a run of non-alphanumerics, never as that byte pair,
+   so the classic Windows-side mangling of it — U+00C2 U+00B7 — still yields the
+   same dir. A parse pinned to the character would have reported this perfect
+   proof as no proof at all. */
+expect('a mangled leg separator still yields the same dir', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
+  root: withProof(h => {
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = [{ name: 'e2e Â· ' + TOOL, conclusion: 'success' }];
+  }),
+  env: proofEnv
+});
+/* 🔴 A leg name that yields NO payload must not read as a missing leg — that is
+   a true-sounding red for the wrong reason. Zero payloads across the whole walk
+   is the gate having gone blind, and it says so. */
+expect('leg names that yield no <cat>/<tool> are COVERAGE LOST, not a missing leg', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'this gate is reading nothing out of it',
+  root: withProof(h => {
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = [{ name: 'e2e ·', conclusion: 'success' }];
+  }),
+  env: proofEnv
+});
 /* Anti-vacuity on the DERIVATION itself: an expected count of 0 makes
    `legs.length === EXPECT_LEGS` true of every empty run, so the count must
    refuse to be zero rather than grade against nothing. */
@@ -1692,6 +1812,41 @@ expect('a checkout carrying no e2e suite at all CANNOT grade a run', {
   script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
   contains: 'carries no <Category>/<Tool>/test/e2e/package.json',
   root: withProof((h, wf) => { wf.suites = []; }),
+  env: proofEnv
+});
+/* 🔴 THE FOUR MEASURED 2026-08-27 AS EXIT 0 ON THE SHIPPED GATE, each a green
+   that the mutation named in its label produces without touching the history. */
+expect('a run whose legs DUPLICATE one dir is not-green, not a matching count', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: '1 DUPLICATE leg name(s) — 2 legs naming 1 dir(s)',
+  root: withProof(h => {
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', [TOOL, TOOL]);
+  }),
+  env: proofEnv
+});
+expect('deleting one test/e2e/package.json cannot silence the red it was raising', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'a test/e2e directory with no package.json in it: Extension/Second_Tool',
+  root: withProof((h, wf, root) => {
+    fs.mkdirSync(path.join(root, 'Extension', 'Second_Tool', 'test', 'e2e'), { recursive: true });
+  }),
+  env: proofEnv
+});
+expect('a suite reachable only as Test/E2E is named and excluded, on either host', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'reachable only under a different case: Extension/Case_Tool',
+  root: withProof((h, wf, root) => {
+    w(root, 'Extension/Case_Tool/Test/E2E/package.json', '{ "name": "e2e-fixture", "private": true }\n');
+  }),
+  env: proofEnv
+});
+expect('a workflow reachable only as .github/workflows/E2E.yml CANNOT RUN either', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2,
+  contains: 'a case a Linux runner does not open',
+  root: withProof((h, wf, root) => {
+    wf.yaml = null;
+    w(root, '.github/workflows/E2E.yml', E2E_WEEKLY);
+  }),
   env: proofEnv
 });
 
@@ -1856,10 +2011,6 @@ const NO_CASE_RECORDED = [
     why: 'OPEN GAP, recorded 2026-08-25. A case has to plant a credential-shaped literal, and this file is inside the tree CI scans with `secret-scan.mjs .` — so the literal must be assembled at run time rather than written as source, or the suite becomes the finding. Deliberately not bodged in without that being got right.' },
   { gate: 'scripts/sha256.mjs',
     why: 'OPEN GAP, recorded 2026-08-25. The plainest of the nine: one file in, one hash out, used by the determinism comparison in ci.yml. Nothing here proves it reports a missing file rather than printing an empty hash.' },
-  { gate: 'scripts/check-catalog.mjs',
-    why: 'OPEN GAP, recorded 2026-08-25. gen-catalog.mjs has cases; its two consumers do not. This one grades the real README catalog markers, so a case needs the marker block in the fixture README to be driven out of step with the fixture tools.' },
-  { gate: 'scripts/publish-catalog.mjs',
-    why: 'OPEN GAP, recorded 2026-08-25. Same family as check-catalog.mjs and uncovered for the same reason.' },
   { gate: 'scripts/changelog-section.mjs',
     why: 'OPEN GAP, recorded 2026-08-25. Called only from release.yml, to cut one version section out of a CHANGELOG for the release body. Uncovered means a release note that silently comes out empty is caught by nobody.' },
   { gate: 'Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js',

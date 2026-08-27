@@ -40,6 +40,7 @@
    ── THE PRINT / FAIL SPLIT IS A RELATIONSHIP, NOT A MOOD ────────────────────
      directory missing, store `served: false`   -> PRINT   (this is today)
      directory missing, store `served: true`    -> FAIL
+     a non-null `listings.<store>` URL, `served: false` -> FAIL (see §1b)
      directory present but a required file empty-> FAIL, at any served state
      a directory no store declares              -> FAIL    (an orphan listing)
      a limit with no `source`                   -> FAIL    (see below)
@@ -356,6 +357,38 @@ for (const tool of tools) {
       listings.join(', '),
       'tool.json listings is [' + listings.join(', ') + '] and the schema vocabulary is [' + vocab.join(', ') + '].');
   }
+
+  /* ── 1b. 🔴 A LIVE LISTING URL AND `served` ARE ONE FACT ────────────────
+     MEASURED 2026-08-27, before this limb existed: a tree with
+     `listings.chrome` set to a live /detail/ URL and
+     `storeMetadata.stores.chrome.served: false` exited 0 — "25 passed · 1 owner
+     action(s)" — with the directory and screenshot limbs still PRINTing. Every
+     limb above arms on `served`; `listings` is the field a human actually fills
+     in the day a listing goes live. Nothing held them to each other, so the one
+     field that arms this guard was the one field nobody had to touch.
+
+     ONE-DIRECTIONAL ON PURPOSE. `served: true` with a null URL is the truthful
+     state while a submission sits in review, and it arms MORE than it disarms.
+     The reverse — a URL with `served: false` — is the only direction that turns
+     a check off, so it is the only direction that fails.
+
+     ⚠️ ZERO ANTECEDENTS TODAY: all three listings are null, so this ranges over
+     nothing on main and would pass written backwards. The count is printed
+     below rather than left silent, and the mutation fixtures are the evidence. */
+  let listed = 0;
+  for (const store of VOCAB) {
+    const url = (tool.listings ?? {})[store];
+    if (url === null || url === undefined || String(url).trim() === '') continue;
+    listed++;
+    r.check('listings.' + store + ' is live, so storeMetadata.stores.' + store + '.served is true',
+      rows[store]?.served === true, String(url),
+      'tool.json declares listings.' + store + ' = ' + JSON.stringify(url) + ' — a public listing anyone can install\n' +
+      'from — while storeMetadata.stores.' + store + ' says served: ' + JSON.stringify(rows[store]?.served) + '.\n' +
+      '`served` is what arms the directory, URL and screenshot limbs of this guard. A live listing behind\n' +
+      'served: false leaves every one of them a PRINT, so the gates built for submission day are switched\n' +
+      'off by the field nobody updates. Set served: true on the row, or clear the URL if it is not live.');
+  }
+  r.note(tool.rel + ': ' + listed + ' of ' + VOCAB.length + ' listing(s) carry a URL — the antecedent count for the check above.');
 
   /* ── 2. the build axis: every target claimed, no invented target ───────── */
   const targets = Object.keys(tool.targets ?? {});

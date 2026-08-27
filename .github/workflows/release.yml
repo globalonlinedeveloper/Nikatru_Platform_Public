@@ -197,9 +197,14 @@ jobs:
             [ -n "$why" ] || return 0
             found=$((found + 1))
             # THE if: TEST IS SUBSTRING CONTAINMENT, NOT EVALUATION: it proves the text in $guard
-            # appears somewhere in the step's if:, so `inputs.dry_run != true || true` — measured
-            # 2026-08-27 in a scratch tree — is reported GUARDED and exits 0.
+            # appears somewhere in the step's if:, and can prove nothing about what the expression
+            # EVALUATES to. So the one shape that defeats containment is refused outright — a `||`
+            # anywhere in the if: is a disjunction that can satisfy it without the guard, which is
+            # how `inputs.dry_run != true || true` — measured 2026-08-27 in a scratch tree — was
+            # reported GUARDED and exited 0. No step in this file legitimately needs one.
             case "$sif" in
+              *'||'*)     printf 'UNGUARDED  %s\n             step: %s\n             its if: carries a ||, a disjunction that can satisfy it without: %s\n' "$why" "$name" "$guard"
+                          bad=$((bad + 1)) ;;
               *"$guard"*) printf 'GUARDED    %s\n             step: %s\n' "$why" "$name" ;;
               *)          printf 'UNGUARDED  %s\n             step: %s\n' "$why" "$name"
                           bad=$((bad + 1)) ;;
@@ -338,32 +343,165 @@ jobs:
       # main; it does not prove anything ever graded it. `scripts/test/
       # selftest.node.js` — the gate that grades whether the gates still bite —
       # runs in ci.yml and NOWHERE ELSE, and this repository's main carries no
-      # branch protection and no rulesets (measured 2026-08-26: protection 404,
-      # rulesets []), so a commit can reach main without ci ever completing on
-      # it and a tag can then point at it. Every gate below would run and go
+      # branch protection and no rulesets (re-measured 2026-08-27: protection
+      # 404, rulesets []), so a commit can reach main without ci ever completing
+      # on it and a tag can then point at it. Every gate below would run and go
       # green over gates nobody had checked still bite.
       #
+      # 🔴 AND A RUN'S CONCLUSION IS NOT A GRADE EITHER. Until 2026-08-27 this
+      # step counted ci.yml runs at the head SHA whose conclusion was `success`
+      # and stopped there. ci.yml's `gates`, `sims` and `package` jobs each carry
+      # `if: needs.discover.outputs.count != '0'`, and `ci-required` LICENSES
+      # them as skipped when discover succeeds and selects zero tools — correctly,
+      # for a scripts-only push. Such a run concludes `success` having built and
+      # graded no package at all, so the old test cleared a tag over bytes whose
+      # per-tool gates and whose windows-latest pack leg had never run on them.
+      # The question is not whether a run succeeded but whether THESE LEGS RAN,
+      # so the jobs of the run are read and graded by name.
+      #
       # Deliberately carries NO `if:`: a dispatch rehearsal must exercise it too,
-      # or this becomes one more step in this lane that has never executed. And
-      # the gh call is checked separately from its answer, because "I could not
-      # ask" is not "it is fine".
+      # or this becomes one more step in this lane that has never executed. Each
+      # `gh api` call is checked separately from its answer, because "I could not
+      # ask" is not "it is fine" — and an EMPTY answer is refused on its own line,
+      # because a jobs list read as zero not-successes is the exact shape this
+      # step would go quietly wrong in.
+      #
+      # ⚠️ THE REHEARSAL IS TOLERATED AND THE TOLERANCE CANNOT REACH A TAG. A
+      # dispatch rehearses at main's head, whose ci run may legitimately be a
+      # zero-matrix one, so there this reports and continues rather than
+      # reddening the only mechanism this lane has for exercising itself. All
+      # three of its conditions are false on a `push`, and `push` is the only
+      # event that can publish — see the `if:` on Publish GitHub Release.
+      #
+      # 🔴 THE RULE IS EXERCISED BEFORE IT IS TRUSTED, the same way ci-required's
+      # is. No tag has ever been pushed in this repository and no release has
+      # ever been published from one, so nothing but reading would ever have told
+      # anyone this grader was wrong; the built-in cases below run on every
+      # execution, the rehearsal included.
       - name: ci graded THIS commit, so its gate results can be trusted
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          TOOL_ID: ${{ steps.tag.outputs.id }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          if ! ok=$(gh api \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=100" \
-                --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'); then
-            echo "::error::could not ask GitHub whether ci.yml ran on $GITHUB_SHA. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
+
+          # ── THE RULE, ONCE ──────────────────────────────────────────────────
+          # Reads "<conclusion> <job name>" lines on stdin. Returns 0 only if the
+          # per-tool legs for $1 were PRESENT and every one of them succeeded,
+          # with at least one windows-latest pack leg among them.
+          grade() {
+            local id="$1" c n fam g=0 s=0 p=0 w=0 bad=0
+            while read -r c n; do
+              fam=''
+              case "$n" in
+                "gates · $id"|"gates · $id "*)     fam=gates ;;
+                "sims · $id"|"sims · $id "*)       fam=sims ;;
+                "package · $id"|"package · $id "*) fam=package ;;
+              esac
+              [ -n "$fam" ] || continue
+              if [ "$c" != success ]; then
+                printf '    RED  %-8s %s  (%s)\n' "$fam" "$n" "$c"
+                bad=$((bad + 1))
+                continue
+              fi
+              case "$fam" in
+                gates)   g=$((g + 1)) ;;
+                sims)    s=$((s + 1)) ;;
+                package) p=$((p + 1))
+                         case "$n" in *' · windows-latest') w=$((w + 1)) ;; esac ;;
+              esac
+            done
+            printf '    gates=%d sims=%d package=%d (windows-latest %d) not-success=%d\n' "$g" "$s" "$p" "$w" "$bad"
+            [ "$bad" -eq 0 ] && [ "$g" -ge 1 ] && [ "$s" -ge 1 ] && [ "$p" -ge 1 ] && [ "$w" -ge 1 ]
+          }
+
+          # An empty id turns every prefix above into `gates · `, which matches
+          # EVERY tool's legs — so it is refused rather than widened.
+          ID="${TOOL_ID:-}"
+          if [ -z "$ID" ]; then
+            echo "::error::the tool id is empty, so the job-name prefixes below would match any tool's legs and any ci run would clear this tag. Parse tag produced no id."
             exit 1
           fi
-          if [ "$ok" -lt 1 ]; then
+
+          # ── THE RULE IS EXERCISED BEFORE IT IS TRUSTED ──────────────────────
+          # `|| got=RED` reads the PIPELINE's status, whose last stage is grade —
+          # which is the status wanted here, and is said out loud because a status
+          # after a pipe usually is not the one the author meant.
+          cases=0 ; bad=0
+          expect() {
+            local want="$1" label="$2" ; shift 2
+            local got=GREEN
+            printf '%s\n' "$@" | grade "$ID" >/dev/null 2>&1 || got=RED
+            cases=$((cases + 1))
+            if [ "$got" = "$want" ]; then
+              printf '  ok    %-62s -> %s\n' "$label" "$got"
+            else
+              printf '  FAIL  %-62s -> %s, expected %s\n' "$label" "$got" "$want"
+              bad=$((bad + 1))
+            fi
+          }
+          G="success gates · $ID"
+          S="success sims · $ID · node 24"
+          PU="success package · $ID · chromium · ubuntu-latest"
+          PW="success package · $ID · firefox · windows-latest"
+          OTHER="success ci-required"
+          echo "built-in cases for the rule above:"
+          expect GREEN '1. every per-tool leg ran and passed, windows included' "$G" "$S" "$PU" "$PW" "$OTHER"
+          expect RED   '2. THE DEFECT: zero matrix, the per-tool legs are absent' "$OTHER"
+          expect RED   '3. THE DEFECT, other spelling: the legs are listed skipped' "${G/success/skipped}" "${S/success/skipped}" "${PU/success/skipped}" "${PW/success/skipped}" "$OTHER"
+          expect RED   '4. the legs ran, but no windows-latest pack leg among them' "$G" "$S" "$PU" "$OTHER"
+          expect RED   '5. a leg failed' "$G" "${S/success/failure}" "$PU" "$PW" "$OTHER"
+          expect RED   '6. a sibling tool id ran green and this one did not' "success gates · $ID-pro" "success sims · $ID-pro · node 24" "success package · $ID-pro · firefox · windows-latest" "$OTHER"
+          expect RED   '7. the jobs list held nothing this rule recognises' ''
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad of $cases built-in case(s) above disagree with the rule this step is about to apply. The rule was weakened or the cases were; either way this run's verdict would mean nothing."
+            exit 1
+          fi
+          echo "$cases of $cases built-in case(s) agree with the rule."
+          echo
+
+          # ── AND NOW, THIS COMMIT ────────────────────────────────────────────
+          if ! runs=$(gh api --paginate \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=100" \
+                --jq '.workflow_runs[] | select(.conclusion == "success") | .id'); then
+            echo "::error::could not ask GitHub which ci.yml runs exist for $GITHUB_SHA. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
+            exit 1
+          fi
+          if [ -z "$runs" ]; then
             echo "::error::ci.yml has no successful run for $GITHUB_SHA, so selftest.node.js never graded these gates on these bytes. Push the commit to main, let ci finish green on it, then tag."
             exit 1
           fi
-          echo "ci.yml: $ok successful run(s) on $GITHUB_SHA."
+
+          good=''
+          for run in $runs; do
+            if ! jobs=$(gh api --paginate \
+                  "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
+                  --jq '.jobs[] | ((.conclusion // "null") + " " + .name)'); then
+              echo "::error::could not read the jobs of ci.yml run $run. Its conclusion alone does not say whether the per-tool legs ran, so this fails closed rather than falling back to it."
+              exit 1
+            fi
+            if [ -z "$jobs" ]; then
+              echo "::error::ci.yml run $run reported NO jobs. An empty list grades as zero not-successes, which is the one answer this step must never read as a pass."
+              exit 1
+            fi
+            echo "  ci.yml run $run:"
+            if grade "$ID" <<< "$jobs"; then good=$run ; break ; fi
+          done
+
+          if [ -n "$good" ]; then
+            echo "ci.yml run $good graded $GITHUB_SHA: the gates, sims and package legs for '$ID' all RAN and passed, windows-latest pack leg included."
+            exit 0
+          fi
+
+          why="no successful ci.yml run at $GITHUB_SHA actually ran the per-tool legs for '$ID'. A run whose discover selected zero tools concludes success with gates/sims/package SKIPPED — ci-required licenses that, and it clears nothing about these bytes. Push a commit ci discovers as touching '$ID', let it finish green, then tag."
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF_NAME" = main ] && [ "${DRY_RUN:-}" = true ]; then
+            echo "::notice::$why  This is a dry_run rehearsal dispatched from main, where a zero-matrix head is ordinary, so the rehearsal continues. On the push that publishes, all three of those conditions are false and this is a refusal."
+            exit 0
+          fi
+          echo "::error::$why"
+          exit 1
 
       # 🔴 A RELEASE USED TO RUN FEWER GATES THAN A PULL REQUEST. Measured
       # 2026-08-20 by diffing the `node scripts/*.mjs` calls in the two files:

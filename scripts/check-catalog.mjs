@@ -37,7 +37,9 @@
      2  SHAPE      every row carries slug/name/tagline/listings/platforms/status,
                    and listings is keyed by exactly the platforms it publishes
      3  STATUS     "live" if and only if the row carries at least one listing URL
-     4  URL        every listing URL is https and points at that store's own host
+     4  URL        every listing URL is https, points at that store's own host,
+                   and carries a path — the host with no path is the store's
+                   front door, not a listing
      5  SOURCE     a tool.json is "shipping" if and only if it has a listing —
                    which is the rule Extension/Full_Screen_Shot/tool.json writes
                    down about itself, and nothing enforced it
@@ -88,24 +90,6 @@
    carries a real store URL while still saying `preview` publishes a card the
    storefront will render without an install button, so a listing that exists
    reaches nobody. Both directions are wrong; both are red.
-
-   ── 🔴 NOT YET WIRED INTO CI, AND THAT IS THE ONE THING WRONG WITH IT ────────
-
-   `.github/workflows/ci.yml` does not call this script or publish-catalog.mjs.
-   Until it does, both are notes rather than gates: they help a session that
-   remembers to run them and nobody else, which is the weaker half of the rule
-   this repository is built on. Nothing here is blocked on a decision — the
-   wiring was simply out of scope for the change that added these two files.
-
-   The two steps to add, in the `gates` job beside the other per-tool calls (they
-   are repo-wide, not per-tool, so they belong once rather than in the matrix):
-
-       - run: node scripts/publish-catalog.mjs --check
-       - run: node scripts/check-catalog.mjs
-
-   Both are plain `node scripts/<name>.mjs` calls with no arguments, so the
-   `gate-inventory` job picks them up from the workflow text automatically and
-   will report them PRESENT.
 
    Exit codes: 0 every limb passed · 1 something is wrong · 2 could not run. */
 
@@ -348,6 +332,12 @@ catalogue.forEach((row, i) => {
         urlProblems.push(at + ' (' + label + ') has listings.' + store + ' on host ' + parsedUrl.hostname +
           ', but a ' + store + ' listing lives on ' + hosts.join(' or ') + '. A store button that leaves the store is either ' +
           'a typo or a landing page standing in for a listing that does not exist yet — and the second is the more expensive one.');
+      } else if (parsedUrl.pathname === '/') {
+        urlProblems.push(at + ' (' + label + ') has listings.' + store + ' = ' + JSON.stringify(url) +
+          ', which is the ' + store + ' store front door: right host, no path. It is what a dashboard or landing-page URL\n' +
+          'looks like pasted in on submission day, and it publishes the row "live" with an install button that opens the\n' +
+          'store to nothing in particular. This limb says only that the URL is not the front door — a path here is not\n' +
+          'evidence that anything answers behind it.');
       }
     }
   }

@@ -44,7 +44,6 @@
  * ⛔ ITS RED CANNOT BE CLEARED BY PRESSING THE BUTTON. `workflow_dispatch` runs
  * are excluded by the query, so a hand-press REVEALS a dead cron instead of
  * renewing it — the scar both siblings record.
- * ⛔ It never weakens the suites: it can add a red and can remove none.
  *
  * ADVISORY. main in this repository has no branch protection and no rulesets,
  * so a red here reddens a check on the checks page and blocks nothing. Clearing
@@ -52,8 +51,7 @@
  *
  * Exit 0 = the timer fired inside the ceiling AND the newest scheduled run
  * carrying every e2e leg this checkout expects, all passed, is inside it too.
- * Exit 1 = one of those is false. Exit 2 = the gate could not run, which is
- * never reported as health.
+ * Exit 2 = the gate could not run, which is never reported as health.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -73,6 +71,12 @@ const WALK_BACK = 12;
 /* The matrix legs, named `e2e · <dir>`. Prefix-matched because the dir comes
    from discovery. "Discover e2e suites" does not match, nor does proof-fresh. */
 const LEG = /^e2e[^A-Za-z0-9]/;
+/* The `<cat>/<tool>` payload AFTER the prefix and its separator. The separator
+   is "a run of non-alphanumerics", never the literal `·`: that character is
+   U+00B7, it crosses the GitHub API and a source-encoding boundary to get here,
+   and a gate pinned to one byte sequence for it would stop parsing — silently —
+   the day it arrived mojibake'd or was retyped as a dash. */
+const LEG_DIR = /^e2e[^A-Za-z0-9]+([A-Za-z0-9].*)$/;
 const DAY = 86400000;
 
 const red = [];
@@ -93,11 +97,27 @@ for (let i = 0; i < argv.length; i++) {
 }
 const ROOT = rootArg ? path.resolve(rootArg) : REPO_ROOT;
 
+/* Resolved ONE ENTRY AT A TIME and compared byte-for-byte, never existsSync: CI
+   IS LINUX and a case-insensitive host answers for names it cannot open. */
+const dirent = (p, name) => {
+  const es = fs.readdirSync(p, { withFileTypes: true });
+  return es.find(d => d.name === name) || es.find(d => d.name.toLowerCase() === name.toLowerCase()) || null;
+};
+
 /* ── SELF-CHECK: THE CEILING IS DERIVED, SO THE CRON IS LOAD-BEARING ────────
    Full-line comments are dropped first. */
 const wfPath = path.join(ROOT, '.github', 'workflows', WORKFLOW);
 let raw = '';
-try { raw = fs.readFileSync(wfPath, 'utf8'); }
+try {
+  let p = ROOT;
+  for (const seg of ['.github', 'workflows', WORKFLOW]) {
+    const d = dirent(p, seg);
+    if (!d) throw new Error(`there is no ${seg} in ${p}`);
+    if (d.name !== seg) throw new Error(`${seg} is on disk as ${d.name}, a case a Linux runner does not open`);
+    p = path.join(p, seg);
+  }
+  raw = fs.readFileSync(p, 'utf8');
+}
 catch (e) { cannotRun(`could not read ${wfPath} (${e.message}). The ceiling is derived from that file's cron, so with the file unreadable there is nothing to derive it from.`); }
 const yaml = raw.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
 
@@ -118,28 +138,29 @@ if (!/^ {4}name:\s*e2e[^A-Za-z0-9]/m.test(yaml)) {
   err(`COVERAGE LOST — no job in ${WORKFLOW} carries a name starting e2e at the job indent, which is the prefix the GREEN limb matches run jobs on. Rename the matcher in the same commit as the job.`);
 }
 
-/* ── HOW MANY LEGS A GREEN RUN HAS TO CARRY ─────────────────────────────────
+/* ── WHICH LEGS A GREEN RUN HAS TO CARRY ────────────────────────────────────
    `legs.every(success)` is vacuously true over an EMPTY list. It is ALSO true
    over ONE leg on a run whose matrix used to be four legs wide, so without a
-   count a proof that stopped covering three tool directories reads GREEN and
+   floor a proof that stopped covering three tool directories reads GREEN and
    keeps reading green for as long as the surviving leg passes.
 
-   THE EXPECTED COUNT IS DERIVED, NOT TYPED: it re-runs the rule e2e.yml's
+   THE EXPECTED SET IS DERIVED, NOT TYPED: it re-runs the rule e2e.yml's
    `discover` job uses — a <Category>/<Tool>/test/e2e/package.json — over the
    checkout this gate already has. WHAT IT COSTS, plainly: adding a tool reddens
    this until the next scheduled run covers it, and that red is a TRUE sentence
    — the last green proof did not run the new tool.
 
-   ⚠️ WHAT IT DOES NOT CATCH, because a cardinality is not a set: a rename, or a
-   delete-one-add-one, preserves the count. LEG matches only the name PREFIX, so
-   the `<cat>/<tool>` payload of a leg name is compared to nothing. A run whose
-   legs cover a DIFFERENT set of the same size reads GREEN. Measured 2026-08-27
-   on injected history: a checkout carrying Full_Screen_Shot and Second_Tool,
-   against runs whose two legs are Full_Screen_Shot and a GONE_Tool that is not
-   in the checkout, logs `legs=2/2  GREEN` and exits 0 — Second_Tool has never
-   been exercised by any run in that history. CLOSING IT NEEDS A SET, not a
-   count: parse `<cat>/<tool>` out of each matched leg name and compare. That
-   makes the `·` separator load-bearing, which is why it was not done here.
+   🔴 A SET, NOT A CARDINALITY, since 2026-08-27. A count is preserved by a
+   rename and by a delete-one-add-one, so until that day the `<cat>/<tool>`
+   payload of a leg name was compared to nothing. Measured on injected history:
+   a checkout carrying Full_Screen_Shot and Second_Tool, against runs whose two
+   legs are Full_Screen_Shot and a GONE_Tool that is not in the checkout, logged
+   `legs=2/2  GREEN` and exited 0 — Second_Tool never exercised by any run in
+   that history. The legs are now parsed and compared as a set of names.
+
+   🔴 JOINED WITH `/`, NEVER path.sep. The leg name is built on a Linux runner
+   from `${cat}/${tool}`; joining with path.sep here would compare
+   `Extension\Tool` to `Extension/Tool` on Windows and pass on Linux only.
 
    ⚠️ ROOTED AT ROOT, NOT AT cwd. e2e.yml's copy of this block read `"."`, which
    is the same thing only when the gate is run from the tree it grades. Measured
@@ -149,18 +170,39 @@ if (!/^ {4}name:\s*e2e[^A-Za-z0-9]/m.test(yaml)) {
 const LEG_SKIP = new Set(['templates', '_skeleton', 'node_modules']);
 const legDirs = p => fs.readdirSync(p, { withFileTypes: true })
   .filter(d => d.isDirectory() && !d.name.startsWith('.') && !LEG_SKIP.has(d.name)).map(d => d.name);
-let EXPECT_LEGS = 0;
+const EXPECT_DIRS = new Set();
+const NO_PKG = [];
+const MISCASED = [];
 try {
   for (const cat of legDirs(ROOT))
-    for (const tool of legDirs(path.join(ROOT, cat)))
-      if (fs.existsSync(path.join(ROOT, cat, tool, 'test', 'e2e', 'package.json'))) EXPECT_LEGS++;
+    for (const tool of legDirs(path.join(ROOT, cat))) {
+      let p = path.join(ROOT, cat, tool), off = false, reached = true;
+      for (const seg of ['test', 'e2e']) {
+        const d = dirent(p, seg);
+        if (!d || !d.isDirectory()) { reached = false; break; }
+        if (d.name !== seg) off = true;
+        p = path.join(p, d.name);
+      }
+      if (!reached) continue;
+      const pkg = dirent(p, 'package.json');
+      if (!pkg || !pkg.isFile()) NO_PKG.push(cat + '/' + tool);
+      else if (off || pkg.name !== 'package.json') MISCASED.push(cat + '/' + tool);
+      else EXPECT_DIRS.add(cat + '/' + tool);
+    }
 } catch (e) {
-  cannotRun(`could not walk ${ROOT} for <Category>/<Tool>/test/e2e/package.json (${e.message}). The expected leg count is derived from that walk, so with the tree unreadable there is nothing to derive it from.`);
+  cannotRun(`could not walk ${ROOT} for <Category>/<Tool>/test/e2e/package.json (${e.message}). The expected leg set is derived from that walk, so with the tree unreadable there is nothing to derive it from.`);
 }
+if (NO_PKG.length) {
+  err(`COVERAGE LOST — a test/e2e directory with no package.json in it: ${NO_PKG.join(', ')}. That is the REMOVAL direction of the cost above, which states only the add: deleting that one file takes the tool out of the discover matrix AND out of the expected set in the same commit, so a NEVER EXERCISED red goes green with the suite still on disk. Measured 2026-08-27 — two suites and a proof covering one: legs=1/2 not-green exit 1, then rm one package.json and nothing else, legs=1/1 GREEN exit 0.`);
+}
+if (MISCASED.length) {
+  err(`COVERAGE LOST — test/e2e/package.json reachable only under a different case: ${MISCASED.join(', ')}. A case-insensitive filesystem counts that as a suite and the Linux runner does not, so it is excluded here and the two hosts disagree about the expected set.`);
+}
+const EXPECT_LEGS = EXPECT_DIRS.size;
 if (!EXPECT_LEGS) {
   err('COVERAGE LOST — this checkout carries no <Category>/<Tool>/test/e2e/package.json, so the expected leg count is 0 and every run below would be graded against nothing.');
 } else {
-  console.log(`proof-fresh expects ${EXPECT_LEGS} e2e leg(s) per run — derived from this checkout by the discover rule, not typed here`);
+  console.log(`proof-fresh expects ${EXPECT_LEGS} e2e leg(s) per run, one each for ${[...EXPECT_DIRS].sort().join(', ')} — derived from this checkout by the discover rule, not typed here`);
 }
 
 /* Offline injection, so the decision logic is exercisable without a token or a
@@ -220,11 +262,11 @@ const api = async p => {
   }
 
   /* ── LIMB 2: WAS THE LAST THING IT PRODUCED GREEN ──────────────────────
-     Read off the matrix legs of past runs, never off run conclusions. Green
-     is EXPECT_LEGS matching legs, all successful — not "some legs, all
-     successful". Zero legs is the vacuous case a renamed job produces; fewer
-     than EXPECT_LEGS is the partial-discovery case a dropped tool produces;
-     one test excludes both. */
+     Read off the matrix legs of past runs, never off run conclusions. Green is
+     the SET of `<cat>/<tool>` the legs name being EXPECT_DIRS exactly, all
+     successful — not "some legs, all successful". Zero legs is the vacuous case
+     a renamed job produces; a subset is the partial-discovery case a dropped
+     tool produces; a same-size DIFFERENT set is the rename a count cannot see. */
   const jobsOf = async id => {
     if (fixture) return (fixture.jobs && fixture.jobs[String(id)]) || [];
     const j = await api(`/repos/${repo}/actions/runs/${id}/jobs?per_page=100`);
@@ -232,13 +274,38 @@ const api = async p => {
   };
   let green = null;
   let walked = 0;
+  let sawLeg = false;
+  let sawDir = false;
   for (const r of sched) {
     if (walked >= WALK_BACK) break;
     walked++;
     const legs = (await jobsOf(r.id)).filter(j => j && LEG.test(String(j.name)));
-    const ok = EXPECT_LEGS > 0 && legs.length === EXPECT_LEGS && legs.every(j => j.conclusion === 'success');
-    console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}/${EXPECT_LEGS}  ${ok ? 'GREEN' : 'not-green'}  [${legs.map(j => j.name + '=' + j.conclusion).join(', ') || 'no e2e leg'}]`);
+    if (legs.length) sawLeg = true;
+    const covered = new Set();
+    let unparseable = 0;
+    for (const j of legs) {
+      const m = LEG_DIR.exec(String(j.name).trim());
+      if (m) { covered.add(m[1].trim()); sawDir = true; } else unparseable++;
+    }
+    const missing = [...EXPECT_DIRS].filter(d => !covered.has(d)).sort();
+    const surplus = [...covered].filter(d => !EXPECT_DIRS.has(d)).sort();
+    /* `legs=2/1 GREEN`, exit 0 until 2026-08-27: a set collapses duplicates, a count does not. */
+    const dupes = legs.length - covered.size - unparseable;
+    const ok = EXPECT_LEGS > 0 && unparseable === 0 && dupes === 0 && legs.length === EXPECT_LEGS &&
+               !missing.length && !surplus.length &&
+               legs.every(j => j.conclusion === 'success');
+    console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}/${EXPECT_LEGS}  ${ok ? 'GREEN' : 'not-green'}  [${legs.map(j => j.name + '=' + j.conclusion).join(', ') || 'no e2e leg'}]` +
+      (missing.length ? `  NEVER EXERCISED: ${missing.join(', ')}` : '') +
+      (surplus.length ? `  NOT IN THIS CHECKOUT: ${surplus.join(', ')}` : '') +
+      (unparseable ? `  ${unparseable} leg name(s) yielded no <cat>/<tool>` : '') +
+      (dupes ? `  ${dupes} DUPLICATE leg name(s) — ${legs.length} legs naming ${covered.size} dir(s)` : ''));
     if (ok) { green = r; break; }
+  }
+  /* If every matched leg name yielded nothing, the set this gate compares was
+     EMPTY on every run — which is not "the legs are missing", it is "this gate
+     stopped being able to read them". */
+  if (sawLeg && !sawDir) {
+    err(`COVERAGE LOST — job names matching ${LEG} were found in the newest ${walked} scheduled ${WORKFLOW} run(s), and not one of them yielded a <cat>/<tool> after the prefix. The set compared below was empty on every run, so the leg-name shape in ${WORKFLOW} has changed and this gate is reading nothing out of it.`);
   }
   let greenAge = null;
   if (!green) {
