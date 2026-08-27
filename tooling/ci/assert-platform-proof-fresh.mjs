@@ -24,7 +24,9 @@
 //
 // MAX_AGE_DAYS = 14 is ARBITRARY and recorded as arbitrary. Short enough that rot
 // surfaces inside a sprint, long enough that a quiet fortnight does not nag. It
-// is one constant; change it deliberately.
+// is one constant; change it deliberately. It is not DERIVED from the cron — that
+// is a standing owner lock — but the crons must still be able to reach it, so
+// `impliedIntervalDays` below re-reads them and refuses a cadence slower than 14.
 //
 // FAILS CLOSED. No token, a non-200, malformed JSON, or zero successful runs are
 // all failures. "I could not tell" must never read as "it is fine" — that is
@@ -140,6 +142,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, shellSegments, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW = 'build-platforms.yml';
@@ -347,6 +350,101 @@ export function requiredTargets(register) {
   return { platforms: [...platforms].sort(), required, unmapped };
 }
 
+// ── THE CEILING AND THE TIMER, KEPT IN CONTACT ───────────────────────────────
+// MAX_AGE_DAYS is a bare constant and the crons are the only thing that renews
+// the proof inside it. Nothing held the two together: a single monthly cron left
+// this guard green, and it would then have gone red 14 days later at the symptom
+// with the tempting repair — raise the number — sitting right there. The sibling
+// assert-e2e-proof-fresh.mjs re-derives its own ceiling for exactly this reason.
+//
+// Only the last three fields decide WHICH DAYS a cron fires. The minute and hour
+// say when in the day, which a ceiling measured in days does not depend on.
+//
+// NO CLOCK IS READ. The fires are counted over a FIXED reference window, so the
+// answer is identical on every host, in every timezone, on every date. A
+// derivation that moved with `Date.now()` would be a guard that changes its mind
+// at local midnight — this repo has already paid for one of those.
+const DERIVATION_EPOCH_MS = Date.UTC(2024, 0, 1); // a Monday, inside a leap year
+const DERIVATION_WINDOW_DAYS = 800; // over two years: every month and a leap day
+const MONTH_NAMES = 'JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC'.split(' ');
+const DAY_NAMES = 'SUN MON TUE WED THU FRI SAT'.split(' ');
+
+/**
+ * One cron field expanded to the values it matches, or `null` when this parser
+ * cannot read it.
+ *
+ * 🔴 THE `null` IS THE POINT. A form nobody anticipated — `@weekly`, `?`, `L`,
+ * `5#2`, a typo — must fail CLOSED. Falling through to "interval unknown,
+ * therefore acceptable" would make this whole limb inert the first time somebody
+ * writes a cron shape the parser does not handle, and it would look green while
+ * doing it. Names are accepted PER FIELD — `MAY` is May in the month field and
+ * nothing in the day field — so a legitimate `0 6 * * MON` is not a false red,
+ * and an unrecognised word becomes a space no pattern below matches.
+ */
+export function cronFieldValues(spec, min, max, names = []) {
+  if (typeof spec !== 'string' || spec === '') return null;
+  const norm = spec.toUpperCase().replace(/[A-Z]+/g, (t) => (names.includes(t) ? String(names.indexOf(t) + min) : '\x00'));
+  const out = new Set();
+  for (const part of norm.split(',')) {
+    const m = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
+    if (!m) return null;
+    const step = m[2] === undefined ? 1 : Number(m[2]);
+    if (step < 1) return null;
+    const ends = m[1] === '*' ? [min, max] : m[1].split('-').map(Number);
+    const lo = ends[0];
+    const hi = ends.length === 2 ? ends[1] : m[2] === undefined ? lo : max;
+    if (lo < min || hi > max || lo > hi) return null;
+    for (let v = lo; v <= hi; v += step) out.add(v);
+  }
+  return out.size ? out : null;
+}
+
+/** The day-offsets inside the reference window on which one cron fires, or
+ *  `null` when the expression cannot be read. */
+function cronFireDays(expr) {
+  const f = String(expr).trim().split(/\s+/);
+  if (f.length !== 5) return null;
+  const every = (x) => x === '*' || x === '*/1';
+  // POSIX cron ORs day-of-month against day-of-week when BOTH are restricted.
+  // Refused rather than guessed: reading that form as AND would red a legitimate
+  // cadence, and reading it as OR would green a slower one than it looks.
+  if (!every(f[2]) && !every(f[4])) return null;
+  const dom = cronFieldValues(f[2], 1, 31);
+  const mon = cronFieldValues(f[3], 1, 12, MONTH_NAMES);
+  const dowRaw = cronFieldValues(f[4], 0, 7, DAY_NAMES);
+  if (!dom || !mon || !dowRaw) return null;
+  const dow = new Set([...dowRaw].map((d) => d % 7)); // 0 and 7 are both Sunday
+  const days = [];
+  for (let i = 0; i < DERIVATION_WINDOW_DAYS; i++) {
+    const d = new Date(DERIVATION_EPOCH_MS + i * 86_400_000);
+    if (mon.has(d.getUTCMonth() + 1) && dom.has(d.getUTCDate()) && dow.has(d.getUTCDay())) days.push(i);
+  }
+  return days;
+}
+
+/**
+ * The longest gap in whole days between consecutive fires of the whole cron SET
+ * — the interval at which these crons renew the proof, worst case.
+ *
+ * `null` means NO interval was established: an expression this parser cannot
+ * read, an empty set, or fewer than two fires in 800 days (a cron that rare is
+ * slower than any ceiling worth having). Callers must treat `null` as a failure.
+ */
+export function impliedIntervalDays(crons) {
+  if (!Array.isArray(crons) || crons.length === 0) return null;
+  const all = new Set();
+  for (const expr of crons) {
+    const days = cronFireDays(expr);
+    if (days === null) return null;
+    for (const d of days) all.add(d);
+  }
+  const sorted = [...all].sort((a, b) => a - b);
+  if (sorted.length < 2) return null;
+  let worst = 0;
+  for (let i = 1; i < sorted.length; i++) worst = Math.max(worst, sorted[i] - sorted[i - 1]);
+  return worst;
+}
+
 // COVERAGE SELF-CHECK. This guard reads a workflow by NAME over the network. If
 // that workflow is renamed or deleted the API returns an empty list, which is
 // indistinguishable from "never run" — and asserting on the cron additionally
@@ -380,6 +478,27 @@ export function platformProofCoverage(root = ROOT) {
   }
   if (!/^\s+-\s*cron:\s*['"]/m.test(header)) {
     return lost(`COVERAGE LOST — ${WORKFLOW} has a 'schedule:' block with no cron entry.`);
+  }
+
+  // THE DECLARED CADENCE MUST BE ABLE TO REACH THE CEILING. Not "is it this
+  // cron" — a cadence edit is the owner's to make and encoding the exact set
+  // would red every developer's push over it. The weakest true thing: whatever
+  // the crons are, they must renew the proof faster than MAX_AGE_DAYS.
+  const crons = cronExpressions(header);
+  const interval = impliedIntervalDays(crons);
+  if (interval === null) {
+    return lost(
+      `COVERAGE LOST — ${WORKFLOW} declares a cron this guard cannot read: [${crons.join(', ')}]. ` +
+        `The renewal interval MAX_AGE_DAYS = ${MAX_AGE_DAYS} is measured against has no value, and an unreadable cron treated ` +
+        'as acceptable is how this clause would go green over a timer that never fires. Use the 5-field numeric form.',
+    );
+  }
+  if (interval >= MAX_AGE_DAYS) {
+    return lost(
+      `COVERAGE LOST — ${WORKFLOW}'s schedule [${crons.join(', ')}] renews the proof only every ${interval} day(s), ` +
+        `and MAX_AGE_DAYS is ${MAX_AGE_DAYS}. The freshness clause below can then never be satisfied: it would go red at the ` +
+        'SYMPTOM a fortnight later, where the obvious repair is to raise the ceiling and hide the rot. Fire more often instead.',
+    );
   }
 
   // ── the platform set, DERIVED ──────────────────────────────────────────────
@@ -489,7 +608,8 @@ export function platformProofCoverage(root = ROOT) {
     summary:
       `REQUIRED_COVERAGE — ${platforms.length} platform(s) from ${REGISTER_REL} {${platforms.join(' ')}} all built by a real ` +
       `\`flutter build\` command in ${WORKFLOW} (targets found: ${[...found.keys()].sort().join(' ')}); ` +
-      `${buildJobs.length} build job(s) {${buildJobs.join(' ')}} all in aggregator "${agg.job}"'s needs`,
+      `${buildJobs.length} build job(s) {${buildJobs.join(' ')}} all in aggregator "${agg.job}"'s needs; ` +
+      `schedule [${crons.join(', ')}] renews it every ${interval} day(s) against a ${MAX_AGE_DAYS}-day ceiling`,
   };
 }
 

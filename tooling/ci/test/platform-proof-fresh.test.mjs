@@ -30,6 +30,8 @@ import {
   gitAncestry,
   assertWatchedWorkflowIntact,
   platformProofCoverage,
+  impliedIntervalDays,
+  cronFieldValues,
   reportProvenance,
   blankStringLiterals,
   flutterBuildTargets,
@@ -853,5 +855,170 @@ jobs:
     const { platforms, required } = requiredTargets({ channels: [] });
     assert.deepEqual(platforms, []);
     assert.equal(required.size, 0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CEILING vs THE TIMER.
+//
+// Measured against the version of the guard BEFORE this clause existed: a single
+// `0 6 1 * *` (monthly) cron and a literal `not a cron` BOTH returned null —
+// PASS. MAX_AGE_DAYS = 14 was a bare constant nothing compared against the
+// cadence that has to renew the proof inside it. These are the measurement.
+//
+// 🔴 THE VACUITY THIS SET EXISTS TO FORBID: an unreadable cron falling through
+// to "interval unknown, therefore acceptable". Every unreadable form below must
+// be RED. A parser that silently passes what it cannot read makes the whole
+// clause inert the first time someone writes `@weekly`.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the declared cadence must be able to reach MAX_AGE_DAYS', () => {
+  const MON = "    - cron: '0 6 * * 1'   # Mondays 06:00 UTC\n";
+  const THU = "    - cron: '0 6 * * 4'   # Thursdays 06:00 UTC\n";
+
+  /** The REAL workflow with its cron block replaced, written out with the given
+   *  line endings. An unchanged file is a refusal, for the reason mutate() gives
+   *  above: a transform whose pattern stopped matching grades a healthy tree. */
+  const withCrons = (block, { eol = '\n' } = {}) => {
+    const root = mkdtempSync(join(tmpdir(), 'nikatru-f4-cron-'));
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    const real = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
+    // 🔴 BOTH patterns must still match, checked BEFORE the replace. A transform
+    // that silently stopped transforming is what makes a negative test grade a
+    // healthy tree — the rot mutate() above was rewritten to refuse.
+    if (!real.includes(MON) || !real.includes(THU)) {
+      rmSync(root, { recursive: true, force: true });
+      throw new Error('withCrons(): build-platforms.yml no longer contains both cron lines verbatim — repoint them.');
+    }
+    const after = real.replace(MON, block).replace(THU, '');
+    writeFileSync(join(root, '.github/workflows/build-platforms.yml'), after.split('\n').join(eol));
+    writeFileSync(join(root, 'tooling/channel-register.json'), readFileSync(join(REPO, 'tooling/channel-register.json')));
+    return root;
+  };
+  const verdict = (block, opts) => {
+    const root = withCrons(block, opts);
+    const problem = platformProofCoverage(root).problem;
+    rmSync(root, { recursive: true, force: true });
+    return problem;
+  };
+  const cron = (expr) => "    - cron: '" + expr + "'\n";
+
+  // ⚠️ DERIVED, NOT TYPED. Writing today's two crons in here would make the
+  // owner's next cadence edit a red ci-gate on every developer's push, which is
+  // the same mistake as encoding the cron set in the guard.
+  test('the real tree passes, and SAYS the interval it derived', () => {
+    const real = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
+    const declared = [...real.matchAll(/^\s+-\s*cron:\s*['"]([^'"]+)['"]/gm)].map((m) => m[1].trim());
+    assert.ok(declared.length >= 1, 'build-platforms.yml declares no cron — repoint this test');
+    const days = impliedIntervalDays(declared);
+    assert.ok(days !== null && days < 14, `the shipped schedule ${JSON.stringify(declared)} must renew inside 14 days, got ${days}`);
+    const { problem, summary } = platformProofCoverage(REPO);
+    assert.equal(problem, null);
+    assert.match(summary, new RegExp(`renews it every ${days} day\\(s\\) against a 14-day ceiling`));
+  });
+
+  test('deleting ONE of two weekly crons still passes — a cadence edit is the owner\'s to make', () => {
+    assert.equal(verdict(MON), null);
+  });
+
+  // ── RECORDED FAILING CASES. Each returned null against the previous guard. ──
+  test('a MONTHLY cron cannot renew inside 14 days -> COVERAGE LOST at the cause', () => {
+    assert.match(verdict(cron('0 6 1 * *')), /renews the proof only every 31 day\(s\).*MAX_AGE_DAYS is 14/s);
+  });
+
+  test('a YEARLY cron -> COVERAGE LOST', () => {
+    assert.match(verdict(cron('0 6 1 1 *')), /renews the proof only every 366 day\(s\)/);
+  });
+
+  test('twice a month is SLOWER than the ceiling — 1st to 15th is 14, but 15th to the 1st is 17', () => {
+    assert.match(verdict(cron('0 6 1,15 * *')), /renews the proof only every 17 day\(s\)/);
+  });
+
+  // ── THE VACUITY, ONE FORM PER ROW ─────────────────────────────────────────
+  for (const [label, expr] of [
+    ['@weekly macro (GitHub does not accept it either)', '@weekly'],
+    ['prose where a cron should be', 'not a cron'],
+    ['six fields', '0 0 6 * * 1'],
+    ['four fields', '6 * * 1'],
+    ['an empty expression', ''],
+    ['whitespace only', '   '],
+    ['day-of-week 8', '0 6 * * 8'],
+    ['day-of-month 32', '0 6 32 * *'],
+    ['a zero step', '0 6 * * */0'],
+    ['the L form', '0 6 L * *'],
+    ['the nth-weekday form', '0 6 * * 5#2'],
+    ['a ? placeholder', '0 6 ? * 1'],
+    ['a day name nothing defines', '0 6 * * XYZ'],
+    ['day-of-month AND day-of-week both restricted (cron ORs them)', '0 6 1 * 1'],
+    ['a cron too rare to establish an interval at all (Feb 29)', '0 6 29 2 *'],
+  ]) {
+    test(`UNREADABLE cron — ${label} — is RED, never "interval unknown therefore fine"`, () => {
+      assert.match(verdict(cron(expr)), /COVERAGE LOST/);
+    });
+  }
+
+  test('an unterminated quote leaves NO readable cron -> RED, not an empty pass', () => {
+    assert.match(verdict("    - cron: '0 6 * * 1\n"), /COVERAGE LOST/);
+  });
+
+  test('ONE unreadable cron poisons a set that also holds a healthy one', () => {
+    assert.match(verdict(cron('0 6 * * 1') + cron('@weekly')), /cannot read/);
+  });
+
+  test('a healthy cron in a COMMENT does not rescue a monthly real one', () => {
+    assert.match(verdict("    # - cron: '0 6 * * 1'\n" + cron('0 6 1 * *')), /renews the proof only every 31 day\(s\)/);
+  });
+
+  test('`schedule:` with no cron at all keeps its OWN older message', () => {
+    assert.match(verdict("\n"), /'schedule:' block with no cron entry/);
+  });
+
+  // ── forms that are legitimate and must NOT go red ─────────────────────────
+  for (const [label, expr, days] of [
+    ['a single weekly cron', '0 6 * * 1', 7],
+    ['Sunday written as 7', '0 6 * * 7', 7],
+    ['a list of two weekdays', '0 6 * * 1,4', 4],
+    ['a named range', '0 6 * * MON-FRI', 3],
+    ['a day-of-month step', '0 6 */5 * *', 5],
+  ]) {
+    test(`a legitimate cadence is not a false red — ${label} = ${days} day(s)`, () => {
+      assert.equal(verdict(cron(expr)), null);
+      assert.equal(impliedIntervalDays([expr]), days);
+    });
+  }
+
+  test('CRLF is not a second answer — the same four verdicts under \\r\\n', () => {
+    assert.equal(verdict(MON + THU, { eol: '\r\n' }), null);
+    assert.equal(verdict(MON, { eol: '\r\n' }), null);
+    assert.match(verdict(cron('0 6 1 * *'), { eol: '\r\n' }), /every 31 day\(s\)/);
+    assert.match(verdict(cron('@weekly'), { eol: '\r\n' }), /cannot read/);
+  });
+
+  test('the derivation reads NO clock — a fixed window, so no host and no date can move it', () => {
+    // The 2026-08 "Linux flake" was a local-midnight rollover. A ceiling that
+    // re-derived itself from `Date.now()` would be that bug with a new name.
+    const src = readFileSync(join(CI_DIR, 'assert-platform-proof-fresh.mjs'), 'utf8');
+    const derivation = src.slice(src.indexOf('const DERIVATION_EPOCH_MS'), src.indexOf('// COVERAGE SELF-CHECK'));
+    assert.ok(derivation.length > 500, 'the derivation block was not located — repoint these anchors');
+    assert.doesNotMatch(derivation, /Date\.now|new Date\(\)|getFullYear|process\.platform/);
+    assert.match(derivation, /Date\.UTC\(2024, 0, 1\)/);
+    // and the UTC accessors, not the local ones, are what make that true
+    assert.doesNotMatch(derivation, /\.getDate\(\)|\.getDay\(\)|\.getMonth\(\)/);
+  });
+
+  test('impliedIntervalDays refuses rather than guesses', () => {
+    assert.equal(impliedIntervalDays([]), null);
+    assert.equal(impliedIntervalDays(null), null);
+    assert.equal(impliedIntervalDays(['0 6 29 2 *']), null, 'one fire in 800 days establishes no interval');
+    assert.equal(impliedIntervalDays(['0 6 * * 1', '0 6 * * 4']), 4);
+    assert.equal(impliedIntervalDays(['17 3 * * *']), 1, "the sibling's daily cron, read by this parser");
+  });
+
+  test('a field name is read in ITS OWN field — MAY is not Friday', () => {
+    const DAYS = 'SUN MON TUE WED THU FRI SAT'.split(' ');
+    assert.equal(cronFieldValues('MAY', 0, 7, DAYS), null);
+    assert.deepEqual([...cronFieldValues('FRI', 0, 7, DAYS)], [5]);
+    assert.deepEqual([...cronFieldValues('MAY', 1, 12, 'JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC'.split(' '))], [5]);
+    assert.equal(cronFieldValues('MON', 1, 31), null, 'day-of-month has no names');
   });
 });

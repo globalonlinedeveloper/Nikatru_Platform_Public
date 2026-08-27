@@ -514,6 +514,91 @@ if (SUBMIT) {
           '`can_admins_bypass` is false, so this job only reached this line because one of them approved it',
       );
     }
+
+    // ── PG-5b · what this environment's own policy SAYS about the REF ────────
+    // 🔴 THE SAME GET, A FIELD NOTHING HAS EVER READ. Until now
+    // `deployment_branch_policy` appeared in tooling/ exactly once — as a
+    // near-miss STRING in a test fixture — so the one thing the environment says
+    // about WHICH REFS MAY DEPLOY was read by nothing.
+    //
+    // ⚠️ MEASURED 2026-08-27, and it corrects the obvious assumption: THE ROWS
+    // ARE NOT IN THE RESPONSE ABOVE. That response carries only the MODE.
+    //   GET …/environments/store-publish
+    //     -> deployment_branch_policy = {"protected_branches":false,"custom_branch_policies":true}
+    //   GET …/environments/store-publish/deployment-branch-policies
+    //     -> {"total_count":1,"branch_policies":[{"name":"main","type":"branch"}]}
+    // The second GET is made only when the mode says a custom list exists, so an
+    // environment with no policy pays nothing for this limb.
+    // Source: ${PRIMARY_SOURCES.githubEnvironmentsApi}.
+    //
+    // 🔴 IT REFUSES ONLY WHAT IT CAN DECIDE. A row's `name` may be a wildcard
+    // pattern and this script has no sourced model of that matcher, so the
+    // refusal fires only where no pattern is involved: no row of the ref's
+    // own KIND is a wildcard and none of them names this ref — measured above
+    // as a TAG against a policy whose only row is a BRANCH: ZERO tag rows.
+    // Everything else PRINTS what it read and says it could not decide. NOT
+    // DECIDED is never reported as permitted.
+    const refPolicy = envJson.deployment_branch_policy;
+    const gitRef = (process.env.GITHUB_REF ?? '').trim();
+    const refKind = gitRef.startsWith('refs/heads/') ? 'branch' : gitRef.startsWith('refs/tags/') ? 'tag' : null;
+    const refName = refKind === null ? '' : gitRef.slice(refKind === 'branch' ? 'refs/heads/'.length : 'refs/tags/'.length);
+    const undecided = (why, saw) =>
+      ok(`PG-5b deployment branch policy — NOT DECIDED: ${why}. Read: ${saw}. This is NOT a finding that this ref may deploy.`);
+    // `?? 'undefined'` and not `?? null`: JSON.stringify(undefined) is undefined
+    // and JSON.stringify(null) is "null", so a MISSING field and a field GitHub
+    // set to null print differently. They mean opposite things — one is "this
+    // response is not the shape expected", the other is "no policy, everything
+    // may deploy" — and a message that renders both as `null` hides which was read.
+    const seen = `deployment_branch_policy = ${JSON.stringify(refPolicy) ?? 'undefined'}, GITHUB_REF = ${JSON.stringify(gitRef)}`;
+
+    if (refPolicy === undefined) {
+      undecided('this response carried no `deployment_branch_policy` field at all', seen);
+    } else if (refKind === null) {
+      undecided('GITHUB_REF is neither a `refs/heads/` nor a `refs/tags/` ref, so there is no row kind to match it against', seen);
+    } else if (refPolicy === null) {
+      ok(`PG-5b deployment branch policy — "${PUBLISH_ENVIRONMENT}" has none, so every branch and tag may deploy (${seen}).`);
+    } else if (refPolicy?.protected_branches === true) {
+      undecided('the policy is by PROTECTED BRANCH, and whether this ref is a protected branch is a different endpoint this limb does not read', seen);
+    } else if (refPolicy?.custom_branch_policies !== true) {
+      undecided('the policy names neither protected branches nor a custom list, which is not a shape this limb has a source for', seen);
+    } else {
+      const polUrl = `${envUrl}/deployment-branch-policies`;
+      let rows = null;
+      try {
+        const polRes = await fetch(polUrl, {
+          headers: {
+            authorization: `Bearer ${ghToken}`,
+            accept: 'application/vnd.github+json',
+            'x-github-api-version': '2022-11-28',
+            'user-agent': 'nikatru-submit-play',
+          },
+        });
+        if (polRes.ok) {
+          const polJson = await polRes.json().catch(() => ({}));
+          if (Array.isArray(polJson.branch_policies)) rows = polJson.branch_policies;
+        }
+      } catch {
+        rows = null;
+      }
+      const sawRows = `rows = ${JSON.stringify(rows)}, GITHUB_REF = ${JSON.stringify(gitRef)}`;
+      if (rows === null) {
+        undecided(`${polUrl} returned no readable \`branch_policies\` list`, seen);
+      } else {
+        const mine = rows.filter((r) => r?.type === refKind);
+        if (mine.some((r) => r?.name === refName)) {
+          ok(`PG-5b deployment branch policy — ${JSON.stringify(gitRef)} is named by "${PUBLISH_ENVIRONMENT}"'s policy (${sawRows}).`);
+        } else if (!mine.every((r) => typeof r?.name === 'string' && !r.name.includes('*'))) {
+          undecided(`a row of type ${JSON.stringify(refKind)} is not a literal name, and this limb has no sourced matcher for a pattern`, sawRows);
+        } else {
+          die([
+            `FAIL ${JSON.stringify(gitRef)} is not named by "${PUBLISH_ENVIRONMENT}"'s own deployment branch policy.`,
+            `     ${sawRows}`,
+            `     No row of type ${JSON.stringify(refKind)} names ${JSON.stringify(refName)} (rows of that type: ${mine.length}).`,
+            '     Dispatch on a ref the rows above name, or have the owner add a row for this one.',
+          ]);
+        }
+      }
+    }
   }
 }
 

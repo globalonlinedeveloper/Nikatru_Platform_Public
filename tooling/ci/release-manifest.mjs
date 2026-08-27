@@ -97,10 +97,25 @@
 // RECORDED FAILING CASE: stage the .apk and .aab and omit the .msix →
 // `--verify --expect-formats` exits 1 naming `.msix`; plain `--verify` exits 0.
 //
+// ── `--for-workflow`: a dist is staged from ONE workflow's artifacts ─────────
+// 🔴 UNNARROWED, THIS FLAG CANNOT BE WIRED INTO build-platforms.yml AT ALL.
+// Measured 2026-08-27 against the real register: `linux-snap` declares
+// `submit-snap.yml:dry-run`, so the expected set is `.aab .apk .msix .snap`,
+// and a build-platforms dist — which `download-artifact` fills from THAT RUN's
+// own artifacts and no other workflow's — exits 1 naming `.snap` on every tag
+// push. `--for-workflow .github/workflows/build-platforms.yml` restricts the
+// lane-backed half to the rows that workflow emits (`.aab`, `.msix`): the
+// narrowing the register's own `linux-snap` note asked somebody to choose.
+//
+// ⚠️ IT IS STILL UNWIRED AFTER THIS CHANGE. build-platforms.yml:1298 runs plain
+// `--verify dist`; that file belongs to another change, and until the flag is
+// added there the completeness question is DERIVABLE and NOT ASKED on the real
+// lane. Nothing here closes [pipeline G3].
+//
 // Usage:
 //   node tooling/ci/release-manifest.mjs --stage  <fromDir> --out <dir> --app <id> --tag <tag>
 //   node tooling/ci/release-manifest.mjs --write  <dir> --app <id> --tag <tag> --sha <sha> [--run-url <url>]
-//   node tooling/ci/release-manifest.mjs --verify <dir> [--expect-formats]
+//   node tooling/ci/release-manifest.mjs --verify <dir> [--expect-formats [--for-workflow <file>]]
 //   node tooling/ci/release-manifest.mjs --emit-assets <dir>
 //   node tooling/ci/release-manifest.mjs --emit-environments <dir> --app <id>
 //   [--repo-root <path>]   point the register lookup at another tree (tests)
@@ -207,6 +222,23 @@ export function installableExtensions(register) {
 }
 
 /**
+ * Does this row's `lane.workflow` name the workflow asked about? The register
+ * stores a repo-relative POSIX path (`.github/workflows/build-platforms.yml`).
+ *
+ * 🔴 CASE-SENSITIVE, AND `node:path` IS NOT USED — deliberately, both of them.
+ * `basename()` treats `\` as a separator on Windows and as a filename character
+ * on Linux, and casefolding would match `Build-Platforms.yml` on this host and
+ * miss it on the runner. A pure string compare over both separators gives every
+ * OS the same answer, and a wrong-case name lands in COVERAGE LOST — loud on
+ * both, rather than green here and red there.
+ */
+export function laneIsWorkflow(laneWorkflow, wanted) {
+  if (typeof laneWorkflow !== 'string' || typeof wanted !== 'string' || wanted === '') return false;
+  const leaf = (s) => s.split(/[/\\]/).pop();
+  return laneWorkflow === wanted || leaf(laneWorkflow) === leaf(wanted);
+}
+
+/**
  * The formats a staged release is EXPECTED to carry — the completeness half that
  * `--verify` cannot answer on its own.
  *
@@ -216,9 +248,19 @@ export function installableExtensions(register) {
  *     format that escapes the classifier cannot be demanded here either.
  *   · a channel row must have a declared `lane`. That is the register saying some
  *     job in this factory EMITS the format. Rows with `lane: null` (ios-appstore,
- *     macos-appstore, linux-snap, linux-appimage, windows-direct today) are
- *     channels that do not exist yet, and demanding their artifacts would make
- *     every release red for work that has not started.
+ *     macos-appstore, linux-appimage, windows-direct today) are channels that do
+ *     not exist yet, and demanding their artifacts would make every release red
+ *     for work that has not started.
+ *     ⚠️ `linux-snap` WAS IN THAT LIST AND HAS NOT BEEN LANE-LESS SINCE 2026-08-09
+ *     — it declares `submit-snap.yml:dry-run`. Corrected 2026-08-27 after measuring
+ *     the register: the sentence named a row that had already moved.
+ *   · `forWorkflow`, when given, narrows the lane-backed half to the rows whose
+ *     `lane.workflow` IS that workflow. A dist is staged from ONE workflow's own
+ *     artifacts, so the unnarrowed set demands formats that workflow can never
+ *     produce (`.snap` comes out of submit-snap.yml, on a different trigger).
+ *     🔴 NARROWING TO ZERO ROWS IS COVERAGE LOST AT THE CALL SITE, NOT A SMALL
+ *     EXPECTATION — that is the whole hazard of this parameter: "expected nothing,
+ *     found nothing" exits 0 over a dist missing every platform.
  *   · minus `BUNDLE_MEMBERS`. A `.exe` never travels loose — `--stage` leaves it
  *     inside its platform archive on purpose — so it can never appear in the flat
  *     release directory and requiring it would be an assertion that cannot pass.
@@ -229,12 +271,13 @@ export function installableExtensions(register) {
  * quiet pass — an empty expectation set makes "is this release complete" answer
  * yes for a directory holding nothing.
  */
-export function expectedReleaseFormats(register) {
+export function expectedReleaseFormats(register, forWorkflow = null) {
   const installable = installableExtensions(register);
   const laneBacked = new Set();
   for (const c of register?.channels ?? []) {
     const lane = c?.lane;
     if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
+    if (forWorkflow !== null && !laneIsWorkflow(lane.workflow, forWorkflow)) continue;
     for (const f of c?.artifactFormats ?? []) if (typeof f === 'string' && /^\.[A-Za-z0-9]+$/.test(f)) laneBacked.add(f);
   }
   for (const e of EXTRA_INSTALLABLE.keys()) laneBacked.add(e);
@@ -764,6 +807,26 @@ const positionalAfter = (name) => {
 };
 
 function main() {
+  // 🔴 HOISTED ABOVE THE MODE DISPATCH — inside `--verify` it caught only the typo that
+  // KEPT `--verify`. MEASURED 2026-08-27: `--write dist … --expect-formats --for-workflow
+  // build-platforms.yml` exited 0 printing ok, two steps from the `--verify` that exits 1
+  // (build-platforms.yml:1295 and :1298); `--emit-assets` the same. `mode` is first-match.
+  const mode = ['stage', 'write', 'verify', 'emit-assets', 'emit-environments'].find((m) => has(m)) ?? null;
+  if (flag('for-workflow') !== null && !has('expect-formats')) {
+    die(
+      '--for-workflow only narrows --expect-formats, and --expect-formats was not given.',
+      'Accepting it would run the named mode and report ok, while the caller believes it asked the',
+      'completeness question.',
+    );
+  }
+  if (has('expect-formats') && mode !== 'verify') {
+    die(
+      `--expect-formats is read by --verify alone, and this invocation runs ${mode === null ? 'no mode' : `--${mode}`}.`,
+      'Accepting it would run the named mode, print ok, and never ask the completeness question — the',
+      'silent no-op this refusal exists to remove.',
+    );
+  }
+
   // ── --stage: lift every installable FILE out of the downloaded artifact tree ──
   // Recursive, because `actions/download-artifact` reproduces whatever directory
   // shape `upload-artifact` derived from its `path:` globs — a shape this script
@@ -887,7 +950,8 @@ function main() {
 
     // ── the completeness half, opt-in — see the header ────────────────────────
     if (has('expect-formats')) {
-      const expected = expectedReleaseFormats(loadRegister());
+      const forWorkflow = flag('for-workflow');
+      const expected = expectedReleaseFormats(loadRegister(), forWorkflow);
       // 🔴 THE COVERAGE RAIL IS ON THE REGISTER'S CONTRIBUTION, NOT ON THE TOTAL.
       // The total can never be empty — `EXTRA_INSTALLABLE` always carries the
       // `.apk` — so a check for `expected.size === 0` would be an assertion with
@@ -897,13 +961,18 @@ function main() {
       // stops reading them), the expectation collapses to the hardcoded extras
       // and a release missing every store artifact passes on the strength of one
       // sideloadable .apk. Reachable, and reached by a test.
+      // 🔴 `--for-workflow` IS THE SECOND WAY INTO THIS EMPTY, and the one this
+      // increment adds: a workflow name matching no row narrows the register's
+      // half to nothing, and "expected nothing, found nothing" would exit 0 over
+      // a dist missing every platform — a check that reads as completeness and
+      // asserts nothing. Same rail, so it cannot be reached by a typo either.
       const fromRegister = [...expected].filter((e) => !EXTRA_INSTALLABLE.has(e));
       if (fromRegister.length === 0) {
         die(
-          `COVERAGE LOST — no channel row in ${REGISTER_REL} with a declared \`lane\` contributes an installable format.`,
+          `COVERAGE LOST — no channel row in ${REGISTER_REL} with a declared \`lane\`${forWorkflow === null ? '' : ` for ${forWorkflow}`} contributes an installable format.`,
           `The expectation collapsed to the declared extras alone (${[...expected].sort().join(', ') || 'nothing'}), so this mode would certify`,
-          'a release that carries none of the artifacts the factory actually ships. Either every row lost its lane, or the',
-          'lane derivation has stopped reading them — and both look identical from the outside.',
+          'a release that carries none of the artifacts the factory actually ships. Either every row lost its lane, the',
+          `lane derivation has stopped reading them${forWorkflow === null ? '' : `, or ${forWorkflow} names no lane in the register`} — and they look identical from the outside.`,
         );
       }
       const { names } = assetFiles(dir);

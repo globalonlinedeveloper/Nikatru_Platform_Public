@@ -27,6 +27,7 @@ import {
   BUNDLE_MEMBERS,
   EXTRA_INSTALLABLE,
   installableExtensions,
+  laneIsWorkflow,
   expectedReleaseFormats,
   missingReleaseFormats,
   originEnvironments,
@@ -1534,6 +1535,89 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
     assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.apk', '.msix', '.snap']);
   });
+
+  // ⚠️ THE QUESTION THE NOTE ABOVE PARKED WAS ANSWERED 2026-08-27, AND ONLY HALF
+  // OF IT. `expectedReleaseFormats` now takes a workflow and narrows the
+  // lane-backed half to the rows that workflow emits — the "expectation narrows to
+  // lanes that FEED the release" branch. What has NOT happened is the wiring:
+  // build-platforms.yml:1298 still runs plain `--verify dist`, so on the real lane
+  // the completeness question remains DERIVABLE and UNASKED.
+  test('narrowed to the workflow that STAGES the dist, the .snap is not demanded of it', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const bp = expectedReleaseFormats(real, '.github/workflows/build-platforms.yml');
+    assert.deepEqual([...bp].sort(), ['.aab', '.apk', '.msix']);
+    assert.ok(!bp.has('.snap'), 'submit-snap.yml is a different workflow on a different trigger; download-artifact cannot reach its output');
+  });
+
+  test('narrowed to submit-snap.yml the .snap IS demanded and the store artifacts are not', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    assert.deepEqual([...expectedReleaseFormats(real, 'submit-snap.yml')].sort(), ['.apk', '.snap']);
+  });
+
+  test('narrowing is a FILTER on the unnarrowed set', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const all = expectedReleaseFormats(real);
+    for (const w of ['.github/workflows/build-platforms.yml', 'submit-snap.yml', 'nope.yml']) {
+      for (const e of expectedReleaseFormats(real, w)) assert.ok(all.has(e), `${e} appeared only under --for-workflow ${w}`);
+    }
+  });
+
+  test('a workflow naming NO row narrows the register\'s half to nothing — the empty the CLI treats as COVERAGE LOST', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    // Only the declared extra survives. Proven end-to-end against the CLI below;
+    // here to pin that this is the state the rail there is aimed at.
+    assert.deepEqual([...expectedReleaseFormats(real, 'nope.yml')].sort(), ['.apk']);
+    // ⚠️ AND A REAL LANE REACHES IT TOO, which is why the rail is not hypothetical:
+    // deploy-web.yml IS a declared lane, and its only artifactFormat is
+    // `static-bundle` — a shape name, not a file extension — so it contributes none.
+    assert.deepEqual([...expectedReleaseFormats(real, 'deploy-web.yml')].sort(), ['.apk']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `laneIsWorkflow` compares strings and never calls `node:path`, deliberately:
+// `basename()` treats `\` as a separator on Windows and as an ordinary filename
+// character on Linux, so a backslash-separated argument would match here and
+// COVERAGE-LOST on the runner. Every case below was ALSO driven under WSL
+// (node v22.22.1, Linux 6.18.33.2-microsoft-standard-WSL2) against the real
+// register on 2026-08-27 and returned the same exit codes as this Windows host.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('release-manifest.mjs — laneIsWorkflow answers the same on every OS', () => {
+  const LANE = '.github/workflows/build-platforms.yml';
+
+  test('the full repo-relative path and the bare file name both answer yes', () => {
+    assert.ok(laneIsWorkflow(LANE, LANE));
+    assert.ok(laneIsWorkflow(LANE, 'build-platforms.yml'));
+  });
+
+  // 🔴 BOTH HALVES ARE HERE BECAUSE ONE OF THEM IS BLIND ON EACH OS, AND THE
+  // FIRST DRAFT SHIPPED ONLY THE BLIND-ON-WINDOWS HALF. Measured 2026-08-27 with
+  // `leaf` swapped for `node:path`'s `basename`: the backslash case stays GREEN on
+  // this Windows host and goes RED under WSL — the wave that ships green
+  // here and fails on Ubuntu, in one file. The drive-relative case is
+  // the mirror: win32 `basename('C:build-platforms.yml')` is `build-platforms.yml`
+  // and posix `basename` leaves it whole, so THAT half reddens on Windows and is
+  // blind on Linux. Together the mutation is caught wherever it is run.
+  test('a BACKSLASH-separated argument answers yes on Linux too, where basename() would say no', () => {
+    assert.ok(laneIsWorkflow(LANE, '.github\\workflows\\build-platforms.yml'));
+  });
+
+  test('a DRIVE-RELATIVE name answers no on Windows too, where basename() would say yes', () => {
+    assert.ok(!laneIsWorkflow(LANE, 'C:build-platforms.yml'), 'a workflow is a repo path, never a drive-relative one');
+  });
+
+  test('the comparison is CASE-SENSITIVE — matching here and missing on the runner is the worse failure', () => {
+    assert.ok(!laneIsWorkflow(LANE, 'Build-Platforms.yml'));
+    assert.ok(!laneIsWorkflow(LANE, '.GITHUB/WORKFLOWS/BUILD-PLATFORMS.YML'));
+  });
+
+  test('a different workflow, a suffix of one, and a non-string all answer no', () => {
+    assert.ok(!laneIsWorkflow(LANE, 'submit-snap.yml'));
+    assert.ok(!laneIsWorkflow(LANE, 'platforms.yml'), 'a substring is not a workflow');
+    assert.ok(!laneIsWorkflow(LANE, ''), 'an empty name must not match every row');
+    assert.ok(!laneIsWorkflow(LANE, null));
+    assert.ok(!laneIsWorkflow(null, LANE));
+  });
 });
 
 describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', () => {
@@ -1613,6 +1697,107 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /collapsed to the declared extras alone/);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 `--for-workflow` — THE DIST BELONGS TO ONE WORKFLOW.
+  // GREEN-WHILE-BROKEN is the hazard of this flag, not redness: narrowing to a
+  // name that matches no row empties the register's half, and "expected nothing,
+  // found nothing" would exit 0 over a dist missing every platform. The floor is
+  // the point of the flag, so it is tested before the flag's happy path.
+  // ⚠️ STILL UNWIRED: build-platforms.yml:1298 runs plain `--verify dist`.
+  // ───────────────────────────────────────────────────────────────────────────
+  const BUILD_PLATFORMS = ['subly-v1-app-release.apk', 'subly-v1-app-release.aab', 'subly-v1-subly.msix'];
+
+  test('🔴 THE FLOOR — a workflow matching ZERO rows is COVERAGE LOST', () => {
+    // Handed a directory carrying every format build-platforms stages, so nothing
+    // but the empty expectation can be what fails. Exit 0 here would be a check
+    // that reads as completeness and asserts nothing.
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--verify', d, '--expect-formats', '--for-workflow', 'nope.yml']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /nope\.yml names no lane in the register/);
+  });
+
+  test('🔴 THE FLOOR IS REACHED BY A REAL LANE TOO — deploy-web.yml emits no file at all', () => {
+    // `web`'s only artifactFormat is `static-bundle`, a shape name. A caller who
+    // narrows to the workflow that deploys it gets nothing back, and nothing back
+    // must not certify a release. This is the case that makes the rail non-theoretical.
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--verify', d, '--expect-formats', '--for-workflow', 'deploy-web.yml']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+  });
+
+  test('narrowed to build-platforms.yml, a dist SHORT THE .msix still fails naming it', () => {
+    const d = staged(BUILD_PLATFORMS.filter((f) => !f.endsWith('.msix')));
+    assert.equal(cli(['--verify', d]).code, 0, 'plain --verify is still silent about the missing platform');
+    const r = cli(['--verify', d, '--expect-formats', '--for-workflow', 'build-platforms.yml']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing 1 expected release format\(s\): \.msix/);
+  });
+
+  test('narrowed to build-platforms.yml, its own complete dist passes and NAMES the three', () => {
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--verify', d, '--expect-formats', '--for-workflow', '.github/workflows/build-platforms.yml']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /all 3 expected format\(s\) present: \.aab, \.apk, \.msix/);
+  });
+
+  test('🔴 UNNARROWED, THAT SAME DIST IS RED — which is why the flag could not be wired as it stood', () => {
+    // The measurement that made this increment derivation-only: `linux-snap`
+    // declares submit-snap.yml, a different workflow on a dispatch-only trigger,
+    // so wiring `--expect-formats` alone into the release job would fail every tag
+    // push naming an artifact build-platforms can never produce.
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--verify', d, '--expect-formats']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /missing 1 expected release format\(s\): \.snap/);
+  });
+
+  test('--for-workflow WITHOUT --expect-formats refuses — a silent no-op would print ok', () => {
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--verify', d, '--for-workflow', 'build-platforms.yml']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /only narrows --expect-formats/);
+  });
+
+  // 🔴 THAT REFUSAL SAT INSIDE `--verify` UNTIL 2026-08-27, so it caught only the typo
+  // that KEPT `--verify`. These are the other modes a caller can put those words on.
+  test('--expect-formats on --write REFUSES — the mode it modifies is not this one', () => {
+    const d = staged(BUILD_PLATFORMS.filter((f) => !f.endsWith('.msix')));
+    const r = cli(['--write', d, '--app', 'subly', '--tag', 'subly-v1', '--sha', '93aee1d', '--expect-formats', '--for-workflow', 'build-platforms.yml']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /--expect-formats is read by --verify alone, and this invocation runs --write\./);
+  });
+
+  test('--expect-formats on --emit-assets REFUSES — the publish step is the same two lines away', () => {
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--emit-assets', d, '--expect-formats']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /this invocation runs --emit-assets\./);
+  });
+
+  test('a MODE COLLISION cannot carry the flags past the refusal — the dispatch would run --write', () => {
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--write', d, '--app', 'subly', '--tag', 'subly-v1', '--sha', '93aee1d', '--verify', d, '--expect-formats']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /this invocation runs --write\./);
+  });
+
+  test('--for-workflow WITHOUT --expect-formats refuses in every mode, not only --verify', () => {
+    const d = staged(BUILD_PLATFORMS);
+    const r = cli(['--emit-assets', d, '--for-workflow', 'build-platforms.yml']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /only narrows --expect-formats/);
+  });
+
+  test('DEFAULT BEHAVIOUR IS STILL UNCHANGED — no --for-workflow means the old expectation', () => {
+    const d = staged(COMPLETE);
+    const r = cli(['--verify', d, '--expect-formats']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /all 4 expected format\(s\) present: \.aab, \.apk, \.msix, \.snap/);
   });
 });
 
