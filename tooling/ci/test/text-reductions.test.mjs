@@ -37,6 +37,8 @@ import {
   emphasisedSpans,
   stripSourceComments,
   stripStringLiterals,
+  codeMask,
+  NON_CODE,
 } from '../text-reductions.mjs';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { execFile, execSync } from 'node:child_process';
@@ -278,6 +280,89 @@ describe('stripStringLiterals — a name inside a string is not a declaration', 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⏱ ARRIVED 2026-08-27, from assert-guard-coverage.mjs, where it had been the
+// tree's only answer to "which BYTES are code" and was reachable by nobody: that
+// file exports nothing. A SECOND guard needed exactly this question answered and
+// shipped `stripStringLiterals` above as an offset-preserving context oracle
+// instead — correct as far as it goes, and it goes only as far as `'…'` and
+// `"…"`, so a fixture written in a TEMPLATE LITERAL read as live code there.
+//
+// The cases below are what separates the mask from that oracle, one test each.
+// They are NOT a restatement of the two guards' own inline canaries: those hold
+// each guard to a CREDIT DECISION, and these hold the mask to the byte.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('codeMask — which BYTES are code, by OFFSET', () => {
+  /** The offsets of every character of `needle` in `text`, so a test can ask
+   *  about a byte by naming it rather than by counting. */
+  const at = (text, needle) => {
+    const i = text.indexOf(needle);
+    assert.notEqual(i, -1, `fixture does not contain ${needle}`);
+    return i;
+  };
+  const isCode = (text, needle) => codeMask(text)[at(text, needle)] !== NON_CODE;
+
+  test('SAME LENGTH AS ITS INPUT — the property every offset lookup rests on', () => {
+    // An astral character is two UTF-16 code units and one code point. A mask
+    // built per code point is SHORTER than its input, and every lookup past the
+    // character then reads the wrong byte while still returning a boolean.
+    const text = 'const flag = "\u{1F534}";\nconst after = 1;\n';
+    assert.equal(codeMask(text).length, text.length);
+  });
+
+  test('a single-quoted literal is not code, and the code around it still is', () => {
+    const text = "const p = 'from ./x.mjs';\n";
+    assert.equal(isCode(text, 'const p'), true);
+    assert.equal(isCode(text, 'from ./x.mjs'), false);
+  });
+
+  test('a TEMPLATE LITERAL body is not code — the case the literal blanker could not see', () => {
+    // This is the whole reason the mask moved here. A multi-line fixture is
+    // written in backticks because that is how a multi-line string is written;
+    // an oracle that knows only quotes reads its body as live code.
+    const text = ['const fixture = `', "import subject from './probe.mjs';", '`;', ''].join('\n');
+    assert.equal(isCode(text, 'const fixture'), true);
+    assert.equal(isCode(text, "import subject from './probe.mjs';"), false);
+    // and the literal blanker really does disagree, so this test is measuring a
+    // difference rather than restating an agreement
+    const blanked = stripStringLiterals(text);
+    const i = at(text, 'import subject');
+    assert.equal(blanked[i], text[i], 'the weaker oracle reads this byte as code');
+  });
+
+  test('a `${…}` substitution is code again, because it is', () => {
+    const text = 'const s = `a ${run(1)} b`;\n';
+    assert.equal(isCode(text, 'a $'), false);
+    assert.equal(isCode(text, 'run(1)'), true);
+    assert.equal(isCode(text, ' b`'), false);
+  });
+
+  test('a comment is not code, including one that starts mid-line', () => {
+    const text = "const a = 1; // from './nope.mjs'\nconst b = /* from './also-nope.mjs' */ 2;\n";
+    assert.equal(isCode(text, 'const a'), true);
+    assert.equal(isCode(text, "from './nope.mjs'"), false);
+    assert.equal(isCode(text, "from './also-nope.mjs'"), false);
+    assert.equal(isCode(text, 'const b'), true);
+  });
+
+  test('a regex literal containing a quote does not open a string that never closes', () => {
+    // The failure this rule exists for is not local: an unbalanced quote blanks
+    // EVERY REMAINING BYTE of the file, so one character class inverts the
+    // reading of everything after it.
+    const text = "const q = /['\"]/;\nconst live = 2;\n";
+    assert.equal(isCode(text, "['\""), false, 'the pattern body is the regex, not code');
+    assert.equal(isCode(text, 'const live'), true, 'and the file after it is still code');
+  });
+
+  test('the positive control: a real import statement is code', () => {
+    // Without this every result above is consistent with a mask that answers
+    // NON_CODE for everything, which is the shape that silently blinds a matcher
+    // to the real thing it is looking for.
+    const text = "import { x } from './real.mjs';\n";
+    assert.equal(isCode(text, "from './real.mjs'"), true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // THE TWO REAL-TREE CONTROLS, added 2026-08-21.
 //
 // Everything above is a fixture somebody wrote, and a fixture encodes the same
@@ -408,5 +493,55 @@ describe('text-reductions · REAL TREE · Dart agrees with the independently pro
     assert.deepEqual(disagreements, [
       'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart',
     ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ ADDED 2026-08-27 — ONE LEXER, ASKED OF THE TREE RATHER THAN WRITTEN DOWN.
+//
+// The mask moved here because a second guard needed it and the only alternative
+// on offer was a RIVAL COPY. A copy is the failure this module exists to prevent
+// one level up: two readers of the same bytes that quietly stop agreeing, one of
+// them carrying canaries the other never inherits. The reason that copy was
+// refused is now a property the suite checks.
+//
+// The membership test uses the MASK ITSELF, and it has to: guard-coverage.test
+// .mjs carries `codeMask(text)` inside a string literal as a mutation anchor, so
+// a raw grep for callers reports a file that neither calls nor imports it. That
+// is the same defect these tests exist for, one level down.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('codeMask · REAL TREE · one implementation, imported and not copied', () => {
+  const files = tracked('tooling/**/*.mjs').map((f) => f.replace(/\\/g, '/'));
+  const HOME = 'tooling/ci/text-reductions.mjs';
+  const read = (f) => readFileSync(join(REPO_ROOT, f), 'utf8');
+  /** Matches of `re` that START on a byte the mask calls code. */
+  const inCode = (src, re) => {
+    const mask = codeMask(src);
+    for (const m of src.matchAll(re)) if (mask[m.index] !== NON_CODE) return true;
+    return false;
+  };
+
+  test('there is a corpus to check', () => {
+    assert.ok(files.length > 100, `only ${files.length} tracked .mjs under tooling — the control lost its subject`);
+    assert.ok(files.includes(HOME), 'the module under test is not in the enumerated corpus');
+  });
+
+  test('exactly one file under tooling DECLARES the mask, and it is this module', () => {
+    const declares = files.filter((f) => inCode(read(f), /(?:export\s+)?const\s+(?:codeMask|NON_CODE)\s*=/g));
+    assert.deepEqual(declares, [HOME]);
+  });
+
+  test('every caller of the mask IMPORTS it from here', () => {
+    const callers = files.filter((f) => f !== HOME && inCode(read(f), /\bcodeMask\s*\(/g));
+    // Without this the assertion below is satisfied by a corpus with no callers
+    // at all, which is the shape of a check that cannot fail.
+    assert.ok(callers.length >= 3, `expected the mask to have callers, saw ${callers.length}: ${callers.join(', ')}`);
+    for (const f of callers) {
+      assert.match(
+        read(f),
+        /import\s*\{[^}]*codeMask[^}]*\}\s*from\s*'[^']*text-reductions\.mjs'/,
+        `${f} calls codeMask without importing it from ${HOME}`,
+      );
+    }
   });
 });

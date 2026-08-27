@@ -128,7 +128,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { stripSourceComments } from './text-reductions.mjs';
+import { stripSourceComments, codeMask, NON_CODE } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
@@ -214,7 +214,7 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'text-reductions.mjs',
-    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan. ⏱ APPENDED 2026-08-25 — the paragraph above is left exactly as written; this corpus appends dated corrections rather than rewriting them. Re-measured today with the recipe beside markerInCode further down this file, both flags kept: the bare-specifier form answers 47 and the stripSourceComments brace-clause form answers 44. On 2026-08-17 they were 39 and 36 — so the entry has not gone wrong a third time, but it had rotted by eight in eight days, which is exactly why the paragraph above tells you to re-measure rather than read. Breakdown of the 47: 4 test files, 41 flat in tooling/ci, and 2 elsewhere (tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) = 43 non-test; 4 of the 44 stripSourceComments importers are test files. Pipe the file list through tr to turn Windows separators into forward slashes before anchoring a count on tooling/ci, or the anchor matches nothing and the breakdown reads as zero. 🔴 AND THE -a CLAUSE ABOVE NO LONGER REPRODUCES: the two literal NUL bytes in assert-release-lane-generic.mjs were rewritten as escape sequences in the same change as this append, so both queries now answer 47 and 44 WITH -a and WITHOUT it. Measured immediately before that rewrite, without -a they answered 46 and 43 — one short each, and the one missing file was exactly assert-release-lane-generic.mjs. Keep -a anyway: three .mjs files under tooling still carry NUL bytes today (tooling/ci/assert-update-coverage.mjs, tooling/ci/flutter-stock-assets.mjs, tooling/scripts/assert-public-citations.mjs). None of the three imports text-reductions, so none of them moves these two counts, but any other un-flagged sweep of tooling can still lose them without a word. --multiline-dotall is untouched and still load-bearing.',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan. ⏱ APPENDED 2026-08-25 — the paragraph above is left exactly as written; this corpus appends dated corrections rather than rewriting them. Re-measured today with the recipe beside markerInCode further down this file, both flags kept: the bare-specifier form answers 47 and the stripSourceComments brace-clause form answers 44. On 2026-08-17 they were 39 and 36 — so the entry has not gone wrong a third time, but it had rotted by eight in eight days, which is exactly why the paragraph above tells you to re-measure rather than read. Breakdown of the 47: 4 test files, 41 flat in tooling/ci, and 2 elsewhere (tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) = 43 non-test; 4 of the 44 stripSourceComments importers are test files. Pipe the file list through tr to turn Windows separators into forward slashes before anchoring a count on tooling/ci, or the anchor matches nothing and the breakdown reads as zero. 🔴 AND THE -a CLAUSE ABOVE NO LONGER REPRODUCES: the two literal NUL bytes in assert-release-lane-generic.mjs were rewritten as escape sequences in the same change as this append, so both queries now answer 47 and 44 WITH -a and WITHOUT it. Measured immediately before that rewrite, without -a they answered 46 and 43 — one short each, and the one missing file was exactly assert-release-lane-generic.mjs. Keep -a anyway: three .mjs files under tooling still carry NUL bytes today (tooling/ci/assert-update-coverage.mjs, tooling/ci/flutter-stock-assets.mjs, tooling/scripts/assert-public-citations.mjs). None of the three imports text-reductions, so none of them moves these two counts, but any other un-flagged sweep of tooling can still lose them without a word. --multiline-dotall is untouched and still load-bearing. ⏱ APPENDED 2026-08-27 — the paragraphs above are left exactly as written; this corpus appends dated corrections rather than rewriting them. A THIRD reduction now lives in that module, and it arrived FROM HERE: codeMask and NON_CODE, the WHICH BYTES ARE CODE, BY OFFSET mask, which was a file-local const in this guard until today. It moved because a SECOND guard needed exactly that question answered and could not have it — this file exports nothing at all — so assert-guards-refuse-empty.mjs had shipped a narrower literal oracle that a fixture written in backticks walked straight past. Both guards import the mask from text-reductions.mjs now, and its own test asks the tree that no second copy exists. Nothing about this exemption changes: the mask is text in, text out, no filesystem and no tree, exactly like its neighbours, and the reach question still belongs to the importers. RE-MEASURED TODAY with the recipe beside markerInCode further down this file, both flags kept: the bare-specifier form answers 49 and the stripSourceComments brace-clause form answers 45. On 2026-08-25 they were 47 and 44, so the entry had rotted by two and by one BEFORE today — which is again why the paragraph above says re-measure rather than read. The move itself moves neither number, because this file and assert-guards-refuse-empty.mjs both already imported the module; the same query for the codeMask brace clause answers 3 (those two guards and the test of the module). Breakdown of the 49: 4 test files, 43 flat in tooling/ci, and 2 elsewhere (tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) = 45 non-test.',
   ],
   // ── the three the PROSE GREP hid until 2026-08-17 ──────────────────────────
   // None of these is a new judgement. Each file's own header already said it was
@@ -890,109 +890,24 @@ const executable = (text) =>
     .join('\n');
 
 // ── which BYTES are code, by OFFSET ─────────────────────────────────────────
-// ⏱ 2026-08-27. Every rule below matches a shape — `from '…'`, `spawnSync(`,
-// `const X =` — and a shape spelled INSIDE a string literal is the same bytes as
-// one spelled in code. A fixture body carrying `"import p from './x.mjs';"`
-// credited x.mjs with being imported by a test that only ever wrote it into a
-// temp file. So each match is now asked WHERE IT STARTS.
+// ⏱ MOVED 2026-08-27 — `codeMask` and `NON_CODE` now live in text-reductions.mjs
+// and are imported above, unchanged byte for byte apart from their `export`
+// keywords. They left because a SECOND guard needed exactly this mask and could
+// not have it: this file exported nothing, so assert-guards-refuse-empty.mjs
+// shipped a narrower literal oracle that a fixture written in BACKTICKS walked
+// straight past. The full account of what the mask knows — and why only the
+// OFFSETS are taken from it while the regexes go on reading the ORIGINAL bytes —
+// travelled with the code and is written out there.
 //
-// Not `stripStringLiterals` composed onto the matcher: the path in a GENUINE
-// import lives inside the literal too, so matching the blanked text deletes
-// every real credit with the fake one. Only the offsets are taken from here;
-// the regexes still read the original bytes.
-//
-// Same length as its input by construction — replacement, never deletion — so
-// `mask[i]` describes `text[i]`. NUL marks a byte that is inside a string
-// literal or a comment; a template literal's `${…}` is code again, because it
-// is. Regex literals are recognised so a `/[^'"]/` cannot open a string that
-// never closes and blank the rest of the file.
-//
-// ⏱ MOVED 2026-08-27, unchanged byte for byte. It was declared BELOW `exercisedBy`,
-// which is fine for `exercisedBy` (called late) and fatal for `countCases` (called
-// during module evaluation, ~90 lines down): a `const` read before its declaration
-// is a ReferenceError, not a fallback — so the ratchet would have crashed rather
-// than miscounted. It has no dependencies of its own; keep it above the first
-// caller and there is nothing else to know.
-const NON_CODE = '\u0000';
-const REGEX_MAY_START = /(?:[([{,;:=!&|?+\-*%~^<>\n]|\b(?:return|typeof|case|in|of|do|else|yield|await|new|delete|void|instanceof))\s*$/;
-const maskCache = new Map();
-const codeMask = (text) => {
-  const hit = maskCache.get(text);
-  if (hit !== undefined) return hit;
-  const m = text.split('');
-  const blank = (a, b) => { for (let k = a; k < b; k++) m[k] = NON_CODE; };
-  const tpl = [];
-  let brace = 0;
-  let i = 0;
-  const scanString = (start, q) => {
-    let k = start + 1;
-    while (k < text.length) {
-      const c = text[k];
-      if (c === '\\') { k += 2; continue; }
-      if (c === q) { blank(start, k + 1); return k + 1; }
-      if (q === '`' && c === '$' && text[k + 1] === '{') {
-        blank(start, k + 2);
-        tpl.push(brace);
-        brace = 0;
-        return k + 2;
-      }
-      if (q !== '`' && c === '\n') { blank(start, k); return k; }
-      k++;
-    }
-    blank(start, text.length);
-    return text.length;
-  };
-  while (i < text.length) {
-    const c = text[i];
-    if (c === '/' && text[i + 1] === '/') {
-      const nl = text.indexOf('\n', i);
-      const end = nl < 0 ? text.length : nl;
-      blank(i, end);
-      i = end;
-      continue;
-    }
-    if (c === '/' && text[i + 1] === '*') {
-      const close = text.indexOf('*/', i + 2);
-      const end = close < 0 ? text.length : close + 2;
-      blank(i, end);
-      i = end;
-      continue;
-    }
-    if (c === '/' && REGEX_MAY_START.test(text.slice(Math.max(0, i - 12), i))) {
-      let k = i + 1;
-      let cls = false;
-      while (k < text.length && text[k] !== '\n') {
-        const d = text[k];
-        if (d === '\\') { k += 2; continue; }
-        if (d === '[') cls = true;
-        else if (d === ']') cls = false;
-        else if (d === '/' && !cls) { k++; break; }
-        k++;
-      }
-      blank(i, k);
-      i = k;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') { i = scanString(i, c); continue; }
-    if (c === '{') { brace++; i++; continue; }
-    if (c === '}') {
-      if (brace === 0 && tpl.length) {
-        brace = tpl.pop();
-        m[i] = NON_CODE;
-        i = scanString(i, '`');
-        continue;
-      }
-      if (brace > 0) brace--;
-      i++;
-      continue;
-    }
-    i++;
-  }
-  const out = m.join('');
-  if (maskCache.size > 400) maskCache.clear();
-  maskCache.set(text, out);
-  return out;
-};
+// 🔴 THE DECLARATION-ORDER NOTE THAT USED TO BE HERE IS SPENT. It is recorded in
+// text-reductions.mjs rather than deleted: the block sat above `countCases`
+// because `countCases` runs DURING MODULE EVALUATION, and a `const` read before
+// its declaration is a ReferenceError, not a fallback. An import BINDING is
+// hoisted and initialised before this module body runs, so no ordering of
+// statements in this file can bring that hazard back. MEASURED, not reasoned:
+// with the import written textually BELOW `countCases`, this guard still exits 0
+// and the ratchet still read 5791 case(s) across 148 file(s) — the figure before
+// this change added its own tests, unchanged by the move itself.
 
 const testCorpus = executable(rawCorpus);
 /** The same corpus KEPT SPLIT, comments stripped. The concatenation above can
