@@ -21,8 +21,7 @@ name: Microsoft Store submission path (dry run)
 # the artifact would report the path healthy while never touching the one output
 # the channel actually accepts.
 #
-# Nothing here contacts Microsoft. `--dry-run` has no network path at all, and
-# the script's `--submit` mode refuses with UNVERIFIED rather than guessing at
+# The script's `--submit` mode refuses with UNVERIFIED rather than guessing at
 # Partner Center's endpoints.
 
 on:
@@ -62,11 +61,10 @@ jobs:
   dry-run:
     name: Validate the submission path
     runs-on: windows-2025
-    # ⬜ NEVER RUN — no dispatch of this workflow has ever completed. Sized off
-    # build-platforms.yml's `windows` job, the same runner label building the same
-    # target at 12m24s worst case, plus the MSIX packaging step that job does not
-    # have. Re-pin it against the first real run.
-    timeout-minutes: 30
+    # 20, and the number is headroom over a measurement rather than a neighbour:
+    # run 32947216531 (2026-08-26) completed this job in 8m32s with all 11 steps
+    # green, including a real `dart run msix:create` — windows build 5m10s.
+    timeout-minutes: 20
     needs: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -96,9 +94,8 @@ jobs:
         run: dart run msix:create
       # The credentials do not exist yet — OWNER_QUEUE A-2 creates the Partner
       # Center account that issues them — and the script reports their ABSENCE as
-      # a printed gap rather than a failure. They are wired now so that the day
-      # they exist, nothing about this job changes. `secrets` are empty strings
-      # when unset, which is what the script's presence check reads.
+      # a printed gap rather than a failure. `secrets` are empty strings when
+      # unset, which is what the script's presence check reads.
       - name: Dry-run the Microsoft Store submission
         env:
           MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}

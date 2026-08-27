@@ -225,9 +225,21 @@
       "WARNING: `unreachable` IS THE ESCAPE HATCH AND IT IS CAPPED. Declaring every row unreachable would",
       "make this limb green over nothing — the exact defect it replaces — so `_maxUnreachable` is a",
       "CEILING that ratchets DOWN, never a floor on the register's size. Every declared reader must also",
-      "own at least one row: a reader nobody uses is code that cannot fail."
+      "own at least one row: a reader nobody uses is code that cannot fail.",
+      "",
+      "`unreadable` IS CAPPED TOO, by `_maxUnreadable`. 8 rows are readable-in-principle here; at 7 the limb",
+      "still prints on a laptop holding no tokens, and FAILS the moment the last query goes dark — which is",
+      "what a lost GITHUB_TOKEN in ci.yml looks like. `unreadable` routes to `prints`, so until this key existed",
+      "that state could not fail no matter how much of the domain it covered.",
+      "",
+      "🔴 BUT A COUNT CANNOT SEE *WHICH* ROW WENT DARK, AND ON THE LINUX RUNNER ONLY 2 OF 13 DO — so the",
+      "ceiling above is nowhere near binding while the one genuinely failing duty is one of those 2. A row may",
+      "therefore carry `mechanism.recordQuery.lastObserved: { verdict, at, detail }`, its last READABLE verdict.",
+      "While that reads `fail`, an unreadable reader on that row is a FAILURE, not a print — and it is cleared",
+      "only by editing this file on a host that has just read a success, which the guard then demands."
     ],
     "_maxUnreachable": 5,
+    "_maxUnreadable": 7,
     "_windowMultiplier": 1.5,
     "_windowMultiplierWhy": "The same 1.5x the absence watcher uses and for the same reason, written down once in tooling/ops/check-heartbeats.mjs: a window EQUAL to the cadence has zero margin and reports a duty dead on a single late run. One missed run is not an alarm; two are.",
     "windows-scheduled-task": {
@@ -936,7 +948,12 @@
         "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)",
         "recordQuery": {
           "reader": "windows-scheduled-task",
-          "task": "NIKATRU daily backup"
+          "task": "NIKATRU daily backup",
+          "lastObserved": {
+            "verdict": "fail",
+            "at": "2026-08-27T03:34:00Z",
+            "detail": "Get-ScheduledTaskInfo on the laptop: \"NIKATRU daily backup\" EXISTS and its LastRunTime is 2026-08-27 02:00:01 local, with LastTaskResult 4294770688 (0xFFFD0000) — not 0. Task Scheduler keeps only the most recent result, so this record holds no successful run at all."
+          }
         }
       },
       "absenceWatcher": {

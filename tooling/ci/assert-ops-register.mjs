@@ -430,18 +430,32 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
   if (q.reader === 'unreachable') {
     return { verdict: 'unreachable', line: `${id} (cadence ${row.cadence}) — NO REACHABLE RECORD: ${q.why}` };
   }
-  if (!probe) {
-    return {
-      verdict: 'unreadable',
-      line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` produced no result at all on this run.`,
-    };
-  }
-  if (probe.unreadable) {
-    return {
-      verdict: 'unreadable',
-      line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` could not run here: ${probe.why}`,
-    };
-  }
+  // 🔴 A DUTY LAST SEEN FAILING DOES NOT GO GREEN BY GOING DARK. `lastObserved`
+  // holds this row's own last READABLE verdict. A count of dark readers measures
+  // how MANY are dark, never whether a KNOWN-BAD one is; while this row holds
+  // `fail`, a reader that cannot run here is a FAILURE on it rather than a print.
+  // Cleared only by a host that reads a success — see the pass branch below.
+  const held = q.lastObserved?.verdict === 'fail' ? q.lastObserved : null;
+  // CLAUDE.md C-6, applied with the register's OWN `ownerGated` + `ownerGap`: on a
+  // runner that could not read the record, a held failure still COUNTS as FAILING
+  // and still prints the word — only the block is lifted, and only here. Nothing
+  // below this line is gated, so the host that CAN read the record still fails on
+  // it. Gating the readable branches would be the weakening; this is not that.
+  const gated = held !== null && row.ownerGated === true && nonEmpty(row.ownerGap);
+  const dark = (why) =>
+    held
+      ? {
+          verdict: 'fail',
+          gated,
+          line:
+            `${id} — reader \`${q.reader}\` ${why} AND the register holds its last readable observation as ` +
+            `FAILING (${held.at}): ${held.detail} A reader going dark does not clear a duty last seen failing.` +
+            (gated ? ` OWNER-GATED, so it prints here and does not block (CLAUDE.md C-6): ${row.ownerGap}` : ''),
+        }
+      : { verdict: 'unreadable', line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` ${why}` };
+
+  if (!probe) return dark('produced no result at all on this run.');
+  if (probe.unreadable) return dark(`could not run here: ${probe.why}`);
   if (probe.missing) {
     // The mechanism itself is gone. NOT "unreadable": a query ran and answered
     // that the thing the register names does not exist, which is the stale-row
@@ -468,6 +482,15 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
       line:
         `${id} — its record IS reachable and the newest SUCCESSFUL run is ${(ageMs / 3_600_000).toFixed(1)}h old, ` +
         `outside its own window [${windowLabel}]. ${probe.detail}`,
+    };
+  }
+  if (held) {
+    return {
+      verdict: 'fail',
+      line:
+        `${id} — its record was QUERIED and is healthy (newest success ${(ageMs / 3_600_000).toFixed(1)}h ago), but ` +
+        `\`recordQuery.lastObserved\` still reads FAILING (${held.at}). Clear it HERE, on the host that can read this ` +
+        'record — a held failure nobody clears reddens every runner that cannot read it.',
     };
   }
   return {
@@ -528,6 +551,20 @@ export function evaluateRunRecords(reg, probes, nowMs) {
     if (q.reader === 'unreachable' && !nonEmpty(q.why)) {
       errors.push(`${r.id} — \`reader: "unreachable"\` with no \`why\`. "Nothing can read it" is a state this register may record; it is not one it may pass over.`);
     }
+    // The held observation is the only thing standing between a known-bad duty
+    // and a green runner that cannot read it, so its shape is checked, not trusted.
+    if (q.lastObserved !== undefined) {
+      const o = q.lastObserved;
+      if (q.reader === 'unreachable') {
+        errors.push(`${r.id} — \`recordQuery.lastObserved\` on a row whose reader is \`unreachable\`. Nothing has ever read this record, so there is no observation to hold.`);
+      } else if (!o || typeof o !== 'object' || (o.verdict !== 'pass' && o.verdict !== 'fail') || !nonEmpty(o.at) || !nonEmpty(o.detail) || !DURABLE_ID.test(o.detail)) {
+        errors.push(
+          `${r.id} — \`recordQuery.lastObserved\` must be \`{ verdict: "pass" | "fail", at, detail }\` whose detail ` +
+            'carries something a later reader can look up (a result code, a timestamp, a run id). An observation ' +
+            'stated as an adjective holds nothing, and this field is what a dark reader is measured against.',
+        );
+      }
+    }
     used.set(q.reader, (used.get(q.reader) ?? 0) + 1);
   }
 
@@ -552,6 +589,22 @@ export function evaluateRunRecords(reg, probes, nowMs) {
       ],
     };
   }
+
+  // 🔴 THE SAME CEILING FOR THE OTHER ESCAPE HATCH. `unreadable` is "could not
+  // tell", and until now it had NO declared limit — so a runner that could read
+  // nothing printed and exited 0, which is the state the header at the top of
+  // the probe recounts. An UNDECLARED ceiling reads as NO ceiling, so a missing
+  // key refuses here rather than defaulting to a number this file chose.
+  const readCap = decl._maxUnreadable;
+  if (!Number.isInteger(readCap) || readCap < 0) {
+    return {
+      coverageLost: [
+        '`_recordReaders._maxUnreadable` is missing, or is not a non-negative integer.',
+        'It is the ceiling on how many scheduled duties this limb may fail to READ on one runner. With no',
+        'ceiling declared every row can go unreadable and still only print — the exact shape [14]O-3 replaced.',
+      ],
+    };
+  }
   for (const name of readerNames) {
     if (!used.has(name)) {
       errors.push(
@@ -571,14 +624,26 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   const tally = { pass: 0, fail: 0, unreadable: 0, unreachable: 0 };
   const unreachableLines = [];
   const unreadableLines = [];
+  // 🔴 THE GATED LINES ARE STILL IN `tally.fail`. A gate that moved them to their
+  // own counter would put the word FAILING next to a smaller number every time a
+  // row was gated — the count, not the exit code, is what a reader scans.
+  const gatedFailLines = [];
   for (const r of scheduled) {
     if (!r?.mechanism?.recordQuery?.reader || !readerNames.has(r.mechanism.recordQuery.reader)) continue;
     const c = classifyRunRecord(r, probes.get(r.id), nowMs, multiplier);
     tally[c.verdict] = (tally[c.verdict] ?? 0) + 1;
-    if (c.verdict === 'fail') errors.push(c.line);
+    if (c.verdict === 'fail') (c.gated ? gatedFailLines : errors).push(c.line);
     else if (c.verdict === 'unreachable') unreachableLines.push(c.line);
     else if (c.verdict === 'unreadable') unreadableLines.push(c.line);
     else if (c.verdict === 'pass') prints.push(`[14]O-3 — ${c.line}`);
+  }
+
+  if (tally.unreadable > readCap) {
+    errors.push(
+      `${tally.unreadable} scheduled duty(ies) went UNREADABLE on this runner and the ceiling is ${readCap}. ` +
+        'Unreadable is "could not tell", never "it is fine" — above this line the limb has read too little of ' +
+        'its own domain to be believed about the rest. Ratchets DOWN as credentials and platforms arrive.',
+    );
   }
 
   // 🔴 THE NUMBER THAT MUST NEVER BE INVISIBLE. `0 queried` and `4 queried` read
@@ -586,7 +651,8 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // records" is precisely the state that was green for a day and a half.
   prints.push(
     `[14]O-3 — ${scheduled.length} scheduled duty(ies) · ${tally.pass} record(s) QUERIED and inside window · ` +
-      `${tally.fail} FAILING · ${tally.unreadable} reader(s) unreadable on this runner · ` +
+      `${tally.fail} FAILING (${gatedFailLines.length} of them OWNER-GATED: printed, not blocking) · ` +
+      `${tally.unreadable} reader(s) unreadable on this runner (ceiling ${readCap}) · ` +
       `${tally.unreachable} declared unreachable (ceiling ${cap})`,
   );
   if (tally.pass === 0 && tally.fail === 0) {
@@ -596,10 +662,11 @@ export function evaluateRunRecords(reg, probes, nowMs) {
         'could have failed. This line exists so that state can never be mistaken for a clean result.',
     );
   }
+  for (const l of gatedFailLines) prints.push(`[14]O-3 — 🔴 KNOWN FAILING, NOT BLOCKING HERE: ${l}`);
   for (const l of unreadableLines) prints.push(`[14]O-3 — ${l}`);
   for (const l of unreachableLines) prints.push(`[14]O-3 — ${l}`);
 
-  return { errors, prints, stats: { scheduled: scheduled.length, ...tally } };
+  return { errors, prints, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

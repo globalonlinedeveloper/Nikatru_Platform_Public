@@ -36,7 +36,18 @@
 // pixels. That is the only form of the question a repository can answer, and it
 // is the form the console will ask at upload.
 //
+// ── A DIRECTORY THAT IS NOT EMPTY IS NOT A SET THAT IS RIGHT ────────────────
+// Coverage used to turn on "the directory holds one readable PNG", and a 1x1 PNG
+// dropped into screenshots-tablet/ bought it: measured 2026-08-26 on a throwaway
+// root, --for-submission exited 0. The register's `sets.tablet` row already
+// declares minCount, minSide, maxSide and portraitAspect with the page quoted
+// beside them, so each screenshot is now opened and graded against THAT SET'S
+// OWN declared rule. A row declaring only `dir` — `phone` does — grades nothing.
+//
 // ── THE PRINT/FAIL SPLIT IS A RELATIONSHIP, NOT A MOOD ───────────────────────
+//   ("short of the minimum" below covers every kind of gap: too few device types,
+//    a set whose pixels miss its own declared count/size/aspect rule, and a
+//    declared set that holds nothing while siblings satisfy the union floor.)
 //   short of the minimum, channel `served: false`   -> PRINT   (this is today)
 //   short of the minimum, channel `served: true`    -> FAIL
 //   short of the minimum, `--for-submission`        -> FAIL    (the submit lane)
@@ -65,11 +76,14 @@
 // implying a stronger claim: it reports which DECLARED SETS carry screenshots.
 // A set is a promise about where a device type's shots live, kept by whoever
 // captures them. What this removes is the failure that was actually present —
-// a listing that satisfies every count while covering one device type.
+// a listing that satisfies every count while covering one device type. Sizes and
+// counts are measured; what a frame SHOWS — posture, demo banner, which account
+// — is assert-listing-assets.mjs's subject and is measured for no set here.
 //
 // Usage:  node tooling/ci/assert-play-device-coverage.mjs [--for-submission] [repoRoot]
-// Exit 0 = every declared channel covers at least its minimum device types, or
-//          falls short on a channel that is not served yet and said so.
+// Exit 0 = every declared channel covers at least its minimum device types and
+//          every set keeps its own declared rule, or falls short on a channel
+//          that is not served yet and said so.
 // Exit 1 = a served or submitting channel is short, or the scan reached nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -146,13 +160,55 @@ if (withCoverage.length === 0) {
  *  assert-listing-assets.mjs, so no third idea of "what a PNG is" enters. */
 function screenshotsIn(absDir) {
   if (!existsSync(absDir) || !statSync(absDir).isDirectory()) return null;
-  const names = listDir(absDir).filter((n) => n.toLowerCase().endsWith('.png')).sort();
-  return names.filter((n) => pngHeader(readFileSync(join(absDir, n))) !== null);
+  const out = [];
+  for (const n of listDir(absDir).filter((n) => n.toLowerCase().endsWith('.png')).sort()) {
+    const h = pngHeader(readFileSync(join(absDir, n)));
+    if (h !== null) out.push({ name: n, h }); // the header is kept rather than re-read, so the
+  }                                           // rule below grades the same bytes that counted.
+  return out;
+}
+
+const RULE_KEYS = ['minCount', 'minSide', 'maxSide', 'portraitAspect'];
+const ruled = (def) => RULE_KEYS.some((k) => k in def);
+
+const aspect = (v) => {
+  const m = typeof v === 'string' ? /^(\d+):(\d+)$/.exec(v.trim()) : null;
+  const [w, h] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+  return w > 0 && h > 0 ? { w, h } : null;
+};
+
+/** A set graded against ITS OWN declared rule. Every number is the register's and
+ *  is reprinted with that row's `source`. Short side against minSide, long side
+ *  against maxSide — assert-listing-assets.mjs's convention, so no second reading
+ *  of Google's words enters. `portraitAspect` grades PORTRAIT frames only: a
+ *  landscape frame has no declared aspect rule and is not given an invented one. */
+function ruleGaps(type, def, rel, found) {
+  const out = [];
+  const cite = typeof def.source === 'string' ? ` Source: ${def.source}` : '';
+  if (Number.isInteger(def.minCount) && found.length < def.minCount) {
+    out.push(`set "${type}" (${rel}) holds ${found.length} screenshot(s) and the register declares minCount ${def.minCount} for it.${cite}`);
+  }
+  const ar = aspect(def.portraitAspect);
+  for (const { name, h } of found) {
+    const at = `${rel}/${name} is ${h.width}x${h.height}`;
+    if (Number.isInteger(def.minSide) && Math.min(h.width, h.height) < def.minSide) {
+      out.push(`${at} and set "${type}" declares minSide ${def.minSide}px.${cite}`);
+    }
+    if (Number.isInteger(def.maxSide) && Math.max(h.width, h.height) > def.maxSide) {
+      out.push(`${at} and set "${type}" declares maxSide ${def.maxSide}px.${cite}`);
+    }
+    if (ar && h.height > h.width && h.width * ar.h !== h.height * ar.w) {
+      out.push(`${at} — portrait — and set "${type}" declares portraitAspect ${def.portraitAspect}.${cite}`);
+    }
+  }
+  return out;
 }
 
 let treesSeen = 0;
 let channelsChecked = 0;
 let setsMeasured = 0;
+let ruledSets = 0;
+let framesGraded = 0;
 
 for (const row of withCoverage) {
   const g = contract.perChannel[row.id].graphicAssets;
@@ -178,6 +234,29 @@ for (const row of withCoverage) {
       'The set map is what names the device types and where their screenshots live. With it empty, zero',
       'directories are examined and the minimum ranges over nothing.',
     ]);
+  }
+
+  // A limit that cannot be read still LOOKS declared while grading nothing, which
+  // is the shape of every check in this corpus that passed for an unverified
+  // reason. An unreadable one is COVERAGE LOST, never a silently skipped rule.
+  for (const [type, def] of Object.entries(sets)) {
+    if (!def || typeof def !== 'object') continue;
+    if (ruled(def) && (typeof def.source !== 'string' || def.source.trim() === '')) {
+      coverageLost([
+        `${where}.sets["${type}"] declares a dimension rule with no \`source\`.`,
+        'The rule the channel-level minimum is held to, applied to a per-set one: an uncited limit cannot be',
+        're-checked later, so enforcing it would be this guard grading against somebody\'s memory.',
+      ]);
+    }
+    for (const k of ['minCount', 'minSide', 'maxSide']) {
+      if (k in def && !(Number.isInteger(def[k]) && def[k] > 0)) {
+        coverageLost([`${where}.sets["${type}"].${k} is ${JSON.stringify(def[k])}, not a positive integer, so a declared limit would grade nothing.`]);
+      }
+    }
+    if ('portraitAspect' in def && aspect(def.portraitAspect) === null) {
+      coverageLost([`${where}.sets["${type}"].portraitAspect is ${JSON.stringify(def.portraitAspect)}, not "W:H" in positive integers, so a declared limit would grade nothing.`]);
+    }
+    if (ruled(def)) ruledSets++;
   }
 
   // 🔴 THE TWO DECLARATIONS OF WHERE THE PHONE SET LIVES MUST AGREE.
@@ -210,8 +289,19 @@ for (const row of withCoverage) {
     treesSeen++;
     channelsChecked++;
 
+    // One relationship for every kind of gap this guard finds: printed while the
+    // channel is unserved, fatal when it is served or when this is the submit lane.
+    const route = (kind, why) => {
+      if (FOR_SUBMISSION) problems.push(`SUBMITTING and ${why}`);
+      else if (row.served === true) problems.push(`channel "${row.id}" is SERVED and ${why}`);
+      else prints.push(`${kind} (channel not served yet, OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}): ${why} ` +
+        'This PRINTS here and is FATAL on the submission lane, which runs this guard with --for-submission.');
+    };
+
     const covered = [];
     const empty = [];
+    const gaps = [];
+    const bare = [];
     for (const [type, def] of Object.entries(sets)) {
       if (!def || typeof def.dir !== 'string' || def.dir.trim() === '') {
         problems.push(`${where}.sets["${type}"] declares no \`dir\`, so there is no directory to count.`);
@@ -230,8 +320,23 @@ for (const row of withCoverage) {
         );
         continue;
       }
-      if (found.length === 0) empty.push(`${type} (${rel})`);
-      else covered.push(`${type} (${found.length})`);
+      // A set is graded against its own declared rule whether or not it holds
+      // files. `continue` stood here, so `ruleGaps` only ever saw a non-empty
+      // set and a declared `minCount` could not fire on the set holding nothing.
+      // The type floor below is a UNION: two siblings can satisfy it between
+      // them while a third row's emptiness stays a print.
+      if (found.length === 0) {
+        empty.push(`${type} (${rel})`);
+        // A row declaring no count has no number to miss, and is still a device
+        // type the register names and this tree shows no pixels for.
+        if (!Number.isInteger(def.minCount)) {
+          bare.push(`set "${type}" (${rel}) is declared and holds no screenshot, so the register names a device type this listing does not cover.`);
+        }
+      } else {
+        covered.push(`${type} (${found.length})`);
+      }
+      if (ruled(def)) framesGraded += found.length;
+      gaps.push(...ruleGaps(type, def, rel, found));
     }
 
     if (covered.length < min) {
@@ -240,17 +345,10 @@ for (const row of withCoverage) {
         `${empty.length ? `; declared but empty: ${empty.join(', ')}` : ''} — and Play requires at least ${min} ACROSS ` +
         `DIFFERENT DEVICE TYPES. Every individual screenshot passes; the set spans too few types. ` +
         `Add a set to \`${where}.sets\` and capture into it. Source: ${cov.source}`;
-      if (FOR_SUBMISSION) {
-        problems.push(`SUBMITTING and ${why}`);
-      } else if (row.served === true) {
-        problems.push(`channel "${row.id}" is SERVED and ${why}`);
-      } else {
-        prints.push(
-          `DEVICE-TYPE SHORTFALL (channel not served yet, OWNER_QUEUE ${row.ownerQueue ?? '(unnamed)'}): ${why} ` +
-            'This PRINTS here and is FATAL on the submission lane, which runs this guard with --for-submission.',
-        );
-      }
+      route('DEVICE-TYPE SHORTFALL', why);
     }
+    for (const g of gaps) route('SET RULE SHORTFALL', g);
+    for (const b of bare) route('EMPTY DECLARED SET', b);
   }
 }
 
@@ -285,7 +383,8 @@ if (problems.length) {
 
 console.log(
   `ok  play device coverage — ${channelsChecked} (app × channel) listing(s) across ${treesSeen} tree(s); ` +
-    `${setsMeasured} declared device-type set(s) measured${FOR_SUBMISSION ? '; --for-submission, so a shortfall would have been fatal' : ''}`,
+    `${setsMeasured} declared device-type set(s) measured, ${framesGraded} screenshot(s) graded against the ` +
+    `${ruledSets} set(s) that declare a rule${FOR_SUBMISSION ? '; --for-submission, so a shortfall would have been fatal' : ''}`,
 );
 console.log('   ⚠️ CANNOT SEE: whether the pixels in a set really came off that device type. A set is a promise');
 console.log('      about where a type\'s shots live; this counts the sets that are kept.');

@@ -1819,7 +1819,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: npm run build
+      - run: npm run build && test -s _site/index.html  # eleventy exits 0 on "Wrote 0 files"
 
   # ── THE CONTENT LANE ([pipeline 7], the producer half of the pack rail) ─────
   # A lane of its own rather than more steps in `platform`, for the reason F-9
