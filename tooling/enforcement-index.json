@@ -216,6 +216,18 @@
   },
   {
     "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-case-count-honest.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 055"
     ],
     "invokedBy": [

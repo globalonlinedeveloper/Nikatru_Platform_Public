@@ -7,7 +7,7 @@ name: Site drift repair
 # CORRECT value for a page a pull request changes is THE DATE THAT PULL REQUEST
 # MERGES — a date that does not exist while the pull request is open. Every
 # pre-merge lane is therefore structurally unable to hold this invariant:
-# ci.yml:2257 runs check-site-integrity.mjs against a ref whose merge date is
+# ci.yml:2303 runs check-site-integrity.mjs against a ref whose merge date is
 # still in the future, and it is right every time until the merge makes it wrong.
 #
 # MEASURED IN THIS TREE, 2026-08-25:
@@ -52,7 +52,7 @@ name: Site drift repair
 #
 # ── ⚠️ THE HONEST RESIDUAL: THIS SHORTENS THE WINDOW, IT DOES NOT CLOSE IT ──
 # Cloudflare's Git integration deploys sites/nikatru ON THE MERGE PUSH, with no
-# workflow involved and no GitHub check it could read (ci.yml:2242-2252 states
+# workflow involved and no GitHub check it could read (ci.yml:2288-2252 states
 # this in full). The stale sitemap therefore goes LIVE at the moment of merge and
 # stays live until the repair pull request merges. On 2026-08-25 that window was
 # 14m49s (51df9ef 09:48:24 +0530 → f67ee2b 10:03:13 +0530) WITH A HUMAN WATCHING
@@ -155,7 +155,7 @@ jobs:
           # 🔴 MANDATORY, NOT AN OPTIMISATION. lastmod.mjs's isShallowRepo()
           # (that file:82-85) makes check-site-integrity.mjs report COVERAGE LOST
           # on a shallow clone, because `git log` cannot answer a question about
-          # history that was never fetched. ci.yml:2240 carries this line for the
+          # history that was never fetched. ci.yml:2286 carries this line for the
           # same reason and says so.
           fetch-depth: 0
 
