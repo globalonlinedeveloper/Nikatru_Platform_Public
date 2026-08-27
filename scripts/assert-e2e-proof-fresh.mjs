@@ -1,21 +1,59 @@
 #!/usr/bin/env node
 /* assert-e2e-proof-fresh.mjs — is the weekly e2e proof still being produced?
  *
- * WHY IT IS HERE AND NOT ONLY IN e2e.yml. The `proof-fresh` job in
- * .github/workflows/e2e.yml asks these same two questions, and its header is
- * the reasoning for all of it — including the paragraph headed "MAX_AGE_DAYS =
- * 15, DERIVED FROM THE CRON RATHER THAN CHOSEN", which is why the ceiling here
- * is 15 and not 14. But that job runs inside e2e.yml, which fires on its own
- * weekly cron, on workflow_dispatch, or on a `run-e2e` label that this
- * repository does not define. So a dead cron silences its own alarm. This copy
- * is called from ci.yml, on every push to main and on every pull request.
+ * THE ONLY IMPLEMENTATION, CALLED FROM TWO PLACES. Until 2026-08-27 this file
+ * and the `proof-fresh` job in .github/workflows/e2e.yml were two copies of the
+ * same alarm: the job was the original, this was a documented port of it, and
+ * the EXPECT_LEGS block below was added to the ORIGINAL after the port was
+ * taken. Nothing propagated it and nothing asserted agreement, so the copy that
+ * runs on every push was the WEAKER one. At 42962e9 e2e.yml:1080 read
+ * `EXPECT_LEGS > 0 && legs.length === EXPECT_LEGS && …` against this file's
+ * `legs.length > 0 && …`, while the runs query either side of it was
+ * byte-identical once de-indented. Both call sites now run THIS file.
+ *
+ * BOTH CALL SITES SURVIVE ON PURPOSE, because their silences are complementary:
+ *   ci.yml         — every push to main and every PR. A dead cron cannot
+ *                    silence it, which is the whole reason it exists.
+ *   e2e.yml        — its own `proof-fresh` job, on the weekly cron, on
+ *                    workflow_dispatch, or on a `run-e2e` label this repository
+ *                    does not define. A quiet main cannot silence it.
+ *
+ * THREE THINGS IT DOES DIFFERENTLY FROM THE Platform_Public SIBLINGS
+ * (tooling/ci/assert-e2e-proof-fresh.mjs, assert-platform-proof-fresh.mjs):
+ *
+ * 1. THE QUERY FILTERS `event=schedule`, NOT `status=success`. The siblings
+ *    size a window over SUCCESSES, so every green hand-press eats a slot and
+ *    can push the last scheduled success off the page. Filtering on the EVENT
+ *    means a dispatch cannot occupy a slot at all, and 100 rows is ~100 weeks
+ *    of this cron.
+ * 2. GREEN IS READ OFF THE `e2e ·` MATRIX LEGS OF PAST RUNS, NOT OFF RUN
+ *    CONCLUSIONS. e2e.yml's copy of this call is IN the run it grades, so
+ *    grading conclusions would DEADLOCK: the job going red makes the run red,
+ *    which makes it not a success, which keeps the job red forever.
+ * 3. AGES ARE `created_at` — WHEN THE TIMER FIRED. That is the quantity both
+ *    limbs are about, and it is the field the page is ordered by, so the
+ *    created_at/updated_at ordering caveat the siblings carry cannot arise.
+ *
+ * MAX_AGE_DAYS = 15, DERIVED FROM THE CRON RATHER THAN CHOSEN. One weekly slot
+ * gives a 14-day ceiling exactly ONE reliable chance to renew, because the
+ * day-14 slot fires AT the ceiling and measured GitHub schedule drift in this
+ * org reaches +226 minutes (HANDOFF-2026-08-26 §1, four samples). 15 leaves
+ * that second slot a full day of drift room. A second cron slot is the lever
+ * that brings this DOWN; raising it is not a lever, it is a retreat.
+ *
+ * ⛔ ITS RED CANNOT BE CLEARED BY PRESSING THE BUTTON. `workflow_dispatch` runs
+ * are excluded by the query, so a hand-press REVEALS a dead cron instead of
+ * renewing it — the scar both siblings record.
+ * ⛔ It never weakens the suites: it can add a red and can remove none.
  *
  * ADVISORY. main in this repository has no branch protection and no rulesets,
- * so a red here reddens a check and blocks nothing.
+ * so a red here reddens a check on the checks page and blocks nothing. Clearing
+ * it is an owner action, not this gate's.
  *
  * Exit 0 = the timer fired inside the ceiling AND the newest scheduled run
- * whose e2e legs all passed is inside it too.  Exit 1 = one of those is false.
- * Exit 2 = the gate could not run, which is never reported as health.
+ * carrying every e2e leg this checkout expects, all passed, is inside it too.
+ * Exit 1 = one of those is false. Exit 2 = the gate could not run, which is
+ * never reported as health.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -57,7 +95,7 @@ const ROOT = rootArg ? path.resolve(rootArg) : REPO_ROOT;
 
 /* ── SELF-CHECK: THE CEILING IS DERIVED, SO THE CRON IS LOAD-BEARING ────────
    Full-line comments are dropped first. */
-const wfPath = process.env.PROOF_ALARM_WORKFLOW || path.join(ROOT, '.github', 'workflows', WORKFLOW);
+const wfPath = path.join(ROOT, '.github', 'workflows', WORKFLOW);
 let raw = '';
 try { raw = fs.readFileSync(wfPath, 'utf8'); }
 catch (e) { cannotRun(`could not read ${wfPath} (${e.message}). The ceiling is derived from that file's cron, so with the file unreadable there is nothing to derive it from.`); }
@@ -78,6 +116,51 @@ if (!crons.length) {
    exit 0 across the exact rename this exists to catch. */
 if (!/^ {4}name:\s*e2e[^A-Za-z0-9]/m.test(yaml)) {
   err(`COVERAGE LOST — no job in ${WORKFLOW} carries a name starting e2e at the job indent, which is the prefix the GREEN limb matches run jobs on. Rename the matcher in the same commit as the job.`);
+}
+
+/* ── HOW MANY LEGS A GREEN RUN HAS TO CARRY ─────────────────────────────────
+   `legs.every(success)` is vacuously true over an EMPTY list. It is ALSO true
+   over ONE leg on a run whose matrix used to be four legs wide, so without a
+   count a proof that stopped covering three tool directories reads GREEN and
+   keeps reading green for as long as the surviving leg passes.
+
+   THE EXPECTED COUNT IS DERIVED, NOT TYPED: it re-runs the rule e2e.yml's
+   `discover` job uses — a <Category>/<Tool>/test/e2e/package.json — over the
+   checkout this gate already has. WHAT IT COSTS, plainly: adding a tool reddens
+   this until the next scheduled run covers it, and that red is a TRUE sentence
+   — the last green proof did not run the new tool.
+
+   ⚠️ WHAT IT DOES NOT CATCH, because a cardinality is not a set: a rename, or a
+   delete-one-add-one, preserves the count. LEG matches only the name PREFIX, so
+   the `<cat>/<tool>` payload of a leg name is compared to nothing. A run whose
+   legs cover a DIFFERENT set of the same size reads GREEN. Measured 2026-08-27
+   on injected history: a checkout carrying Full_Screen_Shot and Second_Tool,
+   against runs whose two legs are Full_Screen_Shot and a GONE_Tool that is not
+   in the checkout, logs `legs=2/2  GREEN` and exits 0 — Second_Tool has never
+   been exercised by any run in that history. CLOSING IT NEEDS A SET, not a
+   count: parse `<cat>/<tool>` out of each matched leg name and compare. That
+   makes the `·` separator load-bearing, which is why it was not done here.
+
+   ⚠️ ROOTED AT ROOT, NOT AT cwd. e2e.yml's copy of this block read `"."`, which
+   is the same thing only when the gate is run from the tree it grades. Measured
+   2026-08-27: with cwd = a developer's own checkout and --repo-root = a fixture
+   holding zero e2e suites, the cwd form printed "expects 1 e2e leg(s)" and
+   exited 0 — it graded the wrong tree and looked healthy doing it. */
+const LEG_SKIP = new Set(['templates', '_skeleton', 'node_modules']);
+const legDirs = p => fs.readdirSync(p, { withFileTypes: true })
+  .filter(d => d.isDirectory() && !d.name.startsWith('.') && !LEG_SKIP.has(d.name)).map(d => d.name);
+let EXPECT_LEGS = 0;
+try {
+  for (const cat of legDirs(ROOT))
+    for (const tool of legDirs(path.join(ROOT, cat)))
+      if (fs.existsSync(path.join(ROOT, cat, tool, 'test', 'e2e', 'package.json'))) EXPECT_LEGS++;
+} catch (e) {
+  cannotRun(`could not walk ${ROOT} for <Category>/<Tool>/test/e2e/package.json (${e.message}). The expected leg count is derived from that walk, so with the tree unreadable there is nothing to derive it from.`);
+}
+if (!EXPECT_LEGS) {
+  err('COVERAGE LOST — this checkout carries no <Category>/<Tool>/test/e2e/package.json, so the expected leg count is 0 and every run below would be graded against nothing.');
+} else {
+  console.log(`proof-fresh expects ${EXPECT_LEGS} e2e leg(s) per run — derived from this checkout by the discover rule, not typed here`);
 }
 
 /* Offline injection, so the decision logic is exercisable without a token or a
@@ -137,9 +220,11 @@ const api = async p => {
   }
 
   /* ── LIMB 2: WAS THE LAST THING IT PRODUCED GREEN ──────────────────────
-     Read off the matrix legs of past runs, never off run conclusions. A run
-     with ZERO matching legs is NOT green: a vacuous `every` over an empty
-     list is exactly how a renamed job would report health. */
+     Read off the matrix legs of past runs, never off run conclusions. Green
+     is EXPECT_LEGS matching legs, all successful — not "some legs, all
+     successful". Zero legs is the vacuous case a renamed job produces; fewer
+     than EXPECT_LEGS is the partial-discovery case a dropped tool produces;
+     one test excludes both. */
   const jobsOf = async id => {
     if (fixture) return (fixture.jobs && fixture.jobs[String(id)]) || [];
     const j = await api(`/repos/${repo}/actions/runs/${id}/jobs?per_page=100`);
@@ -151,13 +236,13 @@ const api = async p => {
     if (walked >= WALK_BACK) break;
     walked++;
     const legs = (await jobsOf(r.id)).filter(j => j && LEG.test(String(j.name)));
-    const ok = legs.length > 0 && legs.every(j => j.conclusion === 'success');
-    console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}  ${ok ? 'GREEN' : 'not-green'}  [${legs.map(j => j.name + '=' + j.conclusion).join(', ') || 'no e2e leg'}]`);
+    const ok = EXPECT_LEGS > 0 && legs.length === EXPECT_LEGS && legs.every(j => j.conclusion === 'success');
+    console.log(`proof-fresh run ${r.id}  ${r.created_at}  legs=${legs.length}/${EXPECT_LEGS}  ${ok ? 'GREEN' : 'not-green'}  [${legs.map(j => j.name + '=' + j.conclusion).join(', ') || 'no e2e leg'}]`);
     if (ok) { green = r; break; }
   }
   let greenAge = null;
   if (!green) {
-    err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ''}. The weekly proof has been red, or has run nothing, for every one of them.`);
+    err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ''}. The weekly proof has been red, has run nothing, or did not run the ${EXPECT_LEGS} leg(s) this checkout expects, for every one of them.`);
   } else {
     greenAge = (NOW - Date.parse(green.created_at)) / DAY;
     if (greenAge > MAX_AGE_DAYS) err(`THE WEEKLY PROOF IS STALE — the newest scheduled run whose e2e legs all passed is ${green.id} (${green.created_at}), ${greenAge.toFixed(1)} day(s) old, ceiling ${MAX_AGE_DAYS}. The cron may well be firing; what it produces is red.`);

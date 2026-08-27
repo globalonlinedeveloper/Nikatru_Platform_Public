@@ -1621,7 +1621,14 @@ const E2E_WEEKLY = [
 ].join('\n');
 
 const proofLeg = c => [{ name: 'e2e (Good_Tool)', conclusion: c }];
-/* Three weekly scheduled runs, all green, the newest 2 days old. */
+/* Three weekly scheduled runs, all green, the newest 2 days old.
+
+   `wf.suites` is the DISK side of the subject and it is separate from `h` on
+   purpose: the gate derives how many legs a green run must carry by walking
+   the tree for <Category>/<Tool>/test/e2e/package.json, so a case that moves
+   the tree and a case that moves the history are testing different limbs. The
+   base tree carries exactly one suite, which is what makes the shipped history
+   above green. */
 function withProof(mutate = () => {}) {
   return fixture(root => {
     const h = {
@@ -1632,9 +1639,10 @@ function withProof(mutate = () => {}) {
       ],
       jobs: { 3: proofLeg('success'), 2: proofLeg('success'), 1: proofLeg('success') }
     };
-    const wf = { yaml: E2E_WEEKLY };
+    const wf = { yaml: E2E_WEEKLY, suites: [TOOL] };
     mutate(h, wf, root);
     if (wf.yaml !== null) w(root, '.github/workflows/e2e.yml', wf.yaml);
+    for (const dir of wf.suites) w(root, dir + '/test/e2e/package.json', '{ "name": "e2e-fixture", "private": true }\n');
     writeJson(root, PROOF_HISTORY, h);
   });
 }
@@ -1661,8 +1669,29 @@ expect('a green proof past the ceiling is caught while the timer is still fresh'
 /* 🔴 THE VACUITY LIMB. A run with ZERO matching legs must not read as green —
    a vacuous `every` over an empty list is how a renamed job reports health. */
 expect('a run whose e2e legs no longer match is not-green rather than green', {
-  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'legs=0  not-green',
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'legs=0/1  not-green',
   root: withProof(h => { for (const k of Object.keys(h.jobs)) h.jobs[k] = [{ name: 'Discover e2e suites', conclusion: 'success' }]; }),
+  env: proofEnv
+});
+/* 🔴 THE PARTIAL-DISCOVERY LIMB, AND THE REASON THIS GATE AND e2e.yml'S JOB ARE
+   ONE FILE AS OF 2026-08-27. The tree carries TWO suites, the history carries
+   ONE green leg per run, and a vacuity-only floor certifies that as a fresh
+   proof of both. This case is what the collapse is for: until that day the gate
+   read `legs.length > 0`, which is the shape MEASURED to pass this — the count
+   mutated back out, this case returns exit 0 and logs `legs=1/2  GREEN`. */
+expect('a proof covering FEWER suites than the checkout is not-green', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'did not run the 2 leg(s) this checkout expects',
+  root: withProof((h, wf) => { wf.suites = [TOOL, 'Extension/Second_Tool']; }),
+  env: proofEnv
+});
+/* Anti-vacuity on the DERIVATION itself: an expected count of 0 makes
+   `legs.length === EXPECT_LEGS` true of every empty run, so the count must
+   refuse to be zero rather than grade against nothing. */
+expect('a checkout carrying no e2e suite at all CANNOT grade a run', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'carries no <Category>/<Tool>/test/e2e/package.json',
+  root: withProof((h, wf) => { wf.suites = []; }),
   env: proofEnv
 });
 
@@ -1682,6 +1711,14 @@ expect('a renamed e2e job reddens the matcher the GREEN limb keys on', {
 expect('an unreadable e2e.yml CANNOT RUN rather than reporting freshness', {
   script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2, contains: 'nothing to derive it from',
   root: withProof((h, wf) => { wf.yaml = null; }), env: proofEnv
+});
+/* 🔴 BOTH SELF-CHECKS ABOVE READ ONE FILE, AND UNTIL 2026-08-27 `wfPath` opened
+   `process.env.PROOF_ALARM_WORKFLOW ||` — no banner, unlike PROOF_ALARM_FIXTURE.
+   Pointed at the real healthy e2e.yml, this cron-less checkout MEASURED exit 0. */
+expect('a decoy workflow path cannot move the self-check off this checkout', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1, contains: 'declares no cron',
+  root: withProof((h, wf) => { wf.yaml = wf.yaml.replace(/^ *- cron:.*\n/m, ''); }),
+  env: root => ({ ...proofEnv(root), PROOF_ALARM_WORKFLOW: path.join(REPO, '.github', 'workflows', 'e2e.yml') })
 });
 
 /* =====================================================================
