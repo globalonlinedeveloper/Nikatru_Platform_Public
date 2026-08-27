@@ -263,6 +263,67 @@ describe('the scan cannot be trusted', () => {
     );
   });
 
+  // ── the same pair in BACKTICKS: the case that was impossible until the mask
+  //    became importable ──────────────────────────────────────────────────────
+  // ⏱ 2026-08-27. The two tests above were the whole of what the old context
+  // oracle could hold, because it knew only `'…'` and `"…"`. A MULTI-LINE
+  // fixture is written in a template literal — that is simply how a multi-line
+  // string is written — and its body was read as LIVE CODE, so this guard chased
+  // a quoted path to disk, did not find it, and failed. The comment where the
+  // oracle used to live named that residue and could not close it: the stronger
+  // reader was a file-local const in a sibling guard that exported nothing.
+  // It is exported now, both guards read the one implementation, and this is the
+  // failing case that could not be written before.
+  //
+  // MEASURED both ways round on the day of the switch: the first test below
+  // exits 1 against the old oracle (it reported probe-nowhere.mjs as an import
+  // that is not on disk) and 0 against the mask. The second is the control that
+  // stops the fix being a blinding, and it passes either way.
+  const REFUSES_AND_TEMPLATES_AN_IMPORT =
+    'const fixture = `\n' +
+    `import subject from './probe-nowhere.mjs';\n` +
+    '`;\n' +
+    `if (fixture.length) console.error('x COVERAGE LOST - nothing to scan');\n` +
+    `process.exit(1);\n`;
+
+  test('a relative import quoted inside a TEMPLATE LITERAL is not chased to disk', () => {
+    withTree(compliant({ 'tooling/ci/probe-template.mjs': REFUSES_AND_TEMPLATES_AN_IMPORT }), ({ code, out }) => {
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /probe-nowhere\.mjs/);
+      // still a probed executable, not quietly reclassified out of the subject
+      // set to make the problem go away
+      assert.match(out, /4 probed executable\(s\) refused/);
+    });
+  });
+
+  test('a REAL import in a file that also TEMPLATES one is still followed', () => {
+    // The direction that matters more, again. A mask that answered NON_CODE for
+    // everything would make the test above pass and silently stop building the
+    // import closure — so: one path inside a template literal, one genuine
+    // import of a module that IS on disk, and the real one must reach the tree.
+    withTree(
+      compliant({
+        'tooling/ci/probe-shared.mjs': 'export const helper = () => 1;\n',
+        'tooling/ci/probe-tboth.mjs':
+          'const fixture = `\n' +
+          `import subject from './probe-nowhere.mjs';\n` +
+          '`;\n' +
+          `import { helper } from './probe-shared.mjs';\n` +
+          `if (fixture.length) helper();\n` +
+          `process.exit(1);\n`,
+      }),
+      ({ code, out }) => {
+        // green is only meaningful because probe-tboth.mjs is RUN inside the
+        // tree: had probe-shared.mjs not been copied in, the loader would have
+        // failed and the crash limb would have reported it instead
+        assert.equal(code, 0, out);
+        assert.doesNotMatch(out, /probe-nowhere\.mjs/);
+        assert.doesNotMatch(out, /died in the module loader/);
+        assert.match(out, /1 derived as libraries with no main/);
+      },
+    );
+  });
+
   test('an empty home is COVERAGE LOST, not a smaller clean run', () => {
     withTree(makeTree({ 'tooling/ci/probe-alpha.mjs': REFUSES, 'tooling/scripts/.keep': '' }), ({ code, out }) => {
       assert.equal(code, 1, out);

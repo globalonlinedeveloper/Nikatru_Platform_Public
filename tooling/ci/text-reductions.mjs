@@ -57,6 +57,38 @@
 // assert-guard-coverage.mjs treats any .mjs below tooling/ci as a guard that has
 // escaped its scan — a rule that exists because a "tidy into subfolders" refactor
 // once moved 22 guards out of view and the coverage check still printed ok.
+//
+// ⏱ APPENDED 2026-08-27 — everything above is left EXACTLY as written; this
+// corpus appends dated corrections rather than rewriting them. "Two reductions
+// live here" is now THREE, and the third is a different KIND of answer:
+//
+//   · source → WHICH BYTES ARE CODE, BY OFFSET (codeMask / NON_CODE). Not a
+//     reduction you match against — it is the same length as its input by
+//     construction, so `mask[i]` describes `text[i]`, and the caller goes on
+//     reading the ORIGINAL bytes while asking this only WHERE it is. It knows
+//     single quotes, double quotes, TEMPLATE LITERALS and their `${…}`
+//     substitutions, line and block comments including mid-line, and regex
+//     literals.
+//
+// It came in from assert-guard-coverage.mjs, where it had been the tree's one
+// answer to that question and was reachable by nobody: that file exports
+// nothing. assert-guards-refuse-empty.mjs needed exactly it, could not have it,
+// and shipped `stripStringLiterals` used as an offset-preserving context oracle
+// instead — which knows only `'…'` and `"…"`, so a fixture written in a template
+// literal read there as LIVE CODE. Both guards import the mask from here now, so
+// the two cannot answer differently, and the suite asks the TREE that there is
+// no second copy rather than asking a reader to believe it.
+//
+// Nothing above changes. The mask is text in, text out, no filesystem and no
+// tree, exactly like its neighbours, so the reach question still belongs to the
+// callers. RE-MEASURED the same day with the ripgrep recipe that travels beside
+// markerInCode in assert-guard-coverage.mjs, both flags kept: 49 tracked files
+// under tooling import this module and 45 of them take stripSourceComments (39
+// and 36 on 2026-08-17; 47 and 44 on 2026-08-25). The move does not move either
+// number — both guards already imported this file — and the same query for the
+// codeMask brace clause answers 3 (the two guards and this module's own test).
+// The "SEVEN … Nine guards" sentence further up is from 2026-08-02 and was
+// already four times under by 2026-08-17; re-measure, never read.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Comment syntaxes, by file extension. A file whose extension is not here is
@@ -365,6 +397,154 @@ export function stripSourceComments(source, extension) {
 export function stripStringLiterals(source) {
   return source.replace(/'(?:[^'\\\n]|\\.|'')*'|"(?:[^"\\\n]|\\.)*"/g, (m) => m[0] + ' '.repeat(Math.max(0, m.length - 2)) + m[0]);
 }
+
+// ── which BYTES are code, by OFFSET ─────────────────────────────────────────
+// ⏱ 2026-08-27. Every rule below matches a shape — `from '…'`, `spawnSync(`,
+// `const X =` — and a shape spelled INSIDE a string literal is the same bytes as
+// one spelled in code. A fixture body carrying a QUOTED import of a relative
+// `./x.mjs` credited x.mjs with being imported by a test that only ever wrote
+// it into a temp file. So each match is now asked WHERE IT STARTS.
+//
+// Not `stripStringLiterals` composed onto the matcher: the path in a GENUINE
+// import lives inside the literal too, so matching the blanked text deletes
+// every real credit with the fake one. Only the offsets are taken from here;
+// the regexes still read the original bytes.
+//
+// Same length as its input by construction — replacement, never deletion — so
+// `mask[i]` describes `text[i]`. NUL marks a byte that is inside a string
+// literal or a comment; a template literal's `${…}` is code again, because it
+// is. Regex literals are recognised so a `/[^'"]/` cannot open a string that
+// never closes and blank the rest of the file.
+//
+// ⏱ MOVED 2026-08-27, unchanged byte for byte. It was declared BELOW `exercisedBy`,
+// which is fine for `exercisedBy` (called late) and fatal for `countCases` (called
+// during module evaluation, ~90 lines down): a `const` read before its declaration
+// is a ReferenceError, not a fallback — so the ratchet would have crashed rather
+// than miscounted. It has no dependencies of its own; keep it above the first
+// caller and there is nothing else to know.
+//
+// ⏱ MOVED HERE 2026-08-27, out of assert-guard-coverage.mjs, because a SECOND
+// guard needed exactly this mask and could not have it — that file exported
+// nothing at all. assert-guards-refuse-empty.mjs shipped `stripStringLiterals`
+// above used as an offset-preserving context oracle instead, and that oracle
+// knows only '…' and "…": a fixture written in a TEMPLATE LITERAL, which is how
+// a multi-line fixture is naturally written, still read as LIVE CODE there.
+// Both guards now read this one implementation, so neither can drift from the
+// other, and the residue closed with the move.
+//
+// ⚠ ONE WORDING CHANGE WAS MADE IN TRANSIT, AND IT IS RECORDED RATHER THAN
+// SILENT. The paragraph above used to spell its example out as a quoted
+// `import p from` + a dot-slash path, all inside one comment. That is fine in a
+// guard nothing else reads; it is NOT fine here, because this module is imported
+// by 49 files under tooling and at least one test helper builds a temp copy of
+// its guard by scraping `from` + a dot-slash specifier out of the RAW bytes of
+// every module it transitively imports. MEASURED: with the example written out,
+// five tests in no-hardcoded-strings.test.mjs died ENOENT trying to copy
+// tooling/ci/x.mjs, a file that has never existed. The shape is described now
+// instead of spelled, which changes no meaning and removes the bait — and it is
+// the same defect this mask exists to fix, one level down: a reader with no
+// notion of context taking prose for code.
+//
+// 🔴 THE DECLARATION-ORDER PARAGRAPH ABOVE IS SPENT, and is kept rather than
+// deleted because it is a dated record of a real hazard. It was a rule about
+// STATEMENT ORDER inside assert-guard-coverage.mjs — "keep it above the first
+// caller" — and it no longer applies in either file. An import BINDING is
+// hoisted and initialised before the importing module body runs, so the caller
+// that made it fatal (`countCases`, still called during that guard's module
+// evaluation) cannot read this binding before it exists. VERIFIED by measurement
+// on the day of the move: the import statement was written textually BELOW
+// `countCases` and the guard still exited 0, ratchet unchanged at the 5791
+// case(s) across 148 file(s) it read before this change added its own tests. Byte-for-byte identity was checked the same way and not
+// asserted: the OLD implementation was sliced out of the pre-move file into a
+// standalone module and BOTH were run over the same 453 tracked
+// .mjs/.js/.ts/.tsx files, 11,768,858 characters — zero differing masks, and
+// NON_CODE equal. The same corpus was also hashed per file before and after the
+// move: 451 of 453 hashes identical, the two that moved being exactly the two
+// files this change edits, whose INPUT bytes changed and which the same-input
+// run above covers.
+//
+// The bytes below are the original ones. The ONLY edits are the two `export`
+// keywords: the mask a guard gets from here is the mask it got from there.
+export const NON_CODE = '\u0000';
+const REGEX_MAY_START = /(?:[([{,;:=!&|?+\-*%~^<>\n]|\b(?:return|typeof|case|in|of|do|else|yield|await|new|delete|void|instanceof))\s*$/;
+const maskCache = new Map();
+export const codeMask = (text) => {
+  const hit = maskCache.get(text);
+  if (hit !== undefined) return hit;
+  const m = text.split('');
+  const blank = (a, b) => { for (let k = a; k < b; k++) m[k] = NON_CODE; };
+  const tpl = [];
+  let brace = 0;
+  let i = 0;
+  const scanString = (start, q) => {
+    let k = start + 1;
+    while (k < text.length) {
+      const c = text[k];
+      if (c === '\\') { k += 2; continue; }
+      if (c === q) { blank(start, k + 1); return k + 1; }
+      if (q === '`' && c === '$' && text[k + 1] === '{') {
+        blank(start, k + 2);
+        tpl.push(brace);
+        brace = 0;
+        return k + 2;
+      }
+      if (q !== '`' && c === '\n') { blank(start, k); return k; }
+      k++;
+    }
+    blank(start, text.length);
+    return text.length;
+  };
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i);
+      const end = nl < 0 ? text.length : nl;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      const end = close < 0 ? text.length : close + 2;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (c === '/' && REGEX_MAY_START.test(text.slice(Math.max(0, i - 12), i))) {
+      let k = i + 1;
+      let cls = false;
+      while (k < text.length && text[k] !== '\n') {
+        const d = text[k];
+        if (d === '\\') { k += 2; continue; }
+        if (d === '[') cls = true;
+        else if (d === ']') cls = false;
+        else if (d === '/' && !cls) { k++; break; }
+        k++;
+      }
+      blank(i, k);
+      i = k;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { i = scanString(i, c); continue; }
+    if (c === '{') { brace++; i++; continue; }
+    if (c === '}') {
+      if (brace === 0 && tpl.length) {
+        brace = tpl.pop();
+        m[i] = NON_CODE;
+        i = scanString(i, '`');
+        continue;
+      }
+      if (brace > 0) brace--;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  const out = m.join('');
+  if (maskCache.size > 400) maskCache.clear();
+  maskCache.set(text, out);
+  return out;
+};
 
 /** Blank out comments, <script> and <style>.
  *

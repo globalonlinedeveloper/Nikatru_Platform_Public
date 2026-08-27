@@ -111,7 +111,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { stripStringLiterals } from './text-reductions.mjs';
+import { codeMask, NON_CODE } from './text-reductions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /* The root is read AFTER the fixture flag is parsed, a few lines below, so that a
@@ -400,6 +400,20 @@ const importsFrom = (rel, src) => {
   // `const mask = codeMask(code)` / `mask[i] !== NON_CODE`, the canary below
   // keeps holding them, and the backtick residue closes with them.
   //
+  // ✅ CLOSED 2026-08-27, exactly the way the paragraph above prescribed — the
+  // block above is left EXACTLY as written because it is the record of what was
+  // wrong and for how long. `codeMask` and `NON_CODE` were MOVED beside
+  // stripStringLiterals in text-reductions.mjs and exported from there, so the
+  // two guards now share ONE implementation and the rival copy stayed refused.
+  // The two lines below are the ones that paragraph named. What the move bought
+  // here is the third canary above: a fixture whose import sits in a TEMPLATE
+  // LITERAL. MEASURED — with the old oracle that canary yielded
+  // [tooling/probe/canary-subject.mjs] and this guard exited 1; with the mask it
+  // yields [] and the guard exits 0, while CANARY_IMPORT_REAL still yields
+  // exactly one path. The mask itself was proven unchanged across the move: 453
+  // tracked .mjs/.js/.ts/.tsx files, 11,768,858 characters, both
+  // implementations run over the same bytes, zero differences.
+  //
   // ⬜ The other direction this oracle can be wrong, named because it is the
   // DANGEROUS one: a lone apostrophe on a code line (`// don't` after code, a
   // `['"]` character class in a regex literal) can open a span that blanks a
@@ -408,11 +422,25 @@ const importsFrom = (rel, src) => {
   // and the crash limb below reports it as a broken harness rather than counting
   // it as a refusal. Measured over the real corpus the day this landed: 154
   // files, 361 edges, derived import set byte-identical to the ungated matcher.
-  const outsideLiterals = stripStringLiterals(code);
-  /** A byte the reduction did NOT blank. Blanking only ever turns a non-space
-   *  into a space, so equality is exactly "not inside a literal" for the
-   *  non-space bytes every match below starts on. */
-  const isCode = (i) => outsideLiterals[i] === code[i];
+  //
+  // ⏱ APPENDED 2026-08-27 — the two ⬜ paragraphs above are left exactly as
+  // written; this corpus appends dated corrections rather than rewriting them.
+  // BOTH now describe `stripStringLiterals`, which this matcher no longer
+  // consults. The apostrophe hazard the paragraph immediately above names is
+  // REDUCED, not merely inherited: `codeMask` knows comments and regex literals,
+  // so a `// don't` after code and a `['"]` character class are both understood
+  // rather than read as an opening quote. It is not GONE — a genuinely unbalanced
+  // quote in live code still opens a span — and the failure is still the LOUD
+  // one the paragraph describes, a module missing from the built tree that dies
+  // in the loader and is reported by the crash limb. RE-MEASURED over the real
+  // corpus on the day of the switch: 155 files and 208 edges under the old
+  // oracle, 155 files and 208 edges under the mask — the derived import set is
+  // IDENTICAL, so nothing that was being built stopped being built.
+  const mask = codeMask(code);
+  /** A byte the mask did not mark. Same length as its input by construction, so
+   *  `mask[i]` describes `code[i]`: NUL is inside a string literal, a template
+   *  literal, a comment or a regex literal, and everything else is code. */
+  const isCode = (i) => mask[i] !== NON_CODE;
   // Three spellings. The third — a bare side-effect `import './x.mjs';` with no
   // `from` — was missing until the suite caught it: the module never reached the
   // built tree, the guard died in the loader, and only the load-crash limb below
@@ -451,6 +479,11 @@ const importsFrom = (rel, src) => {
 // `isCode` line above and this guard reddens on its own source with no fixture
 // anywhere in the loop. #397 recorded that five of its six new gates had no
 // failing case in this repository; this one does.
+//
+// ⏱ APPENDED 2026-08-27 — "THESE TWO CONSTANTS" is now THREE. The paragraph
+// above is left exactly as written and its claim holds for the third as well:
+// CANARY_IMPORT_TEMPLATED below is also a quoted-only relative import sitting
+// in the real corpus, and it is the one the old oracle got wrong.
 const CANARY_IMPORT_QUOTED = [
   'const fixture = "\u{1F534} import subject from \'../probe/canary-subject.mjs\';";',
   'writeFileSync(join(root, generated), fixture);',
@@ -461,15 +494,37 @@ const CANARY_IMPORT_REAL = [
   'subject.check();',
   '',
 ].join('\n');
+/** ⏱ ADDED 2026-08-27 — THE CASE THE OLD ORACLE COULD NOT HOLD. The SAME import
+ *  statement a third time, now inside a TEMPLATE LITERAL, which is how a
+ *  multi-line fixture is actually written. `stripStringLiterals` knows only
+ *  '…' and "…", so the `from` here sat OUTSIDE every literal it can see and the
+ *  matcher credited a live import of a path that is not on disk — the exact
+ *  shape that reddened every push in #397, one quote character away from the
+ *  case above and invisible to the oracle that catches that one. `codeMask`
+ *  reads the whole template as the quotation it is. MEASURED on the day of the
+ *  switch: with the old oracle this file exited 1 on this canary; with the mask
+ *  it exits 0, and CANARY_IMPORT_REAL below still yields exactly one path either
+ *  way — a matcher blinded to real code would be worse than the blindness this
+ *  repairs, so that control is checked in the same condition. */
+const CANARY_IMPORT_TEMPLATED = [
+  'const fixture = `',
+  "import subject from '../probe/canary-subject.mjs';",
+  '`;',
+  'writeFileSync(join(root, generated), fixture);',
+  '',
+].join('\n');
 const canaryImports = (t) => importsFrom('tooling/ci/canary.mjs', t);
 const canaryQuoted = canaryImports(CANARY_IMPORT_QUOTED);
 const canaryReal = canaryImports(CANARY_IMPORT_REAL);
-const canaryOracleLen = stripStringLiterals(CANARY_IMPORT_QUOTED).length;
-if (canaryQuoted.length !== 0 || canaryReal.length !== 1 || canaryOracleLen !== CANARY_IMPORT_QUOTED.length) {
+const canaryTemplated = canaryImports(CANARY_IMPORT_TEMPLATED);
+const canaryOracleLen = codeMask(CANARY_IMPORT_QUOTED).length;
+if (canaryQuoted.length !== 0 || canaryTemplated.length !== 0 || canaryReal.length !== 1 || canaryOracleLen !== CANARY_IMPORT_QUOTED.length) {
   coverageLost([
     'the import matcher no longer distinguishes an import that is MADE from one that is merely QUOTED.',
     `An import written INSIDE A STRING yielded [${canaryQuoted.join(', ')}] (must be empty) and the same`,
     `import written as code yielded [${canaryReal.join(', ')}] (must be exactly one path).`,
+    `The same import inside a TEMPLATE LITERAL yielded [${canaryTemplated.join(', ')}] (must be empty — a`,
+    'multi-line fixture is written in backticks, and an oracle that knows only quotes reads its body as code).',
     `The context oracle measured ${canaryOracleLen} over a ${CANARY_IMPORT_QUOTED.length}-char fixture (must be`,
     'EQUAL — it carries an astral character, and an oracle that is not offset-preserving misaligns every',
     'lookup past it, which reads as "everything is code" or "nothing is").',
