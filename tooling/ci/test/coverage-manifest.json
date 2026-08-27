@@ -19,6 +19,7 @@
   "await-pr-checks.test.mjs": 46,
   "capability-register-seams.test.mjs": 27,
   "capability-register.test.mjs": 29,
+  "case-count-honest.test.mjs": 40,
   "catalog-contract.test.mjs": 39,
   "catalog-reachable.test.mjs": 21,
   "ceiling-budget.test.mjs": 73,
