@@ -1704,7 +1704,14 @@ const proofLeg = (c, dirs = [TOOL]) => dirs.map(d => ({ name: 'e2e · ' + d, con
    the tree for <Category>/<Tool>/test/e2e/package.json, so a case that moves
    the tree and a case that moves the history are testing different limbs. The
    base tree carries exactly one suite, which is what makes the shipped history
-   above green. */
+   above green.
+
+   `wf.wiredDoc` is the COMMITTED side, scripts/e2e-suites.json, and it lives in
+   the fixture tree rather than in the gate as of 2026-08-27. Left alone it is
+   written to agree with `wf.suites`, which is what keeps every case above about
+   the limb it is about; `null` means WRITE NO FILE, and a string is written
+   verbatim so a malformed document can be driven too. */
+const SUITES_REL = 'scripts/e2e-suites.json';
 function withProof(mutate = () => {}) {
   return fixture(root => {
     const h = {
@@ -1715,10 +1722,13 @@ function withProof(mutate = () => {}) {
       ],
       jobs: { 3: proofLeg('success'), 2: proofLeg('success'), 1: proofLeg('success') }
     };
-    const wf = { yaml: E2E_WEEKLY, suites: [TOOL] };
+    const wf = { yaml: E2E_WEEKLY, suites: [TOOL], wiredDoc: undefined };
     mutate(h, wf, root);
     if (wf.yaml !== null) w(root, '.github/workflows/e2e.yml', wf.yaml);
     for (const dir of wf.suites) w(root, dir + '/test/e2e/package.json', '{ "name": "e2e-fixture", "private": true }\n');
+    if (wf.wiredDoc === null) { /* the file is absent on purpose */ }
+    else if (typeof wf.wiredDoc === 'string') w(root, SUITES_REL, wf.wiredDoc);
+    else writeJson(root, SUITES_REL, wf.wiredDoc === undefined ? { suites: wf.suites } : wf.wiredDoc);
     writeJson(root, PROOF_HISTORY, h);
   });
 }
@@ -1840,20 +1850,35 @@ expect('deleting one test/e2e/package.json cannot silence the red it was raising
    proof covering one): exit 1, then rm -r the second suite's test/e2e and
    nothing else, exit 0, `legs=1/1 GREEN`.
 
-   WIRED_SUITES in the gate is the committed side that closes it, and these two
-   cases are its pair. The name below is the one the gate commits, so if that
-   list changes this case goes exit 0 and FAILS rather than quietly passing. */
+   scripts/e2e-suites.json is the committed side that closes it, and the cases
+   below are its pair. Held as a constant inside the gate until 2026-08-27 it had
+   to be inert wherever the TOOL directory was absent — one repository's fact
+   would otherwise have been smuggled into whatever `--repo-root` named — and
+   that inertness was a hole of its own: MEASURED 2026-08-27 on a two-suite bite
+   tree, `rm -rf Extension/Full_Screen_Shot` with the run history losing the same
+   leg gave `legs=1/1  GREEN`, exit 0. The list travels with the checkout now, so
+   the case below deletes the WHOLE TOOL and still expects a red. */
 const WIRED = 'Extension/Full_Screen_Shot';
-expect('deleting a whole test/e2e DIRECTORY cannot silence the red it was raising', {
+expect('deleting the WHOLE TOOL directory cannot silence the red it was raising', {
   script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
-  contains: 'Extension/Full_Screen_Shot is named in WIRED_SUITES in this file and has no test/e2e/package.json',
-  root: withProof((h, wf, root) => { fs.mkdirSync(path.join(root, WIRED), { recursive: true }); }),
+  contains: WIRED + ' is named in scripts/e2e-suites.json and this checkout has no',
+  root: withProof((h, wf) => { wf.wiredDoc = { suites: [TOOL, WIRED] }; }),
   env: proofEnv
 });
-/* The half that stops the above from being a check that is simply always red:
-   the SAME committed tool, its suite intact and exercised, passes. Without this
-   the first case could not tell "the directory is gone" from "the name is in
-   the list". */
+/* The nearer sibling, one step over: the tool directory survives and only its
+   test/e2e is gone. Both must redden, and for the same reason. */
+expect('deleting only test/e2e, with the tool directory left behind, reddens too', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: WIRED + ' is named in scripts/e2e-suites.json and this checkout has no',
+  root: withProof((h, wf, root) => {
+    wf.wiredDoc = { suites: [TOOL, WIRED] };
+    fs.mkdirSync(path.join(root, WIRED), { recursive: true });
+  }),
+  env: proofEnv
+});
+/* The half that stops the two above from being checks that are simply always
+   red: the SAME committed tool, its suite intact and exercised, passes. Without
+   this they could not tell "the directory is gone" from "the name is listed". */
 expect('a committed suite that still has its test/e2e is not reported as removed', {
   script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
   root: withProof((h, wf) => {
@@ -1861,6 +1886,126 @@ expect('a committed suite that still has its test/e2e is not reported as removed
     for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', [TOOL, WIRED]);
   }),
   env: proofEnv
+});
+/* 🔴 THE OTHER DIRECTION, WHICH WAS A `::notice::` AND EXIT 0 UNTIL 2026-08-27.
+   A suite that is in the tree and in no committed list is protected by nothing:
+   deleting it shrinks the derived set and there is no committed side to
+   disagree. It could not be a red while the list was a constant in the gate,
+   because that constant was wrong for every checkout but one. A file that
+   travels with the checkout can be right for it, so it is a red that names the
+   suite — and a suite added today is protected today. */
+expect('a suite in the tree and NOT in the committed file is a RED, not a notice', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'Extension/Second_Tool carries a test/e2e suite and is NOT named in scripts/e2e-suites.json',
+  root: withProof((h, wf) => {
+    wf.suites = [TOOL, 'Extension/Second_Tool'];
+    wf.wiredDoc = { suites: [TOOL] };
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', wf.suites);
+  }),
+  env: proofEnv
+});
+/* 🔴 THE DECOY SHAPE, WHICH THIS REPOSITORY HAS ALREADY BEEN BITTEN BY ONCE —
+   see the PROOF_ALARM_WORKFLOW case below. Resolved against the gate's own repo
+   instead of ROOT, the list would be THIS repository's for every `--repo-root`
+   tree, and every fixture above would be graded against a suite set that has
+   nothing to do with it. The name below exists in no checkout anywhere, so it
+   can only have come out of the fixture tree's own file. */
+expect('the committed list is read from the GRADED tree, not from this repository', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'Vendor/Not_On_Disk is named in scripts/e2e-suites.json',
+  root: withProof((h, wf) => {
+    wf.suites = ['Vendor/Only_Here'];
+    wf.wiredDoc = { suites: ['Vendor/Not_On_Disk'] };
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', wf.suites);
+  }),
+  env: proofEnv
+});
+/* 🔴 THE FOUR WAYS THE COMMITTED SIDE CAN GO ABSENT WHILE THE GATE STILL RUNS.
+   Every one of them would leave `WIRED_SUITES` an empty array, and an empty
+   array is a comparison over nothing that EVERY deletion passes — the exact
+   green-while-broken this whole limb exists to prevent. Three CANNOT RUN; the
+   fourth, an explicitly emptied list, is a red that says how a suite is
+   actually retired. */
+expect('no scripts/e2e-suites.json at all CANNOT RUN rather than passing', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2,
+  contains: 'could not reach scripts/e2e-suites.json',
+  root: withProof((h, wf) => { wf.wiredDoc = null; }),
+  env: proofEnv
+});
+expect('a RENAMED suites key CANNOT RUN rather than reading as an empty list', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2,
+  contains: 'carries no `suites` array',
+  root: withProof((h, wf) => { wf.wiredDoc = { Suites: [TOOL] }; }),
+  env: proofEnv
+});
+expect('an unparseable scripts/e2e-suites.json CANNOT RUN', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2,
+  contains: 'could not be read as JSON',
+  root: withProof((h, wf) => { wf.wiredDoc = '{ "suites": [ oops\n'; }),
+  env: proofEnv
+});
+expect('an EMPTIED suites array is COVERAGE LOST, not a list every deletion passes', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'is empty, so the comparison below is over nothing',
+  root: withProof((h, wf) => { wf.wiredDoc = { suites: [] }; }),
+  env: proofEnv
+});
+/* A name listed twice: the set comparison collapses the repeat, so one of the
+   two lines can be deleted with the tree untouched and NOTHING here moves. The
+   tree and the list agree in this case, so the duplicate is the only red — which
+   is what proves it is caught here and not incidentally by the comparison. */
+expect('a name listed TWICE is COVERAGE LOST — one of those lines protects nothing', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'names ' + TOOL + ' more than once',
+  root: withProof((h, wf) => { wf.wiredDoc = { suites: [TOOL, TOOL] }; }),
+  env: proofEnv
+});
+/* 🔴 THE path.sep SEAM ON THE COMMITTED SIDE. The walk builds every name by
+   joining with '/', so a backslash-joined entry can never equal one — it would
+   sit in the list reading as protection while protecting nothing, and it is
+   exactly what a Windows author copying a path produces. */
+expect('a backslash-joined entry CANNOT RUN rather than sitting in the list inert', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 2,
+  contains: 'entr(ies) that are not a `<Category>/<Tool>` string',
+  root: withProof((h, wf) => { wf.wiredDoc = { suites: ['Extension\\Good_Tool'] }; }),
+  env: proofEnv
+});
+/* 🔴 THE CASE-ONLY RENAME, WHICH WAS INERT UNTIL 2026-08-27 AND IS CLOSED HERE
+   BY IDENTITY, NEVER BY SPELLING. Nothing casefolds: the walk reports the name
+   the filesystem actually holds, and the committed list still holds the old one,
+   so the two sets differ on BOTH hosts. MEASURED 2026-08-27 on a two-suite bite
+   tree renamed Full_Screen_Shot -> full_screen_shot: Windows exit 1 and WSL2 on
+   a case-SENSITIVE native filesystem exit 1, the same two findings. A casefolded
+   compare would have passed here and failed on Ubuntu. */
+expect('a CASE-ONLY rename of the tool directory reddens, on either host', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'Extension/second_tool carries a test/e2e suite and is NOT named in',
+  root: withProof((h, wf) => {
+    wf.suites = [TOOL, 'Extension/second_tool'];
+    wf.wiredDoc = { suites: [TOOL, 'Extension/Second_Tool'] };
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', wf.suites);
+  }),
+  env: proofEnv
+});
+/* The one case that grades the SHIPPED bytes rather than a fixture: this
+   repository's own tree against this repository's own scripts/e2e-suites.json,
+   with the run history injected and built FROM that file. A file naming a suite
+   the tree does not carry, or a tree carrying a suite the file does not name,
+   fails it in the respective direction. Without this every case above could
+   pass over a committed list that describes nothing here. */
+const shippedHistoryDir = (() => {
+  const d = fixture();
+  const wired = JSON.parse(fs.readFileSync(path.join(REPO, SUITES_REL), 'utf8')).suites;
+  writeJson(d, PROOF_HISTORY, {
+    workflow_runs: [{ id: 9, event: 'schedule', created_at: proofAgo(2) }],
+    jobs: { 9: proofLeg('success', wired) }
+  });
+  return d;
+})();
+expect('the SHIPPED scripts/e2e-suites.json is the SHIPPED tree, both directions', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
+  root: REPO,
+  env: () => ({ PROOF_ALARM_FIXTURE: path.join(shippedHistoryDir, PROOF_HISTORY), PROOF_ALARM_NOW: PROOF_NOW })
 });
 /* 🔴 A FALSE RED WITH A NONSENSE MESSAGE, MEASURED 2026-08-27 ON A PERFECT
    PROOF: the leg parser's separator run `[^A-Za-z0-9]+` is greedy and the

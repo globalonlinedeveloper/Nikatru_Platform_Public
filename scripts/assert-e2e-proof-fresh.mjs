@@ -210,61 +210,97 @@ if (NO_PKG.length) {
 if (MISCASED.length) {
   err(`COVERAGE LOST — test/e2e/package.json reachable only under a different case: ${MISCASED.join(', ')}. A case-insensitive filesystem counts that as a suite and the Linux runner does not, so it is excluded here and the two hosts disagree about the expected set.`);
 }
-/* ── THE ONE COMMITTED NAME PER SUITE, SO A REMOVAL CANNOT BE SILENT ────────
+/* ── THE COMMITTED SUITE SET, AS A FILE IN THE GRADED TREE ──────────────────
    Everything above is DERIVED, and derivation on its own cannot tell "this tool
    never had a suite" from "this tool's suite was deleted in this commit": both
    read as an absent test/e2e. The NO_PKG limb bites only because
    `rm test/e2e/package.json` LEAVES THE DIRECTORY BEHIND to be found.
-   `rm -r test/e2e` leaves nothing at all. MEASURED 2026-08-27, two suites and a
-   proof covering one: legs=1/2 not-green exit 1, then rm -r the second suite's
-   test/e2e and nothing else, legs=1/1 GREEN exit 0.
+   `rm -r test/e2e` leaves nothing at all, and `rm -rf <Category>/<Tool>` less
+   than that. MEASURED 2026-08-27, two suites and a proof covering one:
+   legs=1/2 not-green exit 1, then rm -r the second suite's test/e2e and nothing
+   else, legs=1/1 GREEN exit 0.
 
-   Removing a suite therefore means DELETING ITS LINE HERE IN THE SAME COMMIT.
-   That is the whole mechanism: the shrink stops being a deletion nobody reads
-   and becomes a line in the diff of the gate that was supposed to notice.
+   🔴 THE LIST IS A FILE IN ROOT, NOT A CONSTANT IN THIS GATE, since 2026-08-27,
+   AND THAT IS WHAT CLOSES THE `rm -rf` HOLE. As a constant the removal check had
+   to be made INERT wherever the tool directory was absent — otherwise it was one
+   repository's fact smuggled into whatever `--repo-root` names — and that
+   inertness WAS the hole. MEASURED 2026-08-27 on a two-suite bite tree:
+   `rm -rf Extension/Full_Screen_Shot` with the run history losing the same leg
+   logged `legs=1/1  GREEN` and exited 0, the deletion invisible. Read out of
+   SUITES_FILE in ROOT the set is a fact about the tree BEING GRADED, so no
+   inertness is needed and the same deletion reddens.
 
-   INERT WHERE THE TOOL DIRECTORY IS NOT THERE AT ALL, which is what keeps this
-   a fact about THIS repository instead of a constant smuggled into whatever
-   `--repo-root` names — and it BOUNDS THE CLAIM, measured rather than reasoned:
-   rm -rf the whole <Category>/<Tool> on the same bite tree gives exit 0,
-   2026-08-27. That deletes the product and not merely the proof of it, and
-   whether anything else reddens on it is NOT asserted here.
+   Removing a suite therefore means DELETING ITS LINE FROM THAT FILE in the same
+   commit. That is the whole mechanism: the shrink stops being a deletion nobody
+   reads and becomes a line in the diff. A file can be edited in the commit that
+   deletes the suite, which a constant in a gate is only grudgingly.
 
-   ONE-DIRECTIONAL ON PURPOSE. A suite present and NOT listed is a ::notice::
-   rather than a red, because a red would fire on every checkout but this one.
-   The cost, plainly: a suite added and never listed is not protected by this. */
-const WIRED_SUITES = [
-  'Extension/Full_Screen_Shot'
-];
-if (!WIRED_SUITES.length) {
-  err('COVERAGE LOST — WIRED_SUITES in this file is empty, so the removal check below is a filter over nothing and every deletion passes it. Emptying the list is not how a suite is retired; deleting the one name is.');
-}
-/* Byte-exact at every segment, never a case-insensitive hit: on the Linux
-   runner a tool that is on disk under another case is not there. */
-const toolPresent = rel => {
+   🔴 BOTH DIRECTIONS, since 2026-08-27. A suite in the tree and NOT in the file
+   was a ::notice:: rather than a red, because a constant here could not be right
+   for any checkout but this one — so every ADDED suite was unprotected until
+   somebody remembered to type its name. A file that travels with the checkout
+   can be right for it, so that is a red now, and it names the suite.
+
+   ⚠️ READ FROM ROOT, NEVER FROM THIS FILE'S OWN REPO. Resolved against
+   REPO_ROOT it would grade every `--repo-root` tree against THIS repository's
+   list — the decoy shape the PROOF_ALARM_WORKFLOW scar records for wfPath.
+   ⚠️ Segment by segment and byte-exact, never existsSync: CI IS LINUX and a
+   case-insensitive host answers for names it cannot open. */
+const SUITES_FILE = 'scripts/e2e-suites.json';
+let WIRED_SUITES = [];
+{
   let p = ROOT;
-  for (const seg of rel.split('/')) {
-    const d = dirent(p, seg);
-    if (!d || !d.isDirectory() || d.name !== seg) return false;
-    p = path.join(p, d.name);
+  try {
+    for (const seg of SUITES_FILE.split('/')) {
+      const d = dirent(p, seg);
+      if (!d) throw new Error(`there is no ${seg} in ${p}`);
+      if (d.name !== seg) throw new Error(`${seg} is on disk as ${d.name}, a case a Linux runner does not open`);
+      p = path.join(p, seg);
+    }
+  } catch (e) {
+    cannotRun(`could not reach ${SUITES_FILE} under ${ROOT} (${e.message}). The committed suite set IS that file, so with it unreachable there is nothing to compare the tree against — and an ABSENT list must not read as "nothing was deleted".`);
   }
-  return true;
-};
+  let doc = null;
+  try { doc = JSON.parse(fs.readFileSync(p, 'utf8')); }
+  catch (e) { cannotRun(`${SUITES_FILE} could not be read as JSON (${e.message}). An unparseable list is not an empty one.`); }
+  if (!doc || !Array.isArray(doc.suites)) {
+    cannotRun(`${SUITES_FILE} carries no \`suites\` array. A missing or renamed key would read as an empty list, and an empty list is a comparison over nothing that every deletion passes.`);
+  }
+  WIRED_SUITES = doc.suites;
+}
+if (!WIRED_SUITES.length) {
+  err(`COVERAGE LOST — the \`suites\` array in ${SUITES_FILE} is empty, so the comparison below is over nothing and every deletion passes it. Emptying the list is not how a suite is retired; deleting the one name is.`);
+}
+/* The walk above builds every name by joining with '/', so an entry of another
+   shape can never match one — it would sit in the list LOOKING like protection.
+   A backslash-joined `Extension\Tool` is the reachable instance of that. */
+const BAD_ENTRY = WIRED_SUITES.filter(s => typeof s !== 'string' || !/^[^/\\]+\/[^/\\]+$/.test(s));
+if (BAD_ENTRY.length) {
+  cannotRun(`${SUITES_FILE} names ${BAD_ENTRY.length} entr(ies) that are not a \`<Category>/<Tool>\` string: ${BAD_ENTRY.map(s => JSON.stringify(s)).join(', ')}. Nothing this gate derives can ever equal one, so it protects nothing while reading as though it did.`);
+}
+/* A repeated name means ONE of its two lines can be deleted with the tree
+   untouched and nothing here moves — a line that reads as protection and is not.
+   A set comparison collapses the repeat, which is exactly why it is caught here
+   rather than left to the comparison. */
+const DUPED = [...new Set(WIRED_SUITES.filter((s, i) => WIRED_SUITES.indexOf(s) !== i))].sort();
+if (DUPED.length) {
+  err(`COVERAGE LOST — ${SUITES_FILE} names ${DUPED.join(', ')} more than once. Deleting one of those lines changes nothing here, so that line is not the committed record it looks like.`);
+}
 const REMOVED = WIRED_SUITES.filter(s =>
-  !EXPECT_DIRS.has(s) && !NO_PKG.includes(s) && !MISCASED.includes(s) && toolPresent(s));
+  !EXPECT_DIRS.has(s) && !NO_PKG.includes(s) && !MISCASED.includes(s));
 if (REMOVED.length) {
-  err(`COVERAGE LOST — ${REMOVED.join(', ')} is named in WIRED_SUITES in this file and has no test/e2e/package.json, while its <Category>/<Tool> directory is still here. Deleting a whole test/e2e directory takes the tool out of the discover matrix AND out of the expected set in the same commit, so a NEVER EXERCISED red goes green with nothing left to point at. A DELIBERATE removal is not blocked by this — it is made loud: delete the name from WIRED_SUITES in the same commit as the directory.`);
+  err(`COVERAGE LOST — ${REMOVED.join(', ')} is named in ${SUITES_FILE} and this checkout has no <Category>/<Tool>/test/e2e/package.json for it. Deleting the suite — or the whole tool directory — takes it out of the discover matrix AND out of the expected set in the same commit, so a NEVER EXERCISED red goes green with nothing left to point at. A DELIBERATE removal is not blocked by this, it is made loud: delete the name from ${SUITES_FILE} in the same commit as the directory.`);
 }
 const UNLISTED = [...EXPECT_DIRS].filter(d => !WIRED_SUITES.includes(d)).sort();
 if (UNLISTED.length) {
-  console.log(`::notice::carries a test/e2e suite and is NOT in WIRED_SUITES in this gate: ${UNLISTED.join(', ')}. Deleting that directory would still shrink the expected set with no red. Add the name to protect it.`);
+  err(`COVERAGE LOST — ${UNLISTED.join(', ')} carries a test/e2e suite and is NOT named in ${SUITES_FILE}. Until it is, deleting that directory shrinks the expected set with no red at all. Add the name in the same commit as the suite.`);
 }
 
 const EXPECT_LEGS = EXPECT_DIRS.size;
 if (!EXPECT_LEGS) {
   err('COVERAGE LOST — this checkout carries no <Category>/<Tool>/test/e2e/package.json, so the expected leg count is 0 and every run below would be graded against nothing.');
 } else {
-  console.log(`proof-fresh expects ${EXPECT_LEGS} e2e leg(s) per run, one each for ${[...EXPECT_DIRS].sort().join(', ')} — derived from this checkout by the discover rule, not typed here`);
+  console.log(`proof-fresh expects ${EXPECT_LEGS} e2e leg(s) per run, one each for ${[...EXPECT_DIRS].sort().join(', ')} — derived from this checkout by the discover rule and required above to equal the committed set in ${SUITES_FILE}`);
 }
 
 /* Offline injection, so the decision logic is exercisable without a token or a
