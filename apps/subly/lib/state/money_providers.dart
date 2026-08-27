@@ -187,3 +187,28 @@ Future<core.Entitlements> refreshEntitlements(WidgetRef ref) async {
   ref.invalidate(entitlementsProvider);
   return ref.read(entitlementsProvider.future);
 }
+
+/// The same refresh, driven by a [ProviderContainer] instead of a [WidgetRef].
+///
+/// 🔴 FOR THE CALLER THAT CAN ONLY REFRESH *AFTER* AN AWAIT.
+/// `WidgetRef.read`/`invalidate` are `_assertNotDisposed()` plus this exact
+/// pair of calls on the container (flutter_riverpod 2.6.1
+/// `consumer.dart:617-620` and `:630-633`), and that assert throws a real
+/// `StateError` in RELEASE. `manage_plan_screen.dart`'s `_cancel` cannot
+/// re-read before `requestCancellation()` returns — that would report the
+/// state the user just asked to change — so it hoists the root scope's
+/// container before its first await and passes it here. The container
+/// outlives every widget under that scope.
+///
+/// ⚠️ [refreshEntitlements] DELIBERATELY DOES NOT DELEGATE TO THIS. Routing it
+/// through here would drop `_assertNotDisposed()` from the `WidgetRef` path,
+/// turning a loud use-after-dispose into a silent one — and both
+/// `paywall_screen.dart` call sites are ORDERED on the recorded ground that
+/// the invalidate throws when the widget is gone. The two bodies are two lines
+/// that differ by that assert: the overlap is irreducible, not unfactored.
+Future<core.Entitlements> refreshEntitlementsIn(
+  ProviderContainer container,
+) async {
+  container.invalidate(entitlementsProvider);
+  return container.read(entitlementsProvider.future);
+}
