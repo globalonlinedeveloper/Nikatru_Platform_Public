@@ -184,6 +184,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # ── the tag is read BEFORE six platforms are built ───────────────────────
+      # `--tag` compares the version the tag NAMES against the build name
+      # apps/<slug>/pubspec.yaml DECLARES. Here that is an EARLY FAIL and nothing
+      # more: a tag naming a version the app does not carry stops in the FIRST
+      # job after `gate`, instead of after three build jobs each declaring
+      # `timeout-minutes: 30`. The AUTHORITATIVE copy is in `release`, on the
+      # exact string that renames the installers.
+      #
+      # ⚠️ NO `--app` ON PURPOSE. Without it the guard derives `apps/<slug>` from
+      # the tag itself, which is what keeps its app-existence and exact-leaf
+      # (casefold) limbs live — `--app` would answer that question for it.
+      #
+      # `github.ref_name` goes through `env:`: a ref name is attacker-influenced
+      # text and `${{ }}` inside a `run:` is substituted before bash ever sees it.
+      # [zizmor template-injection]
+      - name: The tag must name the version the app declares
+        if: github.ref_type == 'tag'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: node tooling/ci/assert-app-versioning.mjs --tag "$REF_NAME"
       - name: The matrix comes from the workspace, never from this file
         id: workspace
         run: |
@@ -1270,6 +1290,16 @@ jobs:
             TAG="${APP}-untagged-$(git rev-parse --short HEAD)"
           fi
           echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          # AUTHORITATIVE, and it sits here rather than after `--stage` because
+          # this is the last moment the installers still carry their build names:
+          # `--stage` renames every one of them after $TAG. `set -euo pipefail`
+          # above is what makes a non-zero exit fail the job.
+          # UNCONDITIONAL on purpose — on a non-tag run $TAG is the
+          # `<app>-untagged-<sha>` value synthesised two lines up, which the guard
+          # treats as a no-op, so every dispatch and every scheduled run still
+          # exercises the parse and proves the code loads. Gating this on
+          # `ref_type == 'tag'` would leave it dead until the first real release.
+          node tooling/ci/assert-app-versioning.mjs --tag "$TAG"
           mkdir -p dist
           node tooling/ci/release-manifest.mjs --stage downloads --out dist --app "$APP" --tag "$TAG"
           for d in downloads/*/; do
@@ -1294,8 +1324,30 @@ jobs:
         run: >
           node tooling/ci/release-manifest.mjs --write dist
           --app "$APP" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" --run-url "$RUN_URL"
+      # `--expect-formats` is the COMPLETENESS half, and it is a DIFFERENT
+      # question from the one above. `--verify` alone asks whether dist/ and
+      # SHA256SUMS agree, so a dist missing a whole platform verifies clean —
+      # measured 2026-08-27 on a fixture holding the .apk and .aab and no .msix:
+      # plain `--verify` exits 0 printing `ok  2 asset(s) verified`.
+      #
+      # 🔴 `--for-workflow` IS NOT DECORATION HERE. Unnarrowed, the expected set
+      # is derived from EVERY lane-bearing channel row and so includes `.snap`,
+      # which `submit-snap.yml` emits and this workflow never does; measured
+      # 2026-08-27, that spelling exits 1 naming `.snap` even on a dist carrying
+      # all three formats this lane produces. Narrowed to this file the set is
+      # `.aab .apk .msix` — exactly the three the upload-artifact steps above
+      # carry with `if-no-files-found: error`, on every run and not only on tags.
+      #
+      # 🔴 ON `--verify`, NEVER ON THE `--write` STEP ABOVE — `--verify` is the
+      # only mode that reads these flags, so on `--write` they would run the
+      # named mode and ask nothing. release-manifest.mjs refuses that spelling
+      # outright today ("--expect-formats is read by --verify alone", exit 1,
+      # measured 2026-08-27), so the misplacement is loud rather than silent —
+      # but the placement is the reason it works, not that refusal.
       - name: Re-verify every asset against the manifest
-        run: node tooling/ci/release-manifest.mjs --verify dist
+        run: >
+          node tooling/ci/release-manifest.mjs --verify dist
+          --expect-formats --for-workflow .github/workflows/build-platforms.yml
       # ── publish ─────────────────────────────────────────────────────────────
       # 🔴 `gh release create` IS WRITTEN HERE, IN THE WORKFLOW, ON PURPOSE.
       # assert-release-provenance.mjs classifies a publish from the workflow TEXT

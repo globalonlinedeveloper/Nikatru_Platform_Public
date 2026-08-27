@@ -139,6 +139,8 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#prepare",
+      ".github/workflows/build-platforms.yml#release",
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#platform",
       ".github/workflows/deploy-web.yml#deploy-web",
