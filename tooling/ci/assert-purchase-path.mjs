@@ -559,9 +559,9 @@ let registerChannels = []; // the register's channel rows, whole
       problems.push(`COVERAGE LOST — the manage-plan screen is missing, so restore ([5]M-10) could not be checked.`);
     } else {
       const s = code(readFileSync(manage, 'utf8'));
-      // 🔴 SCOPED TO `_restore`, NOT TO THE FILE. `refreshEntitlements(` also
-      // appears in the CANCEL path, so a file-level match survived deleting the
-      // restore control's own server read entirely. Mutation-proven.
+      // 🔴 SCOPED TO `_restore`, NOT TO THE FILE: a file-level match would be
+      // satisfied by any other call site the file grows, and so would pass
+      // with the restore control's own server read deleted.
       const restoreBody =
         new RegExp(String.raw`Future<void>\s+_restore\(\)\s*async\s*\{[\s\S]{0,600}?\n  \}`).exec(s)?.[0] ?? '';
       if (!/refreshEntitlements\(/.test(restoreBody) || !/restorePurchases/.test(s)) {

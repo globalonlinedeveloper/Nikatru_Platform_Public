@@ -40,6 +40,28 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
 
   Future<void> _cancel() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    // 🔴 THE CONTAINER IS RESOLVED HERE, BESIDE `l10n` AND BEFORE THE FIRST
+    // AWAIT, BECAUSE THE REFRESH CANNOT BE. The re-read has to happen AFTER
+    // the cancellation, or it reports the state the user just asked to change
+    // — and `WidgetRef.read`/`invalidate` are `_assertNotDisposed()` plus the
+    // identical call on this container (flutter_riverpod 2.6.1
+    // `consumer.dart:617-620` and `:630-633`), where that assert throws a real
+    // `StateError` in RELEASE. The container belongs to the root
+    // `ProviderScope`, so it outlives every widget under it.
+    //
+    // Without it, a user who left while POST /v1/plan/cancel was in flight —
+    // the app bar's back control stays live throughout — took the release-mode
+    // `StateError` [userStateDrops] records, out of a `_cancel` nothing
+    // catches. And the entitlement was then never invalidated, so a
+    // non-autoDispose `entitlementsProvider` went on reporting the plan the
+    // server had just cancelled for the rest of the session.
+    //
+    // `_restore` below stays on the `WidgetRef` form, where the read already
+    // precedes every await and the disposal assert is worth keeping.
+    final ProviderContainer container = ProviderScope.containerOf(
+      context,
+      listen: false,
+    );
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
@@ -68,9 +90,10 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         .read(purchaseRailProvider)
         .requestCancellation();
     // The entitlement may not have changed yet — the rail confirms
-    // asynchronously — but re-reading is what makes the screen show the server's
-    // view rather than a guess.
-    await refreshEntitlements(ref);
+    // asynchronously — but re-reading is what makes the screen show the
+    // server's view rather than a guess. Through the hoisted container, not
+    // `refreshEntitlements(ref)`: see the note above.
+    await refreshEntitlementsIn(container);
     if (!mounted) return;
     setState(() {
       _busy = false;
