@@ -516,6 +516,13 @@ for (const root of siteRoots) {
 
   const pages = htmlIn(root).map((abs) => ({ abs, page: posixRel(root, abs), html: readFileSync(abs, 'utf8') }));
   const indexable = pages.filter((p) => !isNoindex(p.html));
+  /** EVERY file on this root, keyed by both spellings a <loc> can name it by: the
+   *  served form and the `.html` form Pages 308s to it. Exact strings from the
+   *  names on disk, never an existsSync() probe — that would resolve a
+   *  case-different <loc> on Windows and not on Linux. */
+  const servedBy = new Map();
+  for (const p of pages) servedBy.set(origin + p.page, p.page);
+  for (const p of pages) servedBy.set(expectedUrl(origin, p.page), p.page);
   const wanted = new Map(); // canonical URL → page
   const policyVersions = new Map(); // canonical URL → declared version
 
@@ -593,8 +600,14 @@ for (const root of siteRoots) {
     // ⚠️ A `lastmod` is required on every entry, not merely correct when
     // present. An optional assertion is one a hand edit escapes by deletion.
     for (const e of entries) {
-      const page = wanted.get(e.loc);
-      if (page === undefined) continue; // already reported as an unknown <loc>
+      // 🔴 `wanted` IS THE INDEXABLE PAGES ONLY, so a <loc> naming a real file that
+      // is not one of them — a noindex page, or the `.html` spelling — reached this
+      // limb as undefined and skipped it, and its date was never compared to git.
+      // `servedBy` answers from the FILES, so the two limbs no longer share one
+      // lookup. The skip that remains is the honest one: a <loc> no file serves has
+      // no page to take a git date from.
+      const page = wanted.get(e.loc) ?? servedBy.get(e.loc);
+      if (page === undefined) continue; // no file on this root serves this <loc>
       lastmodChecked++;
       lastmodRootsSeen.add(name);
       if (e.lastmod === null) {
@@ -1201,10 +1214,10 @@ if (SCANNING_OWN_REPO) {
   }
   if (lastmodChecked === 0) {
     lost.push(
-      'NO sitemap <lastmod> was compared to git history at all, so [12]W-3a ranged over nothing. Nine URLs ' +
-        'across two deploy roots are checked today. This is the limb that makes a hand-edited date fail; with ' +
-        'it quiet, every sitemap in the tree could carry any date at all and this script would still print ok — ' +
-        'the exact state the repository was in until 2026-08-06.',
+      'NO sitemap <lastmod> was compared to git history at all, so [12]W-3a ranged over nothing. This is the ' +
+        'limb that makes a hand-edited date fail; with it quiet, every sitemap in the tree could carry any ' +
+        'date at all and this script would still print ok — the exact state the repository was in until ' +
+        '2026-08-06.',
     );
   }
   if (promiseMarkers === 0) {
