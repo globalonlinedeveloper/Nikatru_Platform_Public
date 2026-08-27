@@ -181,9 +181,17 @@
      🔴 NOTHING HERE OPENS A CHECKOUT. No Paddle.js, no price lookup, no network
      call of any kind, and that is the increment's boundary rather than an
      oversight: `paywall.enabled` is false for every app in
-     services/platform/src/app-config-data.json and OWNER_QUEUE A-1 (Paddle
-     seller signup and KYC) is still pending, so a checkout script loaded now
+     services/platform/src/app-config-data.json, so a checkout script loaded now
      would be a live payment surface with nothing behind it.
+
+     ⚠️ CORRECTED 2026-08-28. That paragraph also said "and OWNER_QUEUE A-1
+     (Paddle seller signup and KYC) is still pending". It is not: [ADR 044],
+     LOCKED 2026-08-11, evidences a LIVE Paddle seller account —
+     PADDLE_API_KEY_LIVE (`pdl_live_apikey_`) against api.paddle.com, 403'd by
+     the sandbox host, and a live POST /transactions returning 201
+     (txn_01kzs3qcvryq785t7shpq5d7wj). The boundary is now held by
+     `paywall.enabled` ALONE — the switch [ADR 044] §5(4) names — together with
+     the unset PADDLE_NOTIFICATION_SECRET on the webhook side.
 
      WHAT IT DELIBERATELY DOES NOT DO: it never writes the value into the page as
      text or markup, so a crafted ?app= cannot become HTML here. It is validated

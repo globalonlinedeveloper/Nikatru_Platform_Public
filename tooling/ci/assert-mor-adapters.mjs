@@ -3,9 +3,16 @@
 // assert-mor-adapters.mjs — ONE VERIFIER STANDS BETWEEN A PROVIDER AND THE
 // ENTITLEMENT TABLE, and the rail reports its own gaps honestly.
 //
-// [pipeline 5]M-1 · [5]M-14 · [ADR 004] (Paddle / Lemon Squeezy, provider-
-// agnostic behind a `MoRWebhookVerifier`) · [ADR 020]:18 (a per-app Worker must
-// never see a webhook).
+// [pipeline 5]M-1 · [5]M-14 · [ADR 004] (Paddle as the merchant of record,
+// provider-agnostic behind a `MoRWebhookVerifier`) · [ADR 020]:18 (a per-app
+// Worker must never see a webhook).
+//
+// ⚠️ CORRECTED 2026-08-28: the attribution above read "[ADR 004] (Paddle / Lemon
+// Squeezy, provider-agnostic …)". [ADR 039] D4 (2026-08-09) RETIRED [ADR 004]'s
+// "apply to Lemon Squeezy in parallel" clause — the parallel application was never
+// evidenced and the product is sunsetting into Stripe. The SEAM is unchanged and
+// is the whole point of it: a successor rail is an adapter file plus a registry
+// line. WHICH successor is a queued owner decision and is not answered here.
 //
 // 🔴 THE MISTAKE THIS GUARD IS SHAPED TO AVOID, named because it is this repo's
 // most expensive recurring one: a guard scoped to the NEW thing cannot see the
@@ -32,8 +39,10 @@
 //     never in the file that declares it — assert-seams-wired.mjs carries the
 //     scar where a check matched its own function's declaration after every
 //     caller was deleted). PRINT, never fail, on the owner-gated half: the
-//     seller account (OWNER_QUEUE A-1) and the destination secret only the owner
-//     can generate. Failing the build on those would block ALL CI on work no
+//     destination secret only the owner can generate. (The seller account,
+//     OWNER_QUEUE A-1, was the other half of this until it went LIVE — [ADR 044],
+//     LOCKED 2026-08-11; corrected here 2026-08-28.) Failing the build on those
+//     would block ALL CI on work no
 //     agent can do; hiding them would let "finished, waiting on one signup" be
 //     indistinguishable from "nothing built", which is the exact defect [5]M-14
 //     was rewritten to fix.
@@ -630,19 +639,32 @@ if (!existsSync(join(ROOT, CONTRACT))) {
   printed.push(
     '⬜ MONEY RAIL — OWNER-GATED HALF, printed on every run so "finished, waiting on one signup" can never look like "nothing built":',
   );
+  // ⚠️ CORRECTED 2026-08-28. The first bullet below read, verbatim, '· NO PROVIDER
+  // ACCOUNT YET. OWNER_QUEUE A-1 (Paddle + Lemon Squeezy seller signup, KYC, Indian
+  // bank/Wise payout) is PENDING, and upstream of it OWNER_QUEUE D-5 (SBI current
+  // account in the trade name) is decided but not opened — Paddle KYC needs the
+  // account name to match the registered business.' BOTH HALVES WERE FALSE, and it
+  // was printed on every CI run, which is the exact failure mode this block exists
+  // to prevent — pointed the other way.
   printed.push(
-    '     · NO PROVIDER ACCOUNT YET. OWNER_QUEUE A-1 (Paddle + Lemon Squeezy seller signup, KYC, Indian bank/Wise payout) is PENDING, ' +
-      'and upstream of it OWNER_QUEUE D-5 (SBI current account in the trade name) is decided but not opened — Paddle KYC needs the ' +
-      'account name to match the registered business.',
+    '     · PROVIDER ACCOUNT: LIVE. OWNER_QUEUE A-1 (the Paddle seller account, KYC and payout) is DONE — [ADR 044], LOCKED ' +
+      '2026-08-11, evidences a PRODUCTION credential: PADDLE_API_KEY_LIVE (prefix `pdl_live_apikey_`) authenticating against ' +
+      'api.paddle.com, 403 from the SANDBOX host with the same key (which is what proves it is production), and a live ' +
+      'POST /transactions returning 201 with txn_01kzs3qcvryq785t7shpq5d7wj. The Lemon Squeezy half of the old line was retired ' +
+      'earlier still: [ADR 039] D4 (2026-08-09) withdrew [ADR 004]\'s parallel-application clause — it was never evidenced and the ' +
+      'product is sunsetting into Stripe.',
   );
   printed.push(
-    '     · NO DESTINATION SECRET. PADDLE_NOTIFICATION_SECRET can only be generated in the Paddle seller console. Until it is set with ' +
-      '`wrangler secret put`, POST /v1/money/paddle answers 503 and NO money can be accepted. The rail is otherwise complete: routes, ' +
-      'verifier, verbatim store, ordering, attribution and the entitlement contract are built and tested against fixtures.',
+    '     · NO DESTINATION SECRET — NOW THE ONLY OWNER-GATED ITEM ON THIS RAIL. PADDLE_NOTIFICATION_SECRET is generated per ' +
+      'notification-destination in the Paddle seller console. Until it is set with `wrangler secret put`, POST /v1/money/paddle ' +
+      'answers 503 and NO money can be accepted. ⚠️ THIS LINE IS A STANDING REMINDER, NOT A MEASUREMENT: a Worker secret is ' +
+      'invisible to every guard in this tree, so nothing here can observe whether it has been set. The rail is otherwise complete: ' +
+      'routes, verifier, verbatim store, ordering, attribution and the entitlement contract are built and tested against fixtures.',
   );
   printed.push(
-    '     · [ADR 004] 2026-07-24 — applying BEFORE a reviewable product with a live paywall and complete legal pages exists is the main ' +
-      'documented cause of hold or rejection. The sequencing is deliberate, not a delay.',
+    '     · [ADR 004] 2026-07-24 said applying BEFORE a reviewable product with a live paywall and complete legal pages exists is ' +
+      'the main documented cause of hold or rejection. That sequencing constraint is HISTORICAL: the application landed and the ' +
+      'account is live. It is kept because it explains the date, not because anything still waits on it.',
   );
   // ── DELETED 2026-08-25: A PRINT THAT ASKED, EVERY RUN, FOR WORK ALREADY DONE ─
   // An UNCONDITIONAL `printed.push` stood here — no predicate against the tree —

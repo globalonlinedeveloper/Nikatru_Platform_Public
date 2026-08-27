@@ -446,9 +446,14 @@ export async function renewalsFanOut(env: Env): Promise<void> {
 // depth being UNKNOWN — "nobody has drained this" was a silence, and a silence
 // gives the owner half no number to start from on the day the credential lands.
 //
-// ⚠️ IT DRAINS NOTHING. Executing against the merchant of record needs a seller
-// credential that does not exist (OWNER_QUEUE A-1) and is deliberately not
-// designed around here.
+// ⚠️ IT DRAINS NOTHING. Executing against the merchant of record needs a cancel
+// call no registered adapter can make — the vendor's endpoint shape has never
+// been read against a primary source here — and that is deliberately not designed
+// around here.
+//
+// ⚠️ CORRECTED 2026-08-28: this read "needs a seller credential that does not
+// exist (OWNER_QUEUE A-1)". The credential EXISTS — [ADR 044], LOCKED 2026-08-11.
+// The drain is still zero for the reason above, not for that one.
 //
 // ⚠️ AND `ok` STAYS 1 WHILE THE BACKLOG GROWS — [ADR 035] applied, not an
 // oversight. Nothing in this Worker can drain a row, so `ok = undrained === 0`

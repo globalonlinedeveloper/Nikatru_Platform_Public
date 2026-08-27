@@ -7,9 +7,15 @@
 //
 // ── 🔴 WHAT THIS ROUTE HONESTLY IS, AND WHAT IT IS NOT ───────────────────────
 // The merchant of record owns the buyer relationship ([ADR 004]) — it holds the
-// payment method, and only its API can stop a subscription. That API needs a
-// seller credential which DOES NOT EXIST (OWNER_QUEUE A-1, PENDING), and its
-// endpoint shape has never been read against a primary source in this repo.
+// payment method, and only its API can stop a subscription. That API's endpoint
+// shape has never been read against a primary source in this repo.
+//
+// ⚠️ CORRECTED 2026-08-28: that sentence read "That API needs a seller
+// credential which DOES NOT EXIST (OWNER_QUEUE A-1, PENDING), and its endpoint
+// shape has never been read…". THE CREDENTIAL EXISTS — [ADR 044], LOCKED
+// 2026-08-11, evidences a live production seller key. The UNREAD ENDPOINT SHAPE
+// is what remains, and it is the half that actually decides this route's design,
+// so nothing below changes.
 // Encoding a guessed cancel call would ship a button that 404s at the vendor for
 // the first real subscriber, and nothing would go red.
 //
