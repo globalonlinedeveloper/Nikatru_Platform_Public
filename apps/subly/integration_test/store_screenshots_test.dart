@@ -224,6 +224,11 @@ void main() {
           'runner with --proof if you only mean to exercise the mechanism.',
     );
 
+    // `app.main()` installs AppErrorScreen as `ErrorWidget.builder`
+    // (main.dart:78 → system_screens.dart:72) and flutter_test fails any test
+    // that leaves that global changed, so the last line of this body puts it
+    // back — the shape `launchApp` already uses at app_test.dart:586.
+    final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;
     await app.main();
     await pumpFor(tester, const Duration(seconds: 3));
 
@@ -756,5 +761,7 @@ void main() {
     // Re-adding a Settings frame is a build failure, not a review comment:
     // assert-listing-assets.mjs resolves every `captureFrame` above to the
     // screen its `find.byType` names and fails if that source reads `.email`.
+
+    ErrorWidget.builder = builderBeforeTest;
   });
 }
