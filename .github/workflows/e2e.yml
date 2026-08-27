@@ -881,7 +881,9 @@ jobs:
   # returns exit 0 over `legs=1/2  GREEN`. The script's header carries the
   # reasoning that used to live here — the three divergences from the
   # Platform_Public siblings, and why MAX_AGE_DAYS is 15 and not 14 — and
-  # scripts/test/selftest.node.js holds eleven red/green cases for it.
+  # scripts/test/selftest.node.js holds the red/green cases for it. NO COUNT IS
+  # WRITTEN HERE — one was, as `eleven`, and it had rotted. Ask the file:
+  #   grep -cE "script:.*assert-e2e-proof-fresh" scripts/test/selftest.node.js
   #
   # ⚠️ THE CALL SITE IS WHAT STAYS DOUBLED, NOT THE CODE. A dead cron silences
   # THIS job, because it lives in the workflow it watches and otherwise fires only

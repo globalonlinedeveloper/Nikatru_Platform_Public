@@ -1832,6 +1832,62 @@ expect('deleting one test/e2e/package.json cannot silence the red it was raising
   }),
   env: proofEnv
 });
+/* 🔴 THE SIBLING THE CASE ABOVE DOES NOT REACH, MEASURED 2026-08-27 AS EXIT 0.
+   `rm test/e2e/package.json` is caught only because it LEAVES THE DIRECTORY
+   BEHIND to be found; `rm -r test/e2e` leaves nothing, so the tool stops being
+   discovered and the expected set shrinks with no red — the same commit deletes
+   the suite and silences the alarm about it. On the bite tree (two suites, a
+   proof covering one): exit 1, then rm -r the second suite's test/e2e and
+   nothing else, exit 0, `legs=1/1 GREEN`.
+
+   WIRED_SUITES in the gate is the committed side that closes it, and these two
+   cases are its pair. The name below is the one the gate commits, so if that
+   list changes this case goes exit 0 and FAILS rather than quietly passing. */
+const WIRED = 'Extension/Full_Screen_Shot';
+expect('deleting a whole test/e2e DIRECTORY cannot silence the red it was raising', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
+  contains: 'Extension/Full_Screen_Shot is named in WIRED_SUITES in this file and has no test/e2e/package.json',
+  root: withProof((h, wf, root) => { fs.mkdirSync(path.join(root, WIRED), { recursive: true }); }),
+  env: proofEnv
+});
+/* The half that stops the above from being a check that is simply always red:
+   the SAME committed tool, its suite intact and exercised, passes. Without this
+   the first case could not tell "the directory is gone" from "the name is in
+   the list". */
+expect('a committed suite that still has its test/e2e is not reported as removed', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
+  root: withProof((h, wf) => {
+    wf.suites = [TOOL, WIRED];
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', [TOOL, WIRED]);
+  }),
+  env: proofEnv
+});
+/* 🔴 A FALSE RED WITH A NONSENSE MESSAGE, MEASURED 2026-08-27 ON A PERFECT
+   PROOF: the leg parser's separator run `[^A-Za-z0-9]+` is greedy and the
+   payload had to start alphanumeric, so `e2e · _Vendor/Tool_A` yielded
+   `Vendor/Tool_A` and the gate reported `NEVER EXERCISED: _Vendor/Tool_A  NOT
+   IN THIS CHECKOUT: Vendor/Tool_A`, exit 1. The tree walk skips dot-names and
+   LEG_SKIP only, so an underscore category is discovered and reachable. */
+expect('a category directory starting with an underscore is not a false red', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
+  root: withProof((h, wf) => {
+    wf.suites = ['_Vendor/Tool_A'];
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = proofLeg('success', ['_Vendor/Tool_A']);
+  }),
+  env: proofEnv
+});
+/* The guarantee the underscore repair must not cost: the gate's own comment
+   promises a separator retyped as a dash still parses, and the whitespace form
+   that fixes the underscore cannot see this one. It is pinned rather than
+   assumed, because a fallback nothing exercises is a fallback nobody knows is
+   dead. */
+expect('a leg separator retyped as a bare dash still yields the same dir', {
+  script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 0, contains: 'proof-fresh ok',
+  root: withProof(h => {
+    for (const k of Object.keys(h.jobs)) h.jobs[k] = [{ name: 'e2e-' + TOOL, conclusion: 'success' }];
+  }),
+  env: proofEnv
+});
 expect('a suite reachable only as Test/E2E is named and excluded, on either host', {
   script: 'assert-e2e-proof-fresh.mjs', argv: [], code: 1,
   contains: 'reachable only under a different case: Extension/Case_Tool',

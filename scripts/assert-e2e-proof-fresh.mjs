@@ -75,8 +75,20 @@ const LEG = /^e2e[^A-Za-z0-9]/;
    is "a run of non-alphanumerics", never the literal `·`: that character is
    U+00B7, it crosses the GitHub API and a source-encoding boundary to get here,
    and a gate pinned to one byte sequence for it would stop parsing — silently —
-   the day it arrived mojibake'd or was retyped as a dash. */
+   the day it arrived mojibake'd or was retyped as a dash.
+
+   🔴 THE GREEDY RUN EATS A LEADING `_`. `[^A-Za-z0-9]+` is greedy and the
+   payload was required to START alphanumeric, so `e2e · _Vendor/Tool_A` yielded
+   `Vendor/Tool_A` — MEASURED 2026-08-27 as `NEVER EXERCISED: _Vendor/Tool_A
+   NOT IN THIS CHECKOUT: Vendor/Tool_A`, exit 1, on a PERFECT proof. A category
+   beginning with a non-alphanumeric is discovered by the walk below (it skips
+   only dot-names and LEG_SKIP), so that shape is reachable. LEG_WS is tried
+   first and resolves it by taking the separator as WHITESPACE-DELIMITED, which
+   is what e2e.yml:84 actually emits; the greedy form stays as a fallback so an
+   unspaced separator still parses. */
+const LEG_WS = /^e2e\s+(?:[^\sA-Za-z0-9]+\s+)?([A-Za-z0-9_].*?)\s*$/;
 const LEG_DIR = /^e2e[^A-Za-z0-9]+([A-Za-z0-9].*)$/;
+const legDirOf = n => { const m = LEG_WS.exec(n) || LEG_DIR.exec(n); return m ? m[1].trim() : null; };
 const DAY = 86400000;
 
 const red = [];
@@ -198,6 +210,56 @@ if (NO_PKG.length) {
 if (MISCASED.length) {
   err(`COVERAGE LOST — test/e2e/package.json reachable only under a different case: ${MISCASED.join(', ')}. A case-insensitive filesystem counts that as a suite and the Linux runner does not, so it is excluded here and the two hosts disagree about the expected set.`);
 }
+/* ── THE ONE COMMITTED NAME PER SUITE, SO A REMOVAL CANNOT BE SILENT ────────
+   Everything above is DERIVED, and derivation on its own cannot tell "this tool
+   never had a suite" from "this tool's suite was deleted in this commit": both
+   read as an absent test/e2e. The NO_PKG limb bites only because
+   `rm test/e2e/package.json` LEAVES THE DIRECTORY BEHIND to be found.
+   `rm -r test/e2e` leaves nothing at all. MEASURED 2026-08-27, two suites and a
+   proof covering one: legs=1/2 not-green exit 1, then rm -r the second suite's
+   test/e2e and nothing else, legs=1/1 GREEN exit 0.
+
+   Removing a suite therefore means DELETING ITS LINE HERE IN THE SAME COMMIT.
+   That is the whole mechanism: the shrink stops being a deletion nobody reads
+   and becomes a line in the diff of the gate that was supposed to notice.
+
+   INERT WHERE THE TOOL DIRECTORY IS NOT THERE AT ALL, which is what keeps this
+   a fact about THIS repository instead of a constant smuggled into whatever
+   `--repo-root` names — and it BOUNDS THE CLAIM, measured rather than reasoned:
+   rm -rf the whole <Category>/<Tool> on the same bite tree gives exit 0,
+   2026-08-27. That deletes the product and not merely the proof of it, and
+   whether anything else reddens on it is NOT asserted here.
+
+   ONE-DIRECTIONAL ON PURPOSE. A suite present and NOT listed is a ::notice::
+   rather than a red, because a red would fire on every checkout but this one.
+   The cost, plainly: a suite added and never listed is not protected by this. */
+const WIRED_SUITES = [
+  'Extension/Full_Screen_Shot'
+];
+if (!WIRED_SUITES.length) {
+  err('COVERAGE LOST — WIRED_SUITES in this file is empty, so the removal check below is a filter over nothing and every deletion passes it. Emptying the list is not how a suite is retired; deleting the one name is.');
+}
+/* Byte-exact at every segment, never a case-insensitive hit: on the Linux
+   runner a tool that is on disk under another case is not there. */
+const toolPresent = rel => {
+  let p = ROOT;
+  for (const seg of rel.split('/')) {
+    const d = dirent(p, seg);
+    if (!d || !d.isDirectory() || d.name !== seg) return false;
+    p = path.join(p, d.name);
+  }
+  return true;
+};
+const REMOVED = WIRED_SUITES.filter(s =>
+  !EXPECT_DIRS.has(s) && !NO_PKG.includes(s) && !MISCASED.includes(s) && toolPresent(s));
+if (REMOVED.length) {
+  err(`COVERAGE LOST — ${REMOVED.join(', ')} is named in WIRED_SUITES in this file and has no test/e2e/package.json, while its <Category>/<Tool> directory is still here. Deleting a whole test/e2e directory takes the tool out of the discover matrix AND out of the expected set in the same commit, so a NEVER EXERCISED red goes green with nothing left to point at. A DELIBERATE removal is not blocked by this — it is made loud: delete the name from WIRED_SUITES in the same commit as the directory.`);
+}
+const UNLISTED = [...EXPECT_DIRS].filter(d => !WIRED_SUITES.includes(d)).sort();
+if (UNLISTED.length) {
+  console.log(`::notice::carries a test/e2e suite and is NOT in WIRED_SUITES in this gate: ${UNLISTED.join(', ')}. Deleting that directory would still shrink the expected set with no red. Add the name to protect it.`);
+}
+
 const EXPECT_LEGS = EXPECT_DIRS.size;
 if (!EXPECT_LEGS) {
   err('COVERAGE LOST — this checkout carries no <Category>/<Tool>/test/e2e/package.json, so the expected leg count is 0 and every run below would be graded against nothing.');
@@ -284,8 +346,8 @@ const api = async p => {
     const covered = new Set();
     let unparseable = 0;
     for (const j of legs) {
-      const m = LEG_DIR.exec(String(j.name).trim());
-      if (m) { covered.add(m[1].trim()); sawDir = true; } else unparseable++;
+      const d = legDirOf(String(j.name).trim());
+      if (d) { covered.add(d); sawDir = true; } else unparseable++;
     }
     const missing = [...EXPECT_DIRS].filter(d => !covered.has(d)).sort();
     const surplus = [...covered].filter(d => !EXPECT_DIRS.has(d)).sort();
