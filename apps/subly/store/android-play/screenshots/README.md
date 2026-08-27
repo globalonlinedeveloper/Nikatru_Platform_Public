@@ -153,9 +153,9 @@ frames the run produced are listed below; **four of them sit next to this file**
 | `04-budget.png` | 1080×1920 | 2 | 133,497 |
 | `05-settings.png` | 1080×1920 | 2 | 203,988 |
 
-`CAPTURE.json` came with them and records `posture: "live"`, `count: 5`,
-`pixels: "1080x1920"`, `viewport: "360x640@3"` — written by the capture script on
-the live run, not by hand afterwards.
+`CAPTURE.json` came with them and records `posture: "live"`, `count: 4` beside
+`curation.framesCaptured: 5`, `pixels: "1080x1920"`, `viewport: "360x640@3"` —
+written by the capture script on the live run, not by hand afterwards.
 
 **They were retrieved from the artifact, not re-captured.** The artifact
 `play-screenshots-subly` was still live (checked via `gh api`: `expired: false`,
@@ -234,7 +234,7 @@ because it is blocked on a workflow run. It does **not** extend that leniency to
 the feature graphic or the store icon: those are produced from brand art already
 in this tree by one command with no account and no secret, so a missing one is a
 build failure. **That print is now silent, because the gap is closed** — the
-guard reports `5 screenshot(s) measured` and `5 screenshot(s) DECODED`.
+guard reports `4 screenshot(s) measured` and `4 screenshot(s) DECODED`.
 
 ### 🔴 What a human still has to decide — the guard says so itself
 
