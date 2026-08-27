@@ -1926,7 +1926,7 @@
       "id": "review.kill-or-keep",
       "kind": "review",
       "what": "The 90-day review that can decide to KILL an app rather than keep carrying it.",
-      "detector": "This row. 🔴 THE DAY-0 DATE DOES NOT EXIST AND MUST NOT BE INVENTED — reconciliation decision #21 binds Day 0 to 'Paddle approved + paywall live', and OWNER_QUEUE A-1 is still PENDING and gates ALL revenue. The only move that makes a 'carries a Day-0 date' criterion pass today is to fabricate one.",
+      "detector": "This row. 🔴 THE DAY-0 DATE DOES NOT EXIST AND MUST NOT BE INVENTED — reconciliation decision #21 binds Day 0 to 'Paddle approved + paywall live', and that trigger is a CONJUNCTION whose SECOND half has not happened: `paywall.enabled` is false for every app in services/platform/src/app-config-data.json. The only move that makes a 'carries a Day-0 date' criterion pass today is to fabricate one. ⚠️ CORRECTED 2026-08-28: this read '… and OWNER_QUEUE A-1 is still PENDING and gates ALL revenue'. A-1 is DONE — the Paddle seller account went LIVE on 2026-08-11 ([ADR 044]: PADDLE_API_KEY_LIVE, prefix pdl_live_apikey_, authenticating against api.paddle.com, 403’d by the sandbox host, and a live POST /transactions returning 201). THE CONCLUSION IS UNCHANGED AND `day0` STAYS null: only the first conjunct fired, and no date may be invented for the second.",
       "response": "Keep, change, or withdraw (see the retirement contract). The row carries the TRIGGER definition and the day count; the dates populate when the trigger fires.",
       "cadence": "trigger",
       "trigger": "Paddle approved + paywall live — reconciliation decision #21, not reopened",
@@ -1948,7 +1948,7 @@
         "owner"
       ],
       "ownerGated": true,
-      "ownerGap": "OWNER_QUEUE A-1 (PENDING, 🔴 gates ALL revenue). Nothing else in stage 14 waits on it.",
+      "ownerGap": "The PAYWALL half of the trigger: `paywall.enabled` is false for every app in services/platform/src/app-config-data.json, and turning it on is an owner decision. ⚠️ CORRECTED 2026-08-28 — this read 'OWNER_QUEUE A-1 (PENDING, 🔴 gates ALL revenue)'. A-1 is DONE: the Paddle seller account went LIVE 2026-08-11 ([ADR 044]), so the ACCOUNT no longer gates revenue. What still does is the paywall switch above and the unset PADDLE_NOTIFICATION_SECRET on the webhook side. Nothing else in stage 14 waits on this.",
       "source": "verified"
     },
     {

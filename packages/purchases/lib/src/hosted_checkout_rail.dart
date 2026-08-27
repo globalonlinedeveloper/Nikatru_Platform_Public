@@ -83,8 +83,14 @@ class HostedCheckoutRail implements PurchaseRail {
     if (!_config.canCheckout) {
       return const CheckoutRefused(
         CheckoutRefusal.railNotConfigured,
+        // ⚠️ CORRECTED 2026-08-28. This read "… OWNER_QUEUE A-1
+        // (merchant-of-record seller account) is pending." The seller account is
+        // NOT pending: it went LIVE 2026-08-11 ([ADR 044]). The refusal itself is
+        // unchanged and still fires — what is absent is the checkout URL template,
+        // because `paywall.enabled` is false for every app in
+        // services/platform/src/app-config-data.json.
         detail: 'No checkout URL has been configured for this rail. '
-            'OWNER_QUEUE A-1 (merchant-of-record seller account) is pending.',
+            'The paywall is not enabled for this app.',
       );
     }
 

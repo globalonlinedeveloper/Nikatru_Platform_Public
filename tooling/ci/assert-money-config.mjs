@@ -113,10 +113,18 @@ const ROUTE = 'services/platform/src/routes/money.ts';
 const MONEY_WORKER = 'platform';
 
 /**
- * Sandbox-shaped values, from primary Paddle documentation only. `configurable`
- * because [ADR 004] runs a second rail: when a Lemon Squeezy adapter is
+ * Sandbox-shaped values, from primary Paddle documentation only. The list is a
+ * LIST rather than three constants because the rail is provider-agnostic by
+ * design ([ADR 004]'s `MoRWebhookVerifier` seam): when a SECOND adapter is
  * registered, its documented sandbox shapes are added HERE, once, and every
  * deployed config is checked against them.
+ *
+ * ⚠️ CORRECTED 2026-08-28. This read "`configurable` because [ADR 004] runs a
+ * second rail: when a Lemon Squeezy adapter is registered…". [ADR 039] D4
+ * (2026-08-09) RETIRED that clause of [ADR 004] — the parallel Lemon Squeezy
+ * application was never evidenced and the product is sunsetting into Stripe — so
+ * no second rail is being pursued today. WHICH successor is a queued owner
+ * decision. The SHAPE of this list is unchanged; only its justification is.
  */
 const SANDBOX_SHAPES = [
   { re: /pdl_sdbx_/i, what: 'a Paddle SANDBOX API key prefix (`pdl_sdbx_apikey_`)' },
