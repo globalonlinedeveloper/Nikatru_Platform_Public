@@ -1,12 +1,12 @@
 {
   "capturedBy": "tooling/store/capture-play-screenshots.mjs",
   "posture": "live",
-  "deviceType": "phone",
-  "viewport": "360x640@3",
-  "pixels": "1080x1920",
+  "deviceType": "tablet",
+  "viewport": "900x1600@2",
+  "pixels": "1800x3200",
   "count": 4,
   "requirements": {
     "source": "https://support.google.com/googleplay/android-developer/answer/9866151",
-    "fetched": "2026-08-04"
+    "fetched": "2026-08-21"
   }
 }

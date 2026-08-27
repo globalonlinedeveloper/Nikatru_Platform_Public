@@ -61,6 +61,11 @@
 //      COVERAGE LOST — never a rule that quietly grades nothing.
 //   +  M4/M4b/M4d now supply FOUR tablet frames. One used to clear this gate.
 //
+// 🔬 2026-08-27 — THE TABLET PIXELS LANDED (run 33030877470), so M1/M2 stopped
+//    being true of the REAL tree: both lanes are clean now, and the real-tree
+//    test asserts that instead. The M1/M2 relationship itself stays fixture-
+//    proved (R6/R7); only its subject moved.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -608,37 +613,29 @@ describe('assert-play-device-coverage', () => {
     }
   });
 
-  // ⚠️ 🔴 THIS TEST IS RED UNTIL ONE FILE LANDS, AND THAT IS DELIBERATE.
-  // The register now declares `tablet` → `screenshots-tablet`, and the guard
-  // fails a declared set with no directory at ANY served state (proved two
-  // tests up, against both an invented row and the real one). The directory
-  // does not exist in the working tree yet:
-  //
-  //     apps/subly/store/android-play/screenshots-tablet/.gitkeep
-  //
-  // Git cannot carry an empty directory, so that one placeholder is what turns
-  // the real-tree verdict from "a declared set with no directory" (FAIL, both
-  // lanes) back into "declared but empty" (PRINT on the shared lane, FATAL only
-  // on submission) — which is the state M1/M2 describe and the state this test
-  // asserts. The pixels arrive later, from `.github/workflows/store-screenshots
-  // .yml`, as a pull request.
-  //
-  // The assertion is left pointing at the CORRECT end state rather than
-  // rewritten to pin the intermediate one: a test that codifies a half-landed
-  // increment goes green now and has to be edited back the moment the increment
-  // completes, which is how a suite stops describing what the tree should do.
-  test('M1/M2 hold against the REAL repository, not only the fixtures', () => {
+  // 🔴 THIS TEST ASSERTED THE SHORTFALL AS A LIVE FACT, AND THE FIX DELETED IT.
+  // Until run 33030877470 landed four 1800x3200 frames in `screenshots-tablet`
+  // on 2026-08-27, the real tree PRINTED `DEVICE-TYPE SHORTFALL` on the shared
+  // lane and FAILED `--for-submission`; that pair was asserted here, and the
+  // M1/M2 relationship it stood for is still proved by the fixtures (R6/R7).
+  // What is true of the real tree NOW is the covered state, so that is what this
+  // asserts — emptying `screenshots-tablet` turns it red again rather than
+  // leaving an assertion that would pass on either tree.
+  test('the REAL repository covers two device types, on BOTH lanes', () => {
     const plain = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8' });
     assert.equal(plain.status, 0, `${plain.stdout}${plain.stderr}`);
-    assert.match(plain.stdout, /DEVICE-TYPE SHORTFALL/);
+    assert.doesNotMatch(plain.stdout, /DEVICE-TYPE SHORTFALL/);
 
     const submitting = spawnSync(process.execPath, [GUARD, '--for-submission'], { cwd: REPO, encoding: 'utf8' });
-    assert.equal(submitting.status, 1, 'the real listing must not be submittable while it covers one device type');
     const both = `${submitting.stdout}${submitting.stderr}`;
-    assert.match(both, /SUBMITTING and/);
-    // The empty-tablet row now also fails its own declared minCount. That must
-    // ADD to the device-type sentence, never replace it: a second true reason is
-    // fine, a masked first one is how the real defect stops being reported.
-    assert.match(both, /covers 1 device type\(s\) — phone \(4\).*ACROSS DIFFERENT DEVICE TYPES/s);
+    assert.equal(submitting.status, 0, `the real listing must be submittable now that the second device type has pixels:\n${both}`);
+
+    // Not merely "no shortfall printed": every declared set must have been
+    // MEASURED and the ruled ones GRADED against real frames, because a set the
+    // guard never opened prints the same verdict as a covered one.
+    const sets = cov(JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'))).sets;
+    assert.match(both, new RegExp(`${Object.keys(sets).length} declared device-type set\\(s\\) measured`));
+    const graded = Number((both.match(/(\d+) screenshot\(s\) graded/) ?? [])[1]);
+    assert.ok(graded >= sets.tablet.minCount, `${graded} frame(s) graded; the tablet row declares minCount ${sets.tablet.minCount}\n${both}`);
   });
 });
