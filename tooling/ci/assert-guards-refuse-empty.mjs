@@ -111,6 +111,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { stripStringLiterals } from './text-reductions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /* The root is read AFTER the fixture flag is parsed, a few lines below, so that a
@@ -359,9 +360,62 @@ const importsFrom = (rel, src) => {
   const out = [];
   const dir = posix.dirname(rel.replace(/\\/g, '/'));
   const code = codeLines(src);
+  // 🔴 STRING CONTEXT, ADDED 2026-08-27. Until today these three regexes read
+  // the raw bytes, so text that only ever appears INSIDE A STRING LITERAL was
+  // indistinguishable from a live import. It is not hypothetical and it is not
+  // cheap: PR #397 added two fixture strings to a sibling guard, this matcher
+  // read `from '../e2e/canary_subject.mjs'` out of one of them, `copyWithImports`
+  // below demanded that path exist, and — this file being wired at ci.yml:1678,
+  // which fires on every push — EVERY PUSH went red. #397 worked around it by
+  // giving its fixtures a `#e2e/…` subpath specifier that can never be a
+  // filesystem path, and recorded in its own commit message that the blindness
+  // here was untouched and would bite the next time a guard-home source quoted a
+  // relative import to a path that is not on disk. This is that fix.
+  //
+  // 🔴 AND IT IS NOT `stripStringLiterals(code)` FED TO THE MATCHER, which is the
+  // obvious composition and is WRONG in the one way that reports clean: the path
+  // this matcher needs LIVES INSIDE the literal, so matching over the stripped
+  // text finds `from '          '` and every real import silently disappears.
+  // That composition is exactly what #397 rejected for the sibling. What is used
+  // instead is the same reduction as an OFFSET-PRESERVING CONTEXT ORACLE — it
+  // replaces literal contents with spaces and never deletes, so `stripped[i]`
+  // still describes `code[i]` — while the regexes go on reading the ORIGINAL
+  // bytes. The stripped text answers "where am I", never "what does it say".
+  //
+  // ⬜ NAMED AND NOT CLOSED — this oracle is STRICTLY WEAKER than `codeMask` in
+  // assert-guard-coverage.mjs:1135, which is the repo's real answer to this
+  // question and already carries its own canaries. `codeMask` also understands
+  // TEMPLATE LITERALS, line/block comments mid-line, and regex literals; this
+  // one knows only `'…'` and "…". A fixture written in backticks is therefore
+  // STILL read as live code here. `codeMask` was NOT IMPORTED because it is not
+  // exported — assert-guard-coverage.mjs carries no `export` statement at all —
+  // and that file was owned by another change in flight, so an export could not
+  // be added from here. A rival copy of the lexer was refused: a second reader of
+  // the same thing that quietly stops reading what it thinks it reads is this
+  // repository's most repeated defect, and the sibling's copy already has
+  // canaries this one would not inherit. The unblock is one line there,
+  // `export { codeMask, NON_CODE };` (better: move both beside
+  // stripStringLiterals in text-reductions.mjs, where the other shared
+  // reductions live), after which the two lines below become
+  // `const mask = codeMask(code)` / `mask[i] !== NON_CODE`, the canary below
+  // keeps holding them, and the backtick residue closes with them.
+  //
+  // ⬜ The other direction this oracle can be wrong, named because it is the
+  // DANGEROUS one: a lone apostrophe on a code line (`// don't` after code, a
+  // `['"]` character class in a regex literal) can open a span that blanks a
+  // REAL import sharing that line, and the module would then be missing from the
+  // built tree. That failure is LOUD, not silent — the probe dies in the loader
+  // and the crash limb below reports it as a broken harness rather than counting
+  // it as a refusal. Measured over the real corpus the day this landed: 154
+  // files, 361 edges, derived import set byte-identical to the ungated matcher.
+  const outsideLiterals = stripStringLiterals(code);
+  /** A byte the reduction did NOT blank. Blanking only ever turns a non-space
+   *  into a space, so equality is exactly "not inside a literal" for the
+   *  non-space bytes every match below starts on. */
+  const isCode = (i) => outsideLiterals[i] === code[i];
   // Three spellings. The third — a bare side-effect `import './x.mjs';` with no
   // `from` — was missing until the suite caught it: the module never reached the
-  // built tree, the guard died in the loader, and only the load-crash limb above
+  // built tree, the guard died in the loader, and only the load-crash limb below
   // stopped that being counted as a refusal. A missed edge here is not silent,
   // but it does turn a runnable guard into an unrunnable one.
   for (const re of [
@@ -370,12 +424,60 @@ const importsFrom = (rel, src) => {
     /(?:^|[;\n])\s*import\s+['"](\.[^'"]+)['"]/g,
   ]) {
     for (const m of code.matchAll(re)) {
+      // The FIRST BYTE of the match, the idiom this repo already uses at
+      // assert-guard-coverage.mjs:1243 — a match that STARTS inside a literal is
+      // a shape being quoted, not one being imported.
+      if (!isCode(m.index)) continue;
       if (!/\.(mjs|js)$/.test(m[1])) continue;
       out.push(posix.normalize(posix.join(dir, m[1])));
     }
   }
   return out;
 };
+
+// ── the matcher's OWN negative test, run on every invocation ─────────────────
+// The pair the gate above exists for: THE SAME IMPORT STATEMENT, once inside a
+// string literal and once as code. They do not differ in SHAPE, so nothing but
+// the offsets can separate them — a matcher that regressed to reading the raw
+// bytes would credit both and this file would go back to reddening CI over a
+// path nobody imports. The quoted one carries an astral character; that is what
+// gives the length check something to fail on, because an oracle built per CODE
+// POINT is shorter than its input and every offset past it is then wrong.
+//
+// 🔴 THESE TWO CONSTANTS ARE ALSO THE LIVE FAILING CASE, and that is the point.
+// This file is itself a guard-home source: it is enumerated, its source is read
+// into `sourceOf`, and `copyWithImports` walks its imports. So the quoted canary
+// is a real quoted-only relative import sitting in the real corpus — delete the
+// `isCode` line above and this guard reddens on its own source with no fixture
+// anywhere in the loop. #397 recorded that five of its six new gates had no
+// failing case in this repository; this one does.
+const CANARY_IMPORT_QUOTED = [
+  'const fixture = "\u{1F534} import subject from \'../probe/canary-subject.mjs\';";',
+  'writeFileSync(join(root, generated), fixture);',
+  '',
+].join('\n');
+const CANARY_IMPORT_REAL = [
+  "import subject from '../probe/canary-subject.mjs';",
+  'subject.check();',
+  '',
+].join('\n');
+const canaryImports = (t) => importsFrom('tooling/ci/canary.mjs', t);
+const canaryQuoted = canaryImports(CANARY_IMPORT_QUOTED);
+const canaryReal = canaryImports(CANARY_IMPORT_REAL);
+const canaryOracleLen = stripStringLiterals(CANARY_IMPORT_QUOTED).length;
+if (canaryQuoted.length !== 0 || canaryReal.length !== 1 || canaryOracleLen !== CANARY_IMPORT_QUOTED.length) {
+  coverageLost([
+    'the import matcher no longer distinguishes an import that is MADE from one that is merely QUOTED.',
+    `An import written INSIDE A STRING yielded [${canaryQuoted.join(', ')}] (must be empty) and the same`,
+    `import written as code yielded [${canaryReal.join(', ')}] (must be exactly one path).`,
+    `The context oracle measured ${canaryOracleLen} over a ${CANARY_IMPORT_QUOTED.length}-char fixture (must be`,
+    'EQUAL — it carries an astral character, and an oracle that is not offset-preserving misaligns every',
+    'lookup past it, which reads as "everything is code" or "nothing is").',
+    'Until this holds, the transitive closure below is derived from text nobody imports: a quoted path that',
+    'is not on disk fails this guard on every push (it did, before #397 worked around it), and a quoted path',
+    'that IS on disk silently promotes a dead module to a library that nothing has to probe.',
+  ]);
+}
 const importedBy = new Map();
 for (const [rel, src] of sourceOf) {
   for (const target of importsFrom(rel, src)) {
