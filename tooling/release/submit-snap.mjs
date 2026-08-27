@@ -507,8 +507,22 @@ if (SUBMIT) {
         '     is indistinguishable from a real gate anywhere except here.',
       ]);
     }
+    // 🔴 THIS LINE CLAIMED AN APPROVAL IT HAD NOT CHECKED. It read "this job only
+    // reached this line because one of them approved it", which is false whenever
+    // an administrator can bypass the reviewer. `can_admins_bypass` comes from
+    // the SAME GET already in hand, and MEASURED on this repository 2026-08-27 it
+    // is `true` — as .github/workflows/submit-snap.yml's header has said since
+    // submit-play.mjs's PG-5 retracted the identical sentence on 2026-08-20.
+    // This file kept it. The remedy is not to fail (bypass is a legitimate
+    // setting and turning it off is a repo-admin act) but to stop asserting what
+    // was not observed: the reviewer requirement IS verified and still reported;
+    // that it was EXERCISED no longer is.
+    const adminsCanBypass = envJson.can_admins_bypass !== false;
     ok(
-      `PG-6 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s); this job only reached this line because one of them approved it`,
+      `PG-6 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s)` +
+        (adminsCanBypass
+          ? '. ⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an administrator can dispatch straight past the gate. The requirement is verified; the approval is not.'
+          : ' and `can_admins_bypass` is false, so this job only reached this line because one of them approved it'),
     );
   }
 

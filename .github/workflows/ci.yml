@@ -2155,7 +2155,7 @@ jobs:
       #
       # NO `flutter create` REPAIR STEP MAY BE ADDED HERE. Needing one is the
       # defect; the stamp must produce a buildable app on its own.
-      - name: A fresh stamp really builds for every platform it claims
+      - name: A fresh stamp really builds for web
         working-directory: apps/probe
         run: flutter build web --pwa-strategy=none
       # [pipeline K-10] The STRONGER half of the licence register: the guards

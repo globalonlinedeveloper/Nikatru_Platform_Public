@@ -1156,3 +1156,605 @@ describe('post-deploy-smoke — REQUIRED COVERAGE of the Play limb', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE RELEASE ASSET READ-BACK LIMB — [pipeline 14]O-7, the GitHub Release lane.
+//
+// 🔴 WHY THIS SECTION EXISTS, SAID PLAINLY. `judgeReleaseAssets` and
+// `smokeReleaseAssets` are the ONLY thing standing between "the publish step
+// went green" and "the release serves bytes nobody built". Until this file was
+// written they had ZERO tests, and their one caller — build-platforms.yml, the
+// step named "The release must carry the assets this job just uploaded" — sits
+// behind `if: github.ref_type == 'tag'`, which has NEVER FIRED: this repository
+// has no tags and no releases (measured 2026-08-27: `git tag` is empty and
+// `gh api repos/:owner/:repo/releases --jq length` answers 0). So the limb was
+// 189 lines that had never executed anywhere except by hand.
+//
+// ⚠️ WHAT THIS SECTION DOES AND DOES NOT PROVE. It proves THE DECISION — every
+// named branch of it, offline and network-free, through the pure function and
+// through the real script's argument handling and exit codes. It does NOT prove
+// a tag ever exercises the limb in CI; nothing in a test file can prove that.
+// The REQUIRED COVERAGE block at the end pins the call site so that DELETING the
+// invocation, dropping its credential, or leaving it in offline fixture mode
+// breaks a test — which is the strongest statement available from here.
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  judgeReleaseAssets,
+  smokeReleaseAssets,
+  GITHUB_API_ORIGIN,
+  GITHUB_API_VERSION,
+  RELEASE_TOKEN_ENV,
+} from '../../ops/post-deploy-smoke.mjs';
+import { MANIFEST_NAME } from '../release-manifest.mjs';
+import { createHash } from 'node:crypto';
+
+const R_REPO = 'nikatru/Nikatru_Platform_Public';
+const R_TAG = 'v9.9.9-fixture';
+
+const A_LINUX = 'subly-linux-x64.AppImage';
+const A_WIN = 'subly-windows-x64.exe';
+/** sha256 of the empty byte string. */
+const H_LINUX = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+/** sha256 of the five bytes `hello\n`. */
+const H_WIN = '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03';
+
+/** The manifest EXACTLY as `release-manifest.mjs --emit` shapes one: three
+ *  comment lines of metadata, then `<64 hex>  <name>` per asset, LF, trailing
+ *  newline. Its byte length is pinned below, so editing this edits that too. */
+const MANIFEST_TEXT = [
+  '# NIKATRU release manifest - verify with:  sha256sum -c SHA256SUMS',
+  '# commit: 4a25d9c0000000000000000000000000000000ab',
+  '# tag: v9.9.9-fixture',
+  `${H_LINUX}  ${A_LINUX}`,
+  `${H_WIN}  ${A_WIN}`,
+  '',
+].join('\n');
+
+// 🔴 THE EXTERNAL ANCHOR, AND THE WHOLE REASON THIS CONSTANT IS A LITERAL.
+// `manifestDigest` is the sha256 of the manifest FILE — the one hash that cannot
+// appear inside the manifest's own body, and therefore the one the fixture has
+// to supply. The obvious way to write it is
+// `createHash('sha256').update(readFileSync(f))`, which is CHARACTER FOR
+// CHARACTER what smokeReleaseAssets does. That fixture would be GREEN WHILE
+// BROKEN: hash the utf8 STRING instead of the bytes, or forget the trailing
+// newline, or lower-case the wrong end, and the probe and its test would agree
+// with each other and with nothing else in the world.
+//
+// So this number does not come from node. MEASURED 2026-08-27 over the exact 319
+// bytes of MANIFEST_TEXT by THREE independent implementations:
+//   node  createHash('sha256')            -> 6e616f1d…46c4
+//   certutil -hashfile … SHA256 (Windows) -> 6e616f1d…46c4
+//   sha256sum (coreutils, MSYS)           -> 6e616f1d…46c4
+// The test immediately below re-derives it with node and asserts it against this
+// literal, so if either side of the pair ever drifts, THIS FILE says so.
+const MANIFEST_DIGEST = '6e616f1d255c08440a0d1fa21c2d63810bf61d4f51521f4f78958f7f2b7a46c4';
+/** MANIFEST_TEXT with every LF turned into CRLF — the bytes a Windows checkout
+ *  with `core.autocrlf=true` would hand the probe. */
+const MANIFEST_TEXT_CRLF = MANIFEST_TEXT.replace(/\n/g, '\r\n');
+
+/** One asset as the releases/tags endpoint shapes it. `digestHex === null` means
+ *  the asset carries NO `digest` key at all, which is what mid-upload looks
+ *  like from outside. */
+const rAsset = (name, digestHex, state = 'uploaded') => {
+  const a = { name, state };
+  if (digestHex !== null) a.digest = `sha256:${digestHex}`;
+  return a;
+};
+
+/** The release as it looks when the publish did exactly what it claimed. The
+ *  manifest is an asset too — `--emit-assets` puts it FIRST — so there are
+ *  THREE, not two. */
+const rGood = () => [rAsset(MANIFEST_NAME, MANIFEST_DIGEST), rAsset(A_LINUX, H_LINUX), rAsset(A_WIN, H_WIN)];
+
+function writeManifest(text = MANIFEST_TEXT) {
+  const f = join(TMP, `sha256sums-${(seq += 1)}`);
+  writeFileSync(f, text);
+  return f;
+}
+
+/** ⚠️ THE HOST'S OWN ENVIRONMENT MUST NEVER DECIDE THE ANSWER — the same defect
+ *  `playEnv` above exists for. Anyone who has ever run `gh auth login` has
+ *  GH_TOKEN or GITHUB_TOKEN exported, and the no-credential test below would
+ *  then take the NETWORK path on their machine and the offline path on CI. */
+function releaseEnv(extra = {}) {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) {
+    const u = k.toUpperCase();
+    if (u === RELEASE_TOKEN_ENV || u === 'GITHUB_TOKEN') delete env[k];
+  }
+  return { ...env, ...extra };
+}
+
+function runReleaseArgs(args, extraEnv = {}) {
+  const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', env: releaseEnv(extraEnv) });
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+/** Runs the REAL script over canned release reads — one per attempt, exactly as
+ *  the HTTP and Play fixture modes above do. Both retry sleeps are guarded by
+ *  `!canned`, so a six-attempt exhaustion costs nothing. */
+function runRelease(canned, { manifestText = MANIFEST_TEXT, manifestPath = null } = {}) {
+  const f = join(TMP, `release-fx-${(seq += 1)}.json`);
+  writeFileSync(f, JSON.stringify(canned));
+  return runReleaseArgs([
+    '--release-repo',
+    R_REPO,
+    '--release-tag',
+    R_TAG,
+    '--release-manifest',
+    manifestPath ?? writeManifest(manifestText),
+    '--release-fixture',
+    f,
+  ]);
+}
+
+describe('post-deploy-smoke — the release asset decision [14]O-7', () => {
+  test('🔴 the fixture manifest digest agrees with an INDEPENDENT hasher, not only with the probe', () => {
+    // If this ever goes red, do NOT repaste node's answer over the literal. The
+    // literal is the outside world; node is the thing on trial. See the block
+    // comment on MANIFEST_DIGEST.
+    const f = writeManifest();
+    const bytes = readFileSync(f);
+    assert.equal(bytes.length, 319, 'the fixture manifest is no longer the 319 bytes that were hashed externally');
+    assert.equal(
+      createHash('sha256').update(bytes).digest('hex'),
+      MANIFEST_DIGEST,
+      'node no longer agrees with certutil and sha256sum about these bytes — the fixture drifted, or the hash did',
+    );
+  });
+
+  test('PASSES when the release carries every manifested asset AND the manifest itself, by digest', () => {
+    const v = judgeReleaseAssets({ assets: rGood(), manifestText: MANIFEST_TEXT, manifestDigest: MANIFEST_DIGEST });
+    assert.equal(v.ok, true, v.reason);
+    // THREE: the two the manifest names, plus SHA256SUMS. A `matched` of 2 would
+    // mean the manifest itself is shipped unverified, which is the file every
+    // downloader checks the others against.
+    assert.equal(v.matched, 3);
+  });
+
+  test('an EMPTY manifest is COVERAGE LOST, never a pass, and waiting cannot help', () => {
+    // The trap this branch exists for: every loop below ranges over `entries`,
+    // so an empty manifest satisfies all of them vacuously. A release with
+    // nothing in it would verify perfectly.
+    const v = judgeReleaseAssets({ assets: rGood(), manifestText: '# commit: abc\n', manifestDigest: MANIFEST_DIGEST });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false, 'a manifest that names nothing will not grow entries by being read again');
+    assert.ok(v.reason.includes('COVERAGE LOST'), v.reason);
+    assert.ok(v.reason.includes('An empty integrity record verifies an empty release.'), v.reason);
+  });
+
+  test('an `assets` that is NOT AN ARRAY is a failure naming the type, and is not retryable', () => {
+    const v = judgeReleaseAssets({
+      assets: { [A_WIN]: 'ok' },
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false, 'the API answering a different SHAPE is not a propagation delay');
+    assert.ok(v.reason.includes('returned no `assets` array (got object)'), v.reason);
+  });
+
+  test('a MISSING asset is RETRYABLE and names the asset that is absent', () => {
+    const v = judgeReleaseAssets({
+      assets: rGood().filter((a) => a.name !== A_WIN),
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, true, 'from outside, an asset that has not landed and one that never will look identical');
+    assert.ok(v.reason.includes(`the release does NOT carry: ${A_WIN}`), v.reason);
+    assert.ok(v.reason.includes('If this persists to the ceiling'), v.reason);
+  });
+
+  test('a MISSING SHA256SUMS is caught too — the manifest is one of the assets', () => {
+    const v = judgeReleaseAssets({
+      assets: rGood().filter((a) => a.name !== MANIFEST_NAME),
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, true);
+    assert.ok(v.reason.includes(`the release does NOT carry: ${MANIFEST_NAME}`), v.reason);
+  });
+
+  test('an asset whose state is NOT `uploaded` is RETRYABLE and reports the state it saw', () => {
+    const v = judgeReleaseAssets({
+      assets: [rAsset(MANIFEST_NAME, MANIFEST_DIGEST), rAsset(A_LINUX, H_LINUX), rAsset(A_WIN, H_WIN, 'starter')],
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, true, 'mid-upload is the ONE state here that resolves on its own');
+    assert.ok(v.reason.includes(`${A_WIN} state="starter"`), v.reason);
+  });
+
+  test('an asset carrying NO digest yet is RETRYABLE — an absent hash is not a matching hash', () => {
+    // 🔴 THE FAIL-OPEN THIS FORBIDS. `String(undefined ?? '')` is `''`; if the
+    // empty-digest check were dropped, `'' !== 'sha256:…'` would land in `wrong`
+    // and report DIFFERENT BYTES for an asset that is merely still uploading —
+    // and if it were compared the other way it would PASS.
+    const v = judgeReleaseAssets({
+      assets: [rAsset(MANIFEST_NAME, MANIFEST_DIGEST), rAsset(A_LINUX, H_LINUX), rAsset(A_WIN, null)],
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, true);
+    assert.ok(v.reason.includes(`${A_WIN} carries no \`digest\` yet`), v.reason);
+  });
+
+  test('🔴 a null manifestDigest is a NAME-ONLY match and is NOT a pass', () => {
+    // The single most dangerous shape in this function: everything is present,
+    // everything is uploaded, and the only asset that could not be hashed is the
+    // one every downloader checks the others against. Presence is a weaker read
+    // than a hash, and a weaker read reporting itself as a pass is how a probe
+    // stops probing.
+    const v = judgeReleaseAssets({ assets: rGood(), manifestText: MANIFEST_TEXT, manifestDigest: null });
+    assert.equal(v.ok, false, 'a name-only match reported ok — the manifest would ship unverified');
+    assert.equal(v.retry, true);
+    assert.ok(v.reason.includes(`${MANIFEST_NAME} could be matched by NAME only`), v.reason);
+    assert.ok(v.reason.includes('the caller supplied no digest for it'), v.reason);
+  });
+
+  test('🔴 a DIGEST MISMATCH is the whole point, and it is NOT retryable', () => {
+    const bad = rGood().map((a) => (a.name === A_WIN ? rAsset(A_WIN, H_LINUX) : a));
+    const v = judgeReleaseAssets({ assets: bad, manifestText: MANIFEST_TEXT, manifestDigest: MANIFEST_DIGEST });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false, "an asset's digest is fixed at upload; waiting turns a real divergence into a slower one");
+    assert.ok(v.reason.includes('the release serves DIFFERENT BYTES than this run built'), v.reason);
+    assert.ok(v.reason.includes(`${A_WIN}: the release carries sha256:${H_LINUX}, this run built sha256:${H_WIN}`), v.reason);
+  });
+
+  test('an EXTRA asset the manifest does not name is a failure, and is NOT retryable', () => {
+    // Both directions or it is not an integrity check: a file in the release that
+    // nothing checksummed is a file no downloader can verify.
+    const v = judgeReleaseAssets({
+      assets: [...rGood(), rAsset('subly-installer-UNSIGNED.exe', H_WIN)],
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false, 'an asset nobody staged does not appear by propagation');
+    assert.ok(v.reason.includes('the release carries asset(s) the manifest does not name'), v.reason);
+    assert.ok(v.reason.includes('subly-installer-UNSIGNED.exe'), v.reason);
+  });
+
+  test('a MISMATCH alongside a MISSING asset stays NON-retryable — divergence outranks propagation', () => {
+    // ⚠️ ORDER IS LOAD-BEARING. `wrong`/`extra` are tested BEFORE
+    // `missing`/`pending`. Swap the two blocks and this release would be retried
+    // six times over ten-second gaps before reporting a divergence that was
+    // already final on the first read.
+    const assets = rGood().filter((a) => a.name !== A_LINUX).map((a) => (a.name === A_WIN ? rAsset(A_WIN, H_LINUX) : a));
+    const v = judgeReleaseAssets({ assets, manifestText: MANIFEST_TEXT, manifestDigest: MANIFEST_DIGEST });
+    assert.equal(v.ok, false);
+    assert.equal(v.retry, false, 'a definitive divergence was reported as a wait-and-see');
+    assert.ok(v.reason.includes('DIFFERENT BYTES'), v.reason);
+  });
+});
+
+describe('post-deploy-smoke — the release read-back across line endings and case', () => {
+  // ⚠️ WHY THESE ARE HERE. This limb has no `process.platform` in it — grepped
+  // 2026-08-27, zero hits in the whole script — so there is no OS branch to
+  // drive. What it DOES read is line endings (a digest over raw bytes, a parser
+  // that splits on LF) and case (digests folded, names not). Those are the seams
+  // where a Windows gate and a Linux runner can disagree, so they are driven
+  // here from both sides rather than assumed.
+
+  test('a CRLF manifest names the SAME assets as an LF one — the parser is line-ending agnostic', () => {
+    assert.notEqual(MANIFEST_TEXT_CRLF, MANIFEST_TEXT, 'the fixture manifest has no newlines left to convert');
+    const v = judgeReleaseAssets({
+      assets: rGood(),
+      manifestText: MANIFEST_TEXT_CRLF,
+      manifestDigest: MANIFEST_DIGEST,
+    });
+    assert.equal(v.ok, true, v.reason);
+    assert.equal(v.matched, 3, 'a stray CR was read as part of an asset NAME');
+  });
+
+  test('🔴 but the manifest DIGEST is over the BYTES, so a CRLF checkout is CAUGHT, not shrugged off', () => {
+    // The honest consequence of the test above: LF and CRLF parse the same and
+    // hash DIFFERENTLY. That is correct — the digest describes the file the
+    // release actually serves — and it means a runner that rewrote line endings
+    // between build and publish is reported as divergence, by name, on the one
+    // asset it affected. Driven end to end so the exit code is exercised too.
+    const r = runRelease([{ assets: rGood() }], { manifestText: MANIFEST_TEXT_CRLF });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('the release serves DIFFERENT BYTES than this run built'), r.out);
+    assert.ok(r.out.includes(`${MANIFEST_NAME}: the release carries sha256:${MANIFEST_DIGEST}`), r.out);
+    // …and ONLY that asset. The other two are byte-identical either way.
+    assert.ok(!r.out.includes(A_WIN), r.out);
+    assert.ok(!r.out.includes(A_LINUX), r.out);
+  });
+
+  test('an UPPERCASE digest is the SAME digest — GitHub folding its hex is not a divergence', () => {
+    const shouty = rGood().map((a) => ({ ...a, digest: a.digest.toUpperCase() }));
+    const v = judgeReleaseAssets({
+      assets: shouty,
+      manifestText: MANIFEST_TEXT,
+      manifestDigest: MANIFEST_DIGEST.toUpperCase(),
+    });
+    assert.equal(v.ok, true, v.reason);
+  });
+
+  test('🔴 an asset NAME differing only in CASE is NOT the asset the manifest named', () => {
+    // Deliberate and worth pinning: Windows would call these one file, the
+    // release calls them two, and the release is right — a downloader asking for
+    // the manifested name gets a 404. It surfaces as an EXTRA, which is
+    // non-retryable, so this fails FAST rather than after six ten-second waits.
+    const wrongCase = rGood().map((a) => (a.name === A_WIN ? { ...a, name: A_WIN.toUpperCase() } : a));
+    const v = judgeReleaseAssets({ assets: wrongCase, manifestText: MANIFEST_TEXT, manifestDigest: MANIFEST_DIGEST });
+    assert.equal(v.ok, false, 'the name join is casefolding — a manifested name that 404s was reported as shipped');
+    assert.equal(v.retry, false);
+    assert.ok(v.reason.includes(A_WIN.toUpperCase()), v.reason);
+  });
+});
+
+describe('post-deploy-smoke — the release limb end to end, through the real script', () => {
+  test('EXIT 0 and a banner when the release carries what this run built', () => {
+    const r = runRelease([{ assets: rGood() }]);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(r.out.includes(`ok  ${R_REPO}@${R_TAG} carries all 3 asset(s) this run built`), r.out);
+    assert.ok(r.out.includes('every one matched by sha256 digest (attempt 1/6)'), r.out);
+    // The fixture seam announces itself so it can never be mistaken for a real
+    // read in a log. The REQUIRED COVERAGE block below asserts CI does not use it.
+    assert.ok(r.out.includes('OFFLINE RELEASE FIXTURE MODE'), r.out);
+    // 🔴 no credential on any path, ever.
+    assert.ok(!r.out.includes('Bearer'), r.out);
+  });
+
+  test('EXIT 1 on a digest mismatch, naming the divergence', () => {
+    const bad = rGood().map((a) => (a.name === A_LINUX ? rAsset(A_LINUX, H_WIN) : a));
+    const r = runRelease([{ assets: bad }]);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('RELEASE ASSET SMOKE FAILED'), r.out);
+    assert.ok(r.out.includes('the release serves DIFFERENT BYTES than this run built'), r.out);
+  });
+
+  test('a TRANSIENT unreadable answer followed by a good read is a PASS', () => {
+    const r = runRelease([{ error: 'no release is readable at tag v9.9.9-fixture (HTTP 404)' }, { assets: rGood() }]);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(r.out.includes('(attempt 2/6)'), r.out);
+  });
+
+  test('an asset that ARRIVES on a later attempt is a PASS — the retry limb actually loops', () => {
+    const r = runRelease([{ assets: rGood().filter((a) => a.name !== A_WIN) }, { assets: rGood() }]);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(r.out.includes('(attempt 2/6)'), r.out);
+  });
+
+  test('🔴 a MISMATCH on the first read STOPS — a later good read does not rescue it', () => {
+    // ⚠️ THIS IS THE TEST FOR `if (!verdict.retry) break;`, and nothing else in
+    // this file covers it. Delete that line and the run below reads the second,
+    // matching fixture entry and EXITS 0 — a release that served wrong bytes
+    // reported as shipped, which is the exact state this limb exists to end.
+    // The two cases above are its controls: they show the loop DOES continue
+    // when the verdict says retry, so a green here cannot be "the loop is dead".
+    const bad = rGood().map((a) => (a.name === A_WIN ? rAsset(A_WIN, H_LINUX) : a));
+    const r = runRelease([{ assets: bad }, { assets: rGood() }]);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('the release serves DIFFERENT BYTES than this run built'), r.out);
+    assert.ok(!r.out.includes('attempt 2/6'), r.out);
+  });
+
+  test('a release that NEVER carries the asset exhausts the ceiling and EXITS 1', () => {
+    // One entry, so `canned[Math.min(i, len-1)]` repeats it for all six attempts.
+    const r = runRelease([{ assets: rGood().filter((a) => a.name !== A_WIN) }]);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes(`the release does NOT carry: ${A_WIN}`), r.out);
+    assert.ok(r.out.includes('Ceiling: 6 attempt(s) 10s apart'), r.out);
+  });
+
+  test('an API that is unreadable on EVERY attempt EXITS 1 — "could not tell" is not "it is fine"', () => {
+    const r = runRelease([{ error: 'releases/tags answered HTTP 502' }]);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('the release could not be read: releases/tags answered HTTP 502'), r.out);
+  });
+
+  test('EXIT 1 when the MANIFEST cannot be read — a probe with no expectation is not a probe', () => {
+    const r = runRelease([{ assets: rGood() }], { manifestPath: join(TMP, 'no-such-manifest-at-all') });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes('could not be read'), r.out);
+    assert.ok(r.out.includes('A probe with no expectation is not a probe.'), r.out);
+  });
+
+  test(`EXIT 1 with NO ${RELEASE_TOKEN_ENV} — a probe that cannot run reliably is a failure, never a pass`, () => {
+    // ⚠️ THE ONE TEST HERE THAT IS NOT STRUCTURALLY OFFLINE, AND ITS LIMIT. It
+    // runs WITHOUT `--release-fixture`, because the credential check is skipped
+    // when `canned` is set. On the real code it returns BEFORE any fetch, so no
+    // packet leaves the machine — `releaseEnv` guarantees the empty credential
+    // that makes that so. If somebody deleted the check, this test would go to
+    // the network and take the six-attempt ceiling to fail. That is a SLOW red,
+    // not a false green, which is the direction to fail in.
+    const r = runReleaseArgs([
+      '--release-repo',
+      R_REPO,
+      '--release-tag',
+      R_TAG,
+      '--release-manifest',
+      writeManifest(),
+    ]);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes(`${RELEASE_TOKEN_ENV} is empty`), r.out);
+    assert.ok(r.out.includes('rate-limited by an IP every runner shares'), r.out);
+    assert.ok(!r.out.includes('carries all'), r.out);
+  });
+});
+
+describe('post-deploy-smoke — the release limb argument contract', () => {
+  // 🔴 EVERY CASE BELOW ASSERTS THE EXIT CODE, NOT `!== 0`. A negative that only
+  // asserts "it failed" is satisfied by exit 2 on a typo'd flag while never
+  // reaching the branch it claims to test — which is how a suite of red tests
+  // can cover nothing at all. Exit 2 here means USAGE and exit 1 means VERDICT,
+  // and the two must never be read as each other.
+
+  test('EXIT 2: --release-repo without --release-tag', () => {
+    const r = runReleaseArgs(['--release-repo', R_REPO, '--release-manifest', writeManifest()]);
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes('usage: post-deploy-smoke.mjs --release-repo <owner/repo> --release-tag <tag>'), r.out);
+  });
+
+  test('EXIT 2: --release-tag without --release-manifest', () => {
+    const r = runReleaseArgs(['--release-repo', R_REPO, '--release-tag', R_TAG]);
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes('--release-manifest <SHA256SUMS>'), r.out);
+  });
+
+  test('EXIT 2: --release-fixture ALONE selects the mode and is then incomplete', () => {
+    // Any ONE of the four flags selects this branch, so a half-written invocation
+    // exits 2 instead of falling through and being reported as a missing --url.
+    const f = join(TMP, `release-lonely-${(seq += 1)}.json`);
+    writeFileSync(f, JSON.stringify([{ assets: rGood() }]));
+    const r = runReleaseArgs(['--release-fixture', f]);
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes('usage: post-deploy-smoke.mjs --release-repo'), r.out);
+    assert.ok(!r.out.includes('--url <u>'), r.out);
+  });
+
+  test('EXIT 2: an UNREADABLE fixture file', () => {
+    const r = runReleaseArgs([
+      '--release-repo',
+      R_REPO,
+      '--release-tag',
+      R_TAG,
+      '--release-manifest',
+      writeManifest(),
+      '--release-fixture',
+      join(TMP, 'no-such-fixture.json'),
+    ]);
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes('could not read release fixture'), r.out);
+  });
+
+  test('EXIT 2: a fixture that is not an ARRAY', () => {
+    const f = join(TMP, `release-obj-${(seq += 1)}.json`);
+    writeFileSync(f, JSON.stringify({ assets: rGood() }));
+    const r = runReleaseArgs([
+      '--release-repo',
+      R_REPO,
+      '--release-tag',
+      R_TAG,
+      '--release-manifest',
+      writeManifest(),
+      '--release-fixture',
+      f,
+    ]);
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes('the release fixture must be a non-empty array'), r.out);
+  });
+
+  test('EXIT 2: an EMPTY array fixture — zero canned reads is not zero failures', () => {
+    // `canned[Math.min(i, canned.length - 1)]` on an empty array is
+    // `canned[-1]`, i.e. `undefined`, which `?? {}` turns into a read with no
+    // assets and no error. Caught at the door instead.
+    const f = join(TMP, `release-empty-${(seq += 1)}.json`);
+    writeFileSync(f, '[]');
+    const r = runReleaseArgs([
+      '--release-repo',
+      R_REPO,
+      '--release-tag',
+      R_TAG,
+      '--release-manifest',
+      writeManifest(),
+      '--release-fixture',
+      f,
+    ]);
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes('the release fixture must be a non-empty array'), r.out);
+  });
+});
+
+/** The value of the step's own `if:` key, or null. Same line-and-indent scan as
+ *  `stepEnvKeys`: `if:` must sit at the step's key indent, so an `if` inside a
+ *  `run:` block scalar can never satisfy it. NOT a YAML parse. */
+function stepIf(step) {
+  for (const l of step.lines) {
+    if (indentOf(l) !== step.keyIndent) continue;
+    const m = l.trim().match(/^if:\s*(.+)$/);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
+describe('post-deploy-smoke — REQUIRED COVERAGE of the release limb', () => {
+  test('REQUIRED COVERAGE: the release limb is still exported, and this file still imports it', () => {
+    assert.equal(typeof judgeReleaseAssets, 'function', 'judgeReleaseAssets is gone — the release decision is untested');
+    assert.equal(typeof smokeReleaseAssets, 'function', 'smokeReleaseAssets is gone — the release limb is untested');
+    assert.equal(GITHUB_API_ORIGIN, 'https://api.github.com');
+    assert.equal(GITHUB_API_VERSION, '2022-11-28');
+    assert.equal(RELEASE_TOKEN_ENV, 'GH_TOKEN');
+    // Every fixture above spells the manifest asset through this constant; if it
+    // changes, they are testing a name the release no longer carries.
+    assert.equal(MANIFEST_NAME, 'SHA256SUMS');
+  });
+
+  test('REQUIRED COVERAGE: the script still declares the release limb and its flags', () => {
+    // ⚠️ The `^export … function(` anchors are comment-proof on their own. The
+    // flag pins are PLAIN SUBSTRINGS on a self-documenting file — its usage
+    // banner spells `--release-repo`, `--release-tag`, `--release-manifest` and
+    // `--release-fixture` in comments — so they read `codeOnly(src)`, exactly as
+    // the Play block above had to after all three of its pins were measured
+    // inert. THEIR LIMIT: substring pins with whole-line comments blanked. They
+    // do not prove a flag is parsed or the URL fetched; the end-to-end runs
+    // above do that. These pin the spellings those runs depend on.
+    const src = readFileSync(SCRIPT, 'utf8');
+    assert.match(src, /^export function judgeReleaseAssets\(/m, 'judgeReleaseAssets is no longer a declared function');
+    assert.match(
+      src,
+      /^export async function smokeReleaseAssets\(/m,
+      'smokeReleaseAssets is no longer a declared async function',
+    );
+    const code = codeOnly(src);
+    for (const f of ['--release-repo', '--release-tag', '--release-manifest', '--release-fixture']) {
+      assert.ok(code.includes(f), `the script no longer accepts ${f} (its usage comment does not count)`);
+    }
+    assert.match(code, /releases\/tags\//, 'the read-by-tag transport is gone (the JSDoc naming it does not count)');
+  });
+
+  test('REQUIRED COVERAGE: build-platforms.yml still RUNS the limb, on a tag, with a credential', () => {
+    // 🔴 THE LIMB HAS EXACTLY ONE CALLER AND IT HAS NEVER FIRED. There are no
+    // tags in this repository, so nothing in CI has ever executed one line of
+    // this limb; if the invocation is deleted, commented out, stripped of
+    // GH_TOKEN, or left in offline fixture mode, NO RUN ANYWHERE WOULD GO RED.
+    // This test is the only thing that notices. It cannot make the limb run — no
+    // test can — it can only make removing the call site break a build.
+    const wf = readFileSync(join(ROOT, '.github', 'workflows', 'build-platforms.yml'), 'utf8');
+    // BY LINE, AND THE LINE MUST *START* WITH THE COMMAND — the defect the Play
+    // block above documents measuring: a whole-file `indexOf` stays green when
+    // the step is commented out with `# node tooling/ops/post-deploy-smoke.mjs …`.
+    const INVOKE = 'node tooling/ops/post-deploy-smoke.mjs --release-repo';
+    const lines = wf.split('\n');
+    const idx = lines.findIndex((l) => l.trim().startsWith(INVOKE));
+    assert.notEqual(idx, -1, 'build-platforms.yml no longer RUNS the release read-back — it is gone or commented out');
+    const line = lines[idx];
+    assert.match(line, /--release-tag\s+\S+/, 'the release smoke invocation names no tag');
+    assert.match(line, /--release-manifest\s+\S+/, 'the release smoke invocation carries no manifest, so it asserts nothing');
+    assert.ok(
+      !line.includes('--release-fixture'),
+      'build-platforms.yml runs the release smoke in OFFLINE FIXTURE MODE — it is reading a file, not the release',
+    );
+    const step = enclosingStep(lines, idx);
+    assert.notEqual(step, null, 'the release smoke invocation is not inside a named step');
+    // The credential, in the STEP'S OWN `env:` mapping. Same two limits the Play
+    // block spells out and for the same reasons: hoisting GH_TOKEN to job or
+    // workflow level is a legal refactor that turns this RED, and this is a
+    // line-and-indent scan rather than a YAML parse. BOTH FAIL SAFE. If one
+    // fires, teach the assertion; do not relax it.
+    assert.ok(
+      stepEnvKeys(step).some((k) => k.startsWith(`${RELEASE_TOKEN_ENV}:`)),
+      `the step running the release smoke does not put ${RELEASE_TOKEN_ENV} in its own env: mapping — the probe would fail every run. (If it was hoisted to job or workflow level it IS in scope for real, but out of scope for this assertion: teach it, do not delete it.)`,
+    );
+    // ⚠️ AND THE GATE THAT KEEPS IT OFF EVERY NON-TAG RUN. Without this `if:` the
+    // step runs on every branch push, fails on every one of them because there is
+    // no release to read, and gets deleted within a day as a broken check. ITS
+    // LIMIT, SAID OUT LOUD: this reads the step's own `if:` as TEXT. It does not
+    // prove GitHub evaluates it, and rewriting the same gate as
+    // `startsWith(github.ref, 'refs/tags/')` would be a FALSE RED — teach it.
+    const gate = stepIf(step);
+    assert.notEqual(gate, null, 'the release read-back step has no `if:` — it would run, and fail, on every branch push');
+    assert.match(
+      gate,
+      /ref_type\s*==\s*'tag'/,
+      `the release read-back step is no longer gated on a tag (its \`if:\` reads ${JSON.stringify(gate)})`,
+    );
+  });
+});

@@ -47,8 +47,10 @@
 //   node tooling/ci/assert-app-versioning.mjs [repoRoot]        # verify
 //   node tooling/ci/assert-app-versioning.mjs --emit apps/subly [repoRoot]
 //     → prints `release_line=…` / `pubspec_version=…` in GITHUB_OUTPUT form.
+//   node tooling/ci/assert-app-versioning.mjs --tag subly-v1.0.0 [--app apps/subly] [repoRoot]
+//     → the tag names the build name pubspec declares. See the --tag block.
 //
-// Exit 0 = the version mechanism is wired, 1 = it is not (or the scan shrank).
+// Exit 0 = wired, 1 = not wired (or the scan shrank), 2 = the flags name no check.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -116,15 +118,43 @@ const APP_VERSION_MAX = 32;
 const MAX_RUN_DIGITS = 9;
 const SHA_LEN = 7;
 
+/** Pull `--name <value>` out of argv; returns the value (null if absent) and the
+ *  argv with both tokens removed.
+ *
+ *  The `idx === -1` early return is not decoration. `i !== idx + 1` evaluated
+ *  with idx === -1 drops argv[0] whenever the flag is ABSENT — the explicit
+ *  repoRoot argument, silently replaced by cwd. assert-gate-passed.mjs shipped
+ *  with an off-by-one in exactly this position and blocked both production
+ *  deploys.
+ *
+ *  🔴 A FLAG WITH NO VALUE IS FATAL, NOT ABSENT. */
+function takeFlag(argv, name) {
+  const idx = argv.indexOf(name);
+  if (idx === -1) return { value: null, rest: argv };
+  const value = argv[idx + 1];
+  if (value === undefined || value === '' || value.startsWith('--')) {
+    console.error(`✗ ${name} was passed with no value — refusing to fall through to a different check and report ok`);
+    process.exit(2);
+  }
+  return { value, rest: argv.filter((_a, i) => i !== idx && i !== idx + 1) };
+}
+
 const args = process.argv.slice(2);
-const emitIdx = args.indexOf('--emit');
-const emitApp = emitIdx === -1 ? null : args[emitIdx + 1];
-// `i !== emitIdx + 1` unguarded would drop argv[0] whenever --emit is ABSENT
-// (indexOf returns -1, so emitIdx + 1 === 0) — the explicit repoRoot argument,
-// silently replaced by cwd. assert-gate-passed.mjs shipped with an off-by-one in
-// exactly this position and blocked both production deploys.
-const positional = emitIdx === -1 ? args : args.filter((a, i) => i !== emitIdx && i !== emitIdx + 1);
-const repoRoot = positional[0] ?? process.cwd();
+const emitFlag = takeFlag(args, '--emit');
+const tagFlag = takeFlag(emitFlag.rest, '--tag');
+const appFlag = takeFlag(tagFlag.rest, '--app');
+const emitApp = emitFlag.value;
+const repoRoot = appFlag.rest[0] ?? process.cwd();
+
+// 🔴 MODE COLLISION. MEASURED 2026-08-27: `--emit … --tag subly-v9.9.9` → 0; that tag alone → 1.
+if (emitApp !== null && tagFlag.value !== null) {
+  console.error('✗ --emit and --tag in one invocation — --emit answers first and the tag would never be read; run them as two steps');
+  process.exit(2);
+}
+if (appFlag.value !== null && tagFlag.value === null) {
+  console.error('✗ --app was passed without --tag — it would be silently dropped and a different check report ok');
+  process.exit(2);
+}
 
 // ── pubspec ──────────────────────────────────────────────────────────────────
 
@@ -173,6 +203,106 @@ if (emitApp) {
     process.exit(1);
   }
   process.stdout.write(`release_line=${pv.releaseLine}\npubspec_version=${pv.raw}\n`);
+  process.exit(0);
+}
+
+// ── --tag: the tag must name the version the app declares ────────────────────
+//
+// THE HOLE. `RELEASE_TAG` comes straight from `github.ref_name`
+// (build-platforms.yml:1266-1272, `TAG="$REF_NAME"`) with nothing validating it,
+// then renames every staged installer and titles the Release. Tag `subly-v9.9.9`
+// today and the lane publishes `subly-v9.9.9-app-release.aab` whose build name
+// is whatever pubspec says. The tag is the one claim a downloader reads BEFORE
+// opening the file, and nothing cross-read it; the requirement existed in prose
+// only, at tooling/release/RELEASE-RUNBOOK.md:264.
+//
+// 🔴 WHAT THIS PROVES AND WHAT IT DOES NOT. Two STRINGS agree: the version the
+// tag names, and the build name THIS parser reads from pubspec. Nothing here
+// opens an artifact, so it is no evidence at all about the versionName the
+// compiled binary carries.
+//
+// BUILD NAME ONLY. pubspec's `+N` is the build NUMBER and the lane overrides it
+// with `github.run_number` (see the header), so a tag carrying `+1` would state
+// something the artifact contradicts BY DESIGN. `+…` is stripped from both sides.
+//
+// 🔴 THE SKIP IS THE DANGEROUS HALF, SO IT IS THE NARROW HALF. No tag has ever
+// been pushed here (`git tag` → 0, measured 2026-08-27). The value a non-tag run
+// synthesises is `${APP}-untagged-<sha7>` (build-platforms.yml:1270); that
+// exact shape is a no-op, so anything that is not the untagged shape must
+// resolve to an `X.Y.Z` or FAIL.
+const UNTAGGED_REF = /^[A-Za-z0-9._-]+-untagged-[0-9a-f]{7,40}$/;
+
+if (tagFlag.value !== null) {
+  const tag = tagFlag.value;
+  if (UNTAGGED_REF.test(tag)) {
+    console.log(`⬜ "${tag}" is the <app>-untagged-<sha> value a NON-tag run synthesises — it claims no version, so there is nothing to compare`);
+    process.exit(0);
+  }
+  const m = /^(.+)-v(.+)$/.exec(tag);
+  if (!m) {
+    console.error(
+      `✗ tag "${tag}" names no version — it renames every staged installer and titles the Release,` +
+        ' so a tag with no `-v<version>` ships files whose names claim nothing checkable',
+    );
+    process.exit(1);
+  }
+  const [, slug, claimed] = m;
+  const claimedName = claimed.split('+')[0];
+  if (!/^\d+\.\d+\.\d+$/.test(claimedName)) {
+    console.error(
+      `✗ tag "${tag}" claims version "${claimed}", which is not \`X.Y.Z\` — it can never equal a` +
+        ' pubspec build name, so the installers it names would be unverifiable',
+    );
+    process.exit(1);
+  }
+  // 🔴 A CASEFOLD SEAM, CLOSED ON PURPOSE. `apps/${slug}` handed to existsSync
+  // resolves case-INSENSITIVELY on this Windows host, so `SUBLY-v1.0.0` passes
+  // here and ENOENTs on a case-sensitive filesystem. The leaf is matched EXACTLY
+  // against the directory listing instead. It also closes the trap the `push:
+  // tags: ['*-v*']` comment names in build-platforms.yml — a tag for a missing
+  // app. Split on '/': basename reads the OS.
+  const appPath = appFlag.value ?? `apps/${slug}`;
+  const segs = appPath.split('/').filter((s) => s !== '');
+  const appLeaf = segs.length ? segs[segs.length - 1] : appPath;
+  const parentRel = segs.slice(0, -1).join('/') || '.';
+  const parentAbs = join(repoRoot, ...segs.slice(0, -1));
+  const onDisk = existsSync(parentAbs) ? listDir(parentAbs) : [];
+  if (!onDisk.includes(appLeaf)) {
+    console.error(
+      `✗ tag "${tag}" names app "${appLeaf}" and ${parentRel}/ holds no directory of exactly that name` +
+        ` (it has: ${onDisk.join(', ') || 'none'}) — the tag would rename every installer after an` +
+        ' app this repository does not build',
+    );
+    process.exit(1);
+  }
+  if (appLeaf !== slug) {
+    console.error(
+      `✗ tag "${tag}" names app "${slug}" but ${appFlag.value === null ? 'its path resolves to' : '--app points at'} ${appPath}` +
+        ' — the tag renames every staged installer and titles the Release, so it may relocate that app, not rename it',
+    );
+    process.exit(1);
+  }
+  const pv = readPubspecVersion(join(repoRoot, appPath, 'pubspec.yaml'));
+  if (!pv || pv.bad) {
+    console.error(
+      `✗ tag "${tag}" names ${appPath}, whose pubspec has no parseable \`version: X.Y.Z\`` +
+        `${pv ? ` (found "${pv.raw}")` : ''} — there is no build name to hold the tag to`,
+    );
+    process.exit(1);
+  }
+  const buildName = `${pv.major}.${pv.minor}.${pv.patch}`;
+  if (claimedName !== buildName) {
+    console.error(
+      `✗ tag "${tag}" names version ${claimedName} but ${appPath}/pubspec.yaml declares "${pv.raw}",` +
+        ` build name ${buildName}. Every installer would be published under a version the app does` +
+        ' not carry. Bump the pubspec or retag; do not rename the files.',
+    );
+    process.exit(1);
+  }
+  console.log(
+    `ok  tag ↔ pubspec — "${tag}" and ${appPath}/pubspec.yaml ("${pv.raw}") agree on build name` +
+      ` ${buildName}; two strings compared, not the artifact.`,
+  );
   process.exit(0);
 }
 
