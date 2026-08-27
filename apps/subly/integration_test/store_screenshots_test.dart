@@ -690,14 +690,12 @@ void main() {
       forbidden: forbidden,
     );
 
-    // Scoped to the nav pill: home renders `calendarLink` — the same word on a
-    // different control — so an unscoped text finder matches two at 360x640.
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(AppShell.navPillKey),
-        matching: find.text('Calendar'),
-      ),
-    );
+    // Tapped by ICON, not by label: `navPillKey` exists only in the compact
+    // window class and each of these words also names something else on screen
+    // (`calendarLink`, `insightsTitle`, `statBudget`), whereas each tab's icon
+    // occurs exactly once in the app — so the icon is the one handle that means
+    // the nav destination at both capture viewports, pill and rail alike.
+    await tester.tap(find.byIcon(Icons.calendar_month_rounded));
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(CalendarScreen), findsWidgets);
     await captureFrame(
@@ -706,14 +704,7 @@ void main() {
       forbidden: forbidden,
     );
 
-    // `insightsTitle` is the same word as `navInsights`, and `statBudget` is
-    // the same word as `navBudget`.
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(AppShell.navPillKey),
-        matching: find.text('Insights'),
-      ),
-    );
+    await tester.tap(find.byIcon(Icons.insights_rounded));
     await pumpFor(tester, const Duration(seconds: 3));
     expect(find.byType(InsightsScreen), findsWidgets);
     await captureFrame(
@@ -722,12 +713,7 @@ void main() {
       forbidden: forbidden,
     );
 
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(AppShell.navPillKey),
-        matching: find.text('Budget'),
-      ),
-    );
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_rounded));
     await pumpFor(tester, const Duration(seconds: 4));
     expect(find.byType(BudgetScreen), findsWidgets);
     await captureFrame(
