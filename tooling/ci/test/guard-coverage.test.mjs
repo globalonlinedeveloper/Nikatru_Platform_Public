@@ -22,7 +22,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, unlinkSync, statSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync, unlinkSync, statSync, appendFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +49,30 @@ const EXCUSED = (() => {
   const block = src.match(/NO_NEGATIVE_TEST_NEEDED = new Map\(\[([\s\S]*?)\n\]\);/);
   assert.ok(block, 'could not find NO_NEGATIVE_TEST_NEEDED in the guard — the fixtures cannot model it');
   return [...block[1].matchAll(/'(tooling\/[^']+\.mjs)'/g)].map((m) => m[1]);
+})();
+
+/** Every workflow-invoked executable OUTSIDE tooling/ci in the REAL repository,
+ *  derived the way the guard derives `invokedOutside` (comment lines dropped,
+ *  then the same broad `tooling/…​.mjs` match). DERIVED, NEVER PASTED — for
+ *  reason 2 in the EXCUSED note above, which is the same reason the last test in
+ *  this file exists. */
+const WORKFLOW_INVOKED_OUTSIDE = (() => {
+  const dir = resolve(CI_DIR, '..', '..', '.github', 'workflows');
+  const rels = new Set();
+  // `.ya?ml` is the guard's own filter. Without
+  // it a stray directory or dotfile in .github/workflows makes readFileSync
+  // THROW — an error, not a verdict — on whichever host has one first.
+  for (const wf of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+    const text = readFileSync(join(dir, wf), 'utf8')
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('#'))
+      .join('\n');
+    for (const m of text.matchAll(/tooling\/([A-Za-z0-9._/-]+\.mjs)/g)) {
+      const rel = `tooling/${m[1]}`;
+      if (!rel.startsWith('tooling/ci/')) rels.add(rel);
+    }
+  }
+  return [...rels].sort();
 })();
 
 /** The guards NOT_CI_RUNNABLE excuses from R2, READ OUT OF THE GUARD for the two
@@ -959,14 +983,21 @@ describe('assert-guard-coverage', () => {
     });
 
     test('a script IMPORTED by a test file is covered — a module under test is exercised too', () => {
+      // ⚠️ THE SUBJECT IS SYNTHETIC ON PURPOSE, and it was a REAL path
+      // (`tooling/sites/lastmod.mjs`) until 2026-08-27. `exercisedBy` matches
+      // `from '<path>'`, and the path it matches lives INSIDE this fixture's
+      // string literal — the matcher has no string context to lose it in.
+      // Synthetic names are the tree's idiom for this
+      // (`tooling/release/submit-newthing.mjs`, below); the check that keeps it
+      // that way is the last test in this describe.
       const r = run(
         repo(compliant(), {
-          scripts: ['tooling/sites/lastmod.mjs'],
+          scripts: ['tooling/sites/emit-newthing.mjs'],
           mentionScripts: false,
           files: {
             'tooling/ci/test/t9.test.mjs':
-              "import { test } from 'node:test';\nimport { today } from '../../sites/lastmod.mjs';\n" +
-              "test('today() is a date', () => { today(); });\n",
+              "import { test } from 'node:test';\nimport { emit } from '../../sites/emit-newthing.mjs';\n" +
+              "test('emit() returns a string', () => { emit(); });\n",
           },
           testFiles: 2,
         }),
@@ -1000,6 +1031,69 @@ describe('assert-guard-coverage', () => {
       const r = run(repo(compliant()));
       assert.equal(r.status, 0, r.stderr);
       assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered, 0 excused/);
+    });
+
+    // ── THIS FILE'S OWN FIXTURES, ASKED OF THE REAL GUARD ─────────────────────
+    //
+    // 🔴 THE FIXTURES ABOVE ARE PART OF THE CORPUS THE GUARD READS. A fixture
+    // body that spells a REAL workflow-invoked script's path inside a string
+    // literal credits THIS file with exercising it: `exercisedBy` matches
+    // `from '<path>'`, and the path lives INSIDE the literal, so there is no
+    // string context left for it to lose. Composing `stripStringLiterals`
+    // (tooling/ci/text-reductions.mjs) onto the matcher would blank the literal
+    // and delete the credit for every genuine import with it, so the discipline
+    // belongs HERE, on the fixture names, not there. Measured 2026-08-27: the
+    // fixture three tests up named a real script, and the guard credited it to
+    // this file, which runs none of its behaviour.
+    test('🔴 this file must credit NONE', () => {
+      const subjects = WORKFLOW_INVOKED_OUTSIDE.filter((rel) => !EXCUSED.includes(rel));
+      assert.ok(subjects.length > 3, `derived only ${subjects.length} outside scripts — the derivation stopped reaching them`);
+      const SELF = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+      const uncovered = (rel) => `${rel} — a workflow runs it and no test file EXERCISES it`;
+      const askGuard = (t9) =>
+        run(
+          repo(compliant(), {
+            scripts: subjects,
+            mentionScripts: false,
+            files: { 'tooling/ci/test/t9.test.mjs': t9 },
+            testFiles: 2,
+          }),
+        );
+
+      // 🔴 POSITIVE CONTROL, AND IT RUNS FIRST. The assertion below is a
+      // NEGATIVE one, so it also passes over a fixture this file never reached:
+      // measured 2026-08-27, swapping SELF for a placeholder body left it GREEN
+      // while this file carried `from '…/ops/status.mjs'` in executable code.
+      // Same repo, same subjects, same slot, plus ONE exercising line naming
+      // `probe` — derived, never written out here — SPLICED IN AT A LINE OF THIS
+      // FILE'S OWN CODE, so a body that is not this file cannot receive it and
+      // cannot then credit `probe`. `subjects[1]` keeps the control itself from
+      // passing on a guard that crashed and printed no verdict at all.
+      const probe = subjects[0];
+      const ANCHOR = "const MANIFEST_REL = join('tooling', 'ci', 'test', 'coverage-manifest.json');";
+      assert.ok(SELF.includes(ANCHOR), 'ANCHOR is no longer a line of this file — the control below would splice nothing');
+      const seeded = askGuard(SELF.replace(ANCHOR, `${ANCHOR}\nconst PROBE = "import p from './${probe}';";`));
+      assert.ok(
+        seeded.stderr.includes(uncovered(subjects[1])),
+        `the control fixture did not produce a verdict — the guard never reported ${subjects[1]}. ${seeded.stderr || seeded.stdout}`,
+      );
+      assert.ok(
+        !seeded.stderr.includes(uncovered(probe)),
+        `an exercising line naming ${probe} spliced into the t9 body did NOT credit it, so t9 is not carrying ` +
+          "this file's bytes. The assertion below then holds over bytes the guard never read.",
+      );
+
+      const r = askGuard(SELF);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /guard coverage — \d+ problem\(s\)/);
+      const credited = subjects.filter((rel) => !r.stderr.includes(uncovered(rel)));
+      assert.deepEqual(
+        credited,
+        [],
+        `the guard reads this file as EXERCISING ${credited.join(', ')}. A fixture body names it, and a name ` +
+          'inside a fixture string is a byte written, not a behaviour run. Rename the fixture subject to a ' +
+          'synthetic path — tooling/release/submit-newthing.mjs is the tree\'s idiom for one.',
+      );
     });
   });
 });

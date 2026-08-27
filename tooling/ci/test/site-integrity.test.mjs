@@ -64,6 +64,45 @@ const DEFAULT_LLMS = '# Fixture\n\n> A deploy root with nothing to say.\n';
 const DEFAULT_SITEMAP =
   '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>\n';
 
+/** [12]W-3a — the placeholder a fixture writes where a git-derived date
+ *  goes, instead of a date.
+ *
+ *  The guard runs as its own process and evaluates `today()` there, so a
+ *  fixture stamped before local midnight and read after it disagrees by one
+ *  day. That shipped: CI run 33025061888 crossed 00:00Z mid-file and cases
+ *  went red on a tree nothing was wrong with. The token lets `run()` DETECT
+ *  the crossing and re-stamp rather than hope to miss it. */
+const DATE_TOKEN = '@@fixture-date@@';
+
+/** dir -> { date, files: [[abs, template]] } for every fixture that carries
+ *  DATE_TOKEN. Only the templates are kept, so a re-stamp is a re-render and
+ *  not a search-and-replace over whatever is on disk. */
+const DATED = new Map();
+
+/** Write one fixture file, substituting DATE_TOKEN with today() and
+ *  remembering the template if it carried one. */
+function writeFixtureFile(dir, abs, body) {
+  mkdirSync(dirname(abs), { recursive: true });
+  if (!body.includes(DATE_TOKEN)) {
+    writeFileSync(abs, body);
+    return;
+  }
+  let rec = DATED.get(dir);
+  if (!rec) {
+    rec = { date: today(), files: [] };
+    DATED.set(dir, rec);
+  }
+  rec.files.push([abs, body]);
+  writeFileSync(abs, body.split(DATE_TOKEN).join(rec.date));
+}
+
+/** Re-render every dated file in `dir` for `date`. */
+function restamp(dir, date) {
+  const rec = DATED.get(dir);
+  rec.date = date;
+  for (const [abs, body] of rec.files) writeFileSync(abs, body.split(DATE_TOKEN).join(date));
+}
+
 function fixture(name, files, { omit = [] } = {}) {
   const dir = join(ROOT, name);
   const all = { ...files };
@@ -74,21 +113,48 @@ function fixture(name, files, { omit = [] } = {}) {
     if (!(`${m[1]}/sitemap.xml` in all)) all[`${m[1]}/sitemap.xml`] = DEFAULT_SITEMAP;
   }
   for (const rel of omit) delete all[rel];
-  for (const [rel, body] of Object.entries(all)) {
-    const abs = join(dir, rel);
-    mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, body);
-  }
+  for (const [rel, body] of Object.entries(all)) writeFixtureFile(dir, join(dir, rel), body);
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** Files under `dir` carrying `date` as a <lastmod> that DATED does not hold.
+ *  A date written into a body instead of as DATE_TOKEN is invisible to
+ *  `restamp`, so the loop below can neither detect nor repair its rollover. */
+function unstamped(dir, date) {
+  const held = new Set((DATED.get(dir)?.files ?? []).map(([abs]) => abs));
+  const found = [];
+  const walk = (d) => {
+    for (const f of readdirSync(d, { withFileTypes: true })) {
+      const abs = join(d, f.name);
+      if (f.isDirectory()) walk(abs);
+      else if (!held.has(abs) && readFileSync(abs, 'utf8').includes(`<lastmod>${date}</lastmod>`)) found.push(abs);
+    }
+  };
+  walk(dir);
+  return found;
 }
 
 /** Run the guard as CI runs it: real subprocess, real exit code.
  *  `from` selects WHICH copy of the script runs, which is what decides whether
  *  the guard thinks it is scanning its own repository. */
 function run(dir, { from = join(CI_DIR, GUARD) } = {}) {
-  const r = spawnSync(process.execPath, [from, dir], { cwd: ROOT, encoding: 'utf8' });
-  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  // If the local day turns over between stamping the fixture and the guard
+  // reading it, the two disagree by one day and the guard is right to say
+  // so — about a tree the test never meant to build. Re-stamp and run again.
+  for (let attempt = 0; ; attempt++) {
+    const stamp = DATED.get(dir)?.date ?? today();
+    const stray = unstamped(dir, stamp);
+    assert.deepEqual(stray, [], `${dir} carries a <lastmod> of ${stamp} that DATE_TOKEN does not hold, so re-stamping cannot reach it and a rollover fails this case for the date instead of the limb it is about.`);
+    const r = spawnSync(process.execPath, [from, dir], { cwd: ROOT, encoding: 'utf8' });
+    const now = today();
+    const rec = DATED.get(dir);
+    if (!rec || rec.date === now) {
+      return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+    }
+    assert.ok(attempt < 2, `the local day turned over in each of three consecutive spawns of ${dir}; no result read from this clock can be attributed to the limb under test.`);
+    restamp(dir, now);
+  }
 }
 
 /**
@@ -167,7 +233,8 @@ function selfHosted(dir, { root = 'a' } = {}) {
       `<p data-policy-version="${FIXTURE_VERSION}">${FIXTURE_PROMISE}</p>` +
       '<script>const APPS = [\n];</script></body></html>\n',
   );
-  writeFileSync(
+  writeFixtureFile(
+    dir,
     join(site, 'sitemap.xml'),
     // [12]W-3a — the DATE is `today()`, not FIXTURE_VERSION, and the two are now
     // deliberately different values answering different questions: the page
@@ -175,7 +242,7 @@ function selfHosted(dir, { root = 'a' } = {}) {
     // last changed. In a fixture (not a git work tree) the latter degrades to
     // today on both sides, so the scaffold has to write today or every
     // self-hosted case fails on the date instead of on the limb it is about.
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset><url><loc>${FIXTURE_ORIGIN}</loc><lastmod>${today()}</lastmod></url></urlset>\n`,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset><url><loc>${FIXTURE_ORIGIN}</loc><lastmod>${DATE_TOKEN}</lastmod></url></urlset>\n`,
   );
   const fn = join(site, 'functions', 'api', 'probe.js');
   mkdirSync(dirname(fn), { recursive: true });
@@ -426,7 +493,8 @@ const POLICY_BODY = `<p data-policy-version="2026-03-04">${'policy sentence. '.r
  *  failing cases are the recorded mutations at the top of this block: the
  *  nikatru sitemap's privacy lastmod put back to 2026-08-01 → red; the same on
  *  sites/rajasekarselvam, which no generator writes → red from THIS guard only.) */
-const GIT_DATE = today();
+/** …and it is WRITTEN as DATE_TOKEN, resolved to that date at write time. */
+const GIT_DATE = DATE_TOKEN;
 
 const sitemap = (entries) =>
   '<?xml version="1.0" encoding="UTF-8"?>\n<urlset>\n' +

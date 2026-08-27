@@ -123,6 +123,7 @@ import { fileURLToPath } from 'node:url';
 import {
   evaluate,
   evaluateRunRecords,
+  classifyRunRecord,
   cadenceDays,
   parseJsonc,
   findWranglerConfigs,
@@ -1238,7 +1239,11 @@ describe('assert-ops-register — [14]O-3 · the record-query limb, whose domain
     // The summary is the line a reader scans, and it is what said `0 FAILING`
     // through run 33001960316 while this duty was failing every night.
     const summary = r.prints.find((l) => /scheduled duty\(ies\) ·/.test(l));
-    assert.doesNotMatch(summary, /0 FAILING/, 'the shipped register knows a duty is failing; the count must say so on the Linux runner too');
+    // Domain asked of the REGISTER, not of the guard's own output: with no held
+    // failure left, `0 FAILING` is the true count and demanding otherwise lies.
+    if (win.some((row) => row.mechanism.recordQuery.lastObserved?.verdict === 'fail')) {
+      assert.doesNotMatch(summary, /0 FAILING/, 'the shipped register knows a duty is failing; the count must say so on the Linux runner too');
+    }
   });
 
   test('a query that ANSWERS "the mechanism does not exist" is a hard failure — a stale row reads as coverage', () => {
@@ -1683,6 +1688,30 @@ describe('assert-ops-register — end to end, against the real repository', () =
     return { code: r.status, out: `${r.stdout}\n${r.stderr}` };
   };
 
+  /** The record-query verdicts that ARE "a duty is failing": a reachable record
+   *  with no success (or none inside the window), a mechanism that is gone, and
+   *  a dark reader on a row held FAILING. */
+  const DUTY_IS_FAILING = /its record IS reachable and (holds NO SUCCESSFUL RUN AT ALL|the newest SUCCESSFUL run)|the mechanism its `recordQuery` names DOES NOT EXIST|reader `[^`]+` .+ AND the register holds its last readable observation as FAILING \(/;
+
+  // ── 🔴 THE FIFTH SHAPE, AND WHY IT IS DELIBERATELY NOT IN THE SET ABOVE ────
+  // `classifyRunRecord` emits one more failing shape — HELD-BUT-HEALTHY — the
+  // first time a host READS A SUCCESS while `recordQuery.lastObserved` still
+  // says `fail`. MEASURED 2026-08-27 by driving the guard's own classifier with
+  // the committed duty.laptop.nikatru-daily-backup row and a healthy probe:
+  // verdict `fail`, no `gated` flag (so it BLOCKS), and its line matched NONE of
+  // the four shapes above. So on the day 0xFFFD0000 is repaired, this test would
+  // have gone red on the laptop calling a guard doing exactly its job a
+  // "structural break".
+  //
+  // THE JUDGEMENT, so the next reader need not re-derive it: held-but-healthy is
+  // NOT a duty that is failing — the record was queried and holds a fresh
+  // success — so widening DUTY_IS_FAILING to swallow it would make this
+  // describe's own sentence false. It is A REGISTER TO REPAIR: one stale field,
+  // in the very file this test is about. The VERDICT (red) was already right;
+  // only the MESSAGE was wrong, and the message is what decides whether the next
+  // reader deletes one field or deletes the check.
+  const HELD_BUT_HEALTHY = /its record was QUERIED and is healthy .+ still reads FAILING \(/;
+
   test('the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register', () => {
     const { code, out } = realGuard();
     if (code === 0) return;
@@ -1691,12 +1720,92 @@ describe('assert-ops-register — end to end, against the real repository', () =
       .filter((l) => /^ {4}\S/.test(l))
       .map((l) => l.trim());
     assert.ok(problems.length > 0, `exit ${code} with no itemised problems:\n${out}`);
+    // The structural claim is checked over EVERY line FIRST.
+    const stale = problems.filter((p) => HELD_BUT_HEALTHY.test(p));
     for (const p of problems) {
+      if (stale.includes(p)) continue;
       assert.match(
         p,
-        /its record IS reachable and (holds NO SUCCESSFUL RUN AT ALL|the newest SUCCESSFUL run)|the mechanism its `recordQuery` names DOES NOT EXIST|reader `[^`]+` .+ AND the register holds its last readable observation as FAILING \(/,
+        DUTY_IS_FAILING,
         `a NON-record problem in the committed register — this is a structural break and must be fixed, not tolerated:\n${p}`,
       );
+    }
+    assert.equal(
+      stale.length,
+      0,
+      'A HELD FAILURE HAS OUTLIVED THE FAILURE IT RECORDS, AND THE GUARD IS WORKING. This duty\'s record was ' +
+        'queried and holds a fresh success; what is stale is one field of tooling/ops/register.json. THE REPAIR ' +
+        'IS A DELETION, on a host that can read this record: remove ' +
+        '`mechanism.recordQuery.lastObserved` from the row named below. Do NOT delete the `recordQuery`, and do ' +
+        `NOT widen the accepted-shape pattern:\n${stale.join('\n')}`,
+    );
+  });
+
+  test('🔴 held-but-healthy is CLASSIFIED, not forgotten — the two patterns partition it, and neither may quietly swallow it', () => {
+    // The state fires no earlier than the day the backup is repaired, so the
+    // subject is BUILT, not found: a committed scheduled row with a FAILING
+    // observation attached, and the probe that host returns once 0xFFFD0000 is
+    // gone. Built, so the deletion the test above orders cannot empty this test.
+    const real = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const readable = real.rows.filter(
+      (r) =>
+        r.kind === 'duty' &&
+        /^\d+[hd]$/.test(String(r.cadence ?? '')) &&
+        typeof r?.mechanism?.recordQuery?.reader === 'string' &&
+        r.mechanism.recordQuery.reader !== 'unreachable',
+    );
+    assert.ok(readable.length > 0, 'no committed duty row carries a readable record query, so nothing here could be classified');
+    const built = JSON.parse(JSON.stringify(readable[0]));
+    built.mechanism.recordQuery.lastObserved = { verdict: 'fail', at: '2026-08-06T02:00:01Z', detail: 'LastTaskResult 4294770688.' };
+    const held = real.rows.filter((r) => r?.mechanism?.recordQuery?.lastObserved?.verdict === 'fail');
+    const NOWH = Date.parse('2026-08-27T04:00:00Z');
+    for (const row of [built, ...held]) {
+      const c = classifyRunRecord(
+        row,
+        { lastSuccessMs: NOWH - 2 * 3_600_000, detail: 'LastTaskResult 0.' },
+        NOWH,
+        real._recordReaders._windowMultiplier,
+      );
+      assert.equal(c.verdict, 'fail', `${row.id}: a live healthy read must still fail while the held failure stands`);
+      assert.match(c.line, HELD_BUT_HEALTHY, `${row.id}: the repair branch must own this line, or the message reverts to "structural break"`);
+      assert.doesNotMatch(c.line, DUTY_IS_FAILING, `${row.id}: held-but-healthy is not a duty that is failing, and accepting it here would make this describe's own claim false`);
+    }
+  });
+
+  test('🔴 A MALFORMED REGISTER IS STILL REJECTED — seven real mutations of the committed file, none reaching either accepting branch', () => {
+    // The half that matters about the branch above: it must not have become an
+    // escape hatch. Every line below is the GUARD'S OWN, harvested by mutating
+    // the committed register and running the real limb over it — not prose a
+    // fixture author wrote to match a pattern they also wrote.
+    const NOWM = Date.parse('2026-08-27T04:00:00Z');
+    const real = () => JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const byId = (reg, id) => {
+      const row = reg.rows.find((x) => x.id === id);
+      assert.ok(row, `${id} is gone from the register, so this mutation would range over nothing`);
+      return row;
+    };
+    const healthyProbes = (reg) => {
+      const m = new Map();
+      for (const r of reg.rows) if (r.kind === 'duty' && /^\d+[hd]$/.test(String(r.cadence ?? ''))) m.set(r.id, { lastSuccessMs: NOWM - 2 * 3_600_000, detail: 'stubbed healthy' });
+      return m;
+    };
+    const cases = [
+      ['a scheduled duty loses its query', (r) => { delete byId(r, 'duty.workflow.e2e.yml').mechanism.recordQuery; }, /no `mechanism\.recordQuery\.reader`/],
+      ['a reader nothing declares', (r) => { byId(r, 'duty.workflow.e2e.yml').mechanism.recordQuery.reader = 'invented-reader'; }, /is not declared in `_recordReaders`/],
+      ['a held observation stated as an adjective', (r) => { byId(r, 'duty.laptop.nikatru-daily-backup').mechanism.recordQuery.lastObserved = { verdict: 'fail', at: '2026-08-27T03:34:00Z', detail: 'it was failing' }; }, /`recordQuery\.lastObserved` must be/],
+      ['a held observation on a row nothing has ever read', (r) => { byId(r, 'duty.oci.disk-alert').mechanism.recordQuery.lastObserved = { verdict: 'fail', at: '2026-08-27T03:34:00Z', detail: 'LastTaskResult 4294770688.' }; }, /on a row whose reader is `unreachable`/],
+      ['`unreachable` with no `why`', (r) => { delete byId(r, 'duty.oci.disk-alert').mechanism.recordQuery.why; }, /`reader: "unreachable"` with no `why`/],
+      ['a declared reader no row uses', (r) => { r._recordReaders['file-stamp'] = { queries: 'an mtime', needs: 'the file' }; }, /is declared and no row uses it/],
+      ['the unreachable ceiling breached', (r) => { r._recordReaders._maxUnreachable = 0; }, /and the ceiling is 0/],
+    ];
+    for (const [name, mutate, expected] of cases) {
+      const reg = real();
+      mutate(reg);
+      const errs = evaluateRunRecords(reg, healthyProbes(reg), NOWM).errors ?? [];
+      const hit = errs.find((e) => expected.test(e));
+      assert.ok(hit, `${name}: the guard did not emit its own ${expected} — the mutation landed on nothing:\n${errs.join('\n')}`);
+      assert.doesNotMatch(hit, HELD_BUT_HEALTHY, `${name}: the held-but-healthy repair branch must not swallow a structural problem:\n${hit}`);
+      assert.doesNotMatch(hit, DUTY_IS_FAILING, `${name}: a structural problem must not read as a failing duty:\n${hit}`);
     }
   });
 
