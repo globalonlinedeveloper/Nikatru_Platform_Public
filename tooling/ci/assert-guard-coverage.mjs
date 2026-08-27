@@ -889,18 +889,166 @@ const executable = (text) =>
     })
     .join('\n');
 
+// ── which BYTES are code, by OFFSET ─────────────────────────────────────────
+// ⏱ 2026-08-27. Every rule below matches a shape — `from '…'`, `spawnSync(`,
+// `const X =` — and a shape spelled INSIDE a string literal is the same bytes as
+// one spelled in code. A fixture body carrying `"import p from './x.mjs';"`
+// credited x.mjs with being imported by a test that only ever wrote it into a
+// temp file. So each match is now asked WHERE IT STARTS.
+//
+// Not `stripStringLiterals` composed onto the matcher: the path in a GENUINE
+// import lives inside the literal too, so matching the blanked text deletes
+// every real credit with the fake one. Only the offsets are taken from here;
+// the regexes still read the original bytes.
+//
+// Same length as its input by construction — replacement, never deletion — so
+// `mask[i]` describes `text[i]`. NUL marks a byte that is inside a string
+// literal or a comment; a template literal's `${…}` is code again, because it
+// is. Regex literals are recognised so a `/[^'"]/` cannot open a string that
+// never closes and blank the rest of the file.
+//
+// ⏱ MOVED 2026-08-27, unchanged byte for byte. It was declared BELOW `exercisedBy`,
+// which is fine for `exercisedBy` (called late) and fatal for `countCases` (called
+// during module evaluation, ~90 lines down): a `const` read before its declaration
+// is a ReferenceError, not a fallback — so the ratchet would have crashed rather
+// than miscounted. It has no dependencies of its own; keep it above the first
+// caller and there is nothing else to know.
+const NON_CODE = '\u0000';
+const REGEX_MAY_START = /(?:[([{,;:=!&|?+\-*%~^<>\n]|\b(?:return|typeof|case|in|of|do|else|yield|await|new|delete|void|instanceof))\s*$/;
+const maskCache = new Map();
+const codeMask = (text) => {
+  const hit = maskCache.get(text);
+  if (hit !== undefined) return hit;
+  const m = text.split('');
+  const blank = (a, b) => { for (let k = a; k < b; k++) m[k] = NON_CODE; };
+  const tpl = [];
+  let brace = 0;
+  let i = 0;
+  const scanString = (start, q) => {
+    let k = start + 1;
+    while (k < text.length) {
+      const c = text[k];
+      if (c === '\\') { k += 2; continue; }
+      if (c === q) { blank(start, k + 1); return k + 1; }
+      if (q === '`' && c === '$' && text[k + 1] === '{') {
+        blank(start, k + 2);
+        tpl.push(brace);
+        brace = 0;
+        return k + 2;
+      }
+      if (q !== '`' && c === '\n') { blank(start, k); return k; }
+      k++;
+    }
+    blank(start, text.length);
+    return text.length;
+  };
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i);
+      const end = nl < 0 ? text.length : nl;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      const end = close < 0 ? text.length : close + 2;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (c === '/' && REGEX_MAY_START.test(text.slice(Math.max(0, i - 12), i))) {
+      let k = i + 1;
+      let cls = false;
+      while (k < text.length && text[k] !== '\n') {
+        const d = text[k];
+        if (d === '\\') { k += 2; continue; }
+        if (d === '[') cls = true;
+        else if (d === ']') cls = false;
+        else if (d === '/' && !cls) { k++; break; }
+        k++;
+      }
+      blank(i, k);
+      i = k;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { i = scanString(i, c); continue; }
+    if (c === '{') { brace++; i++; continue; }
+    if (c === '}') {
+      if (brace === 0 && tpl.length) {
+        brace = tpl.pop();
+        m[i] = NON_CODE;
+        i = scanString(i, '`');
+        continue;
+      }
+      if (brace > 0) brace--;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  const out = m.join('');
+  if (maskCache.size > 400) maskCache.clear();
+  maskCache.set(text, out);
+  return out;
+};
+
 const testCorpus = executable(rawCorpus);
 /** The same corpus KEPT SPLIT, comments stripped. The concatenation above can
  *  say a name appears somewhere in test/; only the per-file map can say WHICH
  *  file claims a subject, and an unattributable credit is how a test of one
  *  guard came to be the recorded failing case of another file entirely. */
 const testSource = new Map(testFiles.map((f) => [f, executable(readFileSync(join(TESTS, f), 'utf8'))]));
-const countCases = (text) => (text.match(/^\s*(test|it)\s*\(/gm) ?? []).length;
+/** ⏱ REPAIRED 2026-08-27 — this counted DECLARATIONS SPELLED INSIDE STRING
+ *  LITERALS. A Dart or JS fixture body carrying `test('m1', () {});` is the same
+ *  bytes as a real declaration, and 57 of them across six test files were sitting
+ *  in the ratchet floor: guards.test.mjs 431→383, money-config.test.mjs 35→32,
+ *  mor-adapters 42→40, adapter-capabilities 28→26, app-dod 33→32, purchase-path
+ *  66→65. That is the DANGEROUS direction for a ratchet — a floor is a promise
+ *  that this much coverage exists, and 57 of the cases it promised were quoted
+ *  text nothing runs. A hollow file would still be caught; an inflated one was
+ *  not, and the inflation ratchets in permanently.
+ *
+ *  The counts below are what `node --test` runs, file for file — measured, not
+ *  derived: money-config 32, app-dod 32, purchase-path 65, adapter-capabilities
+ *  26, mor-adapters 40. guards.test.mjs runs 398 against a declaration count of
+ *  383, and that gap is this counter's documented shape — it counts LINE-ANCHORED
+ *  declarations, so a case generated inside a loop is run and not declared. The
+ *  old count of 431 was above the 398 that run; the new one is below it.
+ *
+ *  Fixed the way every other match in this file is fixed — by asking WHERE IT
+ *  STARTS, against the ONE mask (`codeMask`), never a second reader of the same
+ *  bytes. The offset tested is the DECLARATION KEYWORD, not `m.index`: `^\s*`
+ *  can begin on a blank line above, because `\s` crosses newlines.
+ *
+ *  🔴 AND IT IS HANDED THE RAW FILE, NOT `executable(…)`. That composition is
+ *  broken and the breakage is not small: `executable` is a LINE FILTER with no
+ *  notion of strings, so it deletes a `//`-leading line FROM INSIDE A TEMPLATE
+ *  LITERAL. money-config.test.mjs:176-178 is a template whose body is three
+ *  commented-out lines and whose CLOSING BACKTICK sits on the third — strip
+ *  those and the remaining text has an unpaired backtick, so every byte after
+ *  it reads inverted: fixture bodies become code and real code becomes string.
+ *  Measured: countCases over the reduced text says 19 for that file and
+ *  `node --test` runs 32. Over the raw file it says 32. The mask needs no help
+ *  here — a comment is NON_CODE to it already, which is the whole reason it can
+ *  be trusted with the raw bytes. `testCorpus` below still uses the reducer
+ *  because it is a bare `includes()` with no mask to protect it. */
+const CASE_DECL = /^\s*(test|it)\s*\(/gm;
+const countCases = (text) => {
+  const mask = codeMask(text);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  let n = 0;
+  for (const m of text.matchAll(CASE_DECL)) {
+    if (isCode(m.index + (m[0].length - m[0].trimStart().length))) n++;
+  }
+  return n;
+};
 
 // A test file carrying no declaration is a file that runs nothing while still
 // holding a manifest entry, so it must be caught before the ratchet records it.
 const perFile = new Map(
-  testFiles.map((f) => [f, countCases(executable(readFileSync(join(TESTS, f), 'utf8')))]),
+  testFiles.map((f) => [f, countCases(readFileSync(join(TESTS, f), 'utf8'))]),
 );
 const hollow = [...perFile.entries()].filter(([, n]) => n === 0).map(([f]) => f);
 if (hollow.length) {
@@ -1109,104 +1257,6 @@ const argElements = (text, close) => {
     cur += c;
   }
   out.push(cur);
-  return out;
-};
-
-// ── which BYTES are code, by OFFSET ─────────────────────────────────────────
-// ⏱ 2026-08-27. Every rule below matches a shape — `from '…'`, `spawnSync(`,
-// `const X =` — and a shape spelled INSIDE a string literal is the same bytes as
-// one spelled in code. A fixture body carrying `"import p from './x.mjs';"`
-// credited x.mjs with being imported by a test that only ever wrote it into a
-// temp file. So each match is now asked WHERE IT STARTS.
-//
-// Not `stripStringLiterals` composed onto the matcher: the path in a GENUINE
-// import lives inside the literal too, so matching the blanked text deletes
-// every real credit with the fake one. Only the offsets are taken from here;
-// the regexes still read the original bytes.
-//
-// Same length as its input by construction — replacement, never deletion — so
-// `mask[i]` describes `text[i]`. NUL marks a byte that is inside a string
-// literal or a comment; a template literal's `${…}` is code again, because it
-// is. Regex literals are recognised so a `/[^'"]/` cannot open a string that
-// never closes and blank the rest of the file.
-const NON_CODE = '\u0000';
-const REGEX_MAY_START = /(?:[([{,;:=!&|?+\-*%~^<>\n]|\b(?:return|typeof|case|in|of|do|else|yield|await|new|delete|void|instanceof))\s*$/;
-const maskCache = new Map();
-const codeMask = (text) => {
-  const hit = maskCache.get(text);
-  if (hit !== undefined) return hit;
-  const m = text.split('');
-  const blank = (a, b) => { for (let k = a; k < b; k++) m[k] = NON_CODE; };
-  const tpl = [];
-  let brace = 0;
-  let i = 0;
-  const scanString = (start, q) => {
-    let k = start + 1;
-    while (k < text.length) {
-      const c = text[k];
-      if (c === '\\') { k += 2; continue; }
-      if (c === q) { blank(start, k + 1); return k + 1; }
-      if (q === '`' && c === '$' && text[k + 1] === '{') {
-        blank(start, k + 2);
-        tpl.push(brace);
-        brace = 0;
-        return k + 2;
-      }
-      if (q !== '`' && c === '\n') { blank(start, k); return k; }
-      k++;
-    }
-    blank(start, text.length);
-    return text.length;
-  };
-  while (i < text.length) {
-    const c = text[i];
-    if (c === '/' && text[i + 1] === '/') {
-      const nl = text.indexOf('\n', i);
-      const end = nl < 0 ? text.length : nl;
-      blank(i, end);
-      i = end;
-      continue;
-    }
-    if (c === '/' && text[i + 1] === '*') {
-      const close = text.indexOf('*/', i + 2);
-      const end = close < 0 ? text.length : close + 2;
-      blank(i, end);
-      i = end;
-      continue;
-    }
-    if (c === '/' && REGEX_MAY_START.test(text.slice(Math.max(0, i - 12), i))) {
-      let k = i + 1;
-      let cls = false;
-      while (k < text.length && text[k] !== '\n') {
-        const d = text[k];
-        if (d === '\\') { k += 2; continue; }
-        if (d === '[') cls = true;
-        else if (d === ']') cls = false;
-        else if (d === '/' && !cls) { k++; break; }
-        k++;
-      }
-      blank(i, k);
-      i = k;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') { i = scanString(i, c); continue; }
-    if (c === '{') { brace++; i++; continue; }
-    if (c === '}') {
-      if (brace === 0 && tpl.length) {
-        brace = tpl.pop();
-        m[i] = NON_CODE;
-        i = scanString(i, '`');
-        continue;
-      }
-      if (brace > 0) brace--;
-      i++;
-      continue;
-    }
-    i++;
-  }
-  const out = m.join('');
-  if (maskCache.size > 400) maskCache.clear();
-  maskCache.set(text, out);
   return out;
 };
 
