@@ -642,9 +642,9 @@ describe('assert-guard-coverage', () => {
       const r = runReal(
         seeded({
           mutateGuard: (s) => {
-            const anchor = 'const exercisedBy = (text, base) => {\n  const b = reEscape(base);';
+            const anchor = 'const exercisedBy = (text, base) => {\n  const mask = codeMask(text);';
             assert.ok(s.includes(anchor), 'the detector moved — this mutation no longer reaches it');
-            return s.replace(anchor, `const exercisedBy = (text, base) => {\n  if (text.includes(base)) return 'names it';\n  const b = reEscape(base);`);
+            return s.replace(anchor, `const exercisedBy = (text, base) => {\n  if (text.includes(base)) return 'names it';\n  const mask = codeMask(text);`);
           },
         }),
       );
@@ -1035,16 +1035,18 @@ describe('assert-guard-coverage', () => {
 
     // ── THIS FILE'S OWN FIXTURES, ASKED OF THE REAL GUARD ─────────────────────
     //
-    // 🔴 THE FIXTURES ABOVE ARE PART OF THE CORPUS THE GUARD READS. A fixture
-    // body that spells a REAL workflow-invoked script's path inside a string
-    // literal credits THIS file with exercising it: `exercisedBy` matches
-    // `from '<path>'`, and the path lives INSIDE the literal, so there is no
-    // string context left for it to lose. Composing `stripStringLiterals`
-    // (tooling/ci/text-reductions.mjs) onto the matcher would blank the literal
-    // and delete the credit for every genuine import with it, so the discipline
-    // belongs HERE, on the fixture names, not there. Measured 2026-08-27: the
-    // fixture three tests up named a real script, and the guard credited it to
-    // this file, which runs none of its behaviour.
+    // 🔴 THE FIXTURES ABOVE ARE PART OF THE CORPUS THE GUARD READS, so this file
+    // is held to crediting NOTHING it does not actually run.
+    //
+    // ⏱ APPENDED 2026-08-27 — until today a fixture body that spelled a real
+    // workflow-invoked script's path inside a string literal DID credit this
+    // file: `exercisedBy` matched `from '<path>'` wherever it fell. The guard's
+    // `codeMask` now asks where each match STARTS, so an import written inside a
+    // literal is no longer an import. Blanking the literal instead — composing
+    // `stripStringLiterals` onto the matcher — would have deleted every genuine
+    // credit with it, because the path in a real import lives inside the literal
+    // too; only the OFFSETS come from the mask. The fixture-naming discipline
+    // below is still worth keeping, but it is no longer the only thing holding.
     test('🔴 this file must credit NONE', () => {
       const subjects = WORKFLOW_INVOKED_OUTSIDE.filter((rel) => !EXCUSED.includes(rel));
       assert.ok(subjects.length > 3, `derived only ${subjects.length} outside scripts — the derivation stopped reaching them`);
@@ -1069,10 +1071,17 @@ describe('assert-guard-coverage', () => {
       // FILE'S OWN CODE, so a body that is not this file cannot receive it and
       // cannot then credit `probe`. `subjects[1]` keeps the control itself from
       // passing on a guard that crashed and printed no verdict at all.
+      //
+      // ⏱ APPENDED 2026-08-27 — the spliced line was `const PROBE = "import p
+      // from './…';";` until today: an import INSIDE A STRING, so the control was
+      // built out of the very defect the guard now rejects, and closing the hole
+      // would have turned this control red. It is a bare import STATEMENT now —
+      // what a test that really imports a script writes — so the control proves
+      // the same thing without depending on the bug.
       const probe = subjects[0];
       const ANCHOR = "const MANIFEST_REL = join('tooling', 'ci', 'test', 'coverage-manifest.json');";
       assert.ok(SELF.includes(ANCHOR), 'ANCHOR is no longer a line of this file — the control below would splice nothing');
-      const seeded = askGuard(SELF.replace(ANCHOR, `${ANCHOR}\nconst PROBE = "import p from './${probe}';";`));
+      const seeded = askGuard(SELF.replace(ANCHOR, `${ANCHOR}\nimport probeModule from './${probe}';`));
       assert.ok(
         seeded.stderr.includes(uncovered(subjects[1])),
         `the control fixture did not produce a verdict — the guard never reported ${subjects[1]}. ${seeded.stderr || seeded.stdout}`,

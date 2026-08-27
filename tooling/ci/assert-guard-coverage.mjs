@@ -1112,14 +1112,116 @@ const argElements = (text, close) => {
   return out;
 };
 
+// ── which BYTES are code, by OFFSET ─────────────────────────────────────────
+// ⏱ 2026-08-27. Every rule below matches a shape — `from '…'`, `spawnSync(`,
+// `const X =` — and a shape spelled INSIDE a string literal is the same bytes as
+// one spelled in code. A fixture body carrying `"import p from './x.mjs';"`
+// credited x.mjs with being imported by a test that only ever wrote it into a
+// temp file. So each match is now asked WHERE IT STARTS.
+//
+// Not `stripStringLiterals` composed onto the matcher: the path in a GENUINE
+// import lives inside the literal too, so matching the blanked text deletes
+// every real credit with the fake one. Only the offsets are taken from here;
+// the regexes still read the original bytes.
+//
+// Same length as its input by construction — replacement, never deletion — so
+// `mask[i]` describes `text[i]`. NUL marks a byte that is inside a string
+// literal or a comment; a template literal's `${…}` is code again, because it
+// is. Regex literals are recognised so a `/[^'"]/` cannot open a string that
+// never closes and blank the rest of the file.
+const NON_CODE = '\u0000';
+const REGEX_MAY_START = /(?:[([{,;:=!&|?+\-*%~^<>\n]|\b(?:return|typeof|case|in|of|do|else|yield|await|new|delete|void|instanceof))\s*$/;
+const maskCache = new Map();
+const codeMask = (text) => {
+  const hit = maskCache.get(text);
+  if (hit !== undefined) return hit;
+  const m = text.split('');
+  const blank = (a, b) => { for (let k = a; k < b; k++) m[k] = NON_CODE; };
+  const tpl = [];
+  let brace = 0;
+  let i = 0;
+  const scanString = (start, q) => {
+    let k = start + 1;
+    while (k < text.length) {
+      const c = text[k];
+      if (c === '\\') { k += 2; continue; }
+      if (c === q) { blank(start, k + 1); return k + 1; }
+      if (q === '`' && c === '$' && text[k + 1] === '{') {
+        blank(start, k + 2);
+        tpl.push(brace);
+        brace = 0;
+        return k + 2;
+      }
+      if (q !== '`' && c === '\n') { blank(start, k); return k; }
+      k++;
+    }
+    blank(start, text.length);
+    return text.length;
+  };
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i);
+      const end = nl < 0 ? text.length : nl;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      const end = close < 0 ? text.length : close + 2;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (c === '/' && REGEX_MAY_START.test(text.slice(Math.max(0, i - 12), i))) {
+      let k = i + 1;
+      let cls = false;
+      while (k < text.length && text[k] !== '\n') {
+        const d = text[k];
+        if (d === '\\') { k += 2; continue; }
+        if (d === '[') cls = true;
+        else if (d === ']') cls = false;
+        else if (d === '/' && !cls) { k++; break; }
+        k++;
+      }
+      blank(i, k);
+      i = k;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { i = scanString(i, c); continue; }
+    if (c === '{') { brace++; i++; continue; }
+    if (c === '}') {
+      if (brace === 0 && tpl.length) {
+        brace = tpl.pop();
+        m[i] = NON_CODE;
+        i = scanString(i, '`');
+        continue;
+      }
+      if (brace > 0) brace--;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  const out = m.join('');
+  if (maskCache.size > 400) maskCache.clear();
+  maskCache.set(text, out);
+  return out;
+};
+
 /** Every child-process call in `text`, reduced to the EXECUTABLE it runs: the
  *  first argv element when the binary is node itself, the first argument
  *  otherwise. Position is the whole point — a path in argv[1] is an ARGUMENT to
- *  some other program, which is how a guard's own fixture path shows up. */
+ *  some other program, which is how a guard's own fixture path shows up.
+ *  `isCode(i)` rejects a call that is only being QUOTED, never made — and it is
+ *  REQUIRED, not defaulted, so a future call site that forgets it throws rather
+ *  than quietly crediting every quoted spawn in the corpus. */
 const SPAWN_CALL = /(?:spawnSync|spawn|execFileSync|execFile|fork)\(/g;
-const spawnedExecutables = (text) => {
+const spawnedExecutables = (text, isCode) => {
   const heads = [];
   for (const m of text.matchAll(SPAWN_CALL)) {
+    if (!isCode(m.index)) continue;
     const args = argElements(text.slice(m.index + m[0].length), ')');
     if (!args.length) continue;
     const first = (args[0] ?? '').trim();
@@ -1138,10 +1240,18 @@ const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * or null. Comments are already stripped by the caller.
  */
 const exercisedBy = (text, base) => {
+  const mask = codeMask(text);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  /** The first match whose FIRST BYTE is code — a match that starts inside a
+   *  string literal is a shape being quoted, not one being run. */
+  const inCode = (re) => {
+    for (const m of text.matchAll(re)) if (isCode(m.index)) return m;
+    return null;
+  };
   const b = reEscape(base);
   const literal = new RegExp(`['"\`][^'"\`]*${b}['"\`]`);
-  if (new RegExp(`from\\s*['"\`][^'"\`]*${b}['"\`]`).test(text)) return 'imports it';
-  if (new RegExp(`import\\(\\s*['"\`][^'"\`]*${b}['"\`]`).test(text)) return 'imports it';
+  if (inCode(new RegExp(`from\\s*['"\`][^'"\`]*${b}['"\`]`, 'g'))) return 'imports it';
+  if (inCode(new RegExp(`import\\(\\s*['"\`][^'"\`]*${b}['"\`]`, 'g'))) return 'imports it';
 
   // Identifiers bound to a PATH ENDING IN the file — `const SCRIPT = resolve(
   // CI_DIR, '..', 'scripts', 'provision-backend.mjs');`. The literal must be the
@@ -1150,12 +1260,13 @@ const exercisedBy = (text, base) => {
   // binding that identifier would credit a fixture root for being a script.
   const bound = new Set();
   for (const m of text.matchAll(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=([^;]*?);`, 'g'))) {
+    if (!isCode(m.index)) continue;
     if (new RegExp(`['"\`][^'"\`]*${b}['"\`][\\s)]*$`).test(m[2].trim())) bound.add(m[1]);
   }
   const namesFile = (expr) => literal.test(expr) || [...bound].some((i) => new RegExp(`\\b${reEscape(i)}\\b`).test(expr));
 
-  for (const head of spawnedExecutables(text)) if (namesFile(head)) return 'runs it';
-  if ([...bound].some((i) => new RegExp(`import\\(\\s*${reEscape(i)}`).test(text))) return 'imports it';
+  for (const head of spawnedExecutables(text, isCode)) if (namesFile(head)) return 'runs it';
+  if ([...bound].some((i) => inCode(new RegExp(`import\\(\\s*${reEscape(i)}`, 'g')))) return 'imports it';
 
   // A runner defined in this file whose EXECUTABLE is built from one of its own
   // parameters. The script is then handed to it at that position — as a bare
@@ -1163,10 +1274,12 @@ const exercisedBy = (text, base) => {
   const runners = new Map();
   for (const re of [/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/g, /function\s+([A-Za-z_$][\w$]*)\s*\(/g]) {
     for (const m of text.matchAll(re)) {
-      const after = text.slice(m.index + m[0].length);
+      if (!isCode(m.index)) continue;
+      const at = m.index + m[0].length;
+      const after = text.slice(at);
       const params = argElements(after, ')').map((p) => p.trim().split(/[\s=:]/)[0]).filter((p) => /^[A-Za-z_$][\w$]*$/.test(p));
       if (!params.length) continue;
-      for (const head of spawnedExecutables(after.slice(0, 1200))) {
+      for (const head of spawnedExecutables(after.slice(0, 1200), (i) => isCode(at + i))) {
         const idx = params.findIndex((p) => new RegExp(`\\b${reEscape(p)}\\b`).test(head));
         if (idx >= 0) runners.set(m[1], idx);
       }
@@ -1175,6 +1288,7 @@ const exercisedBy = (text, base) => {
   const exactly = new RegExp(`^['"\`][^'"\`]*${b}['"\`]$`);
   for (const [name, idx] of runners) {
     for (const m of text.matchAll(new RegExp(`\\b${reEscape(name)}\\(`, 'g'))) {
+      if (!isCode(m.index)) continue;
       const arg = (argElements(text.slice(m.index + m[0].length), ')')[idx] ?? '').trim();
       if (arg && (exactly.test(arg) || bound.has(arg))) return `runs it via ${name}()`;
     }
@@ -1189,6 +1303,13 @@ const exercisedBy = (text, base) => {
 // healthy covered count while doing it. The first canary is the SHAPE THAT
 // CAUSED THIS — a fixture edit naming the file, in executable code — and it must
 // come out uncovered; the second is a real spawn and must come out covered.
+//
+// ⏱ APPENDED 2026-08-27 — a THIRD and FOURTH, the pair codeMask exists for: the
+// same import statement, once inside a string literal and once as code. The two
+// above differ in SHAPE, so a matcher with no notion of string context would
+// still tell them apart; these two do not differ in shape, so nothing but the
+// offsets can separate them. The quoted one also carries an astral character —
+// that is what gives the length check below something to fail on.
 const CANARY_NAMED_ONLY = [
   "edit(root, 'tooling/e2e/canary_subject.mjs', (s) => s.replace('one sentence', 'another'));",
   "assert.match(r.stderr, /tooling\\/e2e\\/canary_subject\\.mjs/);",
@@ -1199,11 +1320,27 @@ const CANARY_RUNS_IT = [
   'assert.equal(r.status, 1);',
   '',
 ].join('\n');
-if (exercisedBy(CANARY_NAMED_ONLY, 'canary_subject.mjs') || !exercisedBy(CANARY_RUNS_IT, 'canary_subject.mjs')) {
+const CANARY_IMPORT_QUOTED = [
+  'const fixture = "\u{1F534} import subject from \'#e2e/canary_subject.mjs\';";',
+  'writeFileSync(join(root, generated), fixture);',
+  '',
+].join('\n');
+const CANARY_IMPORT_REAL = [
+  "import subject from '#e2e/canary_subject.mjs';",
+  'assert.equal(subject.check(), 1);',
+  '',
+].join('\n');
+const canary = (t) => exercisedBy(t, 'canary_subject.mjs');
+const maskLen = codeMask(CANARY_IMPORT_QUOTED).length;
+if (canary(CANARY_NAMED_ONLY) || !canary(CANARY_RUNS_IT) || canary(CANARY_IMPORT_QUOTED) || !canary(CANARY_IMPORT_REAL) || maskLen !== CANARY_IMPORT_QUOTED.length) {
   coverageLost([
     'the negative-test DETECTOR no longer distinguishes a script that is RUN from one that is merely NAMED.',
-    `A fixture edit naming the file read as ${exercisedBy(CANARY_NAMED_ONLY, 'canary_subject.mjs') ?? 'null'} (must be null) and a`,
-    `spawn of it read as ${exercisedBy(CANARY_RUNS_IT, 'canary_subject.mjs') ?? 'null'} (must not be null).`,
+    `A fixture edit naming the file read as ${canary(CANARY_NAMED_ONLY) ?? 'null'} (must be null) and a`,
+    `spawn of it read as ${canary(CANARY_RUNS_IT) ?? 'null'} (must not be null).`,
+    `An import written INSIDE A STRING read as ${canary(CANARY_IMPORT_QUOTED) ?? 'null'} (must be null) and the`,
+    `same import written as code read as ${canary(CANARY_IMPORT_REAL) ?? 'null'} (must not be null).`,
+    `The mask measured ${maskLen} over a ${CANARY_IMPORT_QUOTED.length}-char fixture (must be EQUAL — it carries an`,
+    'astral character, and a mask built per CODE POINT is shorter than its input, so every offset past it is wrong).',
     'Until this holds, every "has a negative test" verdict for a script outside tooling/ci is the basename',
     'grep that credited tooling/e2e/verify_purged.mjs to a test of assert-d1-sql-inventory.mjs, which edits a',
     'COMMENT inside it and asserts on another guard entirely.',
