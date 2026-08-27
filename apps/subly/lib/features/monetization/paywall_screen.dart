@@ -74,6 +74,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Future<void> _buy(Offering offering) async {
     final PurchaseRail rail = ref.read(purchaseRailProvider);
+    // 🔴 THE TOKEN SEAM IS RESOLVED HERE, BEFORE ANY AWAIT — and the read this
+    // replaces was NOT lexically after one, which is exactly why it read as
+    // safe. `awaitUnlock` invokes the `accessToken:` callback ONCE PER ATTEMPT
+    // from inside its own retry loop (`entitlement_convergence.dart:120-127`):
+    // six attempts spread over `kCheckoutConvergenceDelays` (2+4+8+16+30 = 60s),
+    // five of them on the far side of a real sleep, while the user is free to
+    // leave the paywall at any moment in that minute. A `ref.read` in that
+    // callback therefore ran on a disposed widget and threw the release-mode
+    // `StateError` [userStateDrops] records — and `_buy` has no `catch`, so it
+    // became an unhandled async error with `_phase` stuck at pending.
+    //
+    // SAFE TO HOLD: `authRepositoryProvider` (`providers.dart:573`) is a
+    // root-scope `Provider` with no `ref.watch` in its body, so it is never
+    // recomputed and its instance lives as long as the container —
+    // `routerProvider` holds the same one for the life of the app
+    // (`router.dart:173`).
+    final Future<String?> Function() accessToken = ref
+        .read(authRepositoryProvider)
+        .currentAccessToken;
     final MoneyFunnel funnel = await ref.read(moneyFunnelProvider.future);
 
     setState(() => _phase = _PaywallPhase.opening);
@@ -98,19 +117,36 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     // entitlement appears or the plan is exhausted.
     final ConvergenceResult result = await ref
         .read(entitlementConvergenceProvider)
-        .awaitUnlock(
-          appId: AppConfig.appId,
-          accessToken: () =>
-              ref.read(authRepositoryProvider).currentAccessToken(),
-        );
+        .awaitUnlock(appId: AppConfig.appId, accessToken: accessToken);
     if (!mounted) return;
 
     if (result.isUnlocked) {
-      // Emitted AFTER the server confirmed, never on the checkout's return —
-      // otherwise abandoned checkouts and declined cards count as revenue.
-      await funnel.onPurchaseSuccess(offering.productId);
-      // Republish so every gate in the app sees the new answer.
-      await refreshEntitlements(ref);
+      // 🔴 BOTH CALLS ARE MADE HERE, BEFORE THE AWAIT. `refreshEntitlements`
+      // spends its `ref` SYNCHRONOUSLY — `ref.invalidate` then `ref.read`
+      // (`money_providers.dart:186-188`) — so the deadline is on the CALL, not
+      // on the future it returns. Sequentially it sat after
+      // `await funnel.onPurchaseSuccess(...)`, which the `if (!mounted)` above
+      // does not reach past: a user who leaves during that emit disposes this
+      // widget and the invalidate throws.
+      //
+      // `Future.wait` RATHER THAN A HOISTED VARIABLE, and the difference is not
+      // stylistic. A future that errors before its `await` is reached is
+      // reported as an UNHANDLED exception — measured on this toolchain:
+      // `Future<int>.error(...)`, a 50 ms delay, then `try { await f } catch`
+      // prints `Unhandled exception` and never reaches the `catch`.
+      // `Future.wait` attaches to both synchronously and still rethrows, so the
+      // sequential form's error behaviour is preserved and both events run.
+      //
+      // · onPurchaseSuccess — emitted only after the SERVER confirmed, never on
+      //   the checkout's return, or abandoned checkouts and declined cards count
+      //   as revenue. It cannot throw: `MoneyFunnel._log` catches everything by
+      //   contract (`money_funnel.dart:61-66`).
+      // · refreshEntitlements — republishes so every gate in the app sees the
+      //   new answer.
+      await Future.wait(<Future<void>>[
+        funnel.onPurchaseSuccess(offering.productId),
+        refreshEntitlements(ref),
+      ]);
       if (!mounted) return;
       setState(() => _phase = _PaywallPhase.unlocked);
       return;
