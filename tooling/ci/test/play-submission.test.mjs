@@ -29,9 +29,14 @@
 // ── THE PUBLISH GATE IS TESTED AS A GATE ─────────────────────────────────────
 // [ADR 031:117-124] required "a GitHub environment with a required reviewer" and
 // recorded the mechanism as UNBUILT. PG-1…PG-6 are that mechanism, and every one
-// of them has a case here that proves it can REFUSE — including PG-5, whose
-// whole reason for existing is that GitHub documents auto-creating a missing
-// environment with NO protection rules, so `environment:` alone fails open.
+// of them — PG-5b included — has a case here that proves it can REFUSE. PG-5
+// because GitHub documents auto-creating a missing environment with NO
+// protection rules, so `environment:` alone fails open. PG-5b because the
+// environment's own deployment branch policy is the only thing that says WHICH
+// REF may deploy — and until 2026-08-27 the fake GitHub below returned no
+// `deployment_branch_policy` field at all, so every case landed on that limb's
+// `refPolicy === undefined` NOT-DECIDED arm and the whole decision tree could be
+// deleted with this suite still green.
 //
 // ⚠️ MUTATION-PROVEN FIRST, NOT FIXTURE-FIRST. CLAUDE.md: "A fixture passing is
 // not a guard working — MUTATE THE REAL TREE", because a fixture you wrote
@@ -228,11 +233,19 @@ function tree({
  *  these tests may have any of them set — including, on a CI runner,
  *  GITHUB_ACTIONS and GITHUB_TOKEN, which PG-3 and PG-5 read. A test that
  *  inherits those passes on a runner and fails on a laptop for reasons that have
- *  nothing to do with the code. */
+ *  nothing to do with the code.
+ *
+ *  🔴 GITHUB_REF JOINED THIS LIST ON 2026-08-27 AND IT WAS ALREADY BEING READ.
+ *  PG-5b reads it. Its absence here was harmless only because the fake GitHub
+ *  returned no `deployment_branch_policy`, so PG-5b stopped at its first arm
+ *  before the ref mattered. The moment a case below gives the environment a
+ *  policy, an inherited GITHUB_REF decides the outcome — which is a suite that
+ *  behaves one way on a runner and another on a laptop, i.e. the exact thing
+ *  this list exists to prevent. */
 const CLEARED = [
   'ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD',
   'PLAY_SERVICE_ACCOUNT_JSON', 'PLAY_TRACK', 'ANDROID_SIGNING_POSTURE',
-  'GITHUB_ACTIONS', 'GITHUB_REPOSITORY', 'GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_URL',
+  'GITHUB_ACTIONS', 'GITHUB_REPOSITORY', 'GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_API_URL', 'GITHUB_REF',
   'PLAY_API_BASE_URL', 'PLAY_OAUTH_TOKEN_URL',
 ];
 
@@ -288,6 +301,12 @@ async function api({
   tracks = ['production', 'beta', 'alpha', 'internal'],
   protectionRules = [{ id: 1, type: 'required_reviewers', reviewers: [{ type: 'User', reviewer: { login: 'globalonlinedeveloper', id: 55662283 } }] }],
   environmentExists = true,
+  // PG-5b. `undefined` is not a value the environment response carries — it means
+  // the FIELD IS ABSENT, which is the shape every case here had before
+  // 2026-08-27 and the reason PG-5b's decision tree was dead code.
+  deploymentBranchPolicy = undefined,
+  branchPolicyRows = [],   // what the SECOND GET returns
+  branchPoliciesStatus = 200,
   failAt = null,           // 'commit' | 'tracks.update' | 'validate'
   sha256Override = null,   // force a transit-corruption verdict
   omitSha256 = false,
@@ -313,9 +332,22 @@ async function api({
     const authed = () => (req.headers.authorization ?? '') === `Bearer ${TOKEN}`;
 
     // ── GitHub: GET /repos/{owner}/{repo}/environments/{name} ────────────────
+    // …and PG-5b's SECOND GET, /deployment-branch-policies, which the script
+    // makes only when the first response's MODE says a custom list exists.
+    // 🔴 THE ORDER OF THESE TWO BRANCHES IS LOAD-BEARING: the environment path is
+    // a strict PREFIX of the policies path, so putting the environment reply
+    // first answers the policies GET with an environment body and PG-5b then
+    // reports "no readable branch_policies list" — a NOT DECIDED that looks like
+    // a working test.
     if (path.startsWith('/repos/')) {
       if (!environmentExists) return send(404, { message: 'Not Found' });
-      return send(200, { name: 'store-publish', protection_rules: protectionRules });
+      if (path.endsWith('/deployment-branch-policies')) {
+        if (branchPoliciesStatus !== 200) return send(branchPoliciesStatus, { message: 'no' });
+        return send(200, { total_count: branchPolicyRows.length, branch_policies: branchPolicyRows });
+      }
+      const env = { name: 'store-publish', protection_rules: protectionRules };
+      if (deploymentBranchPolicy !== undefined) env.deployment_branch_policy = deploymentBranchPolicy;
+      return send(200, env);
     }
 
     // ── Google token endpoint (JWT-bearer grant) ─────────────────────────────
@@ -772,6 +804,171 @@ describe('submit-play — the publish gate refuses', () => {
     const { code, out } = await submit(gated, { env: { GITHUB_TOKEN: '' } });
     assert.equal(code, 1, out);
     assert.match(out, /needs GITHUB_TOKEN to read the publish environment/);
+  });
+
+  // ── PG-5b · the environment's own deployment branch policy ────────────────
+  // 🔴 EVERY CASE ABOVE LANDS ON THIS LIMB'S FIRST ARM. The fake GitHub returned
+  // no `deployment_branch_policy` field, `refPolicy === undefined` is an `ok()`,
+  // and so the entire decision tree below could be deleted with this file green
+  // — measured 2026-08-27 by deleting it from a scratch copy of the script.
+  // These cases give the environment a policy so the tree is actually walked.
+  const ENV_GET = 'GET /repos/globalonlinedeveloper/Project_Cross_Platform_Apps/environments/store-publish';
+  const POL_GET = `${ENV_GET}/deployment-branch-policies`;
+  const CUSTOM = { protected_branches: false, custom_branch_policies: true };
+  const MAIN_ROW = [{ name: 'main', type: 'branch' }];
+
+  // 🔴 MEASURED 2026-08-27, BOTH PLATFORMS, BECAUSE THEY DISAGREE. PG-5b is the
+  // only limb that refuses with TWO GitHub sockets still open, and `die()`
+  // (tooling/release/submit-play.mjs:222) forces `process.exit(1)` rather than
+  // setting `process.exitCode`. On Ubuntu (WSL2, node v22.22.1) that exits 1. On
+  // this Windows host it prints the identical FAIL and then aborts inside libuv —
+  // "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\\win\\async.c:94"
+  // — and the child reports 0xC0000409 = 3221226505. CI is Linux, so the lane
+  // sees 1; a developer on Windows sees the abort.
+  // This maps ONLY that one value on ONLY win32. Every other code, including the
+  // 0 a deleted limb produces, still fails the assertion.
+  const WIN_LIBUV_ABORT = 3221226505;
+  const refusalCode = (code) => (process.platform === 'win32' && code === WIN_LIBUV_ABORT ? 1 : code);
+
+  // 🔴 THE REFUSAL, WITH ROWS OF THE REF'S OWN KIND PRESENT. Stated separately
+  // from the tag case below because that one refuses over an EMPTY row list,
+  // where `[].every(…)` is vacuously true — a refusal that fires only through an
+  // empty list has not been shown to compare anything.
+  test('PG-5b · refuses a branch the policy does not name, before one byte reaches Google', async () => {
+    const { code, out, calls } = await submit(gated, {
+      apiOpts: { deploymentBranchPolicy: CUSTOM, branchPolicyRows: MAIN_ROW },
+      env: { GITHUB_REF: 'refs/heads/hotfix/rush' },
+    });
+    assert.equal(refusalCode(code), 1, out);
+    assertComplained(out);
+    assert.match(out, /is not named by "store-publish"'s own deployment branch policy/, out);
+    assert.match(out, /No row of type "branch" names "hotfix\/rush" \(rows of that type: 1\)/, out);
+    // Nothing after the two gate reads. A refusal that still uploaded would be a
+    // receipt, not a gate.
+    assert.deepEqual(calls, [ENV_GET, POL_GET]);
+  });
+
+  test('PG-5b · refuses a TAG against a policy whose only row is a BRANCH', async () => {
+    const { code, out, calls } = await submit(gated, {
+      apiOpts: { deploymentBranchPolicy: CUSTOM, branchPolicyRows: MAIN_ROW },
+      env: { GITHUB_REF: 'refs/tags/v1.2.3' },
+    });
+    assert.equal(refusalCode(code), 1, out);
+    assert.match(out, /No row of type "tag" names "v1\.2\.3" \(rows of that type: 0\)/, out);
+    assert.deepEqual(calls, [ENV_GET, POL_GET]);
+  });
+
+  // 🔴 THE PERMIT ARM, AND WHY IT IS NOT JUST `code === 0`. Six of PG-5b's arms
+  // exit 0 and print "PG-5b deployment branch policy —", so a case asserting the
+  // exit code and that prefix passes on every one of them, including NOT DECIDED
+  // and including the limb's total absence. Pinned instead: the permit sentence,
+  // the absence of NOT DECIDED, and that the SECOND GET was made and was made
+  // BEFORE the token — a policy consulted after the upload decides nothing.
+  test('PG-5b · permits the branch the policy names, and reads the rows before minting a token', async () => {
+    const { code, out, calls } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      {
+        apiOpts: { deploymentBranchPolicy: CUSTOM, branchPolicyRows: MAIN_ROW },
+        env: { GITHUB_REF: 'refs/heads/main' },
+      },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /PG-5b deployment branch policy — "refs\/heads\/main" is named by "store-publish"'s policy/, out);
+    assert.doesNotMatch(out, /PG-5b deployment branch policy — NOT DECIDED/, out);
+    assert.deepEqual(calls.slice(0, 3), [ENV_GET, POL_GET, 'POST /token']);
+  });
+
+  // A row's `name` may be a glob and the script has no sourced model of that
+  // matcher, so it prints what it read and declines to decide. NOT DECIDED must
+  // never be reported as permitted, which is what the second assertion pins.
+  test('PG-5b · a wildcard row is NOT DECIDED rather than refused or permitted', async () => {
+    const { code, out } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      {
+        apiOpts: { deploymentBranchPolicy: CUSTOM, branchPolicyRows: [{ name: 'release/*', type: 'branch' }] },
+        env: { GITHUB_REF: 'refs/heads/main' },
+      },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT DECIDED: a row of type "branch" is not a literal name/, out);
+    assert.doesNotMatch(out, /is named by "store-publish"'s policy/, out);
+  });
+
+  // `null` and a MISSING field mean opposite things and the script prints them
+  // differently on purpose: null is "no policy, everything may deploy"; missing
+  // is "this response is not the shape expected".
+  test('PG-5b · a null policy permits every ref and costs no second GET', async () => {
+    const { code, out, calls } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      { apiOpts: { deploymentBranchPolicy: null }, env: { GITHUB_REF: 'refs/heads/anything' } },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /has none, so every branch and tag may deploy/, out);
+    assert.match(out, /deployment_branch_policy = null/, out);
+    assert.ok(!calls.includes(POL_GET), calls.join('\n'));
+  });
+
+  test('PG-5b · an ABSENT policy field is NOT DECIDED and says the field was absent', async () => {
+    const { code, out, calls } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      { env: { GITHUB_REF: 'refs/heads/main' } },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT DECIDED: this response carried no `deployment_branch_policy` field at all/, out);
+    assert.match(out, /deployment_branch_policy = undefined/, out);
+    assert.ok(!calls.includes(POL_GET), calls.join('\n'));
+  });
+
+  test('PG-5b · a protected-branch policy is NOT DECIDED — that is a different endpoint', async () => {
+    const { code, out, calls } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      {
+        apiOpts: { deploymentBranchPolicy: { protected_branches: true, custom_branch_policies: false } },
+        env: { GITHUB_REF: 'refs/heads/main' },
+      },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT DECIDED: the policy is by PROTECTED BRANCH/, out);
+    assert.ok(!calls.includes(POL_GET), calls.join('\n'));
+  });
+
+  test('PG-5b · a policy shape naming neither mode is NOT DECIDED', async () => {
+    const { code, out } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      {
+        apiOpts: { deploymentBranchPolicy: { protected_branches: false, custom_branch_policies: false } },
+        env: { GITHUB_REF: 'refs/heads/main' },
+      },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT DECIDED: the policy names neither protected branches nor a custom list/, out);
+  });
+
+  // 🔴 A ROW LIST THAT COULD NOT BE READ IS NOT AN EMPTY ROW LIST. An empty list
+  // would refuse every ref; "could not read" must not, and must not permit either.
+  test('PG-5b · an unreadable branch-policies response is NOT DECIDED, not a refusal', async () => {
+    const { code, out, calls } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      {
+        apiOpts: { deploymentBranchPolicy: CUSTOM, branchPoliciesStatus: 500 },
+        env: { GITHUB_REF: 'refs/heads/main' },
+      },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT DECIDED: .*deployment-branch-policies returned no readable `branch_policies` list/, out);
+    assert.ok(calls.includes(POL_GET), calls.join('\n'));
+  });
+
+  test('PG-5b · a ref that is neither a branch nor a tag is NOT DECIDED', async () => {
+    const { code, out } = await submit(
+      { withArtifact: true, artifactBytes: 5000 },
+      {
+        apiOpts: { deploymentBranchPolicy: CUSTOM, branchPolicyRows: MAIN_ROW },
+        env: { GITHUB_REF: 'refs/pull/7/merge' },
+      },
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT DECIDED: GITHUB_REF is neither a `refs\/heads\/` nor a `refs\/tags\/` ref/, out);
   });
 
   test('PG-6 · refuses the production track — ADR 031 class A', async () => {

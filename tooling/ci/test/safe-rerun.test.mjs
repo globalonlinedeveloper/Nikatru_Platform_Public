@@ -57,6 +57,9 @@ import {
   releaseLaneProblem,
   isLaneDir,
   releaseTagOf,
+  releaseRerunClearance,
+  publishSteps,
+  stripComments,
   refOf,
   expandGroup,
   groupOf,
@@ -639,15 +642,15 @@ jobs:
     assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
   });
 
-  test('`--failed` is refused here too — and `rerun-failed-jobs` skips a job that SUCCEEDED', () => {
-    // 🔴 THE COST OF THAT, ON THE RECORD RATHER THAN INFERRED. The limb never
-    // reads `args.failed`, so a partial re-run is refused exactly as a full one
-    // is. But `rerun-failed-jobs` does not re-run a job that already succeeded,
-    // so when the release job PUBLISHED and something else failed, `--failed`
-    // would never reach `gh release create`. That refusal is FALSE, and this
-    // case is what makes it a measured fact instead of a claim in a comment.
+  test('`--failed` is still refused when the publishing job was never measured', () => {
+    // `--failed` CAN lift this refusal (the block below), but only on a measured
+    // job conclusion. This fixture declares no `jobs`, which is the "I could not
+    // read them" answer — and an unread question must keep the refusal, not
+    // become one.
     const r = cli(tagPush({ [TAG]: RELEASED }), ['16000000001', '--failed']);
     assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`--failed` does not lift it here/);
+    assert.match(r.out, /could not be read/);
     assert.equal(r.reran, false);
   });
 
@@ -787,6 +790,316 @@ jobs:
       [...real.values()].filter((w) => w.publishesRelease).map((w) => w.file),
       ['build-platforms.yml'],
     );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 `--failed` ON THE RELEASE LIMB — the ONE state that lifts the refusal.
+//
+// `rerun-failed-jobs` re-runs the FAILED jobs and their dependents; a job that
+// concluded `success` is left alone. So when the publishing job succeeded and
+// something ELSE failed, a `--failed` re-run provably cannot reach
+// `gh release create`, and refusing it is a FALSE REFUSAL.
+//
+// ⚠️ THE FALSE ALLOW THIS SET EXISTS TO KEEP OUT, and it is the obvious
+// implementation: "a Release exists ⇒ the release job succeeded". IT DOES NOT
+// HOLD. `gh release create` is ONE STEP of that job — build-platforms.yml runs
+// a manifest read-back AFTER it — so the job can publish and then conclude
+// `failure`, and `rerun-failed-jobs` re-runs exactly that job. The second case
+// below is that state, and it must stay refused.
+//
+// The join is the STEP NAME, taken FROM THE PARSE rather than typed here: the
+// jobs API reports step names but never a step's `run:`, and it renames a matrix
+// leg to `<job> (<value>)`, so a job-name match would be a guess.
+describe('🔴 `--failed` lifts the release refusal ONLY on a measured job conclusion', () => {
+  const TAG = 'subly-v1.0.0';
+  const RELEASED = { tag_name: TAG, html_url: 'https://example.invalid/releases/tag' };
+  const BP = '.github/workflows/build-platforms.yml';
+
+  /** The publish step's name AS THE REAL WORKFLOW SPELLS IT. Typing it here
+   *  would make every case below pass against a parser that returns nothing. */
+  const REAL = loadWorkflows(REAL_WORKFLOWS).get(BP);
+  const STEP = REAL.publishStepNames[0];
+
+  const jobs = (over = {}) => [
+    {
+      name: 'Durable release artifacts (subly)',
+      conclusion: 'success',
+      status: 'completed',
+      steps: [{ name: 'Re-verify every asset against the manifest', conclusion: 'success' }, { name: STEP, conclusion: 'success' }],
+      ...over,
+    },
+    // The job that actually failed — the whole reason anyone types `--failed`.
+    { name: 'Windows', conclusion: 'failure', status: 'completed', steps: [{ name: 'build', conclusion: 'failure' }] },
+  ];
+
+  const tagPush = (over = {}) => ({
+    repo: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+    runs: { 16000000001: mkRun({ name: 'Build all 6 platforms', path: BP, event: 'push', head_branch: TAG }) },
+    branchHeads: { [TAG]: OLD },
+    runsByBranch: { [TAG]: [] },
+    releases: { [TAG]: RELEASED },
+    jobs: { 16000000001: jobs() },
+    ...over,
+  });
+
+  test('the parse still yields exactly one NAMED publish step and no join problem', () => {
+    // The positive control for every case in this block. Without it they are
+    // all equally consistent with `publishStepNames: []`, which refuses — and
+    // refusing for the wrong reason looks identical from the outside.
+    assert.deepEqual(REAL.publishJoinProblems, []);
+    assert.equal(REAL.publishStepNames.length, 1);
+    assert.equal(typeof STEP, 'string');
+    assert.match(STEP, /\S/);
+  });
+
+  test('🔴 PERMITTED — publish job concluded success, something else failed', () => {
+    const r = cli(tagPush(), ['16000000001', '--failed']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /publish CLEARED/);
+    // The claim is that it re-ran, and re-ran PARTIALLY. A full re-run here
+    // would hit `gh release create` again — the exact collision.
+    assert.equal(r.reran, true, r.out);
+    assert.match(r.log, /failedOnly=true/);
+  });
+
+  test('🔴 REFUSED — the publish job PUBLISHED and then concluded `failure`', () => {
+    // The false allow, as data. Identical Release, identical run record; the
+    // ONE variable is the conclusion of the job that carries the publish step.
+    const r = cli(tagPush({ jobs: { 16000000001: jobs({ conclusion: 'failure' }) } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /REFUSED/);
+    assert.match(r.out, /did not conclude `success`/);
+    assert.match(r.out, /Durable release artifacts \(subly\)/);
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('🔴 REFUSED — the publish job has not concluded at all yet', () => {
+    const r = cli(
+      tagPush({ jobs: { 16000000001: jobs({ conclusion: null, status: 'in_progress' }) } }),
+      ['16000000001', '--failed'],
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /did not conclude `success`.*: in_progress\)/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 REFUSED — the jobs API was unreadable', () => {
+    const fx = tagPush();
+    delete fx.jobs;
+    const r = cli(fx, ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /could not be read/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 REFUSED — jobs read fine, but NOT ONE carries the publish step', () => {
+    // 🔴 THE VACUOUS SHAPE. `every()` over an empty match is TRUE, so a
+    // clearance written as "no publishing job failed" would CLEAR a run whose
+    // publish it simply could not find — green because its subject was absent.
+    const orphan = [{ name: 'Windows', conclusion: 'failure', status: 'completed', steps: [{ name: 'build' }] }];
+    const r = cli(tagPush({ jobs: { 16000000001: orphan } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NO job in this run carries a step named/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 ONE MATRIX LEG SHORT — every leg is checked, not the first one', () => {
+    // 🔴 THE ONE-STEP-OVER CASE. `build-platforms.yml` publishes from a
+    // `strategy.matrix` with `fail-fast: false`, so the publish step lives in
+    // N jobs at once and GitHub renames each `<job> (<app>)`. A clearance that
+    // stopped at the first match would clear a run whose SECOND leg failed —
+    // and that leg re-runs `gh release create` on the same tag.
+    const legs = [
+      { name: 'Durable release artifacts (subly)', conclusion: 'success', status: 'completed', steps: [{ name: STEP }] },
+      { name: 'Durable release artifacts (other)', conclusion: 'failure', status: 'completed', steps: [{ name: STEP }] },
+    ];
+    const r = cli(tagPush({ jobs: { 16000000001: legs } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 2 job\(s\)/);
+    assert.match(r.out, /Durable release artifacts \(other\): failure/);
+    assert.equal(r.reran, false);
+    // The control: both legs green is the state that clears.
+    assert.equal(releaseRerunClearance(legs.map((j) => ({ ...j, conclusion: 'success' })), REAL).cleared, true);
+  });
+
+  const legA = () => ({ name: 'Durable release artifacts (subly)', conclusion: 'success', status: 'completed', steps: [{ name: STEP }] });
+  const legB = (over) => ({ name: 'Durable release artifacts (other)', conclusion: 'failure', status: 'completed', ...over });
+
+  test('🔴 an UNREADABLE step list is an UNKNOWN, never "this job does not publish"', () => {
+    const WHY =
+      '`(j?.steps ?? []).some(…)` is vacuously FALSE for an unreadable step list, so that job matched no ' +
+      'publish step, was not an owner, and could not contribute a non-success conclusion. MEASURED against ' +
+      'the shipped file: legA readable+`success`, legB `failure` with this shape → cleared:true, "all 1 ' +
+      'job(s) …" — CLEARED having never looked at a leg that re-runs `gh release create`. The jobs API ' +
+      'returns `steps: []` for a SKIPPED job and for one whose steps are not populated yet: a live shape.';
+    const shapes = {
+      'steps: []': legB({ steps: [] }),
+      'steps: null': legB({ steps: null }),
+      'steps: not an array (this THREW a TypeError before the repair)': legB({ steps: 'nope' }),
+      'a step carrying no name': legB({ steps: [{ conclusion: 'success' }] }),
+      'steps absent': legB({}),
+    };
+    for (const [label, leg] of Object.entries(shapes)) {
+      const r = releaseRerunClearance([legA(), leg], REAL);
+      assert.equal(r.cleared, false, `${label} CLEARED — ${WHY}`);
+      assert.match(r.why, /NO readable step list/, label);
+      assert.match(r.why, /Durable release artifacts \(other\)/, label);
+    }
+    assert.equal(
+      releaseRerunClearance([legA(), legB({ conclusion: 'success', steps: [{ name: STEP }] })], REAL).cleared,
+      true,
+      'THE CONTROL: the hole must not be closed by refusing everything — a genuinely readable job that concluded `success` is still permitted',
+    );
+  });
+
+  test('🔴 CLI — an empty step list refuses through main(), and POSTs nothing', () => {
+    const r = cli(tagPush({ jobs: { 16000000001: [legA(), legB({ steps: [] })] } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NO readable step list/);
+    assert.match(r.out, /REFUSED/);
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('🔴 a workflow object with no PARSED publish join refuses rather than reading `[]`', () => {
+    const why = '`publishJoinProblems ?? []` read an unparsed object as "no problems" — an unasked question, not a clean answer';
+    assert.equal(releaseRerunClearance([legA()], { publishStepNames: [STEP] }).cleared, false, why);
+    assert.equal(releaseRerunClearance([legA()], { publishJoinProblems: [] }).cleared, false, why);
+  });
+
+  test('🔴 a `#` inside a QUOTED step name is part of the NAME, not a comment', () => {
+    const w = parseWorkflow(`name: X
+on:
+  push:
+    tags: ['*']
+jobs:
+  release:
+    steps:
+      - name: "Publish #1"
+        run: gh release create "$T"
+`);
+    assert.deepEqual(w.publishStepNames, ['Publish #1'], 'measured before the repair: ["\\"Publish"] — the join would miss the real step forever');
+    assert.deepEqual(w.publishJoinProblems, []);
+    assert.equal(stripComments('  group: g   # why\n'), '  group: g   \n', 'a genuine trailing comment is still cut');
+    assert.equal(stripComments("  name: don't panic  # cut me\n"), "  name: don't panic  \n", 'an apostrophe in an UNQUOTED scalar must not swallow the comment');
+  });
+
+  test('🔴 CRLF — the step-name join survives the LINUX-vs-WINDOWS seam', () => {
+    // The whole-object CRLF case above would deep-equal two EMPTY parses just
+    // as happily. This one pins the value: CI is Linux, this host is Windows,
+    // and a `\r` clinging to the step name would join against nothing and
+    // refuse forever — inert, and indistinguishable from "nothing to clear".
+    const lf = readFileSync(join(REAL_WORKFLOWS, 'build-platforms.yml'), 'utf8').replace(/\r\n/g, '\n');
+    for (const eol of ['\n', '\r\n', '\r']) {
+      const names = parseWorkflow(lf.replace(/\n/g, eol)).publishStepNames;
+      assert.deepEqual(names, REAL.publishStepNames, `EOL ${JSON.stringify(eol)}`);
+      assert.equal(names.length, 1);
+      assert.doesNotMatch(names[0], /[\r\n]/);
+    }
+  });
+
+  test('🔴 ONE VARIABLE — the SAME cleared fixture WITHOUT `--failed` is refused', () => {
+    // A full `gh run rerun` re-runs the successful job too, so nothing about a
+    // succeeded publish makes it safe. If the clearance leaked into the full
+    // path this is the case that says so.
+    const r = cli(tagPush(), ['16000000001']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /gh release create/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 a CLEARED publish is still subject to the concurrency refusal', () => {
+    // `--failed` is not a safe harbour: a partial re-run is a NEW entrant in the
+    // same group. Same fixture, on a workflow that DOES key its group on the ref.
+    const PUB = `name: Pub
+on:
+  push:
+    tags: ['*-v*']
+
+concurrency:
+  group: pub-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: ${STEP}
+        run: gh release create "$RELEASE_TAG" --notes-file dist-notes.md
+`;
+    const dir = workflowsDir({ 'pub.yml': PUB });
+    const fx = tagPush();
+    fx.runs['16000000001'].path = '.github/workflows/pub.yml';
+    fx.branchHeads[TAG] = HEAD; // the run is at OLD — history
+    fx.runsByBranch[TAG] = [
+      { id: 16000000002, name: 'Pub', path: '.github/workflows/pub.yml', event: 'push', status: 'in_progress', head_branch: TAG, head_sha: HEAD },
+    ];
+    const r = cli(fx, ['16000000001', '--failed', '--workflows', dir]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /publish CLEARED/); // the release limb DID let it past
+    assert.match(r.out, /pub-refs\/heads\/subly-v1\.0\.0/);
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('an UNNAMED publish step cannot be joined, and refuses', () => {
+    const w = parseWorkflow(`name: X
+on:
+  push:
+    tags: ['*']
+jobs:
+  release:
+    steps:
+      - run: gh release create "$T"
+`);
+    assert.deepEqual(w.publishStepNames, []);
+    assert.match(w.publishJoinProblems.join(' '), /carry no `name:`/);
+    assert.equal(releaseRerunClearance(jobs(), w).cleared, false);
+  });
+
+  test('🔴 a job-level `if:` on the publishing job refuses — a dependent re-run', () => {
+    // `rerun-failed-jobs` re-runs a failed job's DEPENDENTS. Without an `if:`,
+    // a job that concluded `success` had every `needs` succeed, so nothing
+    // upstream can drag it back. With one, `success` no longer proves that.
+    const body = (gate) => `name: X
+on:
+  push:
+    tags: ['*']
+jobs:
+  release:
+${gate}    needs: [build]
+    steps:
+      - name: pub
+        run: gh release create "$T"
+`;
+    const bare = parseWorkflow(body(''));
+    const gated = parseWorkflow(body('    if: always()\n'));
+    assert.deepEqual(bare.publishStepNames, ['pub']);
+    assert.deepEqual(bare.publishJoinProblems, []);
+    assert.deepEqual(gated.publishStepNames, ['pub']); // still found — not hidden
+    assert.match(gated.publishJoinProblems.join(' '), /job-level `if:`/);
+    const ok = [{ name: 'r', conclusion: 'success', steps: [{ name: 'pub' }] }];
+    assert.equal(releaseRerunClearance(ok, bare).cleared, true);
+    assert.equal(releaseRerunClearance(ok, gated).cleared, false);
+  });
+
+  test('🔴 the REAL publishing job declares no job-level `if:` — the control', () => {
+    // The assertion above is only worth having if the subject actually sits on
+    // the clean side of it today. Read from the tree, not asserted from memory.
+    assert.deepEqual(REAL.publishJoinProblems, []);
+    const lines = stripComments(readFileSync(join(REAL_WORKFLOWS, 'build-platforms.yml'), 'utf8')).split('\n');
+    assert.deepEqual(publishSteps(lines).problems, []);
+  });
+
+  test('🔴 decide(): `--failed` with the clearance NEVER ASKED still refuses', () => {
+    const workflows = loadWorkflows(REAL_WORKFLOWS);
+    const run_ = mkRun({ path: BP, event: 'push', head_branch: TAG });
+    const base = { run: run_, branchHeadSha: OLD, workflows, siblings: [], repo: 'o/n', existingRelease: RELEASED };
+    assert.equal(decide({ ...base, failed: true }).code, 1);
+    assert.equal(decide({ ...base, failed: true, publishClearance: { cleared: false, why: 'x' } }).code, 1);
+    // And the one shape that lifts it.
+    assert.equal(decide({ ...base, failed: true, publishClearance: { cleared: true, why: 'y' } }).code, 0);
+    // …which `--failed` gates: the same clearance without the flag is refused.
+    assert.equal(decide({ ...base, failed: false, publishClearance: { cleared: true, why: 'y' } }).code, 1);
   });
 });
 

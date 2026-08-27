@@ -182,7 +182,11 @@
 //
 //   --failed      re-run only the failed jobs (POST …/rerun-failed-jobs).
 //                 ⚠️ NOT a safe harbour: a partial re-run enters the SAME
-//                 concurrency group and evicts just as hard.
+//                 concurrency group and evicts just as hard. It lifts the
+//                 release refusal ONLY when every job carrying the publish step
+//                 is MEASURED to have concluded `success` — see
+//                 `releaseRerunClearance`; the Release's existence proves
+//                 nothing, because that job can publish and then fail later.
 //   --dry-run     decide and print; never POST. The live read path, no writes.
 //   --workflows   parse a different directory (tests point this at fixtures).
 //   --repo        owner/name; else $GITHUB_REPOSITORY, else `git remote origin`.
@@ -282,12 +286,23 @@ export const token = () =>
 // the repair is a NO-OP HERE — it is the OTHER checkout, on a host that hands
 // back CRLF, where the whole parse went blind. It failed LOUD (`coverageProblem`
 // /the lane floors → exit 2) rather than allowing, but was blind there anyway.
-export const stripComments = (raw) =>
-  raw
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .map((l) => l.replace(/(^|\s)#.*$/, '$1'))
-    .join('\n');
+const cutComment = (l) => {
+  let quote = null;
+  for (let i = 0; i < l.length; i++) {
+    const c = l[i];
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++;
+      else if (c === quote) quote = null;
+    } else if ((c === '"' || c === "'") && (i === 0 || /[\s:,[{]/.test(l[i - 1]))) {
+      quote = c;
+    } else if (c === '#' && (i === 0 || /\s/.test(l[i - 1]))) {
+      return l.slice(0, i);
+    }
+  }
+  return l;
+};
+
+export const stripComments = (raw) => raw.replace(/\r\n?/g, '\n').split('\n').map(cutComment).join('\n');
 
 const indentOf = (l) => l.match(/^[ \t]*/)[0].length;
 
@@ -334,6 +349,94 @@ function onPushIsTagsOnly(lines) {
   return sawTags;
 }
 
+/** Every step that RUNS `gh release create`, by the `name:` the jobs API will
+ *  report for it, plus stated reasons that join must not be trusted.
+ *
+ *  🔴 THE STEP NAME IS THE JOIN, NOT THE JOB NAME. `GET …/runs/<id>/jobs`
+ *  reports each step's `name` but never its `run:`, and it reports a MATRIX
+ *  leg as `<job name> (<value>)` — so matching job names would mean guessing a
+ *  suffix, while the step name is written once and reported verbatim.
+ *
+ *  Two shapes are refused rather than joined, each because it would let a job
+ *  be cleared that `rerun-failed-jobs` would in fact re-run:
+ *   · a publish step with no `name:` — nothing to join on;
+ *   · a job-level `if:` on the publishing job — without one, a job that
+ *     concluded `success` had every `needs` succeed, so re-running the failed
+ *     jobs cannot drag it along as a dependent. With one, it can.  */
+export function publishSteps(lines) {
+  const names = [];
+  const problems = [];
+  let inJobs = false;
+  let jobKeyIndent = null;
+  let jobKey = null;
+  let jobPropIndent = null;
+  let jobHasIf = false;
+  let hits = [];
+  let unnamed = 0;
+  let stepIndent = -1;
+  let stepName = null;
+
+  const endJob = () => {
+    if (hits.length || unnamed) {
+      if (jobHasIf) {
+        problems.push(
+          `job \`${jobKey}\` runs \`gh release create\` and declares a job-level \`if:\`, so it can conclude \`success\` while a job it \`needs\` failed — and \`rerun-failed-jobs\` re-runs a failed job's dependents`,
+        );
+      }
+      if (unnamed) {
+        problems.push(
+          `${unnamed} step(s) running \`gh release create\` in job \`${jobKey}\` carry no \`name:\`, and the jobs API reports step names — there is nothing to join the publish to`,
+        );
+      }
+      names.push(...hits);
+    }
+    jobKey = null;
+    jobPropIndent = null;
+    jobHasIf = false;
+    hits = [];
+    unnamed = 0;
+    stepIndent = -1;
+    stepName = null;
+  };
+
+  for (const line of lines) {
+    if (line.trim() === '') continue;
+    const ind = indentOf(line);
+    if (ind === 0) {
+      endJob();
+      inJobs = /^(['"]?)jobs\1\s*:/.test(line);
+      jobKeyIndent = null;
+      continue;
+    }
+    if (!inJobs) continue;
+    if (jobKeyIndent === null) jobKeyIndent = ind;
+    if (ind === jobKeyIndent && /^\s*(['"]?)[\w.-]+\1\s*:\s*$/.test(line)) {
+      endJob();
+      jobKey = unquote(line.trim().replace(/:\s*$/, ''));
+      continue;
+    }
+    if (jobKey === null) continue;
+    if (jobPropIndent === null) jobPropIndent = ind;
+    if (ind === jobPropIndent && /^\s*(['"]?)if\1\s*:/.test(line)) jobHasIf = true;
+
+    const item = line.match(/^(\s*)-\s+(.*)$/);
+    if (item) {
+      stepIndent = item[1].length;
+      const n = item[2].match(/^(['"]?)name\1\s*:\s*(.+)$/);
+      stepName = n ? unquote(n[2].trim()) : null;
+    } else if (stepIndent >= 0 && ind > stepIndent && stepName === null) {
+      const n = line.match(/^\s*(['"]?)name\1\s*:\s*(.+)$/);
+      if (n) stepName = unquote(n[2].trim());
+    }
+    if (/\bgh\s+release\s+create\b/.test(line)) {
+      if (stepIndent >= 0 && ind > stepIndent && stepName !== null) hits.push(stepName);
+      else unnamed++;
+    }
+  }
+  endJob();
+  return { names: [...new Set(names)], problems };
+}
+
 /** Parse the TOP-LEVEL `concurrency:` declaration and `name:` out of one
  *  workflow. Job-level `concurrency:` is deliberately NOT read: it is indented,
  *  it governs only that job, and conflating the two would attribute a group to
@@ -367,7 +470,13 @@ export function parseWorkflow(raw) {
   // concurrency parse above.
   const publishesRelease = /\bgh\s+release\s+create\b/.test(lines.join('\n'));
   const pushTagsOnly = onPushIsTagsOnly(lines);
-  const trig = { publishesRelease, pushTagsOnly };
+  const pub = publishSteps(lines);
+  const trig = {
+    publishesRelease,
+    pushTagsOnly,
+    publishStepNames: pub.names,
+    publishJoinProblems: pub.problems,
+  };
 
   const at = topLine('concurrency');
   if (!at) return { name, ...trig, declared: false, group: null, cancelInProgress: false, cancelIsExpression: false };
@@ -519,6 +628,72 @@ export function releaseTagOf(run, workflow) {
   return String(run.head_branch);
 }
 
+const readStepNames = (job) => {
+  if (!Array.isArray(job?.steps) || job.steps.length === 0) return null;
+  const out = job.steps.map((s) => (typeof s?.name === 'string' && s.name.trim() !== '' ? s.name : null));
+  return out.includes(null) ? null : out;
+};
+
+/** May `--failed` lift the release refusal? ONLY when every job carrying the
+ *  publish step is MEASURED to have concluded `success`: `rerun-failed-jobs`
+ *  re-runs the failed jobs and their dependents, so a job that already
+ *  succeeded is left alone and `gh release create` cannot fire a second time.
+ *
+ *  🔴 THE EXISTENCE OF THE RELEASE PROVES NOTHING. `gh release create` is ONE
+ *  STEP: the job can publish and then fail on a later step, conclude `failure`,
+ *  and be re-run — the exact collision this limb exists to prevent. The job
+ *  conclusion is the only thing that answers it, so it is asked.
+ *
+ *  @param jobs  the `jobs` array from `GET …/runs/<id>/jobs`, or anything else
+ *               (null, an error carrier) meaning it could not be read
+ *  @returns { cleared, why } — `cleared:false` for every unknown, including
+ *           "no job in this run carries that step", which is what an empty
+ *           match must never be allowed to mean.
+ */
+export function releaseRerunClearance(jobs, workflow) {
+  if (!workflow) return { cleared: false, why: 'the workflow for this run is not in the parsed set' };
+  if (!Array.isArray(workflow.publishJoinProblems) || !Array.isArray(workflow.publishStepNames)) {
+    return { cleared: false, why: 'that workflow carries no parsed publish-step join at all, so nothing about its publish was measured' };
+  }
+  const problems = workflow.publishJoinProblems;
+  if (problems.length) return { cleared: false, why: problems.join('; ') };
+  const names = new Set(workflow.publishStepNames);
+  if (names.size === 0) {
+    return { cleared: false, why: 'no named step running `gh release create` was found in that workflow, so the publish cannot be tied to a job' };
+  }
+  if (!Array.isArray(jobs)) {
+    return { cleared: false, why: `the jobs of this run could not be read (${jobs?.error ?? 'no jobs list'})` };
+  }
+  const spelt = [...names].map((n) => `\`${n}\``).join(' or ');
+  const read = jobs.map((j) => ({ job: j, steps: readStepNames(j) }));
+  const blind = read.filter((e) => e.steps === null);
+  if (blind.length) {
+    const spell = blind
+      .map((e) => `${e.job?.name ?? '(unnamed job)'}: ${e.job?.status ?? 'no status'}/${e.job?.conclusion ?? 'no conclusion'}`)
+      .join(', ');
+    return {
+      cleared: false,
+      why: `${blind.length} of ${jobs.length} job(s) in this run report NO readable step list (${spell}) — a skipped job and an in-progress one BOTH report \`steps: []\`, so nothing here shows they do not carry ${spelt}. A job this could not look at is not a job it measured \`success\`.`,
+    };
+  }
+  const owners = read.filter((e) => e.steps.some((n) => names.has(n))).map((e) => e.job);
+  if (owners.length === 0) {
+    return { cleared: false, why: `NO job in this run carries a step named ${spelt} — the publish cannot be located in what actually ran` };
+  }
+  const bad = owners.filter((j) => String(j.conclusion) !== 'success');
+  if (bad.length) {
+    const spell = bad.map((j) => `${j.name}: ${j.conclusion ?? j.status ?? 'no conclusion'}`).join(', ');
+    return {
+      cleared: false,
+      why: `${bad.length} of ${owners.length} job(s) carrying ${spelt} did not conclude \`success\` (${spell}) — \`rerun-failed-jobs\` re-runs exactly those, and \`gh release create\` would fire again`,
+    };
+  }
+  return {
+    cleared: true,
+    why: `all ${owners.length} job(s) carrying ${spelt} concluded \`success\` (${owners.map((j) => j.name).join(', ')}), so \`rerun-failed-jobs\` leaves them alone`,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // GROUP RESOLUTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -610,9 +785,21 @@ export function groupOf(run, workflows, repo) {
  * @param repo            'owner/name', for `${{ github.repository }}`
  * @param existingRelease the Release already at this run's tag, `false` for
  *                        "asked, there is none", `null` for NOT ASKED
+ * @param failed          `--failed` was passed: POST `rerun-failed-jobs`
+ * @param publishClearance `releaseRerunClearance()`'s answer, or null for NOT
+ *                        ASKED — which, like every other unknown here, refuses
  * @returns { code, verdict: 'allow'|'refuse'|'unknown', reason, group, colliding[] }
  */
-export function decide({ run, branchHeadSha, workflows, siblings = [], repo = '', existingRelease = null }) {
+export function decide({
+  run,
+  branchHeadSha,
+  workflows,
+  siblings = [],
+  repo = '',
+  existingRelease = null,
+  failed = false,
+  publishClearance = null,
+}) {
   // ── THE RELEASE COLLISION, FIRST, because it does not depend on concurrency
   // at all: `gh release create` fails on an existing release whether or not
   // anything else is in flight.
@@ -630,7 +817,10 @@ export function decide({ run, branchHeadSha, workflows, siblings = [], repo = ''
         colliding: [],
       };
     }
-    if (existingRelease !== false) {
+    // `--failed` lifts this refusal ONLY on a MEASURED job conclusion. It is
+    // then still subject to the concurrency test below — a partial re-run
+    // enters the same group and evicts just as hard.
+    if (existingRelease !== false && !(failed && publishClearance?.cleared === true)) {
       return {
         code: 1,
         verdict: 'refuse',
@@ -639,7 +829,10 @@ export function decide({ run, branchHeadSha, workflows, siblings = [], repo = ''
         reason:
           `REFUSED. Run ${run.id} is a TAG push of \`${wfHere.file}\` at \`${releaseTag}\`, and a GitHub Release ` +
           `ALREADY EXISTS at that tag. That workflow runs \`gh release create\`, which is ` +
-          'NOT idempotent and has no `--clobber`: it fails outright on an existing release.',
+          'NOT idempotent and has no `--clobber`: it fails outright on an existing release.' +
+          (failed
+            ? ` \`--failed\` does not lift it here: ${publishClearance?.why ?? "the publishing job's conclusion was never asked for"}.`
+            : ''),
         group: null,
         colliding: [],
       };
@@ -781,13 +974,26 @@ function liveApi(repo, tok) {
         throw e;
       }
     },
+    // 🔴 A SHORT PAGE IS NOT AN ANSWER. One page holds 100 jobs; a matrix that
+    // overflows it would hand back a set missing the very leg that failed, and
+    // a clearance computed over the survivors is a FALSE ALLOW. Compare against
+    // `total_count` and throw instead.
+    listJobs: async (id) => {
+      const page = await get(`/repos/${repo}/actions/runs/${id}/jobs?filter=latest&per_page=100`);
+      if (!Array.isArray(page.jobs)) throw new Error(`run ${id} came back with no \`jobs\` array`);
+      if (typeof page.total_count !== 'number' || page.total_count !== page.jobs.length) {
+        throw new Error(`run ${id} reports ${page.total_count} job(s) but one page carried ${page.jobs.length}`);
+      }
+      return page.jobs;
+    },
     listRuns: async (branch) => {
       const out = [];
       for (const status of ['in_progress', 'queued']) {
         const page = await get(
           `/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&status=${status}&per_page=100`,
         );
-        out.push(...(page.workflow_runs ?? []));
+        if (!Array.isArray(page.workflow_runs)) throw new Error(`\`${status}\` runs for \`${branch}\` came back with no \`workflow_runs\` array`);
+        out.push(...page.workflow_runs);
       }
       return out;
     },
@@ -836,6 +1042,15 @@ function fixtureApi(path) {
     },
     listRuns: async (branch) => fx.runsByBranch?.[branch] ?? [],
     getRelease: async (tag) => fx.releases?.[tag] ?? null,
+    // 🔴 NOT `?? []`. An absent `jobs` key must mean "I could not read them",
+    // never "there are none" — an empty array clears nothing here, but only
+    // because `releaseRerunClearance` refuses an empty match, and a fixture
+    // must not depend on that being true twice.
+    listJobs: async (id) => {
+      const j = fx.jobs?.[String(id)];
+      if (!Array.isArray(j)) throw new Error(`fixture declares no jobs for run ${id}`);
+      return j;
+    },
     rerun: async (id, failedOnly) => {
       if (log) appendFileSync(log, `rerun ${id} failedOnly=${failedOnly}\n`);
       console.log(`   (fixture transport: a re-run of ${id} WOULD have been POSTed here)`);
@@ -967,9 +1182,24 @@ async function main(argv) {
     }
   }
 
+  // The release is present and `--failed` was asked for: measure the publishing
+  // job's conclusion. Anything unreadable stays `cleared:false` — the refusal
+  // is the default and only a measurement lifts it.
+  let publishClearance = null;
+  if (releaseTag !== null && existingRelease !== false && args.failed) {
+    let jobs;
+    try {
+      jobs = await api.listJobs(run.id);
+    } catch (e) {
+      jobs = { error: e.message };
+    }
+    publishClearance = releaseRerunClearance(jobs, workflows.get(run.path));
+    console.log(`  publish ${publishClearance.cleared ? 'CLEARED' : 'NOT cleared'} — ${publishClearance.why}`);
+  }
+
   let branchHeadSha = null;
   let siblings = [];
-  if (existingRelease === false) {
+  if (existingRelease === false || publishClearance?.cleared === true) {
     try {
       branchHeadSha = await api.getBranchHead(run.head_branch);
     } catch (e) {
@@ -988,7 +1218,16 @@ async function main(argv) {
     }
   }
 
-  const verdict = decide({ run, branchHeadSha, workflows, siblings, repo, existingRelease });
+  const verdict = decide({
+    run,
+    branchHeadSha,
+    workflows,
+    siblings,
+    repo,
+    existingRelease,
+    failed: args.failed,
+    publishClearance,
+  });
 
   console.log('');
   console.log(`run ${run.id}  ${run.name ?? run.path}  (${run.path})`);
