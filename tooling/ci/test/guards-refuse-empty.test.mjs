@@ -42,7 +42,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -209,6 +209,60 @@ describe('the scan cannot be trusted', () => {
     );
   });
 
+  // ── string context: the pair the import matcher must tell apart ────────────
+  // The test above is the NEGATIVE CONTROL for the two below and must be read
+  // with them: a real import of a missing module still has to bite. The cases
+  // here are the same bytes with one difference — they sit inside a string
+  // literal. Until 2026-08-27 this guard could not tell them apart, PR #397 put
+  // exactly such a fixture into a sibling guard's source, and because this guard
+  // is wired at ci.yml:1678 that reddened EVERY PUSH over a path nobody imports.
+  //
+  // Backticks are the outer quote here on purpose: escaping the inner quotes
+  // instead was rejected in #397 as formatter-fragile — any tool that normalises
+  // quote style would silently change what the fixture means.
+  const REFUSES_AND_QUOTES_AN_IMPORT =
+    `const fixture = "import subject from './probe-nowhere.mjs';";\n` +
+    `if (fixture.length) console.error('x COVERAGE LOST - nothing to scan');\n` +
+    `process.exit(1);\n`;
+
+  test('a relative import that is only QUOTED is not chased to disk', () => {
+    withTree(compliant({ 'tooling/ci/probe-quotes.mjs': REFUSES_AND_QUOTES_AN_IMPORT }), ({ code, out }) => {
+      assert.equal(code, 0, out);
+      assert.doesNotMatch(out, /probe-nowhere\.mjs/);
+      // and it is still a probed executable, not quietly reclassified out of the
+      // subject set to make the problem go away
+      assert.match(out, /4 probed executable\(s\) refused/);
+    });
+  });
+
+  test('a REAL import in a file that also quotes one is still followed', () => {
+    // The direction that matters more. A gate that answered "inside a literal"
+    // for everything would make the case above pass and silently stop building
+    // the import closure — every guard with a shared module would then die in
+    // the loader, which this guard reads as a broken harness rather than a
+    // refusal. So: same file, one quoted path and one real import of a module
+    // that IS on disk, and the real one must reach the built tree.
+    withTree(
+      compliant({
+        'tooling/ci/probe-shared.mjs': 'export const helper = () => 1;\n',
+        'tooling/ci/probe-both.mjs':
+          `const fixture = "import subject from './probe-nowhere.mjs';";\n` +
+          `import { helper } from './probe-shared.mjs';\n` +
+          `if (fixture.length) helper();\n` +
+          `process.exit(1);\n`,
+      }),
+      ({ code, out }) => {
+        // green is only meaningful because probe-both.mjs is RUN inside the tree:
+        // had probe-shared.mjs not been copied in, the loader would have failed
+        // and the crash limb would have reported it instead of this passing line
+        assert.equal(code, 0, out);
+        assert.doesNotMatch(out, /probe-nowhere\.mjs/);
+        assert.doesNotMatch(out, /died in the module loader/);
+        assert.match(out, /1 derived as libraries with no main/);
+      },
+    );
+  });
+
   test('an empty home is COVERAGE LOST, not a smaller clean run', () => {
     withTree(makeTree({ 'tooling/ci/probe-alpha.mjs': REFUSES, 'tooling/scripts/.keep': '' }), ({ code, out }) => {
       assert.equal(code, 1, out);
@@ -233,7 +287,15 @@ describe('real-repo mode', () => {
   const inRepoMode = (files) => {
     const root = makeTree(files);
     copyFileSync(GUARD, join(root, 'tooling/ci/assert-guards-refuse-empty.mjs'));
-    copyFileSync(join(CI_DIR, 'tree-walk.mjs'), join(root, 'tooling/ci/tree-walk.mjs'));
+    // DERIVED, not a hand list. This was `tree-walk.mjs` written out, and adding
+    // a second sibling import to the guard broke both tests in this block with
+    // an ERR_MODULE_NOT_FOUND that says nothing about what they assert. A copy
+    // of the guard that cannot load reports whatever the loader says, and the
+    // two tests below would have gone on failing for a reason unrelated to the
+    // limbs they exist to exercise.
+    for (const [, spec] of readFileSync(GUARD, 'utf8').matchAll(/^import\s[^\n]*?from\s+'\.\/([\w.-]+\.mjs)'/gm)) {
+      copyFileSync(join(CI_DIR, spec), join(root, 'tooling/ci', spec));
+    }
     const r = spawnSync(process.execPath, ['tooling/ci/assert-guards-refuse-empty.mjs'], {
       cwd: root,
       encoding: 'utf8',
