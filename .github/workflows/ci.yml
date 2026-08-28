@@ -2146,6 +2146,34 @@ jobs:
       # impossible for as long as it lasts. Cheap to hold, expensive to reclaim.
       - name: Stamped app is dart format-clean
         run: dart format --output=none --set-exit-if-changed apps/probe
+      # 🔴 THE BACKEND STAMP AND ITS FORMAT GATE WERE MOVED HERE 2026-08-28, AND THE
+      # REASON IS THAT THE TWO FORMAT GATES WERE MUTUALLY UNSATISFIABLE WHERE THEY SAT.
+      # `dart format` chooses its style from the LANGUAGE VERSION it can resolve. Both
+      # gates stamp from the SAME brick templates, but the probeapi gate used to run
+      # AFTER `Analyze + test the stamped app`, whose `flutter pub get` creates package
+      # resolution — so the two gates judged the same source under DIFFERENT styles.
+      # PROVEN by CI on 0a80460, one run, one commit, one template set:
+      #     step 13  Stamped app is dart format-clean          (probe)     success
+      #     step 26  Stamped backend app is dart format-clean  (probeapi)  failure
+      # and before that commit the pair failed the other way round. No template content
+      # can satisfy both; editing the brick only chose which gate went red.
+      # Invisible under Flutter 3.44.9; dart_style 3.1.x (Dart 3.13.1) made it bite.
+      # ⚠️ NEITHER GATE IS WEAKENED. Both still assert that a stamped app is BORN
+      # format-clean, and both now judge in the same unresolved state — the state the
+      # probe gate has always passed under. What changed is only WHEN probeapi is
+      # stamped and checked, not WHAT is checked.
+      # 📌 The alternative — running both AFTER `pub get`, at the declared language
+      # version 3.5 — is the more principled fix and is deliberately NOT taken here: it
+      # needs the brick reformatted to that style (~18 files) and is its own change.
+      # ── Variant 2: the OPT-IN backend stamp (needs_backend=true). Rarer, but
+      # it still has to typecheck and deploy-dry-run.
+      - name: Stamp the opt-in backend app
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          export NIKATRU_ALLOW_OVERWRITE=1
+          mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
+      - name: Stamped backend app is dart format-clean
+        run: dart format --output=none --set-exit-if-changed apps/probeapi
       # The stamp lane used to assert only that the app COMPILES and its tests
       # pass, so anything merely ABSENT sailed through: themeMode appeared zero
       # times repo-wide, Semantics( zero times, and the account-delete button
@@ -2215,13 +2243,6 @@ jobs:
       - name: Every asset the build actually shipped has a licence row
         run: node tooling/ci/assert-licence-register.mjs . --bundle apps/probe/build/web/assets
 
-      # ── Variant 2: the OPT-IN backend stamp (needs_backend=true). Rarer, but
-      # it still has to typecheck and deploy-dry-run.
-      - name: Stamp the opt-in backend app
-        run: |
-          export PATH="$PATH:$HOME/.pub-cache/bin"
-          export NIKATRU_ALLOW_OVERWRITE=1
-          mason make app -c tooling/bricks/app/_probe_backend_vars.json -o . --on-conflict overwrite
       - name: Backend stamp has a Worker + APP_DB but still no per-app R2
         run: node tooling/ci/assert-clone-contract.mjs --client probe --backend probeapi
       # [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/plans/03-stamper-plan.md after the pipeline harvest was frozen) EXERCISE THE PROVISIONER. Same reasoning the four
@@ -2256,8 +2277,6 @@ jobs:
         run: node tooling/ci/assert-stamp-text-fidelity.mjs --vars tooling/bricks/app/_probe_backend_vars.json --service services/probeapi-api
       - name: Revert the catalogue — both probes are throwaway
         run: git checkout -- catalog/apps.json sites/_shared/_data/apps.json
-      - name: Stamped backend app is dart format-clean
-        run: dart format --output=none --set-exit-if-changed apps/probeapi
       - name: Analyze the stamped backend app
         working-directory: apps/probeapi
         run: |
