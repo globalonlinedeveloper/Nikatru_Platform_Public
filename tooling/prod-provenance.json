@@ -28,6 +28,21 @@
     "A single portfolio-wide rule would have had to be `app_version`, seven tables would have been exempt,",
     "and the exemptions would have been invisible.",
     "",
+    "── `alsoResolves` — A SECOND RULE, NEVER A LOOSER FIRST ONE (added 2026-08-28) ─────────────────",
+    "A table may carry `alsoResolves: [<resolver id>, …]`. The monitor consults it ONLY for a value the",
+    "table's primary `resolver` has already refused, and an acceptance on that footing is PRINTED rather",
+    "than counted silently — the same discipline the deployment-witness and manual-deploys acceptances",
+    "already follow. Exactly one table uses it: `consent_artifacts`, because the nightly e2e lane writes",
+    "there on purpose and B-17's own premise is that it may.",
+    "🔴 IT EXISTS SO THAT `released-build` IS NEVER WIDENED. The tempting change was to let it accept",
+    "anything containing `+` or `-`; that is the empty predicate again, and it would admit `dev`-class",
+    "junk forever. A second resolver has to be declared, named, argued for, and can be read on its own.",
+    "⚠️ AND IT IS A REAL COST, NOT A FREE ONE: every value a second resolver admits is a value this",
+    "monitor will no longer go red for. An entry belongs here only when something EARLIER and CLOSER to",
+    "the writer already fails on the state the monitor would have caught. For `consent_artifacts` that",
+    "earlier thing is tooling/e2e/purge.mjs, which since 2026-08-28 hard-fails the nightly the moment it",
+    "cannot identify the consent row it was told to delete.",
+    "",
     "── THE TWO LIMBS, AND WHICH IS WHICH ──────────────────────────────────────────────────────────",
     "GATE    · tooling/ci/assert-prod-provenance.mjs — runs on every push in ci.yml. SECRETLESS, so it",
     "          CANNOT SEE PRODUCTION. It asserts only what is checkable from the repo: every table the",
@@ -53,6 +68,7 @@
     "cron-job": "The marker value must be a job the deployed Worker both DECLARES and USES — the `export const <NAME>_JOB = '<literal>'` set in services/platform/src, the same derivation tooling/ops/check-heartbeats.mjs uses for its completeness limb. A heartbeat row naming a job no deployed code writes is residue from a renamed or deleted job.",
     "provider-register": "The marker value must be a rail declared in tooling/legal/provider-register.json. A row naming a provider the register does not carry is either a fabricated row or a rail that reached production without a legal record, and both need a human.",
     "migration-seed": "The marker value must be one of the literals the migrations themselves INSERT into that column. These are reference rows, not data: their provenance is the migration ledger, and any value outside it was put there by hand.",
+    "e2e-run": "The marker value must be exactly `e2e-<run_number>-<sha7>` — lower-case literal prefix `e2e-`, 1-9 digits, `-`, and exactly 7 lower-case hex characters. That is the ONE string .github/workflows/e2e.yml derives into $GITHUB_ENV and passes as `--dart-define=APP_VERSION`, added 2026-08-28 so that the nightly's live-verification rows stop landing as `dev`. It is a NARROW ADDITION to `consent_artifacts` and is registered nowhere else. 🔴 IT IS SHAPE-ONLY AND THEREFORE WEAKER THAN `released-build`, AND IT SAYS SO: it is not checked against the e2e lane's real run history, so a row hand-posted in this shape would resolve. What it cannot admit is the class this register was written against — `dev`, `c6-localprobe`, NULL, a bare `e2e`, an upper-case sha, a full 40-char sha and any released-build string all fail it. ⚠️ AND THE FALSE-NEGATIVE IT WOULD OTHERWISE CREATE IS PAID FOR ELSEWHERE, NOT WAIVED: accepting `e2e-*` means residue from a CRASHED nightly no longer reds ops-watch, which is exactly the incident of 2026-08-27. It is only defensible because tooling/e2e/purge.mjs now HARD-FAILS the moment it cannot identify the consent row it was asked to delete — the nightly goes red at the moment of the failure, on the workflow that owns the residue, instead of a different workflow going red a day later. A row accepted here is also PRINTED on every run rather than passing silently, so the residue stays visible in the monitor's own log.",
     "app-catalogue": "The marker value must be the slug of an app the factory actually ships, read from tooling/channel-register.json's `apps` list — the same catalogue assert-channel-register.mjs grades its own rows against, never a second list here. For DERIVED tables that carry no build marker of their own. ⚠️ DELIBERATELY WEAKER THAN `released-build`, AND IT SAYS SO: it proves the row belongs to a real app, not that a released build wrote it, so a row derived from a `dev`-stamped event still resolves. That residual is accepted only because the SOURCE table is separately held to `released-build`, and it is recorded here rather than hidden. What it does catch is the state this portfolio has actually produced — rows for an app id nothing ships, i.e. probe residue (`c6-localprobe`)."
   },
 
@@ -65,7 +81,8 @@
     "consent_artifacts": {
       "marker": "app_version",
       "resolver": "released-build",
-      "reason": "Carries `app_version` (0002_analytics.sql:77), same writer, same envelope. Append-only by design, so a stray row can never be corrected by an UPDATE — it can only be deleted, which is exactly the disposition B-17 wants proven."
+      "alsoResolves": ["e2e-run"],
+      "reason": "Carries `app_version` (0002_analytics.sql:77), same writer, same envelope. Append-only by design, so a stray row can never be corrected by an UPDATE — it can only be deleted, which is exactly the disposition B-17 wants proven. ⬜ `alsoResolves` ADDED 2026-08-28 AND IT IS THE ONLY TABLE THAT CARRIES ONE. From that date .github/workflows/e2e.yml stamps `APP_VERSION=e2e-<run_number>-<sha7>` on the nightly's live verification, so this table legitimately receives rows the release lane did not ship — B-17's own premise is that verification against production is permitted and EXPECTED. Those rows fail `released-build` by construction, and widening `released-build` to admit them is the empty-predicate failure this register's _readme was written against, so the second resolver is a SEPARATE, NARROW one instead. `resolver` stays `released-build`: it is still the primary rule, assert-prod-provenance.mjs limb 5 requires exactly that of any table carrying `app_version`, and `alsoResolves` is consulted only for a value the primary has already refused."
     },
     "entitlements": {
       "marker": "provider_environment",

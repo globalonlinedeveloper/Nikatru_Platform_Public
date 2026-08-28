@@ -25,6 +25,11 @@
 // rows that CANNOT BE TRACED instead gives the predicate a non-empty complement
 // that probe rows fall into without anyone tagging anything.
 //
+// A table may also declare `alsoResolves` — a list of SECOND resolvers, tried
+// only for a value the primary one has already refused, and every acceptance on
+// that footing PRINTS. One table uses it (`consent_artifacts`, since
+// 2026-08-28); the block above `e2eRunResolver` argues the trade in full.
+//
 // The rules are per table because the columns are (tooling/prod-provenance.json
 // carries each marker and the written reason for it), and the table set is
 // ENUMERATED from services/platform/migrations rather than listed — the same
@@ -335,6 +340,57 @@ function makeReleasedBuildResolver(lines, runs, deployedShas = null, onWitness =
   };
 }
 
+// ── `e2e-run` · THE NIGHTLY'S OWN STAMP ─────────────────────────────────────
+//
+// `e2e-<run_number>-<sha7>` — the ONE string .github/workflows/e2e.yml derives
+// into $GITHUB_ENV and passes as `--dart-define=APP_VERSION`. Born 2026-08-28,
+// with the stamp itself: before that the nightly passed no APP_VERSION at all,
+// AppConfig fell back to its compile-time `'dev'`, and six rows written by two
+// crashed re-runs on 2026-08-27 turned this monitor red on 2026-08-28 carrying
+// nothing that said who wrote them.
+//
+// 🔴 IT IS A SEPARATE RESOLVER BECAUSE `released-build` MUST NOT BE WIDENED.
+// The cheap change was to let the shipped-build matcher accept anything with a
+// `+` or a `-` in it. That is the EMPTY PREDICATE the register's own _readme was
+// written against — it would admit `dev`-class junk forever, and the count would
+// still print clean. This admits one shape and names it.
+//
+// ⚠️ SHAPE-ONLY, AND WEAKER THAN `released-build` — SAID HERE RATHER THAN LEFT
+// TO BE DISCOVERED. `released-build` cross-checks the run number and the sha
+// against GitHub's real run history; this does not, because e2e.yml is not a
+// release lane and appears in no row of the channel register, so `githubRuns`
+// never enumerates it. A row hand-posted in this shape to the public consent
+// route would therefore resolve. What it CANNOT admit is the class this register
+// exists for: `dev`, `c6-localprobe`, NULL, the empty string, a bare `e2e`, an
+// upper-case or full-length sha, and every released-build string all fail it.
+//
+// ⚠️ AND THE FALSE NEGATIVE IS PAID FOR, NOT WAIVED. Accepting `e2e-*` means
+// residue from a CRASHED nightly stops reddening this monitor — which is exactly
+// the incident above, so the trade has to be made deliberately or not at all.
+// It is made because tooling/e2e/purge.mjs now HARD-FAILS the moment it cannot
+// identify the consent row it was asked to delete, so the nightly goes red at
+// the moment of the failure, on the workflow that owns the residue, instead of
+// this reader going red a day later on a different workflow with no idea what
+// wrote the row. That is an earlier and better detector, not a lost one. And an
+// acceptance here is PRINTED on every run — see `alsoAccepted` in main() — so
+// the residue is still visible in this monitor's own log.
+//
+// 1-9 digits mirrors assert-app-versioning.mjs's MAX_RUN_DIGITS; 7 lower-case
+// hex mirrors its SHA_LEN and `${GITHUB_SHA::7}`. Both halves are anchored, so
+// the total can never exceed 4 + 9 + 1 + 7 = 21 characters — inside the 32 that
+// services/platform/src/routes/events.ts binds with `str(body?.app_version, 32)`
+// and above which a value is stored as NULL rather than truncated.
+const E2E_RUN_SHAPE = /^e2e-\d{1,9}-[0-9a-f]{7}$/;
+
+function e2eRunResolver(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return 'no app_version at all, so it is not the nightly e2e lane\'s stamp either';
+  }
+  return E2E_RUN_SHAPE.test(value)
+    ? null
+    : `\`${value}\` is not the shape .github/workflows/e2e.yml stamps (e2e-<run_number>-<sha7>)`;
+}
+
 // ── the other four resolvers ────────────────────────────────────────────────
 function cronJobNames() {
   const src = join(ROOT, 'services', 'platform', 'src');
@@ -533,6 +589,7 @@ async function main() {
     'released-build': makeReleasedBuildResolver(lines, [...runs, ...attested], deployedShas, (note) => {
       if (!witnessed.includes(note)) witnessed.push(note);
     }),
+    'e2e-run': e2eRunResolver,
     'live-environment': (v) =>
       v === 'live' ? null : v == null ? 'no environment at all — the rail could not attribute this row to a money world' : `environment is \`${v}\`, not \`live\``,
     'cron-job': ((set) => (v) => (typeof v === 'string' && set.has(v) ? null : `job \`${v}\` is declared by no \`export const <NAME>_JOB\` in services/platform/src`))(cronJobNames()),
@@ -567,6 +624,11 @@ async function main() {
 
   const census = [];
   const violations = [...attViolations];
+  // Acceptances on a SECOND resolver, printed after the census. Never silent —
+  // the same rule the deployment witness and the manual-deploys register follow,
+  // and here it is what keeps a crashed nightly's residue visible in this log
+  // even though it no longer turns the run red.
+  const alsoAccepted = [];
   for (const name of [...tables.keys()].sort()) {
     const rule = rules[name];
     const marker = rule.marker;
@@ -578,6 +640,26 @@ async function main() {
     }
     if (typeof resolve_ !== 'function') throw new CouldNotLook(`\`${name}\` names resolver \`${rule.resolver}\`, which this reader cannot execute`);
 
+    // ── the table's SECOND resolvers, if it declares any ─────────────────────
+    // Consulted ONLY for a value the primary has already refused, so this can
+    // never make the primary weaker — it can only admit a value the primary
+    // named, and it has to name that value itself, in a shape it declares.
+    //
+    // 🔴 AN UNEXECUTABLE ENTRY IS `CouldNotLook`, NOT A SKIP. A silently ignored
+    // `alsoResolves` reads as "the rule was applied and nothing matched", which
+    // is the direction that weakens without announcing itself — the same reason
+    // the run-with-no-`conclusion` case above refuses to guess.
+    const alts = (Array.isArray(rule.alsoResolves) ? rule.alsoResolves : []).map((id) => {
+      const fn = resolverFns[id];
+      if (typeof fn !== 'function') {
+        throw new CouldNotLook(
+          `\`${name}\` lists \`${id}\` in \`alsoResolves\` and this reader cannot execute it. A second resolver ` +
+            'that is quietly skipped would leave rows counted as unattributable for a rule nobody applied.',
+        );
+      }
+      return [id, fn];
+    });
+
     const groups = fixture
       ? (fixture[name] ?? [])
       : await queryD1(dbId, `SELECT "${marker}" AS marker, COUNT(*) AS n FROM "${name}" GROUP BY "${marker}"`);
@@ -587,7 +669,19 @@ async function main() {
     for (const g of groups) {
       const n = Number(g.n ?? 0);
       total += n;
-      const why = resolve_(g.marker);
+      let why = resolve_(g.marker);
+      if (why !== null) {
+        for (const [id, fn] of alts) {
+          if (fn(g.marker) !== null) continue;
+          alsoAccepted.push(
+            `${name}: ${n} row(s) with \`${marker}\` = \`${g.marker}\` — refused by \`${rule.resolver}\` and accepted by ` +
+              `the narrower \`${id}\`. These rows were written by a live verification, which B-17 permits; what B-17 ` +
+              'also requires is that the harness removed them, and THAT is asserted by the harness, not here.',
+          );
+          why = null;
+          break;
+        }
+      }
       if (why !== null) {
         bad += n;
         violations.push(`${name}: ${n} row(s) — ${why}  [marker \`${marker}\`, resolver \`${rule.resolver}\`]`);
@@ -607,6 +701,7 @@ async function main() {
   // because a failed run left a deployment behind is a build somebody should be
   // able to see in the log without going looking.
   for (const w of witnessed) console.log(`⬜  deployment-witnessed build accepted: ${w}`);
+  for (const a of alsoAccepted) console.log(`⬜  second-resolver acceptance: ${a}`);
   for (const c of census) {
     console.log(`    ${c.bad === 0 ? 'ok ' : '✗  '} ${c.name.padEnd(24)} ${String(c.total).padStart(6)} row(s), ${c.bad} unattributable   [${c.marker} · ${c.resolver}]`);
   }

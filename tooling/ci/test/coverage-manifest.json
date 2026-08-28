@@ -46,6 +46,7 @@
   "dod-sync.test.mjs": 20,
   "e2e-legs.test.mjs": 28,
   "e2e-proof-fresh.test.mjs": 40,
+  "e2e-run-resolver.test.mjs": 16,
   "elf-page-alignment.test.mjs": 22,
   "enforcement-index.test.mjs": 23,
   "entitlement-contract.test.mjs": 43,
