@@ -52,7 +52,8 @@
       "mutation": {
         "symbol": "lib/features/auth/sign_in_screen.dart:signInWithEmail",
         "observedRed": "signing in through the FORM moves the user off it",
-        "date": "2026-08-12"
+        "note": "Re-run 2026-08-28 on a freshly stamped probe, because the Flutter 3.47.1 bump re-canonicalised this file for dart_style 3.1.x and a FORMATTING-ONLY edit expires this row exactly as a behavioural one does — which is the guard behaving correctly, not a false positive. Commenting out the `await auth.signInWithEmail(email: _email.text.trim(), password: _password.text)` call in `_signIn` leaves the form visually succeeding while no session is ever created, so the router redirect never fires: the named test failed [E] at `property: auth-redirect-follows-session`. The file was then restored byte-identical from a pre-mutation copy and the test re-observed green (`All tests passed!`). Run on the isolated Flutter 3.47.1 / Dart 3.13.1 the pin names, NOT on the host's 3.44.9.",
+        "date": "2026-08-28"
       }
     },
     {
