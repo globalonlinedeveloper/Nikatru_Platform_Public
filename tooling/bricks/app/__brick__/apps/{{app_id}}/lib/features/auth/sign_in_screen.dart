@@ -157,8 +157,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         if (email.isEmpty) throw core.AuthFailure(l10n.emailRequired);
         await auth.sendPasswordReset(email);
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.resetSent)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.resetSent)));
       });
 }
