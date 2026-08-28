@@ -1301,7 +1301,7 @@
       "id": "recovery.git-bundle-restore",
       "kind": "recovery-path",
       "what": "Rebuild every repository from the offsite git bundles, with no GitHub account and no laptop.",
-      "detector": "This row's cadence against lastDrill. The mechanism it copies already exists in miniature: backup-knowledge.ps1 compares a $DrillMaxDays ceiling against .claude/last-restore-drill.txt and WARNS rather than fails, deliberately, because only a human can perform a drill.",
+      "detector": "This row's cadence against lastDrill. The mechanism it copies already exists in miniature: backup-offsite.ps1 compares a $DrillMaxDays ceiling against .claude/last-restore-drill.txt and WARNS rather than fails, deliberately, because only a human can perform a drill.",
       "response": "Follow Private/runbooks/backup-liveness.md.",
       "cadence": "120d",
       "lastDrill": "2026-07-26",
@@ -1310,7 +1310,7 @@
         "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt on the laptop",
         "failingValue": "a drill date older than the ceiling",
-        "readBy": "backup-knowledge.ps1 on every run (warn, not fail)"
+        "readBy": "backup-offsite.ps1 on every run (warn, not fail)"
       },
       "accessProviders": [
         "google"
@@ -1330,7 +1330,7 @@
         "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt on the laptop",
         "failingValue": "a drill date older than the ceiling",
-        "readBy": "backup-knowledge.ps1 on every run (warn, not fail)"
+        "readBy": "backup-offsite.ps1 on every run (warn, not fail)"
       },
       "accessProviders": [
         "laptop",
@@ -1379,7 +1379,7 @@
         "anchor": "Private/runbooks/backup-liveness.md",
         "record": ".claude/last-restore-drill.txt on the laptop",
         "failingValue": "no dated drill",
-        "readBy": "backup-knowledge.ps1 (warn, not fail)"
+        "readBy": "backup-offsite.ps1 (warn, not fail)"
       },
       "accessProviders": [
         "laptop"
