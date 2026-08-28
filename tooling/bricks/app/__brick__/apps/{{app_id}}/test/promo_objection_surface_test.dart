@@ -241,65 +241,62 @@ void main() {
       );
     });
 
-    testWidgets(
-      '🔴 THE ROW CLAIMS NOTHING WHILE THE RAIL IS STILL LOADING, AND A TAP '
-      'THERE CANNOT FORGE A DECISION',
-      (WidgetTester tester) async {
-        // THE WINDOW EVERY OTHER CASE IN THIS FILE PUMPS PAST.
-        // `promoObjectedProvider` answers TRUE while `consentControllerProvider`
-        // is unresolved, and that is correct for a promotional CARD — an offer
-        // shown against an objection nobody has read is what Art 21(3) forbids.
-        // Reused verbatim in a CONTROL it becomes a lie: a person who has never
-        // objected is shown "Offers are off" + "Show offers again" on every
-        // launch of Settings, and one tap in that window writes AND UPLOADS a
-        // `promo granted: true` artifact recording a withdrawal they never made.
-        //
-        // `pumpAndSettle` hides it, which is why the store here never resolves.
-        final Completer<core.KeyValueStore> never =
-            Completer<core.KeyValueStore>();
-        final _FakeConsentTransport consent = _FakeConsentTransport();
-        final ProviderContainer c = ProviderContainer(
-          overrides: <Override>[
-            keyValueStoreProvider.overrideWith((_) => never.future),
-            consentTransportProvider.overrideWithValue(consent),
-          ],
-        );
-        addTearDown(c.dispose);
+    testWidgets('🔴 THE ROW CLAIMS NOTHING WHILE THE RAIL IS STILL LOADING, AND A TAP '
+        'THERE CANNOT FORGE A DECISION', (WidgetTester tester) async {
+      // THE WINDOW EVERY OTHER CASE IN THIS FILE PUMPS PAST.
+      // `promoObjectedProvider` answers TRUE while `consentControllerProvider`
+      // is unresolved, and that is correct for a promotional CARD — an offer
+      // shown against an objection nobody has read is what Art 21(3) forbids.
+      // Reused verbatim in a CONTROL it becomes a lie: a person who has never
+      // objected is shown "Offers are off" + "Show offers again" on every
+      // launch of Settings, and one tap in that window writes AND UPLOADS a
+      // `promo granted: true` artifact recording a withdrawal they never made.
+      //
+      // `pumpAndSettle` hides it, which is why the store here never resolves.
+      final Completer<core.KeyValueStore> never =
+          Completer<core.KeyValueStore>();
+      final _FakeConsentTransport consent = _FakeConsentTransport();
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          keyValueStoreProvider.overrideWith((_) => never.future),
+          consentTransportProvider.overrideWithValue(consent),
+        ],
+      );
+      addTearDown(c.dispose);
 
-        await _pumpSettings(tester, c);
-        expect(
-          c.read(promoObjectionKnownProvider),
-          isFalse,
-          reason: 'precondition: this IS the loading window',
-        );
-        expect(
-          c.read(promoObjectedProvider),
-          isTrue,
-          reason:
-              'precondition: and the card-facing read is fail-closed in it '
-              '— the two must not be the same answer',
-        );
+      await _pumpSettings(tester, c);
+      expect(
+        c.read(promoObjectionKnownProvider),
+        isFalse,
+        reason: 'precondition: this IS the loading window',
+      );
+      expect(
+        c.read(promoObjectedProvider),
+        isTrue,
+        reason:
+            'precondition: and the card-facing read is fail-closed in it '
+            '— the two must not be the same answer',
+      );
 
-        expect(
-          find.text('Offers are off'),
-          findsNothing,
-          reason:
-              'a claim about what this person chose, made before anything '
-              'about them has been read',
-        );
-        expect(find.text('Show offers again'), findsNothing);
-        expect(
-          _objectionAction,
-          findsNothing,
-          reason: 'and nothing to tap means nothing to forge',
-        );
-        expect(
-          consent.sent,
-          isEmpty,
-          reason: 'nothing was uploaded in a window where nothing was decided',
-        );
-      },
-    );
+      expect(
+        find.text('Offers are off'),
+        findsNothing,
+        reason:
+            'a claim about what this person chose, made before anything '
+            'about them has been read',
+      );
+      expect(find.text('Show offers again'), findsNothing);
+      expect(
+        _objectionAction,
+        findsNothing,
+        reason: 'and nothing to tap means nothing to forge',
+      );
+      expect(
+        consent.sent,
+        isEmpty,
+        reason: 'nothing was uploaded in a window where nothing was decided',
+      );
+    });
 
     testWidgets('the objection does NOT touch the analytics decision', (
       WidgetTester tester,

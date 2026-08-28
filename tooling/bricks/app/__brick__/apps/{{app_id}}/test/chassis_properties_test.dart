@@ -1156,12 +1156,10 @@ void main() {
     // danger in every app; re-hueing them from a seed trades a universal signal
     // for decoration, and this asserts that trade was not made by accident.
     test('status colours stay universal across brands', () {
-      final AppThemeX red = buildAppTheme(
-        seed: const Color(0xFFFF0000),
-      ).extension<AppThemeX>()!;
-      final AppThemeX green = buildAppTheme(
-        seed: const Color(0xFF00FF00),
-      ).extension<AppThemeX>()!;
+      final AppThemeX red = buildAppTheme(seed: const Color(0xFFFF0000))
+          .extension<AppThemeX>()!;
+      final AppThemeX green = buildAppTheme(seed: const Color(0xFF00FF00))
+          .extension<AppThemeX>()!;
       expect(red.positive, green.positive);
       expect(red.danger, green.danger);
       expect(red.warn, green.warn);
@@ -2003,51 +2001,48 @@ void main() {
   });
 
   group('property: account-deletion-works', () {
-    test(
-      'deleting really goes through the seam, signs the user out — and in demo '
-      'mode REFUSES rather than claiming success',
-      () async {
-        final ProviderContainer c = _container(_MemStore());
-        addTearDown(c.dispose);
-        final core.AuthRepository auth = c.read(authRepositoryProvider);
-        await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
-        expect(auth.currentUser, isNotNull);
+    test('deleting really goes through the seam, signs the user out — and in demo '
+        'mode REFUSES rather than claiming success', () async {
+      final ProviderContainer c = _container(_MemStore());
+      addTearDown(c.dispose);
+      final core.AuthRepository auth = c.read(authRepositoryProvider);
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+      expect(auth.currentUser, isNotNull);
 
-        // 🔴 [ADR 027] THE DEMO SEAM MUST NOT RETURN NORMALLY. A normal return
-        // is what the Delete-account control renders as "Your account has been
-        // deleted…", while this repository's `signInWithEmail` accepts any
-        // non-empty pair and signs the same user straight back in. Only a real
-        // 2xx from `DELETE /v1/account` may ever produce `deleted`.
-        await expectLater(
-          auth.deleteAccount(),
-          throwsA(
-            isA<core.AccountDeletionFailure>().having(
-              (core.AccountDeletionFailure f) => f.outcome,
-              'outcome',
-              core.AccountDeletionOutcome.notConfigured,
-            ),
+      // 🔴 [ADR 027] THE DEMO SEAM MUST NOT RETURN NORMALLY. A normal return
+      // is what the Delete-account control renders as "Your account has been
+      // deleted…", while this repository's `signInWithEmail` accepts any
+      // non-empty pair and signs the same user straight back in. Only a real
+      // 2xx from `DELETE /v1/account` may ever produce `deleted`.
+      await expectLater(
+        auth.deleteAccount(),
+        throwsA(
+          isA<core.AccountDeletionFailure>().having(
+            (core.AccountDeletionFailure f) => f.outcome,
+            'outcome',
+            core.AccountDeletionOutcome.notConfigured,
           ),
-          reason:
-              'a demo build that reports a deletion tells the user something '
-              'that is false twice over — [ADR 027]',
-        );
+        ),
+        reason:
+            'a demo build that reports a deletion tells the user something '
+            'that is false twice over — [ADR 027]',
+      );
 
-        expect(
-          (auth as InMemoryAuthRepository).deletionRequested,
-          isTrue,
-          reason:
-              'the request never reached the seam — this is the dead-button '
-              'shape the property exists to catch, and it is a DIFFERENT defect '
-              'from the lying-button shape asserted just above',
-        );
-        expect(
-          auth.currentUser,
-          isNull,
-          reason: 'still signed in after deletion',
-        );
-        expect(await auth.currentAccessToken(), isNull);
-      },
-    );
+      expect(
+        (auth as InMemoryAuthRepository).deletionRequested,
+        isTrue,
+        reason:
+            'the request never reached the seam — this is the dead-button '
+            'shape the property exists to catch, and it is a DIFFERENT defect '
+            'from the lying-button shape asserted just above',
+      );
+      expect(
+        auth.currentUser,
+        isNull,
+        reason: 'still signed in after deletion',
+      );
+      expect(await auth.currentAccessToken(), isNull);
+    });
 
     // A user who has ASKED to be deleted must not keep a live session, even when
     // the request fails — that is the worst of both outcomes.
@@ -3018,49 +3013,53 @@ void main() {
       }
     }
 
-    testWidgets('every platform gets EITHER an OS schedule OR the in-app nudge', (
-      WidgetTester tester,
-    ) async {
-      for (final TargetPlatform p in TargetPlatform.values) {
-        await onPlatform(p, () async {
-          final _MemStore store = _MemStore();
-          store.data['nikatru.reminders_enabled'] = 'true';
-          final ProviderContainer c = _container(store);
-          addTearDown(c.dispose);
-          c.read(remindersEnabledProvider);
-          // `tester.pump()`, never `Future.delayed` — testWidgets runs in a fake
-          // async zone, so a real delay never completes and the whole file hangs.
-          await tester.pump();
+    testWidgets(
+      'every platform gets EITHER an OS schedule OR the in-app nudge',
+      (WidgetTester tester) async {
+        for (final TargetPlatform p in TargetPlatform.values) {
+          await onPlatform(p, () async {
+            final _MemStore store = _MemStore();
+            store.data['nikatru.reminders_enabled'] = 'true';
+            final ProviderContainer c = _container(store);
+            addTearDown(c.dispose);
+            c.read(remindersEnabledProvider);
+            // `tester.pump()`, never `Future.delayed` — testWidgets runs in a fake
+            // async zone, so a real delay never completes and the whole file hangs.
+            await tester.pump();
 
-          final NotificationCapabilities caps =
-              NotificationCapabilities.forPlatform(p, isWeb: false);
-          // An hour past the configured reminder, so the nudge is genuinely due
-          // on any row that cannot schedule.
-          await pumpBanner(
-            tester,
-            c,
-            now: DateTime(
-              2026,
-              8,
-              3,
-              AppConfig.reminderHour,
-              0,
-            ).add(const Duration(hours: 1)),
-          );
+            final NotificationCapabilities caps =
+                NotificationCapabilities.forPlatform(p, isWeb: false);
+            // An hour past the configured reminder, so the nudge is genuinely due
+            // on any row that cannot schedule.
+            await pumpBanner(
+              tester,
+              c,
+              now: DateTime(
+                2026,
+                8,
+                3,
+                AppConfig.reminderHour,
+                0,
+              ).add(const Duration(hours: 1)),
+            );
 
-          final bool shown = find.byType(MaterialBanner).evaluate().isNotEmpty;
-          expect(
-            shown,
-            !caps.canSchedule,
-            reason:
-                'on $p canSchedule=${caps.canSchedule}; the reminder must be '
-                'delivered by exactly one of the two mechanisms — a row with '
-                'neither is a switch that reads ON over a device that never '
-                'says anything',
-          );
-        });
-      }
-    });
+            final bool shown = find
+                .byType(MaterialBanner)
+                .evaluate()
+                .isNotEmpty;
+            expect(
+              shown,
+              !caps.canSchedule,
+              reason:
+                  'on $p canSchedule=${caps.canSchedule}; the reminder must be '
+                  'delivered by exactly one of the two mechanisms — a row with '
+                  'neither is a switch that reads ON over a device that never '
+                  'says anything',
+            );
+          });
+        }
+      },
+    );
 
     // 🔴 THE MOUNT, ASSERTED AGAINST THE REAL RUNNING APP. Everything else in
     // this group pumps the banner directly, which proves the DECISION and proves
@@ -3519,62 +3518,56 @@ void main() {
       expect(c.read(paywallLockedProvider), isFalse);
     });
 
-    test(
-      'the paywall is OFF by default, so a fresh stamp gates nothing',
-      () async {
-        // `paywall.enabled` is the outer switch and a stamped app is born with it
-        // false. Without this, being born with the gate would cost every new app
-        // a wall it never asked for.
-        final ProviderContainer c = _moneyContainer(
-          store: _onboardedStore(),
-          server: _FakeEntitlements(),
-          paywallEnabled: false,
-        );
-        addTearDown(c.dispose);
-        await c.read(appConfigProvider.future);
-        await c.read(entitlementsProvider.future);
-        expect(c.read(paywallLockedProvider), isFalse);
-      },
-    );
+    test('the paywall is OFF by default, so a fresh stamp gates nothing', () async {
+      // `paywall.enabled` is the outer switch and a stamped app is born with it
+      // false. Without this, being born with the gate would cost every new app
+      // a wall it never asked for.
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(),
+        paywallEnabled: false,
+      );
+      addTearDown(c.dispose);
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+      expect(c.read(paywallLockedProvider), isFalse);
+    });
 
-    test(
-      '[5]M-8 · a stale answer RE-LOCKS when online, and HOLDS when offline',
-      () async {
-        final ProviderContainer c = _moneyContainer(
-          store: _onboardedStore(),
-          server: _FakeEntitlements(pro: true),
-        );
-        addTearDown(c.dispose);
+    test('[5]M-8 · a stale answer RE-LOCKS when online, and HOLDS when offline', () async {
+      final ProviderContainer c = _moneyContainer(
+        store: _onboardedStore(),
+        server: _FakeEntitlements(pro: true),
+      );
+      addTearDown(c.dispose);
 
-        // The config must be RESOLVED first: paywallLockedProvider reads it, and
-        // nothing else in this chain starts it. Without this the provider takes
-        // its documented not-yet-known branch and the test measures that instead.
-        await c.read(appConfigProvider.future);
-        await c.read(entitlementsProvider.future);
-        expect(c.read(paywallLockedProvider), isFalse);
+      // The config must be RESOLVED first: paywallLockedProvider reads it, and
+      // nothing else in this chain starts it. Without this the provider takes
+      // its documented not-yet-known branch and the test measures that instead.
+      await c.read(appConfigProvider.future);
+      await c.read(entitlementsProvider.future);
+      expect(c.read(paywallLockedProvider), isFalse);
 
-        // The cache now holds a verified grant. Move the clock past the ceiling.
-        final core.EntitlementCache cache = c.read(entitlementCacheProvider);
-        final DateTime far = DateTime.now().add(
-          cache.stalenessCeiling + const Duration(days: 1),
-        );
-        expect(
-          (await cache.readValid(now: far)).isPro,
-          isFalse,
-          reason: 'online and unverified past the ceiling ⇒ access stops',
-        );
-        // 🔴 BOTH DIRECTIONS. Without the second, a client that ALWAYS locks
-        // passes — and always-locking is the fail-closed-and-dead shape this
-        // stage exists to stop.
-        expect(
-          (await cache.readValid(now: far, connectivityAvailable: false)).isPro,
-          isTrue,
-          reason:
-              'offline it is HELD — a deliberate loss, written down: locking a '
-              'paying user out for being in a tunnel is the larger harm',
-        );
-      },
-    );
+      // The cache now holds a verified grant. Move the clock past the ceiling.
+      final core.EntitlementCache cache = c.read(entitlementCacheProvider);
+      final DateTime far = DateTime.now().add(
+        cache.stalenessCeiling + const Duration(days: 1),
+      );
+      expect(
+        (await cache.readValid(now: far)).isPro,
+        isFalse,
+        reason: 'online and unverified past the ceiling ⇒ access stops',
+      );
+      // 🔴 BOTH DIRECTIONS. Without the second, a client that ALWAYS locks
+      // passes — and always-locking is the fail-closed-and-dead shape this
+      // stage exists to stop.
+      expect(
+        (await cache.readValid(now: far, connectivityAvailable: false)).isPro,
+        isTrue,
+        reason:
+            'offline it is HELD — a deliberate loss, written down: locking a '
+            'paying user out for being in a tunnel is the larger harm',
+      );
+    });
 
     test(
       'a failed fetch keeps the cached answer — a flat network is not a refund',
@@ -4714,51 +4707,52 @@ void main() {
       );
     });
 
-    testWidgets('an UNREAD record is not a fresh device, and is never rewritten', (
-      WidgetTester tester,
-    ) async {
-      // 🔴 AN INTERRUPTED WRITE IS THE ORDINARY WAY A KEY/VALUE STORE FAILS,
-      // AND THE OBJECTION IS PLAINLY IN THESE BYTES — only the closing brace is
-      // gone. The first controller wrapped `jsonDecode` and the map cast in one
-      // catch that fell back to the empty default, so this record read as a
-      // device that had never run the app: the card rendered, and the
-      // impression counter then rewrote the key as `"suppressed":false`. One
-      // launch, and a GDPR Art 21 objection was erased from disk. Measured on
-      // the real tree before the fix, for this record and for `'["suppressed"]'`.
-      const String truncated =
-          '{"shown_count":0,"dismissed":false,"suppressed":true';
-      final _MemStore store = _MemStore();
-      store.data['nikatru.promo_card'] = truncated;
-      final ProviderContainer c = await signedIn(
-        promoEnabled: true,
-        store: store,
-      );
-      addTearDown(c.dispose);
-      await tester.pumpWidget(
-        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
-      );
-      await _turnsAndSettleRoute(tester);
+    testWidgets(
+      'an UNREAD record is not a fresh device, and is never rewritten',
+      (WidgetTester tester) async {
+        // 🔴 AN INTERRUPTED WRITE IS THE ORDINARY WAY A KEY/VALUE STORE FAILS,
+        // AND THE OBJECTION IS PLAINLY IN THESE BYTES — only the closing brace is
+        // gone. The first controller wrapped `jsonDecode` and the map cast in one
+        // catch that fell back to the empty default, so this record read as a
+        // device that had never run the app: the card rendered, and the
+        // impression counter then rewrote the key as `"suppressed":false`. One
+        // launch, and a GDPR Art 21 objection was erased from disk. Measured on
+        // the real tree before the fix, for this record and for `'["suppressed"]'`.
+        const String truncated =
+            '{"shown_count":0,"dismissed":false,"suppressed":true';
+        final _MemStore store = _MemStore();
+        store.data['nikatru.promo_card'] = truncated;
+        final ProviderContainer c = await signedIn(
+          promoEnabled: true,
+          store: store,
+        );
+        addTearDown(c.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+        );
+        await _turnsAndSettleRoute(tester);
 
-      expect(
-        find.byType(UpgradePromoCard),
-        findsOneWidget,
-        reason: 'COVERAGE — the surface must really be up and deciding',
-      );
-      expect(
-        find.byType(PromoCard),
-        findsNothing,
-        reason:
-            'a record we could not read is not a record that says nobody '
-            'objected — it fails CLOSED',
-      );
-      expect(
-        store.data['nikatru.promo_card'],
-        truncated,
-        reason:
-            'an impression counter is the least important thing on this key '
-            'and must never be what destroys the most important one',
-      );
-    });
+        expect(
+          find.byType(UpgradePromoCard),
+          findsOneWidget,
+          reason: 'COVERAGE — the surface must really be up and deciding',
+        );
+        expect(
+          find.byType(PromoCard),
+          findsNothing,
+          reason:
+              'a record we could not read is not a record that says nobody '
+              'objected — it fails CLOSED',
+        );
+        expect(
+          store.data['nikatru.promo_card'],
+          truncated,
+          reason:
+              'an impression counter is the least important thing on this key '
+              'and must never be what destroys the most important one',
+        );
+      },
+    );
 
     testWidgets('the card waits for the disk read — measured BEFORE the settle', (
       WidgetTester tester,

@@ -225,9 +225,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 16),
           FilledButton(
             onPressed: () async {
-              final bool unlocked = (await refreshEntitlements(
-                ref,
-              )).isProAt(DateTime.now());
+              final bool unlocked = (await refreshEntitlements(ref))
+                  .isProAt(DateTime.now());
               if (!mounted) return;
               setState(
                 () => _phase = unlocked

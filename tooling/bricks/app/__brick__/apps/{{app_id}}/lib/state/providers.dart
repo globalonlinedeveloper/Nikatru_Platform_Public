@@ -25,6 +25,7 @@ import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/app_config.dart';
+
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 
 /// Compiled-in default runtime config for THIS app. core's `kDefaultConfigs`

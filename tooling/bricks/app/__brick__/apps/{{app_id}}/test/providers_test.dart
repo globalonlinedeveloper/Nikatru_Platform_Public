@@ -75,24 +75,27 @@ void main() {
     );
   });
 
-  test('the token closure resolves with the client that watches it built', () async {
-    final ProviderContainer c = harness();
-    addTearDown(c.dispose);
-    // Build the watcher FIRST, so authTokenProvider really carries the ancestors
-    // the app gives it before its own read runs.
-    c.read(restClientProvider);
-    final Future<String?> Function() token = c.read(authTokenProvider);
-    expect(
-      token,
-      returnsNormally,
-      reason:
-          'the token closure could not resolve what it reads while the client already had it as '
-          'an ancestor. Whatever authTokenProvider reads must not be something that watches it '
-          'back — routing the token through the CLIENT instead of the repository is the edit '
-          'that closes this one.',
-    );
-    await expectLater(token(), completes);
-  });
+  test(
+    'the token closure resolves with the client that watches it built',
+    () async {
+      final ProviderContainer c = harness();
+      addTearDown(c.dispose);
+      // Build the watcher FIRST, so authTokenProvider really carries the ancestors
+      // the app gives it before its own read runs.
+      c.read(restClientProvider);
+      final Future<String?> Function() token = c.read(authTokenProvider);
+      expect(
+        token,
+        returnsNormally,
+        reason:
+            'the token closure could not resolve what it reads while the client already had it as '
+            'an ancestor. Whatever authTokenProvider reads must not be something that watches it '
+            'back — routing the token through the CLIENT instead of the repository is the edit '
+            'that closes this one.',
+      );
+      await expectLater(token(), completes);
+    },
+  );
 
   test('install id is generated, non-empty and stable across reads', () async {
     final ProviderContainer c = harness();
