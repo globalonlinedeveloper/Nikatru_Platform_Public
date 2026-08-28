@@ -50,10 +50,26 @@
 //      SUBLY_D1_DATABASE_ID, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //      and, for the consent artifact only: E2E_APP_ID, PLATFORM_D1_DATABASE_ID,
 //      E2E_RESPONSE_DATA / E2E_DRIVE_LOG (the run's exported anon_id).
+//      E2E_APP_VERSION is OPTIONAL and is read for its message only — it is the
+//      `e2e-<run_number>-<sha7>` stamp e2e.yml derives once into $GITHUB_ENV, and
+//      it is what the failure below can point a human at.
+//
+// 🔴 PLATFORM_D1_DATABASE_ID IS THE SWITCH THAT SAYS "THIS INVOCATION OWNS THE
+// CONSENT ARTIFACT", and it decides whether an unresolved anon_id is a failure
+// or a no-op. e2e.yml runs this file TWICE per leg and hands the consent env to
+// exactly one of them; see the branch at the bottom for why that asymmetry is
+// the only thing keeping the hard failure off a green run.
 // NOTE: CLOUDFLARE_API_TOKEN must have D1 WRITE access for this account.
 import { resolveConsentAnonId } from './consent_anon_id.mjs';
 
 const userId = process.env.E2E_USER_ID;
+
+// The build identity .github/workflows/e2e.yml derives ONCE into $GITHUB_ENV and
+// stamps into every row this lane writes (`e2e-<run_number>-<sha7>`, added
+// 2026-08-28). Nothing here looks a row up by it and nothing deletes by it — it
+// is the WHERE-TO-LOOK the failure below hands a human, and it is unique to one
+// run, which `dev` never was.
+const stamp = process.env.E2E_APP_VERSION ?? null;
 
 // Resolved BEFORE the early exit below, because the two are independent: the
 // consent artifact belongs to the browser PROFILE, not to either throwaway user,
@@ -65,8 +81,16 @@ const consent = process.env.PLATFORM_D1_DATABASE_ID
     })
   : { id: null, source: null, notes: ['PLATFORM_D1_DATABASE_ID unset — this step does not purge consent'] };
 
-if (!userId && !consent.id) {
-  console.log('E2E_USER_ID unset and no consent anon_id exported — nothing to purge.');
+// ⚠️ THE `!PLATFORM_D1_DATABASE_ID` CONJUNCT IS LOAD-BEARING AND WAS ADDED WITH
+// THE HARD FAILURE BELOW (2026-08-28). Without it this early exit is a hole
+// straight through that failure: a run whose provisioning died halfway leaves
+// `E2E_USER_ID` empty, the purge step still runs (`steps.user.outcome !=
+// 'skipped'` is true once provisioning was ATTEMPTED), and "nothing to purge"
+// would have been printed at exit 0 over a consent purge that was asked for and
+// could not be performed. An early exit that outranks the guard below is the
+// same defect in a different place.
+if (!userId && !consent.id && !process.env.PLATFORM_D1_DATABASE_ID) {
+  console.log('E2E_USER_ID unset and no consent purge was asked for — nothing to purge.');
   for (const n of consent.notes) console.log(`  anon_id lookup — ${n}`);
   process.exit(0);
 }
@@ -130,11 +154,68 @@ if (consent.id) {
     failures++;
     console.error(`WARN: failed to purge the consent artifact for install ${consent.id}: ${e.message}`);
   }
+} else if (process.env.PLATFORM_D1_DATABASE_ID) {
+  // 🔴 A HARD FAILURE SINCE 2026-08-28. IT WAS A PRINTED LINE THAT PASSED, AND
+  // THAT IS WHAT LET SIX ROWS SIT IN PRODUCTION FOR A DAY.
+  // Two scheduled runs re-run on 2026-08-27 replayed their own OLD commit, which
+  // predates #399's `ref`-after-`await` fix, so attempt 2 of each CRASHED after
+  // the consent POST and before the driver exported the anon_id. This branch
+  // printed its notes, left `failures` at 0, and both nightlies reported success
+  // — while `consent_artifacts` held three rows apiece until ops-watch run
+  // 33139423096 went red on 2026-08-28 and a different workflow's owner had to
+  // work out what had written them. Full record:
+  // Private/notes/EVIDENCE-consent-artifacts-dev-rows-2026-08-28.md.
+  //
+  // [pipeline B-17] asks that every artifact a live verification creates be
+  // PROVABLY removed. "I could not identify the row" is precisely the state in
+  // which removal is not proven — whether or not a row exists — so it is the
+  // teardown's own failure to report, not a detail to log.
+  //
+  // ⚠️ THE FALSE-POSITIVE QUESTION, ANSWERED RATHER THAN ASSUMED. Two states
+  // reach a null anon_id benignly, and only ONE of them is separable from what
+  // the harness records:
+  //   (a) this invocation was never asked to purge consent — the delete-leg
+  //       teardown in e2e.yml carries no PLATFORM_D1_DATABASE_ID and no consent
+  //       env at all, so "nothing resolved" is its NORMAL outcome on a perfectly
+  //       green night. That is the `else` below, and failing there would have
+  //       reded every single run. Separable, and separated.
+  //   (b) the suite died before the app ever rendered the DPDP prompt (a failed
+  //       build, a dead chromedriver, a web-server that never came up), so no
+  //       row was written and nothing was left behind. 🔴 NOT SEPARABLE. Both
+  //       of resolveConsentAnonId's sources are absent in that state AND in the
+  //       crash-after-POST state; `_ConsentPrompt._answer` deliberately does not
+  //       await the record call, so nothing host-side observes the POST; and the
+  //       only token the harness writes is printed by the driver at the END of
+  //       the suite. This branch does NOT guess between them.
+  //
+  // Failing closed is still the version that cannot red a healthy run, and the
+  // reason is the ORDER of the workflow rather than anything measured here:
+  // tooling/e2e/verify_consent.mjs runs BEFORE this teardown, is not `if:`-gated,
+  // and resolves the SAME id through the SAME parser (consent_anon_id.mjs). So a
+  // run that reached the suite and stayed green has already resolved the id and
+  // never reaches this line; every path that does reach it is a run that is
+  // ALREADY FAILING. The cost is one more red step on an already-red run.
+  //
+  // 📌 THE RESIDUAL GAP, STATED SO NOBODY HAS TO REDISCOVER IT: this message
+  // cannot promise a row was left behind — only that this teardown could not
+  // prove one was not. It is worded that way on purpose. Closing it properly
+  // needs the app or the driver to record the POST at the moment it is made,
+  // which is a change to files this teardown does not own.
+  failures++;
+  console.error(
+    'WARN: no consent anon_id resolved — NO CONSENT ARTIFACT WAS PURGED, and this teardown cannot show ' +
+      'production is pristine. If the suite reached the DPDP prompt before it died, a row is still in ' +
+      `platform_db \`consent_artifacts\`. Look for app_id = '${process.env.E2E_APP_ID ?? '(E2E_APP_ID unset)'}'` +
+      (stamp
+        ? ` AND app_version = '${stamp}' — that value is unique to this run, so it names exactly the rows this run wrote and no others.`
+        : ' — and note that E2E_APP_VERSION is UNSET for this run, so any row it wrote carries the compile-time default `dev` and cannot be told apart from another run\'s. Bound any deletion by `consent_id` literals, never by `app_version`.'),
+  );
+  for (const n of consent.notes) console.error(`  anon_id lookup — ${n}`);
 } else {
-  // PRINTED, not silent. "No consent row was deleted" and "no consent row could
-  // be identified" are different states, and only one of them leaves something
-  // behind in production.
-  console.log('no consent anon_id resolved — no consent artifact purged:');
+  // PRINTED, not silent, and NOT a failure. This is case (a) above: no
+  // PLATFORM_D1_DATABASE_ID means this invocation was never handed the consent
+  // env, which is the delete-leg teardown's every-run state.
+  console.log('no consent anon_id resolved — this step does not purge consent (PLATFORM_D1_DATABASE_ID unset):');
   for (const n of consent.notes) console.log(`  anon_id lookup — ${n}`);
 }
 

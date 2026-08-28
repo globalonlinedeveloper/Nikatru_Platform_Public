@@ -125,6 +125,47 @@ jobs:
           fi
           echo "SUPABASE_SERVICE_ROLE_KEY present — running the live suite."
 
+      # ── THIS LANE'S BUILD IDENTITY, DERIVED ONCE ────────────────────────────
+      # 🔴 WITHOUT THIS THE NIGHTLY WROTE `dev` INTO PRODUCTION. e2e.yml passes
+      # SUPABASE_URL, SUPABASE_ANON_KEY and API_BASE_URL, which is enough to make
+      # `AppConfig.isBackendLive` true and open the REAL consent transport — but
+      # it passed no APP_VERSION, so app_config.dart fell back to its compile-time
+      # default `'dev'` and every row this lane wrote was indistinguishable from a
+      # developer laptop's. Six such rows sat in platform_db from 2026-08-27 until
+      # ops-watch run 33139423096 found them; record:
+      # Private/notes/EVIDENCE-consent-artifacts-dev-rows-2026-08-28.md.
+      #
+      # ⛔ AND THE FIX IS NOT `PLATFORM_BASE_URL`. There is no staging Worker and
+      # creating one is rejected: this workflow exists to prove the golden path
+      # against LIVE Supabase + the LIVE Worker + LIVE D1, and ci.yml / assert-e2e
+      # -proof-fresh.mjs treat that liveness as the thing asserted. B-17 states
+      # verification against production is permitted and EXPECTED; what is
+      # required is that it cleans up, and that a row it writes SAYS who wrote it.
+      #
+      # ⚠️ THE VALUE HAS TO FIT IN 32 CHARACTERS, and overflowing is WORSE than
+      # `dev`. services/platform/src/routes/events.ts:378 binds it as
+      # `str(body?.app_version, 32)`, and that helper returns NULL — not a
+      # truncation — for anything longer, so an over-long stamp lands as a row
+      # that fails the resolver carrying NO information at all.
+      #   "e2e-" 4 + run_number + "-" 1 + sha7 7
+      #   = 12 + len(run_number). Today's run numbers are 3 digits → 15 chars.
+      #   At the 9-digit ceiling assert-app-versioning.mjs budgets for → 21 chars.
+      #   Both are inside 32. A FULL 40-CHAR SHA WOULD RENDER 4+9+1+40 = 54 AND
+      #   BE STORED AS NULL, which is why `${GITHUB_SHA::7}` and not `github.sha`.
+      #
+      # DERIVED ONCE, ON THE ONE SHELL THAT HAS THE EXPANSION — the same rule
+      # build-platforms.yml's `prepare` states, and for the same reason: GitHub
+      # expressions have no substring, so a short sha can only come from bash, and
+      # two hand-copied compositions are two things free to drift. Written to
+      # $GITHUB_ENV so BOTH consumers read one string: the `flutter drive` define
+      # below, and tooling/e2e/purge.mjs, whose failure message points a human at
+      # exactly the rows this run could have written.
+      - name: Stamp this run's build identity (APP_VERSION)
+        run: |
+          set -euo pipefail
+          echo "E2E_APP_VERSION=e2e-${{ github.run_number }}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "This run stamps app_version=e2e-${{ github.run_number }}-${GITHUB_SHA::7} on every row it writes."
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -230,6 +271,7 @@ jobs:
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=APP_VERSION="$E2E_APP_VERSION" \
             --dart-define=E2E_EMAIL="$E2E_EMAIL" \
             --dart-define=E2E_PASSWORD="$E2E_PASSWORD" \
             --dart-define=E2E_DELETE_EMAIL="$E2E_DELETE_EMAIL" \
