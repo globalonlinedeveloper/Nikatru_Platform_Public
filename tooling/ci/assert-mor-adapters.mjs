@@ -3,9 +3,16 @@
 // assert-mor-adapters.mjs — ONE VERIFIER STANDS BETWEEN A PROVIDER AND THE
 // ENTITLEMENT TABLE, and the rail reports its own gaps honestly.
 //
-// [pipeline 5]M-1 · [5]M-14 · [ADR 004] (Paddle / Lemon Squeezy, provider-
-// agnostic behind a `MoRWebhookVerifier`) · [ADR 020]:18 (a per-app Worker must
-// never see a webhook).
+// [pipeline 5]M-1 · [5]M-14 · [ADR 004] (Paddle as the merchant of record,
+// provider-agnostic behind a `MoRWebhookVerifier`) · [ADR 020]:18 (a per-app
+// Worker must never see a webhook).
+//
+// ⚠️ CORRECTED 2026-08-28: the attribution above read "[ADR 004] (Paddle / Lemon
+// Squeezy, provider-agnostic …)". [ADR 039] D4 (2026-08-09) RETIRED [ADR 004]'s
+// "apply to Lemon Squeezy in parallel" clause — the parallel application was never
+// evidenced and the product is sunsetting into Stripe. The SEAM is unchanged and
+// is the whole point of it: a successor rail is an adapter file plus a registry
+// line. WHICH successor is a queued owner decision and is not answered here.
 //
 // 🔴 THE MISTAKE THIS GUARD IS SHAPED TO AVOID, named because it is this repo's
 // most expensive recurring one: a guard scoped to the NEW thing cannot see the
@@ -32,8 +39,10 @@
 //     never in the file that declares it — assert-seams-wired.mjs carries the
 //     scar where a check matched its own function's declaration after every
 //     caller was deleted). PRINT, never fail, on the owner-gated half: the
-//     seller account (OWNER_QUEUE A-1) and the destination secret only the owner
-//     can generate. Failing the build on those would block ALL CI on work no
+//     destination secret only the owner can generate. (The seller account,
+//     OWNER_QUEUE A-1, was the other half of this until it went LIVE — [ADR 044],
+//     LOCKED 2026-08-11; corrected here 2026-08-28.) Failing the build on those
+//     would block ALL CI on work no
 //     agent can do; hiding them would let "finished, waiting on one signup" be
 //     indistinguishable from "nothing built", which is the exact defect [5]M-14
 //     was rewritten to fix.
@@ -94,6 +103,48 @@ const DECLARED_WRITERS = [
     // secret must REFUSE, not wave the request through.
     proof: /if\s*\(\s*!\s*configured\s*\)/,
     proofWhat: 'a fail-closed branch on an unset webhook secret',
+    // ── ADDED 2026-08-25 · the GATE that replaced a deleted print ─────────────
+    // The second structural property this legacy rail owes, beside the
+    // fail-closed branch above. Every `INSERT INTO entitlements (…)` in this file
+    // must name `provider_environment` in its COLUMN LIST, because the shared
+    // read decides live-vs-sandbox from that column: a row written without it is
+    // UNDECIDABLE, and an undecidable row is denied. The route already derives
+    // the world from the event and refuses a cross-world one before any write —
+    // this is what keeps that true.
+    //
+    // Checked over EVERY insert, not the first one that matches: a
+    // first-match regex would be satisfied by one honest statement while a
+    // second, blind one sat beside it. And it is the column LIST, not the file:
+    // `SELECT provider_environment …` elsewhere in the same route must not
+    // satisfy it, which is the near-miss the fixture pins.
+    //
+    // NARROW BY DESIGN, and it fails CLOSED: a writer that moves the world onto
+    // an `UPDATE … SET` instead will trip this and must update this row in the
+    // same diff. That is the declaration doing its job.
+    //
+    // ── APPENDED 2026-08-25 (same day, later change) · WHAT "EVERY INSERT" AND
+    //    "FAILS CLOSED" MEAN MECHANICALLY, because as first written they were
+    //    BROADER THAN THE CODE ────────────────────────────────────────────────
+    // The two sentences above were true of every insert the matcher could SEE,
+    // and the matcher could not see all of them. `INSERT INTO entitlements
+    // VALUES (…)` carries no column list; the column matcher skipped it, and
+    // because one honest column-list insert remained the `inserts.length === 0`
+    // COVERAGE LOST branch never fired — a blind statement sat beside an honest
+    // one and the guard exited 0. MEASURED before the repair, through this
+    // guard's own harness: `node --test tooling/ci/test/mor-adapters.test.mjs`
+    // → tests 40 / pass 38 / fail 2, both new cases reporting `code: 0` where 1
+    // was expected.
+    // THE REPAIR IS A DENOMINATOR, not a wider pattern: the check now counts
+    // entitlements INSERTs with `/\bINSERT\s+INTO\s+entitlements\b/gi` — the
+    // INSERT branch of WRITE_RE character for character — and any
+    // excess over the number of column lists it could read is COVERAGE LOST.
+    // So "checked over EVERY insert" now holds in the only way it can: every
+    // insert is either read and judged, or counted and refused. A statement
+    // this check cannot parse can no longer be certified by silence.
+    // MEASURED after the repair: guard exit 0 on this tree, 40 tests / 40 pass.
+    worldColumn: 'provider_environment',
+    worldColumnWhy:
+      'the shared entitlement read decides live-vs-sandbox from this column; a row without it is undecidable and is denied',
   },
   {
     // 🔴 FOUND BY THIS GUARD ON ITS FIRST RUN AGAINST THE REAL TREE, and it is
@@ -271,6 +322,51 @@ for (const w of DECLARED_WRITERS) {
         'without it, the declaration is a claim about code that no longer holds.',
     );
     continue;
+  }
+  // The world column, over EVERY insert in the file. See `worldColumn` above.
+  if (w.worldColumn) {
+    const code = stripComments(src);
+    // THE DENOMINATOR FIRST, and it is the INSERT branch of limb 1's WRITE_RE
+    // character for character (`\bINSERT\s+INTO\s+entitlements\b`), so a statement
+    // limb 1 calls a write cannot be a statement this row declines to count.
+    // `allInserts` is every entitlements INSERT; `inserts` is the
+    // subset whose COLUMN LIST this check can read. Any excess is a write the
+    // predicate cannot see — `INSERT INTO entitlements VALUES (…)` is the shape —
+    // and an unreadable write is COVERAGE LOST, never a pass. Without this the
+    // one honest column-list INSERT kept `inserts.length === 0` from ever firing
+    // and a blind statement beside it exited 0. See the 2026-08-25 (later change)
+    // note on the DECLARED_WRITERS row above.
+    const allInserts = code.match(/\bINSERT\s+INTO\s+entitlements\b/gi) ?? [];
+    const inserts = [...code.matchAll(/\bINSERT\s+INTO\s+entitlements\s*\(([^)]*)\)/gi)];
+    if (allInserts.length > inserts.length) {
+      fail(
+        `COVERAGE LOST — ${w.file} carries ${allInserts.length} \`INSERT INTO entitlements\` statement(s) and ` +
+          `this check could read the column list of only ${inserts.length}. The remaining ` +
+          `${allInserts.length - inserts.length} name no columns (\`INSERT INTO entitlements VALUES (…)\`) or are ` +
+          `written in a shape this check cannot parse, so it cannot tell whether \`${w.worldColumn}\` is written. ` +
+          'Give every insert an explicit column list — the positional form is unreadable to a reviewer too — or ' +
+          'fix this row. Not by loosening the pattern.',
+      );
+      continue;
+    }
+    if (inserts.length === 0) {
+      fail(
+        `COVERAGE LOST — ${w.file} is declared with a \`${w.worldColumn}\` column requirement and the scan found ` +
+          'NO `INSERT INTO entitlements (…)` in it at all. Either the write moved to a shape this check cannot ' +
+          'read, in which case the check is asserting nothing, or the declaration is stale. Both are fixed here, ' +
+          'in the row, not by loosening the pattern.',
+      );
+      continue;
+    }
+    const blind = inserts.filter((m) => !new RegExp(String.raw`\b${w.worldColumn}\b`, 'i').test(m[1]));
+    if (blind.length > 0) {
+      fail(
+        `${w.file} — ${blind.length} of ${inserts.length} \`INSERT INTO entitlements\` statement(s) do NOT name ` +
+          `\`${w.worldColumn}\` in the column list. ${w.worldColumnWhy}. The first blind column list was ` +
+          `(${blind[0][1].replace(/\s+/g, ' ').trim()}).`,
+      );
+      continue;
+    }
   }
   printed.push(
     `⚠  ${w.file} — WRITES entitlements behind a \`${w.gate}\` gate, not a signature. ${w.why} RETIREMENT: ${w.retire}`,
@@ -543,19 +639,32 @@ if (!existsSync(join(ROOT, CONTRACT))) {
   printed.push(
     '⬜ MONEY RAIL — OWNER-GATED HALF, printed on every run so "finished, waiting on one signup" can never look like "nothing built":',
   );
+  // ⚠️ CORRECTED 2026-08-28. The first bullet below read, verbatim, '· NO PROVIDER
+  // ACCOUNT YET. OWNER_QUEUE A-1 (Paddle + Lemon Squeezy seller signup, KYC, Indian
+  // bank/Wise payout) is PENDING, and upstream of it OWNER_QUEUE D-5 (SBI current
+  // account in the trade name) is decided but not opened — Paddle KYC needs the
+  // account name to match the registered business.' BOTH HALVES WERE FALSE, and it
+  // was printed on every CI run, which is the exact failure mode this block exists
+  // to prevent — pointed the other way.
   printed.push(
-    '     · NO PROVIDER ACCOUNT YET. OWNER_QUEUE A-1 (Paddle + Lemon Squeezy seller signup, KYC, Indian bank/Wise payout) is PENDING, ' +
-      'and upstream of it OWNER_QUEUE D-5 (SBI current account in the trade name) is decided but not opened — Paddle KYC needs the ' +
-      'account name to match the registered business.',
+    '     · PROVIDER ACCOUNT: LIVE. OWNER_QUEUE A-1 (the Paddle seller account, KYC and payout) is DONE — [ADR 044], LOCKED ' +
+      '2026-08-11, evidences a PRODUCTION credential: PADDLE_API_KEY_LIVE (prefix `pdl_live_apikey_`) authenticating against ' +
+      'api.paddle.com, 403 from the SANDBOX host with the same key (which is what proves it is production), and a live ' +
+      'POST /transactions returning 201 with txn_01kzs3qcvryq785t7shpq5d7wj. The Lemon Squeezy half of the old line was retired ' +
+      'earlier still: [ADR 039] D4 (2026-08-09) withdrew [ADR 004]\'s parallel-application clause — it was never evidenced and the ' +
+      'product is sunsetting into Stripe.',
   );
   printed.push(
-    '     · NO DESTINATION SECRET. PADDLE_NOTIFICATION_SECRET can only be generated in the Paddle seller console. Until it is set with ' +
-      '`wrangler secret put`, POST /v1/money/paddle answers 503 and NO money can be accepted. The rail is otherwise complete: routes, ' +
-      'verifier, verbatim store, ordering, attribution and the entitlement contract are built and tested against fixtures.',
+    '     · NO DESTINATION SECRET — NOW THE ONLY OWNER-GATED ITEM ON THIS RAIL. PADDLE_NOTIFICATION_SECRET is generated per ' +
+      'notification-destination in the Paddle seller console. Until it is set with `wrangler secret put`, POST /v1/money/paddle ' +
+      'answers 503 and NO money can be accepted. ⚠️ THIS LINE IS A STANDING REMINDER, NOT A MEASUREMENT: a Worker secret is ' +
+      'invisible to every guard in this tree, so nothing here can observe whether it has been set. The rail is otherwise complete: ' +
+      'routes, verifier, verbatim store, ordering, attribution and the entitlement contract are built and tested against fixtures.',
   );
   printed.push(
-    '     · [ADR 004] 2026-07-24 — applying BEFORE a reviewable product with a live paywall and complete legal pages exists is the main ' +
-      'documented cause of hold or rejection. The sequencing is deliberate, not a delay.',
+    '     · [ADR 004] 2026-07-24 said applying BEFORE a reviewable product with a live paywall and complete legal pages exists is ' +
+      'the main documented cause of hold or rejection. That sequencing constraint is HISTORICAL: the application landed and the ' +
+      'account is live. It is kept because it explains the date, not because anything still waits on it.',
   );
   // ── DELETED 2026-08-25: A PRINT THAT ASKED, EVERY RUN, FOR WORK ALREADY DONE ─
   // An UNCONDITIONAL `printed.push` stood here — no predicate against the tree —
@@ -579,6 +688,36 @@ if (!existsSync(join(ROOT, CONTRACT))) {
   // red for a reason that has nothing to do with the tree. The DECLARED_WRITERS
   // row for that file already carries a structural `proof` regex; the column check
   // belongs beside it, in the same change that updates the fixture.
+  //
+  // ── APPENDED 2026-08-25 (same day, later change) · THE GATE LANDED ──────────
+  // The requirement above is now discharged, in the order the note demanded.
+  // FIRST the fixture: tooling/ci/test/mor-adapters.test.mjs's LEGACY_WEBHOOK_TS
+  // was split into three variants that differ ONLY in where
+  // `provider_environment` appears — in the INSERT column list, absent, and
+  // present in the file but outside the column list. THEN the predicate, beside
+  // the structural `proof` regex on the DECLARED_WRITERS row for
+  // services/subly-api/src/routes/webhooks.ts: see `worldColumn` there, enforced
+  // over EVERY `INSERT INTO entitlements (…)` in the file.
+  // MEASURED after the change: `node tooling/ci/assert-mor-adapters.mjs` exits 0
+  // on this tree, `node --test tooling/ci/test/mor-adapters.test.mjs` reports
+  // 38 tests / 38 pass / 0 fail, and the 32 pre-existing cases are all still in
+  // it. Between the two halves — predicate added, fixture not yet taught — 4 of
+  // those 32 were red, which is the interval this note existed to prevent
+  // anyone walking into blind.
+  //
+  // ── APPENDED 2026-08-25 (same day, third change) · THE GATE HAD A HOLE AND
+  //    THE COUNT ABOVE IS SUPERSEDED ──────────────────────────────────
+  // The gate as landed above read only inserts that carry a COLUMN LIST, so
+  // `INSERT INTO entitlements VALUES (…)` was invisible to it and — with one
+  // honest column-list insert still in the file — the COVERAGE LOST branch never
+  // fired. The `worldColumn` row now counts entitlements INSERTs with the INSERT
+  // branch of WRITE_RE verbatim and refuses any file whose count exceeds the
+  // number of column lists it could read; the two new cases in
+  // tooling/ci/test/mor-adapters.test.mjs pin both forms of that shape.
+  // MEASURED THIS RUN, AFTER that change: `node tooling/ci/assert-mor-adapters.mjs`
+  // exits 0 on this tree, and `node --test tooling/ci/test/mor-adapters.test.mjs`
+  // reports 40 tests / 40 pass / 0 fail. The "38 tests / 38 pass" line above was
+  // correct when written and is HISTORICAL; 40/40 is the current number.
 }
 
 // ── report ───────────────────────────────────────────────────────────────────

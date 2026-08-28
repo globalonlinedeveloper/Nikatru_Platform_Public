@@ -693,6 +693,15 @@ void expectRowCardsLegible(
 /// MEASURED 2026-08-21, `rg "RowCard\("` over `apps/subly/lib`: the widget is
 /// BUILT in exactly TWO files — `home_screen.dart` and `scan_screen.dart`.
 /// Insights, calendar and detail render HAND-ROLLED TWINS of it
+/// (CORRECTION 2026-08-25 — the line numbers in this doc and in the three
+/// `except:`-adjacent comments further down MOVED, and only the numbers did.
+/// `_neutrals` was hoisted out of the three screens into
+/// `features/shared/neutrals.dart` alongside the deletion of `DueInfo.of`, and
+/// every removed line sat near the top of its file, so citations below the
+/// import block shift by a fixed amount. Measured with `wc -l` before and after:
+/// `calendar_screen.dart` 857 → 842 (−15), `budget_screen.dart` 581 → 560 (−21),
+/// `insights_screen.dart` 688 → 673 (−15). Subtract that file's number from any
+/// citation below to get today's line.)
 /// (`insights_screen.dart:513-560`, `calendar_screen.dart:800-835`,
 /// `subscription_detail_screen.dart:250-265`) and settings renders none at all,
 /// so pointing [expectRowCardsLegible] at those four screens widens NOTHING —
@@ -4484,6 +4493,17 @@ void main() {
         // light would fix this case and REGRESS the dark one below to 2.49:1,
         // which is a worse trade than one more increment of a named exemption.
         // The entry expires the moment `home_screen.dart` passes the argument.
+        //
+        // ── CORRECTION 2026-08-25 ────────────────────────────────────────────
+        // Appended, not a rewrite. IT EXPIRED. `home_screen.dart:1152`,
+        // `calendar_screen.dart:728` and `subscription_detail_screen.dart:134`
+        // all pass `brightness: Theme.of(context).brightness` now, and they are
+        // the only three `DueInfo.localized(` CALL SITES under `apps/subly/lib`
+        // on 2026-08-25 (the grep also returns a fourth line: `due.dart`'s own
+        // doc comment naming the method). So this screen paints the 4.95:1 light
+        // arm and the call below carries NO `except:` map at all. The paragraph
+        // above is the record of why the exemption existed, not a description of
+        // this call.
         expectRowCardsLegible(
           tester,
           'home',
@@ -5003,28 +5023,33 @@ void main() {
             'caller would render if the default were flipped to light — worse '
             'than the 2.15:1 it replaces.',
       );
+      // (CORRECTION 2026-08-25: the reason string below says 2.15 is "the
+      // number every except: entry cites". Measured false today —
+      // `grep -n "except:" apps/subly/test/a11y_semantics_test.dart` returns one
+      // `except:` MAP in the whole file, at the detail-screen sweep, and it cites
+      // 2.54 for `AppColors.positive`, not 2.15. The due-label exemptions this
+      // sentence was written about expired when the three call sites started
+      // passing `Theme.of(context).brightness`. 2.15 is still the shipped defect
+      // this fork replaced and still the right number to pin; it is just no
+      // longer cited by any surviving entry. The reason string is left as
+      // written rather than rewritten.)
       expect(
         _ratio(dark, lightCard),
         2.15,
         reason: 'the shipped defect, and the number every except: entry cites',
       );
 
-      // `of` and `localized` ARE ONE BEHAVIOUR SPELLED TWICE, so the fork has
-      // to be in both. This is the limb that goes red if a later edit moves one
-      // and forgets the other — the retained English factory is the easy one to
-      // forget, because nothing in the app calls it any more.
-      for (final Brightness b in Brightness.values) {
-        for (final Subscription s in <Subscription>[today, tomorrow]) {
-          expect(
-            DueInfo.of(s, now, brightness: b).color,
-            DueInfo.localized(l10n, s, now, brightness: b).color,
-            reason:
-                'DueInfo.of and DueInfo.localized disagree about the urgent '
-                'colour at $b, so one of the two paths is still shipping the '
-                'unforked token',
-          );
-        }
-      }
+      // 📌 THE `of`/`localized` DRIFT LOOP THAT STOOD HERE IS DELETED
+      // (2026-08-25). It compared `DueInfo.of(s, now, brightness: b).color`
+      // against `DueInfo.localized(l10n, s, now, brightness: b).color` across
+      // both brightnesses, and it was the right limb while two factories spelled
+      // one behaviour. `DueInfo.of` was deleted in this change — its last four
+      // callers were all assertions in `apps/subly/test` — so there is no second
+      // spelling left to drift from. Rewriting the loop to compare `localized`
+      // with itself would have left a limb that cannot fail, which is worse than
+      // no limb: the fork the loop protected is still pinned, by the LIGHT/DARK
+      // arms above and by the default-identity assertion below.
+
       // BOTH urgent branches, not just `Due today` — `Renews tomorrow` is the
       // one that renders for a whole day before it and reads identically.
       expect(
@@ -5042,8 +5067,28 @@ void main() {
       // they get this. Flipping the default without migrating them would fix
       // the three `except:` entries above and silently regress dark from
       // 5.74:1 to 2.49:1 — that trade goes red HERE, before it ships.
+      //
+      // ── CORRECTION 2026-08-25 ────────────────────────────────────────────
+      // Appended, not a rewrite: the paragraph above is left as it was measured.
+      // 🔴 THE SENTENCE "home:986, calendar:740 and detail:80 pass no brightness
+      // yet" IS NOW MEASURED FALSE. All three migrated. Measured 2026-08-25:
+      // `grep -rnF 'DueInfo.localized(' --include=*.dart apps/subly/lib` returns
+      // FOUR lines — `features/home/home_screen.dart:1152`,
+      // `features/calendar/calendar_screen.dart:728`,
+      // `features/detail/subscription_detail_screen.dart:134`, and one mention
+      // of the name inside a doc comment in `features/shared/due.dart` itself.
+      // The three call sites are those first three, and every one of them passes
+      // `brightness: Theme.of(context).brightness`. The `except:` entries that
+      // paragraph points at are gone with them, so there is nothing left for a
+      // flipped default to "fix".
+      //
+      // ⚠️ THE ASSERTION BELOW STAYS, AND IT IS NOT A LEFTOVER. The default is
+      // now reached only from tests, but it is still the value any future caller
+      // that forgets the argument would render, and it is still the dark-safe
+      // one on purpose: flipping it to light would regress that caller's dark
+      // ground from 5.74:1 to 2.49:1, both numbers asserted above in this same
+      // case. That trade still goes red HERE.
       expect(DueInfo.localized(l10n, today, now).color, dark);
-      expect(DueInfo.of(today, now).color, dark);
 
       // 📌 AND THE TWO BRANCHES THAT WERE DELIBERATELY NOT TOUCHED, MEASURED
       // RATHER THAN ASSUMED. Both clear AA on the light card, so darkening them

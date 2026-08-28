@@ -153,6 +153,106 @@ if (files.length < MIN_FILES) {
   ok(`scan reaches ${files.length} non-test dart file(s)`);
 }
 
+// ── COVERAGE, PER ROOT ──────────────────────────────────────────────────────
+// 🔴 THE FLOOR ABOVE IS ONE NUMBER OVER A UNION, AND A UNION FLOOR IS NOT A
+// COVERAGE CHECK. It answers "did I see enough files somewhere"; the question is
+// "did I see every root I am supposed to see". `packages/` alone clears 40
+// several times over, so the whole of `apps/` — every file the $2.99 defect
+// lived in — can leave the scan while this guard prints "no price literals".
+//
+// The roots are DERIVED, because a list written here is the next thing to rot.
+// Two sources, each already maintained for its own reasons:
+//   · the `workspace:` block in the root `pubspec.yaml` — what `melos run gate`
+//     ranges over, kept in step with disk by assert-workspace-coverage.mjs;
+//   · the directories that exist under the scan roots.
+// The declaration is what covers a root that is GONE: a deleted or renamed
+// directory contributes zero BY NAME instead of dropping out of the list.
+//
+// ⚠️ Residual: a scan root that is absent AND declares nothing under it is not
+// floored here.
+const SKIP_REL = SKIP_PATH.map((p) => p.split(sep).join('/'));
+
+// A root that legitimately holds no dart file is DECLARED, never inferred from
+// its own count — zero is the signal this section exists to read.
+const NO_DART = new Map([
+  [
+    'packages/tokens',
+    'a Node package (style-dictionary) that emits design tokens. It contains no Dart at all, which is also why assert-workspace-coverage.mjs cannot see it.',
+  ],
+]);
+
+function derivedRoots() {
+  const roots = new Set();
+  const pubspecPath = join(ROOT, 'pubspec.yaml');
+  if (existsSync(pubspecPath)) {
+    const text = readFileSync(pubspecPath, 'utf8');
+    const ws = text.match(/^workspace:\s*$/m);
+    if (ws) {
+      for (const raw of text.slice(ws.index + ws[0].length).split('\n')) {
+        const line = raw.replace(/#.*$/, '');
+        if (/^\s*-\s+\S/.test(line)) {
+          roots.add(line.replace(/^\s*-\s+/, '').trim().replace(/\/+$/, ''));
+        } else if (line.trim() !== '') {
+          break; // the first non-item, non-blank line ends the block
+        }
+      }
+    }
+  }
+  for (const parent of SCAN_ROOTS) {
+    let entries;
+    try {
+      entries = listDir(join(ROOT, parent), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith('.') || SKIP_DIR.has(e.name)) continue;
+      roots.add(`${parent}/${e.name}`);
+    }
+  }
+  return [...roots]
+    .filter((r) => SCAN_ROOTS.some((p) => r.startsWith(`${p}/`)))
+    .filter((r) => !SKIP_REL.some((s) => r === s || r.startsWith(`${s}/`)))
+    .sort();
+}
+
+{
+  const relFiles = files.map(rel);
+  const roots = derivedRoots();
+  const contributed = new Map(roots.map((r) => [r, 0]));
+  for (const f of relFiles) {
+    for (const r of roots) {
+      if (f.startsWith(`${r}/`)) contributed.set(r, contributed.get(r) + 1);
+    }
+  }
+  const quiet = roots.filter((r) => contributed.get(r) === 0 && !NO_DART.has(r));
+  if (quiet.length) {
+    problems.push(
+      `COVERAGE LOST — ${quiet.join(', ')} contributed ZERO non-test dart file(s) to the scan. The ${MIN_FILES}-file floor above is a UNION and stayed green because a sibling root covered for it; nothing under the named root(s) was scanned, and "no price literals" below is a claim about a tree that no longer includes them.`,
+    );
+  } else if (roots.length === 0) {
+    problems.push(
+      `COVERAGE LOST — no scan root could be derived from \`pubspec.yaml\`'s \`workspace:\` block or from the directories under ${SCAN_ROOTS.join(', ')}, so the per-root check ranged over nothing.`,
+    );
+  } else {
+    const scanned = roots.filter((r) => !NO_DART.has(r));
+    const declaredFree = roots.filter((r) => NO_DART.has(r));
+    ok(
+      `per-root coverage: ${scanned.map((r) => `${r} (${contributed.get(r)})`).join(', ')}` +
+        (declaredFree.length ? ` · declared dart-free: ${declaredFree.join(', ')}` : ''),
+    );
+  }
+  // A dart-free declaration that has started producing dart is a stale
+  // exemption, and a stale exemption inflates apparent coverage.
+  for (const [r, why] of NO_DART) {
+    if ((contributed.get(r) ?? 0) > 0) {
+      problems.push(
+        `\`${r}\` is declared dart-free (${why}) but contributed ${contributed.get(r)} dart file(s). Delete the entry — it is now excusing a root that this guard should be flooring.`,
+      );
+    }
+  }
+}
+
 // ── A · no price-shaped literal in shipping source ──────────────────────────
 // STRING LITERALS ONLY, comments stripped first. A price in a comment is prose
 // (this file's own header contains three), and a guard that matched its own

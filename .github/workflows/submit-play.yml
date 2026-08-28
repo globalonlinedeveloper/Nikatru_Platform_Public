@@ -159,6 +159,28 @@ on:
         default: 'completed'
         type: choice
         options: [completed, draft]
+      # ── 🔴 [10]D-9 · THE ADDRESS THE LEDGER ROW WILL CARRY ──────────────────
+      # A store record whose listing nobody can open says something shipped and
+      # gives no way to look at it. record-deployment.mjs REFUSES a store
+      # environment with no `--listing-url`, and this input is where that value
+      # comes from — asked of the same human, in the same act, as `confirm`.
+      #
+      # ⚠️ IT IS NOT DERIVED, AND THE HONEST REASON IS THAT NOTHING IN THIS REPO
+      # KNOWS IT YET. catalog/apps.json carries `listings.play: null` — the
+      # listing does not exist until somebody creates it in the console (that is
+      # OWNER_QUEUE A-2), and inventing `play.google.com/store/apps/details?id=…`
+      # here would put a SECOND copy of the package name in a workflow file, in a
+      # repository whose whole store layer exists to keep one copy of each fact.
+      # The day catalog/apps.json holds a real listing URL, this input becomes a
+      # default read from there and the record stops asking.
+      #
+      # The submit job REFUSES an empty or non-https value BEFORE it uploads —
+      # see "A real submission must name the listing it creates" below.
+      listing_url:
+        description: 'The Play listing URL this submission will be recorded against, e.g. https://play.google.com/store/apps/details?id=<applicationId>. Required for a real upload; ignored by the dry run.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -333,10 +355,75 @@ jobs:
     needs: [gate, dry-run]
     if: inputs.confirm == 'SUBMIT-TO-PLAY'
     environment: store-publish
+    # ── [pipeline F-11] · the scopes THIS job needs, at JOB level ─────────────
+    # The workflow block above grants `contents: read` + `checks: read` and no
+    # more, which is right for the gate and the dry run. This job additionally
+    # writes the [10]D-9 record at the end, and record-deployment.mjs POSTs a
+    # GitHub Deployment — `deployments: write`. Declared here so no other job in
+    # this file holds it, the same shape build-platforms.yml's release job uses.
+    #
+    # ⚠️ NAMED IN FULL-LINE COMMENTS, NEVER TRAILING ONES. deployment-record.test.mjs
+    # scans every workflow for `record-deployment.mjs <environment>` and strips only
+    # comments that START a line, while its `\s+` crosses newlines — so an inline
+    # `deployments: write # …record-deployment.mjs` makes it read the NEXT key as an
+    # environment name. Recorded in build-platforms.yml on 2026-08-06; repeated here
+    # because the trap is invisible at the call site.
+    permissions:
+      contents: read
+      checks: read
+      deployments: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # ── 🔴 [10]D-9 · REFUSE BEFORE SPENDING, NOT AFTER UPLOADING ────────────
+      # The last step of this job writes the ledger row, and record-deployment.mjs
+      # REFUSES a store environment with no `--listing-url`. If that refusal were
+      # allowed to happen at the end, its cost would be a red job standing over a
+      # submission that already reached Google and that nothing in the ledger
+      # names — the precise state D-9 exists to abolish, produced by the check for
+      # it. So the question is asked FIRST, before the 8-minute build and before
+      # any network path to Play is opened: a run that cannot record must not
+      # upload.
+      #
+      # The value is read from `env:` and dereferenced as "$LISTING_URL" rather
+      # than interpolated into the shell — same rule as the dispatch inputs below.
+      #
+      # ⚠️ THE ECHOES BELOW SAY "the [10]D-9 recorder" RATHER THAN NAMING THE
+      # SCRIPT, AND THAT IS NOT PROSE STYLE. `RECORD_CALL` in workflow-scan.mjs
+      # reads `record-deployment.mjs <next-word>` as a CALL SITE and takes that
+      # next word as an environment name, out of any `run:` body — so an echo
+      # containing "record-deployment.mjs refuses …" invents a record call for an
+      # environment named "refuses", in a step that records nothing. Measured
+      # here on 2026-08-26: it produced two phantom rule-4/rule-5 problems, and
+      # deployment-record.test.mjs would have failed the same way. A guard cannot
+      # tell a mention from a call, so do not write one.
+      - name: A real submission must name the listing it will be recorded against
+        env:
+          LISTING_URL: ${{ inputs.listing_url }}
+        run: |
+          set -euo pipefail
+          case "${LISTING_URL}" in
+            https://*)
+              echo "⬜ [10]D-9 the submission will be recorded against ${LISTING_URL}"
+              ;;
+            '')
+              echo "FAIL the \`listing_url\` dispatch input is EMPTY, and this job is a REAL upload." >&2
+              echo "     [10]D-9: a store record whose listing nobody can open says something shipped and" >&2
+              echo "     gives no way to look at it. The [10]D-9 recorder refuses a store environment with" >&2
+              echo "     no --listing-url, so this run could upload and then be unable to record what it did." >&2
+              echo "     Re-dispatch with listing_url set, e.g." >&2
+              echo "       https://play.google.com/store/apps/details?id=<applicationId>" >&2
+              exit 1
+              ;;
+            *)
+              echo "FAIL \`listing_url\` is ${LISTING_URL}, which is not an https URL." >&2
+              echo "     The ledger row is the ONLY address anybody will have for this submission once the" >&2
+              echo "     console is behind an account nobody can open. A value that does not resolve is a" >&2
+              echo "     second source of truth, not a record." >&2
+              exit 1
+              ;;
+          esac
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
@@ -397,6 +484,12 @@ jobs:
       # reviewer. It is a READ (ADR 031: "Reading is never gated") and needs only
       # the `contents: read` this workflow already grants.
       - name: Upload to Google Play
+        # 🔴 THE `id:` IS LOAD-BEARING — the record step below is conditioned on
+        # `steps.upload.outcome`, and GitHub resolves `steps.<unknown>.outcome`
+        # to null instead of erroring. Renaming or deleting this id would make
+        # the record silently never run while the job stayed green, which is why
+        # assert-publish-records.mjs rule 6b fails on a dangling reference.
+        id: upload
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PLAY_TRACK: ${{ inputs.track }}
@@ -406,3 +499,98 @@ jobs:
         run: >
           node tooling/release/submit-play.mjs --submit --app subly
           --confirm "$CONFIRM" --status "$RELEASE_STATUS"
+      # ── 🔴 [14]O-7 · THE READ THIS JOB DID NOT HAVE UNTIL 2026-08-26 ────────
+      # The step above WRITES to Google and the step below WRITES a claim about
+      # what it wrote. Between 2026-08-26 and this step landing, nothing read
+      # either back — which is how "an upload that shipped nothing produces a
+      # green tick and a deployment record naming the new SHA".
+      #
+      # 🔴 IT IS NOT THE LISTING, AND THAT DISTINCTION IS THE WHOLE DECISION.
+      # A Play submission enters a review queue: `listing_url` is not live for
+      # hours or days and answers 200 with the PREVIOUS build the entire time,
+      # so probing it here would be green over precisely the failure it exists
+      # to catch — the `Ping` finding tooling/monitor-register.json records,
+      # repeated on a store. What IS readable in this job, in seconds, and
+      # independent of any reviewer is the Play Developer API's own TRACK state:
+      # the edit committed or it did not. `edits.tracks.list` names the
+      # versionCodes each track carries, and after an upload that shipped
+      # nothing NO track carries this build's.
+      #
+      # ⚠️ THE EXPECTATION IS DERIVED, NOT PASSED IN, AND THE CHAIN IS THE
+      # REASON IT IS TRUSTWORTHY. `apps/subly/android/app/build.gradle.kts`
+      # sets `versionCode = flutter.versionCode`, and the build step above
+      # passes no `--build-number` — so the versionCode Play receives is the
+      # build number in `apps/subly/pubspec.yaml`, read here THROUGH THE SAME
+      # PARSER the versioning guard uses rather than by a second reader of the
+      # same file. The application id comes through the shared identity reader
+      # for the same reason. If somebody later gives the build an explicit
+      # `--build-number`, this expectation goes STALE and this step goes RED on
+      # a good submission — loud, in the job, naming both numbers. That is the
+      # right direction for it to break in; a silent pass is not available.
+      #
+      # ⚠️ IT RUNS BEFORE THE LEDGER STEP AND DOES NOT GUARD IT. That step is
+      # `always() && steps.upload.outcome == 'success'`, so a red here still
+      # records the submission and still fails the job. An upload cannot be
+      # un-sent: a run that reached Google must say what it sent even when the
+      # probe disagrees about where it landed.
+      - name: The Play track must carry the bundle this job just uploaded
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          PUBSPEC_VERSION="$(node tooling/ci/assert-app-versioning.mjs --emit apps/subly | sed -n 's/^pubspec_version=//p')"
+          case "${PUBSPEC_VERSION}" in
+            *+*) VERSION_CODE="${PUBSPEC_VERSION##*+}" ;;
+            *)
+              echo "FAIL apps/subly/pubspec.yaml declares version ${PUBSPEC_VERSION} with no +<build number> suffix." >&2
+              echo "     Flutter would default the versionCode to 1 and this probe would assert a number nobody" >&2
+              echo "     chose. Refusing to guess is the only honest answer here." >&2
+              exit 1
+              ;;
+          esac
+          APPLICATION_ID="$(node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          import { readGradleApplicationId } from "./tooling/ci/read-identity.mjs";
+          const rel = "apps/subly/android/app/build.gradle.kts";
+          const id = readGradleApplicationId(readFileSync(rel, "utf8"), rel);
+          if (!id.value) { console.error(id.missing ?? id.lost); process.exit(1); }
+          process.stdout.write(id.value);
+          ')"
+          echo "⬜ [14]O-7 reading the Play track state for ${APPLICATION_ID}, expecting versionCode ${VERSION_CODE}"
+          node tooling/ops/post-deploy-smoke.mjs --play-package "${APPLICATION_ID}" --expect "${VERSION_CODE}"
+      # ── 🔴 [10]D-9 · THE RECORD THIS JOB DID NOT WRITE UNTIL 2026-08-26 ──────
+      # D-9: "a submission or upload workflow that ends without writing one
+      # fails." This job ended without writing one, from the day it landed, and
+      # assert-publish-records.mjs did not say so — its census ranged over the
+      # register's `submission.job` ("dry-run") and never opened this job at all,
+      # so it reported that the publish branch had NO INSTANCES. It had one. It
+      # was here.
+      #
+      # `--state in_review` and nothing else: SUBMIT_TIME_STATES in
+      # deployment-record.mjs is `['in_review']` because an upload finishing means
+      # WE SUBMITTED, never THE STORE APPROVED. Play decides `live` hours-to-weeks
+      # later, after this run has ended; a separate act writes that transition.
+      #
+      # ⚠️ THE CONDITION IS A STRICT WIDENING OF THE INHERITED `success()`, which
+      # is what makes it safe and why rule 6 accepts exactly this form. `success()`
+      # already required the upload step to be green, so every run that would have
+      # recorded still records — plus the runs where something after the upload
+      # fails or the job is CANCELLED. A store upload cannot be un-sent: a leg
+      # cancelled after Play accepted the bundle has still submitted something, so
+      # it must still say what. This is deploy-web run 144's lesson (2026-08-08),
+      # applied to a channel where the act is irreversible rather than merely
+      # published.
+      - name: Record the submission in the [10]D-9 ledger
+        if: always() && steps.upload.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LISTING_URL: ${{ inputs.listing_url }}
+        # ONE LINE, NOT A `run: >` FOLD, AND THAT IS NOT STYLE. The flat half of
+        # assert-publish-records.mjs's accounting identity matches PHYSICAL lines;
+        # the structured half reports a folded block at the line of its `run:` key.
+        # A folded record call therefore appears at two different line numbers to
+        # the two readers and is reported as UNATTRIBUTED — COVERAGE LOST. Every
+        # other record call in this repository is written on one line for the same
+        # reason (deploy-web.yml:517, deploy-workers.yml:254, :381).
+        run: node tooling/ci/record-deployment.mjs subly-android-play --state in_review --listing-url "$LISTING_URL"

@@ -102,7 +102,14 @@ export interface Env {
    * `Paddle-Signature` HMAC is computed with.
    *
    * 🔴 OWNER-GATED AND ABSENT TODAY. It can only be generated in the Paddle
-   * seller console, which requires the seller account (OWNER_QUEUE A-1, PENDING).
+   * seller console, per notification-destination.
+   *
+   * ⚠️ CORRECTED 2026-08-28: this said the console "requires the seller account
+   * (OWNER_QUEUE A-1, PENDING)". A-1 is DONE — the account went LIVE 2026-08-11
+   * ([ADR 044]) — so the console is reachable and this secret is one console
+   * action away, not one signup away. It is still ABSENT from this Worker as far
+   * as anything here can tell: a Worker secret is invisible to every guard in the
+   * tree, so the 503 below stays the honest default.
    * Optional so the Worker builds, typechecks and deploys without it; the route
    * answers 503 rather than accepting anything, and
    * `tooling/ci/assert-mor-adapters.mjs` PRINTS the gap on every CI run rather

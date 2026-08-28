@@ -1251,7 +1251,11 @@
           "parsed rather than grepped. Limb (ii) is the runbook below — Private/ is gitignored so no CI",
           "guard can open it (see the ⚠️ note at the top of this file); the path is recorded here so it",
           "is in one place a guard could reach if Private/ ever ships. Limb (iii) — a submission record",
-          "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission."
+          "in the [10]D-9 ledger — stays UNSATISFIED and cannot be satisfied without a real submission.",
+          "",
+          "⚠️ `job` NAMES THE DRY RUN AND IS A FLOOR, NOT A CENSUS: submit-play.yml also carries an",
+          "owner-approved `submit:` job that runs this script with `--submit`. Reading `job` as the whole",
+          "file is the defect assert-publish-records.mjs's header records for 2026-08-26."
         ],
         "script": "tooling/release/submit-play.mjs",
         "workflow": ".github/workflows/submit-play.yml",
@@ -2009,7 +2013,12 @@
           "row's signing.keyKind is \"none\": Canonical signs the binary.",
           "",
           "⚠️ THE OWNER-GATED STEP HERE IS NOT AN ACCOUNT, IT IS A NAME. `snapcraft register <name>`",
-          "claims a GLOBAL namespace, one per app, and it is the whole of OWNER_QUEUE A-6."
+          "claims a GLOBAL namespace, one per app, and it is the whole of OWNER_QUEUE A-6.",
+          "",
+          "⚠️ `job` NAMES THE DRY RUN AND IS A FLOOR, NOT A CENSUS: submit-snap.yml also carries an",
+          "owner-approved `submit:` job that runs this script with `--submit` — which is why that file's",
+          "own name says so. Reading `job` as the whole file is the defect assert-publish-records.mjs's",
+          "header records for 2026-08-26."
         ],
         "_whyRecipeScript": [
           "🔴 THE STEP THAT HAS TO HAPPEN BEFORE `snapcraft upload` HAS ANYTHING TO UPLOAD, and until",
@@ -2323,11 +2332,11 @@
       },
       ".ipa": {
         "flutterTarget": "ipa",
-        "packagedBy": null
+        "packagedBy": "🔴 CORRECTED 2026-08-25 — this field was `null` until today, which is the claim that `flutter build ipa` leaves the artifact and no packaging step is needed. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: no lane runs `flutter build ipa`. The `apple` job in .github/workflows/build-platforms.yml runs `flutter build ios --release --no-codesign`, which produces an unsigned .app and no .ipa, and uploads build/ios/iphoneos; the ios-appstore row accepts .ipa and has no lane at all. Held by assert-channel-register.mjs §10 limb (iii)."
       },
       ".pkg": {
         "flutterTarget": "macos",
-        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane."
+        "packagedBy": "productbuild + notarisation — tooling/ci/apple-signing.mjs and the Apple lane. 🔴 CORRECTED 2026-08-25 — that sentence describes an intent, not a step. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `productbuild` appears in no workflow in this repository, and apple-signing.mjs:182 states it in its own words — the `productbuild` step stays a printed intent. The `apple` job runs `flutter build macos --release` and uploads the Release directory; no .pkg is produced. Held by assert-channel-register.mjs §10 limb (iii)."
       },
       ".msix": {
         "flutterTarget": "windows",
@@ -2343,7 +2352,7 @@
       },
       ".AppImage": {
         "flutterTarget": "linux",
-        "packagedBy": "AppImage packaging — tooling/ci/appimage-signing.mjs and its lane."
+        "packagedBy": "AppImage packaging — tooling/ci/appimage-signing.mjs and its lane. 🔴 CORRECTED 2026-08-25 — that named a packager that does not exist. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `grep -rn -E 'appimagetool|linuxdeploy|AppImageKit' --include=*.mjs --include=*.yml --include=*.sh`, excluding node_modules/ and .bundles/, returns zero lines, and appimage-signing.mjs materialises the SIGNING KEY (its own line 3) — it signs, it does not package. build-platforms.yml:342 already said so in prose, where no guard could read it. Held by assert-channel-register.mjs §10 limb (iii). 🔴 SWEEP RESTATED 2026-08-25, APPENDED NOT REWRITTEN — the sentence above is left exactly as written. As literally scoped it no longer returns zero: limb (iii) of assert-channel-register.mjs now quotes that same pattern in its own comment, so the rule as written returns exactly 1 line — measured 2026-08-25, COUNT=1, and it is tooling/ci/assert-channel-register.mjs itself. The domain that reproduces ZERO today is that same sweep excluding node_modules/, .bundles/ AND tooling/ci/assert-channel-register.mjs — measured 2026-08-25: 0 lines. The one hit is a comment quoting the pattern, not a packaging invocation, so the finding this entry rests on is unchanged: nothing in this repository packages an AppImage."
       }
     }
   }

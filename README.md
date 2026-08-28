@@ -1,10 +1,38 @@
-# Nikatru_Android_Apps_Public
+# Nikatru_Platform_Public
 
 <!-- Repointed 2026-08-19: this heading read `Project_Cross_Platform_Apps`, which is the name the
      GitHub repo and this directory both carried until the owner renamed all five that day. The
      heading is the first thing a reader matches against the URL they arrived from, so a stale one
      reads as "wrong repo". Verify a name with `gh repo list`, never with
      `gh api repos/<owner>/<name>` — GitHub follows rename redirects and the old name still 200s. -->
+
+<!-- Repointed again 2026-08-26: the 2026-08-19 note above stays as written — it is still true of THAT
+     rename. What changed since is the name it landed on. The heading read `Nikatru_Android_Apps_Public`
+     from that day until today; the live name is `globalonlinedeveloper/Nikatru_Platform_Public`, so that
+     is what the heading says. The second rename FREED `Nikatru_Android_Apps_Public` exactly the way the
+     first freed `Project_Cross_Platform_Apps`, and the same trap applies: the old name still resolves only
+     through a redirect that dies the moment anyone else claims it, and anyone could. Verification rule is
+     unchanged — `gh repo list`, never `gh api repos/<owner>/<name>` — and `git remote -v` is not a third
+     option: it prints a string out of local `.git/config`, which a GitHub rename never touches, so it is a
+     local config string agreeing with itself rather than evidence about the remote.
+
+     Re-measured on this host 2026-08-26 with an authenticated `gh`:
+       · `gh repo list globalonlinedeveloper` enumerates what the org OWNS, so a freed name is ABSENT from
+         the output rather than redirected into it. POSITIVE = a line reading
+         `globalonlinedeveloper/Nikatru_Platform_Public`. NEGATIVE = no line anywhere contains
+         `Nikatru_Android_Apps_Public`. Both held today. A negative here raises no error and no 404,
+         because it is an enumeration and not a status code.
+       · `gh api repos/globalonlinedeveloper/Nikatru_Android_Apps_Public` and
+         `gh repo view globalonlinedeveloper/Nikatru_Android_Apps_Public` BOTH exit 0 on the freed name and
+         BOTH report `full_name` = `globalonlinedeveloper/Nikatru_Platform_Public`. They followed the
+         redirect instead of answering the question. "It resolved" is the trap, not the proof.
+
+     Residue, so the next reader does not "fix" it: `grep -rIl "Nikatru_Android_Apps_Public" .` from this
+     root matches 19 files — this one, the release runbook under `tooling/release/`, and 17 others. All 17
+     are dated historical records: the rename/deletion rows in `catalog/store-matrix.json`, prose in
+     `.github/workflows/submit-play.yml`, guard comments under `tooling/ci/`, and `.claude/` backup logs.
+     They are DELIBERATELY LEFT STANDING, because a dated record naming the name it recorded is correct and
+     rewriting one falsifies it. 19 is the whole population, not a sample. -->
 
 The NIKATRU app factory: one Flutter chassis, one Cloudflare Workers backend pattern, and the CI
 that stamps, gates and ships apps from them to six platforms.

@@ -345,6 +345,45 @@ jobs:
       # `continue-on-error` in disguise: the tolerated case is enumerated and
       # everything else is red.
       #
+      # TWO STRANDS, EITHER ONE SUFFICIENT. The `|` in the match below is the
+      # design, not an accident. The English substring goes stale the day
+      # Cloudflare rewords or localises the message; the numeric code goes stale
+      # the day the API renumbers it. Neither is trusted to outlive the other,
+      # so each alternative is written to carry the whole tolerance ALONE — an
+      # "already exists" line with the code absent still passes, and the code
+      # with a completely reworded message still passes.
+      #
+      # 🔴 WHERE 8000002 COMES FROM, AND WHY IT IS THE ONLY CODE HERE.
+      # SOURCE: observed run 32962146010, job "Build & deploy web to Cloudflare
+      # Pages (subly)", THIS step's log —
+      #     A project with this name already exists. Choose a different project
+      #     name. [code: 8000002]
+      # That run is the ONLY source. Cloudflare publishes no error-code table
+      # for Pages — the developers.cloudflare.com "API error codes" reference
+      # covers AI Search, and the Pages docs enumerate nothing — so this literal
+      # is grounded in an observation, not a document. That is precisely why the
+      # message strand above has to keep standing on its own: if a later API
+      # version renumbers this, the reworded-message case is what survives.
+      #
+      # 8000007 WAS REMOVED, AND IT WAS NOT FICTION — IT IS A REAL PAGES CODE
+      # FOR THE OPPOSITE CONDITION: "Project not found. The specified project
+      # name does not match any of your existing projects." (reported against
+      # `pages deploy` in cloudflare/workers-sdk #12203). Tolerating it HERE
+      # would have turned a genuinely ABSENT project green. It never did harm
+      # only because `project create` cannot raise it — which is also why
+      # nothing in this repo ever cited it: `grep -rn 8000007` found this line
+      # and nothing else. A code that can only ever mis-fire is not spare
+      # coverage, it is a trap for the next reader.
+      #
+      # 8000000 IS DELIBERATELY NOT ENUMERATED. Older wrangler surfaced this
+      # same already-exists conflict as 8000000 (workers-sdk #3527), so a reader
+      # who searches will be tempted to add it as a second tolerated code. Do
+      # not. 8000000 is Cloudflare's generic "an unknown error occurred" bucket
+      # — it is also what control-plane 500s and Pages outages return. Adding
+      # it would swallow exactly the failures the paragraph above promises stay
+      # red. If a future run shows the conflict arriving as 8000000 again, the
+      # answer is the message strand, not a wider code list.
+      #
       # ⚠️ THE APP ID GOES THROUGH `env:`, NOT INTO THE SCRIPT BODY. A
       # `${{ }}` interpolated straight into a `run:` block is the template
       # injection zizmor flags; the value is ours today, and the habit is what
@@ -367,7 +406,7 @@ jobs:
           out="$(npx --yes "wrangler@${ver}" pages project create "$APP" --production-branch=main 2>&1)" && code=0 || code=$?
           printf '%s\n' "$out"
           if [ "$code" -eq 0 ]; then echo "Created Direct Upload Pages project \"$APP\"."; exit 0; fi
-          if printf '%s' "$out" | grep -qiE 'already exists|8000007'; then echo "Pages project \"$APP\" already exists — nothing to create."; exit 0; fi
+          if printf '%s' "$out" | grep -qiE 'already exists|\b8000002\b'; then echo "Pages project \"$APP\" already exists — nothing to create."; exit 0; fi
           echo "::error title=Pages project::could not ensure the Direct Upload Pages project \"$APP\" exists (wrangler exit ${code})."
           exit 1
 

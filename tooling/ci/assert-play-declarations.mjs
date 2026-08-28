@@ -67,12 +67,14 @@
 //
 // ── WHAT THIS GUARD CANNOT SEE, PRINTED ON EVERY RUN ─────────────────────────
 // Stated out loud because green must not be mistaken for "the form is right":
-//   · THE MERGED ANDROID MANIFEST. Gradle merges permissions from every
-//     plugin's own manifest, none of which is in this repository, and Android
-//     cannot be built on the maintainer's machine at all. (D) is the mitigation
-//     — a permission-bearing plugin cannot arrive without a new dependency —
-//     but it is a mitigation, not a reading. `bundletool dump manifest` on a
-//     CI-built .aab is the reading.
+//   · WHICH LIBRARY CONTRIBUTED EACH MERGED PERMISSION. 🔴 This entry said the
+//     merged manifest had never been read at all — true until 2026-08-26, when
+//     it was read off the signed .aab of a CI run and recorded in
+//     androidPermissions.merged. Limb 7a asserts that reading. What remains
+//     unseen is narrower: no AAR manifest is in this repository or on the
+//     measuring host, so INTERNET is a named finding rather than an attribution
+//     and one row is graded `inferred`. The manifest-merger report from the
+//     Android lane would settle every row at once.
 //   · WHAT THE CRASH SDK ACTUALLY SENDS. `contexts.device` and the Sentry
 //     Android installation id are assembled inside a vendored SDK at runtime.
 //     That is why "Device or other IDs" is `null` under the demo posture.
@@ -125,6 +127,47 @@ function coverageLost(lines) {
   for (const l of lines.slice(1)) console.error(`     ${l}`);
   console.error('\nassert-play-declarations: FAILED');
   process.exit(1);
+}
+
+/** The RESOLVED package versions out of a pubspec.lock.
+ *
+ *  Structure, not a grep: `version:` appears under every one of ~200 packages,
+ *  so the walk is anchored on the package heading and stops at the next one.
+ *
+ *  Shared because TWO limbs pin against the lock — limb 7a, which ties the
+ *  MERGED-MANIFEST measurement to the plugin versions whose own manifests were
+ *  read to attribute it, and limb 7b, which ties the device-identifier answer to
+ *  the crash-SDK version whose source was read. A second copy of this parse would
+ *  be a second thing to get subtly wrong while both kept reporting green.
+ *
+ *  ⚠️ THIS COMMENT DESCRIBED CODE THAT DID NOT EXIST FOR THE LENGTH OF ONE
+ *  UNIT OF WORK. The extraction landed first, naming limb 7a in the present
+ *  tense, and limb 7a was not written until the follow-up — the same defect the
+ *  block it serves had (a sentence attached to a measurement where only the
+ *  measurement was checked), reproduced in the refactor meant to support it.
+ *  Both limbs exist now, and both are exercised by
+ *  tooling/ci/test/play-declarations.test.mjs.
+ *
+ *  Returns an empty Map if the format moves; both callers treat that as
+ *  COVERAGE LOST rather than as "no pins drifted". */
+function parseLockVersions(lockText) {
+  const lockVersions = new Map();
+  let current = null;
+  for (const line of lockText.split('\n')) {
+    const head = line.match(/^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*$/);
+    if (head) {
+      current = head[1];
+      continue;
+    }
+    if (current === null) continue;
+    if (/^ {0,2}\S/.test(line)) current = null;
+    const v = line.match(/^ {4}version:\s*"?([^"\s]+)"?\s*$/);
+    if (v && current !== null) {
+      lockVersions.set(current, v[1]);
+      current = null;
+    }
+  }
+  return lockVersions;
 }
 
 function parseJson(rel, whyItMatters) {
@@ -988,6 +1031,276 @@ if (depsChecked === 0 && problems.length === 0) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 7a · THE MERGED ANDROID MANIFEST, AS MEASURED OFF A BUILT ARTEFACT.
+//
+// 🔴 THE BLOCK THIS LIMB READS SPENT ITS FIRST DAY PROMISING A GUARD NOBODY HAD
+// WRITTEN — this corpus's signature defect wearing a measurement as a disguise.
+// androidPermissions.merged records the union Gradle actually produced, read off
+// the signed .aab of run 32869814582 and cross-decoded twice, and then says two
+// things about ITSELF in prose: that `expectedButAbsent` is "an equality with
+// teeth … a re-measurement finds this key contradicting the permission list and
+// FAILS", and that `pinned` is what stops the reading "going quietly stale".
+// Neither sentence was true the day it was written: NOTHING READ EITHER KEY. A
+// measurement is a fact; a sentence about what happens when the fact moves is a
+// claim, and an unchecked claim sitting beside a correct number is exactly the
+// shape of defect this whole file exists to catch. This limb is those two
+// sentences becoming true.
+//
+// WHAT IT ASSERTS — every one a promise the block makes about itself, not an
+// obligation invented here:
+//   · THE PINS RESOLVE. Every package in `merged.pinned` still resolves to that
+//     exact version in the lock. A version bump is the ONE way this reading can
+//     rot with no other file in the repository changing: the manifest equality
+//     in limb 7 cannot see it, and the dependency equality cannot either,
+//     because the package is already declared and its RANGE has not moved. That
+//     is the whole argument `_pinned_why` makes for the pin existing.
+//   · WHAT WAS PREDICTED AND MEASURED ABSENT IS STILL ABSENT. No key in
+//     `expectedButAbsent` may appear in `merged.permissions`. If a later
+//     sentry-android brings ACCESS_NETWORK_STATE in, the block lands a key that
+//     contradicts its own receipt, and somebody has to say what the new
+//     permission changes instead of appending it silently.
+//   · THE BLOCK IS INTERNALLY HONEST. A row graded `read` or `inferred` carries
+//     the evidence it claims; an `inferred` row carries the residual that is the
+//     entire difference between the two grades; an `unattributed` row names
+//     nobody AND has a matching named finding under `merged.unattributed` — both
+//     directions, so neither a blank quietly filled in nor a finding whose row
+//     went away can pass.
+//   · THE "IT ALL CAME FROM DEPENDENCIES" SENTENCE. `merged._why` asserts that
+//     not one of these permissions is declared in this repository; the release
+//     manifest it names is compared, so the day somebody hand-declares one of
+//     them that sentence fails instead of quietly becoming false.
+//
+// COVERAGE. `merged` absent, `merged.permissions` empty, or a lock that parses
+// to zero versions are each COVERAGE LOST and never ok: a limb ranging over
+// nothing certifies nothing, and "the merged set has been read" is precisely the
+// claim a silent pass would be forging.
+// ─────────────────────────────────────────────────────────────────────────────
+const merged = ds.androidPermissions?.merged;
+let mergedPermsChecked = 0;
+let mergedPinsChecked = 0;
+let mergedAbsencesChecked = 0;
+
+if (!merged || typeof merged !== 'object' || Array.isArray(merged)) {
+  coverageLost([
+    `${DS_REL} androidPermissions carries no \`merged\` block.`,
+    'It is the only reading of the permission set Google actually sees — the union Gradle produces from',
+    'plugin manifests that are not in this repository. Without it every check below ranges over nothing,',
+    'and this guard would go back to reporting ok on the in-repo manifest equality alone while the printed',
+    'CANNOT-SEE list still said the merged set had never been read. Delete the measurement and the guard',
+    'must say so, not shrug.',
+  ]);
+}
+
+const mergedPerms = Array.isArray(merged.permissions) ? merged.permissions : [];
+if (mergedPerms.length === 0) {
+  coverageLost([
+    `${DS_REL} androidPermissions.merged.permissions is empty or not an array.`,
+    'Every assertion in this limb quantifies over it: the absence check would find nothing to contradict,',
+    'the attribution checks would grade nothing, and the guard would certify a measurement of zero',
+    'permissions as a clean reading of a real .aab.',
+  ]);
+}
+
+// ── the provenance. A measurement with no receipt is a number somebody typed ──
+const mf = merged.measuredFrom;
+if (!mf || typeof mf !== 'object') {
+  problems.push(
+    `${DS_REL} androidPermissions.merged carries no \`measuredFrom\`. The permission list is a reading of a specific artefact of a specific run, or it is a guess with better formatting — and this file's rule is that a value carries where it came from.`,
+  );
+} else {
+  for (const field of ['runId', 'commit', 'artifact', 'entry', 'method', 'measuredOn']) {
+    if (typeof mf[field] !== 'string' || mf[field].trim() === '') {
+      problems.push(
+        `${DS_REL} androidPermissions.merged.measuredFrom has no \`${field}\`. Re-taking this reading means finding the artefact again; a receipt missing the run, the commit, the file inside it or how it was decoded cannot be followed back.`,
+      );
+    }
+  }
+  if (typeof mf.measuredOn === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(mf.measuredOn)) {
+    problems.push(`${DS_REL} androidPermissions.merged.measuredFrom.measuredOn is not an ISO date (YYYY-MM-DD): ${JSON.stringify(mf.measuredOn)}`);
+  }
+}
+
+// ── the rows, and what each grade obliges ────────────────────────────────────
+const VALID_ATTRIBUTION = new Set(['direct', 'transitive', 'unattributed']);
+const VALID_GRADE = new Set(['read', 'inferred']);
+const unattributedFindings = merged.unattributed && typeof merged.unattributed === 'object' ? merged.unattributed : {};
+const mergedNames = new Set();
+for (const p of mergedPerms) {
+  if (!p || typeof p !== 'object' || typeof p.name !== 'string' || p.name.trim() === '') {
+    problems.push(`${DS_REL} androidPermissions.merged.permissions carries an entry with no \`name\`. A permission with no name cannot be compared to anything.`);
+    continue;
+  }
+  const where = `${DS_REL} androidPermissions.merged.permissions["${p.name}"]`;
+  if (mergedNames.has(p.name)) {
+    problems.push(`${where} appears TWICE. A merged manifest is a SET; two rows for one permission are two places to record an attribution, and the second is always the one nobody updates.`);
+    continue;
+  }
+  mergedNames.add(p.name);
+  mergedPermsChecked++;
+
+  if (!VALID_ATTRIBUTION.has(p.attribution)) {
+    problems.push(
+      `${where} has \`attribution\` ${JSON.stringify(p.attribution ?? null)}, which is not one of ${[...VALID_ATTRIBUTION].join(', ')}. That word is how a reader knows whether the source was established or admitted to be unknown.`,
+    );
+    continue;
+  }
+  if (typeof p.why !== 'string' || p.why.trim() === '') {
+    problems.push(`${where} carries no \`why\`. "This permission moves no Play data type" is a claim on a sworn declaration, and a claim with no argument is the one nobody re-checks.`);
+  }
+  if (typeof p.collectionSignal !== 'boolean') {
+    problems.push(
+      `${where} has no boolean \`collectionSignal\`. Whether a permission is a collection tell is the single question the Data safety form turns on; left unstated it reads as "no" without anybody having said so.`,
+    );
+  }
+
+  if (p.attribution === 'unattributed') {
+    if (p.attributedTo !== null || p.evidenceGrade !== null || p.evidence !== null) {
+      problems.push(
+        `${where} is graded \`unattributed\` while still carrying an attributedTo/evidenceGrade/evidence. Unattributed means nothing here says who put it in the merged set; a row that half-names a source is a guess dressed as a reading, which is the exact failure this block was written against.`,
+      );
+    }
+    if (typeof unattributedFindings[p.name] !== 'string' || unattributedFindings[p.name].trim() === '') {
+      problems.push(
+        `🔴 ${where} is graded \`unattributed\` and \`merged.unattributed\` carries no finding for it. An unattributed permission on a sworn declaration is a NAMED FINDING — what was ruled out, what would settle it — or it is a blank quietly filled in with silence.`,
+      );
+    }
+    continue;
+  }
+
+  if (typeof p.attributedTo !== 'string' || p.attributedTo.trim() === '') {
+    problems.push(
+      `${where} is graded \`${p.attribution}\` and names no \`attributedTo\`. That is the worst of both states: it is not an unattributed finding either, so nobody is looking for its source.`,
+    );
+  }
+  if (!VALID_GRADE.has(p.evidenceGrade)) {
+    problems.push(
+      `${where} has \`evidenceGrade\` ${JSON.stringify(p.evidenceGrade ?? null)}, which is not one of ${[...VALID_GRADE].join(', ')}. "read" and "inferred" are different epistemic states, and collapsing them is how an inference becomes a reading in somebody's summary.`,
+    );
+    continue;
+  }
+  if (typeof p.evidence !== 'string' || p.evidence.trim() === '') {
+    problems.push(
+      `🔴 ${where} is graded \`${p.evidenceGrade}\` and carries no \`evidence\`. The grade IS the promise that a file was opened or a tell was found; with nothing beside it, the grade is a word.`,
+    );
+  }
+  if (p.evidenceGrade === 'inferred' && (typeof p.residual !== 'string' || p.residual.trim() === '')) {
+    problems.push(
+      `${where} is graded \`inferred\` and carries no \`residual\`. The entire difference between \`read\` and \`inferred\` in this block is that the source file was NOT opened; the residual is what says so and what would settle it. An inference with no route to being settled quietly becomes a reading.`,
+    );
+  }
+}
+
+// The other direction: a finding whose row has gone.
+for (const name of Object.keys(unattributedFindings)) {
+  if (name.startsWith('_')) continue;
+  const row = mergedPerms.find((p) => p && p.name === name);
+  if (!row) {
+    problems.push(
+      `${DS_REL} androidPermissions.merged.unattributed names \`${name}\`, which is in no \`permissions\` row. Either the permission left the merged set and this open finding outlived it — an unanswered question about something that is gone — or the row was renamed on one side only.`,
+    );
+  } else if (row.attribution !== 'unattributed') {
+    problems.push(
+      `${DS_REL} androidPermissions.merged.unattributed still carries an open finding for \`${name}\` while its row is now attributed to \`${row.attributedTo}\`. The question was answered and the finding was left standing; a reader who hits the finding first acts on the wrong one.`,
+    );
+  }
+}
+
+// ── expectedButAbsent: the receipt with teeth ────────────────────────────────
+const expectedButAbsent = merged.expectedButAbsent && typeof merged.expectedButAbsent === 'object' ? merged.expectedButAbsent : {};
+for (const [name, why] of Object.entries(expectedButAbsent)) {
+  if (name.startsWith('_')) continue;
+  mergedAbsencesChecked++;
+  if (typeof why !== 'string' || why.trim() === '') {
+    problems.push(
+      `${DS_REL} androidPermissions.merged.expectedButAbsent["${name}"] carries no reason. It is kept as the receipt of what careful reasoning about a plugin list got wrong; without the write-up it is a bare string nobody can act on.`,
+    );
+  }
+  if (mergedNames.has(name)) {
+    problems.push(
+      `🔴 ${DS_REL} androidPermissions.merged lists \`${name}\` under \`expectedButAbsent\` AND carries it in \`permissions\`. It was predicted, measured absent, and has now arrived — the precise event that block exists to catch. Do NOT append it silently: re-take the reading from a fresh .aab, say which Play data type it changes (or that it changes none, with the argument), move it out of expectedButAbsent, and update \`measuredFrom\` in the same commit.`,
+    );
+  }
+}
+
+// ── the sentence about where the merged set came from ────────────────────────
+const releaseManifestRel = typeof merged.releaseManifest === 'string' ? merged.releaseManifest : null;
+if (releaseManifestRel === null) {
+  problems.push(
+    `${DS_REL} androidPermissions.merged names no \`releaseManifest\`. Its \`_why\` asserts that NOT ONE of the merged permissions is declared in this repository; with no manifest named, that sentence is unchecked.`,
+  );
+} else if (!permsByFile.has(releaseManifestRel)) {
+  problems.push(
+    `${DS_REL} androidPermissions.merged.releaseManifest names ${releaseManifestRel}, which is not one of the manifests this walk found. The claim that the whole merged set arrived from dependencies rests on that file declaring nothing, and the file is not being read.`,
+  );
+} else {
+  for (const name of permsByFile.get(releaseManifestRel) ?? []) {
+    if (mergedNames.has(name)) {
+      problems.push(
+        `${DS_REL} androidPermissions.merged._why says not one of these permissions is declared in this repository, and ${releaseManifestRel} now declares \`${name}\`. The merged set no longer arrived wholly from dependencies — which changes what \`dependencySurface\` is able to watch, and changes who has to answer for the permission.`,
+      );
+    }
+  }
+}
+
+// ── the pins, against the same lock limb 7b reads ────────────────────────────
+const mergedLockRel = typeof merged.lockfile === 'string' ? merged.lockfile : 'pubspec.lock';
+const mergedLockText = read(mergedLockRel);
+if (mergedLockText === null) {
+  coverageLost([
+    `${DS_REL} androidPermissions.merged.lockfile names ${mergedLockRel}, which does not exist.`,
+    'The version comparison below is the only thing tying this reading of a built artefact to the packages',
+    'it was taken against. With no lockfile it would range over nothing and report the pins confirmed.',
+  ]);
+}
+const mergedLockVersions = parseLockVersions(mergedLockText);
+if (mergedLockVersions.size === 0) {
+  coverageLost([
+    `${mergedLockRel} parsed to ZERO resolved package versions (androidPermissions.merged.pinned).`,
+    'Either the lockfile format moved or the shared parse is wrong. Every pin would then be "not found" and',
+    'this limb would fail for the wrong reason. Fix the parse before trusting either outcome.',
+  ]);
+}
+const mergedPinned = merged.pinned;
+if (!mergedPinned || typeof mergedPinned !== 'object' || Object.keys(mergedPinned).length === 0) {
+  coverageLost([
+    `${DS_REL} androidPermissions.merged.pinned is missing or empty.`,
+    'It names the packages whose plugin manifests were actually read to attribute the rows above. Empty, the',
+    'loop below compares nothing — and the one drift this measurement cannot otherwise survive, a version bump',
+    'that changes the merged set with no other file in this repository moving, goes unwatched while the block',
+    'above still says the pin is what stops it rotting in silence.',
+  ]);
+}
+for (const [pkg, declaredVersion] of Object.entries(mergedPinned)) {
+  if (pkg.startsWith('_')) continue;
+  const actual = mergedLockVersions.get(pkg);
+  if (actual === undefined) {
+    problems.push(
+      `🔴 ${DS_REL} androidPermissions.merged.pinned names \`${pkg}\` and ${mergedLockRel} resolves no such package. The package whose plugin manifest was read to attribute a merged permission is not in the dependency graph at all — so either it left (and the rows attributed to it describe permissions that are no longer merged) or it was renamed and this pin was left behind. Re-take the reading from a fresh .aab.`,
+    );
+    continue;
+  }
+  mergedPinsChecked++;
+  if (actual !== declaredVersion) {
+    problems.push(
+      `🔴 ${mergedLockRel} resolves \`${pkg}\` to ${actual} and ${DS_REL} androidPermissions.merged.pinned records ${declaredVersion}. The merged permission set was measured against ${declaredVersion}, and the rows above were attributed by READING that version's own AndroidManifest.xml. A bump is the one way this measurement rots with no other file in this repository changing — the manifest equality above cannot see it, and neither can the dependency equality, because the dependency did not move, only its resolution did. Re-take the reading from a fresh .aab, then update this pin in the same commit.`,
+    );
+  }
+}
+if (mergedPinsChecked === 0 && problems.length === 0) {
+  coverageLost([
+    'NOT ONE merged-manifest version pin was compared to the lockfile.',
+    'The measurement is version-scoped by construction; with no pin compared, the versions it was scoped to',
+    'are a comment sitting beside a number nobody can re-derive.',
+  ]);
+}
+if (mergedPermsChecked === 0 && problems.length === 0) {
+  coverageLost([
+    'NOT ONE merged permission row was graded.',
+    'The attribution, evidence and absence limbs above all ran over an empty set.',
+  ]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 7b · THE CRASH SDK VERSION PIN.
 //
 // 🔴 "DEVICE OR OTHER IDS = TRUE" IS A FACT ABOUT A VERSION, NOT AN ETERNAL ONE.
@@ -1019,28 +1332,9 @@ if (!css || typeof css !== 'object') {
       'was actually read. With no lockfile it would range over nothing and report the pin confirmed.',
     ]);
   }
-  // Parse the resolved versions. Structure, not a grep: `version:` appears under
-  // every one of ~200 packages, so the walk is anchored on the package heading
-  // and stops at the next one.
-  const lockVersions = new Map();
-  {
-    const lines = lockText.split('\n');
-    let current = null;
-    for (const line of lines) {
-      const head = line.match(/^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*$/);
-      if (head) {
-        current = head[1];
-        continue;
-      }
-      if (current === null) continue;
-      if (/^ {0,2}\S/.test(line)) current = null;
-      const v = line.match(/^ {4}version:\s*"?([^"\s]+)"?\s*$/);
-      if (v && current !== null) {
-        lockVersions.set(current, v[1]);
-        current = null;
-      }
-    }
-  }
+  // The resolved versions. The parse lives in parseLockVersions() at the top of
+  // this file because limb 7a pins against the same lock for a different reason.
+  const lockVersions = parseLockVersions(lockText);
   if (lockVersions.size === 0) {
     coverageLost([
       `${lockRel} parsed to ZERO resolved package versions.`,
@@ -1360,9 +1654,15 @@ if (nulls.length) {
 
 console.log('');
 console.log('   ── what this guard CANNOT see (green is not "the form is right") ──');
-console.log('   · the MERGED Android manifest — Gradle adds permissions from plugin manifests that are not in');
-console.log('     this repository, and Android cannot be built here. Mitigated by the dependency equality');
-console.log('     above; read properly with `bundletool dump manifest` on a CI-built .aab.');
+console.log('   · WHO CONTRIBUTED EACH MERGED PERMISSION. 🔴 This line said the merged Android manifest had never');
+console.log('     been read at all until 2026-08-26; it has been, off the signed .aab of a CI run, and limb 7a');
+console.log('     now asserts that reading against pubspec.lock on every run. What is STILL not visible from');
+console.log('     here is narrower: no AAR manifest is in this repository or on the measuring host, so one');
+console.log('     permission (INTERNET) is carried as a named finding under merged.unattributed and one row is');
+console.log('     graded `inferred` rather than `read`. Settle both by having the Android lane upload');
+console.log('     build/outputs/logs/manifest-merger-release-report.txt, which names the contributing file for');
+console.log('     every merged node. And the reading is ONE BUILD\'S SNAPSHOT: nothing in CI re-downloads its');
+console.log('     own .aab, so merged.pinned and merged.expectedButAbsent are what make it fail rather than rot.');
 console.log('   · WHAT THE GLITCHTIP SERVER DOES AFTER RECEIPT. What the crash SDK PUTS ON THE WIRE is settled —');
 console.log('     it was read from the pinned SDK source (contexts.device.id is a persistent per-install UUID on');
 console.log('     Android, ungated by sendDefaultPii) and the pin is compared to pubspec.lock above. What is NOT');
@@ -1410,6 +1710,11 @@ if (problems.length) {
   console.log(
     `ok   ${pinsChecked} crash-SDK version pin(s) match ${ds.crashSdkSurface?.lockfile ?? 'pubspec.lock'}; ` +
       `${resolvedChecked} settled question(s) re-checked against their answer rows (none has drifted back to null)`,
+  );
+  console.log(
+    `ok   ${mergedPermsChecked} MERGED manifest permission(s) graded (measured from run ${merged.measuredFrom?.runId ?? '?'}, ` +
+      `${merged.measuredFrom?.measuredOn ?? '?'}); ${mergedPinsChecked} merged-manifest version pin(s) match ${mergedLockRel}; ` +
+      `${mergedAbsencesChecked} predicted-but-absent permission(s) still absent`,
   );
   console.log(
     `ok   ${mappingChecked} personal-data inventory row(s) each mapped to a Play data type or excluded with a reason; ` +

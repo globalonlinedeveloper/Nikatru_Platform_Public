@@ -2,13 +2,22 @@
 // The MERCHANT-OF-RECORD contract — provider-agnostic, and the only vocabulary
 // anything downstream of a webhook is allowed to speak.
 //
-// [ADR 004] LOCKS the merchant of record as Paddle (primary) / Lemon Squeezy
-// (parallel), and locks the SHAPE: a `MoRWebhookVerifier` interface plus
-// per-provider signature adapters, "so the choice can flip with zero app
-// changes". This file is the interface side of that lock. No provider name and
-// no provider vocabulary may appear below — `services/platform/src/lib/mor/
-// paddle.ts` is where one rail's facts live, and it is the only file that knows
-// them.
+// [ADR 004] LOCKS the merchant of record as Paddle, and locks the SHAPE: a
+// `MoRWebhookVerifier` interface plus per-provider signature adapters, "so the
+// choice can flip with zero app changes". This file is the interface side of
+// that lock. No provider name and no provider vocabulary may appear below —
+// `services/platform/src/lib/mor/paddle.ts` is where one rail's facts live, and
+// it is the only file that knows them.
+//
+// ⚠️ CORRECTED 2026-08-28. That first sentence read "LOCKS the merchant of record
+// as Paddle (primary) / Lemon Squeezy (parallel)" — present tense, and no longer
+// true. [ADR 039] D4 (2026-08-09) RETIRED [ADR 004]'s parallel Lemon Squeezy
+// clause: the parallel application was never evidenced and the product is
+// sunsetting into Stripe. The SHAPE half of the lock is UNTOUCHED and is the
+// reason this file exists — a successor rail is one adapter file plus one
+// registry line, and WHICH successor is a queued owner decision. The comment in
+// `registry.ts` on Lemon Squeezy's deliberate absence was already correct and is
+// left exactly as it stands.
 //
 // 🔴 WHY THE VOCABULARY IS NOT RevenueCat's. services/subly-api's webhook route
 // already speaks INITIAL_PURCHASE / CANCELLATION / BILLING_ISSUE / EXPIRATION.

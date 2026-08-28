@@ -1,0 +1,286 @@
+name: Site drift repair
+
+# ── WHAT THIS REPAIRS, AND WHY NO PRE-MERGE LANE CAN ────────────────────────
+# sites/nikatru/sitemap.xml carries a <lastmod> per page, and
+# tooling/sites/lastmod.mjs derives that value from the page's GIT DATE
+# (`git log -1 --date=short --format=%ad -- <page>`, lastmod.mjs:89-94). So the
+# CORRECT value for a page a pull request changes is THE DATE THAT PULL REQUEST
+# MERGES — a date that does not exist while the pull request is open. Every
+# pre-merge lane is therefore structurally unable to hold this invariant:
+# ci.yml:2303 runs check-site-integrity.mjs against a ref whose merge date is
+# still in the future, and it is right every time until the merge makes it wrong.
+#
+# MEASURED IN THIS TREE, 2026-08-25:
+#   · at 51df9ef, `git show 51df9ef:sites/nikatru/sitemap.xml` gave <lastmod>
+#     2026-08-22 for /apps/ and /apps/subly, while `git log -1 --date=short`
+#     for sites/nikatru/apps/index.html and sites/nikatru/apps/subly.html both
+#     gave 2026-08-25 — so check-site-integrity's `e.lastmod !== expected` limb
+#     exited 1 ON MAIN, where there is no pull-request check left to go red.
+#   · the repair was made BY HAND in f67ee2b (2026-08-25 10:03:13 +0530),
+#     "sites: regenerate the sitemap after #363 — main went red the moment that
+#     PR merged (#369)" — 1 file, 2 insertions, 2 deletions.
+#   · the identical class was hand-repaired 16 days earlier in 6ea109d
+#     (2026-08-09 00:35:53 +0530) — 1 file, 1 insertion, 1 deletion.
+#
+# 🔴 THIS FILE IS THE MECHANISM, NOT AN INCIDENT RESPONSE. State on 2026-08-25 is
+# GREEN and was measured before this file was written:
+# `node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam`
+# exits 0 ("11 sitemap <lastmod> value(s) equal their page's git date, across 2
+# root(s)") and `node tooling/ci/assert-discovery-surface.mjs` exits 0. Nothing
+# here is repairing a live defect; it is removing the hand that repaired the last
+# two.
+#
+# ── WHY A SEPARATE FILE AND NOT A JOB IN ci.yml ─────────────────────────────
+# A job that must run only on main needs a job-level `if:`, and
+# assert-green-means-ran.mjs section A6 ("NO CONDITIONAL CONSTITUENTS") fails any
+# lane `ci-gate` aggregates that carries one — a job that can be skipped is a
+# capability that can go dark under a green tick. A separate workflow needs no
+# `if:` at all, because `on: push: branches: [main]` IS the condition.
+#
+# ── WHY IT PROPOSES A PULL REQUEST RATHER THAN PUSHING ──────────────────────
+# `main` is protected. Pushing straight to it is a branch-protection change and
+# OWNER work; nothing in this file attempts it. The shape is the one
+# store-screenshots.yml already uses: `gh` rather than a third-party action (it
+# is preinstalled on the runner, so there is no extra 40-hex pin to look up and
+# get wrong), and the push URL carries the token explicitly because checkout
+# below sets `persist-credentials: false`.
+#
+# A PULL REQUEST ALSO KEEPS THIS OUT OF assert-alert-disposition.mjs, whose
+# population is `FILES_AN_ISSUE = /gh issue create\b/` (that file:193). This
+# workflow files no issue, so it inherits no disposition obligation it would then
+# have to be exempted from.
+#
+# ── ⚠️ THE HONEST RESIDUAL: THIS SHORTENS THE WINDOW, IT DOES NOT CLOSE IT ──
+# Cloudflare's Git integration deploys sites/nikatru ON THE MERGE PUSH, with no
+# workflow involved and no GitHub check it could read (ci.yml:2288-2252 states
+# this in full). The stale sitemap therefore goes LIVE at the moment of merge and
+# stays live until the repair pull request merges. On 2026-08-25 that window was
+# 14m49s (51df9ef 09:48:24 +0530 → f67ee2b 10:03:13 +0530) WITH A HUMAN WATCHING
+# AND ACTING. What changes here is that the repair is drafted, correct and
+# waiting instead of remembered. A zero window means pushing to protected main —
+# owner work, deliberately not attempted.
+#
+# ── ⚠️ WHY THIS DOES NOT FEED ITSELF ────────────────────────────────────────
+# `planDiscovery()` plans THIRTEEN files under sites/nikatru/ — twelve pages plus
+# sitemap.xml, measured this run — so "it only ever writes the sitemap" is NOT
+# true of the generator and must not be assumed. What bounds the loop is
+# lastmodFor() (tooling/sites/lastmod.mjs:122-133): a page the generator is
+# CHANGING is stamped `today()`, not its stale git date. So a repair PR that does
+# rewrite a page is already self-consistent for a same-day merge, and a cross-day
+# merge costs exactly ONE further sitemap-only round before the fixed point.
+# sitemap.xml is not itself listed in its own sitemap (10 <loc> entries on
+# nikatru, 1 on rajasekarselvam, none of them a sitemap), so the sitemap-only
+# round moves no <lastmod> at all and the next run finds nothing to do.
+# 🔴 DO NOT WIDEN THIS JOB to write anything whose own git date the sitemap
+# quotes on a longer cycle. That is the edit that would make it self-perpetuating.
+#
+# ── 🔴 THE REDDENING MUTATION FOR THIS FILE, RECORDED AT THE SITE ───────────
+# NO NEW ASSERTION SHIPS HERE. The only new claim is "this workflow exists and
+# runs the generator on main", and its mutation is mechanical: DELETE THIS FILE.
+# Both guards that quantify over the workflow set then go red, and both name it.
+# Run in an isolated worktree on 2026-08-25, against a tree whose only failure
+# was a pre-existing host-local one (no `NIKATRU daily backup` scheduled task on
+# this machine), so the delta is entirely attributable:
+#
+#   rm .github/workflows/site-drift-repair.yml
+#     node tooling/ci/assert-ops-register.mjs        -> exit 1, and the message
+#       changed from that one host problem to "COVERAGE LOST — duty.workflow
+#       .site-drift-repair.yml anchors at .github/workflows/site-drift-repair
+#       .yml, which is not among the 11 workflow(s) on disk."
+#     node tooling/ci/assert-enforcement-index.mjs   -> exit 1 (from 0), with 3
+#       differences, each naming this file: check-site-integrity.mjs,
+#       generate-discovery.mjs and lastmod.mjs are "WIRED by
+#       .github/workflows/site-drift-repair.yml#repair, and that workflow does
+#       not exist."
+#
+#   …and the two halves are independently pinned, so neither can carry the other:
+#     delete only the register ROW, keep this file
+#       -> assert-ops-register.mjs exit 1: ".github/workflows/site-drift-repair
+#          .yml has NO `duty` row anchored at it."
+#     keep both, restore the PREVIOUS tooling/enforcement-index.json
+#       -> assert-enforcement-index.mjs exit 1: generate-discovery.mjs and
+#          lastmod.mjs "produced by this tree and missing from the committed
+#          index", plus check-site-integrity.mjs's invokedBy disagreeing.
+#
+# ⬜ MEASURED SIDE-EFFECT, worth stating: regenerating the index took it from 175
+# enforcers to 177. `tooling/sites/generate-discovery.mjs` and
+# `tooling/sites/lastmod.mjs` were in NO row before, because nothing in the
+# repository invoked either of them; this file is the first thing that does.
+#
+# 📌 APPENDED 2026-08-26 — ONE NEW ASSERTION NOW DOES SHIP HERE, so the
+# paragraph above is no longer the whole record. `Propose the repair` exits 1
+# with a named cause when `gh pr create` is refused (see the block at that step).
+# ITS REDDENING MUTATION, run against that step's own `run:` body with a `gh`
+# stub returning GitHub's refusal string verbatim: DELETE the `exit 1` and the
+# refused run exits 0 — green over a repair nobody was told about. Unmutated it
+# exits 1. A stub failing 503 instead also exits 1, on the generic limb.
+
+on:
+  push:
+    branches: [main]
+
+# deploy-workers.yml:21-23 and ops-watch.yml:48-50's shape, NOT ci.yml's. A run
+# of this workflow is the only thing that will notice the drift the merge just
+# created, so a newer push must QUEUE behind it and must never cancel it.
+# Cancelling is precisely the defect ci.yml:16 was changed to stop.
+concurrency:
+  group: site-drift-repair
+  cancel-in-progress: false
+
+# Least privilege at the workflow level, exactly as every other workflow in this
+# tree does it. The write scopes live on the ONE job that needs them, which is
+# where assert-workflow-hardening.mjs:255 says a write scope belongs.
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Regenerate the discovery surface and propose the repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # THE NARROWEST SET THAT LETS THE REPAIR OUTLIVE ITS RUN, and each half is
+    # used by exactly one command: `contents: write` pushes the branch,
+    # `pull-requests: write` opens the pull request. Nothing here deploys, and
+    # nothing here writes to main.
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Nothing in this job uses a credential left in .git/config: the one
+          # command that pushes builds its own remote URL from `github.token`
+          # for that single command.
+          persist-credentials: false
+          # 🔴 MANDATORY, NOT AN OPTIMISATION. lastmod.mjs's isShallowRepo()
+          # (that file:82-85) makes check-site-integrity.mjs report COVERAGE LOST
+          # on a shallow clone, because `git log` cannot answer a question about
+          # history that was never fetched. ci.yml:2286 carries this line for the
+          # same reason and says so.
+          fetch-depth: 0
+
+      # THE GENERATOR, NOT THE GUARD. assert-discovery-surface.mjs regenerates
+      # IN MEMORY and compares — its line 68 is an `import` of planDiscovery, not
+      # a spawn — so it can tell you the tree is wrong and can never make it
+      # right. Measured this run: `grep -rn generate-discovery .github/workflows/
+      # package.json` matched NOTHING, so before this file no workflow in the
+      # repository had ever invoked the writer.
+      - name: Regenerate the discovery surface
+        run: node tooling/sites/generate-discovery.mjs
+
+      # NO `if:` GATE, for assert-green-means-ran.mjs's reason: a step that can
+      # be skipped is a capability that can go dark under a green tick. When
+      # there is genuinely nothing to repair that is REPORTED, not skipped.
+      - name: Propose the repair (pull request)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # 🔴 WRITTEN ON BOTH PATHS, so `Preserve the computed repair` below can
+          # keep `if-no-files-found: error`. An empty directory would otherwise
+          # read the same as a directory this step never reached.
+          OUT="${RUNNER_TEMP}/site-drift-repair"
+          mkdir -p "$OUT"
+          if [ -z "$(git status --porcelain -- sites/)" ]; then
+            echo 'The regenerated discovery surface was byte-identical to main. Nothing was proposed.' > "$OUT/NO-DRIFT.txt"
+            echo "::notice title=No site drift::The regenerated discovery surface is byte-identical to what main already carries. There is nothing to repair, which is the state this workflow exists to keep main in."
+            exit 0
+          fi
+
+          echo "The regenerated surface differs from main:"
+          git status --porcelain -- sites/
+
+          BRANCH="chore/site-drift-${{ github.run_id }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # -A so a file the generator ADDS (a brand-new landing joins the
+          # sitemap in the run that creates it) is carried too, not only the
+          # modifications. Scoped to sites/ so nothing else can ride along.
+          git add -A -- sites/
+          git checkout -b "$BRANCH"
+          git commit -m "sites: regenerate the discovery surface after ${GITHUB_SHA}" -m "Written by .github/workflows/site-drift-repair.yml, which runs tooling/sites/generate-discovery.mjs on every push to main. The pull request body says what this closes and what it does not."
+
+          {
+            printf '%s\n\n' 'The generator `tooling/sites/generate-discovery.mjs` produced a discovery surface that differs from what `main` carries, so `tooling/ci/check-site-integrity.mjs` is failing (or is about to fail) on `main`. This branch is that regeneration, unedited.'
+            printf '%s\n\n' '**Why no pre-merge lane could have caught it.** `<lastmod>` is derived from each page git date (`tooling/sites/lastmod.mjs`), so the correct value for a page a PR changes is the date that PR *merges* — a date that does not exist while the PR is open. The `sites` job in `ci.yml` is right about the pre-merge tree every time, and the merge is what makes it wrong. This was hand-repaired in `f67ee2b` (2026-08-25) and again 16 days earlier in `6ea109d`.'
+            printf '%s\n\n' '**HONEST RESIDUAL — this shortens the window, it does not close it.** Cloudflare Git integration deploys `sites/nikatru` on the *merge push*, with no workflow involved and no GitHub check it can read. The stale sitemap is therefore **already live** and stays live until this pull request merges. On 2026-08-25 the equivalent window was 14m49s, with a human watching and acting. What this automation changes is that the repair is drafted and correct rather than remembered; a crawler arriving inside the window still sees the stale `<lastmod>`.'
+            printf '%s\n\n' 'A zero window would mean pushing straight to protected `main`. That is a branch-protection change and owner work; this workflow does not attempt it.'
+            printf '%s\n'   '**Review note.** This diff should be generated bytes and nothing else. If it contains anything that is not a regeneration, do not merge it — say so on the pull request instead.'
+          } > "${RUNNER_TEMP}/pr-body.md"
+
+          # THE REPAIR IS PUT SOMEWHERE DURABLE BEFORE IT IS PROPOSED. The
+          # proposal is the step that can be refused; the patch is not.
+          git format-patch -1 --stdout > "$OUT/site-drift-repair.patch"
+          cp "${RUNNER_TEMP}/pr-body.md" "$OUT/pr-body.md"
+
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          # ── 🔴 `gh pr create` CAN BE REFUSED, AND A REFUSAL IS NOT A REPAIR ──
+          # "Allow GitHub Actions to create and approve pull requests"
+          # (repository Settings → Actions → General) gates every `gh pr create`
+          # run by GITHUB_TOKEN. Measured OFF on 2026-08-26
+          # (`can_approve_pull_request_reviews: false`), and this call site had
+          # never executed — the ten runs to date all took the no-drift path
+          # above, so nothing had ever been proposed. `set -euo pipefail` alone
+          # would end the job on the raw `gh` message: red, but naming a
+          # permission the reader must then trace back to a checkbox. So the
+          # exit code is caught, the cause is named, and the exit stays non-zero.
+          set +e
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "sites: regenerate the discovery surface (automated drift repair)" \
+            --body-file "${RUNNER_TEMP}/pr-body.md" > "$OUT/gh-pr-create.log" 2>&1
+          PR_RC=$?
+          set -e
+          cat "$OUT/gh-pr-create.log"
+
+          if [ "$PR_RC" -ne 0 ]; then
+            # The patch, in the log, so a reader who cannot download artifacts
+            # still has the repair in front of them.
+            echo '--- THE COMPUTED REPAIR, IN FULL ---'
+            cat "$OUT/site-drift-repair.patch"
+            echo '--- END OF THE COMPUTED REPAIR ---'
+
+            if grep -qiF 'not permitted to create or approve pull requests' "$OUT/gh-pr-create.log"; then
+              CAUSE='the repository setting "Allow GitHub Actions to create and approve pull requests" is OFF.'
+              REMEDY='REMEDY (owner work — no workflow can set this for itself): Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and approve pull requests". API equivalent: gh api -X PUT "repos/'"${GITHUB_REPOSITORY}"'/actions/permissions/workflow" -F can_approve_pull_request_reviews=true'
+            else
+              CAUSE="gh pr create exited ${PR_RC} for a reason this step does not recognise."
+              REMEDY='REMEDY: read the gh output above.'
+            fi
+
+            echo "::error title=Site drift was repaired but the pull request could not be opened::${CAUSE} THE REPAIR IS NOT LOST — branch ${BRANCH} is pushed, and the patch is both printed above and uploaded as this run's site-drift-repair artifact; open the pull request by hand from ${BRANCH} into main. ${REMEDY}"
+            exit 1
+          fi
+
+      # `if: always()` — THE UPLOAD EXISTS FOR THE RUN WHERE THE STEP ABOVE
+      # FAILED. Under the default success() it would be skipped on exactly the
+      # run whose output a human needs, which is the whole point of it.
+      - name: Preserve the computed repair
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: site-drift-repair
+          path: ${{ runner.temp }}/site-drift-repair/
+          # The step above writes into this directory on BOTH of its paths, so
+          # an empty one means it never got that far — a finding, not a
+          # nothing-to-do.
+          if-no-files-found: error
+
+      # 🔴 RUNS AFTER THE PROPOSAL, DELIBERATELY, AND A NON-ZERO EXIT FAILS THE
+      # JOB. This is the limb that covers sites/rajasekarselvam, which NO
+      # generator writes — its one URL is hand-edited (lastmod 2026-08-04 on both
+      # sides as measured today) and it carries the same merge-date exposure with
+      # no automatic repair available at all. ORDERING MATTERS: if this ran
+      # BEFORE the proposal, a drift in rajasekarselvam — which regenerating
+      # cannot fix — would suppress the nikatru repair PR that regenerating CAN
+      # fix. Proposing first and then failing gets both: the repair is waiting,
+      # and the run is red for the part no machine can close.
+      #
+      # Unlike a CANCELLED run, a FAILED run on the default branch is a signal a
+      # human is shown: it appears as a failure in the Actions list and in the
+      # push notification, rather than as a grey tick nobody reads.
+      - name: Site integrity — the repaired tree agrees with git
+        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam

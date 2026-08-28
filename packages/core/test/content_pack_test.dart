@@ -37,7 +37,28 @@ List<int> _b(String s) => utf8.encode(s);
 String _sha(List<int> bytes) => sha256.convert(bytes).toString();
 
 /// The throwaway pinned-key map used by the remote-path tests. Production pins
-/// the real keys in `kContentPackPublicKeys`, which is empty until S-3.
+/// the real key in `kContentPackPublicKeys`, and has since 2026-07-27.
+///
+/// 📌 CORRECTED 2026-08-25. The second sentence read: "Production pins the real
+/// keys in `kContentPackPublicKeys`, which is empty until S-3." MEASURED TODAY:
+/// `grep -rn -A2 "kContentPackPublicKeys =" packages/core` resolves to
+/// `packages/core/lib/src/content/pack_verifier.dart:30-32`, and the map there
+/// holds `'k1': 'zcrBolFZjWixE+0UF0Qbd6T2jUKGkWgAWtJVmYdK6dQ='` — a real pinned
+/// key, not an empty map. This is the SECOND home of one stale sentence:
+/// `pack_verifier.dart:136` corrected its own copy on 2026-08-21 ("False until
+/// S-3 lands …"), the correction landed in the source and this test file was
+/// missed. Nothing about the fixtures below changes; only this sentence was wrong.
+///
+/// 🔴 THE MAP BELOW IS A THROWAWAY AND ITS VALUE MUST NOT BE "FIXED" TO MATCH
+/// PRODUCTION. `content_pack_fixture_test.dart:33` rests on production pinning
+/// `k1` and NOT `test-k1`, so that the production loader REJECTS the pipeline's
+/// derived test pack. DIRECTION RE-PROVED 2026-08-25 rather than cited: deleting
+/// the `k1` entry from `kContentPackPublicKeys` in a detached scratch worktree
+/// (never this checkout) takes `dart test` in packages/core from 307 pass / 0 fail
+/// to 305 pass / 2 fail, and one of the two is in THIS file — "pinned keys +
+/// rejecting verifier the production key is pinned, and only the pinned id
+/// resolves". The pin is load-bearing, not decorative, and the sentence corrected
+/// above was the only thing here that was wrong.
 const Map<String, String> _testKeys = <String, String>{'k1': 'dGVzdC1rZXk='};
 
 /// The identity every fixture below declares unless a test asks for another —

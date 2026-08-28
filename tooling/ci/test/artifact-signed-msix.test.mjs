@@ -42,8 +42,15 @@ after(() => { rmSync(TMP, { recursive: true, force: true }); });
 let seq = 0;
 
 /** A real zip, central directory and all — the same construction the apple
- *  signing suite uses, because the guard reads it with the same reader. */
-function makeZip(entries) {
+ *  signing suite uses, because the guard reads it with the same reader, and
+ *  duplicated here for the same reason that one is: a fixture builder shared
+ *  between suites is one more thing that can be wrong in both at once.
+ *
+ *  `{ zip64: true }` promotes it to the ZIP64 form MakeAppx writes for EVERY
+ *  .msix regardless of size — EOCD64 record, its locator, and 0xFFFF/0xFFFFFFFF
+ *  sentinels in the 32-bit records. That is the shape this guard was handed on
+ *  build-platforms run 32814517717 and threw ERR_OUT_OF_RANGE on. */
+function makeZip(entries, { zip64 = false } = {}) {
   const crcTable = [];
   for (let i = 0; i < 256; i++) {
     let c = i;
@@ -80,18 +87,69 @@ function makeZip(entries) {
     central.writeUInt32LE(e.bytes.length, 24);
     central.writeUInt16LE(nameBuf.length, 28);
     central.writeUInt32LE(offset, 42);
+    if (zip64) {
+      // ZIP64 promotion of THIS entry. The sizes become sentinels and move into
+      // the 0x0001 extra field; the local-header offset does too — EXCEPT for
+      // the first member, which sits at 0 and therefore keeps its 32-bit field.
+      // That asymmetry is not decoration: it is what a real writer emits, and it
+      // is the case a reader gets wrong by taking the extra field's slots
+      // positionally instead of conditionally.
+      const offsetIsSentinel = offset !== 0;
+      const localExtra = Buffer.alloc(20);
+      localExtra.writeUInt16LE(0x0001, 0);
+      localExtra.writeUInt16LE(16, 2);
+      localExtra.writeBigUInt64LE(BigInt(e.bytes.length), 4);
+      localExtra.writeBigUInt64LE(BigInt(data.length), 12);
+      local.writeUInt32LE(0xffffffff, 18);
+      local.writeUInt32LE(0xffffffff, 22);
+      local.writeUInt16LE(localExtra.length, 28);
+      const centralExtra = Buffer.alloc(offsetIsSentinel ? 28 : 20);
+      centralExtra.writeUInt16LE(0x0001, 0);
+      centralExtra.writeUInt16LE(offsetIsSentinel ? 24 : 16, 2);
+      centralExtra.writeBigUInt64LE(BigInt(e.bytes.length), 4);
+      centralExtra.writeBigUInt64LE(BigInt(data.length), 12);
+      if (offsetIsSentinel) centralExtra.writeBigUInt64LE(BigInt(offset), 20);
+      central.writeUInt32LE(0xffffffff, 20);
+      central.writeUInt32LE(0xffffffff, 24);
+      central.writeUInt16LE(centralExtra.length, 30);
+      if (offsetIsSentinel) central.writeUInt32LE(0xffffffff, 42);
+      locals.push(local, nameBuf, localExtra, data);
+      centrals.push(central, nameBuf, centralExtra);
+      offset += local.length + nameBuf.length + localExtra.length + data.length;
+      continue;
+    }
     locals.push(local, nameBuf, data);
     centrals.push(central, nameBuf);
     offset += local.length + nameBuf.length + data.length;
   }
   const centralBuf = Buffer.concat(centrals);
+  const tail = [];
+  if (zip64) {
+    // The EOCD64 record carries the true count/size/offset; the locator says
+    // where it is. MakeAppx writes both and then fills the 32-bit EOCD with
+    // sentinels REGARDLESS OF SIZE, which is the shape that crashed the guard.
+    const rec = Buffer.alloc(56);
+    rec.writeUInt32LE(0x06064b50, 0);
+    rec.writeBigUInt64LE(44n, 4);
+    rec.writeUInt16LE(45, 12);
+    rec.writeUInt16LE(45, 14);
+    rec.writeBigUInt64LE(BigInt(entries.length), 24);
+    rec.writeBigUInt64LE(BigInt(entries.length), 32);
+    rec.writeBigUInt64LE(BigInt(centralBuf.length), 40);
+    rec.writeBigUInt64LE(BigInt(offset), 48);
+    const locator = Buffer.alloc(20);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeBigUInt64LE(BigInt(offset + centralBuf.length), 8);
+    locator.writeUInt32LE(1, 16);
+    tail.push(rec, locator);
+  }
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(0x06054b50, 0);
-  eocd.writeUInt16LE(entries.length, 8);
-  eocd.writeUInt16LE(entries.length, 10);
-  eocd.writeUInt32LE(centralBuf.length, 12);
-  eocd.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, centralBuf, eocd]);
+  eocd.writeUInt16LE(zip64 ? 0xffff : entries.length, 8);
+  eocd.writeUInt16LE(zip64 ? 0xffff : entries.length, 10);
+  eocd.writeUInt32LE(zip64 ? 0xffffffff : centralBuf.length, 12);
+  eocd.writeUInt32LE(zip64 ? 0xffffffff : offset, 16);
+  return Buffer.concat([...locals, centralBuf, ...tail, eocd]);
 }
 
 const manifestXml = ({ name = SENTINEL, publisher = `CN=${SENTINEL}`, displayName = SENTINEL, version = '1.0.3.0' } = {}) =>
@@ -119,8 +177,10 @@ const REGISTER = {
   ],
 };
 
-/** @param opts.members  zip members; default is a correct store-mode package. */
-function fixture({ register = REGISTER, members = null, raw = null } = {}) {
+/** @param opts.members  zip members; default is a correct store-mode package.
+ *  @param opts.zip64    write the package in the ZIP64 form MakeAppx actually
+ *                       emits, which is what CI hands this guard. */
+function fixture({ register = REGISTER, members = null, raw = null, zip64 = false } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
   mkdirSync(join(root, 'pkg'), { recursive: true });
@@ -134,7 +194,7 @@ function fixture({ register = REGISTER, members = null, raw = null } = {}) {
     { name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 },
     { name: 'subly.exe', bytes: Buffer.from('PE-BYTES'), method: 0 },
   ];
-  writeFileSync(join(root, 'pkg', 'subly.msix'), raw ?? makeZip(entries));
+  writeFileSync(join(root, 'pkg', 'subly.msix'), raw ?? makeZip(entries, { zip64 }));
   return root;
 }
 
@@ -236,6 +296,105 @@ describe('assert-artifact-signed-msix — the declaration is compared to the BYT
     assert.equal(code, 1, out);
     assert.match(out, new RegExp(`carries ${SIGNATURE_MEMBER}`));
     assert.match(out, /store: true/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE PACKAGE CI ACTUALLY HANDS THIS GUARD IS ZIP64, AND EVERY TEST ABOVE
+// BUILDS A ZIP THAT IS NOT
+//
+// 🔴 MEASURED on build-platforms run 32814517717 (2026-08-25): with PR #366's
+// argv defect fixed, the Windows leg reached the real 16,585,912-byte .msix and
+// the guard did not fail — it CRASHED, `RangeError [ERR_OUT_OF_RANGE] … Received
+// 4294967295` out of unzip(). 4294967295 is 0xFFFFFFFF, the ZIP64 sentinel, in a
+// package of 16.6 MB: an .msix is an OPC/APPX package and the packaging tool
+// writes the ZIP64 records REGARDLESS OF SIZE. Five other platforms were green
+// on that same run.
+//
+// ⚠️ SO THE SHAPE OF THE FIXTURE WAS THE HOLE. Every assertion above was true
+// and none of them could reach production, because makeZip built the one form
+// of zip the real packaging tool never produces. The block below re-asks the
+// SAME questions of the SAME package written the way MakeAppx writes it, so a
+// reader that opens the test form and not the real one is a failure here rather
+// than a crash six weeks later.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-artifact-signed-msix — the ZIP64 package MakeAppx actually writes', () => {
+  test('the fixture really is ZIP64 — the sentinel is read off the bytes, not assumed', () => {
+    const root = fixture({ zip64: true });
+    const raw = readFileSync(join(root, 'pkg', 'subly.msix'));
+    const sig = (v) => Buffer.from([v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]);
+    assert.notEqual(raw.indexOf(sig(0x07064b50)), -1, 'EOCD64 locator 0x07064b50 must be present');
+    assert.notEqual(raw.indexOf(sig(0x06064b50)), -1, 'EOCD64 record 0x06064b50 must be present');
+    assert.equal(raw.readUInt32LE(raw.length - 22 + 16), 0xffffffff, 'the central-directory offset must be the sentinel');
+    // The 32-bit-only reader read exactly this field and used it as an index.
+    // Pristine, that is the crash; the next test is the same bytes passing.
+  });
+
+  test('a correct ZIP64 package PASSES — the crash is gone and the verdict is a verdict', () => {
+    const { code, out } = run(fixture({ zip64: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}msix identity/);
+    assert.match(out, /1 package\(s\) opened/);
+    assert.doesNotMatch(out, /ERR_OUT_OF_RANGE/);
+  });
+
+  test('a ZIP64 package under an INVENTED identity still FAILS — the check did not go away with the crash', () => {
+    const root = fixture({
+      zip64: true,
+      members: [{ name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml({ name: 'Nikatru.Subly' }), 'utf8'), method: 8 }],
+    });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /Package\/Identity\/@Name is "Nikatru\.Subly"/);
+    assert.match(out, /unrecoverable rather than re-uploadable/);
+  });
+
+  test('a ZIP64 package carrying AppxSignature.p7x still FAILS', () => {
+    const root = fixture({
+      zip64: true,
+      members: [
+        { name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 },
+        { name: SIGNATURE_MEMBER, bytes: Buffer.from([0x30, 0x82, 0x01, 0x00]), method: 0 },
+      ],
+    });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`carries ${SIGNATURE_MEMBER}`));
+  });
+
+  test('a ZIP64 package with no readable AppxManifest.xml still FAILS', () => {
+    const root = fixture({ zip64: true, members: [{ name: 'subly.exe', bytes: Buffer.from('PE'), method: 0 }] });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`no readable ${MANIFEST_MEMBER}`));
+  });
+
+  test('a ZIP64 package whose EOCD64 locator is gone is COVERAGE LOST, never a pass', () => {
+    // The sentinel says "ask the 64-bit record" and nothing answers. A reader
+    // that shrugged and used the sentinel as an offset is the original crash; a
+    // reader that shrugged and returned members would be worse.
+    const root = fixture({ zip64: true });
+    const p = join(root, 'pkg', 'subly.msix');
+    const raw = readFileSync(p);
+    raw.writeUInt32LE(0x07064b51, raw.indexOf(Buffer.from([0x50, 0x4b, 0x06, 0x07])));
+    writeFileSync(p, raw);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /NOT ONE opened as a zip/);
+    assert.doesNotMatch(out, /ERR_OUT_OF_RANGE/);
+  });
+
+  test('ZIP64 and classic packages of the SAME members reach the SAME verdict', () => {
+    const members = [
+      { name: MANIFEST_MEMBER, bytes: Buffer.from(manifestXml(), 'utf8'), method: 8 },
+      { name: 'subly.exe', bytes: Buffer.from('PE-BYTES'), method: 0 },
+    ];
+    const classic = run(fixture({ members }));
+    const wide = run(fixture({ members, zip64: true }));
+    assert.equal(classic.code, 0, classic.out);
+    assert.equal(wide.code, classic.code, wide.out);
+    assert.equal(wide.out.replaceAll('\r\n', '\n'), classic.out.replaceAll('\r\n', '\n'));
   });
 });
 

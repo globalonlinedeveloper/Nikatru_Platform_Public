@@ -657,19 +657,134 @@ export function newlineOffenders(pairs) {
   return Object.entries(pairs).filter(([, v]) => /[\r\n]/.test(String(v))).map(([k]) => k);
 }
 
+/** ZIP64 marks an absent 32-bit value with an all-ones sentinel and carries the
+ *  real one in a 64-bit field elsewhere. 0xFFFFFFFF read as an offset is how
+ *  the Windows leg crashed; these two names exist so that number never appears
+ *  bare in a comparison again. */
+const U32_SENTINEL = 0xffffffff;
+const U16_SENTINEL = 0xffff;
+
 /**
- * A minimal ZIP reader — central directory only, stored and deflated members.
+ * The ZIP64 extended-information extra field (header id 0x0001) of ONE
+ * central-directory entry, or null when it is absent or unusable.
  *
- * The profiles secret carries a SET (one iOS profile, one macOS profile at
- * least), and a set has to arrive in a container. A zip is what every tool on
- * every desk already produces, so it is what is accepted; the alternative — an
- * invented separator between concatenated profiles — would be a format only this
- * repository knows, which nobody would produce correctly under pressure.
+ * 🔴 THE SLOTS ARE POSITIONAL AND CONDITIONAL, WHICH IS THE WHOLE DIFFICULTY.
+ * APPNOTE 4.5.3 orders them uncompressed size, compressed size, local-header
+ * offset, disk-start — and each 8-byte slot is present ONLY IF its 32-bit
+ * counterpart in the fixed header was the sentinel. So a reader that wants the
+ * compressed size cannot simply take slot 0: it must first ask whether the
+ * UNCOMPRESSED size was a sentinel too, and step over that slot if it was. Both
+ * shapes occur inside ONE real archive — a 16-byte payload (two sizes, real
+ * offset) for the first member and a 24-byte one (two sizes and the offset) for
+ * every later member, because the first member sits at offset 0 and 0 needs no
+ * 64-bit field. Measured on the fixture this change is tested against.
  *
- * Only two compression methods exist in practice for a handful of small files
- * and both are handled. Anything else is REFUSED by name rather than skipped:
- * a member silently dropped is a profile silently missing, and the build that
- * follows fails at codesign with a message about entitlements.
+ * `whichPresent` is therefore the CALLER'S reading of the fixed header, never a
+ * guess made here. Anything that does not add up — a truncated payload, no
+ * 0x0001 field at all, a value larger than the archive that contains it — is
+ * REFUSED as null rather than approximated, and unzip() turns that into "not a
+ * readable zip", which both callers already treat as a failure.
+ */
+function zip64ExtraFields(buffer, extraStart, extraLen, whichPresent) {
+  const end = extraStart + extraLen;
+  if (end > buffer.length) return null;
+  for (let q = extraStart; q + 4 <= end; ) {
+    const id = buffer.readUInt16LE(q);
+    const size = buffer.readUInt16LE(q + 2);
+    const payloadEnd = q + 4 + size;
+    if (payloadEnd > end) return null;
+    if (id !== 0x0001) { q = payloadEnd; continue; }
+    let r = q + 4;
+    // Read one 8-byte slot, bounded by the PAYLOAD only. Whether the VALUE is
+    // credible depends on what the slot means, which is the caller's business
+    // below and not this reader's.
+    const slot = () => {
+      if (r + 8 > payloadEnd) return null;
+      const v = buffer.readBigUInt64LE(r);
+      r += 8;
+      return v;
+    };
+    // 🔴 THIS BOUND IS TRUE OF AN OFFSET AND OF A COMPRESSED SIZE, AND FALSE OF
+    // AN UNCOMPRESSED ONE. Nothing inside this archive can START past its end,
+    // and no member's stored bytes can be more numerous than the file holding
+    // them — but a member's UNCOMPRESSED size is a property of the decompressed
+    // content and is routinely LARGER than the whole archive. That is what
+    // compression is.
+    //
+    // MEASURED 2026-08-25 on the real subly.msix (build-platforms 32823633046,
+    // the first run to keep the package after the guard refused it): entry [2]
+    // `flutter_windows.dll` declares an uncompressed size of 21,284,864 bytes
+    // inside a 16,585,733-byte archive — 1.28x the file that contains it, and
+    // entirely ordinary for a DLL. Applying the offset bound to that slot
+    // returned null, which unzip() turned into "could not be read as a zip",
+    // which the guard reported as COVERAGE LOST over the whole package. A check
+    // added for safety was the thing refusing a valid package.
+    //
+    // The uncompressed slot is READ ONLY TO STEP OVER IT — its value is
+    // discarded — so it needs the payload bound and nothing else.
+    const withinArchive = (v) => (v === null || v > BigInt(buffer.length) ? null : Number(v));
+    const out = {};
+    if (whichPresent.uncompressedSize && slot() === null) return null;
+    if (whichPresent.compressedSize) {
+      const v = withinArchive(slot());
+      if (v === null) return null;
+      out.compressedSize = v;
+    }
+    if (whichPresent.localOffset) {
+      const v = withinArchive(slot());
+      if (v === null) return null;
+      out.localOffset = v;
+    }
+    return out;
+  }
+  return null;
+}
+
+/**
+ * A minimal ZIP reader — central directory only, stored and deflated members,
+ * ZIP64 included. TWO CALLERS, ON TWO PLATFORMS:
+ *
+ *   • profileMembers() below, for the APPLE provisioning-profile bundle the
+ *     profiles secret carries. That secret holds a SET (one iOS profile, one
+ *     macOS profile at least), and a set has to arrive in a container. A zip is
+ *     what every tool on every desk already produces, so it is what is
+ *     accepted; the alternative — an invented separator between concatenated
+ *     profiles — would be a format only this repository knows, which nobody
+ *     would produce correctly under pressure.
+ *   • tooling/ci/assert-artifact-signed-msix.mjs, for the WINDOWS .msix that
+ *     `dart run msix:create` writes, opened to read AppxManifest.xml and to
+ *     prove AppxSignature.p7x is ABSENT.
+ *
+ * 🔴 THIS COMMENT USED TO CLAIM THE NARROW SCOPE, AND THAT CLAIM COST THE
+ * WINDOWS LEG WEEKS. It said the reader existed for "a handful of small files",
+ * "one iOS profile, one macOS profile" — while the msix guard had been
+ * importing it the whole time. The stated domain and the real one disagreed,
+ * and the code was correct for the stated one, so the header read like an
+ * explanation instead of like a bug. MEASURED on build-platforms run
+ * 32814517717 (2026-08-25, the first dispatch to get past the argv defect
+ * PR #366 fixed): the 16,585,912-byte .msix made this function throw
+ * `RangeError [ERR_OUT_OF_RANGE] … Received 4294967295`, and the guard CRASHED
+ * instead of reporting anything. The other five platforms were green on that
+ * same run.
+ *
+ * 🔴 AND ZIP64 IS NOT A ">4 GB" FEATURE HERE. 4294967295 is 0xFFFFFFFF, the
+ * ZIP64 sentinel, in a package of 16.6 MB. An .msix is an OPC/APPX package and
+ * the packaging tool writes the ZIP64 end-of-central-directory record, its
+ * locator and the sentinels REGARDLESS OF SIZE. A reader that handles only the
+ * 32-bit fields is not "enough for small archives"; it is enough for archives
+ * whose WRITER chose not to use ZIP64, which is a property of the tool and not
+ * of the bytes.
+ *
+ * The ZIP64 path is entered ONLY where a sentinel is actually present, so an
+ * archive carrying none — every zip an Apple desk produces today — is read by
+ * exactly the statements that read it before, in the same order. That is not a
+ * claim: test/apple-signing.test.mjs pins the whole non-ZIP64 answer set,
+ * truncations and byte corruptions included.
+ *
+ * Only two compression methods exist in practice for the files either caller
+ * hands over and both are handled. Anything else is REFUSED by name rather than
+ * skipped: a member silently dropped is a profile silently missing, and the
+ * build that follows fails at codesign with a message about entitlements.
  */
 export function unzip(buffer) {
   const EOCD_SIG = 0x06054b50;
@@ -678,18 +793,64 @@ export function unzip(buffer) {
     if (buffer.readUInt32LE(i) === EOCD_SIG) { eocd = i; break; }
   }
   if (eocd === -1) return null;
-  const count = buffer.readUInt16LE(eocd + 10);
+  let count = buffer.readUInt16LE(eocd + 10);
   let p = buffer.readUInt32LE(eocd + 16);
+
+  // ── ZIP64, entered only where the 32-bit record says it cannot answer ──────
+  // The locator sits immediately before the EOCD and points at the EOCD64
+  // record, which carries the real entry count and central-directory offset.
+  // A sentinel with no locator behind it is not a zip this reader can open, and
+  // saying so with null — the answer both callers already handle — is the whole
+  // difference between a verdict and an ERR_OUT_OF_RANGE stack trace.
+  if (count === U16_SENTINEL || p === U32_SENTINEL) {
+    const loc = eocd - 20;
+    if (loc < 0 || buffer.readUInt32LE(loc) !== 0x07064b50) return null;
+    const rec = buffer.readBigUInt64LE(loc + 8);
+    if (rec + 56n > BigInt(buffer.length)) return null;
+    const recAt = Number(rec);
+    if (buffer.readUInt32LE(recAt) !== 0x06064b50) return null;
+    if (count === U16_SENTINEL) {
+      const total = buffer.readBigUInt64LE(recAt + 32);
+      if (total > BigInt(buffer.length)) return null;
+      count = Number(total);
+    }
+    if (p === U32_SENTINEL) {
+      const off = buffer.readBigUInt64LE(recAt + 48);
+      if (off > BigInt(buffer.length)) return null;
+      p = Number(off);
+    }
+  }
+
   const out = [];
   for (let i = 0; i < count; i++) {
     if (buffer.readUInt32LE(p) !== 0x02014b50) return null;
     const method = buffer.readUInt16LE(p + 10);
-    const compressedSize = buffer.readUInt32LE(p + 20);
+    let compressedSize = buffer.readUInt32LE(p + 20);
     const nameLen = buffer.readUInt16LE(p + 28);
     const extraLen = buffer.readUInt16LE(p + 30);
     const commentLen = buffer.readUInt16LE(p + 32);
-    const localOffset = buffer.readUInt32LE(p + 42);
+    let localOffset = buffer.readUInt32LE(p + 42);
     const name = buffer.slice(p + 46, p + 46 + nameLen).toString('utf8');
+    // The per-entry half of the same story. `p + 24` — the uncompressed size —
+    // is read INSIDE the branch because that is the only place its value means
+    // anything: it says whether the extra field's first slot belongs to it.
+    // ⚠️ AND THAT IS A PREFERENCE, NOT A PINNED PROPERTY. Hoisting it beside
+    // the other fixed reads was MUTATED on 2026-08-25 and the suite stayed
+    // GREEN — both placements answer identically for every archive the tests
+    // can build, because the only input that could tell them apart is one where
+    // p+24 is off the end while p+20 is not, and BOTH placements throw
+    // ERR_OUT_OF_RANGE there. Saying so here is cheaper than a test that
+    // pretends to hold the line.
+    if (compressedSize === U32_SENTINEL || localOffset === U32_SENTINEL) {
+      const z = zip64ExtraFields(buffer, p + 46 + nameLen, extraLen, {
+        uncompressedSize: buffer.readUInt32LE(p + 24) === U32_SENTINEL,
+        compressedSize: compressedSize === U32_SENTINEL,
+        localOffset: localOffset === U32_SENTINEL,
+      });
+      if (z === null) return null;
+      if (z.compressedSize !== undefined) compressedSize = z.compressedSize;
+      if (z.localOffset !== undefined) localOffset = z.localOffset;
+    }
     p += 46 + nameLen + extraLen + commentLen;
 
     if (buffer.readUInt32LE(localOffset) !== 0x04034b50) return null;

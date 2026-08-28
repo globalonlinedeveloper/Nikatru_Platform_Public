@@ -1187,13 +1187,23 @@ class SettingsScreen extends ConsumerWidget {
   ) async {
     final AuthRepository auth = ref.read(authRepositoryProvider);
     final AuthUser? user = auth.currentUser;
-    // 🔴 RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason [userStateDrops]
-    // records: `deleteAccount()` signs out, the router tears this shell down,
-    // and a `ref.read` on the far side of that await throws `StateError` — into
-    // the deliberately empty `catch` below, where nothing can ever observe it.
-    // The forget would have silently done nothing on the one path where the
-    // account it belongs to no longer exists.
+    // 🔴 ALL THREE RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason
+    // [userStateDrops] records: `deleteAccount()` signs out, the router tears
+    // this shell down, and a `ref.read` on the far side of that await throws
+    // `StateError`. The drops read sits INSIDE the try, where that throw dies in
+    // the deliberately empty `catch` below and the forget silently does nothing
+    // on the one path where the account it belongs to no longer exists. The two
+    // sinks are read AFTER the try, so theirs escaped `_deleteAccount` before
+    // `return outcome` ever ran — into `_DeleteAccountDialog._run`, which does
+    // not catch: the dialog stays `_busy` (so `PopScope` refuses to close) and
+    // the login screen is handed no outcome at all. That is the live E2E flake.
     final List<UserStateDrop> drops = userStateDrops(ref);
+    final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
+      lastAccountDeletionOutcomeProvider.notifier,
+    );
+    final StateController<String?> detailSink = ref.read(
+      lastAccountDeletionDetailProvider.notifier,
+    );
     core.AccountDeletionOutcome outcome;
     String? detail;
     try {
@@ -1247,8 +1257,8 @@ class SettingsScreen extends ConsumerWidget {
     // router is already replacing this page — taking the dialog with it. The
     // login screen renders whatever is left here. Measured: without this the
     // result widget is GONE by the time the redirect settles.
-    ref.read(lastAccountDeletionOutcomeProvider.notifier).state = outcome;
-    ref.read(lastAccountDeletionDetailProvider.notifier).state = detail;
+    outcomeSink.state = outcome;
+    detailSink.state = detail;
     return outcome;
   }
 

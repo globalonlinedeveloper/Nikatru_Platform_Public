@@ -36,7 +36,7 @@ import {
   SUBMIT_TIME_STATES,
   STATE_MEANING,
 } from '../deployment-record.mjs';
-import { RECORD_CALL, expandMatrixEnvironment } from '../workflow-scan.mjs';
+import { RECORD_CALL, expandMatrixEnvironment, isShellVariableEnvironment } from '../workflow-scan.mjs';
 import { isRetryable, retryDelayMs, RETRY_ATTEMPTS } from '../record-deployment.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -221,16 +221,43 @@ describe('deployment-record — the environment resolves against the register', 
       .filter(Boolean);
     assert.ok(slugs.length > 0, 'the app catalogue yielded no slug — a matrix leg would expand to nothing');
     const callSites = [];
+    // 🔴 LINE BY LINE, SO AN INVOCATION THE READER CANNOT PARSE HAS AN ADDRESS.
+    // Joining the file first made `found nothing here` and `there is nothing
+    // here` the same observation, which is the whole defect this test is now
+    // written against.
+    const unreadableInvocations = [];
     for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
-      const yaml = readFileSync(join(dir, file), 'utf8')
-        .split('\n')
-        .filter((l) => !/^\s*#/.test(l))
-        .join('\n');
-      RECORD_CALL.lastIndex = 0;
-      for (const m of yaml.matchAll(RECORD_CALL)) {
-        for (const environment of expandMatrixEnvironment(m[1], slugs)) callSites.push({ file, environment });
+      for (const [i, raw] of readFileSync(join(dir, file), 'utf8').split('\n').entries()) {
+        if (/^\s*#/.test(raw)) continue;
+        // An INVOCATION, not a mention: deploy-web.yml's `paths:` filter names
+        // this script as a TRIGGER path and runs nothing.
+        const invokes = /node\s+\S*record-deployment\.mjs/.test(raw);
+        RECORD_CALL.lastIndex = 0;
+        const found = [...raw.matchAll(RECORD_CALL)];
+        if (invokes && found.length === 0) {
+          unreadableInvocations.push(`${file}:${i + 1}`);
+          continue;
+        }
+        for (const m of found) {
+          for (const environment of expandMatrixEnvironment(m[1], slugs)) {
+            callSites.push({ file, line: i + 1, written: m[1], environment });
+          }
+        }
       }
     }
+
+    // 🔴 THE FLOOR THAT MATCHES THE ONE assert-ops-register.mjs NOW CARRIES.
+    // `record-deployment.mjs "$environment"` in build-platforms.yml matched
+    // NOTHING until 2026-08-26, and every reader of that line — this test
+    // included — treated "no match" as "no call". The count floor below cannot
+    // see it: the three known records still made three.
+    assert.deepEqual(
+      unreadableInvocations,
+      [],
+      'a workflow line INVOKES record-deployment.mjs and `RECORD_CALL` read no environment from it. ' +
+        'An argument shape this reader cannot parse leaves the call invisible to every guard built on it, ' +
+        'and each of those guards then reports a smaller domain as a pass. Widen `RECORD_CALL`.',
+    );
 
     // If this ever reads zero the test has stopped testing: a matcher with no
     // inputs passes trivially, which is how a guard quietly stops guarding.
@@ -240,9 +267,9 @@ describe('deployment-record — the environment resolves against the register', 
         'this scanner has lost sight of the workflows it is meant to cover',
     );
 
-    const unresolved = callSites.filter(
-      (c) => resolveEnvironment(REAL_REGISTER, c.environment) === null,
-    );
+    const unresolved = callSites
+      .filter((c) => !isShellVariableEnvironment(c.written))
+      .filter((c) => resolveEnvironment(REAL_REGISTER, c.environment) === null);
     assert.deepEqual(
       unresolved,
       [],
@@ -250,6 +277,28 @@ describe('deployment-record — the environment resolves against the register', 
         'either a `channels` row (a release channel) or a `serviceEnvironments` row (a backend Worker). ' +
         'An unclaimed one turns a SUCCESSFUL deploy into a red job after the upload already happened.',
     );
+
+    // ⚠️ A SHELL VARIABLE HOLDS NO VALUE UNTIL THE JOB RUNS, so it is exempt from
+    // the resolution above and would otherwise be exempt from everything. It is
+    // held to the one thing that IS readable here: the loop that feeds it must be
+    // `release-manifest.mjs --emit-environments`, which derives its output from
+    // tooling/channel-register.json. Swap that producer for any other command and
+    // this goes red — an unresolvable argument is not a licence to record
+    // anything.
+    for (const c of callSites.filter((s) => isShellVariableEnvironment(s.written))) {
+      const name = c.written.replace(/^\$\{?/, '').replace(/\}$/, '');
+      const producer = readFileSync(join(dir, c.file), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .find((l) => new RegExp(`for\\s+${name}\\s+in\\s+\\$\\(`).test(l)
+          && /release-manifest\.mjs\s+--emit-environments/.test(l));
+      assert.ok(
+        producer,
+        `${c.file}:${c.line} records \`${c.written}\`, a value this scan cannot read, and no line in that file ` +
+          `feeds \`${name}\` from \`release-manifest.mjs --emit-environments\` — so nothing ties what it records ` +
+          'back to tooling/channel-register.json.',
+      );
+    }
   });
 
   test('service environments are not store channels', () => {

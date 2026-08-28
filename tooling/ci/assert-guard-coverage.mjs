@@ -28,6 +28,20 @@
 // distinction, not a waiver, and it is written here where it is enforced rather
 // than in a doc nobody reads. Adding to this list should feel expensive.
 //
+// ⏱ APPENDED 2026-08-26 — the paragraph above is left EXACTLY as written; this
+// corpus appends dated corrections rather than rewriting them. "Two guards" is
+// now the smaller HALF of that list, not its size. COUNTED TODAY by reading the
+// map's own keys — not by running this guard, which rewrites the ratchet:
+// NOT_A_SCANNER holds ELEVEN entries. TWO are the API shape the sentence above
+// describes (assert-gate-passed and record-deployment, both .mjs under
+// tooling/ci/); the other NINE are the second shape the map's own header already
+// names — a shared pure-function module whose every caller carries its own
+// COVERAGE LOST — namely tree-walk, deployment-record, workflow-scan,
+// channel-arming, d1-sql-inventory, text-reductions, read-identity,
+// migration-tables and flutter-stock-assets, all .mjs under tooling/ci/. The
+// number is prose and prose rots; the map itself is what is enforced, and the
+// passing line prints the live exempt count on every run.
+//
 // It also self-checks, because a guard-coverage guard that stopped finding
 // guards would report perfect coverage over an empty set.
 //
@@ -114,7 +128,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { stripSourceComments } from './text-reductions.mjs';
+import { stripSourceComments, codeMask, NON_CODE } from './text-reductions.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
@@ -196,11 +210,11 @@ const NOT_A_SCANNER = new Map([
   ],
   [
     'd1-sql-inventory.mjs',
-    'is not a guard: it is the ONE reading of "what SQL does this repository send to D1, and what shape is it" — the comment-stripped literal walk, the `.prepare(`/`.exec(`/`.batch(` walk that reports the statements it could NOT read, the introspective/dynamic-identifier/static classification, and the measured prohibition itself. Pure functions plus one directory walk it is handed; it asserts nothing and exits nowhere. Two guards consume it — tooling/ci/assert-d1-sql-inventory.mjs (static, ci.yml) and tooling/ops/check-d1-accepts-live-sql.mjs (live, the deploy jobs and ops-watch) — and the coverage question belongs to those two, each of which carries its own COVERAGE LOST over what it read. It also carries the REJECTED_FIXTURE the live check sends as its negative control, which is why the static guard skips the files that import it (derived from the imports, printed on every run) and asserts instead that the detector FLAGS that fixture and CLEARS the four shapes production D1 was measured to accept. Its own failing cases are in test/d1-sql-inventory.test.mjs. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard: it is the ONE reading of "what SQL does this repository send to D1, and what shape is it" — the comment-stripped literal walk, the `.prepare(`/`.exec(`/`.batch(` walk that reports the statements it could NOT read, the introspective/dynamic-identifier/static classification, the narrower reading of WHICH introspective answer names TABLES rather than the columns of one table (yieldsTableNames, added 2026-08-25 after the live half read a pragma_table_info answer as the schema of subly_db and could then instantiate neither erasure statement), and the measured prohibition itself. Pure functions plus one directory walk it is handed; it asserts nothing and exits nowhere. Two guards consume it — tooling/ci/assert-d1-sql-inventory.mjs (static, ci.yml) and tooling/ops/check-d1-accepts-live-sql.mjs (live, the deploy jobs and ops-watch) — and the coverage question belongs to those two, each of which carries its own COVERAGE LOST over what it read. It also carries the REJECTED_FIXTURE the live check sends as its negative control, which is why the static guard skips the files that import it (derived from the imports, printed on every run) and asserts instead that the detector FLAGS that fixture and CLEARS the four shapes production D1 was measured to accept. Its own failing cases are in test/d1-sql-inventory.test.mjs. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
     'text-reductions.mjs',
-    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+    'is not a guard at all: it is the ONE HTML→visible-text and source→code-without-comments reduction, pure functions with no filesystem and no tree. MEASURED 2026-08-17: 39 files import it — 37 non-test (35 flat in tooling/ci, plus tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) and 2 test files — of which 36 take stripSourceComments. The coverage question belongs to those importers, each of which carries its own COVERAGE LOST over what IT reads, and giving this file a self-check it could not honestly make is exactly the assertion-that-cannot-fail this repo keeps deleting. 🔴 THE COUNT ABOVE IS PROSE AND IT HAS NOW BEEN WRONG TWICE: it said "five" until 2026-08-02, then "NINE guards … of which seven take stripSourceComments" until 2026-08-17, by which time the true figures were 39 and 36 — an entry that undercounted the blast radius by a factor of four while claiming, in the same sentence, that "the list is now derived from the actual import statements". It was not derived; it was typed, and nothing re-reads it. Re-measure rather than trust it — the ripgrep recipe, with the two flags it cannot be run without, is written out beside the markerInCode canary further down this file; run it with the specifier alone for the 39 and with the stripSourceComments brace-clause in front for the 36. Both flags are load-bearing: without `-a` the answers come back 38 and 35, because assert-release-lane-generic.mjs carries NUL bytes and ripgrep skips it as binary without a word. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan. ⏱ APPENDED 2026-08-25 — the paragraph above is left exactly as written; this corpus appends dated corrections rather than rewriting them. Re-measured today with the recipe beside markerInCode further down this file, both flags kept: the bare-specifier form answers 47 and the stripSourceComments brace-clause form answers 44. On 2026-08-17 they were 39 and 36 — so the entry has not gone wrong a third time, but it had rotted by eight in eight days, which is exactly why the paragraph above tells you to re-measure rather than read. Breakdown of the 47: 4 test files, 41 flat in tooling/ci, and 2 elsewhere (tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) = 43 non-test; 4 of the 44 stripSourceComments importers are test files. Pipe the file list through tr to turn Windows separators into forward slashes before anchoring a count on tooling/ci, or the anchor matches nothing and the breakdown reads as zero. 🔴 AND THE -a CLAUSE ABOVE NO LONGER REPRODUCES: the two literal NUL bytes in assert-release-lane-generic.mjs were rewritten as escape sequences in the same change as this append, so both queries now answer 47 and 44 WITH -a and WITHOUT it. Measured immediately before that rewrite, without -a they answered 46 and 43 — one short each, and the one missing file was exactly assert-release-lane-generic.mjs. Keep -a anyway: three .mjs files under tooling still carry NUL bytes today (tooling/ci/assert-update-coverage.mjs, tooling/ci/flutter-stock-assets.mjs, tooling/scripts/assert-public-citations.mjs). None of the three imports text-reductions, so none of them moves these two counts, but any other un-flagged sweep of tooling can still lose them without a word. --multiline-dotall is untouched and still load-bearing. ⏱ APPENDED 2026-08-27 — the paragraphs above are left exactly as written; this corpus appends dated corrections rather than rewriting them. A THIRD reduction now lives in that module, and it arrived FROM HERE: codeMask and NON_CODE, the WHICH BYTES ARE CODE, BY OFFSET mask, which was a file-local const in this guard until today. It moved because a SECOND guard needed exactly that question answered and could not have it — this file exports nothing at all — so assert-guards-refuse-empty.mjs had shipped a narrower literal oracle that a fixture written in backticks walked straight past. Both guards import the mask from text-reductions.mjs now, and its own test asks the tree that no second copy exists. Nothing about this exemption changes: the mask is text in, text out, no filesystem and no tree, exactly like its neighbours, and the reach question still belongs to the importers. RE-MEASURED TODAY with the recipe beside markerInCode further down this file, both flags kept: the bare-specifier form answers 49 and the stripSourceComments brace-clause form answers 45. On 2026-08-25 they were 47 and 44, so the entry had rotted by two and by one BEFORE today — which is again why the paragraph above says re-measure rather than read. The move itself moves neither number, because this file and assert-guards-refuse-empty.mjs both already imported the module; the same query for the codeMask brace clause answers 3 (those two guards and the test of the module). Breakdown of the 49: 4 test files, 43 flat in tooling/ci, and 2 elsewhere (tooling/ops/check-prod-provenance.mjs and tooling/store/capture-suite-scan.mjs) = 45 non-test.',
   ],
   // ── the three the PROSE GREP hid until 2026-08-17 ──────────────────────────
   // None of these is a new judgement. Each file's own header already said it was
@@ -236,7 +250,17 @@ const NOT_A_SCANNER = new Map([
  *  every night by e2e.yml against a live Supabase — a stronger signal than a
  *  fixture, and the reason their absence from test/ is a recorded exception
  *  rather than an oversight. Naming them here is what makes the gap VISIBLE; the
- *  passing line counts them out loud. */
+ *  passing line counts them out loud.
+ *
+ *  ⏱ APPENDED 2026-08-26 — "The three entries" above is left EXACTLY as written;
+ *  this corpus appends dated corrections rather than rewriting them. COUNTED
+ *  TODAY from the map's own keys, not by running this guard (it rewrites the
+ *  ratchet): there are FIVE — provision_user, verify_row, purge, verify_purged
+ *  and verify_consent, all .mjs under tooling/e2e/. The last two were added
+ *  after that sentence was written and nothing re-counted it, which is the same
+ *  shape as the hand-ratcheted floors this file's header argues against.
+ *  Everything else the paragraph claims holds for all five unchanged; only the
+ *  number had rotted, and the passing line prints the live figure anyway. */
 const NO_NEGATIVE_TEST_NEEDED = new Map([
   [
     'tooling/e2e/provision_user.mjs',
@@ -386,6 +410,51 @@ if (!existsSync(CI) || !existsSync(TESTS)) {
 // (assert-ads-declarations, assert-policy-claims) spread the braces over
 // several lines, and a line-anchored pattern misses both.
 //
+// ⏱ APPENDED 2026-08-25 — the ⚠️ paragraph above is left EXACTLY as written; this
+// corpus appends dated corrections rather than rewriting them. Four of its
+// claims are now HISTORICAL and the removal it books is DISCHARGED. Every
+// number below was measured in this tree today, after that removal landed:
+//
+//   (a) THE NUL BYTES ARE GONE. tooling/ci/assert-release-lane-generic.mjs
+//       scans to ZERO NUL bytes today — a byte scan of the whole file returns
+//       count 0. The 2026-08-17 reading still reproduces AT THE SHA IT WAS
+//       TAKEN ON: byte-scan `git show 57e6e10:tooling/ci/assert-release-lane-generic.mjs`
+//       and you get count 2, offsets 22908 and 22916, both on line 379. So
+//       read that sentence as a statement about 57e6e10, not about this tree.
+//       The sentinel is now written with BACKSLASH-u ESCAPES rather than
+//       raw bytes, which is why this file can describe it without
+//       acquiring the same problem; find it with
+//       `grep -n '^const DYNAMIC' tooling/ci/assert-release-lane-generic.mjs`,
+//       which answers 421 today and not 379 — grep for it rather than trusting
+//       either number, since every edit above it moves the line. Its doc
+//       comment there records the rewrite and that the VALUE is byte-identical
+//       to what the line evaluated to at 57e6e10.
+//
+//   (b) THE OWED REMOVAL IS DISCHARGED. "worth removing on their own, in
+//       whichever change owns that file" was a booking, not a description.
+//       The change that owns that file made the removal on 2026-08-25, and
+//       this append closes the booking. Nothing is still owed here.
+//
+//   (c) "Without it ripgrep answers 35" AND "SKIPS it silently" NO LONGER
+//       REPRODUCE. Run the recipe above today and it answers 44 WITH `-a` and
+//       44 WITHOUT it; the bare-specifier form (drop the stripSourceComments
+//       brace clause, keep the module specifier) answers 47 both ways. No file
+//       in this sweep's domain is rescued by `-a` any more.
+//
+//   (d) KEEP `-a` ANYWAY — it is still load-bearing for OTHER sweeps of
+//       tooling, just not for this one. Three .mjs files under tooling carry
+//       literal NUL bytes today: tooling/ci/assert-update-coverage.mjs (2),
+//       tooling/ci/flutter-stock-assets.mjs (1), and
+//       tooling/scripts/assert-public-citations.mjs (2). None of the three
+//       imports text-reductions, so none of them moves the two counts above,
+//       but an un-flagged sweep of tooling still drops them without a word.
+//
+//   (e) `--multiline-dotall` is still load-bearing, and the count beside it
+//       has rotted from two to THREE. Measured today: 44 with the multiline
+//       flags and 41 without them. The three the line-anchored pattern misses
+//       are assert-ads-declarations.mjs, assert-policy-claims.mjs and
+//       test/text-reductions.test.mjs.
+//
 // The count is prose and prose rots; the check below does not. It fails on the
 // BEHAVIOUR, whatever the blast radius turns out to be on the day.
 const CANARY_COMMENT_ONLY = `// the caller must report ${COVERAGE_MARKER} rather than pass\nconst x = 1;\n`;
@@ -444,8 +513,29 @@ if (strayMjs.length) {
 // against 44 guards, TWO guards could be deleted outright with nothing said —
 // and `assert-gate-passed.mjs` and `record-deployment.mjs` were not even
 // anchored, because the old cross-check read ci.yml alone and those two are
-// invoked by the deploy workflows. Under the identity, deleting any one of the
-// forty-four fails, and the two deploy-only guards are anchored like the rest.
+// invoked by the deploy workflows. Under the identity, deleting ANY guard fails,
+// however many there are — the identity is COMPUTED FROM THE TREE on every run
+// and carries no number at all. That is precisely what replaced MIN_GUARDS: a
+// floor is a number somebody has to keep raising, and a number in prose is the
+// thing this file exists to distrust. The two deploy-only guards are anchored
+// like the rest.
+//
+// (Orientation only, dated because it rots — 2026-08-25 the tree held 144:
+//     git ls-files ':(glob)tooling/ci/*.mjs' | wc -l        -> 144
+//     find tooling/ci -maxdepth 1 -name '*.mjs' | wc -l     -> 144
+//  The `:(glob)` MAGIC PATHSPEC is load-bearing, not decoration: a bare
+//  `tooling/ci/*.mjs` lets `*` cross `/`, so it sweeps test/ in as well and
+//  answers 288 on that same tree — double, and confidently. Nothing below
+//  reads either figure; they are here so a reader knows the order of
+//  magnitude, and the run prints the live count on its own `ok` line anyway.
+//  This paragraph said "the forty-four" in the present tense until 2026-08-25,
+//  by which time the tree held 144.
+//  ⏱ APPENDED 2026-08-26 — RE-MEASURED, and the 144 has NOT rotted in a day:
+//  both commands above still answer 144 on this tree. The bare-pathspec figure
+//  HAS moved — it answers 289 today, not 288, because one more test file now
+//  sits under tooling/ci/test/ and the naive `*` sweeps the suite in as guards.
+//  That is the sentence working, not a defect in it. Nothing below reads either
+//  number; measured with git ls-files and find, never by running this guard.)
 // ─────────────────────────────────────────────────────────────────────────────
 if (!existsSync(WORKFLOWS)) {
   coverageLost([
@@ -573,6 +663,29 @@ if (unfound.length) {
 //       the file must still be there, must still be unreached, AND MUST STILL
 //       REFUSE WHEN SPAWNED. Typing a name in it buys nothing; the guard has to
 //       go on failing to be excused for not being run. See the map's own header.
+//
+//       ⏱ APPENDED 2026-08-26 — both paragraphs above are left EXACTLY as
+//       written; this corpus appends dated corrections rather than rewriting
+//       them. ONE COUNT IN THEM HAS ROTTED, and it is the one in the first:
+//       "the single HTML→visible-text and source→code-without-comments
+//       reduction that five guards IMPORT and no workflow calls", followed by
+//       "every one of those five fails the moment it breaks". FIVE was true on
+//       the day that case arrived and nothing has re-derived it since.
+//       MEASURED TODAY with the ripgrep recipe that travels beside markerInCode
+//       further up this file (both flags kept), and NOT by running this guard,
+//       which rewrites the ratchet: 47 files under tooling/ name the
+//       text-reductions module as a specifier — 41 of them flat .mjs in
+//       tooling/ci, 4 test files under tooling/ci/test/, and 2 elsewhere
+//       (check-prod-provenance under tooling/ops/ and capture-suite-scan under
+//       tooling/store/). So the blast radius is 41 guards, not five, which makes
+//       the argument the paragraph is making STRONGER rather than weaker.
+//       "AND NO WORKFLOW CALLS" STILL HOLDS, re-checked today: the only mention
+//       of that module anywhere under .github/workflows/ is a comment line in
+//       ci.yml, and the invocation scan below strips comment lines before it
+//       matches — so it is not an invocation and the module is still reached
+//       only through the derived import graph. The same rot hit the "nine
+//       guards import it" figure in the importsOf note directly below; read 41
+//       there too, and re-measure rather than trust either number.
 const importsOf = (file) => {
   // Comments out first. A `// import { x } from './shared.mjs'` in a TODO must
   // not make a module reachable — the same prose-satisfies-a-check rule the
@@ -596,6 +709,25 @@ const importsOf = (file) => {
   // mutation on a clone: with all nine real imports deleted the guard names
   // text-reductions.mjs as unreached; with this file importing it, it does not.
   // The duplication is the price of the invariant, and it is worth it.
+  //
+  // ⏱ APPENDED 2026-08-26 — the 2026-08-02 paragraph above is left EXACTLY as
+  // written; this corpus appends dated corrections rather than rewriting them.
+  // TWO OF ITS READINGS ARE HISTORICAL and nothing re-derives either:
+  //   · "nine guards import it", and "with all nine real imports deleted", were
+  //     that day's tree. MEASURED TODAY by ripgrep — not by running this guard,
+  //     which rewrites the ratchet: 41 flat .mjs in tooling/ci name the
+  //     text-reductions module, 47 files under tooling/ in all.
+  //   · "over all 76 files in tooling/ci" was likewise that day's tree. Flat
+  //     .mjs in tooling/ci today: 144, per the orientation note further up.
+  // 🔴 AND ONE SENTENCE IN IT IS NO LONGER HYPOTHETICAL. "An import HERE would
+  // make its auditor one of its consumers" was written of a thing that had not
+  // happened; since the markerInCode repair of 2026-08-17 THIS FILE IMPORTS
+  // stripSourceComments at the top, so the auditor already IS a consumer, and
+  // "with this file importing it, it does not" now describes the tree's actual
+  // state rather than the rejected branch of a mutation. What survives intact is
+  // the NARROWER claim the paragraph opens with: importsOf still strips inline
+  // and is still not unified with that module. FLAGGED, NOT REPAIRED — removing
+  // that import is a change to this guard's LOGIC, not to its prose.
   //
   // 🔴 2026-08-02 — THIS WAS `.replace(/\/\*[\s\S]*?\*\//g, ' ')` AND IT ATE THIS
   // FILE'S OWN IMPORTS. Line 70 of this very file is a LINE comment containing
@@ -757,13 +889,81 @@ const executable = (text) =>
     })
     .join('\n');
 
+// ── which BYTES are code, by OFFSET ─────────────────────────────────────────
+// ⏱ MOVED 2026-08-27 — `codeMask` and `NON_CODE` now live in text-reductions.mjs
+// and are imported above, unchanged byte for byte apart from their `export`
+// keywords. They left because a SECOND guard needed exactly this mask and could
+// not have it: this file exported nothing, so assert-guards-refuse-empty.mjs
+// shipped a narrower literal oracle that a fixture written in BACKTICKS walked
+// straight past. The full account of what the mask knows — and why only the
+// OFFSETS are taken from it while the regexes go on reading the ORIGINAL bytes —
+// travelled with the code and is written out there.
+//
+// 🔴 THE DECLARATION-ORDER NOTE THAT USED TO BE HERE IS SPENT. It is recorded in
+// text-reductions.mjs rather than deleted: the block sat above `countCases`
+// because `countCases` runs DURING MODULE EVALUATION, and a `const` read before
+// its declaration is a ReferenceError, not a fallback. An import BINDING is
+// hoisted and initialised before this module body runs, so no ordering of
+// statements in this file can bring that hazard back. MEASURED, not reasoned:
+// with the import written textually BELOW `countCases`, this guard still exits 0
+// and the ratchet still read 5791 case(s) across 148 file(s) — the figure before
+// this change added its own tests, unchanged by the move itself.
+
 const testCorpus = executable(rawCorpus);
-const countCases = (text) => (text.match(/^\s*(test|it)\s*\(/gm) ?? []).length;
+/** The same corpus KEPT SPLIT, comments stripped. The concatenation above can
+ *  say a name appears somewhere in test/; only the per-file map can say WHICH
+ *  file claims a subject, and an unattributable credit is how a test of one
+ *  guard came to be the recorded failing case of another file entirely. */
+const testSource = new Map(testFiles.map((f) => [f, executable(readFileSync(join(TESTS, f), 'utf8'))]));
+/** ⏱ REPAIRED 2026-08-27 — this counted DECLARATIONS SPELLED INSIDE STRING
+ *  LITERALS. A Dart or JS fixture body carrying `test('m1', () {});` is the same
+ *  bytes as a real declaration, and 57 of them across six test files were sitting
+ *  in the ratchet floor: guards.test.mjs 431→383, money-config.test.mjs 35→32,
+ *  mor-adapters 42→40, adapter-capabilities 28→26, app-dod 33→32, purchase-path
+ *  66→65. That is the DANGEROUS direction for a ratchet — a floor is a promise
+ *  that this much coverage exists, and 57 of the cases it promised were quoted
+ *  text nothing runs. A hollow file would still be caught; an inflated one was
+ *  not, and the inflation ratchets in permanently.
+ *
+ *  The counts below are what `node --test` runs, file for file — measured, not
+ *  derived: money-config 32, app-dod 32, purchase-path 65, adapter-capabilities
+ *  26, mor-adapters 40. guards.test.mjs runs 398 against a declaration count of
+ *  383, and that gap is this counter's documented shape — it counts LINE-ANCHORED
+ *  declarations, so a case generated inside a loop is run and not declared. The
+ *  old count of 431 was above the 398 that run; the new one is below it.
+ *
+ *  Fixed the way every other match in this file is fixed — by asking WHERE IT
+ *  STARTS, against the ONE mask (`codeMask`), never a second reader of the same
+ *  bytes. The offset tested is the DECLARATION KEYWORD, not `m.index`: `^\s*`
+ *  can begin on a blank line above, because `\s` crosses newlines.
+ *
+ *  🔴 AND IT IS HANDED THE RAW FILE, NOT `executable(…)`. That composition is
+ *  broken and the breakage is not small: `executable` is a LINE FILTER with no
+ *  notion of strings, so it deletes a `//`-leading line FROM INSIDE A TEMPLATE
+ *  LITERAL. money-config.test.mjs:176-178 is a template whose body is three
+ *  commented-out lines and whose CLOSING BACKTICK sits on the third — strip
+ *  those and the remaining text has an unpaired backtick, so every byte after
+ *  it reads inverted: fixture bodies become code and real code becomes string.
+ *  Measured: countCases over the reduced text says 19 for that file and
+ *  `node --test` runs 32. Over the raw file it says 32. The mask needs no help
+ *  here — a comment is NON_CODE to it already, which is the whole reason it can
+ *  be trusted with the raw bytes. `testCorpus` below still uses the reducer
+ *  because it is a bare `includes()` with no mask to protect it. */
+const CASE_DECL = /^\s*(test|it)\s*\(/gm;
+const countCases = (text) => {
+  const mask = codeMask(text);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  let n = 0;
+  for (const m of text.matchAll(CASE_DECL)) {
+    if (isCode(m.index + (m[0].length - m[0].trimStart().length))) n++;
+  }
+  return n;
+};
 
 // A test file carrying no declaration is a file that runs nothing while still
 // holding a manifest entry, so it must be caught before the ratchet records it.
 const perFile = new Map(
-  testFiles.map((f) => [f, countCases(executable(readFileSync(join(TESTS, f), 'utf8')))]),
+  testFiles.map((f) => [f, countCases(readFileSync(join(TESTS, f), 'utf8'))]),
 );
 const hollow = [...perFile.entries()].filter(([, n]) => n === 0).map(([f]) => f);
 if (hollow.length) {
@@ -901,6 +1101,217 @@ for (const guard of guards) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT "HAS A NEGATIVE TEST" MEANS FOR A SCRIPT — and why `includes(basename)`
+// did not mean it.
+//
+// 🔴 2026-08-26. tooling/e2e/verify_purged.mjs was COUNTED AS COVERED, and the
+// only file naming it was tooling/ci/test/d1-sql-inventory.test.mjs, which edits
+// A COMMENT inside it: `edit(root, 'tooling/e2e/verify_purged.mjs', (s) =>
+// s.replace('any single statement that names sqlite_master/sqlite_schema', 'the
+// query'))`. That is a test of assert-d1-sql-inventory.mjs's R4 limb. It uses
+// the file as MATERIAL and asserts on that guard's stderr; nothing there ever
+// runs verify_purged.mjs, and assert-d1-sql-inventory.mjs spawns nothing at all
+// (it is a static read), so no behaviour of verify_purged.mjs can move that
+// assertion either way. A byte inside the file was touched; the file was never
+// run.
+//
+// The credit outranks the exemption map, so the consequence was silent in the
+// direction that matters: verify_purged.mjs's entry in NO_NEGATIVE_TEST_NEEDED
+// STOPPED BEING WHAT COVERED IT — the recorded reason went unread and unprinted
+// while a false one held, and the ⬜ line that exists to make that gap visible
+// never mentioned it. It is the golden-path leg-6 assertion: it re-reads live D1
+// and the live GoTrue admin API after the app deletes a real account, and it is
+// the only thing that can catch a server answering `{ ok: true }` over a row
+// that is still there.
+//
+// ⚠️ STRIPPING COMMENTS WOULD NOT HAVE CAUGHT IT, and neither would asking for a
+// behavioural mutation. That edit IS executable code, and a foreign test's side
+// effect on a file covers nothing however deep it cuts. What was missing is
+// ATTRIBUTION: some test file has to put the script in the position of the thing
+// being RUN.
+//
+// So the credit requires EXERCISED, not MENTIONED. A test file exercises a
+// script when it
+//   · IMPORTS it, statically or dynamically — its behaviour is under test; or
+//   · SPAWNS it — the script is the executable of a child process, named at the
+//     head of the argv either directly or through a runner defined in the same
+//     file (`function run(script) { spawnSync(process.execPath, [join(OPS,
+//     script), …]) }`, which is how tooling/ops/verify-*.mjs are exercised).
+// A path inside an assertion, a regex, a fixture edit or a workflow string built
+// for some other guard's fixture is the script being TALKED ABOUT, and is not
+// evidence about its failing path.
+//
+// THE LIMIT, IN ONE SENTENCE: this is a static reading of the test source, so it
+// establishes that the script is executed under test, not that some assertion
+// would go red if it stopped working.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Depth-0, quote-aware elements of a bracketed argument list. `text` starts
+ *  just INSIDE the bracket; scanning stops at the matching `close`. Written out
+ *  rather than regexed because the two shapes that matter here — `[join(OPS,
+ *  script), ...args]` and `(root, { workflow: '…' })` — both put commas inside
+ *  nested brackets, and a split on `,` reads `join(OPS` as the executable. */
+const argElements = (text, close) => {
+  const out = [];
+  let depth = 0;
+  let cur = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      cur += c;
+      if (c === quote && text[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; cur += c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; cur += c; continue; }
+    if (c === close && depth === 0) { out.push(cur); return out; }
+    if (c === ')' || c === ']' || c === '}') { depth--; cur += c; continue; }
+    if (c === ',' && depth === 0) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+};
+
+/** Every child-process call in `text`, reduced to the EXECUTABLE it runs: the
+ *  first argv element when the binary is node itself, the first argument
+ *  otherwise. Position is the whole point — a path in argv[1] is an ARGUMENT to
+ *  some other program, which is how a guard's own fixture path shows up.
+ *  `isCode(i)` rejects a call that is only being QUOTED, never made — and it is
+ *  REQUIRED, not defaulted, so a future call site that forgets it throws rather
+ *  than quietly crediting every quoted spawn in the corpus. */
+const SPAWN_CALL = /(?:spawnSync|spawn|execFileSync|execFile|fork)\(/g;
+const spawnedExecutables = (text, isCode) => {
+  const heads = [];
+  for (const m of text.matchAll(SPAWN_CALL)) {
+    if (!isCode(m.index)) continue;
+    const args = argElements(text.slice(m.index + m[0].length), ')');
+    if (!args.length) continue;
+    const first = (args[0] ?? '').trim();
+    if (!/execPath/.test(first)) { heads.push(first); continue; }
+    const argv = (args[1] ?? '').trim();
+    heads.push(argv.startsWith('[') ? (argElements(argv.slice(1), ']')[0] ?? '') : argv);
+  }
+  return heads;
+};
+
+const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Does this ONE test file exercise `base` — or does it merely name it?
+ * Returns a short phrase naming HOW (so the credit can be attributed out loud)
+ * or null. Comments are already stripped by the caller.
+ */
+const exercisedBy = (text, base) => {
+  const mask = codeMask(text);
+  const isCode = (i) => mask[i] !== NON_CODE;
+  /** The first match whose FIRST BYTE is code — a match that starts inside a
+   *  string literal is a shape being quoted, not one being run. */
+  const inCode = (re) => {
+    for (const m of text.matchAll(re)) if (isCode(m.index)) return m;
+    return null;
+  };
+  const b = reEscape(base);
+  const literal = new RegExp(`['"\`][^'"\`]*${b}['"\`]`);
+  if (inCode(new RegExp(`from\\s*['"\`][^'"\`]*${b}['"\`]`, 'g'))) return 'imports it';
+  if (inCode(new RegExp(`import\\(\\s*['"\`][^'"\`]*${b}['"\`]`, 'g'))) return 'imports it';
+
+  // Identifiers bound to a PATH ENDING IN the file — `const SCRIPT = resolve(
+  // CI_DIR, '..', 'scripts', 'provision-backend.mjs');`. The literal must be the
+  // last thing in the expression: `const root2 = seeded({ workflow: '… node
+  // tooling/scripts/provision-backend.mjs …' })` also mentions the name, and
+  // binding that identifier would credit a fixture root for being a script.
+  const bound = new Set();
+  for (const m of text.matchAll(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=([^;]*?);`, 'g'))) {
+    if (!isCode(m.index)) continue;
+    if (new RegExp(`['"\`][^'"\`]*${b}['"\`][\\s)]*$`).test(m[2].trim())) bound.add(m[1]);
+  }
+  const namesFile = (expr) => literal.test(expr) || [...bound].some((i) => new RegExp(`\\b${reEscape(i)}\\b`).test(expr));
+
+  for (const head of spawnedExecutables(text, isCode)) if (namesFile(head)) return 'runs it';
+  if ([...bound].some((i) => inCode(new RegExp(`import\\(\\s*${reEscape(i)}`, 'g')))) return 'imports it';
+
+  // A runner defined in this file whose EXECUTABLE is built from one of its own
+  // parameters. The script is then handed to it at that position — as a bare
+  // literal or a bound identifier, never as one string inside a larger one.
+  const runners = new Map();
+  for (const re of [/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/g, /function\s+([A-Za-z_$][\w$]*)\s*\(/g]) {
+    for (const m of text.matchAll(re)) {
+      if (!isCode(m.index)) continue;
+      const at = m.index + m[0].length;
+      const after = text.slice(at);
+      const params = argElements(after, ')').map((p) => p.trim().split(/[\s=:]/)[0]).filter((p) => /^[A-Za-z_$][\w$]*$/.test(p));
+      if (!params.length) continue;
+      for (const head of spawnedExecutables(after.slice(0, 1200), (i) => isCode(at + i))) {
+        const idx = params.findIndex((p) => new RegExp(`\\b${reEscape(p)}\\b`).test(head));
+        if (idx >= 0) runners.set(m[1], idx);
+      }
+    }
+  }
+  const exactly = new RegExp(`^['"\`][^'"\`]*${b}['"\`]$`);
+  for (const [name, idx] of runners) {
+    for (const m of text.matchAll(new RegExp(`\\b${reEscape(name)}\\(`, 'g'))) {
+      if (!isCode(m.index)) continue;
+      const arg = (argElements(text.slice(m.index + m[0].length), ')')[idx] ?? '').trim();
+      if (arg && (exactly.test(arg) || bound.has(arg))) return `runs it via ${name}()`;
+    }
+  }
+  return null;
+};
+
+// ── the detector's OWN negative test, run on every invocation ───────────────
+// Same reason markerInCode carries one: if `exercisedBy` ever regressed to the
+// `includes(basename)` it replaced, this file would go back to crediting a
+// script for being named by a test of something else, and go on printing a
+// healthy covered count while doing it. The first canary is the SHAPE THAT
+// CAUSED THIS — a fixture edit naming the file, in executable code — and it must
+// come out uncovered; the second is a real spawn and must come out covered.
+//
+// ⏱ APPENDED 2026-08-27 — a THIRD and FOURTH, the pair codeMask exists for: the
+// same import statement, once inside a string literal and once as code. The two
+// above differ in SHAPE, so a matcher with no notion of string context would
+// still tell them apart; these two do not differ in shape, so nothing but the
+// offsets can separate them. The quoted one also carries an astral character —
+// that is what gives the length check below something to fail on.
+const CANARY_NAMED_ONLY = [
+  "edit(root, 'tooling/e2e/canary_subject.mjs', (s) => s.replace('one sentence', 'another'));",
+  "assert.match(r.stderr, /tooling\\/e2e\\/canary_subject\\.mjs/);",
+  '',
+].join('\n');
+const CANARY_RUNS_IT = [
+  "const r = spawnSync(process.execPath, [join(E2E, 'canary_subject.mjs'), '--check'], { encoding: 'utf8' });",
+  'assert.equal(r.status, 1);',
+  '',
+].join('\n');
+const CANARY_IMPORT_QUOTED = [
+  'const fixture = "\u{1F534} import subject from \'#e2e/canary_subject.mjs\';";',
+  'writeFileSync(join(root, generated), fixture);',
+  '',
+].join('\n');
+const CANARY_IMPORT_REAL = [
+  "import subject from '#e2e/canary_subject.mjs';",
+  'assert.equal(subject.check(), 1);',
+  '',
+].join('\n');
+const canary = (t) => exercisedBy(t, 'canary_subject.mjs');
+const maskLen = codeMask(CANARY_IMPORT_QUOTED).length;
+if (canary(CANARY_NAMED_ONLY) || !canary(CANARY_RUNS_IT) || canary(CANARY_IMPORT_QUOTED) || !canary(CANARY_IMPORT_REAL) || maskLen !== CANARY_IMPORT_QUOTED.length) {
+  coverageLost([
+    'the negative-test DETECTOR no longer distinguishes a script that is RUN from one that is merely NAMED.',
+    `A fixture edit naming the file read as ${canary(CANARY_NAMED_ONLY) ?? 'null'} (must be null) and a`,
+    `spawn of it read as ${canary(CANARY_RUNS_IT) ?? 'null'} (must not be null).`,
+    `An import written INSIDE A STRING read as ${canary(CANARY_IMPORT_QUOTED) ?? 'null'} (must be null) and the`,
+    `same import written as code read as ${canary(CANARY_IMPORT_REAL) ?? 'null'} (must not be null).`,
+    `The mask measured ${maskLen} over a ${CANARY_IMPORT_QUOTED.length}-char fixture (must be EQUAL — it carries an`,
+    'astral character, and a mask built per CODE POINT is shorter than its input, so every offset past it is wrong).',
+    'Until this holds, every "has a negative test" verdict for a script outside tooling/ci is the basename',
+    'grep that credited tooling/e2e/verify_purged.mjs to a test of assert-d1-sql-inventory.mjs, which edits a',
+    'COMMENT inside it and asserts on another guard entirely.',
+  ]);
+}
+
 // ── [pipeline S-12r] the workflow-invoked executables OUTSIDE tooling/ci ───── (absent from origins.lock.json by construction — S-12r is a residual id, never a pipeline heading)
 // DERIVED, not hand-listed: whatever the tracked workflows run under tooling/
 // that is not a guard must still carry a negative test, or appear in
@@ -910,6 +1321,7 @@ for (const guard of guards) {
 // this scan reads. A filing accident was deciding what got covered.
 let covered = 0;
 const scriptExempt = [];
+const creditOverridesException = [];
 for (const rel of [...invokedOutside].sort()) {
   if (!existsSync(join(ROOT, rel))) {
     problems.push(
@@ -933,15 +1345,45 @@ for (const rel of [...invokedOutside].sort()) {
   // false positive is worse than none, for the same reason as one that cannot
   // fail at all. The exemption is still self-checked below, against the DERIVED
   // signal — a workflow either invokes the script or it does not.
-  if (testCorpus.includes(base)) {
+  //
+  // ⏱ APPENDED 2026-08-26 — the paragraph above is left EXACTLY as written; this
+  // corpus appends dated corrections rather than rewriting them. The weak proxy
+  // it describes is no longer what credits a script HERE: the credit below is
+  // EXERCISED (spawned or imported), attributed to the test file that makes it.
+  // The excused-but-covered state is still not asserted on, for the reason the
+  // paragraph gives — it is PRINTED instead.
+  const claims = [];
+  const namesOnly = [];
+  for (const [f, text] of testSource) {
+    const how = exercisedBy(text, base);
+    if (how) claims.push(`${f} ${how}`);
+    else if (text.includes(base)) namesOnly.push(f);
+  }
+  if (claims.length) {
     covered++;
+    // The state this file was in for as long as nobody looked: a credit standing
+    // OVER a recorded exception, so the exception silently stopped being what
+    // covered the script and the ⬜ line that exists to make that gap visible
+    // never mentioned it again. Printed now, both ways round.
+    if (reason) {
+      creditOverridesException.push(
+        `${rel} — exercised by ${claims.join(', ')}, so its NO_NEGATIVE_TEST_NEEDED entry is no longer ` +
+          'what covers it. Delete the entry, or check the credit is not incidental.',
+      );
+    }
   } else if (reason) {
     scriptExempt.push(`${rel} — ${reason}`);
   } else {
     problems.push(
-      `${rel} — a workflow runs it and no test file mentions it. It has only ever run against valid ` +
-        'input, so nothing exercises its failing path. Give it a negative test, or record an exception ' +
-        'in NO_NEGATIVE_TEST_NEEDED with a reason that survives being read aloud.',
+      `${rel} — a workflow runs it and no test file EXERCISES it: nothing spawns it and nothing imports ` +
+        'it, so nothing has ever run its failing path' +
+        (namesOnly.length
+          ? `. ${namesOnly.join(', ')} name${namesOnly.length === 1 ? 's' : ''} it without running it — the ` +
+            'file used as MATERIAL by a test whose subject is something else, which is a byte touched and ' +
+            'not a behaviour exercised. '
+          : '. ') +
+        'Give it a negative test that spawns or imports it, or record an exception in ' +
+        'NO_NEGATIVE_TEST_NEEDED with a reason that survives being read aloud.',
     );
   }
 }
@@ -986,6 +1428,10 @@ if (notCiRunnable.size) {
 if (scriptExempt.length) {
   console.log('⬜ workflow-invoked scripts outside tooling/ci with a recorded exception, printed not hidden:');
   for (const s of scriptExempt) console.log(`    ${s}`);
+}
+if (creditOverridesException.length) {
+  console.log('⬜ a real negative test now stands over a recorded exception — the entry has stopped being what covers the file:');
+  for (const c of creditOverridesException) console.log(`    ${c}`);
 }
 if (notes.length) {
   console.log('⬜ notes:');

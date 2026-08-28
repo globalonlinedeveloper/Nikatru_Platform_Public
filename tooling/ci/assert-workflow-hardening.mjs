@@ -2,6 +2,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-workflow-hardening.mjs — CI's own inputs are pinned and least-privilege.
 //
+// Pipeline requirement: Private/requirements/ → F-11.
+// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
+// 2026-08-15; the id still resolves against an `origin` field there.)
+// ⚠️ MOVED TO THE TOP 2026-08-26, and the move is the point. build-enforcement-
+// index.mjs reads only the first HEADER_LINES (60) lines, so a CLAIM is a claim
+// only while it sits inside that window. Adding limb 6's paragraph to the list
+// below pushed this line to 64 and the tree stopped deriving F-11 at all —
+// assert-enforcement-index.mjs caught it as a disagreement with the committed
+// index. A citation that a later edit can silently evict is not a citation, so
+// it now sits above everything that grows. ⛔ The fix is NOT to raise
+// HEADER_LINES: that window governs every guard's derivation in this tree, and
+// widening it to rescue one file would silently re-derive all of them.
+//
 // `@v4` is a LABEL, not an address. The action's owner can re-point it at
 // different code tomorrow and nothing in this repository changes. A 40-character
 // SHA is content-addressed: it can only ever be that exact code.
@@ -12,7 +25,7 @@
 // database access, bypasses RLS) and CLOUDFLARE_API_TOKEN, and it calls a
 // third-party action maintained by an individual.
 //
-// Asserts five things:
+// Asserts six things:
 //   1. every `uses:` resolves to a 40-hex commit SHA
 //   2. every workflow declares an explicit `permissions:` block
 //   3. …and that block is not `write-all`. Until 2026-08-01 limb 2 was
@@ -34,16 +47,27 @@
 //   5. …and, WHEN A LIVE WORKFLOW LIST IS SUPPLIED, that GitHub knows about no
 //      workflow this scan never opened. See "limb 5" below for the measurement
 //      and, just as important, for what it does not catch.
+//   6. every GitHub Actions expression outside a `run:` body opens with TWO
+//      braces. Added 2026-08-26, and unlike the five above it is not a
+//      hypothetical: `.github/workflows/submit-snap.yml:352` read
+//      `flutter-version: ${ env.FLUTTER_VERSION }` — ONE brace — while line 142
+//      of the same file, the dry-run lane's identical step, read `${{ … }}`.
+//      GitHub does not interpolate a single brace, so the Snap Store PUBLISH
+//      job asked `subosito/flutter-action` to install a Flutter whose version
+//      is the 24-character literal `${ env.FLUTTER_VERSION }`. Nothing in
+//      this tree looked at Actions expression syntax, which is how a
+//      one-character typo passed review and five days of green CI: limbs 1-5
+//      read `uses:`, `permissions:`, `timeout-minutes:` and job ids, and a
+//      `with:` value is none of those. See "limb 6" below for why this cannot
+//      be a grep and for what it does not catch.
+//      INV-125 (`Private/requirements/invariants.json`, added 2026-08-26) states
+//      this rule, names this script as its guard, and limb 6 answers to that.
 //
 // ⚠️ TRADE-OFF ON RECORD: a pinned action stops receiving updates, including
 // security fixes. That is the deliberate exchange — "silently gets new code"
 // for "must be updated deliberately". The thing that normally makes it
 // sustainable is Renovate raising bump PRs, which is stage 14. Until that
 // exists, these pins go stale; that is a known cost, not an oversight.
-//
-// Pipeline requirement: Private/requirements/ → F-11.
-// (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
-// 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // ⚠️ F-11 IS TWO INVARIANTS AND LIMB 4 IS NEITHER OF THEM — that gap was real for
 // a day and is closed rather than narrated. `Private/requirements/invariants.json`
@@ -58,12 +82,13 @@
 //   …where <file> is the body of `gh api repos/OWNER/REPO/actions/workflows`.
 //   Without it limbs 1-4 run exactly as before and limb 5 reports NOT CONSULTED.
 // Exit 0 = hardened. 1 = a real defect (a movable reference, a missing or
-// over-broad permissions block, an unbounded job) or a lost coverage
-// relationship — including a workflow GitHub holds that this checkout does not.
+// over-broad permissions block, an unbounded job, a single-brace expression) or
+// a lost coverage relationship — including a workflow GitHub holds that this
+// checkout does not.
 // 2 = REFUSED: the scan could not answer the question at all — no
 // workflow, no job, a job shape it cannot classify, two independent counts of
 // this tree's job ids that disagree, an unreadable or truncated live list, an
-// unrecognised argument, or limb 5's own canaries failing. Those are
+// unrecognised argument, or limb 5's or limb 6's own canaries failing. Those are
 // deliberately DIFFERENT codes: "I
 // looked and found nothing wrong" and "I could not look" are the same exit
 // status in most guards, and that is precisely how a scan over an empty subject
@@ -74,7 +99,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseWorkflow, joinBlockScalars, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 /** Positionals and flags are separated so `--live-workflows=` (limb 5) can be
  *  passed alongside a fixture root. AN UNKNOWN `--flag` IS A REFUSAL, NOT A
@@ -418,7 +443,210 @@ const refuse = (lines) => {
   process.exit(2);
 };
 
+// ── limb 6: an Actions expression opens with TWO braces ──────────────────────
+// 🔴 THE WHOLE DIFFICULTY IS THAT `${VAR}` IS ALSO CORRECT — just in a different
+// language. Inside a `run:` body the text is SHELL, where `${deps}`,
+// `${RUNNER_TEMP}` and `${GITHUB_SHA::7}` are ordinary parameter expansion;
+// outside one it is YAML that GitHub interpolates, and there the only expression
+// syntax that exists is `${{ … }}`. Measured on this tree 2026-08-26, over all
+// twelve workflows, comments already blanked: SEVENTY lines carry a `${` that is
+// not `${{`, and SIXTY-NINE of them are shell inside a `run:` body. A
+// `rg '\$\{[^{]'` reddens all seventy — which is the false red that gets a guard
+// switched off before it has ever caught anything — and the seventieth was the
+// live defect. (After `joinBlockScalars` folds each `run:` body up into its own
+// key those sixty-nine become 25 logical lines; the seventy is the raw count, so
+// the two numbers are the same measurement read before and after the fold.)
+//
+// SO THE `run:` BODIES ARE SEPARATED BY THE SHARED READER, NEVER BY A RIVAL
+// PARSER. `parseWorkflow` blanks comments (a `${SNAP}` written in prose at
+// submit-snap.yml:259 and :456 explains a trap and must not be a finding) while
+// PRESERVING line numbers, and `joinBlockScalars` folds `run: |` / `run: >`
+// bodies up into the `run:` line they belong to — so after that fold a body line
+// is not a line any more, and every line that IS one can be judged by its own
+// key. Both come from workflow-scan.mjs for the reason that file's header gives:
+// the first thing a second workflow parser gets wrong is WHICH LINES IT CAN SEE,
+// and that failure reports "clean".
+//
+// ⚠️ WHAT THIS LIMB DOES NOT CATCH, stated plainly because an overclaiming check
+// is the failure this file was written against:
+//   · IT DOES NOT READ INSIDE A `run:` BODY AT ALL. `${{ github.event… }}`
+//     interpolated into shell is a real class of defect and a single-brace typo
+//     there is indistinguishable from correct shell, so nothing here can decide
+//     it. Sixty-nine of this tree's seventy hits live there.
+//   · IT IS THE OPENING BRACE ONLY. `${{ env.X }` — the same typo at the closing
+//     end — reads as two braces to this limb and passes. Naming it is cheaper
+//     than a matcher that would have to balance YAML quoting to be right.
+//   · `run:` IS THE ONLY FOREIGN-LANGUAGE KEY IT KNOWS. A `script: |` body
+//     (actions/github-script) is JavaScript, where `${x}` is a template literal,
+//     and this limb would report it. There is not one in this tree today — the
+//     only non-`run:` block scalars are `path:`, `filters:` and `secrets:`,
+//     whose bodies are paths and names — so the case is documented rather than
+//     coded for, and it would fail LOUDLY on the first one rather than silently.
+const SINGLE_BRACE = /\$\{(?!\{)/g;
+/** A `run:` line, INCLUDING the folded form `joinBlockScalars` produces (the
+ *  `run:` key with its whole body appended) and the inline form `run: echo "$X"`.
+ *  Everything past this point is YAML GitHub interpolates. */
+const RUN_LINE = /^\s*(?:-\s+)?run:/;
+
+/** PURE, and separated from the file walk for the same reason `orphanWorkflows`
+ *  is: the canaries below drive the engine the real scan uses, rather than a
+ *  second one written to agree with it. `lines` is `parseWorkflow(...).lines` —
+ *  the WHOLE comment-blanked file, header and jobs alike, because `env:` and
+ *  `with:` values live in both regions and a single-brace expression is a defect
+ *  wherever it sits. Returns the count of lines actually JUDGED, so the caller
+ *  can tell "nothing wrong" from "nothing read". */
+function expressionDefects(rel, lines) {
+  const defects = [];
+  let scanned = 0;
+  let shellLines = 0;
+  for (const l of joinBlockScalars(lines)) {
+    if (RUN_LINE.test(l.text)) {
+      shellLines++;
+      continue;
+    }
+    scanned++;
+    for (const m of l.text.matchAll(SINGLE_BRACE)) {
+      // THE LITERAL IS QUOTED BACK, not just the line, because that string is
+      // exactly what the step receives. `flutter-version: ${ env.FLUTTER_VERSION }`
+      // reads as a near-miss; `the literal text "${ env.FLUTTER_VERSION }"` reads
+      // as what actually reached subosito/flutter-action.
+      const close = l.text.indexOf('}', m.index);
+      const literal = close === -1 ? l.text.slice(m.index).trimEnd() : l.text.slice(m.index, close + 1);
+      defects.push(
+        `${rel}:${l.n} \`${literal}\` opens with ONE brace. GitHub interpolates \`\${{ … }}\` and nothing else, ` +
+          `so this reaches the step as the literal text \`${literal}\` — not as a value. ` +
+          'Outside a `run:` body there is no shell to expand it.',
+      );
+    }
+  }
+  return { scanned, shellLines, defects };
+}
+
+/** THE NEGATIVE HALF, RUN ON EVERY INVOCATION — the same in-file canary pattern
+ *  as `liveLimbSelfTest` below, and here for the same reason limb 5 needed it:
+ *  the two directions this limb must get right are OPPOSITES, so a break in
+ *  either one is silent. A `RUN_LINE` that matches too much swallows the whole
+ *  file and certifies it; a `RUN_LINE` that matches too little reddens sixty-nine
+ *  correct shell lines. Neither shows up on a tree that is clean.
+ *
+ *  MEASURED 2026-08-26, one mutation at a time, in a copy of tooling/ci AND
+ *  .github/workflows under the scratchpad and never in the repository, each run
+ *  twice — this script directly against the copied tree (a fixture root, so the
+ *  no-manifest fallback applies), and
+ *    node --test --test-reporter=tap --test-name-pattern='assert-workflow-hardening' \
+ *         tooling/ci/test/guards.test.mjs
+ *  Baselines: EXIT 0, and SUITE EXIT 0 at tests 43 / pass 43 / fail 0. Exit codes
+ *  captured on their own line, and the canary list read off the refusal's own
+ *  output rather than predicted — the first draft of this table named the wrong
+ *  canaries in ALL FOUR rows, which is why the numbers below are read off a run
+ *  and not reasoned about.
+ *    · `RUN_LINE` -> `/^/` (every line is shell)     -> E1 + E3 fire, EXIT 2;
+ *      SUITE EXIT 1, pass 1 / FAIL 42.
+ *    · `RUN_LINE` -> `/(?!)/` (no line is shell)     -> E2 + E3 fire, EXIT 2;
+ *      SUITE EXIT 1, pass 1 / FAIL 42. Without the canary this is the
+ *      sixty-nine-false-red build, and every one of those reds is correct shell.
+ *    · `SINGLE_BRACE` -> `/\$\{/g` (the naive grep)  -> E1 + E3 fire, EXIT 2;
+ *      SUITE EXIT 1, pass 1 / FAIL 42.
+ *    · the `matchAll` loop emptied                   -> E1 + E3 fire, EXIT 2;
+ *      SUITE EXIT 1, pass 1 / FAIL 42.
+ *    · E1, E2 or E4 alone -> `if (false)`            -> SUITE EXIT 0, 43/43/0.
+ *      Recorded rather than hidden: that is the negative half being switched
+ *      off, not a subject, and what makes each load-bearing is the row above it.
+ *    · E3 alone -> `if (false)`                      -> SUITE EXIT 1, pass 42 /
+ *      FAIL 1 — guards.test.mjs's canary-wiring case names E3 by hand, which is
+ *      what makes THAT canary the one the suite can speak for.
+ *    · the dispatch below -> `if (false)`            -> SUITE EXIT 1, pass 42 /
+ *      FAIL 1. All four canaries reach the process through that one line.
+ *
+ *  AND THE ROW THE OTHERS EXIST FOR, measured the same day against the same
+ *  copied tree with limb 6 UNMUTATED and the workflow put back the way it was —
+ *  `.github/workflows/submit-snap.yml`'s publish lane returned to
+ *  `flutter-version: ${ env.FLUTTER_VERSION }`:
+ *    · EXIT 1, `submit-snap.yml:352 \`${ env.FLUTTER_VERSION }\` opens with ONE
+ *      brace`. Fixed back: EXIT 0. The limb catches the live defect on the real
+ *      bytes, at the real line, and clears the same file once repaired.
+ *
+ *  ⚠️ AND THE CANARIES CANNOT REACH THE `coverageLost` DISPATCH, which is the
+ *  one condition on this limb they do not hold — a canary returns a value, it
+ *  cannot take a `process.exit` path. That is limb 5's recorded lesson repeated
+ *  rather than rediscovered, and it is why guards.test.mjs carries a case that
+ *  copies this file and cuts the `exprWorkflowsScanned++;` line out of it. */
+function expressionLimbSelfTest() {
+  const failures = [];
+  const at = (n, text) => ({ n, text });
+
+  // E1 THE REAL DEFECT, IN THE SHAPE IT WAS FOUND IN. Two `with:` values, the
+  // dry-run lane's correct one and the publish lane's broken one, exactly as
+  // submit-snap.yml carried them at 142 and 352 until 2026-08-26.
+  // ⚠️ The LABEL is synthetic (`canary-expr.yml`), the LINES are real. It named
+  // the live workflow until 2026-08-26, which made this generic limb look
+  // LANE-BOUND: assert-release-lane-generic.mjs reads STRING LITERALS naming a
+  // real workflow, so the canary's own label — not any clause of this limb —
+  // was the whole binding, and it failed asking for a `LANE-BOUND:` declaration
+  // that would have been FALSE. The limb ranges over every workflow; only the
+  // fixture was ever about one. The provenance stays in the comments above,
+  // where a literal cannot be mistaken for a binding.
+  const e1 = expressionDefects('canary-expr.yml', [
+    at(142, '          flutter-version: ${{ env.FLUTTER_VERSION }}'),
+    at(352, '          flutter-version: ${ env.FLUTTER_VERSION }'),
+  ]);
+  if (!(e1.defects.length === 1 && /352/.test(e1.defects[0]) && /\$\{ env\.FLUTTER_VERSION \}/.test(e1.defects[0]))) {
+    failures.push(`E1 THE LIVE DEFECT: the single-brace \`with:\` value that shipped to the Snap Store lane was not reported at its line — got ${JSON.stringify(e1.defects)}. This limb exists for that one line and would have printed ok over it.`);
+  }
+
+  // E2 SHELL INSIDE A `run:` BODY IS NOT A DEFECT. Both block forms, because
+  // `joinBlockScalars` folds them differently (` ` for `>`, ` ; ` for `|`) and a
+  // fold that stops working leaves the body lines standing as findings. Sixty-
+  // nine lines of this tree look like this; a limb that reddens them is one
+  // nobody keeps.
+  const e2 = expressionDefects('canary-expr.yml', [
+    at(158, '        run: |'),
+    at(160, '          echo "installing: ${deps}"'),
+    at(162, '          sudo apt-get install -y ${deps}'),
+    at(275, '        run: >'),
+    at(276, '          project="${RUNNER_TEMP}/snapcraft-subly"'),
+    at(300, '        - run: echo "${GITHUB_SHA::7}"'),
+  ]);
+  if (e2.defects.length !== 0) {
+    failures.push(`E2 SHELL IN A run: BODY: legal shell parameter expansion was reported as an Actions defect — got ${JSON.stringify(e2.defects)}. Sixty-nine lines of this tree are exactly this, and a guard that reddens correct input is one that gets switched off.`);
+  }
+
+  // E3 THE OVER-FIRING CONTROL'S OPPOSITE — a detector that fires on nothing.
+  // A single-brace value OUTSIDE any `run:` must still be found when correct
+  // `${{ … }}` sits beside it, which is what separates this from `rg '\$\{'`.
+  const e3 = expressionDefects('a.yml', [
+    at(1, '  X: ${{ env.A }}'),
+    at(2, '  Y: ${ env.B }'),
+    at(3, '        run: echo "${Z}"'),
+  ]);
+  if (!(e3.defects.length === 1 && /a\.yml:2/.test(e3.defects[0]) && e3.scanned === 2 && e3.shellLines === 1)) {
+    failures.push(`E3 MIXED FILE: a file holding one correct expression, one broken one and one shell line produced ${JSON.stringify(e3)}. The two braces, the one brace and the run: body must be told apart in the SAME file or this limb reads a different question from the one asked.`);
+  }
+
+  // E4 A SCAN THAT READ NOTHING SAYS SO. `scanned` is what the coverage
+  // self-check below stands on, and a zero it cannot report is a zero the
+  // caller certifies over.
+  const e4 = expressionDefects('empty.yml', []);
+  if (!(e4.scanned === 0 && e4.shellLines === 0 && e4.defects.length === 0)) {
+    failures.push(`E4 EMPTY SUBJECT: an empty line set reported ${JSON.stringify(e4)} instead of scanning nothing. "No defects" over nothing read is the sentence this whole file exists to stop.`);
+  }
+
+  return failures;
+}
+
+const exprSelfTestFailures = expressionLimbSelfTest();
+if (exprSelfTestFailures.length) {
+  refuse([
+    `limb 6's own canaries failed (${exprSelfTestFailures.length}), so its findings — including "no single-brace expressions" — are worthless:`,
+    ...exprSelfTestFailures.map((f) => `  · ${f}`),
+    'This is a statement about the detector, not about the tree. Nothing below was compared.',
+  ]);
+}
+
 let jobsChecked = 0;
+let exprWorkflowsScanned = 0;
+let exprLinesScanned = 0;
+let exprShellLines = 0;
 const jobless = [];
 const unclassifiable = [];
 const jobCountMismatch = [];
@@ -439,6 +667,21 @@ for (const f of files) {
     jobCountMismatch.push(
       `${f}: the shared reader found ${strict} job id(s), an independent scan of the same file found ${loose}`,
     );
+  }
+  // ── limb 6, over the WHOLE file ────────────────────────────────────────────
+  // Deliberately BEFORE the `jobless` continue below, and over `parsed.lines`
+  // rather than the per-job arrays: a workflow's `env:` and `with:` blocks are
+  // where this defect actually lives, and the header region above `jobs:` is in
+  // none of the per-job line sets. A file that parses to zero jobs still gets
+  // read here, because "I could not find its jobs" is not a reason to stop
+  // looking at its expressions — and that refusal fires below anyway, printing
+  // whatever limb 6 already found.
+  if (parsed !== null) {
+    const expr = expressionDefects(f, parsed.lines);
+    exprWorkflowsScanned++;
+    exprLinesScanned += expr.scanned;
+    exprShellLines += expr.shellLines;
+    for (const d of expr.defects) problems.push(d);
   }
   if (parsed === null || parsed.jobs.size === 0) {
     // Every GitHub workflow has jobs, so zero is never a fact about the tree —
@@ -592,6 +835,33 @@ if (looseSeen === 0) {
   ]);
 }
 
+// (3) EXPRESSION SCAN REACH. Limb 6's whole finding is a NEGATIVE — "no
+//     single-brace expression anywhere" — and a negative is worth exactly what
+//     the subject behind it is worth. Both counters must be non-zero before that
+//     sentence may be printed: zero workflows means the walk never reached a
+//     file, zero lines means every line in every file was taken for a `run:`
+//     body and judged by nothing.
+//
+// ⚠️ WHICH DIRECTION IS INPUT-REACHABLE, MEASURED RATHER THAN ASSUMED. A truly
+// empty workflow set never arrives here: `files.length === 0` REFUSES at exit 2
+// further up, and that stop has its own committed case. So on real input both
+// counters are non-zero, and this check fires only when limb 6 itself has
+// stopped reading — a `RUN_LINE` that swallows the file, a walk that stops
+// incrementing. That is not a reason to leave it out: it is the same shape as
+// the `uses:` accounting above, which also cannot fire on a healthy tree, and
+// this file's rule is that an assertion needs a failing INPUT, which
+// guards.test.mjs supplies by copying this script and cutting the
+// `exprWorkflowsScanned++;` line out of the copy. Without it, a limb that
+// reached nothing would contribute its silence to the ok line as agreement.
+if (exprWorkflowsScanned === 0 || exprLinesScanned === 0) {
+  coverageLost([
+    `limb 6 judged ${exprLinesScanned} line(s) across ${exprWorkflowsScanned} of ${files.length} workflow(s) — it reached nothing.`,
+    'A scan that read no line found no single-brace expression for the same reason an unplugged smoke alarm',
+    'reports no fire. Either the walk stopped opening files, or every line was taken for a `run:` body and',
+    'judged by nothing at all — and both of those print as agreement in the ok line below.',
+  ]);
+}
+
 // ── limb 5: SCAN vs THE LIVE WORKFLOW LIST — the orphan blind spot ───────────
 // 🔴 CHECK (1) ABOVE ANSWERS "DID I REACH THE TREE", AND THAT IS A SMALLER
 // QUESTION THAN "DID I REACH EVERY WORKFLOW GITHUB WILL RUN". Both of its inputs
@@ -614,25 +884,25 @@ if (looseSeen === 0) {
 // GitHub TODAY: they can be dispatched, they hold whatever `permissions:` their
 // own bytes declare, and not one of limbs 1-4 has ever read a line of them. 11
 // of 13 is 85% of the workflow surface, reported as 100%.
+// APPENDED 2026-08-27: neither file is on any of the 135 branches enumerated that
+// day, so "they can be dispatched" above was assumed, never measured.
 //
 // ⚠️ WHAT THIS LIMB DOES NOT CATCH, stated plainly because an overclaiming
 // coverage check is the exact failure this file was written against:
-//   · IT DOES NOT RUN UNLESS IT IS GIVEN THE LIST. `ci.yml` invokes this guard
-//     with no arguments and is not part of this change, so on every CI run today
-//     limb 5 reports NOT CONSULTED — in the ok line, out loud. That is a bucket,
-//     not a gate; the hole is now named on every run instead of being absent.
+//   · IT DOES NOT RUN UNLESS IT IS GIVEN THE LIST. MEASURED 2026-08-27: this
+//     checkout holds 12 workflow files, `gh api …/actions/workflows` returns 14,
+//     and `ci.yml:682` passes no `--live-workflows` — so limb 5 prints NOT
+//     CONSULTED, and a green here says those 12 files are SHA-pinned, never
+//     that the 14 GitHub lists are.
 //   · IT CANNOT DERIVE THE LIST LOCALLY. The obvious alternative — walk
-//     `refs/remotes/origin` and union the workflow files — fails twice: 155 refs
-//     here made it too slow to run in a gate, and `actions/checkout` fetches a
-//     single branch, so in CI those refs do not exist at all.
-//   · IT READS NAMES, NOT BYTES. An orphan is reported as EXISTING; whether its
-//     actions are pinned, its permissions scoped or its jobs bounded is
-//     unanswerable from this checkout, because the file is on another branch.
+//     `refs/remotes/origin` and union the workflow files — fails: `actions/checkout`
+//     fetches a single branch, so in CI those refs do not exist at all.
+//   · IT READS NAMES, NOT BYTES. Whether an orphan's actions are pinned, its
+//     permissions scoped or its jobs bounded is unanswerable from this checkout.
 //   · IT CANNOT SEE A NEVER-RUN ORPHAN. GitHub lists a workflow once it has run
 //     or once it is on the default branch; a workflow file sitting on a stale
 //     branch that has never run appears in neither the API list nor the tree.
-//   · IT DELETES NOTHING. Removing the two probe branches is a write to a remote
-//     and is operator work, deliberately not done from here.
+//   · IT DELETES NOTHING.
 //   · IT IS ONE-DIRECTIONAL, AND THIS BULLET IS ADDED 2026-08-21 BECAUSE A
 //     REPORT CLAIMED IT WAS ALREADY HERE AND IT WAS NOT. `orphanWorkflows` walks
 //     the LIVE list and asks whether the scan saw each entry; it never walks the
@@ -860,9 +1130,8 @@ function liveVerdict(label, raw, scanned) {
         kind: 'coverageLost',
         lines: [
           `GitHub lists ${considered} workflow(s) under ${WF_PREFIX} and this scan opened ${scanned.length}; it never saw: ${orphans.map((o) => `${o.base} (id ${o.id}, "${o.name}", state \`${o.state}\`)`).join(', ')}.`,
-          'GitHub will run these — dispatchable, schedulable, holding whatever permissions their own bytes',
-          'declare — and no limb above has read one line of them, because they are not in this checkout. They',
-          'live on branches; deleting those branches is the repair, and it is a write to the remote.',
+          'GitHub lists these and no limb above has read one line of them, because they are not in this',
+          'checkout. What each one is is not answerable from here.',
         ],
       },
       liveLine,
@@ -1393,4 +1662,18 @@ console.log(
 // has always read as a complete account of this repository's workflows; on
 // 2026-08-21 it was an account of 11 of the 13 GitHub would run, and nothing in
 // it said so.
+//
+// ⚠️ LIMB 6'S LINE IS PRINTED BELOW THIS ONE, NOT ABOVE IT, and the order is not
+// cosmetic: "the line above" in the paragraph you are reading names the `ok`
+// line, and a first draft of limb 6 slid its own line into that gap and quietly
+// made a dated sentence point at the wrong subject.
 console.log(`    limb 5 — ${liveLine}`);
+// THE SHELL COUNT IS PRINTED BESIDE THE JUDGED COUNT ON PURPOSE. It is the one
+// number that moves when limb 6's `run:` separation drifts: every line it stops
+// judging becomes a line it calls shell, so the two counts trade against each
+// other in a diff while their SUM stays put. A single total would hide exactly
+// that, which is the `41 vs 42` lesson one limb up.
+console.log(
+  `    limb 6 — no single-brace \`\${ … }\` expression in ${exprLinesScanned} judged line(s) ` +
+    `across ${exprWorkflowsScanned} workflow(s) (${exprShellLines} \`run:\` line(s) left to the shell, unjudged)`,
+);

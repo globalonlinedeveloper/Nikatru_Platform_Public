@@ -11,9 +11,21 @@ import type { AppEnv } from '../types';
 // Worker of its own and talks to platform.nikatru.com for everything shared.
 // The brick TEMPLATE has had a working three-limb deletion route since 2026-07,
 // but only an OPT-IN backend stamp ever gets one — so the apps that actually
-// need this route most were the ones without it, and the Dart seam says so
-// verbatim (`packages/core/lib/src/auth/auth_repository.dart`: "DELETE
-// /v1/account is stage 4's route and does not exist yet").
+// need this route most were the ones without it, and the Dart seam SAID so
+// verbatim.
+//
+// 🔄 CORRECTED 2026-08-25 — THE CITATION WAS WRITTEN IN THE PRESENT TENSE AND
+// THE SEAM NO LONGER SAYS IT. The two lines above used to read: "and the Dart
+// seam says so verbatim (`packages/core/lib/src/auth/auth_repository.dart`:
+// "DELETE /v1/account is stage 4's route and does not exist yet")". MEASURED
+// TODAY: `packages/core/lib/src/auth/auth_repository.dart:235` carries its own
+// "🔄 CORRECTED 2026-08-04" note, and the sentence quoted above survives there
+// ONLY as the old wording that note retracts — `grep -n "does not exist yet"` over
+// that file returns exactly ONE hit, at :236, inside the retraction. The seam now
+// points AT this file as the entry point. What this paragraph records is therefore
+// HISTORY, and it is worth keeping as history: the reason this route lives on the
+// shared server is that the client-only stamp had no Worker to put it in, which is
+// as true today as it was when the seam still said the route did not exist.
 //
 // ── THE UPGRADE OVER THE TEMPLATE: THE TABLE LIST IS DERIVED, NOT REMEMBERED ──
 // 🔴 The brick's version carries `const appTables = ['records'];` and a comment

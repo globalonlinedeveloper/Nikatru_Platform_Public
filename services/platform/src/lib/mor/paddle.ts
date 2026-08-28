@@ -1,9 +1,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // The PADDLE adapter — the only file in this repo that knows one rail's facts.
 //
-// [ADR 004]: Paddle is the primary merchant of record; Lemon Squeezy is the
-// parallel backup; the webhook is provider-agnostic so the choice flips with
-// zero app changes. Everything Paddle-specific is here and nowhere else.
+// [ADR 004]: Paddle is the merchant of record; the webhook is provider-agnostic
+// so the choice flips with zero app changes. Everything Paddle-specific is here
+// and nowhere else.
+//
+// ⚠️ CORRECTED 2026-08-28. This read "Paddle is the primary merchant of record;
+// Lemon Squeezy is the parallel backup". [ADR 039] D4 (2026-08-09) RETIRED that
+// clause of [ADR 004] — the parallel application was never evidenced and the
+// product is sunsetting into Stripe — so no backup rail is named today, and which
+// successor takes the role is a queued owner decision.
+//
+// ⛔ AND "merchant of record" HERE IS PER CHANNEL, which is the one thing not to
+// flatten: Paddle is the seller for the website, the Microsoft Store and direct
+// Windows/macOS/Linux downloads. Apple and Google Play take the role themselves
+// on their own in-app purchases and Paddle is NOT the seller there — [ADR 039]
+// D1, LOCKED 2026-08-09, and packages/purchases/lib/src/purchase_capabilities.dart
+// carries the same split per channel.
 //
 // ═════════════════════════════════════════════════════════════════════════════
 // VERIFIED AGAINST developer.paddle.com ON 2026-08-01 — every fact below was

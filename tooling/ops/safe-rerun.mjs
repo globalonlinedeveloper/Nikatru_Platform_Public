@@ -27,6 +27,34 @@
 //    NEW entrant into a concurrency group, not a replay of an old one.** The age
 //    of the commit buys no protection at all.
 //
+// ── 📌 APPENDED 2026-08-25 — `ci.yml` NO LONGER READS `cancel-in-progress: true`
+//    THE QUOTED BLOCK ABOVE IS LEFT EXACTLY AS IT STANDS. It is what that file
+//    said on 2026-08-12 and the incident is a dated record of that day; this is
+//    what CHANGED SINCE, not a correction to it.
+//
+//    Wave 3 round B replaced the third line of that block with an expression, so
+//    that main alone stops evicting:
+//
+//        cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+//
+//    MEASURED 2026-08-25 BY CALLING THIS MODULE, not by reading the file:
+//    parseWorkflow() on the real ci.yml returns cancelInProgress **true** with
+//    cancelIsExpression **true**, and namedLaneProblem() returns **null**. So
+//    this tool's behaviour is UNCHANGED and its named lane stays green — the
+//    `cancelIsExpression ? true` collapse below is what carries that.
+//
+//    ⚠️ THE DIRECTION, STATED PLAINLY. `github.ref != 'refs/heads/main'`
+//    renders FALSE on `refs/heads/main`, so the 2026-08-12 eviction can no longer
+//    happen THERE — and this tool will still refuse such a re-run as though it
+//    could. That is a FALSE REFUSAL, never a false allow, which is the safe
+//    direction to be wrong in. On feature branches and on `refs/pull/N/merge` the
+//    expression renders TRUE, the hazard is intact, and the refusal is correct.
+//
+//    🔴 NOT COVERED, RECORDED RATHER THAN CLOSED: no fixture distinguishes
+//    one expression from another. The collapse below reads every `${{ … }}` as
+//    cancelling, so a typo'd ref literal is indistinguishable from the line as
+//    written. The source mutation for that class is the workflow line itself.
+//
 // WHAT THIS REFUSES. Given a run id, exit non-zero WITHOUT re-running when BOTH:
 //   (a) the run's head SHA is not the current HEAD of its branch — i.e. this is
 //       a re-run of history, so its result cannot be what anyone is waiting on;
@@ -55,6 +83,40 @@
 // workflows that resolve to the same group string DO evict each other. Comparing
 // resolved group strings (rather than "is it the same workflow") is what makes
 // that case answerable at all, and it is unit-tested below.
+//
+// ── 📌 SECOND REFUSAL, ADDED 2026-08-27 — `gh release create` IS NOT IDEMPOTENT
+// `build-platforms.yml:1328` runs `gh release create "$RELEASE_TAG" …`. That
+// command has NO `--clobber` — MEASURED with gh 2.92.0: `gh release create
+// --help | grep -i clobber` exits 1, `gh release upload --help` exits 0, so
+// `--clobber` is an UPLOAD flag and `create` simply fails when a release already
+// exists at the tag.
+//
+// 🔴 WHY THIS IS NOT KEYED ON `ref_type`, WHICH IS THE OBVIOUS WAY AND IS DEAD.
+// The workflow gates the step with `if: github.ref_type == 'tag'`, so copying
+// that condition into a run-record test is the natural move. It can never fire:
+// **the workflow-run object has no `ref_type` field at all.** MEASURED
+// 2026-08-27 against the live API, run 32003607931 of this very workflow, HTTP
+// 200, `hasOwnProperty('ref_type')` → false; the keys it does carry run
+// `actor`…`workflow_url` and a bare `ref` is not among them either. That way
+// would be green forever over a state it forbids, which is the same answer the
+// tool gives today. `github.*` is the WORKFLOW's context; the REST run object is
+// a different vocabulary and the two are not interchangeable.
+//
+// So the tag push is inferred from STRUCTURE the run record does carry:
+// `event === 'push'` on a workflow whose top-level `on.push` declares `tags:`
+// and NO `branches:` — such a workflow cannot produce a push run any other way,
+// and the tag name is then `head_branch`. THAT SECOND HALF IS ALSO MEASURED,
+// and it had to be borrowed because this repository has never pushed a tag:
+// `vercel/next.js` run for `v16.4.0-canary.9` reports `event: 'push'`,
+// `head_branch: "v16.4.0-canary.9"` — the BARE name, no `refs/tags/` prefix —
+// and no `ref_type`; `git/ref/tags/v16.4.0-canary.9` → 200 while
+// `git/ref/heads/…` → 404, so that run was unambiguously a tag push.
+// Whether a Release EXISTS is not inferred at
+// all: it is asked, `GET /releases/tags/<tag>`, 404 → absent. Measured on this
+// repository 2026-08-27: 0 releases, 0 tags, 0 `push` runs of that workflow, and
+// `/releases/tags/<absent>` → HTTP 404. `releaseLaneProblem()` is the floor that
+// keeps this limb from going quietly inert if the publish moves or the parse
+// goes blind — the whole hazard lives in a state that has never occurred once.
 //
 // ── EXIT CONTRACT ────────────────────────────────────────────────────────────
 //   0 = re-run performed (or, with --dry-run, would have been).
@@ -89,7 +151,7 @@
 //            or on GitHub was mutated; the fixture transport has no network
 //            path at all, so this can never cancel a real run.
 //
-// ── MUTATION TESTED AGAINST THE REAL FILE, NOT AGAINST FIXTURES ─────────────
+// ── MUTATION TESTED 2026-08-12 — THE PRE-RELEASE LIMBS (A–D) ONLY ───────────
 // "All 41 cases passed" is not evidence — `assert-seams-wired.mjs` once shipped
 // broken with all six of its fixtures green, and only breaking the actual tree
 // exposed it. So this implementation was broken four ways in place, the suite
@@ -120,7 +182,11 @@
 //
 //   --failed      re-run only the failed jobs (POST …/rerun-failed-jobs).
 //                 ⚠️ NOT a safe harbour: a partial re-run enters the SAME
-//                 concurrency group and evicts just as hard.
+//                 concurrency group and evicts just as hard. It lifts the
+//                 release refusal ONLY when every job carrying the publish step
+//                 is MEASURED to have concluded `success` — see
+//                 `releaseRerunClearance`; the Release's existence proves
+//                 nothing, because that job can publish and then fail later.
 //   --dry-run     decide and print; never POST. The live read path, no writes.
 //   --workflows   parse a different directory (tests point this at fixtures).
 //   --repo        owner/name; else $GITHUB_REPOSITORY, else `git remote origin`.
@@ -142,17 +208,17 @@
 //   right default (the re-run is queued NOW, against today's `main` definition
 //   for `push` lanes) but it is an approximation for a re-run of a branch whose
 //   own copy of the workflow differed.
-// · A tag push and a branch push cannot be told apart from the runs API alone —
-//   both report the name in `head_branch`. Both sides of the comparison are
-//   expanded the same way, so a collision is never MISSED; the worst case is a
-//   false refusal when a tag and a branch share a name. Refusing wrongly costs a
-//   re-typed command; allowing wrongly costs a deploy.
+// · A tag push and a branch push both report the name in `head_branch`. Both
+//   sides of the comparison are expanded the same way, so a collision is never
+//   MISSED; the worst case is a false refusal when a tag and a branch share a
+//   name. Refusing wrongly costs a re-typed command; allowing wrongly costs a
+//   deploy.
 // · `github.actor`, `github.job` and anything more elaborate than a bare
 //   `github.<key>` in a group expression are UNRESOLVABLE here, and unresolvable
 //   is exit 2, never a silent allow.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, appendFileSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { readFileSync, existsSync, appendFileSync, realpathSync } from 'node:fs';
+import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { listDir } from '../ci/tree-walk.mjs';
@@ -210,13 +276,166 @@ export const token = () =>
  *  subject — the word `concurrency` and the string `cancel-in-progress` — occurs
  *  inside prose blocks in several workflows here. A grep would match the comment
  *  explaining a group and keep "passing" after somebody deleted the real one. */
-export const stripComments = (raw) =>
-  raw
-    .split('\n')
-    .map((l) => l.replace(/(^|\s)#.*$/, '$1'))
-    .join('\n');
+// 🔴 CRLF FIRST, AND IT IS NOT TIDINESS. In JavaScript `.` does not match `\r`
+// and a non-multiline `$` does not sit before one, so on a CRLF checkout
+// `(^|\s)#.*$` matched NOTHING and every `^key:(.*)$` read below failed on the
+// trailing `\r`. MEASURED 2026-08-27, the real files LF vs the same bytes with
+// `\r\n`: ci.yml went `declared:true, group:'ci-${{ github.ref }}'` →
+// `declared:false, group:null`; build-platforms.yml's `pushTagsOnly` true →
+// false. This tree is `* text=auto eol=lf` with no CR in it today (checked), so
+// the repair is a NO-OP HERE — it is the OTHER checkout, on a host that hands
+// back CRLF, where the whole parse went blind. It failed LOUD (`coverageProblem`
+// /the lane floors → exit 2) rather than allowing, but was blind there anyway.
+const cutComment = (l) => {
+  let quote = null;
+  for (let i = 0; i < l.length; i++) {
+    const c = l[i];
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++;
+      else if (c === quote) quote = null;
+    } else if ((c === '"' || c === "'") && (i === 0 || /[\s:,[{]/.test(l[i - 1]))) {
+      quote = c;
+    } else if (c === '#' && (i === 0 || /\s/.test(l[i - 1]))) {
+      return l.slice(0, i);
+    }
+  }
+  return l;
+};
+
+export const stripComments = (raw) => raw.replace(/\r\n?/g, '\n').split('\n').map(cutComment).join('\n');
 
 const indentOf = (l) => l.match(/^[ \t]*/)[0].length;
+
+/** Does this workflow's TOP-LEVEL `on.push` fire on tags and nothing else?
+ *
+ *  🔴 THIS IS THE ONLY THING THAT IDENTIFIES A TAG PUSH HERE. The REST run
+ *  object has no `ref_type` (measured — see the header), so `event: 'push'` on a
+ *  tags-only workflow is the inference, and `head_branch` is then the tag name.
+ *  A `branches:` key alongside `tags:` makes a push run ambiguous again, so it
+ *  answers false: ambiguity must not become a refusal. */
+function onPushIsTagsOnly(lines) {
+  let onAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (indentOf(lines[i]) !== 0) continue;
+    const m = lines[i].match(/^(['"]?)on\1\s*:(.*)$/);
+    if (!m) continue;
+    if (m[2].trim() !== '') return false; // `on: push` / `on: [push, …]` — no tag filter
+    onAt = i;
+    break;
+  }
+  if (onAt === -1) return false;
+
+  let pushAt = -1;
+  let pushIndent = 0;
+  for (let i = onAt + 1; i < lines.length; i++) {
+    if (lines[i].trim() === '') continue;
+    if (indentOf(lines[i]) === 0) break;
+    const m = lines[i].match(/^(\s+)(['"]?)push\2\s*:(.*)$/);
+    if (!m) continue;
+    if (m[3].trim() !== '') return false; // `push: …` inline — not a filter block
+    pushAt = i;
+    pushIndent = m[1].length;
+    break;
+  }
+  if (pushAt === -1) return false; // no push trigger at all
+
+  let sawTags = false;
+  for (let i = pushAt + 1; i < lines.length; i++) {
+    if (lines[i].trim() === '') continue;
+    if (indentOf(lines[i]) <= pushIndent) break;
+    if (/^\s+(['"]?)tags\1\s*:/.test(lines[i])) sawTags = true;
+    if (/^\s+(['"]?)branches(-ignore)?\1\s*:/.test(lines[i])) return false;
+  }
+  return sawTags;
+}
+
+/** Every step that RUNS `gh release create`, by the `name:` the jobs API will
+ *  report for it, plus stated reasons that join must not be trusted.
+ *
+ *  🔴 THE STEP NAME IS THE JOIN, NOT THE JOB NAME. `GET …/runs/<id>/jobs`
+ *  reports each step's `name` but never its `run:`, and it reports a MATRIX
+ *  leg as `<job name> (<value>)` — so matching job names would mean guessing a
+ *  suffix, while the step name is written once and reported verbatim.
+ *
+ *  Two shapes are refused rather than joined, each because it would let a job
+ *  be cleared that `rerun-failed-jobs` would in fact re-run:
+ *   · a publish step with no `name:` — nothing to join on;
+ *   · a job-level `if:` on the publishing job — without one, a job that
+ *     concluded `success` had every `needs` succeed, so re-running the failed
+ *     jobs cannot drag it along as a dependent. With one, it can.  */
+export function publishSteps(lines) {
+  const names = [];
+  const problems = [];
+  let inJobs = false;
+  let jobKeyIndent = null;
+  let jobKey = null;
+  let jobPropIndent = null;
+  let jobHasIf = false;
+  let hits = [];
+  let unnamed = 0;
+  let stepIndent = -1;
+  let stepName = null;
+
+  const endJob = () => {
+    if (hits.length || unnamed) {
+      if (jobHasIf) {
+        problems.push(
+          `job \`${jobKey}\` runs \`gh release create\` and declares a job-level \`if:\`, so it can conclude \`success\` while a job it \`needs\` failed — and \`rerun-failed-jobs\` re-runs a failed job's dependents`,
+        );
+      }
+      if (unnamed) {
+        problems.push(
+          `${unnamed} step(s) running \`gh release create\` in job \`${jobKey}\` carry no \`name:\`, and the jobs API reports step names — there is nothing to join the publish to`,
+        );
+      }
+      names.push(...hits);
+    }
+    jobKey = null;
+    jobPropIndent = null;
+    jobHasIf = false;
+    hits = [];
+    unnamed = 0;
+    stepIndent = -1;
+    stepName = null;
+  };
+
+  for (const line of lines) {
+    if (line.trim() === '') continue;
+    const ind = indentOf(line);
+    if (ind === 0) {
+      endJob();
+      inJobs = /^(['"]?)jobs\1\s*:/.test(line);
+      jobKeyIndent = null;
+      continue;
+    }
+    if (!inJobs) continue;
+    if (jobKeyIndent === null) jobKeyIndent = ind;
+    if (ind === jobKeyIndent && /^\s*(['"]?)[\w.-]+\1\s*:\s*$/.test(line)) {
+      endJob();
+      jobKey = unquote(line.trim().replace(/:\s*$/, ''));
+      continue;
+    }
+    if (jobKey === null) continue;
+    if (jobPropIndent === null) jobPropIndent = ind;
+    if (ind === jobPropIndent && /^\s*(['"]?)if\1\s*:/.test(line)) jobHasIf = true;
+
+    const item = line.match(/^(\s*)-\s+(.*)$/);
+    if (item) {
+      stepIndent = item[1].length;
+      const n = item[2].match(/^(['"]?)name\1\s*:\s*(.+)$/);
+      stepName = n ? unquote(n[2].trim()) : null;
+    } else if (stepIndent >= 0 && ind > stepIndent && stepName === null) {
+      const n = line.match(/^\s*(['"]?)name\1\s*:\s*(.+)$/);
+      if (n) stepName = unquote(n[2].trim());
+    }
+    if (/\bgh\s+release\s+create\b/.test(line)) {
+      if (stepIndent >= 0 && ind > stepIndent && stepName !== null) hits.push(stepName);
+      else unnamed++;
+    }
+  }
+  endJob();
+  return { names: [...new Set(names)], problems };
+}
 
 /** Parse the TOP-LEVEL `concurrency:` declaration and `name:` out of one
  *  workflow. Job-level `concurrency:` is deliberately NOT read: it is indented,
@@ -244,14 +463,30 @@ export function parseWorkflow(raw) {
   const nameAt = topLine('name');
   const name = nameAt && nameAt.rest !== '' ? unquote(nameAt.rest) : null;
 
+  // 🔴 READ FROM THE STRIPPED TEXT, NEVER THE RAW. `build-platforms.yml` says
+  // `gh release create` FIVE times and FOUR are prose explaining the fifth, so a
+  // grep over the raw file would keep answering "publishes" after somebody
+  // deleted the only line that does. Same discipline, same file, as the
+  // concurrency parse above.
+  const publishesRelease = /\bgh\s+release\s+create\b/.test(lines.join('\n'));
+  const pushTagsOnly = onPushIsTagsOnly(lines);
+  const pub = publishSteps(lines);
+  const trig = {
+    publishesRelease,
+    pushTagsOnly,
+    publishStepNames: pub.names,
+    publishJoinProblems: pub.problems,
+  };
+
   const at = topLine('concurrency');
-  if (!at) return { name, declared: false, group: null, cancelInProgress: false, cancelIsExpression: false };
+  if (!at) return { name, ...trig, declared: false, group: null, cancelInProgress: false, cancelIsExpression: false };
 
   // Scalar form — `concurrency: some-group`. GitHub treats it as the group with
   // cancel-in-progress defaulting to false, so it can never evict anything.
   if (at.rest !== '') {
     return {
       name,
+      ...trig,
       declared: true,
       group: unquote(at.rest),
       cancelInProgress: false,
@@ -279,7 +514,7 @@ export function parseWorkflow(raw) {
   const cancelIsExpression = cancel !== null && /\$\{\{/.test(cancel);
   const cancelInProgress = cancelIsExpression ? true : String(cancel).trim() === 'true';
 
-  return { name, declared: true, group, cancelInProgress, cancelIsExpression };
+  return { name, ...trig, declared: true, group, cancelInProgress, cancelIsExpression };
 }
 
 /** Every workflow in `dir`, keyed by the repo-relative path GitHub reports on a
@@ -342,6 +577,121 @@ export function namedLaneProblem(workflows, named = '.github/workflows/ci.yml') 
     return `COVERAGE LOST — ${named} declares a group but \`cancel-in-progress\` is not true, so this tool would now allow every re-run on it. If that is deliberate, this check has to be re-pointed deliberately too.`;
   }
   return null;
+}
+
+/** The RELEASE lane. `build-platforms.yml` is the one workflow that runs
+ *  `gh release create`; the refusal below keys on a state — a tag pushed, a
+ *  release already at it — that has NEVER occurred in this repository, so if the
+ *  publish moves or this parse goes blind the limb goes silently inert and looks
+ *  exactly like "nothing to refuse". Say so instead.
+ *  Returns null when the lane is present, publishing and tags-only. */
+export function releaseLaneProblem(workflows, named = '.github/workflows/build-platforms.yml') {
+  const w = workflows.get(named);
+  if (!w) {
+    return `COVERAGE LOST — ${named} is not in the parsed set. It is the only lane that runs \`gh release create\`; point this name at its replacement in the same change that moves the publish.`;
+  }
+  if (!w.publishesRelease) {
+    return `COVERAGE LOST — ${named} no longer reads \`gh release create\` outside its comments. Either the publish genuinely moved (re-point this check deliberately) or this parser stopped seeing it — and then the release refusal can never fire.`;
+  }
+  if (!w.pushTagsOnly) {
+    return `COVERAGE LOST — ${named}'s top-level \`on.push\` is no longer tags-only, so a \`push\` run there can no longer be read as a TAG push. The runs API carries no \`ref_type\`, so that inference is the ONLY thing identifying a tag push here.`;
+  }
+  return null;
+}
+
+/** Does this directory hold a REPOSITORY'S OWN lane set, rather than a fixture?
+ *
+ *  🔴 GATED ON WHICH DIRECTORY THIS IS — not on `--workflows` (which names the
+ *  default's own directory) and not on the SPELLING (`.GITHUB/WORKFLOWS` OPENS
+ *  that same directory wherever case is ignored); both made the floors opt-out
+ *  and POSTed on a blinded lane set. `realpathSync.native` gives the ON-DISK
+ *  name — ONE directory on Windows, TWO on Linux, where CI runs. */
+export const isLaneDir = (dir) => {
+  let real;
+  try {
+    real = realpathSync.native(dir);
+  } catch {
+    real = resolve(dir); // absent — `coverageProblem` is the one that answers
+  }
+  return basename(real) === 'workflows' && basename(dirname(real)) === '.github';
+};
+
+/** The tag a run published at, or null when this run cannot have published.
+ *  Null for every workflow that does not run `gh release create`, for every
+ *  event other than `push`, and for any workflow whose push trigger is not
+ *  tags-only — see `onPushIsTagsOnly` for why that last one is the whole test. */
+export function releaseTagOf(run, workflow) {
+  if (!workflow?.publishesRelease) return null;
+  if (!workflow.pushTagsOnly) return null;
+  if (String(run.event ?? '') !== 'push') return null;
+  if (!run.head_branch) return null;
+  return String(run.head_branch);
+}
+
+const readStepNames = (job) => {
+  if (!Array.isArray(job?.steps) || job.steps.length === 0) return null;
+  const out = job.steps.map((s) => (typeof s?.name === 'string' && s.name.trim() !== '' ? s.name : null));
+  return out.includes(null) ? null : out;
+};
+
+/** May `--failed` lift the release refusal? ONLY when every job carrying the
+ *  publish step is MEASURED to have concluded `success`: `rerun-failed-jobs`
+ *  re-runs the failed jobs and their dependents, so a job that already
+ *  succeeded is left alone and `gh release create` cannot fire a second time.
+ *
+ *  🔴 THE EXISTENCE OF THE RELEASE PROVES NOTHING. `gh release create` is ONE
+ *  STEP: the job can publish and then fail on a later step, conclude `failure`,
+ *  and be re-run — the exact collision this limb exists to prevent. The job
+ *  conclusion is the only thing that answers it, so it is asked.
+ *
+ *  @param jobs  the `jobs` array from `GET …/runs/<id>/jobs`, or anything else
+ *               (null, an error carrier) meaning it could not be read
+ *  @returns { cleared, why } — `cleared:false` for every unknown, including
+ *           "no job in this run carries that step", which is what an empty
+ *           match must never be allowed to mean.
+ */
+export function releaseRerunClearance(jobs, workflow) {
+  if (!workflow) return { cleared: false, why: 'the workflow for this run is not in the parsed set' };
+  if (!Array.isArray(workflow.publishJoinProblems) || !Array.isArray(workflow.publishStepNames)) {
+    return { cleared: false, why: 'that workflow carries no parsed publish-step join at all, so nothing about its publish was measured' };
+  }
+  const problems = workflow.publishJoinProblems;
+  if (problems.length) return { cleared: false, why: problems.join('; ') };
+  const names = new Set(workflow.publishStepNames);
+  if (names.size === 0) {
+    return { cleared: false, why: 'no named step running `gh release create` was found in that workflow, so the publish cannot be tied to a job' };
+  }
+  if (!Array.isArray(jobs)) {
+    return { cleared: false, why: `the jobs of this run could not be read (${jobs?.error ?? 'no jobs list'})` };
+  }
+  const spelt = [...names].map((n) => `\`${n}\``).join(' or ');
+  const read = jobs.map((j) => ({ job: j, steps: readStepNames(j) }));
+  const blind = read.filter((e) => e.steps === null);
+  if (blind.length) {
+    const spell = blind
+      .map((e) => `${e.job?.name ?? '(unnamed job)'}: ${e.job?.status ?? 'no status'}/${e.job?.conclusion ?? 'no conclusion'}`)
+      .join(', ');
+    return {
+      cleared: false,
+      why: `${blind.length} of ${jobs.length} job(s) in this run report NO readable step list (${spell}) — a skipped job and an in-progress one BOTH report \`steps: []\`, so nothing here shows they do not carry ${spelt}. A job this could not look at is not a job it measured \`success\`.`,
+    };
+  }
+  const owners = read.filter((e) => e.steps.some((n) => names.has(n))).map((e) => e.job);
+  if (owners.length === 0) {
+    return { cleared: false, why: `NO job in this run carries a step named ${spelt} — the publish cannot be located in what actually ran` };
+  }
+  const bad = owners.filter((j) => String(j.conclusion) !== 'success');
+  if (bad.length) {
+    const spell = bad.map((j) => `${j.name}: ${j.conclusion ?? j.status ?? 'no conclusion'}`).join(', ');
+    return {
+      cleared: false,
+      why: `${bad.length} of ${owners.length} job(s) carrying ${spelt} did not conclude \`success\` (${spell}) — \`rerun-failed-jobs\` re-runs exactly those, and \`gh release create\` would fire again`,
+    };
+  }
+  return {
+    cleared: true,
+    why: `all ${owners.length} job(s) carrying ${spelt} concluded \`success\` (${owners.map((j) => j.name).join(', ')}), so \`rerun-failed-jobs\` leaves them alone`,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -433,9 +783,62 @@ export function groupOf(run, workflows, repo) {
  * @param workflows       Map from `loadWorkflows`
  * @param siblings        every OTHER run currently on that branch (any status)
  * @param repo            'owner/name', for `${{ github.repository }}`
+ * @param existingRelease the Release already at this run's tag, `false` for
+ *                        "asked, there is none", `null` for NOT ASKED
+ * @param failed          `--failed` was passed: POST `rerun-failed-jobs`
+ * @param publishClearance `releaseRerunClearance()`'s answer, or null for NOT
+ *                        ASKED — which, like every other unknown here, refuses
  * @returns { code, verdict: 'allow'|'refuse'|'unknown', reason, group, colliding[] }
  */
-export function decide({ run, branchHeadSha, workflows, siblings = [], repo = '' }) {
+export function decide({
+  run,
+  branchHeadSha,
+  workflows,
+  siblings = [],
+  repo = '',
+  existingRelease = null,
+  failed = false,
+  publishClearance = null,
+}) {
+  // ── THE RELEASE COLLISION, FIRST, because it does not depend on concurrency
+  // at all: `gh release create` fails on an existing release whether or not
+  // anything else is in flight.
+  const wfHere = workflows.get(run.path);
+  const releaseTag = wfHere ? releaseTagOf(run, wfHere) : null;
+  if (releaseTag !== null) {
+    if (existingRelease === null || existingRelease === undefined) {
+      return {
+        code: 2,
+        verdict: 'unknown',
+        cause: 'release',
+        releaseTag,
+        reason: `I COULD NOT LOOK — run ${run.id} is a tag push of \`${wfHere.file}\`, which publishes a GitHub Release at the pushed tag, and nobody asked whether one already exists at \`${releaseTag}\`. That is the whole question; an unasked question is not a clean answer.`,
+        group: null,
+        colliding: [],
+      };
+    }
+    // `--failed` lifts this refusal ONLY on a MEASURED job conclusion. It is
+    // then still subject to the concurrency test below — a partial re-run
+    // enters the same group and evicts just as hard.
+    if (existingRelease !== false && !(failed && publishClearance?.cleared === true)) {
+      return {
+        code: 1,
+        verdict: 'refuse',
+        cause: 'release',
+        releaseTag,
+        reason:
+          `REFUSED. Run ${run.id} is a TAG push of \`${wfHere.file}\` at \`${releaseTag}\`, and a GitHub Release ` +
+          `ALREADY EXISTS at that tag. That workflow runs \`gh release create\`, which is ` +
+          'NOT idempotent and has no `--clobber`: it fails outright on an existing release.' +
+          (failed
+            ? ` \`--failed\` does not lift it here: ${publishClearance?.why ?? "the publishing job's conclusion was never asked for"}.`
+            : ''),
+        group: null,
+        colliding: [],
+      };
+    }
+  }
+
   const target = groupOf(run, workflows, repo);
 
   if (target.unknown) {
@@ -560,13 +963,37 @@ function liveApi(repo, tok) {
     getRun: (id) => get(`/repos/${repo}/actions/runs/${id}`),
     getBranchHead: async (branch) =>
       (await get(`/repos/${repo}/commits/${encodeURIComponent(branch)}`)).sha,
+    // 404 is an ANSWER — "no release at this tag" — and is the only status
+    // turned into `null`. Every other failure throws, so a 403 or a network
+    // outage cannot be read as "there is no release".
+    getRelease: async (tag) => {
+      try {
+        return await get(`/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`);
+      } catch (e) {
+        if (e.status === 404) return null;
+        throw e;
+      }
+    },
+    // 🔴 A SHORT PAGE IS NOT AN ANSWER. One page holds 100 jobs; a matrix that
+    // overflows it would hand back a set missing the very leg that failed, and
+    // a clearance computed over the survivors is a FALSE ALLOW. Compare against
+    // `total_count` and throw instead.
+    listJobs: async (id) => {
+      const page = await get(`/repos/${repo}/actions/runs/${id}/jobs?filter=latest&per_page=100`);
+      if (!Array.isArray(page.jobs)) throw new Error(`run ${id} came back with no \`jobs\` array`);
+      if (typeof page.total_count !== 'number' || page.total_count !== page.jobs.length) {
+        throw new Error(`run ${id} reports ${page.total_count} job(s) but one page carried ${page.jobs.length}`);
+      }
+      return page.jobs;
+    },
     listRuns: async (branch) => {
       const out = [];
       for (const status of ['in_progress', 'queued']) {
         const page = await get(
           `/repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&status=${status}&per_page=100`,
         );
-        out.push(...(page.workflow_runs ?? []));
+        if (!Array.isArray(page.workflow_runs)) throw new Error(`\`${status}\` runs for \`${branch}\` came back with no \`workflow_runs\` array`);
+        out.push(...page.workflow_runs);
       }
       return out;
     },
@@ -614,6 +1041,16 @@ function fixtureApi(path) {
       return sha;
     },
     listRuns: async (branch) => fx.runsByBranch?.[branch] ?? [],
+    getRelease: async (tag) => fx.releases?.[tag] ?? null,
+    // 🔴 NOT `?? []`. An absent `jobs` key must mean "I could not read them",
+    // never "there are none" — an empty array clears nothing here, but only
+    // because `releaseRerunClearance` refuses an empty match, and a fixture
+    // must not depend on that being true twice.
+    listJobs: async (id) => {
+      const j = fx.jobs?.[String(id)];
+      if (!Array.isArray(j)) throw new Error(`fixture declares no jobs for run ${id}`);
+      return j;
+    },
     rerun: async (id, failedOnly) => {
       if (log) appendFileSync(log, `rerun ${id} failedOnly=${failedOnly}\n`);
       console.log(`   (fixture transport: a re-run of ${id} WOULD have been POSTed here)`);
@@ -668,13 +1105,18 @@ async function main(argv) {
     console.error(`  scanned: ${wfDir}`);
     return 2;
   }
-  // The named-lane floor applies to the real tree. A caller pointing --workflows
-  // at a fixture is a weaker situation and says so rather than demanding this
-  // repository's lane names of an unrelated directory.
-  if (!args.workflows) {
+  // Both floors apply to a real lane set — see `isLaneDir`. A caller pointing
+  // --workflows at a fixture is a weaker situation and says so rather than
+  // demanding this repository's lane names of an unrelated directory.
+  if (isLaneDir(wfDir)) {
     const named = namedLaneProblem(workflows);
     if (named) {
       console.error(`✗ ${named}`);
+      return 2;
+    }
+    const rel = releaseLaneProblem(workflows);
+    if (rel) {
+      console.error(`✗ ${rel}`);
       return 2;
     }
   }
@@ -723,31 +1165,81 @@ async function main(argv) {
     return 2;
   }
 
+  // Ask BEFORE the branch/sibling reads: a release collision settles the answer
+  // on its own, and asking is not optional — `decide()` treats an unasked
+  // release question as exit 2, never as an allow.
+  const releaseTag = releaseTagOf(run, workflows.get(run.path) ?? {});
+  let existingRelease = false;
+  if (releaseTag !== null) {
+    try {
+      existingRelease = (await api.getRelease(releaseTag)) ?? false;
+    } catch (e) {
+      console.error(
+        `✗ I COULD NOT LOOK — could not ask whether a Release exists at \`${releaseTag}\`: ${e.message}. ` +
+          '`gh release create` is not idempotent, so "I could not tell" is not "it is fine".',
+      );
+      return 2;
+    }
+  }
+
+  // The release is present and `--failed` was asked for: measure the publishing
+  // job's conclusion. Anything unreadable stays `cleared:false` — the refusal
+  // is the default and only a measurement lifts it.
+  let publishClearance = null;
+  if (releaseTag !== null && existingRelease !== false && args.failed) {
+    let jobs;
+    try {
+      jobs = await api.listJobs(run.id);
+    } catch (e) {
+      jobs = { error: e.message };
+    }
+    publishClearance = releaseRerunClearance(jobs, workflows.get(run.path));
+    console.log(`  publish ${publishClearance.cleared ? 'CLEARED' : 'NOT cleared'} — ${publishClearance.why}`);
+  }
+
   let branchHeadSha = null;
-  try {
-    branchHeadSha = await api.getBranchHead(run.head_branch);
-  } catch (e) {
-    console.error(
-      `✗ I COULD NOT LOOK — could not read the current HEAD of \`${run.head_branch}\`: ${e.message}. ` +
-        '(A fork-headed run has no such branch here.)',
-    );
-    return 2;
-  }
-
   let siblings = [];
-  try {
-    siblings = await api.listRuns(run.head_branch);
-  } catch (e) {
-    console.error(`✗ I COULD NOT LOOK — could not list live runs for \`${run.head_branch}\`: ${e.message}`);
-    return 2;
+  if (existingRelease === false || publishClearance?.cleared === true) {
+    try {
+      branchHeadSha = await api.getBranchHead(run.head_branch);
+    } catch (e) {
+      console.error(
+        `✗ I COULD NOT LOOK — could not read the current HEAD of \`${run.head_branch}\`: ${e.message}. ` +
+          '(A fork-headed run has no such branch here.)',
+      );
+      return 2;
+    }
+
+    try {
+      siblings = await api.listRuns(run.head_branch);
+    } catch (e) {
+      console.error(`✗ I COULD NOT LOOK — could not list live runs for \`${run.head_branch}\`: ${e.message}`);
+      return 2;
+    }
   }
 
-  const verdict = decide({ run, branchHeadSha, workflows, siblings, repo });
+  const verdict = decide({
+    run,
+    branchHeadSha,
+    workflows,
+    siblings,
+    repo,
+    existingRelease,
+    failed: args.failed,
+    publishClearance,
+  });
 
   console.log('');
   console.log(`run ${run.id}  ${run.name ?? run.path}  (${run.path})`);
-  console.log(`  head    ${short(run.head_sha)} on ${run.head_branch}   ·   branch tip ${short(branchHeadSha)}`);
-  console.log(`  group   ${verdict.group ?? '(none declared)'}`);
+  console.log(
+    `  head    ${short(run.head_sha)} on ${run.head_branch}   ·   branch tip ` +
+      `${branchHeadSha ? short(branchHeadSha) : '(not read — the release settles it)'}`,
+  );
+  // "(none declared)" is a CLAIM about the concurrency block, and a release
+  // refusal returns before that claim is checked. Say which it is.
+  console.log(
+    `  group   ${verdict.group ?? (verdict.cause === 'release' ? '(not resolved — the release settles it)' : '(none declared)')}`,
+  );
   for (const c of verdict.colliding) {
     console.log(`  ⚠️  LIVE in the same group: run ${c.id} (${c.status}) at ${short(c.head_sha)} — ${c.path}`);
   }
@@ -755,7 +1247,13 @@ async function main(argv) {
 
   if (verdict.code !== 0) {
     console.error(`✗ ${verdict.reason}`);
-    if (verdict.verdict === 'refuse') {
+    if (verdict.verdict === 'refuse' && verdict.cause === 'release') {
+      console.error('');
+      console.error('  What to do instead — pick the one that matches what you actually want:');
+      console.error(`    · cut a NEW version tag and push that — a published release is a public fact;`);
+      console.error(`    · or, if nothing was downloaded yet, delete the Release at \`${verdict.releaseTag}\``);
+      console.error('      and its tag, then push the tag again — that is a decision, not a re-run.');
+    } else if (verdict.verdict === 'refuse') {
       console.error('');
       console.error('  What to do instead — pick the one that matches what you actually want:');
       console.error(`    · wait for the live run(s) above to finish, then re-run ${run.id};`);

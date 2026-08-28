@@ -20,42 +20,24 @@ import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../shared/due.dart';
+import '../shared/neutrals.dart';
 import '../shared/widgets.dart';
 
-/// The two neutrals this screen paints text with, resolved for the current
-/// brightness.
+/// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
+/// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
+/// together with the whole doc that recorded why light is the literal token and
+/// why dark derives from the seed. The triplication was deliberate for exactly
+/// one increment and its own doc said so; this is the closing cleanup it named,
+/// landed with the deletion of `DueInfo.of`. Read the argument there.
 ///
-/// 🔴 LIGHT IS THE LITERAL TOKEN, ON PURPOSE — the same rule `cardDecoration`
-/// and `RowCard` carry (`features/shared/widgets.dart`). `apps/subly` is the
-/// frozen legacy rail-prover the owner eyeballs, so the light branch must stay
-/// byte-identical to the pre-dark screen. Note that reaching for
-/// `Theme.of(context).extension<AppThemeX>()!.muted` would NOT be equivalent:
-/// under the seeded chassis theme that slot is `scheme.onSurfaceVariant` in
-/// BOTH brightnesses, so it would repaint every muted line in the light build.
-///
-/// 🔴 DARK IS THE DEFECT THIS FIXES. `AppText.title`/`.fig`/`.body` bake
-/// `AppColors.ink` (#141420) and `AppText.muted`/`.label` bake
-/// `AppColors.muted` — near-black and mid-grey. Painted on a dark scaffold
-/// (`buildAppTheme(brightness: dark)` sets it to `scheme.surface`) the titles
-/// are all but invisible. The dark values are the SAME slots `buildAppTheme`
-/// itself maps these neutrals to (`ink: scheme.onSurface`) and
-/// `AppThemeX.fromScheme` maps `muted` to (`scheme.onSurfaceVariant`), so this
-/// derives from the seed rather than inventing a colour.
-///
-/// ⚠️ Spelled out here rather than shared: `budget_screen.dart` and
-/// `insights_screen.dart` carry the identical helper. That triplication is
-/// deliberate for this increment — each file-group increment of the P4 campaign
-/// must stay independently compilable — and the hoist into `features/shared/`
-/// belongs to the campaign's closing cleanup, alongside the deletion of
-/// `DueInfo.of`.
-({Color ink, Color muted}) _neutrals(BuildContext context) {
-  final ThemeData theme = Theme.of(context);
-  if (theme.brightness == Brightness.light) {
-    return (ink: AppColors.ink, muted: AppColors.muted);
-  }
-  final ColorScheme scheme = theme.colorScheme;
-  return (ink: scheme.onSurface, muted: scheme.onSurfaceVariant);
-}
+/// ⚠️ THE SHARED HELPER RETURNS THREE FIELDS AND THIS FILE USES TWO. The copy
+/// that stood here was `({Color ink, Color muted})` — this screen paints no
+/// hairline of its own — while `budget_screen.dart` and `insights_screen.dart`
+/// carried `({Color ink, Color muted, Color line})`. The merge unified on the
+/// WIDER record rather than adding a narrower second entry point: two spellings
+/// of one rule is exactly what the triplication already was, and the copy nobody
+/// re-measures is the one that drifts. The two call sites below bind `line` and
+/// never read it.
 
 /// The page inset, now shared by BOTH panes.
 ///
@@ -109,7 +91,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ({Color ink, Color muted}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
@@ -694,7 +676,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     BuildContext context,
     AppLocalizations l10n,
     Currency currency,
-    ({Color ink, Color muted}) neutral,
+    ({Color ink, Color muted, Color line}) neutral,
     DateTime now,
     String heading,
     List<Subscription> rows,
@@ -745,7 +727,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // passing brightness is what expires it.
     final DueInfo due = DueInfo.localized(l10n, s, now,
         brightness: Theme.of(context).brightness);
-    final ({Color ink, Color muted}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     // ⚠️ THIS ROW IS RowCard's TWIN AND HAS TO BE FIXED SEPARATELY, which is
     // annoying and is the point of saying so. It hand-rolls the same
     // Container/Material/InkWell that `features/shared/widgets.dart`'s [RowCard]
@@ -758,6 +740,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // Same two annotations, same reasons — read RowCard's doc for the argument.
     // The convergence of the two shapes belongs to the same closing cleanup that
     // owns the triplicated `_neutrals` helper above.
+    // (CORRECTION 2026-08-25: that helper's half of the cleanup LANDED — it is
+    // `features/shared/neutrals.dart` now. The RowCard/row convergence named in
+    // the sentence above did not, and is still owed.)
     return MergeSemantics(
       child: Semantics(
         button: true,

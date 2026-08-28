@@ -268,7 +268,7 @@ if (!problems.length) ok(`metadata tree ${metaDir} — ${filesChecked} field(s) 
 // ── [10]D-6 PREFLIGHT — the portfolio-safety gate, run by the RELEASE PATH ────
 // 🔴 IN THE SCRIPT AND NOT ONLY IN CI, and the difference is the whole point.
 // CI runs assert-submission-safety.mjs on every push in its PORTFOLIO mode; that
-// proves the taglines are distinct across apps, and it proves nothing about the
+// compares the taglines across apps, and it says nothing about the
 // app somebody is submitting RIGHT NOW. The `--submitting` mode's
 // web-prove-first rule can only be asked at the moment of a submission — so it
 // is asked here, by the path that would do it, rather than by a lane that ran
@@ -289,7 +289,7 @@ if (!problems.length) ok(`metadata tree ${metaDir} — ${filesChecked} field(s) 
       `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd(),
     ]);
   }
-  ok('[10]D-6 preflight — distinct tagline, and the app is live on the web before a store sees it');
+  ok(`[10]D-6 preflight — catalog/apps.json records "${app.slug}" as status "live"; ${((r.stdout ?? '').match(/TAGLINE PAIRS COMPARED: \d+/) ?? ['TAGLINE PAIRS COMPARED: unreported'])[0]}. This preflight made no web request.`);
 }
 
 // ── 2. the package identity ──────────────────────────────────────────────────

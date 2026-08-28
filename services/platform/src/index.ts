@@ -15,6 +15,14 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
+import {
+  inspect,
+  newProbeCache,
+  probeBinding,
+  probeJwks,
+  JWKS_READING_TTL_MS,
+  READING_TTL_MS,
+} from './lib/health';
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
@@ -53,15 +61,92 @@ app.use('*', corsMiddleware);
 // cannot set one and not the other. NULL rather than absent when unset: a
 // missing key and a key set to nothing read identically to a JSON consumer, and
 // the smoke has to be able to say "this deploy did not thread its build id".
-app.get('/v1/health', (c) =>
-  c.json({
-    ok: true,
+// ── 🔴 `ok` IS A MEASUREMENT NOW, NOT A LITERAL ──────────────────────────────
+// It used to be the constant `true`. Two live probes rest on this one field —
+// `post-deploy-smoke.mjs --require-ok` and GlitchTip monitor 11's `"ok":true`
+// body assertion — and NEITHER COULD EVER FAIL, so `platform.nikatru.com` could
+// have had PLATFORM_DB unreachable or the JWKS fetch dead and both stayed green.
+// See src/lib/health.ts for the three-state design and the cache reasoning.
+//
+// ⚠️ NEITHER PROBE CHANGES. The shape is backward-compatible on purpose: `ok`
+// is still a top-level boolean that is `true` when healthy, so `--require-ok`
+// and the monitor's body match keep working unmodified. What changed is what
+// makes it true, not what it looks like.
+//
+// ⚠️ IT ANSWERS HTTP 200 EVEN WHEN `ok` IS FALSE, AND THAT IS DELIBERATE. A 503
+// would look identical to "the Worker is not up yet" to `judge()` in
+// post-deploy-smoke.mjs, which treats every non-200 as RETRYABLE — collapsing
+// the exact distinction `--require-ok` exists to draw. That script's own comment
+// states it: "a Worker that answers with the right build and `ok:false` has
+// deployed and is unwell, and collapsing the two would report a bad deploy as a
+// good one." A 200 carrying `ok:false` keeps "which build is live" answerable at
+// the moment it matters most.
+//
+// ── WHY THESE THREE DEPENDENCIES AND NOT OTHERS ──────────────────────────────
+//   PLATFORM_DB    the shared entitlements DB. Every authenticated read and the
+//                  whole analytics rail land here.
+//   CONFIG_KV      GET /config/:app reads it UNGUARDED (routes/config.ts:52 —
+//                  no try/catch), so a KV that refuses turns the FIRST request
+//                  every launching app makes into a 500.
+//   SUPABASE_JWKS  the document every ES256 verification rests on. When it
+//                  fails, DELETE /v1/account 401s for everybody while the Worker
+//                  itself is perfectly well — invisible to any status check.
+//
+// SUBLY_DB is deliberately NOT probed: nothing on the request path touches it,
+// only the nightly renewals fan-out does, and the cron's liveness is already
+// carried by the `cron_heartbeat` table (migration 0003) rather than by a
+// per-request probe. Probing it here would spend a D1 query on every health
+// request to report on a code path no request can reach.
+//
+// The reads are the cheapest that would DIFFER if the dependency were broken.
+// `SELECT 1 FROM entitlements LIMIT 1` reads at most one row and is preferred
+// over a bare `SELECT 1` because it also fails when the WRONG database is bound
+// — a database that exists but carries no schema answers `SELECT 1` perfectly,
+// and "deployed against the wrong D1" is precisely a deploy failure this
+// endpoint is smoked to catch. No probe writes ANYTHING: a health check that
+// wrote would spend the 1,000-writes/day KV budget it exists to report on.
+const probeCache = newProbeCache();
+
+app.get('/v1/health', async (c) => {
+  const now = Date.now();
+  const report = await inspect(
+    probeCache,
+    [
+      {
+        name: 'platform_db',
+        ttlMs: READING_TTL_MS,
+        run: () =>
+          probeBinding(c.env.PLATFORM_DB, () =>
+            c.env.PLATFORM_DB.prepare('SELECT 1 FROM entitlements LIMIT 1').first(),
+          ),
+      },
+      {
+        name: 'config_kv',
+        ttlMs: READING_TTL_MS,
+        // A `get` of a key that does not exist resolves `null` — a SUCCESSFUL
+        // read, and the cheapest one KV offers. What is measured is whether the
+        // namespace answered; no key is created and nothing is written.
+        run: () =>
+          probeBinding(c.env.CONFIG_KV, () => c.env.CONFIG_KV.get('health:probe')),
+      },
+      {
+        name: 'supabase_jwks',
+        ttlMs: JWKS_READING_TTL_MS,
+        run: () => probeJwks(c.env.SUPABASE_URL),
+      },
+    ],
+    now,
+  );
+  return c.json({
+    ok: report.ok,
+    status: report.status,
     app: c.env.APP_ID,
     version: c.env.API_VERSION,
     build: c.env.RELEASE ?? null,
     time: nowIso(),
-  }),
-);
+    checks: report.checks,
+  });
+});
 
 // Public: CFG-1 runtime config.
 app.route('/config', config);

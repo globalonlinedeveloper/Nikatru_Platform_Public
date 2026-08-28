@@ -193,6 +193,10 @@ import { stripSourceComments } from './text-reductions.mjs';
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/ops/register.json';
 const WORKFLOW_DIR_REL = '.github/workflows';
+/** The script whose PRESENCE in a job puts that job in [14]O-7's domain, held
+ *  apart from `RECORD_CALL`'s reading of its ARGUMENT so the two can disagree —
+ *  which is the whole of the coverage floor at the deploy-job loop below. */
+const RECORD_SCRIPT = 'record-deployment.mjs';
 
 /** Any repo-relative path a row NAMES, in the fields that make a claim about a
  *  mechanism: the detector, the record, and the thing that reads it. `Private/`
@@ -426,18 +430,32 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
   if (q.reader === 'unreachable') {
     return { verdict: 'unreachable', line: `${id} (cadence ${row.cadence}) — NO REACHABLE RECORD: ${q.why}` };
   }
-  if (!probe) {
-    return {
-      verdict: 'unreadable',
-      line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` produced no result at all on this run.`,
-    };
-  }
-  if (probe.unreadable) {
-    return {
-      verdict: 'unreadable',
-      line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` could not run here: ${probe.why}`,
-    };
-  }
+  // 🔴 A DUTY LAST SEEN FAILING DOES NOT GO GREEN BY GOING DARK. `lastObserved`
+  // holds this row's own last READABLE verdict. A count of dark readers measures
+  // how MANY are dark, never whether a KNOWN-BAD one is; while this row holds
+  // `fail`, a reader that cannot run here is a FAILURE on it rather than a print.
+  // Cleared only by a host that reads a success — see the pass branch below.
+  const held = q.lastObserved?.verdict === 'fail' ? q.lastObserved : null;
+  // CLAUDE.md C-6, applied with the register's OWN `ownerGated` + `ownerGap`: on a
+  // runner that could not read the record, a held failure still COUNTS as FAILING
+  // and still prints the word — only the block is lifted, and only here. Nothing
+  // below this line is gated, so the host that CAN read the record still fails on
+  // it. Gating the readable branches would be the weakening; this is not that.
+  const gated = held !== null && row.ownerGated === true && nonEmpty(row.ownerGap);
+  const dark = (why) =>
+    held
+      ? {
+          verdict: 'fail',
+          gated,
+          line:
+            `${id} — reader \`${q.reader}\` ${why} AND the register holds its last readable observation as ` +
+            `FAILING (${held.at}): ${held.detail} A reader going dark does not clear a duty last seen failing.` +
+            (gated ? ` OWNER-GATED, so it prints here and does not block (CLAUDE.md C-6): ${row.ownerGap}` : ''),
+        }
+      : { verdict: 'unreadable', line: `${id} (cadence ${row.cadence}) — reader \`${q.reader}\` ${why}` };
+
+  if (!probe) return dark('produced no result at all on this run.');
+  if (probe.unreadable) return dark(`could not run here: ${probe.why}`);
   if (probe.missing) {
     // The mechanism itself is gone. NOT "unreadable": a query ran and answered
     // that the thing the register names does not exist, which is the stale-row
@@ -464,6 +482,15 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
       line:
         `${id} — its record IS reachable and the newest SUCCESSFUL run is ${(ageMs / 3_600_000).toFixed(1)}h old, ` +
         `outside its own window [${windowLabel}]. ${probe.detail}`,
+    };
+  }
+  if (held) {
+    return {
+      verdict: 'fail',
+      line:
+        `${id} — its record was QUERIED and is healthy (newest success ${(ageMs / 3_600_000).toFixed(1)}h ago), but ` +
+        `\`recordQuery.lastObserved\` still reads FAILING (${held.at}). Clear it HERE, on the host that can read this ` +
+        'record — a held failure nobody clears reddens every runner that cannot read it.',
     };
   }
   return {
@@ -524,6 +551,20 @@ export function evaluateRunRecords(reg, probes, nowMs) {
     if (q.reader === 'unreachable' && !nonEmpty(q.why)) {
       errors.push(`${r.id} — \`reader: "unreachable"\` with no \`why\`. "Nothing can read it" is a state this register may record; it is not one it may pass over.`);
     }
+    // The held observation is the only thing standing between a known-bad duty
+    // and a green runner that cannot read it, so its shape is checked, not trusted.
+    if (q.lastObserved !== undefined) {
+      const o = q.lastObserved;
+      if (q.reader === 'unreachable') {
+        errors.push(`${r.id} — \`recordQuery.lastObserved\` on a row whose reader is \`unreachable\`. Nothing has ever read this record, so there is no observation to hold.`);
+      } else if (!o || typeof o !== 'object' || (o.verdict !== 'pass' && o.verdict !== 'fail') || !nonEmpty(o.at) || !nonEmpty(o.detail) || !DURABLE_ID.test(o.detail)) {
+        errors.push(
+          `${r.id} — \`recordQuery.lastObserved\` must be \`{ verdict: "pass" | "fail", at, detail }\` whose detail ` +
+            'carries something a later reader can look up (a result code, a timestamp, a run id). An observation ' +
+            'stated as an adjective holds nothing, and this field is what a dark reader is measured against.',
+        );
+      }
+    }
     used.set(q.reader, (used.get(q.reader) ?? 0) + 1);
   }
 
@@ -548,6 +589,22 @@ export function evaluateRunRecords(reg, probes, nowMs) {
       ],
     };
   }
+
+  // 🔴 THE SAME CEILING FOR THE OTHER ESCAPE HATCH. `unreadable` is "could not
+  // tell", and until now it had NO declared limit — so a runner that could read
+  // nothing printed and exited 0, which is the state the header at the top of
+  // the probe recounts. An UNDECLARED ceiling reads as NO ceiling, so a missing
+  // key refuses here rather than defaulting to a number this file chose.
+  const readCap = decl._maxUnreadable;
+  if (!Number.isInteger(readCap) || readCap < 0) {
+    return {
+      coverageLost: [
+        '`_recordReaders._maxUnreadable` is missing, or is not a non-negative integer.',
+        'It is the ceiling on how many scheduled duties this limb may fail to READ on one runner. With no',
+        'ceiling declared every row can go unreadable and still only print — the exact shape [14]O-3 replaced.',
+      ],
+    };
+  }
   for (const name of readerNames) {
     if (!used.has(name)) {
       errors.push(
@@ -567,14 +624,26 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   const tally = { pass: 0, fail: 0, unreadable: 0, unreachable: 0 };
   const unreachableLines = [];
   const unreadableLines = [];
+  // 🔴 THE GATED LINES ARE STILL IN `tally.fail`. A gate that moved them to their
+  // own counter would put the word FAILING next to a smaller number every time a
+  // row was gated — the count, not the exit code, is what a reader scans.
+  const gatedFailLines = [];
   for (const r of scheduled) {
     if (!r?.mechanism?.recordQuery?.reader || !readerNames.has(r.mechanism.recordQuery.reader)) continue;
     const c = classifyRunRecord(r, probes.get(r.id), nowMs, multiplier);
     tally[c.verdict] = (tally[c.verdict] ?? 0) + 1;
-    if (c.verdict === 'fail') errors.push(c.line);
+    if (c.verdict === 'fail') (c.gated ? gatedFailLines : errors).push(c.line);
     else if (c.verdict === 'unreachable') unreachableLines.push(c.line);
     else if (c.verdict === 'unreadable') unreadableLines.push(c.line);
     else if (c.verdict === 'pass') prints.push(`[14]O-3 — ${c.line}`);
+  }
+
+  if (tally.unreadable > readCap) {
+    errors.push(
+      `${tally.unreadable} scheduled duty(ies) went UNREADABLE on this runner and the ceiling is ${readCap}. ` +
+        'Unreadable is "could not tell", never "it is fine" — above this line the limb has read too little of ' +
+        'its own domain to be believed about the rest. Ratchets DOWN as credentials and platforms arrive.',
+    );
   }
 
   // 🔴 THE NUMBER THAT MUST NEVER BE INVISIBLE. `0 queried` and `4 queried` read
@@ -582,7 +651,8 @@ export function evaluateRunRecords(reg, probes, nowMs) {
   // records" is precisely the state that was green for a day and a half.
   prints.push(
     `[14]O-3 — ${scheduled.length} scheduled duty(ies) · ${tally.pass} record(s) QUERIED and inside window · ` +
-      `${tally.fail} FAILING · ${tally.unreadable} reader(s) unreadable on this runner · ` +
+      `${tally.fail} FAILING (${gatedFailLines.length} of them OWNER-GATED: printed, not blocking) · ` +
+      `${tally.unreadable} reader(s) unreadable on this runner (ceiling ${readCap}) · ` +
       `${tally.unreachable} declared unreachable (ceiling ${cap})`,
   );
   if (tally.pass === 0 && tally.fail === 0) {
@@ -592,10 +662,11 @@ export function evaluateRunRecords(reg, probes, nowMs) {
         'could have failed. This line exists so that state can never be mistaken for a clean result.',
     );
   }
+  for (const l of gatedFailLines) prints.push(`[14]O-3 — 🔴 KNOWN FAILING, NOT BLOCKING HERE: ${l}`);
   for (const l of unreadableLines) prints.push(`[14]O-3 — ${l}`);
   for (const l of unreachableLines) prints.push(`[14]O-3 — ${l}`);
 
-  return { errors, prints, stats: { scheduled: scheduled.length, ...tally } };
+  return { errors, prints, stats: { scheduled: scheduled.length, ...tally, gatedFail: gatedFailLines.length } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1653,6 +1724,170 @@ async function ghJson(path) {
   return res.json();
 }
 
+// 267011 = 0x00041303 = SCHED_S_TASK_HAS_NOT_RUN. Task Scheduler's own "it is
+// registered and the trigger has not fired yet" code, and the ONLY non-zero
+// LastTaskResult that is not a failure.
+const SCHED_S_TASK_HAS_NOT_RUN = 267011;
+
+/** `4294770688` tells a reader nothing they can act on; `4294770688 (0xFFFD0000)`
+ *  gives them a string they can search. Both forms, always, because the decimal
+ *  is what PowerShell and this file's own comparisons print and the hex is what
+ *  every HRESULT table is indexed by. This decodes the SHAPE of the number and
+ *  deliberately asserts NOTHING about what a particular code means — the guard
+ *  does not own that mapping and inventing one would be a claim it cannot check. */
+export function formatTaskResult(n) {
+  if (!Number.isInteger(n)) return String(n);
+  return `${n} (0x${(n < 0 ? n >>> 0 : n).toString(16).toUpperCase().padStart(8, '0')})`;
+}
+
+/** THE THREE STATES A SCHEDULED TASK CAN BE IN, kept apart because they are three
+ *  different facts and exactly one of them is "fine":
+ *
+ *    1. IT DOES NOT EXIST          -> `missing`     (hard failure: a stale register row)
+ *    2. IT EXISTS AND LAST FAILED  -> `lastSuccessMs: NaN` + a LOUD detail  ← this host, today
+ *    3. IT EXISTS AND NEVER RAN    -> `lastSuccessMs: NaN` + a different detail
+ *
+ *  and, cutting across all three, the fourth outcome that is not a state of the
+ *  TASK at all but a state of the READER:
+ *
+ *    0. THE READ ITSELF FAILED     -> `unreadable`  (a print, never a pass, NEVER `missing`)
+ *
+ *  🔴 4 IS NOT 1. "I could not tell" is not "it is fine" and it is ALSO not "it is
+ *  absent" — the distinction this file already draws in its [14]O-3 header and in
+ *  `classifyRunRecord`. Collapsing 0 into 1 is precisely the defect fixed on
+ *  2026-08-26 and described at length on `probeWindowsTasks` below. */
+export function classifyScheduledTaskRow(row) {
+  const task = row?.task;
+  const state = row?.state;
+
+  // ── 0 · THE READ FAILED, and NOT because the task is absent. ───────────────
+  if (state === 'threw') {
+    return {
+      unreadable: true,
+      why:
+        `Get-ScheduledTaskInfo threw for "${task}", and what it threw was NOT "no such task": ${row.why}. ` +
+        'That is "I could not tell whether this task exists or ran", which is neither "it is fine" nor "it is absent".',
+    };
+  }
+  if (state !== 'read' && state !== 'absent') {
+    return {
+      unreadable: true,
+      why: `the probe returned no usable state for "${task}" (state=${JSON.stringify(state ?? null)}), so nothing about it was actually read`,
+    };
+  }
+
+  // ── 1 · THE TASK DOES NOT EXIST. An ANSWERED query, so a hard failure. ─────
+  if (state === 'absent') {
+    return {
+      missing: true,
+      why: `no scheduled task named "${task}" exists on this host — Get-ScheduledTaskInfo answered ObjectNotFound, it did not merely fail to be read`,
+    };
+  }
+
+  // ── The task EXISTS and was read. Everything below is about its RESULT. ────
+  const result = row.result;
+  if (result !== null && result !== undefined && typeof result !== 'number') {
+    // A string here would make `result === 0` silently false and report a
+    // HEALTHY task as failing. Refuse to compare rather than compare wrongly.
+    return {
+      unreadable: true,
+      why:
+        `"${task}" EXISTS, but its LastTaskResult arrived as a ${typeof result} (${JSON.stringify(result)}) rather ` +
+        'than a number, so it cannot be compared to 0 and no verdict about the run is available',
+    };
+  }
+
+  const ran = row.lastRun ? Date.parse(row.lastRun) : NaN;
+  const noRunTime = !row.lastRun || Number.isNaN(ran) || new Date(ran).getUTCFullYear() < 2000;
+
+  // ── 3 · IT EXISTS AND HAS NEVER RUN. ──────────────────────────────────────
+  if (noRunTime || result === SCHED_S_TASK_HAS_NOT_RUN) {
+    const why =
+      result === SCHED_S_TASK_HAS_NOT_RUN
+        ? `LastTaskResult = ${formatTaskResult(result)} = SCHED_S_TASK_HAS_NOT_RUN`
+        : `it reports no usable LastRunTime (${JSON.stringify(row.lastRun ?? null)})`;
+    return {
+      lastSuccessMs: NaN,
+      detail: `"${task}" EXISTS and is scheduled, and HAS NEVER RUN — ${why}. The trigger has not fired even once.`,
+    };
+  }
+
+  if (result === null || result === undefined) {
+    return {
+      unreadable: true,
+      why: `"${task}" EXISTS and reports a LastRunTime of ${row.lastRun}, but no LastTaskResult came back at all, so whether that run succeeded is unknown`,
+    };
+  }
+
+  // ── The only "fine" outcome in this whole function. ────────────────────────
+  if (result === 0) {
+    return {
+      lastSuccessMs: ran,
+      detail: `"${task}" EXISTS and its last run at ${row.lastRun} SUCCEEDED (LastTaskResult = ${formatTaskResult(0)}).`,
+    };
+  }
+
+  // ── 2 · IT EXISTS AND IT IS FAILING. THE LOUD ONE. ────────────────────────
+  return {
+    lastSuccessMs: NaN,
+    detail:
+      `"${task}" EXISTS AND IS FAILING. It RAN at ${row.lastRun} and returned LastTaskResult = ` +
+      `${formatTaskResult(result)}, which is not 0, so that run did not succeed. ` +
+      'THIS IS NOT A MISSING TASK: the schedule is firing on time and the work under it is failing, and those ' +
+      'two have opposite fixes — creating a task that already exists fixes nothing and leaves the real failure ' +
+      'running. Search the hex form above for the code; this guard reports the value and deliberately does not ' +
+      'interpret it. Task Scheduler keeps only the MOST RECENT result, so this record contains no successful ' +
+      'run at all — not merely a stale one.',
+  };
+}
+
+/** Pure. Turns ONE `spawnSync` outcome into the per-task probe map, so every
+ *  branch below — wrong OS, powershell missing, non-JSON output, and each of the
+ *  four states above — is reachable from a test on any platform without this
+ *  host needing to own any particular scheduled task. `probeWindowsTasks` is the
+ *  impure shell around it and holds no verdict logic of its own. */
+export function readScheduledTaskProbe(names, spawned = {}) {
+  const out = new Map();
+  const everyName = (v) => {
+    for (const n of names) out.set(n, v);
+    return out;
+  };
+
+  const platform = spawned.platform ?? process.platform;
+  if (platform !== 'win32') {
+    return everyName({
+      unreadable: true,
+      why: `this runner is ${platform}, and Task Scheduler exists only on the Windows host the task runs on`,
+    });
+  }
+  if (spawned.error || spawned.status !== 0) {
+    return everyName({
+      unreadable: true,
+      why: `powershell could not be run here (${spawned.error?.message ?? `exit ${spawned.status}`})`,
+    });
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(spawned.stdout);
+  } catch (e) {
+    return everyName({ unreadable: true, why: `Get-ScheduledTaskInfo output was not JSON (${e.message})` });
+  }
+  if (!Array.isArray(parsed)) {
+    return everyName({ unreadable: true, why: 'Get-ScheduledTaskInfo output parsed as JSON but was not the array of task rows the probe emits' });
+  }
+
+  for (const row of parsed) out.set(row?.task, classifyScheduledTaskRow(row));
+  // 🔴 A NAME THE SCRIPT NEVER ANSWERED FOR IS `unreadable`, NOT `missing`.
+  // Silence is not an answer, and the same rule that forbids an overflow from
+  // impersonating an absent task forbids a dropped row from doing it.
+  for (const n of names) {
+    if (!out.has(n)) {
+      out.set(n, { unreadable: true, why: `the probe returned no row for "${n}" at all, so nothing was read about it` });
+    }
+  }
+  return out;
+}
+
 /** Windows Task Scheduler. ONE PowerShell process for every task, and the
  *  script is passed as -EncodedCommand so a task name containing spaces or
  *  quotes cannot become a shell-quoting bug that reads as "task not found".
@@ -1661,13 +1896,74 @@ async function ghJson(path) {
  *  red verdict means: it keeps only the MOST RECENT result. `LastTaskResult = 1`
  *  therefore does not merely mean "the last run failed" — it means THERE IS NO
  *  RECORD OF ANY SUCCESS to return, which is exactly what the acceptance asks
- *  for and exactly what these two rows cannot produce today. */
+ *  for and exactly what these two rows cannot produce today.
+ *
+ *  ══ 🔴 THE INVERSION THIS PROBE USED TO PERFORM · FIXED 2026-08-26 ══════════
+ *  `LastTaskResult` is a `System.UInt32` carrying an HRESULT-shaped value. The
+ *  emitter below used to read `result=[int]$i.LastTaskResult`, and on this host
+ *
+ *      [int]4294770688   ->  THROWS "Value was either too large or too small
+ *                             for an Int32."
+ *
+ *  4294770688 is 0xFFFD0000, the REAL current value for "NIKATRU daily backup".
+ *  The throw landed in this probe's OWN catch, the catch wrote `found=$false`,
+ *  and the guard printed:
+ *
+ *      the mechanism its `recordQuery` names DOES NOT EXIST: no scheduled task
+ *      named "NIKATRU daily backup" exists on this host
+ *
+ *  while, measured by hand the same minute, `Get-ScheduledTask -TaskName
+ *  "*NIKATRU*"` returned that task at TaskPath `\` in State `Ready`, and
+ *  `Get-ScheduledTaskInfo` returned LastRunTime 2026-08-26 10:00:00,
+ *  LastTaskResult 4294770688, NextRunTime 2026-08-26 18:00:00. It had fired that
+ *  morning. It never vanished.
+ *
+ *  🔴 THE INVERSION IS THE POINT, and it is why this is not a typo worth a
+ *  one-line fix and no comment. A task that SUCCEEDS carries a small result (0)
+ *  that casts fine and reports healthy. A task that FAILS carries a large
+ *  HRESULT that overflows Int32 and was reported as NOT EXISTING. So the probe
+ *  was reliable ONLY while there was nothing wrong: it was blindest exactly when
+ *  there was something to see, and it silently converted the most important
+ *  finding it can make — "your scheduled duty is running and failing" — into a
+ *  different, quieter and actively misleading one: "you never set it up".
+ *  Anybody acting on that message goes and creates a task that already exists,
+ *  and the real failure survives the fix that was supposed to end it. It also
+ *  corrupts the project record: "the backup has been dead six days, the task
+ *  points at a pre-rename path" and "the backup fires on schedule and fails" are
+ *  different facts with different fixes, and this probe asserted the first while
+ *  the host was in the second.
+ *
+ *  THE CAST IS `[long]`, chosen against the alternatives rather than by default:
+ *    · `[int]`    — Int32. Cannot hold 0x80000000..0xFFFFFFFF. THIS DEFECT.
+ *    · `[uint32]` — covers the whole documented range, but THROWS on a negative
+ *                   input, so the day this property is handed back already
+ *                   signed (-131072 for 0xFFFE0000) the identical
+ *                   overflow-into-catch reappears at the other end of the range.
+ *                   A cast that can throw inside a try whose catch means
+ *                   "absent" is the bug, not the width.
+ *    · no cast    — leaves the JSON type to whatever the CIM provider hands
+ *                   back. A value arriving as a STRING makes `result === 0` and
+ *                   `result === SCHED_S_TASK_HAS_NOT_RUN` silently false and
+ *                   would report a HEALTHY task as failing. The comparisons
+ *                   downstream are strict, so the type must be guaranteed here.
+ *    · `[long]`   — Int64. TOTAL over the full UInt32 range AND the full Int32
+ *                   range, so it cannot throw for either shape; every value it
+ *                   can produce is exactly representable as an IEEE754 double,
+ *                   so JSON.parse round-trips it losslessly and the `=== 0` and
+ *                   `=== 267011` tests stay exact. CHOSEN.
+ *  `$null` is passed through as `$null` instead of being cast, because
+ *  `[long]$null` is 0 and would turn "has never run" into "the last run
+ *  succeeded" — the same class of lie, one branch over.
+ *
+ *  AND THE CATCH IS NOW HONEST. It used to collapse EVERY exception into "does
+ *  not exist", which is what let a numeric overflow impersonate an absent task.
+ *  It now separates the ObjectNotFound that Get-ScheduledTaskInfo raises for a
+ *  genuinely absent task (measured on this host: CategoryInfo.Category =
+ *  ObjectNotFound, FullyQualifiedErrorId = "HRESULT 0x80070002,Get-ScheduledTaskInfo")
+ *  from anything else, and reports anything else as `unreadable` WITH the message.
+ *  ═══════════════════════════════════════════════════════════════════════════ */
 function probeWindowsTasks(names) {
-  const out = new Map();
-  if (process.platform !== 'win32') {
-    for (const n of names) out.set(n, { unreadable: true, why: `this runner is ${process.platform}, and Task Scheduler exists only on the Windows host the task runs on` });
-    return out;
-  }
+  if (process.platform !== 'win32') return readScheduledTaskProbe(names, { platform: process.platform });
   const list = names.map((n) => `'${String(n).replace(/'/g, "''")}'`).join(',');
   const ps = [
     "$ErrorActionPreference='Stop'",
@@ -1678,9 +1974,18 @@ function probeWindowsTasks(names) {
     '    $i = Get-ScheduledTaskInfo -TaskName $n -ErrorAction Stop',
     '    $lr = $null',
     "    if ($i.LastRunTime) { $lr = $i.LastRunTime.ToUniversalTime().ToString('o') }",
-    '    $out += [pscustomobject]@{ task=$n; found=$true; lastRun=$lr; result=[int]$i.LastTaskResult }',
+    // 🔴 [long], NOT [int]. See the block comment above: [int] overflows on an
+    // HRESULT-shaped UInt32 and the throw would be caught below as "absent".
+    '    $rc = $null',
+    '    if ($null -ne $i.LastTaskResult) { $rc = [long]$i.LastTaskResult }',
+    "    $out += [pscustomobject]@{ task=$n; state='read'; lastRun=$lr; result=$rc; why=$null }",
     '  } catch {',
-    '    $out += [pscustomobject]@{ task=$n; found=$false; lastRun=$null; result=$null }',
+    // 🔴 THE HONEST CATCH. "No such task" and "something else went wrong" are
+    // different answers and only the first one is about the task.
+    "    $absent = ($_.CategoryInfo.Category -eq 'ObjectNotFound') -or ($_.FullyQualifiedErrorId -like '*0x80070002*') -or ($_.FullyQualifiedErrorId -like '*NotFound*')",
+    "    $state = if ($absent) { 'absent' } else { 'threw' }",
+    '    $msg = ("" + $_.Exception.GetType().Name + ": " + $_.Exception.Message)',
+    '    $out += [pscustomobject]@{ task=$n; state=$state; lastRun=$null; result=$null; why=$msg }',
     '  }',
     '}',
     'ConvertTo-Json -InputObject @($out) -Compress',
@@ -1690,42 +1995,7 @@ function probeWindowsTasks(names) {
     encoding: 'utf8',
     timeout: LOCAL_PROBE_TIMEOUT_MS,
   });
-  if (r.error || r.status !== 0) {
-    const why = `powershell could not be run here (${r.error?.message ?? `exit ${r.status}`})`;
-    for (const n of names) out.set(n, { unreadable: true, why });
-    return out;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(r.stdout);
-  } catch (e) {
-    const why = `Get-ScheduledTaskInfo output was not JSON (${e.message})`;
-    for (const n of names) out.set(n, { unreadable: true, why });
-    return out;
-  }
-  for (const row of parsed) {
-    if (!row.found) {
-      out.set(row.task, { missing: true, why: `no scheduled task named "${row.task}" exists on this host` });
-      continue;
-    }
-    // 267011 = SCHED_S_TASK_HAS_NOT_RUN.
-    const ran = row.lastRun ? Date.parse(row.lastRun) : NaN;
-    if (!row.lastRun || Number.isNaN(ran) || new Date(ran).getUTCFullYear() < 2000 || row.result === 267011) {
-      out.set(row.task, { lastSuccessMs: NaN, detail: `"${row.task}" is scheduled and has NEVER RUN.` });
-      continue;
-    }
-    if (row.result === 0) {
-      out.set(row.task, { lastSuccessMs: ran, detail: `"${row.task}" LastTaskResult = 0 at ${row.lastRun}.` });
-      continue;
-    }
-    out.set(row.task, {
-      lastSuccessMs: NaN,
-      detail:
-        `"${row.task}" LastTaskResult = ${row.result} at ${row.lastRun}. Task Scheduler keeps only the MOST ` +
-        'RECENT result, so this record contains no successful run at all — not merely a stale one.',
-    });
-  }
-  return out;
+  return readScheduledTaskProbe(names, { platform: 'win32', error: r.error, status: r.status, stdout: r.stdout });
 }
 
 /** The newest SUCCESSFUL run for the declared event. `event=schedule` matters:
@@ -1985,7 +2255,29 @@ async function main() {
       const text = (job.lines ?? []).map((l) => l.text ?? String(l)).join('\n');
       RECORD_CALL.lastIndex = 0;
       const envs = [...text.matchAll(RECORD_CALL)].flatMap((m) => expandEnv(m[1]));
-      if (envs.length === 0) continue;
+      // 🔴 THE FLOOR THAT WAS MISSING, AND ITS ABSENCE DROPPED A JOB TWICE.
+      // The line below used to be a bare `continue`, and a bare `continue` cannot
+      // tell "this job records nothing" from "this job records something I could
+      // not read". [10]D-2b's matrix leg hit it in 2026-08-07 and the reader was
+      // widened; the `continue` was left, so build-platforms.yml's
+      // `record-deployment.mjs "$environment"` hit the SAME line on 2026-08-26
+      // and this limb's census printed 7 deploy jobs without the release job in
+      // it. Widening the reader a second time fixes one call site. THIS fixes the
+      // shape: a job whose text names the recorder and whose argument this reader
+      // cannot parse is COVERAGE LOST, the same verdict the matrix-expansion path
+      // one branch up already reaches — so the third unparseable argument shape
+      // stops the build instead of shrinking the domain.
+      if (envs.length === 0) {
+        if (text.includes(RECORD_SCRIPT)) {
+          coverageLost([
+            `${wf.rel ?? wf.file ?? '?'}:${jobName} runs \`${RECORD_SCRIPT}\` and this scan could not read the environment it records.`,
+            'That job would leave [14]O-7\'s domain silently and the census below would print the smaller number as a',
+            'pass — the exact way the web deploy job was lost in 2026-08-07 and the release job in 2026-08-26. Widen',
+            '`RECORD_CALL` in tooling/ci/workflow-scan.mjs to read the new argument shape.',
+          ]);
+        }
+        continue;
+      }
       const smokes = (text.match(/post-deploy-smoke\.mjs/g) ?? []).length;
       for (const environment of new Set(envs)) {
         deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });

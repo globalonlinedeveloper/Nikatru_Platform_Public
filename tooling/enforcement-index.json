@@ -139,9 +139,12 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
+      ".github/workflows/build-platforms.yml#prepare",
+      ".github/workflows/build-platforms.yml#release",
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#platform",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -208,6 +211,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-capability-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-case-count-honest.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -731,6 +746,18 @@
   },
   {
     "claims": [
+      "F-10"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-modal-detection.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 039",
       "M-1",
       "M-12"
@@ -759,6 +786,8 @@
     "claims": [
       "ADR 004",
       "ADR 020",
+      "ADR 039",
+      "ADR 044",
       "M-1",
       "M-14"
     ],
@@ -1641,7 +1670,8 @@
       "F-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#sites"
+      ".github/workflows/ci.yml#sites",
+      ".github/workflows/site-drift-repair.yml#repair"
     ],
     "kind": "guard",
     "ref": "tooling/ci/check-site-integrity.mjs",
@@ -1699,11 +1729,13 @@
     "claims": [
       "D-3"
     ],
-    "invokedBy": [],
+    "invokedBy": [
+      ".github/workflows/submit-play.yml#submit"
+    ],
     "kind": "guard",
     "ref": "tooling/ci/read-identity.mjs",
     "references": [],
-    "state": "LIBRARY"
+    "state": "WIRED"
   },
   {
     "claims": [
@@ -1714,7 +1746,9 @@
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subly-api"
+      ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/submit-play.yml#submit",
+      ".github/workflows/submit-snap.yml#submit"
     ],
     "kind": "guard",
     "ref": "tooling/ci/record-deployment.mjs",
@@ -1934,9 +1968,11 @@
       "R-13"
     ],
     "invokedBy": [
+      ".github/workflows/build-platforms.yml#release",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
-      ".github/workflows/deploy-workers.yml#subly-api"
+      ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "script",
     "ref": "tooling/ops/post-deploy-smoke.mjs",
@@ -2133,12 +2169,40 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "M-11",
+      "W-1",
+      "W-2a",
+      "W-2c",
+      "W-9"
+    ],
+    "invokedBy": [
+      ".github/workflows/site-drift-repair.yml#repair"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-discovery.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#sites"
     ],
     "kind": "script",
     "ref": "tooling/sites/generate-landing-payload.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "W-3a"
+    ],
+    "invokedBy": [
+      ".github/workflows/site-drift-repair.yml#repair"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/lastmod.mjs",
     "references": [],
     "state": "WIRED"
   },

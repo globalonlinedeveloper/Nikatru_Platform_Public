@@ -39,6 +39,48 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
 
   Future<void> _cancel() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    // 🔴 THE CONTAINER IS RESOLVED HERE, BESIDE `l10n` AND BEFORE THE FIRST
+    // AWAIT, BECAUSE `refreshEntitlements` CANNOT BE. It takes a `WidgetRef`
+    // and spends it SYNCHRONOUSLY — `ref.invalidate` then `ref.read`
+    // (`state/money_providers.dart:186-188`) — while the re-read has to happen
+    // AFTER the cancellation, or it reports the state the user just asked to
+    // change. So no ordering puts that call before an await, and what gets
+    // hoisted is what the `ref` RESOLVES TO: `WidgetRef.read`/`invalidate` are
+    // `_assertNotDisposed()` plus the identical call on this container
+    // (flutter_riverpod 2.6.1 `consumer.dart:617-620` and `:630-633`, the
+    // assert itself at `:548-551`), and the container belongs to the root
+    // `ProviderScope`, so it outlives every widget under it.
+    //
+    // Without it, a user who left while POST /v1/plan/cancel was in flight —
+    // the app bar's back control stays live throughout — took the release-mode
+    // `StateError('Cannot use "ref" after the widget was disposed.')`, out of a
+    // `_cancel` nothing catches.
+    //
+    // ⚠️ AND AN `if (mounted)` SKIP WOULD BE WORSE THAN THE CRASH, not merely
+    // different: `entitlementsProvider` is a plain `FutureProvider`, NOT
+    // autoDispose (`state/money_providers.dart:126-127`), so skipping the
+    // invalidate after a SUCCESSFUL server-side cancellation leaves the app
+    // reporting the cancelled plan as active for the rest of the session.
+    //
+    // ⚠️ THE INLINE PAIR IS THE PRICE OF `refreshEntitlements` TAKING A
+    // `WidgetRef`, AND IT IS NOT THE SHAPE apps/subly SETTLED ON.
+    // `apps/subly/lib/state/money_providers.dart:209-213` has since grown
+    // `refreshEntitlementsIn(ProviderContainer)` — the SAME two calls behind a
+    // name — and its `_cancel` calls that instead. THE BRICK'S OWN
+    // `state/money_providers.dart` DOES NOT HAVE THAT HELPER YET, so this file
+    // spells the pair out rather than call something that does not exist in a
+    // stamped app. When the helper is added to the brick's money_providers
+    // template, replace these two lines with `await
+    // refreshEntitlementsIn(container);` and the two trees converge again.
+    //
+    // `refreshEntitlements` must NOT be made to delegate to the container form:
+    // that would drop `_assertNotDisposed()` from the `WidgetRef` path and turn
+    // a loud use-after-dispose into a silent one. `_restore` below stays on the
+    // `WidgetRef` form, where the read already precedes every await.
+    final ProviderContainer container = ProviderScope.containerOf(
+      context,
+      listen: false,
+    );
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
@@ -67,9 +109,11 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         .read(purchaseRailProvider)
         .requestCancellation();
     // The entitlement may not have changed yet — the rail confirms
-    // asynchronously — but re-reading is what makes the screen show the server's
-    // view rather than a guess.
-    await refreshEntitlements(ref);
+    // asynchronously — but re-reading is what makes the screen show the
+    // server's view rather than a guess. Through the hoisted container, not
+    // `refreshEntitlements(ref)`: see the note above.
+    container.invalidate(entitlementsProvider);
+    await container.read(entitlementsProvider.future);
     if (!mounted) return;
     setState(() {
       _busy = false;

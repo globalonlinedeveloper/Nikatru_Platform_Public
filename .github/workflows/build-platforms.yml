@@ -44,6 +44,20 @@ on:
   # build and fails past 14 days, which is what turns this silence into a signal.
   schedule:
     - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+    # SECOND CHANCE, added 2026-08-26. ONE weekly slot gives the 14-day ceiling
+    # in assert-platform-proof-fresh.mjs exactly ONE chance per fortnight to be
+    # renewed, and a miss reddens `ci-gate` REPO-WIDE until a SCHEDULED run
+    # succeeds — `gh workflow run` cannot clear it, because the guard counts only
+    # `event === 'schedule'`. Measured on this very workflow: the anchor run
+    # 32003607931 landed 2026-08-17T06:55:35Z, so the ceiling expires
+    # 2026-08-31T06:55:35Z and the Monday slot fires 06:00Z — 55 minutes of
+    # margin. GitHub's measured queue drift HERE was +56, +59, +102 and +226
+    # minutes on the last four scheduled runs: THREE OF FOUR WOULD HAVE MISSED.
+    # A second weekday costs one extra build a week and turns a single point of
+    # failure into two independent ones. It does NOT touch MAX_AGE_DAYS, which
+    # stays 14 — raising the ceiling would hide rot, whereas firing more often
+    # proves the timer more often. That is the whole difference.
+    - cron: '0 6 * * 4'   # Thursdays 06:00 UTC
 
 env:
   FLUTTER_VERSION: '3.47.1'
@@ -170,6 +184,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # ── the tag is read BEFORE six platforms are built ───────────────────────
+      # `--tag` compares the version the tag NAMES against the build name
+      # apps/<slug>/pubspec.yaml DECLARES. Here that is an EARLY FAIL and nothing
+      # more: a tag naming a version the app does not carry stops in the FIRST
+      # job after `gate`, instead of after three build jobs each declaring
+      # `timeout-minutes: 30`. The AUTHORITATIVE copy is in `release`, on the
+      # exact string that renames the installers.
+      #
+      # ⚠️ NO `--app` ON PURPOSE. Without it the guard derives `apps/<slug>` from
+      # the tag itself, which is what keeps its app-existence and exact-leaf
+      # (casefold) limbs live — `--app` would answer that question for it.
+      #
+      # `github.ref_name` goes through `env:`: a ref name is attacker-influenced
+      # text and `${{ }}` inside a `run:` is substituted before bash ever sees it.
+      # [zizmor template-injection]
+      - name: The tag must name the version the app declares
+        if: github.ref_type == 'tag'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: node tooling/ci/assert-app-versioning.mjs --tag "$REF_NAME"
       - name: The matrix comes from the workspace, never from this file
         id: workspace
         run: |
@@ -774,6 +808,28 @@ jobs:
       # AppxSignature.p7x, which is the positive evidence that `store: true`
       # took effect — `store: false` silently re-introduces a test certificate
       # nobody owns.
+      # 🔴 UPLOAD THE PACKAGE BEFORE ANYTHING JUDGES IT, AND UPLOAD IT EVEN WHEN
+      # THE JUDGEMENT FAILS. The artifact upload at the end of this job carries
+      # no `if:`, so it defaults to `success()` — meaning on 2026-08-25, three
+      # consecutive runs failed at the guard below and NOT ONE of them left the
+      # .msix anywhere a human could fetch it. The bytes that would explain the
+      # failure are destroyed by the failure. Two of those runs were spent
+      # inferring the package's shape from a stack trace because of it.
+      #
+      # `if: always()` rather than `success()`, and a SEPARATE upload from the
+      # one at the end of the job, so this cannot be broken by someone changing
+      # what that one collects. `if-no-files-found: warn` is deliberate HERE and
+      # would be wrong there: if `msix:create` produced nothing, the step above
+      # already failed and this upload has nothing to add — turning that into a
+      # second red would report one defect twice.
+      - name: Keep the .msix even if what follows refuses it
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.app }}-windows-msix-diagnostic
+          path: apps/${{ matrix.app }}/build/windows/msix/*.msix
+          retention-days: 14
+          if-no-files-found: warn
       - name: The MSIX carries the identity the register declares
         shell: bash
         run: >
@@ -1234,6 +1290,16 @@ jobs:
             TAG="${APP}-untagged-$(git rev-parse --short HEAD)"
           fi
           echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          # AUTHORITATIVE, and it sits here rather than after `--stage` because
+          # this is the last moment the installers still carry their build names:
+          # `--stage` renames every one of them after $TAG. `set -euo pipefail`
+          # above is what makes a non-zero exit fail the job.
+          # UNCONDITIONAL on purpose — on a non-tag run $TAG is the
+          # `<app>-untagged-<sha>` value synthesised two lines up, which the guard
+          # treats as a no-op, so every dispatch and every scheduled run still
+          # exercises the parse and proves the code loads. Gating this on
+          # `ref_type == 'tag'` would leave it dead until the first real release.
+          node tooling/ci/assert-app-versioning.mjs --tag "$TAG"
           mkdir -p dist
           node tooling/ci/release-manifest.mjs --stage downloads --out dist --app "$APP" --tag "$TAG"
           for d in downloads/*/; do
@@ -1258,8 +1324,30 @@ jobs:
         run: >
           node tooling/ci/release-manifest.mjs --write dist
           --app "$APP" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" --run-url "$RUN_URL"
+      # `--expect-formats` is the COMPLETENESS half, and it is a DIFFERENT
+      # question from the one above. `--verify` alone asks whether dist/ and
+      # SHA256SUMS agree, so a dist missing a whole platform verifies clean —
+      # measured 2026-08-27 on a fixture holding the .apk and .aab and no .msix:
+      # plain `--verify` exits 0 printing `ok  2 asset(s) verified`.
+      #
+      # 🔴 `--for-workflow` IS NOT DECORATION HERE. Unnarrowed, the expected set
+      # is derived from EVERY lane-bearing channel row and so includes `.snap`,
+      # which `submit-snap.yml` emits and this workflow never does; measured
+      # 2026-08-27, that spelling exits 1 naming `.snap` even on a dist carrying
+      # all three formats this lane produces. Narrowed to this file the set is
+      # `.aab .apk .msix` — exactly the three the upload-artifact steps above
+      # carry with `if-no-files-found: error`, on every run and not only on tags.
+      #
+      # 🔴 ON `--verify`, NEVER ON THE `--write` STEP ABOVE — `--verify` is the
+      # only mode that reads these flags, so on `--write` they would run the
+      # named mode and ask nothing. release-manifest.mjs refuses that spelling
+      # outright today ("--expect-formats is read by --verify alone", exit 1,
+      # measured 2026-08-27), so the misplacement is loud rather than silent —
+      # but the placement is the reason it works, not that refusal.
       - name: Re-verify every asset against the manifest
-        run: node tooling/ci/release-manifest.mjs --verify dist
+        run: >
+          node tooling/ci/release-manifest.mjs --verify dist
+          --expect-formats --for-workflow .github/workflows/build-platforms.yml
       # ── publish ─────────────────────────────────────────────────────────────
       # 🔴 `gh release create` IS WRITTEN HERE, IN THE WORKFLOW, ON PURPOSE.
       # assert-release-provenance.mjs classifies a publish from the workflow TEXT
@@ -1291,6 +1379,45 @@ jobs:
           } > dist-notes.md
           gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file dist-notes.md $(node tooling/ci/release-manifest.mjs --emit-assets dist)
           echo "RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)" >> "$GITHUB_ENV"
+      # ── the read-back — [14]O-7, IN THIS JOB, ON WHAT THIS JOB UPLOADED ─────
+      # 🔴 THE FINDING THAT PUT IT HERE, 2026-08-26. This job was INVISIBLE to
+      # [14]O-7 until today. The shared workflow reader could not match a QUOTED
+      # SHELL VARIABLE, so the ledger call at the end of this job matched nothing,
+      # the job dropped out of that limb's domain in silence, and the census
+      # printed "7 deploy job(s)" without it. Widening the reader made the job
+      # appear — and it failed the rule immediately, because it published a
+      # GitHub Release and read NOTHING back.
+      #
+      # WHAT THE PROBE JOINS ON, and it is deliberately not "a release exists at
+      # this tag": the GitHub API reports every release asset's `digest` as
+      # `sha256:<hex>`, MEASURED 2026-08-26 to be exactly the sha256 of the bytes
+      # the release serves — cli/cli v2.92.0's checksums asset read back through
+      # the API and hashed with `sha256sum` agreed to the character. dist/SHA256SUMS
+      # already carries that same number for every asset this run staged, so the
+      # probe asserts THE RELEASE CARRIES THESE FILES WITH THESE HASHES, in both
+      # directions. A release published last month answers "does a release exist"
+      # exactly as well as one published ten seconds ago, which is why that is not
+      # the question being asked.
+      #
+      # ⬜ NOT YET LOAD-BEARING, WHICH IS PRECISELY WHY IT IS BEING CLOSED NOW:
+      # with a staged `dist`, `release-manifest.mjs --emit-environments` omits
+      # `subly-windows-direct` while that channel's signing posture is SENTINEL, so
+      # the loop in the step below iterates over nothing and no ledger row is
+      # written today — the blind spot arms itself the day the code-signing pin is
+      # filled in, and closing it then costs a release.
+      #
+      # ⚠️ IT RUNS BEFORE THE LEDGER STEP AND DOES NOT GUARD IT — the ordering
+      # submit-play.yml:submit uses, for the same reason. A red here still fails
+      # the job; a release that IS published must still be recorded as published.
+      - name: The release must carry the assets this job just uploaded
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "⬜ [14]O-7 reading back the release ${REPO}@${RELEASE_TAG}"
+          node tooling/ops/post-deploy-smoke.mjs --release-repo "$REPO" --release-tag "$RELEASE_TAG" --release-manifest dist/SHA256SUMS
       # ── record what shipped — [10]D-9, through the script that already does it ─
       # 🔴 EXTENDED, NOT DUPLICATED. tooling/ci/record-deployment.mjs already
       # writes the [10]D-9 ledger entry and already resolves an environment

@@ -41,6 +41,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 
 import {
   ROLE_ENV,
@@ -148,8 +149,13 @@ function fakeProfile({ name = 'Subly App Store', team = TEAM, bundleId = 'com.ni
   return Buffer.concat([head, Buffer.from(plist, 'utf8'), Buffer.alloc(64, 0x00)]);
 }
 
-/** A real zip, central directory and all — stored or deflated per entry. */
-function makeZip(entries) {
+/** A real zip, central directory and all. `{ zip64: true }` promotes it to the
+ *  ZIP64 form MakeAppx writes for every .msix — EOCD64 record, its locator, and
+ *  0xFFFF/0xFFFFFFFF sentinels in the 32-bit records — which is the shape that
+ *  threw ERR_OUT_OF_RANGE out of unzip() on build-platforms run 32814517717.
+ *  The members are byte-identical either way, so the two forms are directly
+ *  comparable and the tests below compare them. */
+function makeZip(entries, { zip64 = false } = {}) {
   const locals = [];
   const centrals = [];
   let offset = 0;
@@ -190,18 +196,74 @@ function makeZip(entries) {
     central.writeUInt16LE(nameBuf.length, 28);
     central.writeUInt32LE(offset, 42);
 
+    if (zip64) {
+      // ZIP64 promotion of THIS entry. The sizes become sentinels and move into
+      // the 0x0001 extra field; the local-header offset does too — EXCEPT for
+      // the first member, which sits at 0 and therefore keeps its 32-bit field.
+      // That asymmetry is not decoration: it is what a real writer emits, and it
+      // is the case a reader gets wrong by taking the extra field's slots
+      // positionally instead of conditionally.
+      const offsetIsSentinel = offset !== 0;
+      // `declaredUncompressed` lets a case state an uncompressed size LARGER
+      // than the archive that holds it, which is what a compressed member of any
+      // real package does and which no fixture could express while this was
+      // hard-wired to the byte length.
+      const declaredU = BigInt(e.declaredUncompressed ?? e.bytes.length);
+      const localExtra = Buffer.alloc(20);
+      localExtra.writeUInt16LE(0x0001, 0);
+      localExtra.writeUInt16LE(16, 2);
+      localExtra.writeBigUInt64LE(declaredU, 4);
+      localExtra.writeBigUInt64LE(BigInt(data.length), 12);
+      local.writeUInt32LE(0xffffffff, 18);
+      local.writeUInt32LE(0xffffffff, 22);
+      local.writeUInt16LE(localExtra.length, 28);
+      const centralExtra = Buffer.alloc(offsetIsSentinel ? 28 : 20);
+      centralExtra.writeUInt16LE(0x0001, 0);
+      centralExtra.writeUInt16LE(offsetIsSentinel ? 24 : 16, 2);
+      centralExtra.writeBigUInt64LE(declaredU, 4);
+      centralExtra.writeBigUInt64LE(BigInt(data.length), 12);
+      if (offsetIsSentinel) centralExtra.writeBigUInt64LE(BigInt(offset), 20);
+      central.writeUInt32LE(0xffffffff, 20);
+      central.writeUInt32LE(0xffffffff, 24);
+      central.writeUInt16LE(centralExtra.length, 30);
+      if (offsetIsSentinel) central.writeUInt32LE(0xffffffff, 42);
+      locals.push(local, nameBuf, localExtra, data);
+      centrals.push(central, nameBuf, centralExtra);
+      offset += local.length + nameBuf.length + localExtra.length + data.length;
+      continue;
+    }
     locals.push(local, nameBuf, data);
     centrals.push(central, nameBuf);
     offset += local.length + nameBuf.length + data.length;
   }
   const centralBuf = Buffer.concat(centrals);
+  const tail = [];
+  if (zip64) {
+    // The EOCD64 record carries the true count/size/offset; the locator says
+    // where it is. MakeAppx writes both and then fills the 32-bit EOCD with
+    // sentinels REGARDLESS OF SIZE, which is the shape that crashed the guard.
+    const rec = Buffer.alloc(56);
+    rec.writeUInt32LE(0x06064b50, 0);
+    rec.writeBigUInt64LE(44n, 4);
+    rec.writeUInt16LE(45, 12);
+    rec.writeUInt16LE(45, 14);
+    rec.writeBigUInt64LE(BigInt(entries.length), 24);
+    rec.writeBigUInt64LE(BigInt(entries.length), 32);
+    rec.writeBigUInt64LE(BigInt(centralBuf.length), 40);
+    rec.writeBigUInt64LE(BigInt(offset), 48);
+    const locator = Buffer.alloc(20);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeBigUInt64LE(BigInt(offset + centralBuf.length), 8);
+    locator.writeUInt32LE(1, 16);
+    tail.push(rec, locator);
+  }
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(0x06054b50, 0);
-  eocd.writeUInt16LE(entries.length, 8);
-  eocd.writeUInt16LE(entries.length, 10);
-  eocd.writeUInt32LE(centralBuf.length, 12);
-  eocd.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, centralBuf, eocd]);
+  eocd.writeUInt16LE(zip64 ? 0xffff : entries.length, 8);
+  eocd.writeUInt16LE(zip64 ? 0xffff : entries.length, 10);
+  eocd.writeUInt32LE(zip64 ? 0xffffffff : centralBuf.length, 12);
+  eocd.writeUInt32LE(zip64 ? 0xffffffff : offset, 16);
+  return Buffer.concat([...locals, centralBuf, ...tail, eocd]);
 }
 
 // ── fixture repository roots ─────────────────────────────────────────────────
@@ -678,6 +740,266 @@ describe('apple-signing — the profiles container', () => {
   test('unzip returns null on a truncated archive rather than a partial list', () => {
     const zip = makeZip([{ name: 'a.mobileprovision', bytes: fakeProfile(), method: 0 }]);
     assert.equal(unzip(zip.slice(0, 10)), null);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// unzip — ZIP64, WHICH IS NOT AN APPLE CASE AND IS WHY IT IS TESTED HERE
+//
+// 🔴 unzip() HAS TWO CALLERS AND ONLY ONE OF THEM IS APPLE.
+// tooling/ci/assert-artifact-signed-msix.mjs hands it a Windows .msix, and an
+// .msix is an OPC/APPX package: the packaging tool writes the ZIP64 end-of-
+// central-directory record, its locator and the 0xFFFF/0xFFFFFFFF sentinels
+// REGARDLESS OF SIZE. On build-platforms run 32814517717 a 16,585,912-byte
+// package made this function evaluate `buffer.readUInt32LE(4294967295)` and
+// throw `RangeError [ERR_OUT_OF_RANGE]`; the guard did not fail, it CRASHED,
+// and the Windows leg had been dead for weeks behind an earlier defect.
+//
+// ⚠️ THE ZIP64 CASES LIVE IN THE APPLE SUITE ON PURPOSE. The function is on the
+// Apple RELEASE-SIGNING path, which is green. Whatever ZIP64 costs, it must cost
+// the Apple side nothing — so the pin below ('a classic archive is read by the
+// same statements…') is in the same file as everything that reads a profile
+// bundle, where a change to unzip() cannot be reviewed without seeing it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('apple-signing — unzip and ZIP64', () => {
+  const members = () => [
+    { name: 'AppxManifest.xml', bytes: Buffer.from('<Package><Identity Name="X" /></Package>', 'utf8'), method: 8 },
+    { name: 'subly.exe', bytes: Buffer.from('PE-BYTES'), method: 0 },
+    { name: 'Assets/icon.png', bytes: Buffer.concat([Buffer.from('\x89PNG\r\n\x1a\n', 'binary'), Buffer.alloc(200, 0x78)]), method: 8 },
+  ];
+  const find = (buf, sig) => buf.indexOf(Buffer.from([sig & 0xff, (sig >>> 8) & 0xff, (sig >>> 16) & 0xff, (sig >>> 24) & 0xff]));
+  const eocdOf = (buf) => buf.length - 22;
+  const cdStart = (buf) => Number(buf.readBigUInt64LE(find(buf, 0x06064b50) + 48));
+  /** The LAST central-directory entry — the one with nothing after it to absorb
+   *  an over-long extra field, which is what the two bound checks are about. */
+  const lastCdEntry = (buf) => {
+    let p = cdStart(buf);
+    const n = Number(buf.readBigUInt64LE(find(buf, 0x06064b50) + 32));
+    for (let i = 0; i < n - 1; i++) p += 46 + buf.readUInt16LE(p + 28) + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
+    return p;
+  };
+
+  test('the fixture really is ZIP64 — locator, record and sentinels, none of them assumed', () => {
+    const zip = makeZip(members(), { zip64: true });
+    assert.notEqual(find(zip, 0x07064b50), -1, 'EOCD64 locator signature 0x07064b50 must be present');
+    assert.notEqual(find(zip, 0x06064b50), -1, 'EOCD64 record signature 0x06064b50 must be present');
+    assert.equal(zip.readUInt16LE(eocdOf(zip) + 10), 0xffff, 'EOCD entry count must be the sentinel');
+    assert.equal(zip.readUInt32LE(eocdOf(zip) + 16), 0xffffffff, 'EOCD central-directory offset must be the sentinel');
+    // And the classic form of the SAME members must carry none of it, or the
+    // non-regression pin below would be comparing ZIP64 against ZIP64.
+    const classic = makeZip(members());
+    assert.equal(find(classic, 0x07064b50), -1);
+    assert.equal(classic.readUInt32LE(eocdOf(classic) + 16) === 0xffffffff, false);
+  });
+
+  // 🔴 THE CASE NO CONSTRUCTED FIXTURE COULD REACH UNTIL THE REAL PACKAGE WAS IN
+  // HAND. The first ZIP64 fix made unzip() stop CRASHING on the .msix and start
+  // REFUSING it — `could not be read as a zip` — because the slot reader applied
+  // one bound to every 64-bit field: "nothing inside this archive can sit past
+  // its own end". True of an OFFSET. True of a COMPRESSED size. FALSE of an
+  // UNCOMPRESSED one, which describes the decompressed content and is routinely
+  // larger than the whole archive. That is what compression IS.
+  //
+  // MEASURED on the real subly.msix (build-platforms 32823633046, the first run
+  // to keep the package after the guard refused it — see PR #372): 96 members,
+  // every one carrying sentinels, and entry [2] `flutter_windows.dll` declaring
+  // an uncompressed size of 21,284,864 bytes inside a 16,585,733-byte archive.
+  // 1.28x the file containing it, and entirely ordinary for a DLL.
+  //
+  // The fixture could not express this while it wrote `e.bytes.length` into that
+  // slot — the declared size was the real one by construction, so the bound was
+  // never violated and every ZIP64 test passed over an archive that could not
+  // occur. `declaredUncompressed` exists for exactly this.
+  test('an uncompressed size LARGER than the archive is read, not refused', () => {
+    const big = members().map((m, i) => (i === 1 ? { ...m, declaredUncompressed: 21284864 } : m));
+    const zip = makeZip(big, { zip64: true });
+    assert.ok(21284864 > zip.length, 'the declared size must exceed the archive, or this pins nothing');
+    const out = unzip(zip);
+    assert.notEqual(out, null, 'a member that decompresses to more than the archive holds must still open');
+    assert.deepEqual(out.map((e) => e.name), ['AppxManifest.xml', 'subly.exe', 'Assets/icon.png']);
+    for (const [i, m] of members().entries()) assert.deepEqual(out[i].bytes, m.bytes);
+  });
+
+  // The bound still HOLDS where it is true: an OFFSET past the end is corruption
+  // and must still be refused, or the repair would have removed the check rather
+  // than aimed it.
+  test('an OFFSET past the end of the archive is still refused', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const cd = zip.readBigUInt64LE(Number(zip.readBigUInt64LE(eocdOf(zip) - 20 + 8)) + 48);
+    let p = Number(cd);
+    // second entry: its local offset is a sentinel, so the extra field carries it
+    p += 46 + zip.readUInt16LE(p + 28) + zip.readUInt16LE(p + 30) + zip.readUInt16LE(p + 32);
+    const nameLen = zip.readUInt16LE(p + 28);
+    const extraStart = p + 46 + nameLen;
+    // slots: uncompressed, compressed, offset -> the offset is the third
+    zip.writeBigUInt64LE(BigInt(zip.length + 4096), extraStart + 4 + 16);
+    assert.equal(unzip(zip), null, 'a local-header offset beyond the archive must still be refused');
+  });
+
+  test('a ZIP64 archive is READ — the exact shape that threw ERR_OUT_OF_RANGE', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const out = unzip(zip);
+    assert.notEqual(out, null, 'a ZIP64 archive must open, not return null');
+    assert.deepEqual(out.map((e) => e.name), ['AppxManifest.xml', 'subly.exe', 'Assets/icon.png']);
+    for (const [i, m] of members().entries()) assert.deepEqual(out[i].bytes, m.bytes);
+  });
+
+  test('ZIP64 and classic forms of the same members yield IDENTICAL bytes', () => {
+    const a = unzip(makeZip(members()));
+    const b = unzip(makeZip(members(), { zip64: true }));
+    assert.deepEqual(a, b);
+  });
+
+  // ── every refusal below is a `return null`, which both callers already read
+  //    as "not a readable zip". None of them is a crash and none is a pass. ──
+  test('an EOCD sentinel with NO locator behind it is refused, not indexed', () => {
+    const zip = makeZip(members(), { zip64: true });
+    zip.writeUInt32LE(0x07064b51, find(zip, 0x07064b50)); // one bit off the locator signature
+    assert.equal(unzip(zip), null);
+  });
+
+  test('a locator pointing at something that is not an EOCD64 record is refused', () => {
+    const zip = makeZip(members(), { zip64: true });
+    zip.writeUInt32LE(0x06064b51, find(zip, 0x06064b50));
+    assert.equal(unzip(zip), null);
+  });
+
+  test('an EOCD64 record pointed outside the archive is refused, not read', () => {
+    const zip = makeZip(members(), { zip64: true });
+    zip.writeBigUInt64LE(0xffffffffn, find(zip, 0x07064b50) + 8);
+    assert.equal(unzip(zip), null);
+  });
+
+  test('the entry count comes from the EOCD64 record, not from the sentinel', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const rec = find(zip, 0x06064b50);
+    assert.equal(Number(zip.readBigUInt64LE(rec + 32)), 3);
+    zip.writeBigUInt64LE(2n, rec + 32);
+    assert.equal(unzip(zip).length, 2, 'a reader taking the count from anywhere else would still say 3');
+  });
+
+  test('the central-directory offset comes from the EOCD64 record', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const rec = find(zip, 0x06064b50);
+    zip.writeBigUInt64LE(BigInt(cdStart(zip) + 1), rec + 48); // one byte off the real start
+    assert.equal(unzip(zip), null, 'a central directory that does not start with 0x02014b50 is refused');
+  });
+
+  test('the UNCOMPRESSED-size slot is stepped over, never read as the compressed size', () => {
+    // The first member's extra field carries [uncompressed, compressed] and no
+    // offset; the later members carry [uncompressed, compressed, offset]. A
+    // reader that takes slot 0 as the compressed size decompresses the wrong
+    // byte range — and for a STORED member it silently returns the wrong length
+    // instead of throwing, which is the failure that looks like a pass.
+    const zip = makeZip(members(), { zip64: true });
+    const out = unzip(zip);
+    assert.equal(out[1].name, 'subly.exe');
+    assert.equal(out[1].bytes.length, 8, 'stored member must carry its 8 real bytes');
+    assert.equal(out[1].bytes.toString(), 'PE-BYTES');
+    assert.equal(out[0].bytes.toString('utf8'), '<Package><Identity Name="X" /></Package>');
+  });
+
+  test('a ZIP64 extra field truncated mid-slot is refused rather than guessed', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const cd = cdStart(zip);
+    const nameLen = zip.readUInt16LE(cd + 28);
+    zip.writeUInt16LE(8, cd + 46 + nameLen + 2); // payload says 8 bytes; two slots need 16
+    assert.equal(unzip(zip), null);
+  });
+
+  test('an entry whose extra field is not ZIP64 at all is refused, not defaulted', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const cd = cdStart(zip);
+    const nameLen = zip.readUInt16LE(cd + 28);
+    zip.writeUInt16LE(0x5455, cd + 46 + nameLen); // 0x5455 = extended timestamp
+    assert.equal(unzip(zip), null);
+  });
+
+  test('an extra field claiming MORE payload than the extra area holds is refused', () => {
+    // One byte over. Every slot the reader wants is still inside the area, so a
+    // reader without this bound answers CORRECTLY and never notices — which is
+    // why the mutation of this line has to be caught by an input where being
+    // wrong looks like being right.
+    const zip = makeZip(members(), { zip64: true });
+    const cd = lastCdEntry(zip);
+    const nameLen = zip.readUInt16LE(cd + 28);
+    assert.equal(zip.readUInt16LE(cd + 46 + nameLen + 2), 24, 'the last entry carries all three slots');
+    zip.writeUInt16LE(25, cd + 46 + nameLen + 2);
+    assert.equal(unzip(zip), null);
+  });
+
+  test('an extra AREA declared past the end of the archive is refused', () => {
+    const zip = makeZip(members(), { zip64: true });
+    zip.writeUInt16LE(0xffff, lastCdEntry(zip) + 30);
+    assert.equal(unzip(zip), null);
+  });
+
+  test('a 64-bit value larger than the archive is refused, not turned into an index', () => {
+    const zip = makeZip(members(), { zip64: true });
+    const cd = cdStart(zip);
+    const nameLen = zip.readUInt16LE(cd + 28);
+    // Slot 1 of the first entry is its compressed size; make it absurd.
+    zip.writeBigUInt64LE(0xfffffffffn, cd + 46 + nameLen + 4 + 8);
+    assert.equal(unzip(zip), null);
+  });
+
+  test('a classic archive is read by the same statements — ZIP64 cost the Apple path nothing', () => {
+    // 🔴 THE PIN. unzip() is on the Apple RELEASE-SIGNING path; macOS and iOS
+    // were GREEN on the run that killed Windows. Every non-ZIP64 answer this
+    // function can give — members, null, and the RangeError it throws on a
+    // corrupt central directory — is fixed here, over a real profile bundle and
+    // over every truncation of it, so that widening the reader cannot quietly
+    // narrow it.
+    const zip = makeZip([
+      { name: 'subly-ios.mobileprovision', bytes: fakeProfile({ name: 'Subly iOS' }), method: 0 },
+      { name: 'subly-macos.provisionprofile', bytes: fakeProfile({ name: 'Subly macOS' }), method: 8 },
+    ]);
+    assert.equal(zip.readUInt32LE(eocdOf(zip) + 16) === 0xffffffff, false, 'the fixture must not be ZIP64');
+    const full = unzip(zip);
+    assert.equal(full.length, 2);
+    assert.equal(parseMobileProvision(full[0].bytes).name, 'Subly iOS');
+    assert.equal(parseMobileProvision(full[1].bytes).name, 'Subly macOS');
+
+    // MEASURED, not asserted in the abstract: of the 1889 prefixes of this
+    // 1888-byte archive, exactly ONE (the whole of it) yields a member list and
+    // every other yields null. Not "at least one" — the exact partition, so that
+    // a reader which started refusing or started guessing is equally visible.
+    let lists = 0;
+    let nulls = 0;
+    let threw = 0;
+    for (let n = 0; n <= zip.length; n++) {
+      let r;
+      try { r = unzip(zip.subarray(0, n)); } catch { threw++; continue; }
+      if (r === null) { nulls++; continue; }
+      lists++;
+      assert.deepEqual(r, full, `truncation at ${n} produced a DIFFERENT member list`);
+    }
+    assert.deepEqual({ lists, nulls, threw }, { lists: 1, nulls: zip.length, threw: 0 });
+
+    // ── AND THE CORRUPTED CASES, PINNED BY DIGEST ────────────────────────────
+    // A byte smeared to 0xff at every fourth offset gives 472 answers: member
+    // lists, nulls, and the RangeError unzip() has always thrown when a
+    // corrupted header sends it past the end of the buffer. Some of those lists
+    // are WRONG — a smeared name length shifts a member's data — and that is
+    // the point: they are what this function did before ZIP64 was added, and
+    // "cost the Apple path nothing" is a claim about ALL of them, not only the
+    // ones that look tidy. The digest is over structure and error CODE only, so
+    // it does not move with a Node release that rewords a message.
+    const answers = [];
+    for (let n = 0; n < zip.length; n += 4) {
+      const smeared = Buffer.from(zip);
+      smeared[n] = 0xff;
+      let r;
+      try { r = unzip(smeared); } catch (e) { answers.push(`${n}:threw:${e.code}`); continue; }
+      if (r === null) { answers.push(`${n}:null`); continue; }
+      answers.push(`${n}:${r.map((m) => `${m.name}=${m.bytes === null ? `m${m.unsupportedMethod}` : createHash('sha256').update(m.bytes).digest('hex').slice(0, 16)}`).join(',')}`);
+    }
+    assert.equal(answers.length, 472);
+    assert.equal(
+      createHash('sha256').update(answers.join('\n')).digest('hex'),
+      '8c5a93e65bd0fab84d88911a54b62f3cfdada2d340c1521fe72640c5240e1959',
+      'unzip() answers differently on a corrupted NON-ZIP64 archive than it did before ZIP64 was added',
+    );
   });
 });
 

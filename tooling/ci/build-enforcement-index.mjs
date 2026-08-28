@@ -117,6 +117,126 @@ export const readCitations = (source, selfName, siblingNames) => {
   return { claims: [...claims].sort(), references: [...references].sort() };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WHICH LANE REACHES IT — the invoking workflow's `on:` triggers.
+//
+// WIRED answered "a workflow job names it in a `node` command" and STOPPED
+// THERE. A workflow whose only trigger is `workflow_dispatch` never runs unless
+// a person opens the Actions tab and presses a button, so an enforcer wired
+// only into one is WIRED in a sense no reader assumes: nothing about merging,
+// pushing or opening a pull request causes it to run even once. The word was
+// carrying a claim it could not support, and the fix is to READ the triggers
+// rather than to weaken the word.
+//
+// THREE LANES, NOT TWO, and the third is why `schedule` is not folded into
+// either neighbour. A nightly cron DOES run unattended — nobody has to remember
+// it — so calling it "manual" is false. But it runs on a CLOCK, not on a
+// change: a defect introduced at 10:00 is caught at 03:17 tomorrow, in a run
+// attached to no commit and blocking no merge. It is materially weaker than a
+// push lane and materially stronger than a button, so it gets its own name.
+//
+// `workflow_call` is a FOURTH answer and deliberately not a lane: a reusable
+// workflow's real lane is its CALLER's, which is not readable from its own
+// `on:` block. Calling it automatic would launder exactly the claim this
+// reader exists to test, so it reads INHERITED — unresolved, and reported so.
+// `repository_dispatch` sits with `workflow_dispatch`: an API call standing in
+// for the same button, fired by something outside this repository's events.
+// ─────────────────────────────────────────────────────────────────────────────
+export const LANE_AUTOMATIC = 'automatic';
+export const LANE_SCHEDULED = 'scheduled';
+export const LANE_DISPATCH = 'dispatch';
+export const LANE_INHERITED = 'inherited';
+export const LANE_UNREADABLE = 'unreadable';
+
+const MANUAL_TRIGGERS = new Set(['workflow_dispatch', 'repository_dispatch']);
+const TIMED_TRIGGERS = new Set(['schedule']);
+const CALLED_TRIGGERS = new Set(['workflow_call']);
+const ON_KEY = /^(?:on|'on'|"on"):(.*)$/;
+
+/**
+ * The trigger names of one parsed workflow, sorted. All three YAML forms:
+ * `on: push`, `on: [push, pull_request]`, and the block map. Keys are taken at
+ * EXACTLY two spaces, because `on.push.branches` and `on.schedule[].cron` sit
+ * deeper and are not triggers — and the block ends at the first column-0 key,
+ * so an `env:` mapping that happens to hold a key called `push` cannot donate a
+ * trigger the workflow does not have. Both shapes are in the canary below.
+ *
+ * Returns `[]` when nothing was read. That is NOT "no triggers" — GitHub
+ * refuses a workflow without `on:` — it is "this reader could not see them",
+ * and every caller must treat it as unresolved rather than as automatic.
+ */
+export function readTriggers(wf) {
+  const lines = (wf?.lines ?? []).map((l) => l.text);
+  const at = lines.findIndex((l) => ON_KEY.test(l));
+  if (at === -1) return [];
+  const clean = (s) => s.trim().replace(/^['"]|['"]$/g, '');
+  const out = new Set();
+  const head = ON_KEY.exec(lines[at])[1].trim();
+  if (head.startsWith('[')) {
+    for (const t of head.replace(/^\[/, '').replace(/\]$/, '').split(',')) if (clean(t)) out.add(clean(t));
+    return [...out].sort();
+  }
+  if (head !== '') return [clean(head)].filter(Boolean).sort();
+  for (let i = at + 1; i < lines.length; i++) {
+    const t = lines[i];
+    if (t.trim() === '') continue;
+    if (/^\S/.test(t)) break;
+    const m = /^ {2}(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\1:/.exec(t);
+    if (m) out.add(m[2]);
+  }
+  return [...out].sort();
+}
+
+/** One workflow's lane, from its trigger names. */
+export function laneOf(triggers) {
+  if (!Array.isArray(triggers) || triggers.length === 0) return LANE_UNREADABLE;
+  if (triggers.some((t) => !MANUAL_TRIGGERS.has(t) && !TIMED_TRIGGERS.has(t) && !CALLED_TRIGGERS.has(t))) return LANE_AUTOMATIC;
+  if (triggers.some((t) => TIMED_TRIGGERS.has(t))) return LANE_SCHEDULED;
+  if (triggers.some((t) => MANUAL_TRIGGERS.has(t))) return LANE_DISPATCH;
+  return LANE_INHERITED;
+}
+
+/**
+ * One ENFORCER's lane, over all the jobs that invoke it. The STRONGEST
+ * reachability wins: one automatic invoker really does run it on every push,
+ * and reporting that enforcer as dispatch-only because a second, manual
+ * workflow also names it would be a false alarm — the class of red that gets a
+ * guard switched off. `null` means nothing invokes it, which is ORPHAN's
+ * question, not this one's.
+ */
+export function laneOfInvokers(invokedBy, laneByWorkflow) {
+  const lanes = new Set((invokedBy ?? []).map((e) => laneByWorkflow.get(String(e).split('#')[0]) ?? LANE_UNREADABLE));
+  if (lanes.size === 0) return null;
+  for (const lane of [LANE_AUTOMATIC, LANE_SCHEDULED, LANE_DISPATCH, LANE_INHERITED]) if (lanes.has(lane)) return lane;
+  return LANE_UNREADABLE;
+}
+
+// The trigger reader gets the same treatment as the citation reader: a reader
+// that quietly stops reading reports every workflow as automatic — the exact
+// false green this whole section was added to remove.
+const triggerCanaries = () => {
+  const wf = (text) => ({ lines: text.split('\n').map((t, i) => ({ n: i + 1, text: t })) });
+  const cases = [
+    ['block form, push + button', 'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n', 'push,workflow_dispatch', LANE_AUTOMATIC],
+    ['button only, with inputs', 'on:\n  workflow_dispatch:\n    inputs:\n      confirm:\n        type: string\n', 'workflow_dispatch', LANE_DISPATCH],
+    ['cron plus button', "on:\n  workflow_dispatch:\n  schedule:\n    - cron: '17 3 * * *'\n", 'schedule,workflow_dispatch', LANE_SCHEDULED],
+    ['flow sequence', 'on: [push, pull_request]\n', 'pull_request,push', LANE_AUTOMATIC],
+    ['scalar', 'on: push\n', 'push', LANE_AUTOMATIC],
+    ['quoted key, reusable', '"on":\n  workflow_call:\n', 'workflow_call', LANE_INHERITED],
+    ['no on: block at all', 'name: nothing\njobs:\n  a:\n', '', LANE_UNREADABLE],
+    ['a later top-level key ENDS the block', 'on:\n  workflow_dispatch:\n\nenv:\n  push: 1\n  pull_request: 2\n', 'workflow_dispatch', LANE_DISPATCH],
+    ['tags-only push is still automatic', "on:\n  workflow_dispatch:\n  push:\n    tags: ['*-v*']\n", 'push,workflow_dispatch', LANE_AUTOMATIC],
+  ];
+  const bad = [];
+  for (const [what, text, wantTriggers, wantLane] of cases) {
+    const got = readTriggers(wf(text));
+    if (got.join(',') !== wantTriggers) bad.push(`${what}: triggers read as [${got}] (must be [${wantTriggers}])`);
+    const lane = laneOf(got);
+    if (lane !== wantLane) bad.push(`${what}: lane read as ${lane} (must be ${wantLane})`);
+  }
+  if (bad.length) lose(['the workflow TRIGGER reader no longer reads what it is documented to read.', ...bad]);
+};
+
 const canaries = () => {
   const sib = new Set(['assert-other.mjs']);
   const c = (src) => readCitations(src, 'self.mjs', sib);
@@ -147,6 +267,7 @@ export async function buildEnforcementIndex(root, opts = {}) {
   const realRepo = opts.realRepo === true;
   const notes = [];
   canaries();
+  triggerCanaries();
 
   const CI = join(ROOT, 'tooling', 'ci');
   const TESTS = join(CI, 'test');
@@ -173,6 +294,17 @@ export async function buildEnforcementIndex(root, opts = {}) {
 
   const workflows = parseAllWorkflows(ROOT);
   if (workflows.length === 0) lose([`${WORKFLOW_DIR} holds no readable workflow. Every enforcer would read ORPHAN.`]);
+
+  // Every workflow's lane, keyed by the same `wf.rel` an edge carries, so a row
+  // that names `<workflow>#<job>` can be resolved back to "what makes it run".
+  const laneByWorkflow = new Map(workflows.map((w) => [w.rel, laneOf(readTriggers(w))]));
+  for (const [rel, lane] of [...laneByWorkflow].sort()) {
+    if (lane !== LANE_UNREADABLE) continue;
+    notes.push(
+      `${rel} declares no \`on:\` block this reader can see, so every enforcer it invokes has an UNRESOLVED lane. ` +
+        'GitHub refuses a workflow without triggers, so this is a gap in the reader, not in the workflow.',
+    );
+  }
 
   if (realRepo) {
     const ls = spawnSync('git', ['-C', ROOT, 'ls-files', '--', WORKFLOW_DIR], { encoding: 'utf8' });
@@ -383,7 +515,32 @@ export async function buildEnforcementIndex(root, opts = {}) {
   if (!rows.some((r) => r.kind === 'cross-repo')) {
     notes.push('no row carries kind cross-repo: no workflow in this repository invokes across a repository boundary.');
   }
-  return { rows, notes, problems, meta: { guards: guards.length, workflows: workflows.length, testFiles: testFiles.length, testRunnerJobs } };
+  // The lane belongs in `meta`, NOT in a row. A row field would change the
+  // serialised bytes, and tooling/enforcement-index.json is committed: adding
+  // one is a generator change AND a regeneration, in one commit, or this
+  // repository's own index is stale from the moment the field lands.
+  const laneTally = new Map();
+  const laneOfRef = new Map();
+  for (const r of rows) {
+    const lane = laneOfInvokers(r.invokedBy, laneByWorkflow);
+    if (r.state !== 'WIRED' || lane === null) continue;
+    laneOfRef.set(r.ref, lane);
+    laneTally.set(lane, (laneTally.get(lane) ?? 0) + 1);
+  }
+  return {
+    rows,
+    notes,
+    problems,
+    meta: {
+      guards: guards.length,
+      workflows: workflows.length,
+      testFiles: testFiles.length,
+      testRunnerJobs,
+      laneByWorkflow: Object.fromEntries([...laneByWorkflow].sort()),
+      laneOfRef: Object.fromEntries([...laneOfRef].sort()),
+      laneTally: Object.fromEntries([...laneTally].sort()),
+    },
+  };
 }
 
 export const serialiseIndex = (doc) => `${JSON.stringify(doc.rows, null, 2)}\n`;
@@ -410,11 +567,16 @@ if (isMain) {
       console.error('⬜ notes, printed not hidden:');
       for (const n of doc.notes) console.error(`    ${n}`);
     }
+    // The lane tally rides on the ONE line every reader of this command sees.
+    // A WIRED count with no lane beside it is the number that made an enforcer
+    // reachable only by a button read the same as one that runs on every push.
+    const lanes = Object.entries(doc.meta.laneTally).sort();
     console.error(
       `ok  enforcement index — ${doc.rows.length} enforcer(s) [` +
         [...tally.entries()].sort().map(([k, n]) => `${n} ${k}`).join(', ') +
         `]; ${doc.rows.filter((r) => r.claims.length).length} carry a claim; ${doc.meta.workflows} workflow(s), ` +
-        `${doc.meta.testFiles} test file(s); ${WRITE ? `written to ${INDEX_REL}` : 'printed, nothing written'}`,
+        `${doc.meta.testFiles} test file(s); WIRED by lane [${lanes.length ? lanes.map(([k, n]) => `${n} ${k}`).join(', ') : 'none'}]; ` +
+        `${WRITE ? `written to ${INDEX_REL}` : 'printed, nothing written'}`,
     );
   } catch (e) {
     if (e instanceof CoverageLost) {

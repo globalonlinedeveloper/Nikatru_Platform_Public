@@ -544,12 +544,174 @@ describe('assert-publish-records — the floor cannot range over zero', () => {
   });
 });
 
+// ── THE CENSUS SCOPE · THE DEFECT OF 2026-08-26 ──────────────────────────────
+// 🔴 THE CENSUS RANGED OVER THE REGISTER'S `submission.job` AND NOTHING ELSE,
+// so a workflow whose DECLARED job rehearses and whose SECOND job publishes was
+// graded entirely on the rehearsal. `submit-play.yml` and `submit-snap.yml` are
+// both that shape: `dry-run:` carries `--dry-run`, `submit:` carries `--submit`,
+// and neither `submit:` job wrote a record. The guard printed "the branch has NO
+// instances today and passes over nothing" on every run — a rule with zero
+// instances cannot fail, and its output is byte-identical to a rule that passed.
+//
+// Mutation-proven against the REAL tree, 2026-08-26, and recorded here because
+// no fixture written by the same hand would have found it:
+//   · with the one-job census: `ok  publish records`, exit 0, "0 of 5 … can
+//     perform a REAL submission".
+//   · with the census over every job: exit 1, "job \"submit\" can perform a REAL
+//     submission on the \"android-play\" channel … and no later step records it",
+//     plus the same for linux-snap.
+// The two `submit:` jobs now each end with a record step, which is why the tree
+// is green again — the fix was not to the guard alone.
+describe('assert-publish-records — the census ranges over EVERY job, not the declared one', () => {
+  /** The exact shape the real tree had: a declared rehearsal job, and a second
+   *  job the register never names that performs the real upload. */
+  const twoJobWorkflow = (submitSteps) => `name: play
+on: [workflow_dispatch]
+jobs:
+  dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: node tooling/release/submit-play.mjs --dry-run --app subly
+  submit:
+    runs-on: ubuntu-24.04
+    environment: store-publish
+    steps:
+${submitSteps}
+`;
+
+  test('THE MUTANT THE ONE-JOB CENSUS COULD NOT CATCH: an undeclared `submit` job with no record fails', () => {
+    const wf = twoJobWorkflow('      - run: node tooling/release/submit-play.mjs --submit --app subly');
+    const { code, out } = run(
+      fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /job "submit" can perform a REAL submission/);
+    assert.match(out, /no later step records it/);
+  });
+
+  test('the same job WITH a record step passes, and rule 2 reports itself LIVE', () => {
+    const wf = twoJobWorkflow(
+      '      - name: Upload\n' +
+        '        id: upload\n' +
+        '        run: node tooling/release/submit-play.mjs --submit --app subly\n' +
+        '      - name: Record the submission\n' +
+        "        if: always() && steps.upload.outcome == 'success'\n" +
+        '        run: node tooling/ci/record-deployment.mjs subly-android-play --state in_review --listing-url https://play.google.com/x',
+    );
+    const { code, out } = run(
+      fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /RULE 2 IS LIVE: 1 publishing invocation\(s\)/);
+    assert.match(out, /rule 2 exercised on 1 publishing invocation\(s\)/);
+  });
+
+  test('the jobs censused are LISTED, not counted — a count cannot show a missing subject', () => {
+    const wf = twoJobWorkflow(
+      '      - name: Upload\n' +
+        '        id: upload\n' +
+        '        run: node tooling/release/submit-play.mjs --submit --app subly\n' +
+        '      - run: node tooling/ci/record-deployment.mjs subly-android-play --state in_review --listing-url https://play.google.com/x',
+    );
+    const { code, out } = run(
+      fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /SUBMISSION-RECORD CENSUS ranged over 2 job\(s\)/);
+    assert.match(out, /submit-play\.yml#dry-run/);
+    assert.match(out, /submit-play\.yml#submit/);
+  });
+
+  test('a rehearsal-only tree says RULE 2 WAS NOT EXERCISED, loudly, and stamps the ok line', () => {
+    // 🔴 THIS IS THE WHOLE POINT. A branch with no instances is a rule that
+    // CANNOT FAIL. It still exits 0 — a tree may legitimately hold no publish
+    // path — but it must never be printable as a plain `ok`, because that is the
+    // sentence this guard spent its life printing over two real publish paths.
+    const { code, out } = run(
+      fixture({
+        channels: [WEB_ROW, storeRow()],
+        workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': REHEARSAL_WF },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /RULE 2 WAS NOT EXERCISED/);
+    assert.match(out, /RULE 2 NOT EXERCISED — 0 publishing invocation\(s\)/);
+    assert.doesNotMatch(out, /RULE 2 IS LIVE/);
+  });
+
+  test('COVERAGE LOST when the script is named inside a job the structured read cannot enter', () => {
+    // The flat reader sees any line of the file; the structured one sees `run:`
+    // lines only. An invocation the census cannot see is a publish path rule 2
+    // cannot grade — and the guard would then report an EMPTY BRANCH, which is
+    // indistinguishable from a pass. So it refuses instead.
+    const wf = `name: play
+on: [workflow_dispatch]
+jobs:
+  dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: node tooling/release/submit-play.mjs --dry-run --app subly
+  submit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: some/shell-action@v1
+        with:
+          command: node tooling/release/submit-play.mjs --submit --app subly
+`;
+    const { code, out } = run(
+      fixture({ channels: [WEB_ROW, storeRow()], workflows: { 'deploy-web.yml': DEPLOY_WEB_OK, 'submit-play.yml': wf } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /inside a job this census never reached/);
+    assert.match(out, /job "submit"/);
+  });
+});
+
 describe('assert-publish-records — against the REAL repository', () => {
-  test('the shipping tree passes, and prints the emptiness of the publish branch', () => {
+  test('the shipping tree passes and rule 2 is EXERCISED — the two `submit` jobs are its instances', () => {
+    // 🔴 THIS ASSERTION USED TO READ `0 of \d+`, and it passed for as long as the
+    // census could not see the jobs that publish. The number it now pins is the
+    // difference between a rule with instances and a rule without one.
     const r = spawnSync(process.execPath, [GUARD], { cwd: ROOT, encoding: 'utf8' });
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    assert.match(r.stdout, /SUBMISSION-RECORD LIMB: 0 of \d+ submission invocation\(s\) can perform a REAL submission/);
+    assert.match(r.stdout, /SUBMISSION-RECORD LIMB: [1-9]\d* of \d+ submission invocation\(s\) can perform a REAL submission/);
+    assert.match(r.stdout, /RULE 2 IS LIVE/);
     assert.match(r.stdout, /OWNER-GATED/);
+    assert.doesNotMatch(r.stdout, /RULE 2 WAS NOT EXERCISED/);
+  });
+
+  test('the real census opens BOTH jobs of every submission workflow that has two', () => {
+    // Derived from the tree, not typed: every job of every declared submission
+    // workflow that names its row's script must appear in the listed census.
+    const read = (rel) =>
+      spawnSync(process.execPath, ['-e', `process.stdout.write(require('fs').readFileSync(${JSON.stringify(rel)},'utf8'))`], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      }).stdout;
+    const register = JSON.parse(read('tooling/channel-register.json'));
+    const r = spawnSync(process.execPath, [GUARD], { cwd: ROOT, encoding: 'utf8' });
+    for (const row of register.channels.filter((c) => c.submittable === true)) {
+      const body = read(row.submission.workflow);
+      const script = row.submission.script.split('/').pop();
+      const jobs = [];
+      let current = null;
+      for (const line of body.split('\n')) {
+        const m = line.match(/^ {2}([A-Za-z_][A-Za-z0-9_-]*):\s*$/);
+        if (m) current = m[1];
+        if (current && /^\s+(-\s+)?(run:)?\s*.*\bnode\b/.test(line) && line.includes(script) && !/^\s*#/.test(line)) {
+          if (!jobs.includes(current)) jobs.push(current);
+        }
+      }
+      assert.ok(jobs.length >= 1, `${row.id}: no job in ${row.submission.workflow} names ${script}`);
+      for (const job of jobs) {
+        assert.match(
+          r.stdout,
+          new RegExp(`${row.submission.workflow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}#${job}`),
+          `${row.submission.workflow} job "${job}" runs ${script} and the census never listed it`,
+        );
+      }
+    }
   });
 
   test('every submittable channel in the real register is classified — none skipped', () => {
@@ -557,6 +719,29 @@ describe('assert-publish-records — against the REAL repository', () => {
     const submittable = register.channels.filter((c) => c.submittable === true).map((c) => c.id);
     assert.ok(submittable.length >= 1, 'the register must declare at least one submittable channel');
     const r = spawnSync(process.execPath, [GUARD], { cwd: ROOT, encoding: 'utf8' });
-    for (const id of submittable) assert.match(r.stdout, new RegExp(`${id}: \\d+ invocation`), `${id} was not classified`);
+    for (const id of submittable) assert.match(r.stdout, new RegExp(`${id}: job "`), `${id} was not classified`);
+  });
+
+  test('BOTH real `submit` jobs end with a [10]D-9 record step — the deeper defect, closed', () => {
+    // The census fix made the gap VISIBLE; these steps are what closed it. A
+    // record step conditioned on `steps.upload.outcome` is the accepted widening
+    // of the inherited `success()`, so an upload that succeeds is recorded even
+    // if the leg is cancelled afterwards — a store upload cannot be un-sent.
+    const read = (rel) =>
+      spawnSync(process.execPath, ['-e', `process.stdout.write(require('fs').readFileSync(${JSON.stringify(rel)},'utf8'))`], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      }).stdout;
+    for (const [rel, environment] of [
+      ['.github/workflows/submit-play.yml', 'subly-android-play'],
+      ['.github/workflows/submit-snap.yml', 'subly-linux-snap'],
+    ]) {
+      const body = read(rel);
+      assert.ok(
+        body.includes(`node tooling/ci/record-deployment.mjs ${environment} --state in_review --listing-url`),
+        `${rel} no longer records ${environment} at submit time`,
+      );
+      assert.ok(body.includes('deployments: write'), `${rel}'s submit job cannot write a Deployment`);
+    }
   });
 });

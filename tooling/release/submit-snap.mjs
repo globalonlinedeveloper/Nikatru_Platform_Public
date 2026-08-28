@@ -507,8 +507,22 @@ if (SUBMIT) {
         '     is indistinguishable from a real gate anywhere except here.',
       ]);
     }
+    // 🔴 THIS LINE CLAIMED AN APPROVAL IT HAD NOT CHECKED. It read "this job only
+    // reached this line because one of them approved it", which is false whenever
+    // an administrator can bypass the reviewer. `can_admins_bypass` comes from
+    // the SAME GET already in hand, and MEASURED on this repository 2026-08-27 it
+    // is `true` — as .github/workflows/submit-snap.yml's header has said since
+    // submit-play.mjs's PG-5 retracted the identical sentence on 2026-08-20.
+    // This file kept it. The remedy is not to fail (bypass is a legitimate
+    // setting and turning it off is a repo-admin act) but to stop asserting what
+    // was not observed: the reviewer requirement IS verified and still reported;
+    // that it was EXERCISED no longer is.
+    const adminsCanBypass = envJson.can_admins_bypass !== false;
     ok(
-      `PG-6 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s); this job only reached this line because one of them approved it`,
+      `PG-6 publish gate — "${PUBLISH_ENVIRONMENT}" carries ${reviewerRule.reviewers.length} required reviewer(s)` +
+        (adminsCanBypass
+          ? '. ⚠️ `can_admins_bypass` is true, so reaching this line does NOT prove one of them approved: an administrator can dispatch straight past the gate. The requirement is verified; the approval is not.'
+          : ' and `can_admins_bypass` is false, so this job only reached this line because one of them approved it'),
     );
   }
 
@@ -686,7 +700,7 @@ if (!problems.length) {
 // ── [10]D-6 PREFLIGHT — the portfolio-safety gate, run by the RELEASE PATH ────
 // 🔴 IN THE SCRIPT AND NOT ONLY IN CI, and the difference is the whole point.
 // CI runs assert-submission-safety.mjs on every push in its PORTFOLIO mode; that
-// proves the taglines are distinct across apps, and it proves nothing about the
+// compares the taglines across apps, and it says nothing about the
 // app somebody is submitting RIGHT NOW. The `--submitting` mode's
 // web-prove-first rule can only be asked at the moment of a submission.
 //
@@ -701,7 +715,7 @@ if (!problems.length) {
   if (r.status !== 0) {
     die(['FAIL the [10]D-6 submission-safety preflight refused this submission:', `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd()]);
   }
-  ok('[10]D-6 preflight — distinct tagline, and the app is live on the web before a store sees it');
+  ok(`[10]D-6 preflight — catalog/apps.json records "${app.slug}" as status "live"; ${((r.stdout ?? '').match(/TAGLINE PAIRS COMPARED: \d+/) ?? ['TAGLINE PAIRS COMPARED: unreported'])[0]}. This preflight made no web request.`);
 }
 
 // ── 2. the snap name — the one irreversible field ────────────────────────────

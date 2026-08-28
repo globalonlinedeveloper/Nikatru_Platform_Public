@@ -9,10 +9,10 @@
 //   the broken version. A fixture you write encodes the same misunderstanding as
 //   the guard you write.
 //
-// So the primary evidence for this guard is 23 mutations applied to the REAL
-// repository (freeze the version, drop --build-number, point the build number at
-// the SHA, delete the derive step, break the scanner's own regex, …), every one
-// of which was confirmed to fail with its own specific message. Two of those
+// So the primary evidence for the derive-and-pass rules is 23 mutations applied
+// on 2026-07-27 (b2f31b2) to the REAL repository (freeze the version, drop
+// --build-number, point the build number at the SHA, delete the derive step, …),
+// every one of which was confirmed to fail with its own message. Two of those
 // mutations changed the guard itself:
 //   · a malformed pubspec made it print "COVERAGE LOST — the scan is broken",
 //     blaming the scanner for a defect the scanner had correctly found; and
@@ -499,4 +499,141 @@ describe('assert-app-versioning — --emit is the build step\'s source of truth'
     assert.equal(code, 1);
     assert.match(out, /no parseable `version: X\.Y\.Z`/);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// --tag — the release tag must name the version the app declares.
+//
+// 🔴 READ THIS BEFORE TRUSTING A GREEN HERE. No tag has ever been pushed here
+// (`git tag` → 0, measured 2026-08-27), so in CI this mode is UNEXECUTED CODE
+// that reports nothing at all. These offline cases are the entire evidence that
+// it can fail. A skip written one notch too broadly ("skip whenever the ref does
+// not parse") reads `subly-untagged-abc1234` and `subly-vFOO` identically and
+// swallows the exact tag the mode exists to catch. That variant was built and
+// measured: it exits 0 on all four of `subly-vFOO`, `subly-v1.0`,
+// `subly-v9.9.9.1` and `subly-nightly`, where the shipped guard exits 1 on
+// every one.
+describe('assert-app-versioning — --tag: the tag must name the declared version', () => {
+  test('PASSES when the tag names the build name pubspec declares', () => {
+    const { code, out } = run({ args: ['--tag', 'subly-v1.0.0', lane('tag-ok')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok\s+tag ↔ pubspec/);
+    assert.match(out, /build name 1\.0\.0/);
+  });
+
+  // The tree as it stands: the tag apps/subly's own pubspec implies must pass.
+  test('PASSES against the REAL repository for the tag its pubspec implies', () => {
+    const emitted = run({ cwd: REPO, args: ['--emit', 'apps/subly'] });
+    assert.equal(emitted.code, 0, emitted.out);
+    const raw = /^pubspec_version=(\S+)$/m.exec(emitted.out)[1];
+    const { code, out } = run({ cwd: REPO, args: ['--tag', `subly-v${raw.split('+')[0]}`] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS naming BOTH versions when the tag names a different one', () => {
+    const { code, out } = run({ args: ['--tag', 'subly-v9.9.9', lane('tag-mismatch')] });
+    assert.equal(code, 1);
+    assert.match(out, /names version 9\.9\.9/);
+    assert.match(out, /declares "1\.0\.0\+1"/);
+  });
+
+  test('is a NO-OP on the <app>-untagged-<sha> value a non-tag run synthesises', () => {
+    const { code, out } = run({ args: ['--tag', 'subly-untagged-659380f', lane('tag-untagged')] });
+    assert.equal(code, 0, out);
+    assert.match(out, /claims no version/);
+    assert.doesNotMatch(out, /ok\s+tag ↔ pubspec/);
+  });
+
+  // ── the six anti-swallow cases ─────────────────────────────────────────────
+  for (const [name, tag, expected] of [
+    ['a version claim that is not a number', 'subly-vFOO', /claims version "FOO"/],
+    ['a two-part version', 'subly-v1.0', /claims version "1\.0"/],
+    ['a four-part version', 'subly-v9.9.9.1', /claims version "9\.9\.9\.1"/],
+    ['a tag that names no version at all', 'subly-nightly', /names no version/],
+    ['an app that apps/ does not hold', 'probe-v1.0.0', /names app "probe"/],
+    // 🔴 THE CASEFOLD SEAM. Measured, not assumed: the variant without the
+    // exact directory-listing match exits 0 on this host and 1 under WSL2 ext4.
+    // Matching the leaf EXACTLY against readdir makes both print the same line.
+    ['a slug that differs only in case', 'SUBLY-v1.0.0', /names app "SUBLY"/],
+  ]) {
+    test(`FAILS rather than skipping on ${name}`, () => {
+      const dir = lane(`tag-bad-${tag.replace(/[^a-z0-9]/gi, '_')}`);
+      const { code, out } = run({ args: ['--tag', tag, dir] });
+      assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
+      assert.match(out, expected);
+    });
+  }
+
+  test('compares the build NAME only — a tag carrying +N still passes', () => {
+    const { code, out } = run({ args: ['--tag', 'subly-v1.0.0+7', lane('tag-plusn')] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS rather than inventing a version when the pubspec is unreadable', () => {
+    const dir = lane('tag-badspec', { version: null });
+    const { code, out } = run({ args: ['--tag', 'subly-v1.0.0', dir] });
+    assert.equal(code, 1);
+    assert.match(out, /no parseable `version: X\.Y\.Z`/);
+  });
+
+  // 🔴 `--app` RELOCATES THE APP; UNTIL 2026-08-27 IT DISARMED TWO OF THE SIX ABOVE.
+  test('an explicit --app RELOCATES which pubspec is read', () => {
+    const dir = lane('tag-app-relocate', { extra: { 'packages/subly/pubspec.yaml': pubspec('2.3.4+1') } });
+    const { code, out } = run({ args: ['--tag', 'subly-v2.3.4', '--app', 'packages/subly', dir] });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok\s+tag ↔ pubspec/);
+    assert.match(out, /packages\/subly\/pubspec\.yaml \("2\.3\.4\+1"\)/);
+  });
+
+  test('--app pointing at a DIFFERENT app does NOT excuse the slug', () => {
+    const { code, out } = run({ args: ['--tag', 'probe-v1.0.0', '--app', 'apps/subly', lane('tag-app-probe')] });
+    assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
+    assert.match(out, /--app points at apps\/subly/);
+  });
+
+  test('--app does NOT excuse the casefold seam', () => {
+    const { code, out } = run({ args: ['--tag', 'SUBLY-v1.0.0', '--app', 'apps/SUBLY', lane('tag-app-case')] });
+    assert.equal(code, 1, `expected a RED, got ${code}: ${out}`);
+    assert.match(out, /names app "SUBLY"/);
+  });
+
+  // 🔴 THE GREEN-WHILE-BROKEN THIS FILE WAS NEARLY SHIPPED WITH. `--tag` whose
+  // shell variable had gone missing parsed as "no --tag at all", fell through to
+  // the verify mode and printed `ok  app versioning` — exit 0 from a release
+  // check that never read a tag, with nothing in the log to say so.
+  for (const flag of ['--tag', '--emit']) {
+    test(`${flag} with no value EXITS 2 rather than falling through to another check`, () => {
+      const { code, out } = run({ args: [flag] });
+      assert.equal(code, 2, out);
+      assert.match(out, /was passed with no value/);
+      assert.doesNotMatch(out, /^ok\s+app versioning/m);
+    });
+  }
+
+  // 🔴 THE SAME FAILURE ONE LEVEL UP, MEASURED 2026-08-27: `--emit` answers and exits
+  // above the --tag block, so both flags together exited 0 over a tag alone worth a 1.
+  for (const [name, args] of [
+    ['--emit then --tag', ['--emit', 'apps/subly', '--tag', 'subly-v9.9.9']],
+    ['--tag then --emit', ['--tag', 'subly-v9.9.9', '--emit', 'apps/subly']],
+  ]) {
+    test(`REFUSES ${name} rather than answering for the flag it read first`, () => {
+      const { code, out } = run({ cwd: lane('mode-collision'), args });
+      assert.equal(code, 2, `expected a REFUSAL, got ${code}: ${out}`);
+      assert.match(out, /--emit and --tag in one invocation/);
+      assert.doesNotMatch(out, /^release_line=/m);
+    });
+  }
+
+  for (const [name, args] of [
+    ['with --emit', ['--emit', 'apps/subly', '--app', 'apps/subly']],
+    ['with neither mode', ['--app', 'apps/subly']],
+  ]) {
+    test(`REFUSES --app ${name} rather than dropping it`, () => {
+      const { code, out } = run({ cwd: lane('app-dropped'), args });
+      assert.equal(code, 2, `expected a REFUSAL, got ${code}: ${out}`);
+      assert.match(out, /--app was passed without --tag/);
+      assert.doesNotMatch(out, /^release_line=/m);
+      assert.doesNotMatch(out, /^ok\s+app versioning/m);
+    });
+  }
 });

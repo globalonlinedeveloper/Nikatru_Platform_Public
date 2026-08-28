@@ -123,7 +123,15 @@ dependencies:
   # 🪦 THE REVENUECAT LINE THAT USED TO SIT HERE IS GONE — [ADR 026], [ADR 004],
   # and it STAYS gone: RevenueCat is an aggregator over Apple/Google in-app
   # purchase, native IAP is deferred by 39-CHASSIS §4 cut 5, and the merchant of
-  # record is locked to Paddle / Lemon Squeezy. What CHANGED (P2.4b, [ADR 037]):
+  # record for every channel with no store tax is locked to Paddle.
+  # ⚠️ CORRECTED 2026-08-28: that clause read "locked to Paddle / Lemon Squeezy".
+  # [ADR 039] D4 (2026-08-09) retired [ADR 004]'s parallel Lemon Squeezy clause —
+  # the parallel application was never evidenced and the product is sunsetting into
+  # Stripe. [ADR 039] D1 also SCOPED the lock per channel, which is what keeps this
+  # comment's own conclusion standing: Apple and Google Play remain the merchant of
+  # record on their own in-app purchases, so an aggregator over them is still not a
+  # dependency this app takes.
+  # What CHANGED (P2.4b, [ADR 037]):
   # the sentence that used to end this comment — "Subly stays frozen and simply
   # has no purchase path" — expired with the freeze ([ADR 036]). The client rail
   # (`nikatru_purchases`, declared above) is now a dependency; checkout remains

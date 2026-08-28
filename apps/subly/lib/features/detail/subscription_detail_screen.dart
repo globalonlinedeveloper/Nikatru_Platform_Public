@@ -652,22 +652,63 @@ class SubscriptionDetailScreen extends ConsumerWidget {
   //
   // The white alpha fill and the white icon are ON THE HERO GRADIENT, which is
   // dark in both brightnesses — see the class doc. They do not fork.
+  /// The two hero app-bar controls — "Back" and "More options".
+  ///
+  /// 🔴 `FocusableTap`, NOT `Semantics(button: true)` + `GestureDetector`.
+  /// BOTH DOORS OFF THIS SCREEN WERE KEYBOARD-DEAD, WHICH IS THE WHOLE APP BAR.
+  /// `Semantics(button: true)` announces a ROLE and creates no `FocusNode`, so
+  /// Tab passed over both: a keyboard user could read the detail screen, tab
+  /// through every row on it, and leave by no door on it — SC 2.1.1, Level A.
+  /// `test/a11y/keyboard_sweep_test.dart` measured `/sub/:id` at 2 of 4 and
+  /// named this pair, recording that home carried the identical defect until
+  /// 2026-08-25; `home_screen.dart`'s own icon button says the same sentence
+  /// about the same shape. One shared primitive, not one fix per call site.
+  ///
+  /// ⚠️ NOTHING A READER HEARS CHANGES. `label:` re-emits the same
+  /// `Semantics(button: true, label: …)`, and `mergeDescendants: false` because
+  /// an icon-only control has no descendant text to merge — [semanticLabel] IS
+  /// its name. `borderRadius` matches the 13 px square below so the ring is not
+  /// squared off round a rounded button.
+  ///
+  /// ⚠️ AND NOT ONE PIXEL OF THE 48x48 MOVES. `a11y_semantics_test.dart` and
+  /// `chassis_properties_test.dart` pin that floor route-wide; `FocusableTap`
+  /// paints its ring as a `DecorationPosition.foreground` decoration precisely
+  /// so wrapping a control passes its constraints straight through. A border
+  /// that participated in layout would have shrunk the target it was added to
+  /// protect.
+  ///
+  /// 🔴 `focusColor: Colors.white`, AND THE REASON IS THIS FILE'S OWN HERO RULE
+  /// twelve screens up: `AppColors.heroGradient` is three dark indigos and does
+  /// NOT fork on brightness, "which is why every colour inside it below is a
+  /// white or a white alpha". `colorScheme.primary` is #5B5891 in light — a
+  /// dark indigo ring on a dark indigo ground, i.e. a focus indicator a sighted
+  /// keyboard user would have to hunt for, which is the failure the ring exists
+  /// to prevent. The white ring is the same ink the icon and the border already
+  /// use here.
+  ///
+  /// ⚠️ NO RATIO IS CLAIMED FOR IT. `test/a11y/focus_ring_contrast_test.dart`
+  /// measures the ring against two grounds — the scaffold and a card — and says
+  /// in its own header that it asserts "nothing about the 14 unmeasured
+  /// routes". This hero is one of them. The ring here is chosen by the same
+  /// rule as every other colour on this gradient, not by a measurement, and
+  /// saying otherwise would be the unmeasured conformance claim that file was
+  /// written to retire.
   Widget _iconButton(IconData icon, String semanticLabel, VoidCallback onTap) {
-    return Semantics(
-      button: true,
+    return FocusableTap(
+      onTap: onTap,
       label: semanticLabel,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 48,
-          height: 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color.fromRGBO(255, 255, 255, 0.16),
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Icon(icon, color: Colors.white, size: 19),
+      mergeDescendants: false,
+      borderRadius: BorderRadius.circular(13),
+      focusColor: Colors.white,
+      child: Container(
+        width: 48,
+        height: 48,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color.fromRGBO(255, 255, 255, 0.16),
+          borderRadius: BorderRadius.circular(13),
         ),
+        child: Icon(icon, color: Colors.white, size: 19),
       ),
     );
   }

@@ -30,23 +30,21 @@
 //          group string must collide, because GitHub's groups are
 //          repository-wide. A "same workflow?" test cannot see that.
 //
-// ⚠️ NOTHING HERE TOUCHES THE NETWORK OR GITHUB. Every CLI case runs through the
-// fixture transport, which has no `fetch` in it at all — so a wrong fixture can
-// never cancel a real run. The two live-shaped cases assert only the "I could
-// not look" exits, driven by withholding the credential.
+// ⚠️ NOTHING HERE TOUCHES THE NETWORK OR GITHUB. Every CLI case runs the fixture
+// transport, which has no `fetch` in it at all, so a wrong fixture can never
+// cancel a real run; the two live-shaped cases assert only the "I could not
+// look" exits, driven by withholding the credential.
 //
-// 🔴 THE POSITIVE CONTROL AGAINST THE REAL TREE IS NOT DECORATION. Without
-// `parseWorkflow` being pinned to the actual `.github/workflows/*.yml`, every
-// negative result in this file is equally consistent with a parser that returns
-// `declared:false` for everything — which would report "nothing to refuse" on a
-// repository with four concurrency blocks in it.
+// 🔴 THE POSITIVE CONTROLS AGAINST THE REAL TREE ARE NOT DECORATION. Unpinned
+// from the actual `.github/workflows/*.yml`, every negative result here is
+// equally consistent with a parser that returns `declared:false` for everything.
 //
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,6 +54,12 @@ import {
   loadWorkflows,
   coverageProblem,
   namedLaneProblem,
+  releaseLaneProblem,
+  isLaneDir,
+  releaseTagOf,
+  releaseRerunClearance,
+  publishSteps,
+  stripComments,
   refOf,
   expandGroup,
   groupOf,
@@ -168,6 +172,19 @@ function workflowsDir(files) {
   for (const [name, body] of Object.entries(files)) writeFileSync(join(d, name), body);
   return d;
 }
+
+/** The SAME files, but at a path that IS a `.github/workflows` — i.e. a real
+ *  lane set rather than a fixture. That is the whole difference the floors key
+ *  on; see `isLaneDir` and the describe block at the foot of this file. */
+function laneDir(files) {
+  const d = join(temp(), '.github', 'workflows');
+  mkdirSync(d, { recursive: true });
+  for (const [name, body] of Object.entries(files)) writeFileSync(join(d, name), body);
+  return d;
+}
+
+/** `laneDir`'s path SHOUTED: one directory where case is ignored, two where not. */
+const SHOUTED = (d) => join(dirname(dirname(d)), '.GITHUB', 'WORKFLOWS');
 
 const CANCELLING = (group) => `name: Fixture\non:\n  push:\n\nconcurrency:\n  group: ${group}\n  cancel-in-progress: true\n\njobs:\n  a:\n    runs-on: ubuntu-24.04\n`;
 
@@ -558,6 +575,535 @@ describe('decide() — the judgement, without a network or a token', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 🔴 THE SECOND REFUSAL — `gh release create` IS NOT IDEMPOTENT.
+// `build-platforms.yml:1328` runs `gh release create "$RELEASE_TAG" …`.
+// Re-running a tagged build that already published fails there.
+//
+// ⚠️ THE VACUOUS SHAPE THIS SET EXISTS TO AVOID, because it is the obvious
+// implementation and it is DEAD: the workflow gates the publish with
+// `if: github.ref_type == 'tag'`, but **the REST workflow-run object has no
+// `ref_type` field**. MEASURED 2026-08-27 against the live API — run
+// 32003607931, HTTP 200, `hasOwnProperty('ref_type')` → false. Keyed on it, a
+// refusal would never fire and would call every re-run safe — what the tool
+// said before this existed. So the tag push is inferred from `event: 'push'` on
+// a workflow whose `on.push` is tags-only, and the A/B case below moves ONE
+// variable, the publish line, with the identical run record and release.
+//
+// The whole hazard lives in a state that has never occurred: 0 tags, 0 releases,
+// 0 push runs of that workflow (all measured 2026-08-27) — which is why
+// `releaseLaneProblem()` has cases here: inert and sound look identical outside.
+describe('🔴 the release refusal — a published tag cannot be re-run', () => {
+  const TAG = 'subly-v1.0.0';
+  const RELEASED = { tag_name: TAG, html_url: 'https://example.invalid/releases/tag' };
+
+  /** The shape of `build-platforms.yml`, reduced to the two facts read here. */
+  const PUBLISHER = `name: Pub
+on:
+  workflow_dispatch:
+  push:
+    tags: ['*-v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: gh release create "$RELEASE_TAG" --notes-file dist-notes.md
+`;
+  /** The SAME file with the publish line replaced — the one-variable twin. */
+  const NON_PUBLISHER = PUBLISHER.replace('gh release create "$RELEASE_TAG" --notes-file dist-notes.md', 'echo built');
+
+  /** A tag push of the REAL publishing workflow. `releases` is the fixture's
+   *  answer to `GET /releases/tags/<tag>`; absent means 404, which is how the
+   *  live transport reports "no release". */
+  const tagPush = (releases = {}) => ({
+    repo: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+    runs: {
+      16000000001: mkRun({
+        name: 'Build all 6 platforms',
+        path: '.github/workflows/build-platforms.yml',
+        event: 'push',
+        head_branch: TAG,
+      }),
+    },
+    branchHeads: { [TAG]: OLD },
+    runsByBranch: { [TAG]: [] },
+    releases,
+  });
+
+  test('🔴 REFUSES a tag-push re-run whose Release exists, and names `gh release create`', () => {
+    const r = cli(tagPush({ [TAG]: RELEASED }), ['16000000001']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /REFUSED/);
+    assert.match(r.out, /gh release create/);
+    assert.match(r.out, /subly-v1\.0\.0/);
+    assert.match(r.out, /cut a NEW version tag/);
+    // The claim is "it did NOT re-run". Exit 1 alone would also be produced by
+    // a version that refused loudly and POSTed anyway.
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('`--failed` is still refused when the publishing job was never measured', () => {
+    // `--failed` CAN lift this refusal (the block below), but only on a measured
+    // job conclusion. This fixture declares no `jobs`, which is the "I could not
+    // read them" answer — and an unread question must keep the refusal, not
+    // become one.
+    const r = cli(tagPush({ [TAG]: RELEASED }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`--failed` does not lift it here/);
+    assert.match(r.out, /could not be read/);
+    assert.equal(r.reran, false);
+  });
+
+  test('the SAME record with NO release at the tag keeps the verdict it has today', () => {
+    const r = cli(tagPush(), ['16000000001']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /declares no top-level `concurrency:`/);
+    assert.equal(r.reran, true);
+  });
+
+  test('dispatch and schedule runs are untouched, even with a release at head_branch', () => {
+    // `event: 'push'` is the entire tag-push inference. A dispatch or a cron
+    // run cannot have published — the step is gated `ref_type == 'tag'` — and
+    // must keep the verdict it had before this limb existed.
+    for (const event of ['workflow_dispatch', 'schedule']) {
+      const fx = tagPush();
+      fx.runs['16000000001'].event = event;
+      fx.runs['16000000001'].head_branch = 'main';
+      fx.branchHeads = { main: OLD };
+      fx.runsByBranch = { main: [] };
+      fx.releases = { main: RELEASED };
+      const r = cli(fx, ['16000000001']);
+      assert.equal(r.code, 0, `${event}: ${r.out}`);
+      assert.match(r.out, /declares no top-level `concurrency:`/);
+      assert.equal(r.reran, true, `${event} was refused`);
+    }
+  });
+
+  test('🔴 ONE VARIABLE — same run, same release, publish line present vs absent', () => {
+    // If the refusal came from anything other than the publish itself — the
+    // tag shape, the event, the release existing — both halves would agree.
+    const keeper = 'keeper-${{ github.ref }}';
+    const withPublish = workflowsDir({ 'w.yml': PUBLISHER, 'keeper.yml': CANCELLING(keeper) });
+    const without = workflowsDir({ 'w.yml': NON_PUBLISHER, 'keeper.yml': CANCELLING(keeper) });
+    const fx = tagPush({ [TAG]: RELEASED });
+    fx.runs['16000000001'].path = '.github/workflows/w.yml';
+
+    const a = cli(fx, ['16000000001', '--workflows', withPublish]);
+    assert.equal(a.code, 1, a.out);
+    assert.match(a.out, /gh release create/);
+    assert.equal(a.reran, false);
+
+    const b = cli(fx, ['16000000001', '--workflows', without]);
+    assert.equal(b.code, 0, b.out);
+    assert.equal(b.reran, true, 'the twin without the publish was still refused');
+  });
+
+  test('🔴 the UNASKED release question is exit 2, never a fall-through to allow', () => {
+    // A caller that forgets the lookup must not silently get the old verdict.
+    const workflows = loadWorkflows(REAL_WORKFLOWS);
+    const run_ = mkRun({ path: '.github/workflows/build-platforms.yml', event: 'push', head_branch: TAG });
+    const unasked = decide({ run: run_, branchHeadSha: OLD, workflows, siblings: [], repo: 'o/n' });
+    assert.equal(unasked.code, 2, unasked.reason);
+    assert.match(unasked.reason, /I COULD NOT LOOK/);
+    // Asked and answered "none" falls through untouched.
+    assert.equal(decide({ run: run_, branchHeadSha: OLD, workflows, siblings: [], repo: 'o/n', existingRelease: false }).code, 0);
+  });
+
+  test('🔴 `gh release create` in a COMMENT is not a publish', () => {
+    // build-platforms.yml says it FIVE times and FOUR are prose about the
+    // fifth. A grep over the raw file would keep answering "publishes" after
+    // somebody deleted the only line that does.
+    const w = parseWorkflow(`name: X
+on:
+  push:
+    tags: ['*-v*']
+jobs:
+  a:
+    steps:
+      # gh release create "$T" --notes-file n.md
+      - run: echo nothing is published here
+`);
+    assert.equal(w.publishesRelease, false);
+    assert.equal(w.pushTagsOnly, true);
+    assert.equal(releaseTagOf({ event: 'push', head_branch: TAG }, w), null);
+  });
+
+  test('`branches:` alongside `tags:` is NOT a tag push — ambiguity must not refuse', () => {
+    // Such a workflow's `push` runs can be either, and the run record cannot
+    // say which. Refusing on a guess is how a tool gets bypassed.
+    const w = parseWorkflow(`name: X
+on:
+  push:
+    branches: [main]
+    tags: ['*-v*']
+jobs:
+  a:
+    steps:
+      - run: gh release create "$T"
+`);
+    assert.equal(w.publishesRelease, true);
+    assert.equal(w.pushTagsOnly, false);
+    assert.equal(releaseTagOf({ event: 'push', head_branch: TAG }, w), null);
+  });
+
+  test('releaseLaneProblem fires when the lane is gone, silent, or no longer tags-only', () => {
+    const wf = (over) =>
+      new Map([['.github/workflows/build-platforms.yml', { file: 'build-platforms.yml', publishesRelease: true, pushTagsOnly: true, ...over }]]);
+    assert.equal(releaseLaneProblem(wf()), null);
+    assert.match(releaseLaneProblem(new Map()), /not in the parsed set/);
+    assert.match(releaseLaneProblem(wf({ publishesRelease: false })), /outside its comments/);
+    assert.match(releaseLaneProblem(wf({ pushTagsOnly: false })), /tags-only/);
+  });
+
+  test('🔴 CRLF — the LINUX-vs-WINDOWS seam, driven on the REAL files', () => {
+    // 🔴 THE LOCAL GATE IS A WINDOWS RECIPE AND CI IS LINUX, and this parse
+    // reads LINE ENDINGS. Before the normalisation in `stripComments` the SAME
+    // BYTES with `\r\n` parsed differently: ci.yml `declared:false, group:null`
+    // (its whole hazard invisible), build-platforms.yml `pushTagsOnly:false`
+    // (this refusal inert). `.gitattributes` is `* text=auto eol=lf` and the
+    // tree has no CR today, so the two halves here are identical BY
+    // CONSTRUCTION — which is the point: the other checkout is the unrun one.
+    for (const rel of ['ci.yml', 'build-platforms.yml']) {
+      const lf = readFileSync(join(REAL_WORKFLOWS, rel), 'utf8').replace(/\r\n/g, '\n');
+      const a = parseWorkflow(lf);
+      const b = parseWorkflow(lf.replace(/\n/g, '\r\n'));
+      const c = parseWorkflow(lf.replace(/\n/g, '\r'));
+      assert.deepEqual(b, a, `${rel} parses differently under CRLF`);
+      assert.deepEqual(c, a, `${rel} parses differently under CR-only`);
+    }
+    // Not a vacuous comparison of two empty parses: pin what it is comparing.
+    const bp = parseWorkflow(readFileSync(join(REAL_WORKFLOWS, 'build-platforms.yml'), 'utf8').replace(/\n/g, '\r\n'));
+    assert.equal(bp.publishesRelease, true);
+    assert.equal(bp.pushTagsOnly, true);
+  });
+
+  test('the REAL tree still carries the lane — and EXACTLY one publisher', () => {
+    // The positive control. Without it every case above is equally consistent
+    // with a parser that reports `publishesRelease: false` for everything; the
+    // second assertion is the other direction, that the refusal stayed narrow.
+    const real = loadWorkflows(REAL_WORKFLOWS);
+    assert.equal(releaseLaneProblem(real), null);
+    const bp = real.get('.github/workflows/build-platforms.yml');
+    assert.equal(bp.publishesRelease, true);
+    assert.equal(bp.pushTagsOnly, true);
+    assert.deepEqual(
+      [...real.values()].filter((w) => w.publishesRelease).map((w) => w.file),
+      ['build-platforms.yml'],
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 `--failed` ON THE RELEASE LIMB — the ONE state that lifts the refusal.
+//
+// `rerun-failed-jobs` re-runs the FAILED jobs and their dependents; a job that
+// concluded `success` is left alone. So when the publishing job succeeded and
+// something ELSE failed, a `--failed` re-run provably cannot reach
+// `gh release create`, and refusing it is a FALSE REFUSAL.
+//
+// ⚠️ THE FALSE ALLOW THIS SET EXISTS TO KEEP OUT, and it is the obvious
+// implementation: "a Release exists ⇒ the release job succeeded". IT DOES NOT
+// HOLD. `gh release create` is ONE STEP of that job — build-platforms.yml runs
+// a manifest read-back AFTER it — so the job can publish and then conclude
+// `failure`, and `rerun-failed-jobs` re-runs exactly that job. The second case
+// below is that state, and it must stay refused.
+//
+// The join is the STEP NAME, taken FROM THE PARSE rather than typed here: the
+// jobs API reports step names but never a step's `run:`, and it renames a matrix
+// leg to `<job> (<value>)`, so a job-name match would be a guess.
+describe('🔴 `--failed` lifts the release refusal ONLY on a measured job conclusion', () => {
+  const TAG = 'subly-v1.0.0';
+  const RELEASED = { tag_name: TAG, html_url: 'https://example.invalid/releases/tag' };
+  const BP = '.github/workflows/build-platforms.yml';
+
+  /** The publish step's name AS THE REAL WORKFLOW SPELLS IT. Typing it here
+   *  would make every case below pass against a parser that returns nothing. */
+  const REAL = loadWorkflows(REAL_WORKFLOWS).get(BP);
+  const STEP = REAL.publishStepNames[0];
+
+  const jobs = (over = {}) => [
+    {
+      name: 'Durable release artifacts (subly)',
+      conclusion: 'success',
+      status: 'completed',
+      steps: [{ name: 'Re-verify every asset against the manifest', conclusion: 'success' }, { name: STEP, conclusion: 'success' }],
+      ...over,
+    },
+    // The job that actually failed — the whole reason anyone types `--failed`.
+    { name: 'Windows', conclusion: 'failure', status: 'completed', steps: [{ name: 'build', conclusion: 'failure' }] },
+  ];
+
+  const tagPush = (over = {}) => ({
+    repo: 'globalonlinedeveloper/Project_Cross_Platform_Apps',
+    runs: { 16000000001: mkRun({ name: 'Build all 6 platforms', path: BP, event: 'push', head_branch: TAG }) },
+    branchHeads: { [TAG]: OLD },
+    runsByBranch: { [TAG]: [] },
+    releases: { [TAG]: RELEASED },
+    jobs: { 16000000001: jobs() },
+    ...over,
+  });
+
+  test('the parse still yields exactly one NAMED publish step and no join problem', () => {
+    // The positive control for every case in this block. Without it they are
+    // all equally consistent with `publishStepNames: []`, which refuses — and
+    // refusing for the wrong reason looks identical from the outside.
+    assert.deepEqual(REAL.publishJoinProblems, []);
+    assert.equal(REAL.publishStepNames.length, 1);
+    assert.equal(typeof STEP, 'string');
+    assert.match(STEP, /\S/);
+  });
+
+  test('🔴 PERMITTED — publish job concluded success, something else failed', () => {
+    const r = cli(tagPush(), ['16000000001', '--failed']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /publish CLEARED/);
+    // The claim is that it re-ran, and re-ran PARTIALLY. A full re-run here
+    // would hit `gh release create` again — the exact collision.
+    assert.equal(r.reran, true, r.out);
+    assert.match(r.log, /failedOnly=true/);
+  });
+
+  test('🔴 REFUSED — the publish job PUBLISHED and then concluded `failure`', () => {
+    // The false allow, as data. Identical Release, identical run record; the
+    // ONE variable is the conclusion of the job that carries the publish step.
+    const r = cli(tagPush({ jobs: { 16000000001: jobs({ conclusion: 'failure' }) } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /REFUSED/);
+    assert.match(r.out, /did not conclude `success`/);
+    assert.match(r.out, /Durable release artifacts \(subly\)/);
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('🔴 REFUSED — the publish job has not concluded at all yet', () => {
+    const r = cli(
+      tagPush({ jobs: { 16000000001: jobs({ conclusion: null, status: 'in_progress' }) } }),
+      ['16000000001', '--failed'],
+    );
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /did not conclude `success`.*: in_progress\)/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 REFUSED — the jobs API was unreadable', () => {
+    const fx = tagPush();
+    delete fx.jobs;
+    const r = cli(fx, ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /could not be read/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 REFUSED — jobs read fine, but NOT ONE carries the publish step', () => {
+    // 🔴 THE VACUOUS SHAPE. `every()` over an empty match is TRUE, so a
+    // clearance written as "no publishing job failed" would CLEAR a run whose
+    // publish it simply could not find — green because its subject was absent.
+    const orphan = [{ name: 'Windows', conclusion: 'failure', status: 'completed', steps: [{ name: 'build' }] }];
+    const r = cli(tagPush({ jobs: { 16000000001: orphan } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NO job in this run carries a step named/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 ONE MATRIX LEG SHORT — every leg is checked, not the first one', () => {
+    // 🔴 THE ONE-STEP-OVER CASE. `build-platforms.yml` publishes from a
+    // `strategy.matrix` with `fail-fast: false`, so the publish step lives in
+    // N jobs at once and GitHub renames each `<job> (<app>)`. A clearance that
+    // stopped at the first match would clear a run whose SECOND leg failed —
+    // and that leg re-runs `gh release create` on the same tag.
+    const legs = [
+      { name: 'Durable release artifacts (subly)', conclusion: 'success', status: 'completed', steps: [{ name: STEP }] },
+      { name: 'Durable release artifacts (other)', conclusion: 'failure', status: 'completed', steps: [{ name: STEP }] },
+    ];
+    const r = cli(tagPush({ jobs: { 16000000001: legs } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 of 2 job\(s\)/);
+    assert.match(r.out, /Durable release artifacts \(other\): failure/);
+    assert.equal(r.reran, false);
+    // The control: both legs green is the state that clears.
+    assert.equal(releaseRerunClearance(legs.map((j) => ({ ...j, conclusion: 'success' })), REAL).cleared, true);
+  });
+
+  const legA = () => ({ name: 'Durable release artifacts (subly)', conclusion: 'success', status: 'completed', steps: [{ name: STEP }] });
+  const legB = (over) => ({ name: 'Durable release artifacts (other)', conclusion: 'failure', status: 'completed', ...over });
+
+  test('🔴 an UNREADABLE step list is an UNKNOWN, never "this job does not publish"', () => {
+    const WHY =
+      '`(j?.steps ?? []).some(…)` is vacuously FALSE for an unreadable step list, so that job matched no ' +
+      'publish step, was not an owner, and could not contribute a non-success conclusion. MEASURED against ' +
+      'the shipped file: legA readable+`success`, legB `failure` with this shape → cleared:true, "all 1 ' +
+      'job(s) …" — CLEARED having never looked at a leg that re-runs `gh release create`. The jobs API ' +
+      'returns `steps: []` for a SKIPPED job and for one whose steps are not populated yet: a live shape.';
+    const shapes = {
+      'steps: []': legB({ steps: [] }),
+      'steps: null': legB({ steps: null }),
+      'steps: not an array (this THREW a TypeError before the repair)': legB({ steps: 'nope' }),
+      'a step carrying no name': legB({ steps: [{ conclusion: 'success' }] }),
+      'steps absent': legB({}),
+    };
+    for (const [label, leg] of Object.entries(shapes)) {
+      const r = releaseRerunClearance([legA(), leg], REAL);
+      assert.equal(r.cleared, false, `${label} CLEARED — ${WHY}`);
+      assert.match(r.why, /NO readable step list/, label);
+      assert.match(r.why, /Durable release artifacts \(other\)/, label);
+    }
+    assert.equal(
+      releaseRerunClearance([legA(), legB({ conclusion: 'success', steps: [{ name: STEP }] })], REAL).cleared,
+      true,
+      'THE CONTROL: the hole must not be closed by refusing everything — a genuinely readable job that concluded `success` is still permitted',
+    );
+  });
+
+  test('🔴 CLI — an empty step list refuses through main(), and POSTs nothing', () => {
+    const r = cli(tagPush({ jobs: { 16000000001: [legA(), legB({ steps: [] })] } }), ['16000000001', '--failed']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /NO readable step list/);
+    assert.match(r.out, /REFUSED/);
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('🔴 a workflow object with no PARSED publish join refuses rather than reading `[]`', () => {
+    const why = '`publishJoinProblems ?? []` read an unparsed object as "no problems" — an unasked question, not a clean answer';
+    assert.equal(releaseRerunClearance([legA()], { publishStepNames: [STEP] }).cleared, false, why);
+    assert.equal(releaseRerunClearance([legA()], { publishJoinProblems: [] }).cleared, false, why);
+  });
+
+  test('🔴 a `#` inside a QUOTED step name is part of the NAME, not a comment', () => {
+    const w = parseWorkflow(`name: X
+on:
+  push:
+    tags: ['*']
+jobs:
+  release:
+    steps:
+      - name: "Publish #1"
+        run: gh release create "$T"
+`);
+    assert.deepEqual(w.publishStepNames, ['Publish #1'], 'measured before the repair: ["\\"Publish"] — the join would miss the real step forever');
+    assert.deepEqual(w.publishJoinProblems, []);
+    assert.equal(stripComments('  group: g   # why\n'), '  group: g   \n', 'a genuine trailing comment is still cut');
+    assert.equal(stripComments("  name: don't panic  # cut me\n"), "  name: don't panic  \n", 'an apostrophe in an UNQUOTED scalar must not swallow the comment');
+  });
+
+  test('🔴 CRLF — the step-name join survives the LINUX-vs-WINDOWS seam', () => {
+    // The whole-object CRLF case above would deep-equal two EMPTY parses just
+    // as happily. This one pins the value: CI is Linux, this host is Windows,
+    // and a `\r` clinging to the step name would join against nothing and
+    // refuse forever — inert, and indistinguishable from "nothing to clear".
+    const lf = readFileSync(join(REAL_WORKFLOWS, 'build-platforms.yml'), 'utf8').replace(/\r\n/g, '\n');
+    for (const eol of ['\n', '\r\n', '\r']) {
+      const names = parseWorkflow(lf.replace(/\n/g, eol)).publishStepNames;
+      assert.deepEqual(names, REAL.publishStepNames, `EOL ${JSON.stringify(eol)}`);
+      assert.equal(names.length, 1);
+      assert.doesNotMatch(names[0], /[\r\n]/);
+    }
+  });
+
+  test('🔴 ONE VARIABLE — the SAME cleared fixture WITHOUT `--failed` is refused', () => {
+    // A full `gh run rerun` re-runs the successful job too, so nothing about a
+    // succeeded publish makes it safe. If the clearance leaked into the full
+    // path this is the case that says so.
+    const r = cli(tagPush(), ['16000000001']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /gh release create/);
+    assert.equal(r.reran, false);
+  });
+
+  test('🔴 a CLEARED publish is still subject to the concurrency refusal', () => {
+    // `--failed` is not a safe harbour: a partial re-run is a NEW entrant in the
+    // same group. Same fixture, on a workflow that DOES key its group on the ref.
+    const PUB = `name: Pub
+on:
+  push:
+    tags: ['*-v*']
+
+concurrency:
+  group: pub-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: ${STEP}
+        run: gh release create "$RELEASE_TAG" --notes-file dist-notes.md
+`;
+    const dir = workflowsDir({ 'pub.yml': PUB });
+    const fx = tagPush();
+    fx.runs['16000000001'].path = '.github/workflows/pub.yml';
+    fx.branchHeads[TAG] = HEAD; // the run is at OLD — history
+    fx.runsByBranch[TAG] = [
+      { id: 16000000002, name: 'Pub', path: '.github/workflows/pub.yml', event: 'push', status: 'in_progress', head_branch: TAG, head_sha: HEAD },
+    ];
+    const r = cli(fx, ['16000000001', '--failed', '--workflows', dir]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /publish CLEARED/); // the release limb DID let it past
+    assert.match(r.out, /pub-refs\/heads\/subly-v1\.0\.0/);
+    assert.equal(r.reran, false, `it REFUSED and re-ran anyway: ${r.log}`);
+  });
+
+  test('an UNNAMED publish step cannot be joined, and refuses', () => {
+    const w = parseWorkflow(`name: X
+on:
+  push:
+    tags: ['*']
+jobs:
+  release:
+    steps:
+      - run: gh release create "$T"
+`);
+    assert.deepEqual(w.publishStepNames, []);
+    assert.match(w.publishJoinProblems.join(' '), /carry no `name:`/);
+    assert.equal(releaseRerunClearance(jobs(), w).cleared, false);
+  });
+
+  test('🔴 a job-level `if:` on the publishing job refuses — a dependent re-run', () => {
+    // `rerun-failed-jobs` re-runs a failed job's DEPENDENTS. Without an `if:`,
+    // a job that concluded `success` had every `needs` succeed, so nothing
+    // upstream can drag it back. With one, `success` no longer proves that.
+    const body = (gate) => `name: X
+on:
+  push:
+    tags: ['*']
+jobs:
+  release:
+${gate}    needs: [build]
+    steps:
+      - name: pub
+        run: gh release create "$T"
+`;
+    const bare = parseWorkflow(body(''));
+    const gated = parseWorkflow(body('    if: always()\n'));
+    assert.deepEqual(bare.publishStepNames, ['pub']);
+    assert.deepEqual(bare.publishJoinProblems, []);
+    assert.deepEqual(gated.publishStepNames, ['pub']); // still found — not hidden
+    assert.match(gated.publishJoinProblems.join(' '), /job-level `if:`/);
+    const ok = [{ name: 'r', conclusion: 'success', steps: [{ name: 'pub' }] }];
+    assert.equal(releaseRerunClearance(ok, bare).cleared, true);
+    assert.equal(releaseRerunClearance(ok, gated).cleared, false);
+  });
+
+  test('🔴 the REAL publishing job declares no job-level `if:` — the control', () => {
+    // The assertion above is only worth having if the subject actually sits on
+    // the clean side of it today. Read from the tree, not asserted from memory.
+    assert.deepEqual(REAL.publishJoinProblems, []);
+    const lines = stripComments(readFileSync(join(REAL_WORKFLOWS, 'build-platforms.yml'), 'utf8')).split('\n');
+    assert.deepEqual(publishSteps(lines).problems, []);
+  });
+
+  test('🔴 decide(): `--failed` with the clearance NEVER ASKED still refuses', () => {
+    const workflows = loadWorkflows(REAL_WORKFLOWS);
+    const run_ = mkRun({ path: BP, event: 'push', head_branch: TAG });
+    const base = { run: run_, branchHeadSha: OLD, workflows, siblings: [], repo: 'o/n', existingRelease: RELEASED };
+    assert.equal(decide({ ...base, failed: true }).code, 1);
+    assert.equal(decide({ ...base, failed: true, publishClearance: { cleared: false, why: 'x' } }).code, 1);
+    // And the one shape that lifts it.
+    assert.equal(decide({ ...base, failed: true, publishClearance: { cleared: true, why: 'y' } }).code, 0);
+    // …which `--failed` gates: the same clearance without the flag is refused.
+    assert.equal(decide({ ...base, failed: false, publishClearance: { cleared: true, why: 'y' } }).code, 1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 describe('credentials and arguments — the exits that must not read as a pass', () => {
   test('🔴 the MIXED vault: a quoted value is unquoted, a bare value is untouched', () => {
     // Measured on 2026-08-12: `Project_Cross_Platform_Apps_GITHUB_PAT` is BARE
@@ -612,5 +1158,102 @@ describe('credentials and arguments — the exits that must not read as a pass',
   test('a fixture path that does not exist is exit 2', () => {
     const r = run(['16000000001'], { SAFE_RERUN_FIXTURE: join(temp(), 'absent.json') });
     assert.equal(r.code, 2, r.out);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 THE FLOORS ARE GATED ON WHICH DIRECTORY IT IS — NOT ON `--workflows`, AND
+// NOT ON THE SPELLING. Both gates were opt-out and both were MEASURED through
+// `main()` on a copy of the real lane set at `<tmp>/.github/workflows` (publish
+// line → `echo built`, or ci.yml's `concurrency:` block deleted): exit 0, clean
+// `ok`, re-run POSTED — the fixture log WAS written. Gated on the flag's
+// ABSENCE, `--workflows .github/workflows` names the directory the default
+// already resolves to; gated on `basename()`, an EXACT compare against a PATH,
+// `--workflows <tmp>/.GITHUB/WORKFLOWS` OPENS that same directory here and was
+// judged a fixture. Both are exit 2 with the log absent below.
+describe('🔴 a real lane set gets the floors whether or not --workflows named it', () => {
+  const CI_OK = CANCELLING('ci-${{ github.ref }}');
+  const CI_BLIND = 'name: CI\non:\n  push:\n\njobs:\n  a:\n    runs-on: ubuntu-24.04\n';
+  const PUBLISHES = `name: Build
+on:
+  push:
+    tags: ['*-v*']
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: gh release create "$RELEASE_TAG" --notes-file dist-notes.md
+`;
+  const PUBLISHES_NOT = PUBLISHES.replace('gh release create "$RELEASE_TAG" --notes-file dist-notes.md', 'echo built');
+
+  test('🔴 the RELEASE floor fires on a lane set whose publish moved out', () => {
+    const dir = laneDir({ 'ci.yml': CI_OK, 'build-platforms.yml': PUBLISHES_NOT });
+    const r = cli(incident(), ['16000000001', '--workflows', dir]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /no longer reads `gh release create`/);
+    assert.equal(r.reran, false, `the floor was lost and it re-ran: ${r.log}`);
+  });
+
+  test('🔴 the NAMED floor fires on the same shape — the twin in the same `if`', () => {
+    const dir = laneDir({
+      'ci.yml': CI_BLIND,
+      'build-platforms.yml': PUBLISHES,
+      // so `coverageProblem` is not the thing answering
+      'keeper.yml': CANCELLING('keeper-${{ github.ref }}'),
+    });
+    const r = cli(incident(), ['16000000001', '--workflows', dir]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /no longer declares a top-level `concurrency\.group`/);
+    assert.equal(r.reran, false, `the floor was lost and it re-ran: ${r.log}`);
+  });
+
+  test('a HEALTHY lane set passes both floors and keeps the verdict — the control', () => {
+    // Without this, the two cases above are equally consistent with "any
+    // directory named .github/workflows is exit 2".
+    const dir = laneDir({ 'ci.yml': CI_OK, 'build-platforms.yml': PUBLISHES });
+    const r = cli(incident(), ['16000000001', '--workflows', dir]);
+    assert.equal(r.code, 1, r.out);
+    assert.doesNotMatch(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /REFUSED/);
+    assert.equal(r.reran, false);
+  });
+
+  test('a FIXTURE directory is still relaxed — the flag keeps its job', () => {
+    // The mutation and cross-workflow cases above depend on this. A fixture dir
+    // carries none of this repository's lane names and must not be held to them.
+    assert.equal(isLaneDir(REAL_WORKFLOWS), true);
+    assert.equal(isLaneDir(laneDir({})), true);
+    assert.equal(isLaneDir(workflowsDir({})), false);
+  });
+
+  test('🔴 a directory whose ON-DISK name really IS `.GITHUB/WORKFLOWS` is a FIXTURE', (t) => {
+    // The half that forbids `toLowerCase()`: on Linux this is a genuinely
+    // different directory a fixture may be called. MADE with that casing rather
+    // than spelled it, so the claim holds on both hosts.
+    const d = join(temp(), '.GITHUB', 'WORKFLOWS');
+    mkdirSync(d, { recursive: true });
+    const onDisk = realpathSync.native(d);
+    if (!/[\\/]\.GITHUB[\\/]WORKFLOWS$/.test(onDisk)) return t.skip(`host folded it: ${onDisk}`);
+    assert.equal(isLaneDir(d), false);
+  });
+
+  test('🔴 IDENTITY, NOT SPELLING — a case-variant path to a REAL lane dir', (t) => {
+    // The other half. `basename()` on the SPELLED path is an exact string
+    // compare, and where case is ignored this is the very same directory.
+    const variant = SHOUTED(laneDir({}));
+    if (!existsSync(variant)) return t.skip('case-SENSITIVE filesystem');
+    assert.equal(isLaneDir(variant), true);
+  });
+
+  test('🔴 the case-variant spelling reaches the FLOOR, not a clean `ok` + POST', (t) => {
+    // Measured before the identity fix: exit 0, `ok`, fixture log WRITTEN.
+    const variant = SHOUTED(laneDir({ 'ci.yml': CI_OK, 'build-platforms.yml': PUBLISHES_NOT }));
+    if (!existsSync(variant)) return t.skip('case-SENSITIVE filesystem');
+    const r = cli(incident(), ['16000000001', '--workflows', variant]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /no longer reads `gh release create`/);
+    assert.equal(r.reran, false, `the floor was lost to a SPELLING and it re-ran: ${r.log}`);
   });
 });

@@ -149,7 +149,19 @@ const DART = {
   // would be measuring the Dart class rather than the tree), and limb 10's
   // subject is the accessor's own declaration — so a fixture carrying neither
   // proves neither.
-  'packages/core/lib/src/config/app_config.dart': `class AppConfig {\n  final Map<String, Object?>? theme;\n  final Map<String, String> copy;\n  bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;\n  String text(String key) => copy[key] ?? key;\n}\n`,
+  // (CORRECTION 2026-08-25: limb 10 and its cases 10a–10h are deleted, and so is
+  //  `AppConfig.text` in the real class. The `text` member is kept in this
+  //  fixture ONLY so the fixture keeps resembling a Dart class with more than
+  //  one method — no case reads it any more. `theme` is still load-bearing for
+  //  every limb-9 case below.)
+  // (APPENDED 2026-08-25, the second correction of the day: `text` is now GONE
+  //  from this fixture too. Keeping it was never harmless -- the accessor's body
+  //  IS `copy[key] ?? key`, the exact shape the NEW limb 10 fails on, so a
+  //  fixture carrying it made every passing case in this file exit 1 the moment
+  //  that limb landed. The fixture now says what the real class says. 10c re-adds
+  //  it and asserts the failure, which is where a declaration of that shape
+  //  belongs: in the one case that must fail over it.)
+  'packages/core/lib/src/config/app_config.dart': `class AppConfig {\n  final Map<String, Object?>? theme;\n  final Map<String, String> copy;\n  bool feature(String key, {bool orElse = false}) => features[key] ?? orElse;\n}\n`,
   'apps/subly/lib/state/providers.dart': `const String kPromoCardFeature = 'promo_card_enabled';\n`,
   // 🔴 IT DECLARES ITS RECEIVER `core.AppConfig? cfg`, AND THAT IS NOT
   // DECORATION (2026-08-25). Limb 9's BOUND set resolves `.theme` against the
@@ -158,7 +170,18 @@ const DART = {
   // money_providers.dart and providers.dart all open the same way. A fixture
   // whose receiver were an untyped `cfg` would make every BOUND case fail for
   // the wrong reason and would prove nothing about the tree.
-  'apps/subly/lib/features/home/home_screen.dart': `Widget build() {\n  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n`,
+  // 🔴 IT CARRIES THE `copy` READ IDIOM VERBATIM (2026-08-25), AND WITHOUT IT
+  // LIMB 10 HAS NO DOMAIN. That limb's subject is the READ SITE, not a class
+  // member, so a Dart fixture with no `copy[...]` read anywhere makes it report
+  // COVERAGE LOST on the passing tree -- which is 10g, deliberately, and must not
+  // be the state every other case in this file runs in.
+  'apps/subly/lib/features/home/home_screen.dart': `Widget build() {\n  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n\n/// [O3] An override REPLACES designed copy; designed copy is the FALLBACK.\nString _copy(core.AppConfig? cfg, String key, String fallback) {\n  final String? override = cfg?.copy[key];\n  return (override == null || override.trim().isEmpty) ? fallback : override;\n}\n`,
+  // 🔴 AND A SECOND SITE UNDER `tooling/bricks`, BECAUSE ONE ROOT IS NOT THREE.
+  // DART_ROOTS is ['apps', 'packages', 'tooling/bricks'] and the real tree reads the
+  // map on BOTH brick screens. A fixture whose only read lived under `apps` would
+  // count 1 where the tree counts 4, and would go on passing if the brick root were
+  // dropped from the scan -- the exact drift limb 0's COVERAGE set exists to catch.
+  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/firstrun/onboarding_screen.dart': `String _copy(core.AppConfig? cfg, String key, String fallback) {\n  final String? override = cfg?.copy[key];\n  return (override == null || override.trim().isEmpty) ? fallback : override;\n}\n`,
   // 🔴 A TEST THAT READS A KEY MUST NOT COUNT AS A READER. This file asks for
   // `renewals` — the one key the passing fixture serves — so if the `/test/`
   // filter ever stops filtering, the ARMED-and-unread case below goes GREEN and
@@ -558,6 +581,20 @@ describe('assert-config-registry — 8 · a served feature key nobody reads', ()
 //   E′ (limb 10: `String text(String key, {String? fallback})` PLUS a non-test
 //        caller) → EXIT 0 on the shipped guard, EXIT 1 on the fixed one.
 // 9k below is B′ as a fixture; 10h is E′.
+//
+// ── CORRECTION 2026-08-25 · THE LIMB-10 HALVES OF THIS RECORD HAVE NO SUBJECT ─
+// The runs above are left exactly as measured; this is appended, not a rewrite.
+// LATER THE SAME DAY `AppConfig.text` WAS DELETED from packages/core's
+// app_config.dart along with its only two callers, and limb 10 was deleted with
+// it rather than left as a branch that could only ever print "its subject is
+// gone". So of the runs recorded above:
+//   · D  (`cfg.text('promo.card.title')` in home_screen.dart → EXIT 1 on limb
+//        10) no longer has a limb to fail. Re-running it today would exit 0.
+//   · E′ (the signature-change-plus-caller run) likewise. Its fixture, 10h, was
+//        deleted in the same change, together with 10a–10g.
+// The limb-9 runs — A, B, C, A′, B′, C′, D′ — are untouched and 9k below is
+// still B′ as a fixture; only the "10h is E′" half of that sentence is stale, and
+// this note is what retires it.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('assert-config-registry — 9 · an OPTIONAL AppConfig field is still a field', () => {
   test('9a · the armed tripwire is PRINTED on the passing tree, not asserted away', () => {
@@ -755,10 +792,22 @@ describe('assert-config-registry — 9 · an OPTIONAL AppConfig field is still a
     const r = run(
       tree({
         data: { ...DATA, defaults: { ...DATA.defaults, theme: { seed: '#6459F5' } } },
+        // ⏱ APPENDED 2026-08-25 — THIS CASE NOW HAS TO STRIP TWO DECLARATIONS,
+        // AND THAT IS THE CASE WORKING, NOT DRIFTING. When limb 10 came back
+        // the fixture grew a second screen under `tooling/bricks`, and it
+        // carries the real tree's receiver `core.AppConfig? cfg` — so with only
+        // home_screen rewritten, BOUND was no longer empty and this case failed
+        // for a reason that had nothing to do with its claim. The claim is
+        // unchanged: ZERO AppConfig-typed identifiers ANYWHERE. The brick screen
+        // below therefore takes the map directly instead of the config object,
+        // which keeps limb 10's domain non-empty (this case is not about limb
+        // 10) while removing the last declaration limb 9's resolver can see.
         dart: {
           ...DART,
           'apps/subly/lib/features/home/home_screen.dart':
             'Widget build() {\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n',
+          'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/firstrun/onboarding_screen.dart':
+            'String _copy(Map<String, String> copy, String key, String fallback) {\n  final String? override = copy[key];\n  return (override == null || override.trim().isEmpty) ? fallback : override;\n}\n',
         },
       }),
     );
@@ -767,109 +816,165 @@ describe('assert-config-registry — 9 · an OPTIONAL AppConfig field is still a
   });
 });
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 10 · THE DEAD COPY ACCESSOR DOES NOT ACQUIRE A USER-FACING READER
+// 10 · A COPY OVERRIDE NEVER FALLS BACK TO THE RAW KEY
+//      (2026-08-25, the SECOND change to this limb in one day)
+//
+// Cases 10a–10h were deleted earlier today together with `AppConfig.text` and
+// the limb that watched it, and the note higher up this file records that as a
+// retirement. For the ACCESSOR it was one. What went with it, unrecorded, was
+// the only mechanical enforcement of [O3] anywhere in the tree: between that
+// commit and this one, a freshly written `copy[key] ?? key` failed nothing in
+// CI. Limb 10 is back with a different subject — the `copy` map's READ SITES,
+// of which the shipped tree has FOUR — and these are its cases. They are not
+// the old eight renumbered: every one below ranges over reads rather than over
+// one accessor's declaration.
+//
+// THE REAL-TREE PROOF, recorded here because these fixtures are not the proof.
+// Both mutations were made to the WORKING TREE copy of
+// packages/core/lib/src/config/app_config.dart — the file this change owns —
+// run bare, and the file restored byte-identical afterwards (sha256
+// 8afefbfdca9902b5941f38fd7addf9b04da11f9f0821453c00c93c6f1d5b494a before and
+// after both). Baseline on the unmutated tree: EXIT 0, "TRIPWIRE ARMED, 4 READ
+// SITE(S)", naming all four screens.
+//   A  the deleted accessor re-added VERBATIM —
+//      `String text(String key) => copy[key] ?? key;` → EXIT 1, "a `copy`
+//      override falls back to the RAW KEY: packages/core/lib/src/config/
+//      app_config.dart (read #1)". NO CALLER WAS NEEDED, which is the whole
+//      difference from the limb that was deleted: the old one could only fire
+//      on a caller, so an accessor with no callers disarmed it.
+//   B  a blank-blind reader added — `String override(String key, String
+//      fallback) { final String? o = copy[key]; return o == null ? fallback :
+//      o; }` → EXIT 1, "read without treating a BLANK override as absent".
+//
+// ⚠️ ONE CONDITION IS FIXTURE-ONLY, SAID HERE RATHER THAN LEFT TO BE NOTICED:
+// the zero-sites self-check (10g) cannot be reddened on the real tree without
+// deleting the override reader from all four shipped screens, which is not a
+// change worth making for a proof. It is pinned by fixture alone.
+//
+// EVERY CONDITION MUTATED, AND WHICH CASE NOTICED (2026-08-25). A case that
+// passes against a disarmed guard is not a pin, so each branch of limb 10 was
+// switched off in the WORKING-TREE guard, this file re-run bare, and the guard
+// restored byte-identical afterwards (sha256
+// 41a9d633d7907ba9778c108c0287294bc64e112d13aa638c6f1d024833e2ead5). Baseline:
+// 65 pass, 0 fail.
+//   · raw-key condition OFF (`if (false && key !== null)`)      → 62/3: 10b, 10c, 10h.
+//   · raw-key condition BLUNTED to fire on ANY `??` after a
+//     `copy[…]` read (`m[1] === m[2] || true`)                  → 64/1: 10h ALONE.
+//     That is the one mutation nothing else in this file catches, and it is the
+//     likely one: a limb widened until `copy[key] ?? fallback` — the CORRECT
+//     shape — fails, which gets the limb loosened again in the next commit.
+//   · blank-override condition OFF (`if (false)`)               → 64/1: 10d.
+//   · zero-sites self-check OFF (`sites.length === -1`)         → 64/1: 10g.
+// No condition is unpinned, and no two conditions are pinned by the same case
+// alone.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('assert-config-registry — 10 · AppConfig.text(key) stays uncalled', () => {
-  test('10a · the armed tripwire is PRINTED on the passing tree', () => {
+describe('assert-config-registry — 10 · a copy override never falls back to the raw key', () => {
+  const HOME = 'apps/subly/lib/features/home/home_screen.dart';
+  const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/firstrun/onboarding_screen.dart';
+  const CLASS = 'packages/core/lib/src/config/app_config.dart';
+  const TESTF = 'packages/core/test/config_test.dart';
+
+  test('10a · the armed tripwire is PRINTED on the passing tree, over a NON-EMPTY domain', () => {
     const r = run(tree());
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
+    assert.match(r.out, /\[O3\] copy overrides — TRIPWIRE ARMED, 2 READ SITE\(S\)/);
+    // The sites are NAMED, not just counted, and both roots that hold a screen
+    // are represented. A bare count would not notice `tooling/bricks` dropping
+    // out of DART_ROOTS — it would just get smaller, which is what "three" did
+    // to this limb's own prose, twice.
+    assert.match(r.out, /apps\/subly\/lib\/features\/home\/home_screen\.dart \(read #1\)/);
+    assert.match(r.out, /tooling\/bricks\/[\s\S]*firstrun\/onboarding_screen\.dart \(read #1\)/);
   });
 
-  test('10b · a non-test caller FAILS, with the [O3] reason', () => {
+  test('10b · a read that falls back to the RAW KEY FAILS, with the [O3] reason', () => {
     const r = run(
-      tree({
-        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}String t(cfg) => cfg.text('promo.card.title');\n` },
-      }),
+      tree({ dart: { ...DART, [HOME]: `${DART[HOME]}String _bad(core.AppConfig? cfg, String key) => cfg?.copy[key] ?? key;\n` } }),
     );
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /`AppConfig\.text\(key\)` has a non-test caller[\s\S]*never the raw key/);
+    assert.match(r.out, /falls back to the RAW KEY[\s\S]*never the raw key/);
   });
 
-  test('10c · `find.text(` is flutter_test, not the accessor — excluded by RECEIVER', () => {
-    // The `/test/` filter would normally hide this shape. Relying on that alone
-    // is relying on a coincidence: a screenshot harness or a golden helper that
-    // lives outside a `test/` directory would fire the limb for the wrong
-    // reason, and the fix would be to loosen it — the dangerous direction.
+  test('10c · the DELETED accessor cannot come back — the declaration alone fails, no caller needed', () => {
+    // This is what the retired limb could NOT do. It fired on a caller, so
+    // `AppConfig.text` could be re-declared and sit there, callerless and
+    // green, until someone used it. Here the body IS the violation.
     const r = run(
-      tree({
-        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}final f = find.text('Skip');\n` },
-      }),
+      tree({ dart: { ...DART, [CLASS]: DART[CLASS].replace('}\n', '  String text(String key) => copy[key] ?? key;\n}\n') } }),
     );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /falls back to the RAW KEY: packages\/core\/lib\/src\/config\/app_config\.dart/);
+    assert.match(r.out, /it does not come back/);
   });
 
-  test('10d · a caller in a TEST file is not a caller — that is the state being reported', () => {
-    const r = run(
-      tree({
-        dart: { ...DART, 'packages/core/test/config_test.dart': "void main() {\n  expect(c.feature('renewals'), isTrue);\n  expect(c.text('welcome'), 'Hi');\n}\n" },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-  });
-
-  test('10e · a caller inside a COMMENT is not a caller — the brick explains why it does NOT call it', () => {
-    // Not hypothetical: tooling/bricks/…/onboarding_screen.dart carries a doc
-    // comment naming `AppConfig.text(key)` as the thing it deliberately avoids.
-    // A raw-text scan reads that explanation as the caller this limb hunts.
-    const r = run(
-      tree({
-        dart: { ...DART, 'apps/subly/lib/features/home/home_screen.dart': `/// Never cfg.text(key) — it falls back to the raw key. [O3]\n${DART['apps/subly/lib/features/home/home_screen.dart']}` },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-  });
-
-  test('10f · with the accessor DELETED the limb says its subject is gone, not "clean"', () => {
-    const r = run(
-      tree({
-        dart: { ...DART, 'packages/core/lib/src/config/app_config.dart': DART['packages/core/lib/src/config/app_config.dart'].replace(/  String text.*\n/, '') },
-      }),
-    );
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` is no longer declared/);
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // 10f PINNED THE DELETION CASE ONLY, and that was the gap (2026-08-25). The
-  // subject test was the accessor's SIGNATURE spelled out —
-  // `/\bString\s+text\s*\(\s*String\s+\w+\s*\)/` — so a signature CHANGE
-  // read as a deletion: the limb printed "its subject is gone … ranges over
-  // nothing" and PASSED while the accessor was still there, still returning the
-  // raw key, still able to acquire callers. Same disarm direction as limb 9's,
-  // one limb over.
-  // ───────────────────────────────────────────────────────────────────────────
-
-  const RESIGNED = DART['packages/core/lib/src/config/app_config.dart'].replace(
-    '  String text(String key) => copy[key] ?? key;',
-    '  String text(String key, {String? fallback}) => copy[key] ?? fallback ?? key;',
-  );
-
-  test('10g · a SIGNATURE change is not a deletion — the limb stays ARMED', () => {
-    const r = run(tree({ dart: { ...DART, 'packages/core/lib/src/config/app_config.dart': RESIGNED } }));
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /`AppConfig\.text` — TRIPWIRE ARMED, DOMAIN EMPTY/);
-    assert.doesNotMatch(r.out, /`AppConfig\.text` is no longer declared/);
-  });
-
-  test('10h · …and with a non-test caller beside it, it still FAILS', () => {
-    // Against the shipped subject test this exact tree EXITED 0 with "subject is
-    // gone". Measured the same way on a worktree of 6d67631 (run E′ in the limb
-    // 9 record above), which is what makes this a pin rather than a fixture.
+  test('10d · a read that does NOT treat a blank override as absent FAILS', () => {
+    // The other half of what all four shipped sites do, and the half a new
+    // screen is most likely to leave out: `""` is not an override, it is a
+    // config somebody half-edited.
     const r = run(
       tree({
         dart: {
           ...DART,
-          'packages/core/lib/src/config/app_config.dart': RESIGNED,
-          'apps/subly/lib/features/home/home_screen.dart': `${DART['apps/subly/lib/features/home/home_screen.dart']}String _t(core.AppConfig cfg, String k) => cfg.text(k);\n`,
+          [HOME]: `${DART[HOME]}String _blind(core.AppConfig? cfg, String key, String fb) {\n  final String? o = cfg?.copy[key];\n  return o == null ? fb : o;\n}\n`,
         },
       }),
     );
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /`AppConfig\.text\(key\)` has a non-test caller/);
+    assert.match(r.out, /read without treating a BLANK override as absent/);
+  });
+
+  test('10e · a `copy[…]` inside a COMMENT is not a read site', () => {
+    // Not hypothetical. apps/subly/lib/l10n/app_localizations.dart carries four
+    // doc comments naming `AppConfig.copy['onboarding.1.title']` and friends,
+    // and the prose that warns about the raw-key trap has to SPELL the trap out
+    // — so a raw-text scan would fail this limb on the warning against the very
+    // thing it warns about. `stripSourceComments` is what stops that.
+    const r = run(
+      tree({ dart: { ...DART, [HOME]: `/// Never \`cfg?.copy[key] ?? key\` — [O3]: the raw key is not a heading.\n${DART[HOME]}` } }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /TRIPWIRE ARMED, 2 READ SITE\(S\)/);
+  });
+
+  test('10f · a read in a TEST file is not a read site', () => {
+    // apps/subly/test/config_contract_test.dart:113 reads the map today, and
+    // the line added below is deliberately the FAILING shape: if the `/test/`
+    // filter ever stops filtering, this case goes red rather than quietly
+    // widening the domain with files that prove nothing about what ships.
+    const r = run(
+      tree({ dart: { ...DART, [TESTF]: `${DART[TESTF]}String probe(c) => c.copy['probe'] ?? 'probe';\n` } }),
+    );
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /TRIPWIRE ARMED, 2 READ SITE\(S\)/);
+  });
+
+  test('10g · ZERO read sites anywhere is COVERAGE LOST, not a pass', () => {
+    // A scan over nothing prints "ok" — this repo's single most repeated
+    // failure. If every screen stopped reading overrides, the served `copy`
+    // document would reach no surface at all and this limb would report [O3]
+    // as honoured by an empty set.
+    const bare = { ...DART };
+    delete bare[BRICK];
+    bare[HOME] = 'Widget build() {\n  final core.AppConfig? cfg = ref.watch(appConfigProvider).valueOrNull;\n  final bool on = cfg?.feature(kPromoCardFeature) ?? false;\n  return on ? card() : empty();\n}\n';
+    const r = run(tree({ dart: bare }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST[\s\S]*no shipped Dart reads the `copy` map at all/);
+  });
+
+  test('10h · the raw-key test is IDENTIFIER-SENSITIVE — `?? fallback` passes where `?? key` fails', () => {
+    // The limb would be WRONG if it read "a `copy[…]` with a `??` after it":
+    // `copy[key] ?? fallback` is the correct shape and is what a fifth screen
+    // would be written with. Only the same identifier on both sides is the bug.
+    // Both trees below are blank-safe, so condition (B) is held constant and
+    // the one dimension that moves is the fallback's NAME.
+    const ok = `${DART[HOME]}String _v(core.AppConfig? cfg, String key, String fallback) {\n  final String o = cfg?.copy[key] ?? fallback;\n  return o.trim().isEmpty ? fallback : o;\n}\n`;
+    const good = run(tree({ dart: { ...DART, [HOME]: ok } }));
+    assert.equal(good.code, 0, good.out);
+    assert.match(good.out, /TRIPWIRE ARMED, 3 READ SITE\(S\)/);
+
+    const bad = run(tree({ dart: { ...DART, [HOME]: ok.replace('?? fallback;', '?? key;') } }));
+    assert.equal(bad.code, 1, bad.out);
+    assert.match(bad.out, /falls back to the RAW KEY[\s\S]*`copy\[key\] \?\? key`/);
   });
 });

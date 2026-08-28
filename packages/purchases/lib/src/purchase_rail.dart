@@ -12,8 +12,13 @@ enum CheckoutRefusal {
   /// The platform cannot open an external page at all.
   platformNotSupported,
 
-  /// No offerings, or no checkout URL template. This is the state today:
-  /// OWNER_QUEUE A-1 is PENDING, so no seller account exists to generate one.
+  /// No offerings, or no checkout URL template. This is the state today,
+  /// because `paywall.enabled` is false for every app in
+  /// services/platform/src/app-config-data.json.
+  ///
+  /// ⚠️ CORRECTED 2026-08-28: this read "OWNER_QUEUE A-1 is PENDING, so no
+  /// seller account exists to generate one". The seller account went LIVE
+  /// 2026-08-11 ([ADR 044]); the paywall switch is what is off.
   railNotConfigured,
 
   /// No session, so the purchase could not be attributed to anybody
@@ -60,8 +65,14 @@ enum CancellationOutcome {
   /// regulator both read.
   recorded,
 
-  /// Recorded here AND executed on the rail. Reachable only once a seller
-  /// account and an API credential exist (OWNER_QUEUE A-1).
+  /// Recorded here AND executed on the rail. ⚠️ CORRECTED 2026-08-28: this read
+  /// "Reachable only once a seller account and an API credential exist
+  /// (OWNER_QUEUE A-1)". Both now exist — the account went LIVE 2026-08-11 and
+  /// [ADR 044] evidences the live API key. What still makes this unreachable is
+  /// that NO REGISTERED ADAPTER CAN EXECUTE A CANCELLATION: the vendor's cancel
+  /// endpoint shape has never been read against a primary source in this repo,
+  /// and a guessed call would 404 for the first real subscriber. See
+  /// services/platform/src/routes/cancellation.ts.
   executed,
 
   /// There is nothing to cancel for this user and app.

@@ -13,6 +13,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
+import '../shared/neutrals.dart';
 import '../shared/painters.dart';
 import '../shared/widgets.dart';
 
@@ -20,40 +21,12 @@ final FutureProvider<BudgetInfo> budgetProvider = FutureProvider<BudgetInfo>(
   (ref) => ref.watch(subscriptionRepositoryProvider).budget(),
 );
 
-/// The three neutrals this screen paints with, resolved for the current
-/// brightness.
-///
-/// 🔴 LIGHT IS THE LITERAL TOKEN, ON PURPOSE — the rule `cardDecoration` and
-/// `RowCard` carry (`features/shared/widgets.dart`): `apps/subly` is the frozen
-/// legacy rail-prover the owner eyeballs, so light stays byte-identical.
-/// `Theme.of(context).extension<AppThemeX>()` is NOT a substitute — under the
-/// seeded chassis theme its `muted`/`line` are `scheme.onSurfaceVariant`/
-/// `outlineVariant` in BOTH brightnesses, so reading it would repaint the light
-/// build.
-///
-/// 🔴 DARK IS THE DEFECT THIS FIXES. `AppText.title`/`.fig`/`.body` bake
-/// `AppColors.ink` (#141420) and `AppText.muted` bakes `AppColors.muted`, so on
-/// a dark scaffold the ring percentage, the three stats and every category name
-/// were near-black on near-black. The dark values are the same slots
-/// `buildAppTheme` maps these neutrals to (`ink: scheme.onSurface`,
-/// `divider: scheme.outlineVariant`) and `AppThemeX.fromScheme` maps `muted` to.
-///
-/// ⚠️ `calendar_screen.dart` and `insights_screen.dart` carry the identical
-/// helper: each P4 file-group increment has to stay independently compilable,
-/// and the hoist into `features/shared/` belongs to the campaign's closing
-/// cleanup alongside the deletion of `DueInfo.of`.
-({Color ink, Color muted, Color line}) _neutrals(BuildContext context) {
-  final ThemeData theme = Theme.of(context);
-  if (theme.brightness == Brightness.light) {
-    return (ink: AppColors.ink, muted: AppColors.muted, line: AppColors.line);
-  }
-  final ColorScheme scheme = theme.colorScheme;
-  return (
-    ink: scheme.onSurface,
-    muted: scheme.onSurfaceVariant,
-    line: scheme.outlineVariant,
-  );
-}
+/// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
+/// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
+/// together with the whole doc that recorded why light is the literal token and
+/// why dark derives from the seed. The triplication was deliberate for exactly
+/// one increment and its own doc said so; this is the closing cleanup it named,
+/// landed with the deletion of `DueInfo.of`. Read the argument there.
 
 /// The gap this page has always spent between two category bars.
 ///
@@ -98,10 +71,16 @@ bool _twoUp(double width, int cardCount) =>
 /// wherever their own content does — they are not forced to equal heights,
 /// which would stretch whichever column has less in it.
 ///
-/// ⚠️ Duplicated verbatim in `insights_screen.dart`, for the reason `_neutrals`
-/// records above it: each P4 file-group increment has to stay independently
-/// compilable, and the hoist into `features/shared/` belongs to the campaign's
-/// closing cleanup.
+/// ⚠️ Duplicated verbatim in `insights_screen.dart`, for the reason the hoisted
+/// `neutrals` helper recorded when it stood above this one: each P4 file-group
+/// increment has to stay independently compilable, and the hoist into
+/// `features/shared/` belongs to the campaign's closing cleanup.
+///
+/// (CORRECTION 2026-08-25: `_neutrals` took that hoist —
+/// `features/shared/neutrals.dart`. THIS helper did NOT, and is still
+/// duplicated. It is a layout function with no theme input, and it was outside
+/// the file set of the due/neutrals cleanup. The duplication is unresolved,
+/// not resolved.)
 Widget _twoColumnCards(List<Widget> cards, double gap) {
   final List<Widget> left = <Widget>[];
   final List<Widget> right = <Widget>[];
@@ -146,7 +125,7 @@ class BudgetScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     final Currency currency = ref.watch(currencyProvider);
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
@@ -520,7 +499,7 @@ class BudgetScreen extends ConsumerWidget {
     final Color barColor = over
         ? AppColors.danger
         : AppColors.ramp[i % AppColors.ramp.length];
-    final ({Color ink, Color muted, Color line}) neutral = _neutrals(context);
+    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
 
     return Container(
       padding: const EdgeInsets.all(15),

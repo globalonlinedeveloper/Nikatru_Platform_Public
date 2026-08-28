@@ -25,6 +25,14 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
+import {
+  inspect,
+  newProbeCache,
+  probeBinding,
+  probeJwks,
+  JWKS_READING_TTL_MS,
+  READING_TTL_MS,
+} from './lib/health';
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { supabaseAuth, erasureAuth } from './middleware/auth';
@@ -53,15 +61,90 @@ app.use('*', corsMiddleware);
 // version; `build` is the commit this Worker was deployed from, and it is what
 // the post-deploy smoke joins a deploy to. Without it, "the Worker answered" and
 // "the OLD Worker answered" are the same observation. [pipeline 14]O-7.
-app.get('/v1/health', (c) =>
-  c.json({
-    ok: true,
+// ── 🔴 `ok` IS A MEASUREMENT NOW, NOT A LITERAL ──────────────────────────────
+// It used to be the constant `true`, so `post-deploy-smoke.mjs --require-ok`
+// asserted something that could not fail. See the identical note on the same
+// route in services/platform/src/index.ts, and src/lib/health.ts — a
+// BYTE-IDENTICAL twin of platform's copy, held equal by
+// services/platform/test/twinned-worker-modules.test.ts — for the three-state
+// design, the per-isolate cache and why every reading carries its age.
+//
+// ⚠️ THE SHAPE IS BACKWARD-COMPATIBLE. `ok` is still a top-level boolean that is
+// `true` when healthy, and HTTP is still 200 even when it is false — `judge()`
+// in post-deploy-smoke.mjs treats a non-200 as RETRYABLE, so a 503 would make
+// "deployed and unwell" indistinguishable from "not deployed yet", which is the
+// one distinction `--require-ok` exists to draw.
+//
+// 🔴 A FINDING THIS CHANGE CANNOT FIX FROM HERE. GlitchTip monitor 11 asserts
+// platform's body (`expectedBody: "\"ok\":true\"`), so platform's honest `ok`
+// reaches a monitor. THIS Worker's monitor — id 2, `Subly API health` in
+// tooling/monitor-register.json — asserts `expectedStatus: 200` and NO body. So
+// an `ok:false` here still leaves that monitor green. The deploy smoke catches
+// it; the 60-second monitor does not. Closing that needs an `expectedBody` on
+// monitor 2, which is a change to tooling/monitor-register.json and to the live
+// GlitchTip monitor — neither of them this Worker's source.
+//
+// ── WHY THESE THREE DEPENDENCIES ─────────────────────────────────────────────
+//   APP_DB         Subly's own data. Every /v1/subscriptions and /v1/budget
+//                  request reads it.
+//   PLATFORM_DB    the shared entitlements DB this Worker also reads directly.
+//   SUPABASE_JWKS  the document every ES256 verification rests on — and this
+//                  Worker mounts DELETE /v1/account behind `erasureAuth`, which
+//                  is ASYMMETRIC-ONLY with no secret fallback, so a broken JWKS
+//                  takes erasure down completely rather than degrading it.
+//
+// JWKS_CACHE is deliberately NOT probed. It is a warm-start cache: `jose` fetches
+// the JWKS itself, so a KV failure there costs latency on a cold isolate and
+// nothing else (src/middleware/auth.ts says so in its header). Reporting it as a
+// dependency would make the endpoint say `ok:false` for a fault no request can
+// feel — and a health check that cries about something harmless is one somebody
+// stops reading. What the cache is FOR is covered by `supabase_jwks` below.
+//
+// The reads are the cheapest that would DIFFER if the dependency were broken;
+// each names a real table so a database that is reachable but carries no schema
+// — the "wrong D1 bound" deploy failure — fails too, which a bare `SELECT 1`
+// would not. No probe writes anything.
+const probeCache = newProbeCache();
+
+app.get('/v1/health', async (c) => {
+  const now = Date.now();
+  const report = await inspect(
+    probeCache,
+    [
+      {
+        name: 'app_db',
+        ttlMs: READING_TTL_MS,
+        run: () =>
+          probeBinding(c.env.APP_DB, () =>
+            c.env.APP_DB.prepare('SELECT 1 FROM subscriptions LIMIT 1').first(),
+          ),
+      },
+      {
+        name: 'platform_db',
+        ttlMs: READING_TTL_MS,
+        run: () =>
+          probeBinding(c.env.PLATFORM_DB, () =>
+            c.env.PLATFORM_DB.prepare('SELECT 1 FROM entitlements LIMIT 1').first(),
+          ),
+      },
+      {
+        name: 'supabase_jwks',
+        ttlMs: JWKS_READING_TTL_MS,
+        run: () => probeJwks(c.env.SUPABASE_URL),
+      },
+    ],
+    now,
+  );
+  return c.json({
+    ok: report.ok,
+    status: report.status,
     app: c.env.APP_ID,
     version: c.env.API_VERSION,
     build: c.env.RELEASE ?? null,
     time: nowIso(),
-  }),
-);
+    checks: report.checks,
+  });
+});
 
 // ── Public: webhooks (authenticated by shared secret, not by user JWT) ────────
 app.route('/v1/webhooks', webhooks);

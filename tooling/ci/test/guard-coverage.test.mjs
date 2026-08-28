@@ -22,7 +22,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, unlinkSync, statSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync, unlinkSync, statSync, appendFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +49,30 @@ const EXCUSED = (() => {
   const block = src.match(/NO_NEGATIVE_TEST_NEEDED = new Map\(\[([\s\S]*?)\n\]\);/);
   assert.ok(block, 'could not find NO_NEGATIVE_TEST_NEEDED in the guard — the fixtures cannot model it');
   return [...block[1].matchAll(/'(tooling\/[^']+\.mjs)'/g)].map((m) => m[1]);
+})();
+
+/** Every workflow-invoked executable OUTSIDE tooling/ci in the REAL repository,
+ *  derived the way the guard derives `invokedOutside` (comment lines dropped,
+ *  then the same broad `tooling/…​.mjs` match). DERIVED, NEVER PASTED — for
+ *  reason 2 in the EXCUSED note above, which is the same reason the last test in
+ *  this file exists. */
+const WORKFLOW_INVOKED_OUTSIDE = (() => {
+  const dir = resolve(CI_DIR, '..', '..', '.github', 'workflows');
+  const rels = new Set();
+  // `.ya?ml` is the guard's own filter. Without
+  // it a stray directory or dotfile in .github/workflows makes readFileSync
+  // THROW — an error, not a verdict — on whichever host has one first.
+  for (const wf of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+    const text = readFileSync(join(dir, wf), 'utf8')
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('#'))
+      .join('\n');
+    for (const m of text.matchAll(/tooling\/([A-Za-z0-9._/-]+\.mjs)/g)) {
+      const rel = `tooling/${m[1]}`;
+      if (!rel.startsWith('tooling/ci/')) rels.add(rel);
+    }
+  }
+  return [...rels].sort();
 })();
 
 /** The guards NOT_CI_RUNNABLE excuses from R2, READ OUT OF THE GUARD for the two
@@ -117,7 +141,16 @@ let seq = 0;
  *                            invoked by the generated workflow — the derived
  *                            subject set that replaced the hand-written
  *                            COVERED_SCRIPTS map
- * @param opts.mentionScripts whether the test files name those scripts
+ * @param opts.mentionScripts how the generated test files treat those scripts:
+ *                            true = each is SPAWNED (what a negative test does),
+ *                            'names-only' = named in executable code but never
+ *                            run — the tooling/e2e/verify_purged.mjs shape, a
+ *                            fixture edit inside a test of something else —
+ *                            false = not named at all
+ * @param opts.mutateGuard    transform applied to the REAL guard source before
+ *                            it is copied in under `real` — the only way to
+ *                            reach the guard's own inline canaries, which cannot
+ *                            fail unless the detector they watch is broken
  * @param opts.workflow       replace the generated workflow entirely
  * @param opts.invoke         override which guard filenames the workflow invokes
  * @param opts.manifest       pre-seed tooling/ci/test/coverage-manifest.json
@@ -146,6 +179,7 @@ function repo(
     invoke,
     manifest,
     real = false,
+    mutateGuard,
   } = {},
 ) {
   const root = join(TMP, `r${seq++}`);
@@ -158,7 +192,10 @@ function repo(
   // puts it in real-repo mode against the fixture. Any other way of reaching
   // those limbs would mean adding a "pretend this is the real repo" switch to a
   // guard, and a switch that relaxes a guard is a switch someone will find.
-  if (real) all['assert-guard-coverage.mjs'] = readFileSync(GUARD, 'utf8');
+  if (real) {
+    const g = readFileSync(GUARD, 'utf8');
+    all['assert-guard-coverage.mjs'] = mutateGuard ? mutateGuard(g) : g;
+  }
 
   // Modules the copied guard IMPORTS travel with it, or the copy does not FAIL
   // the assertion under test — it fails to start, and the test then reports
@@ -209,9 +246,18 @@ function repo(
   // write `// <guard-name>` and pass — encoding the same blind spot the guard
   // itself had, so neither could see that a hollowed-out test file covers
   // nothing. Found 2026-07-27 while closing F-10.
-  const covered = mentionAll
-    ? [...Object.keys(all), ...unrunnable, ...deps, ...(mentionScripts ? scripts.map((s) => s.split('/').pop()) : [])]
-    : ['nothing-real.mjs'];
+  const covered = mentionAll ? [...Object.keys(all), ...unrunnable, ...deps] : ['nothing-real.mjs'];
+  // ⚠️ A SCRIPT OUTSIDE tooling/ci IS NOT CREDITED BY BEING NAMED — it is
+  // credited by being RUN, so the fixture has to run it. Until 2026-08-26 this
+  // wrote `test('exercises provision-backend.mjs', …)` and the guard counted it,
+  // which is the same blind spot that credited tooling/e2e/verify_purged.mjs to
+  // a test of assert-d1-sql-inventory.mjs for editing a COMMENT inside it.
+  // 'names-only' reproduces exactly that shape, kept so the repair has a failing
+  // case of its own.
+  const scriptLines = (rel) =>
+    mentionScripts === 'names-only'
+      ? `test('edits ${rel} as fixture material', () => { edit(root, '${rel}', (s) => s.replace('a', 'b')); });`
+      : `test('runs ${rel}', () => { spawnSync(process.execPath, ['${rel}', '--self-check'], { encoding: 'utf8' }); });`;
   for (let i = 0; i < testFiles; i++) {
     // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix
     // that removed it has a failing case of its own.
@@ -225,10 +271,14 @@ function repo(
       writeFileSync(join(t, `t${i}.test.mjs`), `// ${covered.join('\n// ')}\n`);
       continue;
     }
-    const body = covered.map((n) => `test('exercises ${n}', () => { assert.ok('${n}'); });`).join('\n');
+    const body = [
+      ...covered.map((n) => `test('exercises ${n}', () => { assert.ok('${n}'); });`),
+      ...(mentionScripts === false ? [] : scripts.map(scriptLines)),
+    ].join('\n');
     writeFileSync(
       join(t, `t${i}.test.mjs`),
-      `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n${body}\n`,
+      `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n` +
+        `import { spawnSync } from 'node:child_process';\n${body}\n`,
     );
   }
 
@@ -548,6 +598,73 @@ describe('assert-guard-coverage', () => {
       assert.match(r.stderr, /declare no tests/);
     });
 
+    test('a declaration written INSIDE A STRING is not a test case', () => {
+      // ⏱ 2026-08-27. `countCases` was `text.match(/^\s*(test|it)\s*\(/gm)` over
+      // the comment-stripped source, and a `test('m1', () {});` sitting at the
+      // start of a line INSIDE a quoted Dart or JS fixture is the same bytes as
+      // a declaration. Fifty-seven of them were in the floor — guards.test.mjs
+      // 431 → 383, money-config.test.mjs 35 → 32, mor-adapters 42 → 40,
+      // adapter-capabilities 28 → 26, app-dod 33 → 32, purchase-path 66 → 65.
+      //
+      // 🔴 AND THIS IS THE DANGEROUS DIRECTION FOR A RATCHET. A floor is a
+      // promise that this much coverage exists; a rise is recorded for free and
+      // never falls back, so a phantom case is a permanent claim to coverage
+      // that nothing runs. The hollow check below is the sharpest form of it: a
+      // file whose ONLY declarations are quoted runs nothing at all, and the
+      // old counter read it as a working test file.
+      const r = run(
+        repo(compliant(), {
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { writeFileSync } from 'node:fs';",
+              'const FIXTURE = `',
+              "test('m1', () => {});",
+              "it('m2', () => {});",
+              '`;',
+              "writeFileSync('generated.test.mjs', FIXTURE);",
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /1 test file\(s\) declare no tests: t9\.test\.mjs/);
+    });
+
+    test('a real case after a fixture whose closing backtick is on a COMMENT line still counts', () => {
+      // 🔴 THE COMPOSITION, NOT THE COUNTER. `executable()` is a line filter with
+      // no notion of strings, so it deletes a `//`-leading line from INSIDE a
+      // template literal — and money-config.test.mjs:176-178 is a template whose
+      // body is three commented-out lines with the CLOSING BACKTICK on the third.
+      // Reduce that file first and the remaining text carries an unpaired
+      // backtick, so `codeMask` inverts from there on: fixture bodies read as
+      // code and real code reads as string. Measured on the real file —
+      // countCases over the reduced text said 19, `node --test` runs 32, and
+      // over the raw bytes it says 32.
+      //
+      // So the counter is handed the RAW file. This fixture is that shape in
+      // miniature: reduce it first and the one real declaration below lands
+      // inside a string that never closes, the file reads as HOLLOW, and the
+      // guard fails. Counting the raw bytes, it is worth exactly 1.
+      const r = run(
+        repo(compliant(), {
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { test } from 'node:test';",
+              'const FIXTURE = `',
+              "// this line ends with the fixture's closing backtick`;",
+              "test('the only real case in this file', () => { if (!FIXTURE) throw new Error('empty'); });",
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /\+ t9\.test\.mjs \(1\)/);
+    });
+
     test('a guard named only inside a COMMENT is not covered', () => {
       // This is what this fixture used to write for every file, and the guard
       // accepted it: `includes()` over raw text cannot tell code from prose.
@@ -578,6 +695,29 @@ describe('assert-guard-coverage', () => {
     test('a git-tracked, workflow-wired fixture passes in real mode', () => {
       const r = runReal(seeded());
       assert.equal(r.status, 0, r.stderr + r.stdout);
+    });
+
+    test('the DETECTOR regressed to a basename grep is COVERAGE LOST, not a healthy count', () => {
+      // `exercisedBy` is only worth anything while it can still tell a script
+      // that is RUN from one that is merely NAMED. Regress it to the
+      // `includes(basename)` it replaced — a plausible simplification — and the
+      // guard would go back to crediting tooling/e2e/verify_purged.mjs to a test
+      // of assert-d1-sql-inventory.mjs, while printing a larger covered count
+      // than before. The guard carries an inline canary for exactly that, and
+      // this is the canary's failing case: without it, deleting the whole rule
+      // costs nothing.
+      const r = runReal(
+        seeded({
+          mutateGuard: (s) => {
+            const anchor = 'const exercisedBy = (text, base) => {\n  const mask = codeMask(text);';
+            assert.ok(s.includes(anchor), 'the detector moved — this mutation no longer reaches it');
+            return s.replace(anchor, `const exercisedBy = (text, base) => {\n  if (text.includes(base)) return 'names it';\n  const mask = codeMask(text);`);
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /no longer distinguishes a script that is RUN from one that is merely NAMED/);
+      assert.match(r.stderr, /must be null/);
     });
 
     // ── NOT_CI_RUNNABLE — R2's one exemption, and the failing cases it owes ──
@@ -834,7 +974,7 @@ describe('assert-guard-coverage', () => {
     test('one with no negative test FAILS', () => {
       const r = run(repo(compliant(), { mentionScripts: false }));
       assert.equal(r.status, 1, r.stdout);
-      assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — a workflow runs it and no test file mentions it/);
+      assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — a workflow runs it and no test file EXERCISES it/);
       assert.match(r.stderr, /NO_NEGATIVE_TEST_NEEDED with a reason/);
     });
 
@@ -863,24 +1003,333 @@ describe('assert-guard-coverage', () => {
         repo(compliant(), { scripts: ['tooling/scripts/provision-backend.mjs', 'tooling/release/submit-newthing.mjs'], mentionScripts: false }),
       );
       assert.equal(r.status, 1, r.stdout);
-      assert.match(r.stderr, /tooling\/release\/submit-newthing\.mjs — a workflow runs it and no test file mentions it/);
+      assert.match(r.stderr, /tooling\/release\/submit-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
     });
 
-    test('an EXCUSED script a test file happens to name is simply counted as covered', () => {
-      // NOT a contradiction, deliberately — see the long comment at that spot in
-      // the guard. "The basename appears in the suite" is a weak proxy read as
-      // POSITIVE evidence everywhere else; inverting it for excused scripts made
-      // the check fire on this very file, which has to name those paths to model
-      // the exemption list at all.
+    test('an EXCUSED script a test file RUNS is counted as covered — and the demotion is printed', () => {
+      // Still not a contradiction — see the long comment at that spot in the
+      // guard: "the basename appears in the suite" is a weak proxy read as
+      // POSITIVE evidence everywhere else, and inverting it for excused scripts
+      // made the check fire on this very file, which has to name those paths to
+      // model the exemption list at all. What IS new is that the demotion is no
+      // longer silent: the entry has stopped being what covers the file, and
+      // that is the sentence nobody got for tooling/e2e/verify_purged.mjs.
       const r = run(repo(compliant(), { scripts: [EXCUSED[0]], mentionScripts: true }));
       assert.equal(r.status, 0, r.stderr);
       assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered, 0 excused/);
+      assert.match(r.stdout, /has stopped being what covers the file/);
+      assert.ok(r.stdout.includes(`${EXCUSED[0]} — exercised by t0.test.mjs runs it`), r.stdout);
+    });
+
+    // ── EXERCISED, NOT MENTIONED — the 2026-08-26 repair and its failing cases ──
+    //
+    // tooling/e2e/verify_purged.mjs was counted as COVERED because one string in
+    // tooling/ci/test/d1-sql-inventory.test.mjs named it: that file EDITS A
+    // COMMENT inside it to test a different guard's R4 limb, asserts on that
+    // guard's stderr, and would pass unchanged if verify_purged.mjs stopped
+    // verifying anything. The credit outranks NO_NEGATIVE_TEST_NEEDED, so the
+    // recorded exception silently stopped being what covered the file — the ⬜
+    // line that exists to make that gap visible went quiet, and nobody was told.
+    test('a script only NAMED by a test of something else is NOT covered', () => {
+      const r = run(repo(compliant(), { mentionScripts: 'names-only' }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — a workflow runs it and no test file EXERCISES it/);
+      // Attributable in BOTH directions: the guard names the files that name it.
+      assert.match(r.stderr, /t0\.test\.mjs, t1\.test\.mjs, t2\.test\.mjs name it without running it/);
+      assert.match(r.stderr, /a byte touched and not a behaviour exercised/);
+    });
+
+    test('a name-only mention does not outrank a recorded exception', () => {
+      // The half that made the real defect SILENT rather than merely wrong. With
+      // the credit gone the exemption is primary again, printed with its reason.
+      const r = run(repo(compliant(), { scripts: [EXCUSED[0]], mentionScripts: 'names-only' }));
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /0 workflow-invoked script\(s\) outside tooling\/ci also covered, 1 excused/);
+      assert.ok(r.stdout.includes(EXCUSED[0]), r.stdout);
+      assert.doesNotMatch(r.stdout, /has stopped being what covers the file/);
+    });
+
+    test('a script IMPORTED by a test file is covered — a module under test is exercised too', () => {
+      // ⚠️ THE SUBJECT IS SYNTHETIC ON PURPOSE, and it was a REAL path
+      // (`tooling/sites/lastmod.mjs`) until 2026-08-27. `exercisedBy` matches
+      // `from '<path>'`, and the path it matches lives INSIDE this fixture's
+      // string literal — the matcher has no string context to lose it in.
+      // Synthetic names are the tree's idiom for this
+      // (`tooling/release/submit-newthing.mjs`, below); the check that keeps it
+      // that way is the last test in this describe.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/sites/emit-newthing.mjs'],
+          mentionScripts: false,
+          files: {
+            'tooling/ci/test/t9.test.mjs':
+              "import { test } from 'node:test';\nimport { emit } from '../../sites/emit-newthing.mjs';\n" +
+              "test('emit() returns a string', () => { emit(); });\n",
+          },
+          testFiles: 2,
+        }),
+      );
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered/);
+    });
+
+    test('a path passed as an ARGUMENT to another program is not an execution of it', () => {
+      // Position is the whole rule. argv[0] is the thing being run; argv[1] is
+      // data handed to something else — which is how a fixture path belonging to
+      // one guard shows up inside the spawn of another.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/release/submit-newthing.mjs'],
+          mentionScripts: false,
+          files: {
+            'tooling/ci/test/t9.test.mjs':
+              "import { test } from 'node:test';\nimport { spawnSync } from 'node:child_process';\n" +
+              "test('names it as data', () => { spawnSync(process.execPath, ['tooling/ci/assert-thing-0.mjs', 'tooling/release/submit-newthing.mjs']); });\n",
+          },
+          testFiles: 2,
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/submit-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
+      assert.match(r.stderr, /t9\.test\.mjs names it without running it/);
+    });
+
+    // ── THE SIX isCode GATES, ONE FAILING CASE EACH ──────────────────────────
+    //
+    // ⏱ 2026-08-27. `codeMask` landed with its credit identity proven — the
+    // guard's own inline canary holds `exercisedBy` to reading a QUOTED import
+    // as null. That canary reaches exactly ONE of the six places the mask is
+    // consulted: the `inCode()` matcher at the top of `exercisedBy`, which is
+    // what the `from '…'` rules go through. The other five ran on every
+    // invocation and were gated by nothing anybody could make fail — and a gate
+    // with no failing case is a gate that can be deleted for free, which is the
+    // state this file exists to refuse.
+    //
+    // Each fixture below has exactly ONE route to a credit, and it runs through
+    // one gate. The bite was PROVEN, not reasoned: that single `isCode` call was
+    // neutered to `() => true`, the suite re-run, the test observed failing, the
+    // gate restored, and the test observed passing again.
+    //
+    // The subjects are SYNTHETIC (`…-newthing.mjs`, this tree's idiom) because
+    // this file is part of the corpus the real guard reads — see the last test
+    // in this describe. And the bodies are READ by the guard, never executed, so
+    // a fixture that spawns an identifier it never defines is the subject, not a
+    // mistake.
+    test('a spawn written INSIDE A STRING is not a spawn', () => {
+      // spawnedExecutables' own gate. Without it every quoted `spawnSync(` in
+      // the suite — every fixture that shows what a negative test looks like —
+      // credits whatever it names.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/release/g1-newthing.mjs'],
+          mentionScripts: false,
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { test } from 'node:test';",
+              `const SNIPPET = "spawnSync(process.execPath, ['tooling/release/g1-newthing.mjs'])";`,
+              "test('quotes a spawn it never makes', () => { if (!SNIPPET) throw new Error('empty'); });",
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/g1-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
+    });
+
+    test('an identifier bound to the path INSIDE A STRING does not bind', () => {
+      // The `const X = '…/subject.mjs';` rule, which exists so that a spawn of a
+      // bare identifier can still be credited. A test that WRITES that
+      // declaration into a generated file is the shape that abuses it: the
+      // binding is in the file under construction, not in this one.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/release/g3-newthing.mjs'],
+          mentionScripts: false,
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { test } from 'node:test';",
+              "import { spawnSync } from 'node:child_process';",
+              "import { writeFileSync } from 'node:fs';",
+              "test('binds the path only inside the file it writes', () => {",
+              `  writeFileSync('generated.mjs', "const SCRIPT = 'tooling/release/g3-newthing.mjs';");`,
+              "  spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });",
+              '});',
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/g3-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
+    });
+
+    test('a runner DEFINED inside a string is not a runner', () => {
+      // The runner rule lets `runGuard('…')` count, because the spawn is one
+      // indirection away. `invoke()` below is this fixture's REAL runner and
+      // nothing calls it; `runGuard` exists only as quoted text, and the call to
+      // it must therefore credit nothing. Without the gate the quoted
+      // definition registers — its parameter list closes inside the literal, and
+      // the real spawn on the next line is what completes the registration.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/release/g4-newthing.mjs'],
+          mentionScripts: false,
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { test } from 'node:test';",
+              "import { spawnSync } from 'node:child_process';",
+              `const GENERATED = "const runGuard = (guard) => spawnSync(process.execPath, [guard]);";`,
+              "const invoke = (guard) => spawnSync(process.execPath, [guard], { encoding: 'utf8' });",
+              "test('calls a runner only a fixture string defines', () => {",
+              "  if (!GENERATED) throw new Error('empty');",
+              "  runGuard('tooling/release/g4-newthing.mjs');",
+              '});',
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/g4-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
+    });
+
+    test('a quoted spawn inside a helper does not make the helper a runner', () => {
+      // The one gate whose `isCode` is OFFSET-SHIFTED — the scan runs over a
+      // slice starting mid-file, so the mask has to be consulted at `at + i`.
+      // An off-by-anything here reads the wrong bytes and still returns a
+      // boolean, which is the failure mode that leaves no trace. `runGuard`
+      // spawns nothing; only the string in its body looks like it does.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/release/g5-newthing.mjs'],
+          mentionScripts: false,
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { test } from 'node:test';",
+              'const runGuard = (guard) => {',
+              `  const SNIPPET = "spawnSync(process.execPath, [guard])";`,
+              '  return SNIPPET.length;',
+              '};',
+              "test('quotes the spawn that would make it a runner', () => { runGuard('tooling/release/g5-newthing.mjs'); });",
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/g5-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
+    });
+
+    test('a runner CALL written inside a string is not a call', () => {
+      // The last gate: `runGuard` is a genuine runner here and the file really
+      // does call it — on something else. The call that names the subject is
+      // quoted text. This is the shape a test of a code generator has, and
+      // without the gate the generator's OUTPUT credits its input.
+      const r = run(
+        repo(compliant(), {
+          scripts: ['tooling/release/g6-newthing.mjs'],
+          mentionScripts: false,
+          testFiles: 2,
+          files: {
+            'tooling/ci/test/t9.test.mjs': [
+              "import { test } from 'node:test';",
+              "import { spawnSync } from 'node:child_process';",
+              "const runGuard = (guard) => spawnSync(process.execPath, [guard], { encoding: 'utf8' });",
+              `const SNIPPET = "runGuard('tooling/release/g6-newthing.mjs')";`,
+              "test('quotes the call it never makes', () => {",
+              "  if (!SNIPPET) throw new Error('empty');",
+              "  runGuard('tooling/ci/assert-thing-0.mjs');",
+              '});',
+              '',
+            ].join('\n'),
+          },
+        }),
+      );
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/release\/g6-newthing\.mjs — a workflow runs it and no test file EXERCISES it/);
     });
 
     test('the passing line reports how many outside scripts were covered and excused', () => {
       const r = run(repo(compliant()));
       assert.equal(r.status, 0, r.stderr);
       assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered, 0 excused/);
+    });
+
+    // ── THIS FILE'S OWN FIXTURES, ASKED OF THE REAL GUARD ─────────────────────
+    //
+    // 🔴 THE FIXTURES ABOVE ARE PART OF THE CORPUS THE GUARD READS, so this file
+    // is held to crediting NOTHING it does not actually run.
+    //
+    // ⏱ APPENDED 2026-08-27 — until today a fixture body that spelled a real
+    // workflow-invoked script's path inside a string literal DID credit this
+    // file: `exercisedBy` matched `from '<path>'` wherever it fell. The guard's
+    // `codeMask` now asks where each match STARTS, so an import written inside a
+    // literal is no longer an import. Blanking the literal instead — composing
+    // `stripStringLiterals` onto the matcher — would have deleted every genuine
+    // credit with it, because the path in a real import lives inside the literal
+    // too; only the OFFSETS come from the mask. The fixture-naming discipline
+    // below is still worth keeping, but it is no longer the only thing holding.
+    test('🔴 this file must credit NONE', () => {
+      const subjects = WORKFLOW_INVOKED_OUTSIDE.filter((rel) => !EXCUSED.includes(rel));
+      assert.ok(subjects.length > 3, `derived only ${subjects.length} outside scripts — the derivation stopped reaching them`);
+      const SELF = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+      const uncovered = (rel) => `${rel} — a workflow runs it and no test file EXERCISES it`;
+      const askGuard = (t9) =>
+        run(
+          repo(compliant(), {
+            scripts: subjects,
+            mentionScripts: false,
+            files: { 'tooling/ci/test/t9.test.mjs': t9 },
+            testFiles: 2,
+          }),
+        );
+
+      // 🔴 POSITIVE CONTROL, AND IT RUNS FIRST. The assertion below is a
+      // NEGATIVE one, so it also passes over a fixture this file never reached:
+      // measured 2026-08-27, swapping SELF for a placeholder body left it GREEN
+      // while this file carried `from '…/ops/status.mjs'` in executable code.
+      // Same repo, same subjects, same slot, plus ONE exercising line naming
+      // `probe` — derived, never written out here — SPLICED IN AT A LINE OF THIS
+      // FILE'S OWN CODE, so a body that is not this file cannot receive it and
+      // cannot then credit `probe`. `subjects[1]` keeps the control itself from
+      // passing on a guard that crashed and printed no verdict at all.
+      //
+      // ⏱ APPENDED 2026-08-27 — the spliced line was `const PROBE = "import p
+      // from './…';";` until today: an import INSIDE A STRING, so the control was
+      // built out of the very defect the guard now rejects, and closing the hole
+      // would have turned this control red. It is a bare import STATEMENT now —
+      // what a test that really imports a script writes — so the control proves
+      // the same thing without depending on the bug.
+      const probe = subjects[0];
+      const ANCHOR = "const MANIFEST_REL = join('tooling', 'ci', 'test', 'coverage-manifest.json');";
+      assert.ok(SELF.includes(ANCHOR), 'ANCHOR is no longer a line of this file — the control below would splice nothing');
+      const seeded = askGuard(SELF.replace(ANCHOR, `${ANCHOR}\nimport probeModule from './${probe}';`));
+      assert.ok(
+        seeded.stderr.includes(uncovered(subjects[1])),
+        `the control fixture did not produce a verdict — the guard never reported ${subjects[1]}. ${seeded.stderr || seeded.stdout}`,
+      );
+      assert.ok(
+        !seeded.stderr.includes(uncovered(probe)),
+        `an exercising line naming ${probe} spliced into the t9 body did NOT credit it, so t9 is not carrying ` +
+          "this file's bytes. The assertion below then holds over bytes the guard never read.",
+      );
+
+      const r = askGuard(SELF);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /guard coverage — \d+ problem\(s\)/);
+      const credited = subjects.filter((rel) => !r.stderr.includes(uncovered(rel)));
+      assert.deepEqual(
+        credited,
+        [],
+        `the guard reads this file as EXERCISING ${credited.join(', ')}. A fixture body names it, and a name ` +
+          'inside a fixture string is a byte written, not a behaviour run. Rename the fixture subject to a ' +
+          'synthetic path — tooling/release/submit-newthing.mjs is the tree\'s idiom for one.',
+      );
     });
   });
 });

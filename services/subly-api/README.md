@@ -105,14 +105,75 @@ entitlements route to leave unconsumed. Whatever is decided here is a decision
 about THIS Worker only.
 
 The honest state is therefore: two routes with zero clients, kept on purpose.
-⚠️ Unlike the platform Worker's unconsumed routes (`POST /v1/checkout`,
-`POST /v1/money/:provider`), that claim is **not machine-checked** —
-`tooling/platform-register.json` and `assert-platform-register.mjs` reconcile
-routes against clients for `services/platform` ONLY, and no equivalent register
-covers this Worker. So this section is prose that can rot, and the day a client
-appears nothing will notice. It rotted once already, within hours of being
-written, in exactly the direction a register would have caught: a declaration
-counted as a call.
+🔄 CORRECTED 2026-08-25 — THIS PARAGRAPH USED TO SAY THE OPPOSITE, AND BOTH
+HALVES OF IT ARE FALSE AT HEAD. It read: "⚠️ Unlike the platform Worker's
+unconsumed routes (`POST /v1/checkout`, `POST /v1/money/:provider`), that claim
+is **not machine-checked** — `tooling/platform-register.json` and
+`assert-platform-register.mjs` reconcile routes against clients for
+`services/platform` ONLY, and no equivalent register covers this Worker. So this
+section is prose that can rot, and the day a client appears nothing will notice."
+MEASURED TODAY: `tooling/platform-register.json` carries an `appWorkers[0]` whose
+`name` is `subly-api`, `entrypoint` `services/subly-api/src/index.ts` and `config`
+`services/subly-api/wrangler.jsonc`, with a TWELVE-entry `routes[]` —
+`subly-renewals` and `subly-entitlements` among them — and
+`node tooling/ci/assert-platform-register.mjs` prints `ok  platform register — 9
+mounted route(s) reconciled with 9 register entry(ies), plus 12 across 1 app
+Worker(s) reconciled with 12`. The gap is not merely covered but PRINTED, every
+run: `⚠  GET /v1/renewals — NO CLIENT. · subly-api 🔴 NOTHING IN THIS REPO CALLS
+IT`.
+
+🔄 AMENDED 2026-08-25, SAME DAY, AFTER READING THE GUARD — the sentence that
+closed this paragraph was itself false and is NOT restored. It read: "So the claim
+above is machine-checked, and the day a client appears the register goes red until
+somebody writes that client into the entry." WHAT LIMB 2 ACTUALLY DOES, at
+`tooling/ci/assert-platform-register.mjs:607-618`: `const c = entry.client; if (!c)
+{ if (String(entry.unconsumedReason ?? '').trim()) { printed.push(...) } else {
+problems.push(...) } continue; }`. A route that declares no client but carries a
+written `unconsumedReason` goes to `printed`, which is only `console.log`-ed (:879);
+only `problems.length` sets the exit code (:868-875). The guard never scans the tree
+for callers, so a client appearing is invisible to it and NOTHING STILL NOTICES —
+that half of the old paragraph quoted above was the TRUE half. The header says it
+outright at :38: "⚠️ A ROUTE WITH NO CLIENT DOES NOT FAIL THE BUILD; IT PRINTS, ON
+EVERY RUN."
+
+🔄 AMENDED AGAIN 2026-08-25, SAME DAY — AND THIS ONE IS ABOUT THE OPENING WORDS OF
+THE CORRECTION TWO PARAGRAPHS UP, WHICH THE AMENDMENT ABOVE CONTRADICTS WITHOUT
+NAMING. "BOTH HALVES OF IT ARE FALSE AT HEAD" OVERSTATES BY EXACTLY ONE HALF. Only
+the FIRST half — "no equivalent register covers this Worker" — is false at head,
+and the `appWorkers[0]` measurement above is what falsifies it. The SECOND half —
+"the day a client appears nothing will notice" — is TRUE at head, for the reason
+the amendment sets out: limb 2 never scans the tree for callers, so nothing goes
+red when one appears. The dated sentence is left standing rather than edited,
+because rewriting a dated record falsifies it instead of repairing it; this line is
+the repair, and it is the same defect the record already documents twice — a
+correction that over-claims in the direction of reassurance.
+
+What IS machine-checked is narrower than "the claim above", and it is two things,
+both of which push to `problems` and therefore fail the build:
+- **the route set**, both directions — every route `services/subly-api/src/index.ts`
+  mounts must appear in the register and every register entry must be mounted
+  (:543-558). That is the `12 … reconciled with 12` in the `ok` line above.
+- **the resolution of a client that is DECLARED** — the file must exist, must live
+  OUTSIDE the serving Worker, and its expression must survive comment-stripping and
+  contain the route's own path (:619-657).
+
+Not the zero-clients claim. The register DECLARES a resolving client for one of the
+two routes — `subly-entitlements`, `client.expression` `_rest.get('/entitlements')`
+— so for that route the machine asserts the OPPOSITE of zero clients, and "no live
+caller" is a hand-written note at `tooling/platform-register.json:270`. The only
+thing that fails over a missing client is an entry carrying NEITHER a `client` NOR
+an `unconsumedReason` (:611-616): an UNDECLARED gap fails, a declared one prints.
+
+⚠️ WHAT IS STILL NOT CHECKED, SO NOBODY READS MORE INTO THAT GREEN THAN IS THERE:
+the register's limb 2 asserts that a route's URL is CONSTRUCTED somewhere outside
+the serving Worker and that the expression carries the route's own path. It is not
+reachability analysis — `appWorkers[0]._why` says exactly that in the register
+itself, and the `subly-entitlements` entry then records BY HAND what the machine
+cannot see: `_rest.get('/entitlements')` really is the code that would issue the
+request, while `SubscriptionRepository.entitlements()`, the method that wraps it,
+has no live caller in the app. That is the distinction this section rotted over
+once already, within hours of being written — a declaration counted as a call —
+and it is now a printed fact in one place and a hand-checked note in the other.
 
 ### 🔴 `DELETE /v1/account` sits on a STRICTER auth boundary than everything above
 

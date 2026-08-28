@@ -11,7 +11,12 @@
 //   · `ConsentController.record` existed with ZERO call sites — every event was
 //     silently discarded, and no test failed, because refusing is the correct
 //     behaviour when consent is absent
-//   · `PaywallGate` exists today with zero consumers
+//   · `PaywallGate` SHIPPED in the design system and was referenced by
+//     nothing for months — that dead-on-arrival stretch is the defect this
+//     bullet remembers. It is CONSUMED today: `class _GatedInsights` in
+//     `apps/subly/lib/core/router.dart` (the `/insights` route builder)
+//     constructs it, and so does `child: PaywallGate(` in the app brick's
+//     `lib/features/home/home_screen.dart`
 //   · the account-deletion dialog's confirm button called
 //     `Navigator.pop(dialogContext)` and nothing else, which looks exactly like
 //     a button that worked
@@ -36,6 +41,37 @@
 // genuinely cannot have one takes a dated `reachableExempt` instead, and every
 // exemption is PRINTED ON EVERY RUN: an absent assertion must never again be
 // indistinguishable from a passing one.
+//
+// ── 📏 APPENDED 2026-08-25 — THE COUNTS ABOVE ARE 2026-08-06 AND ARE NOT TODAY'S ─
+// The paragraph above is left EXACTLY as written: it quotes this guard's own
+// output of that day, and renumbering a dated record falsifies it rather than
+// repairing it. What is fixed here is that it was being read as the CURRENT
+// state — `tooling/dod-register.json` carried "22" as the live screen figure
+// because it was copied from this header while the floor below already read 24.
+// A header that narrates a superseded state beside a newer floor is a
+// source-of-truth defect, not a typo, so the current state is now stated here
+// where the stale one is read.
+//
+// MEASURED 2026-08-25 by running this file (`node tooling/ci/assert-screen-set.mjs`,
+// exit 0), and these are the numbers it printed:
+//   · 25 screen(s) declared          (MIN_SCREENS floor: 25)
+//   · 24 present and anchored        (MIN_PRESENT floor: 24)
+//   · 24 proven reachable, 0 exempt  (equal to `present` by construction)
+//   · 1 blocked — `auth.callbacks`, on app_links (deep-link handling), 2026-07-28
+//   · 0 todo, 0 deliberately not built
+// So the header and the floor now agree with each other and with the register.
+//
+// THREE `22`s remain in this file and NONE of them is a current count. (This
+// note quotes the string it counts, so a grep returns MORE than three — the
+// figure is NOT self-inclusive; count the three named here, not the hits.)
+// They are:
+//   · the quoted 2026-08-06 output in the paragraph above;
+//   · the `reachableChecked >= 22` floor named further down as one the FIRST
+//     version of that change had and this one deliberately does NOT have;
+//   · "All 22 present entries carried a reachability proof on 2026-08-06" inside
+//     the MIN_PRESENT failure message — kept verbatim because it is true OF THAT
+//     DATE, and now followed in the same sentence by today's 24 so the message
+//     cannot be read as claiming the register still holds 22.
 //
 // ── WHY A BLOCKER IS ITSELF CHECKED ────────────────────────────────────────
 // `blocked` entries name what must land first. That claim is verified: if the
@@ -344,12 +380,17 @@ if (screens.length > 0 && present === 0) {
 // reachability proof. Same ratchet rule as MIN_SCREENS above.
 // 24 since 2026-08-11 — `auth.password-reset` landed `present`, reachable
 // through the router's recovery gate.
+// MEASURED 2026-08-25: `present` is 24, so this floor sits EXACTLY on the tree —
+// demote or delete one screen and it bites. Not raised, because nothing landed;
+// not lowered, because a floor lowered to match prose has stopped being a floor.
 const MIN_PRESENT = 24;
 const REQUIRED_COVERAGE = { reachableExempt: 0 };
 if (present > 0 && present < MIN_PRESENT) {
   problems.push(
     `COVERAGE LOST — only ${present} screen(s) are PRESENT, expected >= ${MIN_PRESENT}, so the reachability ` +
-      'half ranged over that many. All 22 present entries carried a reachability proof on 2026-08-06; a run ' +
+      'half ranged over that many. All 22 present entries carried a reachability proof on 2026-08-06, and all ' +
+      '24 did when this was last measured (2026-08-25: 25 declared, 24 present, 24 proven reachable, 0 exempt, ' +
+      '1 blocked); a run ' +
       'that checks fewer means entries left the `present` set (to todo/blocked/not-building). That is a ' +
       'legitimate move and it may not happen quietly — screens leaving `present` is exactly how the half of ' +
       'C-13 that catches dead screens stops running.',

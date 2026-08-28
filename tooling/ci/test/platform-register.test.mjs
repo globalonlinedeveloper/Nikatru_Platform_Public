@@ -56,7 +56,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-platform-register.mjs');
@@ -1251,5 +1251,73 @@ describe('stripComments — strings are tracked even when they are not blanked',
     const seen = (stripComments(real).match(/^app\.(use|route|get|post|all)\(/gm) ?? []).length;
     assert.ok(raw >= 8, `expected the real index.ts to mount >= 8 routes, found ${raw}`);
     assert.equal(seen, raw, `stripComments lost ${raw - seen} mount call(s) from the real index.ts`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE IMPORT ABOVE USED TO RUN THE GUARD.
+//
+// Until 2026-08-25 assert-platform-register.mjs ran its entire check at MODULE
+// SCOPE, so `import { stripComments }` — the line at the top of this section —
+// executed the guard and could reach its `process.exit(1)`. MEASURED on a
+// scratch worktree with `app.route('/v1', events)` deleted from
+// services/platform/src/index.ts, against the guard as it stood:
+//
+//   node --test tooling/ci/test/platform-register.test.mjs
+//     ℹ tests 1 · ℹ pass 0 · ℹ fail 1
+//     ✖ test at tooling/ci/test/platform-register.test.mjs:1:1 — 'test failed'
+//
+// One line of attribution for every case in this file, delivered at exactly the
+// moment the tree went red. Nobody had hit it because the guard exits 0 on the
+// tree as it stands, so the import happened to be harmless.
+//
+// These three cases pin BOTH directions, because a main guard is the classic
+// red-to-green weakener: get the comparison wrong and the guard becomes a silent
+// no-op that exits 0 on every tree in the world.
+//   · IMPORTED   → runs nothing, prints nothing, exits 0.
+//   · ENTRYPOINT → still runs the whole check, still exits 1 on a red tree and 0
+//                  on a green one, including when argv[1] is RELATIVE, which is
+//                  how CI invokes it (.github/workflows/ci.yml:457 runs
+//                  `node tooling/ci/assert-platform-register.mjs`).
+// The relative case is the one a naive `import.meta.url === process.argv[1]`
+// string compare gets wrong: it is never equal, so the check would never run and
+// every failing case in this file would go GREEN.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the guard runs when it is the entrypoint, and ONLY then', () => {
+  test('🔴 importing the guard runs NOTHING — no output, no exit(1)', () => {
+    const probe = [
+      `const m = await import(${JSON.stringify(pathToFileURL(GUARD).href)});`,
+      `if (typeof m.stripComments !== 'function') { console.error('stripComments is not exported'); process.exit(3); }`,
+      `console.log('IMPORTED');`,
+    ].join('\n');
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8' });
+    const out = `${r.stdout}${r.stderr}`;
+    assert.equal(r.status, 0, `importing the guard exited ${r.status}:\n${out}`);
+    assert.equal(r.stdout.trim(), 'IMPORTED', `importing the guard executed its check — stdout was:\n${r.stdout}`);
+    assert.doesNotMatch(out, /platform register/, 'the guard printed its verdict at import time');
+  });
+
+  test('🔴 spawned with a RELATIVE argv[1], the guard still FAILS a red tree  [MR2]', () => {
+    // The same fixture as "FAILS on a route that is mounted and not registered".
+    const reg = baseRegister();
+    reg.routes = reg.routes.filter((r) => r.id !== 'events');
+    const root = tree({ register: reg });
+    const r = spawnSync(process.execPath, ['assert-platform-register.mjs', root], {
+      encoding: 'utf8',
+      cwd: CI_DIR,
+    });
+    const out = `${r.stdout}${r.stderr}`;
+    assert.equal(r.status, 1, `a relative invocation did not enforce — exit ${r.status}:\n${out}`);
+    assert.match(out, /POST \/v1\/events — MOUNTED by services\/platform\/src\/routes\/events\.ts/);
+  });
+
+  test('spawned on a GREEN tree with a relative argv[1] it prints its verdict and exits 0', () => {
+    const r = spawnSync(process.execPath, ['assert-platform-register.mjs', tree()], {
+      encoding: 'utf8',
+      cwd: CI_DIR,
+    });
+    const out = `${r.stdout}${r.stderr}`;
+    assert.equal(r.status, 0, out);
+    assert.match(out, /ok {2}platform register/);
   });
 });
