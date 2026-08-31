@@ -10,7 +10,7 @@
   "app-dod.test.mjs": 32,
   "app-versioning.test.mjs": 51,
   "appimage-signing.test.mjs": 73,
-  "apple-privacy-manifest.test.mjs": 40,
+  "apple-privacy-manifest.test.mjs": 42,
   "apple-signing.test.mjs": 107,
   "appstore-submission.test.mjs": 37,
   "artifact-shape.test.mjs": 25,
