@@ -367,6 +367,27 @@ const GUARDS = [
   { name: 'assert-research-archive', speed: 'fast', needsPrivate: true,
     rel: ['requirements/tooling/assert-research-archive.mjs', 'Private/requirements/tooling/assert-research-archive.mjs', 'Private/spec/tooling/assert-research-archive.mjs', 'tooling/assert-research-archive.mjs'],  // same fallback chain, corpus-relative leading entry added 2026-08-18 (retired 2026-08-16 layout in the third slot) — see the assert-spec entry above
     what: 'research/index.json, the files on disk and research/README.md are in bijection, and no successor pointer dangles' },
+  /* ADDED 2026-08-31 with the plans/ streamline. The SECOND directory to get its
+     own register at its own depth, and the reasoning is `assert-research-archive`'s
+     verbatim: `assert-index-complete` guards the `### dir/ — N files` heading for
+     `plans/` and nothing below it, so a reader could not tell a LIVE stage plan
+     from a 2026-08-08 executed draft without opening the file. 46 files, six
+     directories, four kinds, zero markers.
+     🔴 THAT COST WAS ALREADY PAID TWICE IN THIS DIRECTORY, IN WRITING:
+     `plans/rework-patches/README.md` listed four of twelve patches as OUTSTANDING
+     when all twelve had merged, and `plans/adr040-artifacts/README.md` described
+     three patches as PENDING when all three had merged and none was on disk. Both
+     read as current the whole time.
+     ⚠️ THE REGISTER WAS EXPLICITLY REJECTED ON 2026-08-16 — "no guard would read
+     it" — and that objection was RIGHT. This entry is the condition it named; the
+     rejection is quoted in `plans/index.json` rather than quietly reversed.
+     ⚠️ One deliberate difference from the research guard it copies: `plans/` is NOT
+     flat, so its readdir is RECURSIVE and a floor (`nested`, 25) fails the run if
+     the walk ever stops descending. A non-recursive walk here would check 16 of 46
+     files and print ok. */
+  { name: 'assert-plans-archive', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/assert-plans-archive.mjs'],  // ONE candidate, corpus-relative: this guard never existed under the pre-2026-08-18 layouts, so it has no legacy spellings to fall back to and adding dead ones would be citing paths that do not resolve — same reasoning as the assert-requirements-index entry below.
+    what: 'plans/index.json, the files on disk (recursively) and plans/README.md are in bijection, and no successor or execution pointer dangles' },
   /* ADDED 2026-08-16 with the decisions/ streamline. The ADR set had ONE property
      nothing could check and nothing structurally could: whether a cited number is
      a decision at all. Three — 012, 014, 018 — were pre-allocated as headings in
