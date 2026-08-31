@@ -1,0 +1,432 @@
+{
+  "_readme": [
+    "THE APPLE PRIVACY MANIFEST AUDIT — Subly, channels `ios-appstore` AND `macos-appstore`.",
+    "",
+    "This is the repo-native source of truth for both `PrivacyInfo.xcprivacy` files:",
+    "  apps/subly/ios/Runner/PrivacyInfo.xcprivacy",
+    "  apps/subly/macos/Runner/PrivacyInfo.xcprivacy",
+    "Both are GENERATED from this file by tooling/store/render-apple-privacy-manifest.mjs and",
+    "re-derived-and-compared on every CI run by tooling/ci/assert-apple-privacy-manifest.mjs. Editing",
+    "either .xcprivacy by hand is a build failure, in the same direction as the store listing trees:",
+    "the repository is authoritative and Xcode is a copy of it.",
+    "",
+    "🔴 WHY ONE FILE FOR TWO CHANNELS. Two copies of one identity is how the wrong one ships — the",
+    "same reasoning tooling/channel-register.json applies to the MSIX identity. iOS and macOS are two",
+    "renderings of ONE audit: the same Dart tree, the same dependency closure, the same collected",
+    "data. Where the two genuinely differ (the plugin set differs on four rows) the difference is a",
+    "field under `platforms`, not a second document that has to be kept in step by hand.",
+    "",
+    "🔴 WHY THIS FILE EXISTS AT ALL, AND WHY IT EXISTS NOW. `G-49` sat on stage 8's cut list with a",
+    "PAIRED TRIPWIRE attached (Private/requirements/not-built.json, stage 10, [10]D-4): the Apple",
+    "privacy manifest is consistent with the cut ONLY while Apple enrolment is deferred, and",
+    "'registering the account without moving G-49 is how that pairing breaks silently'. Apple",
+    "enrolment completed 2026-08-31 (Enrollment ID 8UKWUW72VK). The tripwire fired. Enforcement is",
+    "dated and is at UPLOAD, not review: 'Starting May 1, 2024, apps that don't describe their use of",
+    "required reason API in their privacy manifest file aren't accepted by App Store Connect.'",
+    "",
+    "🔴 WHAT WAS ACTUALLY UNKNOWN. The corpus recorded the RULE for weeks and never once recorded the",
+    "ANSWER: 'the exact list of Required Reason APIs this app touches is UNVERIFIED — never audited'",
+    "(nikatru/vendors/apple.md). This file is that audit. It is a measurement of the tree at the",
+    "commit it lands on, not a copy of anyone's template, and every row below names what was read.",
+    "",
+    "🔴 THE ANSWER IS AN EMPTY `NSPrivacyAccessedAPITypes`, AND AN EMPTY ARRAY IS A CLAIM. It is the",
+    "single most tempting row in this file to get wrong in the safe-looking direction: declaring",
+    "FileTimestamp and SystemBootTime 'just in case' costs nothing at upload and is a FALSE SWORN",
+    "STATEMENT about the app target — Apple asks for the reason a binary uses an API, and the honest",
+    "answer for this binary is that it does not use one. The categories the app genuinely depends on",
+    "ARE declared, by the binaries that use them, in manifests this audit read byte-for-byte and",
+    "records under `binaryInventory`. Over-declaring would also destroy this file's only real",
+    "property: that a NEW required-reason call has to change it."
+  ],
+
+  "app": "subly",
+  "channels": ["ios-appstore", "macos-appstore"],
+  "auditedOn": "2026-08-31",
+  "auditedAgainst": {
+    "flutterFrameworkVersion": "3.44.9",
+    "pubspecLock": "pubspec.lock at the repo root (workspace resolution — one lockfile for every app)",
+    "iosPluginSource": "apps/subly/.flutter-plugins-dependencies -> plugins.ios",
+    "macosPluginSource": "apps/subly/.flutter-plugins-dependencies -> plugins.macos",
+    "_why": [
+      "The plugin set is DERIVED, not listed by hand. `.flutter-plugins-dependencies` is what the",
+      "iOS build actually links, so a new plugin appears here the moment `pub get` runs — which is",
+      "what makes the guard's equality limb able to say 'nobody said what required-reason APIs this",
+      "uses' rather than only 'nothing forbidden appeared'."
+    ]
+  },
+
+  "sources": {
+    "_why": [
+      "Two kinds of source, kept apart on purpose. `local` sources are files on this machine that",
+      "were read byte-for-byte during the audit — they are the strongest evidence available here and",
+      "they are re-readable by anyone. `remote` sources are Apple pages whose text the corpus already",
+      "recorded with a fetch date; nothing was re-fetched in this session and nothing here claims it",
+      "was. A vocabulary constant with NO local witness is marked as such in `vocabulary`, so a future",
+      "reader can tell a string this repository has SEEN from a string it has only been TOLD."
+    ],
+    "enforcementRule": {
+      "kind": "remote",
+      "url": "developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api",
+      "quote": "Starting May 1, 2024, apps that don't describe their use of required reason API in their privacy manifest file aren't accepted by App Store Connect.",
+      "recordedIn": "nikatru/vendors/apple.md §9, where the fetch is dated",
+      "note": "Enforcement is at UPLOAD, before review — it costs an upload round-trip, not a review cycle."
+    },
+    "rejectionCode": {
+      "kind": "unsourced",
+      "value": "ITMS-91053",
+      "note": "🔴 DELIBERATELY NOT TREATED AS A CITATION. apple.md records that this code string appears on NO Apple public page and is third-party-only. The RULE is sourced; the CODE is folklore. It is written here once, as the string a reader will meet in an App Store Connect email, and no guard asserts it."
+    },
+    "engineManifestIos": {
+      "kind": "local",
+      "path": "<FLUTTER_ROOT>/engine/src/flutter/shell/platform/darwin/ios/framework/PrivacyInfo.xcprivacy",
+      "read": "2026-08-31",
+      "declares": ["NSPrivacyAccessedAPICategoryFileTimestamp: 0A2A.1, C617.1", "NSPrivacyAccessedAPICategorySystemBootTime: 35F9.1"]
+    },
+    "engineManifestMacos": {
+      "kind": "local",
+      "path": "<FLUTTER_ROOT>/engine/src/flutter/shell/platform/darwin/macos/framework/PrivacyInfo.xcprivacy",
+      "read": "2026-08-31",
+      "declares": []
+    },
+    "pluginManifests": {
+      "kind": "local",
+      "path": "<PUB_CACHE>/hosted/pub.dev/<package>-<version>/**/PrivacyInfo.xcprivacy",
+      "read": "2026-08-31",
+      "note": "Every row of `binaryInventory` whose `manifest` is `ships-own` was opened and its NSPrivacyAccessedAPITypes read. The two rows that say `none` were searched for `*.xcprivacy` and none exists."
+    },
+    "sdkList": {
+      "kind": "remote",
+      "url": "developer.apple.com/support/third-party-SDK-requirements/",
+      "note": "Apple's list of SDKs that must carry a privacy manifest AND a signature. `path_provider`, `package_info_plus`, `flutter_local_notifications`, `url_launcher` and `sentry` are all names on it. See `sdkListFindings` — the obligation is the SDK author's, and one row of it resolved in an unexpected direction this audit had to measure rather than assume."
+    }
+  },
+
+  "vocabulary": {
+    "_why": [
+      "The closed set the guard validates against. `witness: local` means the exact string was read",
+      "out of a real manifest on this machine during the audit; `witness: knowledge` means it was",
+      "not, and the guard says so when it accepts one. Nothing in this app declares a `knowledge` row",
+      "today — the distinction exists so that the day one is added, the person adding it is told the",
+      "spelling has never been verified against a primary source."
+    ],
+    "accessedApiCategories": [
+      { "id": "NSPrivacyAccessedAPICategoryFileTimestamp", "witness": "local", "witnessedIn": "Flutter engine iOS manifest" },
+      { "id": "NSPrivacyAccessedAPICategorySystemBootTime", "witness": "local", "witnessedIn": "Flutter engine iOS manifest" },
+      { "id": "NSPrivacyAccessedAPICategoryUserDefaults", "witness": "local", "witnessedIn": "shared_preferences_foundation + flutter_local_notifications manifests" },
+      { "id": "NSPrivacyAccessedAPICategoryDiskSpace", "witness": "knowledge", "witnessedIn": null },
+      { "id": "NSPrivacyAccessedAPICategoryActiveKeyboards", "witness": "knowledge", "witnessedIn": null }
+    ],
+    "reasonCodes": [
+      { "id": "0A2A.1", "category": "NSPrivacyAccessedAPICategoryFileTimestamp", "witness": "local" },
+      { "id": "C617.1", "category": "NSPrivacyAccessedAPICategoryFileTimestamp", "witness": "local" },
+      { "id": "35F9.1", "category": "NSPrivacyAccessedAPICategorySystemBootTime", "witness": "local" },
+      { "id": "CA92.1", "category": "NSPrivacyAccessedAPICategoryUserDefaults", "witness": "local" },
+      { "id": "1C8F.1", "category": "NSPrivacyAccessedAPICategoryUserDefaults", "witness": "local" }
+    ],
+    "collectedDataTypes": {
+      "witness": "knowledge",
+      "note": "🔴 NO LOCAL WITNESS EXISTS FOR ANY OF THESE. Every plugin manifest in the closure ships `NSPrivacyCollectedDataTypes` EMPTY, so not one `NSPrivacyCollectedDataType*` constant appears anywhere on this machine. The eleven strings under `collectedDataTypes` below are therefore the weakest-evidenced part of this file, and that is stated here rather than discovered at upload. A misspelling is a plist Apple ignores, not an error it reports — which is exactly why the mapping is cross-checked against data-safety.json instead of being trusted on its own."
+    },
+    "purposes": {
+      "witness": "knowledge",
+      "values": [
+        "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+        "NSPrivacyCollectedDataTypePurposeAnalytics",
+        "NSPrivacyCollectedDataTypePurposeProductPersonalization",
+        "NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising",
+        "NSPrivacyCollectedDataTypePurposeDeveloperAdvertising",
+        "NSPrivacyCollectedDataTypePurposeOther"
+      ],
+      "note": "Apple has NO purpose corresponding to Play's 'Account management'. The two Play rows carrying it (Email address, User IDs) map to AppFunctionality, which is recorded per row rather than silently dropped."
+    }
+  },
+
+  "binaryInventory": {
+    "_why": [
+      "🔴 THE UNIT OF THIS RULE IS A BINARY, NOT AN APP. Apple aggregates one privacy report from the",
+      "app target and EVERY framework inside the bundle, and each binary answers for its own code.",
+      "That is the fact the whole audit turns on: the app-level manifest does NOT cover the plugins,",
+      "and the plugins' manifests do NOT cover the app. Reading the rule the other way is how an",
+      "audit concludes 'shared_preferences needs CA92.1 in the app manifest' — a duplicate declaration",
+      "of somebody else's code, which is both wrong and un-maintainable.",
+      "",
+      "`manifest` is one of: `ships-own` (a PrivacyInfo.xcprivacy exists inside the package and was",
+      "read), `none` (searched, absent), `this-file` (the artefact this audit generates), or",
+      "`not-shipped` (dev-only, never in a release bundle)."
+    ],
+    "ios": [
+      {
+        "binary": "Runner (the app target)",
+        "manifest": "this-file",
+        "sources": ["apps/subly/ios/Runner/AppDelegate.swift", "apps/subly/ios/Runner/SceneDelegate.swift", "apps/subly/ios/Runner/GeneratedPluginRegistrant.m"],
+        "accessedApis": [],
+        "basis": "Read in full — all three are stock. AppDelegate overrides `application(_:didFinishLaunchingWithOptions:)` and returns `super`, and implements `didInitializeImplicitFlutterEngine` to call `GeneratedPluginRegistrant.register(with:)`. SceneDelegate is an empty subclass of FlutterSceneDelegate. The registrant is generated and only calls each plugin's `register`. NO Required Reason API of any category is reachable from this target's own code. RunnerTests.swift is a TEST target and is not in a release bundle."
+      },
+      {
+        "binary": "Flutter.framework (engine 3.44.9)",
+        "manifest": "ships-own",
+        "accessedApis": ["NSPrivacyAccessedAPICategoryFileTimestamp: 0A2A.1, C617.1", "NSPrivacyAccessedAPICategorySystemBootTime: 35F9.1"],
+        "basis": "Read from the engine tree. This is what covers `dart:io` file timestamps and the VM's clock — the Dart runtime lives in THIS framework, not in App.framework, so `File.lastModified()` from Dart is the engine's declared use and not the app's."
+      },
+      {
+        "binary": "App.framework (the Dart AOT snapshot)",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "🔴 THE ONE HOLE IN THE MODEL, AND IT IS STRUCTURAL. App.framework carries the compiled Dart of the first-party tree and every pure-Dart dependency, and NOTHING IN THE FLUTTER BUILD CAN ATTACH A MANIFEST TO IT — there is no target that owns it. It matters because Dart can now reach Foundation directly through `objective_c` FFI, without a plugin and therefore without a plugin's manifest. Both FFI surfaces in this closure were disassembled to their selector lists rather than assumed. See `ffiFindings`."
+      },
+      { "binary": "app_links 7.2.1", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read: NSPrivacyAccessedAPITypes is an empty array." },
+      { "binary": "flutter_local_notifications 17.2.4", "manifest": "ships-own", "accessedApis": ["NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"], "basis": "Manifest read." },
+      { "binary": "flutter_secure_storage 9.2.4", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read: tracking false, no accessed API types. Keychain is not a Required Reason API." },
+      { "binary": "in_app_review 2.0.12", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." },
+      { "binary": "package_info_plus 8.3.1", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." },
+      {
+        "binary": "path_provider_foundation 2.6.0",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "🔴 AND THE REASON IS NOT AN OVERSIGHT BY ITS AUTHORS. 2.6.0's changelog: 'Re-release: replaces Flutter-plugin-based implementation with direct FFI calls to Foundation.' The package has NO ios/, NO macos/, NO podspec and NO native source — it declares `dartPluginClass` on both Apple platforms. There is no binary to attach a manifest to, and none is owed. Its entire Objective-C surface was enumerated from lib/src/ffi_bindings.g.dart and is: NSFileManager, NSURL, defaultManager, URLByAppendingPathComponent(:isDirectory:), URLByAppendingPathExtension:, URLByDeletingLastPathComponent, URLByDeletingPathExtension, URLByResolvingSymlinksInPath, URLByStandardizingPath, checkResourceIsReachableAndReturnError:, containerURLForSecurityApplicationGroupIdentifier:, fileURLWithPathComponents:, isKindOfClass:, lastPathComponent, pathComponents, pathExtension. NOT ONE is a Required Reason API."
+      },
+      {
+        "binary": "sentry_flutter 9.26.0",
+        "manifest": "none",
+        "accessedApis": [],
+        "basis": "The pub package ships no .xcprivacy of its own and its native sources — SentryFlutter.swift, SentryFlutterPlugin.swift, SentryFlutterReplayBreadcrumbConverter.m, SentryFlutterReplayScreenshotProvider.m — were grepped for every Required Reason symbol and are clean. What it DOES do is `s.dependency 'Sentry/HybridSDK', '8.58.4'`, so the binary that actually reaches Apple is Sentry-Cocoa, a CocoaPods dependency. See `cannotSee` — that pod is not on this machine and its manifest was NOT read."
+      },
+      { "binary": "shared_preferences_foundation 2.5.6", "manifest": "ships-own", "accessedApis": ["NSPrivacyAccessedAPICategoryUserDefaults: 1C8F.1"], "basis": "Manifest read." },
+      { "binary": "url_launcher_ios 6.4.1", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." },
+      { "binary": "integration_test", "manifest": "not-shipped", "accessedApis": [], "basis": "dev_dependency. It is in .flutter-plugins-dependencies because `pub get` resolves dev dependencies too, and it is NOT in a release bundle." }
+    ],
+    "macos": [
+      { "binary": "Runner (the app target)", "manifest": "this-file", "accessedApis": [], "basis": "Read in full and stock, exactly as iOS. AppDelegate.swift overrides applicationShouldTerminateAfterLastWindowClosed and applicationSupportsSecureRestorableState, both returning true; MainFlutterWindow.swift installs a FlutterViewController and calls RegisterGeneratedPlugins. No Required Reason API is reachable from this target. Note the FILE SET differs from iOS - there is no SceneDelegate on macOS - which is why both were read rather than one standing for the pair." },
+      { "binary": "FlutterMacOS.framework (engine 3.44.9)", "manifest": "ships-own", "accessedApis": [], "basis": "Read: the macOS engine manifest carries NSPrivacyTracking/TrackingDomains/CollectedDataTypes and NO NSPrivacyAccessedAPITypes key at all — it differs from the iOS one, which is why both were read rather than one being assumed to stand for the pair." },
+      { "binary": "App.framework (the Dart AOT snapshot)", "manifest": "none", "accessedApis": [], "basis": "As iOS." },
+      { "binary": "app_links 7.2.1", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." },
+      { "binary": "flutter_local_notifications 17.2.4", "manifest": "ships-own", "accessedApis": ["NSPrivacyAccessedAPICategoryUserDefaults: CA92.1"], "basis": "Manifest read (macos/Resources copy)." },
+      { "binary": "flutter_secure_storage_macos 3.1.3", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read. NOTE the package NAME differs from iOS's — the macOS plugin set is not the iOS one." },
+      { "binary": "in_app_review 2.0.12", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." },
+      { "binary": "package_info_plus 8.3.1", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." },
+      { "binary": "path_provider_foundation 2.6.0", "manifest": "none", "accessedApis": [], "basis": "As iOS — FFI-only, no binary." },
+      { "binary": "sentry_flutter 9.26.0", "manifest": "none", "accessedApis": [], "basis": "As iOS — vendors Sentry/HybridSDK 8.58.4." },
+      { "binary": "shared_preferences_foundation 2.5.6", "manifest": "ships-own", "accessedApis": ["NSPrivacyAccessedAPICategoryUserDefaults: 1C8F.1"], "basis": "Manifest read (the darwin/ shared source serves both platforms)." },
+      { "binary": "url_launcher_macos 3.2.5", "manifest": "ships-own", "accessedApis": [], "basis": "Manifest read." }
+    ]
+  },
+
+  "ffiFindings": {
+    "_why": [
+      "The App.framework hole above is only interesting if something Dart-side actually reaches a",
+      "Required Reason API through it. Both `objective_c`-generated binding files in the shipping",
+      "closure were searched for the selector strings of all five categories. One hit exists and it is",
+      "recorded here with its consequence, rather than being resolved by guesswork in either direction."
+    ],
+    "findings": [
+      {
+        "package": "path_provider_foundation 2.6.0",
+        "file": "lib/src/ffi_bindings.g.dart",
+        "hits": [],
+        "verdict": "clean — full selector list enumerated, see binaryInventory"
+      },
+      {
+        "package": "sentry_flutter 9.26.0",
+        "file": "lib/src/native/cocoa/binding.dart",
+        "hits": ["systemUptime (NSProcessInfo) — registered as a selector at lines 24666 and 62296"],
+        "verdict": "UNSETTLED — see `unresolved.U-1`. `NSProcessInfo.systemUptime` IS NSPrivacyAccessedAPICategorySystemBootTime (35F9.1). It is reached dynamically, by objc_msgSend on a runtime-registered selector string, from Dart AOT code in App.framework."
+      }
+    ]
+  },
+
+  "accessedApiDetermination": {
+    "ios": [],
+    "macos": [],
+    "_why": [
+      "🔴 BOTH ARE EMPTY, AND THAT IS THE AUDIT'S FINDING RATHER THAN ITS DEFAULT.",
+      "",
+      "The app target's own code — three files, read in full — calls no Required Reason API. Every",
+      "category this app genuinely depends on is declared by the binary that uses it: FileTimestamp",
+      "and SystemBootTime by the Flutter engine, UserDefaults by flutter_local_notifications (CA92.1)",
+      "and shared_preferences_foundation (1C8F.1). Repeating any of those here would be the app target",
+      "swearing to code it does not contain.",
+      "",
+      "⚠️ THE CORPUS HAD THE ATTRIBUTION WRONG AND IT IS CORRECTED HERE. nikatru/vendors/apple.md",
+      "recorded 'CA92.1 for shared_preferences'. Measured: shared_preferences_foundation declares",
+      "1C8F.1; CA92.1 is flutter_local_notifications'. The same line named `share_plus`, which is not",
+      "a dependency of this app at all, and `path_provider`, which as of 2.6.0 has no binary. Three",
+      "wrong facts in one sentence is what an unaudited rule decays into.",
+      "",
+      "The one thing that could make these arrays non-empty is `unresolved.U-1`, and the remedy for it",
+      "is one line in this file — not a re-audit."
+    ]
+  },
+
+  "tracking": {
+    "NSPrivacyTracking": false,
+    "NSPrivacyTrackingDomains": [],
+    "basis": [
+      "No ATT prompt, no NSUserTrackingUsageDescription key, and no advertising SDK in the tree —",
+      "the RevenueCat line is gone by [ADR 026]/[ADR 039] and AdMob has never been a dependency of",
+      "this app (tooling/ci/assert-ads-declarations.mjs is the standing check on that claim).",
+      "Nothing this app collects is combined with data from other companies' apps or websites, and",
+      "nothing is sold to a data broker — which is Apple's definition of tracking.",
+      "🔴 NSPrivacyTrackingDomains MUST STAY EMPTY WHILE NSPrivacyTracking IS FALSE. Apple's rule is",
+      "that a non-empty domain list with tracking false is a contradiction; the guard asserts the",
+      "pair rather than the two fields separately."
+    ]
+  },
+
+  "collectedDataTypes": {
+    "_why": [
+      "🔴 DERIVED FROM data-safety.json, NOT WRITTEN INDEPENDENTLY. The App Privacy answers and the",
+      "Play Data safety answers are the same sworn claim asked twice by two companies, months apart,",
+      "and answering them inconsistently is invisible to a human and obvious to a comparison. So each",
+      "row below names the Play row it comes from, and assert-apple-privacy-manifest.mjs FAILS if a",
+      "Play row flips without this file moving. That is the same relation",
+      "assert-play-declarations.mjs limb (E) already holds between Data safety and content rating.",
+      "",
+      "The posture is data-safety.json's `buildPosture.current` — `backend-live`. Eleven Play rows",
+      "are `collected: true` under it and eleven rows appear here. There is no twelfth and no tenth.",
+      "",
+      "`linked` is Apple's 'linked to the user's identity', which Play does not ask, so it is the one",
+      "field per row that is NOT a translation and carries its own basis.",
+      "",
+      "⚠️ APPLE HAS NO 'Account management' PURPOSE. The two Play rows carrying it map to",
+      "AppFunctionality; the loss is recorded per row rather than silently dropped."
+    ],
+    "posture": "backend-live",
+    "postureSource": "apps/subly/store/android-play/data-safety.json -> buildPosture.current",
+    "rows": [
+      {
+        "type": "NSPrivacyCollectedDataTypeCoarseLocation",
+        "fromPlayRow": "Approximate location",
+        "linked": false,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAnalytics"],
+        "linkedBasis": "THE DEVICE NEVER PROVIDES A LOCATION — there is no location permission, package or usage-description key anywhere in the tree. The only geo that exists is inferred at the Cloudflare edge from the connection and lands on the pseudonymous analytics record keyed by `anon_id`, not on the account."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeEmailAddress",
+        "fromPlayRow": "Email address",
+        "linked": true,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "It IS the identity — Supabase GoTrue sign-in/sign-up/reset. Play purposes were 'Account management, App functionality'; Apple has no Account management purpose.",
+        "purposeMappingLoss": "Account management -> AppFunctionality"
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeUserID",
+        "fromPlayRow": "User IDs",
+        "linked": true,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "The Supabase `sub` UUID keys every row the app writes server-side.",
+        "purposeMappingLoss": "Account management -> AppFunctionality"
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypePurchaseHistory",
+        "fromPlayRow": "Purchase history",
+        "linked": true,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "Entitlement state is read back per account. NOTE this is ENTITLEMENT, not a transaction record: checkout is the apex web page ([ADR 038]) and no billing SDK or payment instrument enters this codebase."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherFinancialInfo",
+        "fromPlayRow": "Other financial info",
+        "linked": true,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "The cost and billing period the user types for each tracked subscription, stored against the account. Declared on the WIDE reading on purpose, matching the Play row."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeProductInteraction",
+        "fromPlayRow": "App interactions",
+        "linked": false,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAnalytics"],
+        "linkedBasis": "The four funnel events carry `anon_id`, a pseudonymous id generated on device, and never the Supabase `sub`. Collection is consent-gated and OFF until granted."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherUserContent",
+        "fromPlayRow": "Other user-generated content",
+        "linked": true,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "The subscription NAME is free text the user types, stored against the account."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeCrashData",
+        "fromPlayRow": "Crash logs",
+        "linked": false,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "🔬 MEASURED, NOT ASSUMED. packages/telemetry exposes `setUser({String? id})` on its client interface and a tree-wide grep for callers outside the telemetry package itself returns ZERO — the Sentry scope never receives a SentryUser. telemetry_bootstrap.dart also sets `options.sendDefaultPii = false`. So a crash event carries no account identity. ⚠️ If any code ever calls setUser, THIS ROW BECOMES `linked: true` and so do the two below it."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+        "fromPlayRow": "Diagnostics",
+        "linked": false,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "Same measurement as Crash data — the event context is device and release, with no user."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypePerformanceData",
+        "fromPlayRow": "Other app performance data",
+        "linked": false,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "Sentry traces at the TelemetryConfig default sample rate; same unlinked scope."
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeDeviceID",
+        "fromPlayRow": "Device or other IDs",
+        "linked": false,
+        "tracking": false,
+        "purposes": ["NSPrivacyCollectedDataTypePurposeAnalytics", "NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+        "linkedBasis": "The on-device `anon_id` and the crash SDK's own installation id. Neither is an advertising identifier — the app requests no IDFA and shows no ATT prompt — and neither is joined to the account."
+      }
+    ]
+  },
+
+  "sdkListFindings": {
+    "_why": [
+      "Apple's third-party SDK list imposes a manifest AND a signature on the SDK, not on us. It is",
+      "recorded because four names in this closure are on it and one of them resolved in a direction",
+      "nobody would predict."
+    ],
+    "findings": [
+      { "sdk": "flutter_local_notifications", "onList": true, "status": "satisfied — ships its own manifest" },
+      { "sdk": "package_info_plus", "onList": true, "status": "satisfied — ships its own manifest" },
+      { "sdk": "url_launcher", "onList": true, "status": "satisfied — url_launcher_ios and url_launcher_macos each ship one" },
+      { "sdk": "path_provider", "onList": true, "status": "MOOT, and this is the surprise. path_provider_foundation 2.6.0 has no native binary at all. An obligation on a binary is discharged by there being no binary; there is nothing to sign and nothing to declare. Anyone auditing this app against Apple's list will look for a path_provider manifest and MUST NOT conclude from its absence that one is missing." },
+      { "sdk": "sentry", "onList": true, "status": "BELIEVED satisfied by Sentry-Cocoa 8.58.4, NOT VERIFIED HERE — see cannotSee" }
+    ]
+  },
+
+  "cannotSee": {
+    "_why": ["Stated out loud so a green guard is never mistaken for a complete audit."],
+    "items": [
+      "THE COCOAPODS CLOSURE. This audit ran on Windows. `Sentry/HybridSDK 8.58.4` — the only vendored native SDK in the bundle — was never fetched, so its PrivacyInfo.xcprivacy and its signature were NOT read. Sentry-Cocoa is believed to ship both; belief is not a reading. The macOS/iOS lane of .github/workflows/build-platforms.yml runs on a macOS runner and IS the place that could settle it from a real Pods/ checkout.",
+      "THE BUILT BUNDLE. Nothing here inspects a compiled .app. The aggregate privacy report Apple assembles at upload is a function of what is actually embedded, and that has never been read for this app on any platform.",
+      "WHETHER APPLE'S SCANNER ATTRIBUTES A DYNAMIC objc_msgSend. `unresolved.U-1` turns on this and it is not knowable from outside App Store Connect."
+    ]
+  },
+
+  "unresolved": [
+    {
+      "id": "U-1",
+      "title": "sentry_flutter's Dart FFI binding names `systemUptime`, in a binary that cannot carry a manifest",
+      "question": "Does Apple's upload scan attribute NSProcessInfo.systemUptime to App.framework when it is reached by objc_msgSend on a runtime-registered selector string from Dart AOT code?",
+      "whyItIsNotGuessed": "Both answers are defensible and both have a cost. Declaring NSPrivacyAccessedAPICategorySystemBootTime 35F9.1 in the app manifest when the app target does not call it makes the manifest false in the direction this file's own _readme refuses. NOT declaring it risks one rejected upload. A rejected upload costs a round-trip; a false sworn declaration is a policy problem that survives.",
+      "decision": "DO NOT DECLARE. The app target does not call it, the reason code would be unjustifiable if asked, and the failure mode is cheap, immediate and unambiguous.",
+      "tripwire": "If the FIRST upload returns a required-reason complaint naming SystemBootTime, the remedy is to add exactly this to accessedApiDetermination.ios and .macos: { category: NSPrivacyAccessedAPICategorySystemBootTime, reasons: [35F9.1] }, regenerate, and re-upload. 35F9.1 is 'Declare this reason to access the system boot time in order to measure the amount of time that has elapsed between events that occurred within the app' — which is what a crash SDK does, so the justification is real; it is the ATTRIBUTION that is unproven, not the reason.",
+      "owner": "agent — this is settled by the first upload, not by a person"
+    },
+    {
+      "id": "U-2",
+      "title": "The App Privacy questionnaire in App Store Connect is a SEPARATE artefact from this file",
+      "question": "Who fills in App Store Connect's App Privacy section, and does it match these eleven rows?",
+      "whyItIsNotGuessed": "It is a console questionnaire with no API this repo uses and no file to generate. It is a HARD GATE on a first submission ('required to submit new apps and app updates'), it asks the same questions as `collectedDataTypes` above, and a manifest that disagrees with the questionnaire is a contradiction Apple can see.",
+      "decision": "This file is the answer key. The console is a copy of it, in the same direction as every other store artefact in this tree.",
+      "owner": "owner — it rides OWNER_QUEUE O-3 (store-submit sign-offs), and it cannot be done before the app record exists"
+    }
+  ]
+}
