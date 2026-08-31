@@ -158,7 +158,7 @@
       "G-49"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#workspace_gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-apple-privacy-manifest.mjs",
