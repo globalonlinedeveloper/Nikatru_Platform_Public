@@ -137,7 +137,7 @@
     "every pub get runs in `app_brick` / `workspace_gate` — different runners, fresh checkouts. If a",
     "pub get is ever added to the `platform` job, that job goes red and this paragraph is why."
   ],
-  "flutter": "3.47.1",
+  "flutter": "3.47.2",
   "node": "24",
   "java": "17",
   "melos": "8.2.2",
