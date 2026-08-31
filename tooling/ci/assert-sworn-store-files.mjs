@@ -4,10 +4,14 @@
 // TEMPLATE IT WAS STAMPED FROM.
 //
 // [pipeline K-8 / G-32, ADR 037 P2.7] (absent from origins.lock.json by construction — G-32 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/MASTER_PLAN.md) Two files under a channel's store
-// directory are not metadata — they are declarations a human swears to:
+// directory are not metadata — they are declarations a human swears to. There were
+// TWO when this guard was written; the set is DERIVED from the channel register
+// (see REQUIRED_COVERAGE below) and there are FOUR today:
 //   · store/android-play/data-safety.json   (898 lines answered · 59 stamped)
 //   · store/android-play/content-rating.json (186 lines answered · 53 stamped)
-// The brick stamps both UNANSWERED, on purpose: a template cannot know what an
+//   · store/android-play/ads-declaration.json (207 answered · 64 stamped, 2026-08-09)
+//   · store/ios-appstore/privacy-manifest.json (433 answered · 113 stamped, 2026-08-31)
+// The brick stamps them all UNANSWERED, on purpose: a template cannot know what an
 // app does, and a confidently wrong sworn declaration is worse than an obviously
 // incomplete one. Which means every app carries, in the same path, a file that
 // has TWO legitimate shapes — and only one of them is legal for a shipping app.
@@ -35,6 +39,78 @@
 //   M26     _readme truncated to five lines                                  → EXIT 0
 //   M28     the Files-and-docs basis rewritten, losing its code citation     → EXIT 0
 //
+// 🔬 AND THE SAME MEASUREMENT FOR THE FOURTH DECLARATION — THE APPLE PRIVACY
+// MANIFEST AUDIT (2026-08-31, [G-49], `ios-appstore/privacy-manifest.json`).
+// Same method: a real-tree copy carrying the real register, the real audit, the
+// real brick template and apps/subly/{ios,macos}; one real partial regression
+// each; both guards run; exit code captured ON ITS OWN LINE. The `apple` column
+// is assert-apple-privacy-manifest.mjs — the sibling that re-renders both
+// `PrivacyInfo.xcprivacy` files from this audit, validates the Apple
+// vocabulary, holds the inventory EQUAL to `.flutter-plugins-dependencies` and
+// cross-checks the rows against Data safety. Only the EXIT 0 rows are holes.
+//
+//                                                       apple     this guard
+//   PM1  the answered file replaced by the stamp        EXIT 1   → EXIT 1  (the wholesale
+//        case; both catch it, as with data-safety above)
+//   PM2  `unresolved` emptied                           EXIT 0   → EXIT 0 ⬅ NOT A LIMB, ON PURPOSE
+//   PM3c the app target + engine + App.framework rows
+//        deleted, plugin rows untouched                 EXIT 0   → EXIT 1  requiredRows
+//   PM5  `_readme` collapsed to the template's prose    EXIT 0   → EXIT 1  minReadme
+//   PM6b `tracking.basis` deleted, boolean intact       EXIT 0   → EXIT 1  minKeys
+//   PM7b `accessedApiDetermination._why` deleted        EXIT 0   → EXIT 1  minKeys
+//   PM8  every binary `basis` replaced with "stamped"   EXIT 0   → EXIT 1  minBasisTotalChars
+//   PM9  both `sources` citations deleted               EXIT 0   → EXIT 1  minCitations
+//   PM10 `cannotSee.items` emptied                      EXIT 0   → EXIT 1  nonEmptyArrays
+//   PM11 `ffiFindings` deleted                          EXIT 0   → EXIT 1  minKeys
+//   PM12b `linkedBasis` dropped from every row          EXIT 0   → EXIT 1  entryKeys
+//   PM13 an `unresolved` row loses its `decision`       EXIT 0   → EXIT 1  entryKeys
+//   PM16 `manifest` dropped from every inventory row    EXIT 0   → EXIT 1  entryKeys
+//   PM18 `sources` gutted back to the template's shape  EXIT 0   → EXIT 1  limb 2
+//   PM20 `sdkListFindings` deleted                      EXIT 0   → EXIT 1  minKeys
+//   PM21 `cannotSee` deleted whole                      EXIT 0   → EXIT 1  nonEmptyArrays
+//   PM14 the ANSWERS copied into the brick template     EXIT 0   → EXIT 1  limb 7
+//   PM15 the TEMPLATE's `unresolved` emptied            EXIT 0   → EXIT 1  limb 7
+//
+// ── AND THE ROWS THAT ARE *NOT* LIMBS HERE, WITH THE MEASUREMENT ────────────
+// A limb was written for each of these first, then DELETED, because the sibling
+// already fails on it and a redundant assertion is the thing this repo deletes
+// (see the Ed25519 length checks). Each was run, not assumed. Where this guard
+// still exits 1 the failure is INCIDENTAL — `requiredRows` and `minKeys` catch
+// it on the way past — and no limb here is paid for by it:
+//
+//                                                       apple     this guard
+//   PM3  `binaryInventory.{ios,macos}` emptied          EXIT 1   → 1 incidental
+//   PM3b `binaryInventory` deleted whole                EXIT 1   → 1 incidental
+//   PM7  `accessedApiDetermination` deleted whole       EXIT 1   → 1 incidental
+//   PM19 `binary` dropped from every inventory row      EXIT 1   → 1 incidental
+//   PM4  `collectedDataTypes.rows` emptied              EXIT 1   → EXIT 0
+//   PM17 `collectedDataTypes.rows` cut to ONE row       EXIT 1   → EXIT 0
+//   PM6  `tracking.NSPrivacyTracking` nulled            EXIT 1   → EXIT 0
+//   PM12 `fromPlayRow` dropped from every row           EXIT 1   → EXIT 0
+//
+// ⚠️ THE FOUR EXIT-0 ROWS ARE THE PRICE OF NOT DUPLICATING, and they are stated
+// rather than hidden: if assert-apple-privacy-manifest.mjs ever narrows its
+// plugin-equality or Data-safety cross-check limbs, those four stop being
+// covered anywhere and this table is where a reader finds that out. Re-run the
+// sweep when that guard changes shape; do not assume this column still holds.
+//
+// 🔴 PM2 IS EXIT 0 ON BOTH AND THAT IS A DECISION, NOT A GAP. `unresolved`
+// legitimately empties as questions settle: measured,
+// android-play/data-safety.json carries `unresolved: []` and `resolved: [2]`
+// today, having started the other way round. A floor there would go red on a
+// CORRECT improvement, and an assertion that cannot tell a regression from a
+// repair is worth no more than one that cannot fail — the same argument that
+// rejected the derived UI_ANCHORS table below at an 11/14 false-positive rate.
+// What is defended instead is the write-up ON each row that is still open
+// (PM13), so a row cannot be hollowed out in place while still counting.
+//
+// 🔴 PM3c IS THE FINDING THIS MEASUREMENT PAID FOR. The sibling's equality limb
+// is against the PLUGIN list, so the rows that are not plugins — the app target,
+// the engine framework, App.framework — are outside its subject set entirely.
+// Deleting exactly those, and nothing else, was exit 0 on both guards until
+// `requiredRows` was added. It is the audit collapsing back to "only plugins
+// matter", which is the precise misreading its own `_why` is written against.
+//
 // So this guard is NOT a second opinion on the answers. play-declarations owns
 // "does the declaration still describe the code". This one owns the narrower,
 // duller question that turned out to be unowned: "is this still an ANSWERED
@@ -59,8 +135,11 @@
 //     guarded, which questions were settled and why each had been recorded as
 //     needing something it did not. The template's is 19 lines of instructions
 //     to a future author. Losing it costs no machine check anywhere.
-//  4. SUBSTANCE. Every `basis` is at least MIN_BASIS_CHARS (the shortest live
-//     one is 66); `resolved` keeps its write-ups; content-rating keeps its
+//  4. SUBSTANCE. Every `basis` is at least the SPEC's floor — MIN_BASIS_CHARS
+//     (40) by default, because the shortest live one in the Play forms is 66 —
+//     and where a document's rows are legitimately one sentence long the weight
+//     moves to an AGGREGATE floor over all of them (`minBasisTotalChars`, the
+//     Apple audit); `resolved` keeps its write-ups; content-rating keeps its
 //     rating authorities and its named human-owned obligations.
 //  5. CITED CODE STILL EXISTS. Every repository path named anywhere in the
 //     document resolves (43 distinct paths do today). A declaration that cites
@@ -164,7 +243,21 @@ const readJson = (rel) => {
 const MIN_LINES = 150;
 /** Shortest live `basis` is 66 characters (data-safety answers[15]). 40 leaves
  *  real headroom while refusing "stamped" (7) and "Nothing to see." (15) —
- *  both measured to pass assert-play-declarations. */
+ *  both measured to pass assert-play-declarations.
+ *
+ *  🔴 IT IS THE DEFAULT, NOT A UNIVERSAL, AND THE SCOPING WAS FORCED BY
+ *  MEASUREMENT. `basis` does not mean the same thing in every sworn document.
+ *  In the three Play declarations it is a full justification (43 live values,
+ *  shortest 66). In ios-appstore/privacy-manifest.json it is a per-binary
+ *  EVIDENCE NOTE — "Manifest read." (14) against a row whose manifest path is
+ *  given in `sources`, "As iOS." (7) against a macOS row that is a deliberate
+ *  cross-reference to the iOS row above it. Measured on the real file: 40 fires
+ *  on 14 of its 25 CORRECT rows. Raising the doc to fit the constant would mean
+ *  padding a sworn record to satisfy a guard, and lowering the constant for
+ *  everyone would silently drop the Play floor from 40 to 7 — so the number is
+ *  per-spec (`minBasisChars`), the three Play specs keep 40 by omission, and the
+ *  document whose rows are legitimately terse carries an AGGREGATE floor
+ *  (`minBasisTotalChars`) instead, which is where its evidence actually lives. */
 const MIN_BASIS_CHARS = 40;
 
 const SWORN_SPECS = new Map([
@@ -233,6 +326,150 @@ const SWORN_SPECS = new Map([
       // question going unanswered while every dependency-keyed guard is green.
       booleans: ['containsAds', 'promotesOtherApps'],
       entryKeys: [{ at: 'formatScan.requiredCoverage', keys: ['file', 'symbol', 'why'] }],
+    },
+  ],
+  [
+    // The FOURTH sworn declaration (2026-08-31, [G-49]) — the Apple privacy
+    // manifest AUDIT, and the first one that is not a Play form. It answers for
+    // TWO channels (`ios-appstore` and `macos-appstore`) out of one document,
+    // and both `apps/{app}/{ios,macos}/Runner/PrivacyInfo.xcprivacy` are
+    // GENERATED from it. Enforcement is at UPLOAD, before review: App Store
+    // Connect refuses the build, so a regression here costs an upload
+    // round-trip and — if it regresses in the safe-looking direction, by
+    // over-declaring — a false sworn statement that survives.
+    //
+    // 🔬 WHAT assert-apple-privacy-manifest.mjs OWNS AND THIS SPEC DOES NOT.
+    // That guard re-renders both .xcprivacy files from this document and
+    // compares, validates the Apple constant vocabulary, holds the plugin set
+    // equal to `.flutter-plugins-dependencies`, and cross-checks the collected
+    // data types against android-play/data-safety.json. NONE of that is
+    // repeated below — a redundant assertion is the thing this repo deletes.
+    // This spec owns the same duller question as the three above: "is this
+    // still an ANSWERED audit at all, or has it drifted back toward the blank
+    // the brick emits". The two are genuinely disjoint in one measurable way:
+    // an audit whose answers are all EMPTY re-renders to the .xcprivacy pair it
+    // already has (both carry an empty NSPrivacyAccessedAPITypes today), so the
+    // regeneration limb is exit 0 over a gutted document.
+    'ios-appstore/privacy-manifest.json',
+    {
+      // `_readme` measured 37 live / 27 in the brick template.
+      minReadme: 30,
+      // Named citation objects under `sources` carrying a `url`: 2 live
+      // (`enforcementRule`, `sdkList`), 0 in the brick template. The other four
+      // `sources` entries are LOCAL witnesses (a path + a read date) and an
+      // explicitly unsourced folklore string, none of which this count sees —
+      // which is the point: the floor is on the REMOTE rule still being cited.
+      minCitations: 2,
+      /** ONE entry, and the shortness is the measurement. `binaryInventory.ios`
+       *  (13 rows), `.macos` (12) and `collectedDataTypes.rows` (11) were all
+       *  written here first and then REMOVED: emptying each is EXIT 1 on
+       *  assert-apple-privacy-manifest.mjs — the plugin-set equality limb and
+       *  the data-safety cross-check respectively — so all three were redundant,
+       *  and a redundant assertion is the thing this repo deletes. What is left
+       *  is `cannotSee.items` (3 live), which is EXIT 0 there: the list of what
+       *  the audit could NOT read feeds no rendered plist and no cross-check,
+       *  and emptying it is precisely how a green guard starts reading as a
+       *  complete audit.
+       *
+       *  `unresolved` is deliberately absent too, for the opposite reason: it
+       *  legitimately empties as questions settle — measured,
+       *  android-play/data-safety.json carries `unresolved: []` and
+       *  `resolved: [2]` today, having started the other way round — so a floor
+       *  there would go red on a correct improvement. */
+      nonEmptyArrays: ['cannotSee.items'],
+      /** Blocks whose ANSWER is legitimately empty, so no array floor can
+       *  defend them — only the block's own existence can. All four measured
+       *  EXIT 0 on assert-apple-privacy-manifest.mjs in the shape that matters.
+       *  · `accessedApiDetermination` measured 3 keys (ios, macos, _why), floor
+       *    3: deleting the block is caught there, but deleting only `_why`
+       *    is EXIT 0 — and `_why` is the entire record of why both platform
+       *    arrays are EMPTY, which is the audit's finding rather than its
+       *    default. An empty array with no basis is indistinguishable from an
+       *    unanswered one.
+       *  · `tracking` measured 3 (NSPrivacyTracking, NSPrivacyTrackingDomains,
+       *    basis), floor 3: the two Apple fields are the sibling's (nulling the
+       *    boolean is EXIT 1 there, which is why `booleans` below is empty), but
+       *    deleting `basis` is EXIT 0 and it is the only record of why the pair
+       *    is what it is.
+       *  · `ffiFindings` / `sdkListFindings` measured 2 each (_why, findings);
+       *    deleting either block whole is EXIT 0 there. The `findings` LISTS may
+       *    honestly be empty — an app whose closure has no FFI bindings and no
+       *    name on Apple's SDK list has nothing to report — so the floor is on
+       *    the block, the record that the question was asked at all. */
+      minKeys: [
+        { at: 'accessedApiDetermination', min: 3 },
+        { at: 'tracking', min: 3 },
+        { at: 'ffiFindings', min: 2 },
+        { at: 'sdkListFindings', min: 2 },
+      ],
+      // EMPTY, AND MEASURED EMPTY. `tracking.NSPrivacyTracking` is the one sworn
+      // yes/no on this form and the obvious candidate — but nulling it is EXIT 1
+      // on assert-apple-privacy-manifest.mjs, which renders the plist from it.
+      // Repeating it here would buy a second failure message and no coverage.
+      booleans: [],
+      /** Per-row substance, trimmed to the keys that are measurably nobody
+       *  else's. `binary` and `type` and `fromPlayRow` were all here and were
+       *  removed at EXIT 1 on the sibling (it parses `binary` to derive the
+       *  plugin set, and reads the row type and its Play origin for the
+       *  cross-check). What survives:
+       *  · `manifest` — dropping it from every inventory row is EXIT 0 there.
+       *    It is the row's EVIDENCE CLASS (`ships-own` / `none` / `this-file` /
+       *    `not-shipped`); without it "no accessed APIs" stops distinguishing
+       *    "its manifest was read and is empty" from "nobody looked".
+       *  · `basis` — same measurement, and it is the sentence that says which.
+       *  · `linkedBasis` — Apple's "linked to the user's identity" is the one
+       *    field per row that is NOT a translation of a Play answer, so the
+       *    cross-check cannot see it; dropping it from every row is EXIT 0.
+       *  · the `unresolved` write-up keys — EXIT 0 there; checked WHEN PRESENT
+       *    (an empty list iterates zero times, per the note above), so a row can
+       *    be settled and removed but not hollowed out in place. */
+      entryKeys: [
+        { at: 'binaryInventory.ios', keys: ['manifest', 'basis'] },
+        { at: 'binaryInventory.macos', keys: ['manifest', 'basis'] },
+        { at: 'collectedDataTypes.rows', keys: ['linkedBasis'] },
+        { at: 'unresolved', keys: ['id', 'title', 'question', 'whyItIsNotGuessed', 'decision', 'owner'] },
+      ],
+      /** 🔴 THE ONE HOLE IN THE INVENTORY THAT NOBODY OWNED, AND IT IS THE HALF
+       *  THE AUDIT REASONS ABOUT. The sibling holds the inventory EQUAL to
+       *  `.flutter-plugins-dependencies` — so it sees every plugin row and NONE
+       *  of the rows that are not plugins. Measured: deleting the app target,
+       *  the engine framework and App.framework from both platform inventories,
+       *  leaving the plugin rows untouched, is EXIT 0 on BOTH guards. That is
+       *  the audit collapsing back to "only plugins matter", which is the exact
+       *  misreading its own `_why` exists to prevent (the app-level manifest
+       *  does not cover the plugins and the plugins' manifests do not cover the
+       *  app), and it is how App.framework — the binary that can carry NO
+       *  manifest and is where FFI-reached selectors land — quietly stops being
+       *  in the document at all.
+       *
+       *  Both anchors are on FACTORY CONSTANTS, never on prose: `manifest` is a
+       *  closed vocabulary and `this-file` is the app target answering for
+       *  itself, and `App.framework` is Flutter's own artefact name, present in
+       *  every AOT build of every app this brick stamps. The engine row is
+       *  deliberately NOT anchored — its binary is `Flutter.framework` on iOS
+       *  and `FlutterMacOS.framework` on macOS, and any anchor spanning both
+       *  would be a match on the sentence rather than on the artefact. */
+      requiredRows: [
+        { at: 'binaryInventory.ios', key: 'manifest', is: 'this-file', what: 'the app target, answering for its own code' },
+        { at: 'binaryInventory.macos', key: 'manifest', is: 'this-file', what: 'the app target, answering for its own code' },
+        { at: 'binaryInventory.ios', key: 'binary', contains: 'App.framework', what: 'the Dart AOT snapshot, the binary that can carry no manifest' },
+        { at: 'binaryInventory.macos', key: 'binary', contains: 'App.framework', what: 'the Dart AOT snapshot, the binary that can carry no manifest' },
+      ],
+      /** Shortest live `basis` here is 7 characters ("As iOS.", the macOS
+       *  App.framework row, a deliberate cross-reference to the iOS row above
+       *  it); 14 is the modal value ("Manifest read."). See MIN_BASIS_CHARS:
+       *  the shared 40 fires on 14 of the 25 correct rows, so it is scoped
+       *  rather than lowered for everyone. At 7 this limb still refuses an
+       *  empty or one-word `basis`, and it is NOT where the weight sits. */
+      minBasisChars: 7,
+      /** …the weight sits HERE. Measured 4042 characters across the 25 `basis`
+       *  values live. The regression this defends against is the one measured
+       *  at exit 0 on the Play form (M20) — every basis replaced with the word
+       *  "stamped" — which collapses the total to 25 × 7 = 175. A floor of 2000
+       *  is under HALF the live total, so trimming prose cannot false-fail it,
+       *  and 11× above the gutted total. It is a floor no per-row check can
+       *  express on a document whose rows are legitimately one sentence long. */
+      minBasisTotalChars: 2000,
     },
   ],
 ]);
@@ -632,6 +869,31 @@ for (const app of apps) {
         );
       }
     }
+    // Rows that must BE there, identified by a controlled-vocabulary field
+    // rather than by prose. An array floor cannot express this: the list is
+    // long, every row in it is real, and the ones that went missing were the
+    // ones no other guard ranges over.
+    for (const req of spec.requiredRows ?? []) {
+      const arr = at(j, req.at);
+      if (!Array.isArray(arr)) {
+        fail(`${rel} \`${req.at}\` is missing, so the required row for ${req.what} cannot be there either.`);
+        continue;
+      }
+      const hit = arr.some((row) => {
+        const v = row && typeof row === 'object' ? row[req.key] : undefined;
+        if (typeof v !== 'string') return false;
+        return req.is !== undefined ? v === req.is : v.includes(req.contains);
+      });
+      if (!hit) {
+        const want = req.is !== undefined ? `\`${req.key}\` === ${JSON.stringify(req.is)}` : `\`${req.key}\` containing ${JSON.stringify(req.contains)}`;
+        fail(
+          `🔴 ${rel} \`${req.at}\` has ${arr.length} row(s) and NOT ONE with ${want} — ${req.what}. MEASURED HOLE: ` +
+            'the sibling guard holds this inventory EQUAL to the plugin list, so it sees every plugin row and none ' +
+            'of the rows that are not plugins; deleting exactly these is exit 0 there. An inventory of only the ' +
+            'plugins is the audit collapsed back to the misreading its own _why exists to prevent.',
+        );
+      }
+    }
     for (const { at: pointer, keys } of spec.entryKeys) {
       const arr = at(j, pointer);
       if (!Array.isArray(arr)) continue; // already reported by nonEmptyArrays
@@ -639,19 +901,50 @@ for (const app of apps) {
         for (const k of keys) {
           const v = entry && typeof entry === 'object' ? entry[k] : undefined;
           if (typeof v !== 'string' || v.trim().length === 0) {
-            fail(`${rel} \`${pointer}[${i}]\` has no \`${k}\`. A settled question with no write-up is a settled question nobody can re-check.`);
+            fail(
+              `${rel} \`${pointer}[${i}]\` has no \`${k}\`. Every key named here is the part of the row that makes ` +
+                'it re-checkable by somebody who was not there — a settled question with no write-up, an inventory ' +
+                'row with no evidence, a derived row that no longer names what it was derived FROM.',
+            );
           }
         }
       });
     }
+    // Per-document floor: `basis` is a full justification in the Play forms and
+    // a per-binary evidence note in the Apple audit, so the number is read off
+    // the spec (see MIN_BASIS_CHARS for the measurement that forced this).
+    const basisFloor = spec.minBasisChars ?? MIN_BASIS_CHARS;
+    let basisTotal = 0;
+    let basisCount = 0;
     for (const [pointer, value] of strings(j)) {
       if (!pointer.endsWith('basis')) continue;
-      if (value.trim().length < MIN_BASIS_CHARS) {
+      basisCount++;
+      basisTotal += value.trim().length;
+      if (value.trim().length < basisFloor) {
         fail(
           `🔴 ${rel} \`${pointer}\` is ${value.trim().length} character(s): ${JSON.stringify(value.slice(0, 40))}. ` +
-            `A basis under ${MIN_BASIS_CHARS} characters is a placeholder. MEASURED HOLE: replacing every basis ` +
+            `A basis under ${basisFloor} characters is a placeholder. MEASURED HOLE: replacing every basis ` +
             'with the word "stamped" is exit 0 on assert-play-declarations.mjs, which checks only that the field ' +
             'is a non-empty string.',
+        );
+      }
+    }
+    // …and the aggregate, for a document whose individual rows are legitimately
+    // one sentence long. Only declared where a per-row floor cannot carry the
+    // weight; omitted, it ranges over nothing and says so rather than passing.
+    if (typeof spec.minBasisTotalChars === 'number') {
+      if (basisCount === 0) {
+        fail(
+          `🔴 ${rel} carries NO \`basis\` field at all, and its spec sets an aggregate floor of ` +
+            `${spec.minBasisTotalChars} characters. Zero values is not a small total — it is the limb ranging ` +
+            'over nothing, which passes forever.',
+        );
+      } else if (basisTotal < spec.minBasisTotalChars) {
+        fail(
+          `🔴 ${rel} carries ${basisTotal} character(s) of \`basis\` across ${basisCount} row(s); the floor is ` +
+            `${spec.minBasisTotalChars}. Each row here may honestly be one sentence, so no per-row floor can see ` +
+            'this: the evidence for the whole inventory is the SUM, and gutting every row at once is exactly the ' +
+            'regression a per-row floor of 7 lets through.',
         );
       }
     }

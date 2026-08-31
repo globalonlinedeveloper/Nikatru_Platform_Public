@@ -215,7 +215,7 @@ describe('the scan cannot be trusted', () => {
   // here are the same bytes with one difference — they sit inside a string
   // literal. Until 2026-08-27 this guard could not tell them apart, PR #397 put
   // exactly such a fixture into a sibling guard's source, and because this guard
-  // is wired at ci.yml:1724 that reddened EVERY PUSH over a path nobody imports.
+  // is wired at ci.yml:1780 that reddened EVERY PUSH over a path nobody imports.
   //
   // Backticks are the outer quote here on purpose: escaping the inner quotes
   // instead was rejected in #397 as formatter-fragile — any tool that normalises

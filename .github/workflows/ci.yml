@@ -1017,6 +1017,62 @@ jobs:
       - name: The Data safety and content-rating declarations still describe the code
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-play-declarations.mjs
+      # THE APPLE HALF OF THE SAME QUESTION, AND IT ARRIVED SEVEN WEEKS AFTER THE
+      # PLAY HALF. `PrivacyInfo.xcprivacy` is a sworn declaration about what the
+      # code does, exactly like the two Play artefacts above — and it is the one
+      # enforced at UPLOAD rather than at review: "Starting May 1, 2024, apps that
+      # don't describe their use of required reason API in their privacy manifest
+      # file aren't accepted by App Store Connect." A wrong answer here does not
+      # cost a review cycle, it costs an upload round-trip — and no store console
+      # watches a repository, which is the same reason the step above exists.
+      #
+      # 🔴 G-49 SAT ON STAGE 8'S CUT LIST WITH A PAIRED TRIPWIRE, AND THE TRIPWIRE
+      # FIRED ON 2026-08-31. The cut was consistent ONLY while Apple enrolment was
+      # deferred (Private/requirements/not-built.json, stage 10, [10]D-4:
+      # "registering the account without moving G-49 is how that pairing breaks
+      # silently"). Enrolment completed, so the cut expired. What the corpus had
+      # recorded for weeks was the RULE and never the ANSWER — nikatru/vendors/
+      # apple.md said in as many words that the exact list of Required Reason APIs
+      # this app touches was "UNVERIFIED — never audited".
+      # apps/subly/store/ios-appstore/privacy-manifest.json is that audit: ONE file
+      # for BOTH Apple channels, because two copies of one identity is how the
+      # wrong one ships. This step re-derives both .xcprivacy files from it and
+      # compares them, in the same direction as every other store artefact here —
+      # the repository is authoritative and Xcode is a copy of it.
+      #
+      # 🔴 THE ANSWER IS AN EMPTY `NSPrivacyAccessedAPITypes`, AND AN EMPTY ARRAY
+      # IS A CLAIM RATHER THAN A DEFAULT. Apple asks a BINARY why IT uses an API,
+      # and the app target's own sources — read in full, three files on iOS and
+      # two on macOS, all stock — reach none. Every category this app genuinely
+      # depends on is declared by the binary that uses it: FileTimestamp and
+      # SystemBootTime by the Flutter engine, UserDefaults by
+      # flutter_local_notifications (CA92.1) and shared_preferences_foundation
+      # (1C8F.1). Repeating those here would cost nothing at upload and would be a
+      # FALSE SWORN STATEMENT about code this target does not contain — and it
+      # would destroy the file's only real property, that a NEW required-reason
+      # call has to change it. The eleven NSPrivacyCollectedDataTypes rows are
+      # DERIVED from android-play/data-safety.json rather than written twice, so a
+      # Play row cannot flip without this file moving: the same relation limb (E)
+      # of the step above already holds between Data safety and content rating.
+      #
+      # ⚠️ IT PRINTS WHAT IT CANNOT SEE, BECAUSE A GREEN GUARD HERE IS NOT A
+      # COMPLETE AUDIT. The COCOAPODS CLOSURE: `Sentry/HybridSDK 8.58.4` is the
+      # only vendored native SDK in the bundle and this audit ran on Windows, so
+      # its own manifest and signature were NEVER READ — believed is not read, and
+      # build-platforms.yml's macOS lane is the place that could settle it from a
+      # real Pods/ checkout. The BUILT BUNDLE: Apple assembles its aggregate
+      # privacy report from what is actually EMBEDDED, and no compiled .app has
+      # been inspected here on any platform. And U-1: sentry_flutter's Dart FFI
+      # binding registers the `systemUptime` selector (NSProcessInfo — which IS
+      # SystemBootTime, 35F9.1) inside App.framework, the one binary in a Flutter
+      # build that can carry no manifest at all because no target owns it.
+      # Whether Apple's scanner attributes a dynamic objc_msgSend to it is not
+      # knowable outside App Store Connect, so it is NOT declared: a rejected
+      # upload is cheap, immediate and unambiguous, and a false sworn declaration
+      # is a policy problem that survives.
+      - name: The Apple privacy manifests still describe the binaries that ship
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-apple-privacy-manifest.mjs
       # A sworn declaration may not regress toward the template it was stamped
       # from. Both files sit in the Subly re-stamp's EXCLUDE-verbatim bucket by a
       # decision no guard enforced (Private/plans/subly-restamp-P22-lock.md
