@@ -30,6 +30,14 @@ const GUARD = join(REPO, 'tooling', 'ci', 'assert-sworn-store-files.mjs');
 
 const BRICK_STORE = 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/android-play';
 const SUBLY_STORE = 'apps/subly/store/android-play';
+/** The FOURTH sworn declaration (2026-08-31, [G-49]) — the Apple privacy
+ *  manifest audit. It is the first one that is not a Play form and the first on
+ *  a second channel, which is why the tree below copies a whole second store
+ *  directory rather than another file. */
+const BRICK_IOS = 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/ios-appstore';
+const SUBLY_IOS = 'apps/subly/store/ios-appstore';
+const PM = `${SUBLY_IOS}/privacy-manifest.json`;
+const PM_TMPL = `${BRICK_IOS}/privacy-manifest.json`;
 const DS = `${SUBLY_STORE}/data-safety.json`;
 const CR = `${SUBLY_STORE}/content-rating.json`;
 /** The third sworn declaration (2026-08-09) — Play "App content → Ads". It is
@@ -71,7 +79,7 @@ function citedPaths() {
   // assert-ads-declarations, submit-play, render-play-graphics,
   // capture-play-screenshots) — and hand-listing them is the mistake this
   // function's own header records making.
-  for (const rel of [DS, CR, ADS, README]) {
+  for (const rel of [DS, CR, ADS, README, PM, `${SUBLY_IOS}/README.md`]) {
     for (const m of readFileSync(join(REPO, rel), 'utf8').matchAll(CITED_RE)) set.add(m[0]);
   }
   return [...set];
@@ -90,6 +98,9 @@ function swornCount() {
     if (channel.startsWith('_')) continue;
     for (const f of contract?.additionalFiles ?? []) if (f.endsWith('.json')) n++;
   }
+  // …and the one `realTree()` seeds when the register does not carry it yet, so
+  // the count describes the fixture the cases actually run against.
+  if (!(perChannel['ios-appstore']?.additionalFiles ?? []).includes('privacy-manifest.json')) n++;
   return n;
 }
 
@@ -106,7 +117,21 @@ function realTree() {
   put(REGISTER);
   put(SUBLY_STORE);
   put(BRICK_STORE);
+  put(SUBLY_IOS);
+  put(BRICK_IOS);
   for (const rel of citedPaths()) put(rel);
+  // ⚠️ THE REGISTER ENTRY THAT MAKES privacy-manifest.json SWORN, seeded here
+  // and ONLY if it is absent. The sworn set is DERIVED from
+  // storeMetadataContract, so without the entry every case in this file dies on
+  // "this guard specs ios-appstore/privacy-manifest.json, which the register no
+  // longer declares as sworn" — one true failure wearing 180 confusing masks.
+  // Seeding it makes each case below a statement about the SPEC. It masks
+  // nothing: the very next test asserts the REAL register carries the entry, so
+  // if it is ever dropped exactly one case goes red and it names the file.
+  const reg = JSON.parse(readFileSync(join(root, REGISTER), 'utf8'));
+  const ios = reg.storeMetadataContract.perChannel['ios-appstore'].additionalFiles;
+  if (!ios.includes('privacy-manifest.json')) ios.push('privacy-manifest.json');
+  writeFileSync(join(root, REGISTER), `${JSON.stringify(reg, null, 2)}\n`);
   // The UI anchors' own inputs (P2.7): limb 6's copy half reads the .arb,
   // which the declarations do not CITE — the derived set above cannot know
   // about it, so it is seeded explicitly, beside the reduction library the
@@ -175,6 +200,240 @@ describe('the real tree', () => {
         assert.ok(readFileSync(join(REPO, SETTINGS), 'utf8').includes('Export data (CSV)'));
       },
     );
+  });
+});
+
+describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', () => {
+  test('🔴 THE REAL REGISTER DECLARES IT SWORN — the one thing `realTree()` seeds', () => {
+    // The self-check that stops the seeding above from masking anything. Every
+    // other case in this block is a statement about the SPEC; this one is the
+    // statement about REALITY, and if the register entry is dropped this is the
+    // single case that goes red, by name.
+    const reg = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    const ios = reg.storeMetadataContract?.perChannel?.['ios-appstore']?.additionalFiles ?? [];
+    assert.ok(
+      ios.includes('privacy-manifest.json'),
+      'tooling/channel-register.json -> storeMetadataContract.perChannel["ios-appstore"].additionalFiles ' +
+        'does not list privacy-manifest.json. The sworn set is DERIVED from that contract, so until the ' +
+        'entry lands the guard specs a file nothing requires to exist and exits COVERAGE LOST on the real ' +
+        'tree — the floors below are real, and nothing is asserting them where it counts.',
+    );
+  });
+
+  test('the copy the cases mutate really is the answered audit', () => {
+    // Same reason as the data-safety twin above: without this, every "caught"
+    // below could be an artefact of a stand-in rather than evidence about the
+    // file both PrivacyInfo.xcprivacy are generated from.
+    const pm = JSON.parse(readFileSync(join(REPO, PM), 'utf8'));
+    assert.ok(pm.binaryInventory.ios.length > 10, 'the audit must really carry its binary inventory');
+    assert.ok(pm.collectedDataTypes.rows.length > 5, 'and its collected-data rows');
+    assert.equal(typeof pm.tracking.NSPrivacyTracking, 'boolean');
+  });
+
+  test('🔴 PM1 — REPLACING THE AUDIT WITH THE BRICK TEMPLATE FAILS', () => {
+    withTree(
+      (root) => cpSync(join(root, PM_TMPL), join(root, PM)),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /privacy-manifest\.json is \d+ lines; the floor is/);
+        assert.match(r.stderr, /sources\.cited` as an ARRAY/);
+        assert.match(r.stderr, /answers `null` for \d+ field\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 PM3c — THE ROWS THAT ARE NOT PLUGINS DELETED, WHICH BOTH GUARDS MISSED', () => {
+    // The finding the mutation sweep paid for. assert-apple-privacy-manifest.mjs
+    // holds the inventory EQUAL to `.flutter-plugins-dependencies`, so the app
+    // target, the engine framework and App.framework are outside its subject
+    // set. Deleting exactly those and nothing else was exit 0 on BOTH guards
+    // until `requiredRows` existed — the audit collapsed to "only plugins
+    // matter", with App.framework, the binary that can carry no manifest at all,
+    // simply absent from the document.
+    withTree(
+      (root) =>
+        editDoc(root, PM, (j) => {
+          const structural = (row) => /Runner \(the app target\)|Flutter\.framework|FlutterMacOS\.framework|App\.framework/.test(row.binary);
+          for (const p of ['ios', 'macos']) j.binaryInventory[p] = j.binaryInventory[p].filter((row) => !structural(row));
+        }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /NOT ONE with `manifest` === "this-file"/);
+        assert.match(r.stderr, /NOT ONE with `binary` containing "App\.framework"/);
+      },
+    );
+  });
+
+  test('🔴 PM16 — `manifest` dropped from every inventory row, so no row says what was READ', () => {
+    withTree(
+      (root) =>
+        editDoc(root, PM, (j) => {
+          for (const p of ['ios', 'macos']) for (const row of j.binaryInventory[p]) delete row.manifest;
+        }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /`binaryInventory\.ios\[0\]` has no `manifest`/);
+      },
+    );
+  });
+
+  test('🔴 PM5 — `_readme` collapsed to the brick template\'s own prose', () => {
+    // Not a truncation: the answered file keeps a perfectly well-formed
+    // `_readme`, the one the TEMPLATE ships. It reads like documentation and
+    // says nothing about this app.
+    withTree(
+      (root) => editDoc(root, PM, (j) => { j._readme = readDoc(root, PM_TMPL)._readme; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /line `_readme`; the floor is 30/);
+      },
+    );
+  });
+
+  test('🔴 PM6b — `tracking.basis` deleted while the two Apple fields stay correct', () => {
+    // The sibling renders the plist from NSPrivacyTracking and NSPrivacyTracking-
+    // Domains, so nulling either is exit 1 there and is NOT repeated here.
+    // Deleting the `basis` — the only record of why the PAIR is what it is, and
+    // Apple's rule is on the pair — is exit 0 there.
+    withTree(
+      (root) => editDoc(root, PM, (j) => { delete j.tracking.basis; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`tracking` carries 2 key\(s\); at least 3 are required/);
+      },
+    );
+  });
+
+  test('🔴 PM7b — `accessedApiDetermination._why` deleted, both empty arrays intact', () => {
+    // Both platform arrays are EMPTY today and that is the audit's finding, not
+    // its default — `_why` is the whole difference between the two. Deleting the
+    // block outright is exit 1 on the sibling (it renders from it); deleting
+    // only the reasoning is exit 0.
+    withTree(
+      (root) => editDoc(root, PM, (j) => { delete j.accessedApiDetermination._why; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`accessedApiDetermination` carries 2 key\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 PM20 — `sdkListFindings` deleted', () => {
+    withTree(
+      (root) => editDoc(root, PM, (j) => { delete j.sdkListFindings; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`sdkListFindings` carries 0 key\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 PM11 — `ffiFindings` deleted, the record that the FFI question was asked', () => {
+    withTree(
+      (root) => editDoc(root, PM, (j) => { delete j.ffiFindings; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`ffiFindings` carries 0 key\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 PM8 — every binary `basis` replaced with "stamped", caught by the AGGREGATE', () => {
+    // The per-row floor here is 7 and "stamped" is 7 characters, so the per-row
+    // limb passes it by one character — deliberately, because the shortest
+    // CORRECT basis in this document is also 7 ("As iOS."). 25 × 7 = 175 against
+    // a 4042-character live total is what makes the regression visible.
+    withTree(
+      (root) =>
+        editDoc(root, PM, (j) => {
+          for (const p of ['ios', 'macos']) for (const row of j.binaryInventory[p]) row.basis = 'stamped';
+        }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /carries 175 character\(s\) of `basis` across 25 row\(s\); the floor is 2000/);
+      },
+    );
+  });
+
+  test('🔴 PM10 — `cannotSee.items` emptied, so a green guard reads as a complete audit', () => {
+    withTree(
+      (root) => editDoc(root, PM, (j) => { j.cannotSee.items = []; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`cannotSee\.items` is EMPTY/);
+      },
+    );
+  });
+
+  test('🔴 PM12b — every row loses `linkedBasis`, the one field Play never asked for', () => {
+    // `type` and `fromPlayRow` are the sibling's — dropping either is exit 1
+    // there, through the Data-safety cross-check, and neither is repeated here.
+    // Apple's "linked to the user's identity" has no Play counterpart at all, so
+    // no cross-check can reach it: dropping it from every row is exit 0 there.
+    withTree(
+      (root) => editDoc(root, PM, (j) => { for (const row of j.collectedDataTypes.rows) delete row.linkedBasis; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`collectedDataTypes\.rows\[0\]` has no `linkedBasis`/);
+      },
+    );
+  });
+
+  test('🔴 PM13 — an open question hollowed out in place', () => {
+    withTree(
+      (root) => editDoc(root, PM, (j) => { delete j.unresolved[0].decision; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /`unresolved\[0\]` has no `decision`/);
+      },
+    );
+  });
+
+  test('PM2 — emptying `unresolved` is EXIT 0, and that is the decision, not a gap', () => {
+    // Asserted in the PASSING direction on purpose. `unresolved` legitimately
+    // empties as questions settle — android-play/data-safety.json carries
+    // `unresolved: []` and `resolved: [2]` today, having started the other way
+    // round — so a floor there would go red on a correct improvement. Written
+    // down as a test rather than a comment so that ADDING that floor breaks
+    // something and has to be argued for.
+    withTree(
+      (root) => editDoc(root, PM, (j) => { j.unresolved = []; }),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+      },
+    );
+  });
+
+  test('🔴 PM14/PM15 — the Apple template must STAY a template', () => {
+    withTree(
+      (root) => cpSync(join(root, PM), join(root, PM_TMPL)),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /ios-appstore[\\/]privacy-manifest\.json carries NO null answers/);
+      },
+    );
+    withTree(
+      (root) => editDoc(root, PM_TMPL, (j) => { j.unresolved = []; }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /empty `unresolved` list/);
+      },
+    );
+  });
+
+  test('the brick template carries NO answer from any other app', () => {
+    // Limb 7 asks whether the template still has nulls. This asks the inverse
+    // question a floor cannot: that nobody pasted app #1's measurements in. The
+    // constants are the tell — a real Apple category or reason code in a
+    // template is, by definition, an answer about somebody else's binaries.
+    const raw = readFileSync(join(REPO, PM_TMPL), 'utf8');
+    for (const tell of ['NSPrivacyAccessedAPICategory', 'NSPrivacyCollectedDataType', 'Flutter.framework']) {
+      assert.ok(!raw.includes(tell), `the brick template names ${tell} — that is an ANSWER, not a question`);
+    }
+    const j = JSON.parse(raw);
+    assert.ok(j._readme.length >= 20, 'the template must still instruct the person stamping app #2');
+    assert.ok(j.unresolved.length >= 5, 'and still name the work they owe');
+    assert.ok(j._structuralFacts.facts.length >= 4, 'and still carry the facts true of every app in the factory');
   });
 });
 
@@ -331,14 +590,24 @@ describe('limb 9 — the channel README may not cite code that is gone either', 
     );
   });
 
-  test('deleting the README is COVERAGE LOST, not a pass', () => {
+  test('deleting the READMEs is COVERAGE LOST, not a pass', () => {
     // The failure this whole file is about, in its limb-9 shape: with no README
     // the per-README loop iterates zero times and every path assertion is
     // vacuously satisfied. `assert-store-metadata.mjs` owns the file's PRESENCE;
     // this asserts that when it is gone, THIS guard says it stopped scanning
     // rather than printing ok over an empty set.
+    //
+    // ⚠️ IT IS BOTH READMEs SINCE [G-49], and that is a real change in what the
+    // case can claim. The fixture carried exactly one channel until the Apple
+    // audit put a second store directory in it, and limb 9 skips a channel whose
+    // README is absent by design — so deleting ONE now leaves the limb ranging
+    // over the other, which is coverage, not a loss. The vacuity this guards
+    // against is the loop reaching ZERO, so the mutation has to empty the set.
     withTree(
-      (root) => rmSync(join(root, README)),
+      (root) => {
+        rmSync(join(root, README));
+        rmSync(join(root, `${SUBLY_IOS}/README.md`));
+      },
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /COVERAGE LOST/);
@@ -352,11 +621,11 @@ describe('limb 9 — the channel README may not cite code that is gone either', 
     // the derivation map — the thing limb 9 exists to check — has evaporated. A
     // path check that matches nothing passes forever.
     withTree(
-      (root) =>
-        writeFileSync(
-          join(root, README),
-          '# Store listing metadata\n\nThe derivation map used to be here.\n',
-        ),
+      (root) => {
+        for (const rel of [README, `${SUBLY_IOS}/README.md`]) {
+          writeFileSync(join(root, rel), '# Store listing metadata\n\nThe derivation map used to be here.\n');
+        }
+      },
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /COVERAGE LOST/);

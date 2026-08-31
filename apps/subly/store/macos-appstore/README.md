@@ -39,10 +39,56 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `privacy-policy-url.txt` | Privacy Policy URL | `apps/subly/lib/core/app_config.dart` → `privacyUrl` | ✅ exact match |
 | `support-url.txt` | Support URL | `apps/subly/lib/core/app_config.dart` → `contactUrl` | ✅ exact match |
 | `screenshots/` | App Previews and Screenshots | not derivable — see that directory's README | slot must exist |
+| *(no `privacy-manifest.json` in this tree — on purpose)* | *(not a listing field)* | `apps/subly/store/ios-appstore/privacy-manifest.json` — **one audit, both Apple channels**; see the section below | ✅ `tooling/ci/assert-apple-privacy-manifest.mjs` re-derives `apps/subly/macos/Runner/PrivacyInfo.xcprivacy` from it |
 
 `short-description.txt` is **not** the Subtitle — see the `ios-appstore` README's
 section of the same name. The tagline is 37 characters and Apple's Subtitle is
 30, so the two files are deliberately different.
+
+
+## 🔴 The privacy manifest is generated from the `ios-appstore` tree — one file, not two
+
+`apps/subly/macos/Runner/PrivacyInfo.xcprivacy` is **generated**, by
+`tooling/store/render-apple-privacy-manifest.mjs`, from
+`apps/subly/store/ios-appstore/privacy-manifest.json` — the **same** audit file that
+generates the iOS manifest, and a file that names both channels as its subject.
+`tooling/ci/assert-apple-privacy-manifest.mjs` re-derives both and compares them on
+every CI run, so editing either `.xcprivacy` by hand is a build failure.
+
+**Why the audit is not copied into this directory.** Everything else in this tree is
+a deliberate second copy, because the listing fields *can* diverge per platform and a
+divergence should be a visible diff. The privacy manifest is the opposite case: iOS
+and macOS are two renderings of **one measurement of one Dart tree** — the same
+dependency closure, the same collected data, the same sworn answers. Two copies of
+one identity is how the wrong one ships, which is the argument
+`tooling/channel-register.json` already makes about the MSIX identity block, and it
+applies harder here because Apple aggregates its privacy report per **bundle**, not
+per store record.
+
+**Where the two platforms genuinely differ, the difference is a field inside that
+audit** — and both sides were read rather than one being assumed to stand for the
+pair:
+
+- The macOS **engine** manifest (`FlutterMacOS.framework`) carries no
+  `NSPrivacyAccessedAPITypes` key **at all**, where the iOS one declares
+  `FileTimestamp` (`0A2A.1`, `C617.1`) and `SystemBootTime` (`35F9.1`).
+- The **plugin set is not the iOS one**: `flutter_secure_storage_macos` 3.1.3 and
+  `url_launcher_macos` 3.2.5 replace their iOS-named counterparts, and there is no
+  `SceneDelegate` on macOS — so the app target's own source **file set** differs,
+  which is why both were read in full instead of one standing for the pair.
+- What does **not** differ: the app target reaches no Required Reason API on either
+  platform, so `NSPrivacyAccessedAPITypes` ships **empty on both** — a measured
+  finding, not a default. `NSPrivacyTracking` is `false` with an empty
+  `NSPrivacyTrackingDomains` on both.
+
+The full reasoning — why an empty array is a claim rather than a default, why
+over-declaring would be a false sworn statement, why App Store Connect's **App
+Privacy** questionnaire is a separate artefact this file is the answer key for, that
+enforcement is at **upload** and not at review, and the one unresolved question
+(U-1, `sentry_flutter`'s Dart FFI binding naming `systemUptime` inside a binary that
+cannot carry a manifest) — is in the `ios-appstore` README, beside the file itself.
+It is not repeated here for the same reason the audit is not: a second copy is the
+first to drift.
 
 ## Field limits — every number sourced, everything else marked UNVERIFIED
 
@@ -56,6 +102,7 @@ section of the same name. The tagline is 37 characters and Apple's Subtitle is
 | *"≤ 70 CPPs"* (Custom Product Pages) | ⚠️ **UNVERIFIED** | carried from MASTER_PLAN §3's raw extract; **no primary source read** |
 | Screenshot dimensions, counts, video specs | ⚠️ **COULD-NOT-ESTABLISH** | see `screenshots/README.md` |
 | Category vocabulary (the exact list App Store Connect accepts for macOS) | ⚠️ **UNVERIFIED** | `Productivity` is used because it is the obvious fit; the authoritative list was not fetched |
+| `NSPrivacyCollectedDataType*` and `…Purpose*` spellings | ⚠️ **UNVERIFIED — no local witness** | the audit records that no plugin manifest on this machine contains one of these constants, so none was read; they are cross-checked against the Play declaration rather than trusted alone. Same finding as `ios-appstore` — one audit, one limitation |
 
 🔴 An invented limit fires on **correct** input — a made-up *"120 characters or
 fewer"* once rejected this repo's own fixture at 129. Any number added here later
@@ -85,8 +132,10 @@ is what submits this channel.
   `developer.apple.com/news/upcoming-requirements/`, in force since **28 April
   2026**. Unpinned here: `build-platforms.yml` runs `macos-26` and pins no Xcode.
 - 🔴 **The `macos-26` runner is arm64-only.**
-- 🔴 **Privacy manifest** (`PrivacyInfo.xcprivacy`) with **Required Reason API**
-  declarations — G-49.
+- ✅ **Privacy manifest** (`PrivacyInfo.xcprivacy`) with **Required Reason API**
+  declarations — G-49. It left stage 8's cut list on **2026-08-31**, the day Apple
+  Developer enrolment completed, and is now a repo artefact generated from
+  `apps/subly/store/ios-appstore/privacy-manifest.json` — see the section above.
 - **Age rating** is an App Store Connect questionnaire, not a repo file.
 - **App Sandbox** is required for Mac App Store distribution; the entitlements
   that grants are per-app and unbuilt. ⚠️ The exact required entitlement set is
@@ -106,5 +155,7 @@ Exits 0 **without contacting Apple**. `--submit` refuses with `UNVERIFIED:` line
 ## ⬜ What is still owner-gated
 
 **OWNER_QUEUE A-4** — the same Apple Developer Program enrolment as
-`ios-appstore`. No distribution certificate, no provisioning profile, no App
-Store Connect API key, and none wired here.
+`ios-appstore`. Enrolment itself **completed on 2026-08-31**; everything downstream
+of it has not. No distribution certificate, no provisioning profile, no App Store
+Connect API key, and none wired here. `served: false` until a real submission
+happens.

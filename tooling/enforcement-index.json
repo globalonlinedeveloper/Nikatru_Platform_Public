@@ -154,6 +154,18 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "G-49"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#workspace_gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-apple-privacy-manifest.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#apple",
@@ -1514,6 +1526,7 @@
   {
     "claims": [
       "G-32",
+      "G-49",
       "K-8"
     ],
     "invokedBy": [

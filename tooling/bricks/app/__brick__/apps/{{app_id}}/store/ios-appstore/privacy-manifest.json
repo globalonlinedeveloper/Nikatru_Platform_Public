@@ -1,0 +1,112 @@
+{
+  "_readme": [
+    "THE APPLE PRIVACY MANIFEST AUDIT — app `{{app_id}}`, channels `ios-appstore` AND `macos-appstore`. STAMPED UNANSWERED.",
+    "",
+    "This is the repo-native source of truth for BOTH `PrivacyInfo.xcprivacy` files — ios/Runner and",
+    "macos/Runner. Both are GENERATED from this file by tooling/store/render-apple-privacy-manifest.mjs",
+    "and re-derived-and-compared on every CI run by tooling/ci/assert-apple-privacy-manifest.mjs.",
+    "Editing either `.xcprivacy` by hand is a build failure, in the same direction as the rest of the",
+    "store tree: the repository is authoritative and Xcode is a copy of it.",
+    "",
+    "🔴 EVERY ANSWER BELOW IS `null`, AND null IS A REAL ANSWER MEANING \"NOBODY HAS ANSWERED THIS YET\".",
+    "A template cannot know which binaries end up inside THIS app's bundle — it was written before a",
+    "line of this app's product code existed — and a confidently wrong sworn declaration is worse than",
+    "an obviously incomplete one. Apple asks for the reason a BINARY uses an API, so copying another",
+    "app's answers here would make this app swear to code it does not contain. Over-declaring is the",
+    "tempting direction and it is the wrong one: it costs nothing at upload, it is a false statement",
+    "that survives, and it destroys this file's only real property — that a NEW required-reason call",
+    "has to change it.",
+    "",
+    "⚠️ ENFORCEMENT IS AT UPLOAD, NOT REVIEW, so an unanswered manifest is not a review note weeks",
+    "later — App Store Connect refuses the build. Budget one round-trip, not one release cycle.",
+    "",
+    "⚠️ THE FILE IS NOT SUBMITTABLE WHILE AN `unresolved` ROW REMAINS. Each row names the WORK, not the",
+    "answer: what to enumerate, where to read it, and what a wrong answer costs. Measure THIS app's own",
+    "tree, record what you read, and model the finished file on",
+    "apps/subly/store/ios-appstore/privacy-manifest.json — the worked example, which is a MEASUREMENT",
+    "OF THAT APP and not a set of answers to copy.",
+    "",
+    "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER. Rows record what this repository can OBSERVE."
+  ],
+  "app": "{{app_id}}",
+  "channels": ["ios-appstore", "macos-appstore"],
+  "auditedOn": null,
+  "auditedAgainst": null,
+  "sources": {
+    "_why": "Every external requirement must carry a URL and a fetch date, and the host must be the body that WROTE the rule. A local file that was read byte-for-byte is stronger evidence than any of them and is recorded as its own kind of source. Empty until somebody reads something.",
+    "allowedHosts": [
+      "developer.apple.com",
+      "support.apple.com"
+    ],
+    "cited": []
+  },
+  "_structuralFacts": {
+    "_why": [
+      "Facts about THIS FACTORY and about Apple's rule, true of every app stamped from this brick.",
+      "They are carried forward because each one is a conclusion somebody has to reach before the",
+      "questions below can even be asked correctly, and reaching them wrongly is what produces a",
+      "plausible, green, false manifest. NOTHING HERE IS AN ANSWER — no category, no reason code and",
+      "no binary list appears in this block."
+    ],
+    "facts": [
+      "F-1 THE UNIT OF THE RULE IS A BINARY, NOT AN APP. Apple aggregates one privacy report from the app target and EVERY framework inside the bundle, and each binary answers for its own code. The app-level manifest does NOT cover the plugins and the plugins' manifests do NOT cover the app. Reading it the other way is how an audit concludes that a dependency's category belongs in the app manifest — a duplicate declaration of somebody else's code, wrong and un-maintainable.",
+      "F-2 THE FLUTTER ENGINE SHIPS ITS OWN MANIFEST, and the iOS and macOS engine manifests are NOT the same document. The Dart runtime lives in the engine framework, so file and clock access reached from Dart is the engine's declared use and not this app's. Read BOTH engine manifests out of the Flutter tree at the pinned version; never let one stand for the pair.",
+      "F-3 App.framework — THE DART AOT SNAPSHOT — CAN CARRY NO MANIFEST AT ALL, and that hole is structural. Nothing in the Flutter build can attach one: no target owns it. It matters because Dart can reach Foundation directly through `objective_c` FFI, without a plugin and therefore without a plugin's manifest, so a Required Reason API can enter the bundle in a binary that has no way to declare it.",
+      "F-4 ENFORCEMENT IS AT UPLOAD, BEFORE REVIEW. The check runs when App Store Connect accepts the build, which makes a wrong answer cheap to discover and a false answer expensive to keep.",
+      "F-5 AN OBLIGATION ON A BINARY IS DISCHARGED BY THERE BEING NO BINARY. A package that declares a Dart-only implementation (`dartPluginClass`, FFI bindings, no podspec and no native source) has nothing to sign and nothing to declare. Its ABSENCE from the manifest inventory is the correct finding, and anyone auditing this app against Apple's third-party SDK list must not read that absence as an omission.",
+      "F-6 ONE FILE ANSWERS TWO CHANNELS. iOS and macOS are two renderings of ONE audit — the same Dart tree, the same dependency closure, the same collected data. Where they genuinely differ, the difference is a field under the platform key, not a second document that has to be kept in step by hand."
+    ]
+  },
+  "vocabulary": null,
+  "binaryInventory": null,
+  "ffiFindings": null,
+  "accessedApiDetermination": null,
+  "tracking": null,
+  "collectedDataTypes": null,
+  "sdkListFindings": null,
+  "cannotSee": null,
+  "unresolved": [
+    {
+      "id": "T-1",
+      "question": "binaryInventory — which binaries are actually inside THIS app's bundle, and what does each one declare?",
+      "how": "Derive the plugin set from `apps/{{app_id}}/.flutter-plugins-dependencies` (`plugins.ios` and `plugins.macos` are separate lists and the two DIFFER), never from a hand-written list. Add the app target, the engine framework and App.framework. Then OPEN each package's own `PrivacyInfo.xcprivacy` and read its `NSPrivacyAccessedAPITypes` — do not infer it from the package name. Record one of: `ships-own` (read it), `none` (searched for `*.xcprivacy`, absent), `this-file`, or `not-shipped` (a dev_dependency; `pub get` resolves those too and they are not in a release bundle).",
+      "why": "F-1. This inventory is the whole audit; every other row is derived from it. Deriving it from the file the build actually links is what makes a new dependency show up here the moment `pub get` runs, instead of the day an upload is refused."
+    },
+    {
+      "id": "T-2",
+      "question": "accessedApiDetermination — which Required Reason APIs does the APP TARGET's own code call?",
+      "how": "Read the app target's own sources in full — the AppDelegate, any scene/window delegate, and the generated plugin registrant — for both platforms; the FILE SET differs between iOS and macOS, so read both rather than assuming one stands for the pair. Declare a category here ONLY for a call in the app target's own code. Every category a dependency needs is declared by the dependency, in its own manifest, and repeating it here is the app target swearing to code it does not contain.",
+      "why": "An empty array is a CLAIM, not a default, and it is the single most tempting row to get wrong in the safe-looking direction. If it is empty, say in `_why` that it was measured and how — an empty array with no basis is indistinguishable from an unanswered one."
+    },
+    {
+      "id": "T-3",
+      "question": "ffiFindings — does anything reach a Required Reason API from Dart, through FFI, in a binary that cannot declare it?",
+      "how": "Find every `objective_c`-generated binding file in the shipping closure and enumerate its SELECTOR LIST — the actual strings registered at runtime — then search that list for the selectors behind each Required Reason category. Record every file searched, including the ones with no hits, and record a hit with its consequence rather than resolving it by guesswork in either direction.",
+      "why": "F-3. A selector reached by `objc_msgSend` on a runtime-registered string is invisible to every check that reads Dart imports or podspecs, and it lands in the one binary that has no manifest of its own. A file searched and clean is evidence; a file never opened is not."
+    },
+    {
+      "id": "T-4",
+      "question": "tracking — is `NSPrivacyTracking` true, and what is in `NSPrivacyTrackingDomains`?",
+      "how": "Answer from the tree: is there an ATT prompt or an `NSUserTrackingUsageDescription` key, is any advertising or attribution SDK a dependency, and is anything this app collects combined with data from other companies' apps or sold to a data broker? Apple's rule is that a non-empty domain list while tracking is false is a contradiction, so answer the PAIR, not the two fields separately.",
+      "why": "It is one of the two sworn booleans on this form and nothing else in the tree records it. A null here is a store question going unanswered while every dependency-keyed guard stays green."
+    },
+    {
+      "id": "T-5",
+      "question": "collectedDataTypes — what does this app collect, linked to whom, and for what purpose?",
+      "how": "DERIVE IT FROM apps/{{app_id}}/store/android-play/data-safety.json rather than writing it independently: name, per row, the Play row it comes from, and keep the row count in step with the Play rows that are `collected: true` under the current build posture. `linked` is Apple's 'linked to the user's identity', which Play does not ask — it is the one field per row that is NOT a translation and carries its own basis. Apple has NO purpose corresponding to Play's 'Account management'; record the mapping loss per row instead of dropping it silently.",
+      "why": "The App Privacy answers and the Play Data safety answers are the same sworn claim asked twice by two companies, months apart. Answering them inconsistently is invisible to a human and obvious to a comparison."
+    },
+    {
+      "id": "T-6",
+      "question": "sdkListFindings — which dependencies are on Apple's third-party SDK list, and is each obligation discharged?",
+      "how": "Check the closure against Apple's published list. The obligation — a manifest AND a signature — is the SDK author's, not this app's, so the finding per row is `satisfied`, `moot` or `not verified here`. F-5: a package that has no native binary owes nothing, and that resolution must be written down or the next auditor will read the missing manifest as a defect.",
+      "why": "Recorded because the answer is not derivable from the manifest inventory alone — a name can be on Apple's list and have no binary in this bundle at all."
+    },
+    {
+      "id": "T-7",
+      "question": "cannotSee — what could this audit NOT read?",
+      "how": "State it out loud, per item, with the place that COULD settle it. A CocoaPods closure fetched only on a macOS runner, a compiled bundle nobody inspected, a question that is only answerable from inside App Store Connect — each is a real limit of the measurement.",
+      "why": "So that a green guard is never mistaken for a complete audit. An unstated gap reads exactly like a checked one."
+    }
+  ]
+}
