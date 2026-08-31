@@ -126,8 +126,9 @@
 // `ok` is still `ageDays <= maxAgeDays`. Nothing here makes the guard pass in
 // any case where it previously failed.
 //
-// §7.10 item 5 of Private/notes/HANDOFF-2026-08-26.md is where this change was
-// ORDERED, and is the ONLY place `per_page` occurs in that handoff: it records
+// §7.10 item 5 of Private/notes/HANDOFF-ARCHIVE/HANDOFF-2026-08-26.md is where this change was
+// ORDERED (the handoff was archived UNEDITED on 2026-08-31; only its path moved),
+// and is the ONLY place `per_page` occurs in that handoff: it records
 // this guard reading `per_page=20` "where its sibling reads 100" and names the
 // consequence — "Enough dispatch runs push the last scheduled success off the
 // page and hard-fail `ci-gate`."

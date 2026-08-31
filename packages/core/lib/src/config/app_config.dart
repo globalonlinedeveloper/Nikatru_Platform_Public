@@ -171,7 +171,7 @@ class AppConfig {
   /// Different language, different product, same six letters.
   ///
   /// The remaining 2 are PROSE. `notes/HANDOFF-2026-08-21.md` and
-  /// `notes/RESEARCH-dead-seams-2026-08-21.md` in `Nikatru_Platform_Private`
+  /// `research/RESEARCH-dead-seams-2026-08-21.md` in `Nikatru_Platform_Private`
   /// each cite `AppConfig.theme` in a markdown sentence — the same symbol this
   /// time, but nothing executes a note.
   ///
