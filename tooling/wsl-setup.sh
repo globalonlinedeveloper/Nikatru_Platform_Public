@@ -27,7 +27,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-FLUTTER_VERSION="3.47.1"   # keep in lockstep with .github/workflows/*.yml
+FLUTTER_VERSION="3.47.2"   # keep in lockstep with .github/workflows/*.yml
 JDK="/usr/lib/jvm/java-17-openjdk-amd64"
 SDK="$HOME/Android/sdk"
 APT_SDK="/usr/lib/android-sdk"
