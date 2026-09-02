@@ -376,12 +376,27 @@ void main() {
       );
     }
 
+    // 🔴 THIS REASON USED TO SAY "sign-in likely failed" AND THAT WAS FALSE.
+    // Root-caused 2026-09-02: the scan timed out because the subly-api Worker
+    // returned a 500 from a TRANSIENT Cloudflare D1 fault (`D1_ERROR: D1 DB
+    // storage operation exceeded timeout which caused object to be reset`,
+    // mapped to `internal_error` at services/subly-api/src/index.ts), while
+    // Supabase `POST /auth/v1/token` returned 200 about 25 s earlier — every
+    // time. The guess sent three separate investigations at auth, which was
+    // healthy throughout. The twin of this line in app_test.dart was corrected
+    // in the same change. ⛔ Do NOT restore a causal claim here: state what was
+    // OBSERVED and let the reader diagnose from the screen text.
     expect(
       find.text('Go to dashboard'),
       findsOneWidget,
       reason:
-          'Scan never finished — sign-in likely failed (bad or unconfirmed '
-          'credentials, or the backend is down)',
+          'Timed out waiting for the scan screen to render "Go to dashboard". '
+          'This is a TIMEOUT, not a diagnosis: read the cause off the screen '
+          'text rather than assuming one. "Could not load: ApiException(5xx)" '
+          'is the backend answering 5xx (look for `service=subly-api` in '
+          'GlitchTip and join on the request id); "Setting up your board" on '
+          'its own means the scan was still running when the window expired. '
+          'On screen: ${onScreen(tester)}',
     );
     await tester.tap(find.text('Go to dashboard'));
     await pumpFor(tester, const Duration(seconds: 4));

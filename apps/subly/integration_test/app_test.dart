@@ -952,16 +952,45 @@ void main() {
     // ── 02b Re-acceptance ────────────────────────────────────────────────────
     // The admin-API user this suite signs in as holds no clickwrap record, so
     // the router's gate puts them here before anything else. See the helper.
-    await acceptTermsIfShown(tester);
+    //
+    // The result is CAPTURED rather than discarded, because it is the single
+    // most load-bearing observation the scan assertion below can make: the
+    // router serves this interstitial to an AUTHENTICATED user only, so `true`
+    // here is the suite's own proof that sign-in succeeded.
+    final bool sawReacceptance = await acceptTermsIfShown(tester);
 
     // ── 03 Scan ──────────────────────────────────────────────────────────────
     await shot('03-scan');
+    // 🔴 THIS REASON REPORTS WHAT WAS OBSERVED AND DIAGNOSES NOTHING — AND
+    // THAT IS THE WHOLE POINT OF IT. Until 2026-09-02 it read "sign-in likely
+    // failed (bad/unconfirmed credentials or backend down)". That was a guess,
+    // it was wrong, and it sent three separate investigations at Supabase
+    // auth. Root-caused that day from three independent sources (the CI logs,
+    // GlitchTip issues 24 and 25 tagged `service=subly-api`, and Supabase
+    // `edge_logs`): the cause was a transient Cloudflare D1 fault —
+    // `D1_ERROR: D1 DB storage operation exceeded timeout which caused
+    // object to be reset` — which `services/subly-api/src/index.ts` maps to
+    // `internal_error`/500, and nothing retried it. `POST /auth/v1/token`
+    // returned 200 for this user ~25s earlier on EVERY red night. Sign-in
+    // never failed. The retry now lives in `services/*/src/lib/d1.ts`.
+    // Do not put a cause back into this string: the cause is already ON THE
+    // SCREEN, and `onScreen` prints it.
     expect(
       find.text('Go to dashboard'),
       findsOneWidget,
       reason:
-          'Scan never finished — sign-in likely failed (bad/unconfirmed '
-          'credentials or backend down)',
+          'Timed out waiting for the scan screen to render "Go to dashboard": '
+          '10s pumped after the login-submit tap, plus the 12s window inside '
+          'acceptTermsIfShown. Post-sign-in clickwrap interstitial seen this '
+          'run: $sawReacceptance — true means the session was already valid, '
+          'because the router serves that screen to authenticated users only. '
+          'Read the cause off the screen text below, do not infer it: '
+          '"Could not load: ApiException(5xx)" is a backend failure (the '
+          'Worker answered 5xx; look for `service=subly-api` in GlitchTip), '
+          '"Could not load" with any other error is a client-side throw that '
+          'may mean NO REQUEST WAS EVER SENT, and "Setting up your board" on '
+          'its own means the scan was still running when the window expired. '
+          'On screen: ${onScreen(tester)}',
     );
     await tester.tap(find.text('Go to dashboard'));
     await pumpFor(tester, const Duration(seconds: 4));
@@ -1337,13 +1366,34 @@ void main() {
     // The delete-leg user is a SECOND admin-API user with its own empty
     // acceptance record, so it meets the interstitial independently of whatever
     // the full-walk user accepted earlier in the same browser profile.
-    await acceptTermsIfShown(tester);
+    //
+    // Captured for the same reason as in the full-walk test: reaching this
+    // screen at all is proof of a valid session, and the assertion below is
+    // the one that used to guess about exactly that.
+    final bool sawReacceptance = await acceptTermsIfShown(tester);
 
+    // 🔴 SAME CORRECTION AS THE FULL-WALK SCAN ASSERTION, 2026-09-02 — the
+    // long version of the evidence is written out there. This string used to
+    // end "— sign-in likely failed", and it is the one the red nights of
+    // 2026-08-28, 08-29 and 09-01 actually printed, which is why the wrong
+    // guess travelled so far. Measured cause: a transient Cloudflare D1 reset
+    // inside subly-api, surfacing to the app as `ApiException(500):
+    // internal_error`. Supabase answered this user's `POST /auth/v1/token`
+    // with 200 roughly 25s before every one of those failures. Never re-add a
+    // cause to this sentence — print the evidence and let the reader judge.
     expect(
       find.text('Go to dashboard'),
       findsOneWidget,
       reason:
-          'Scan never finished for the delete-leg user — sign-in likely failed. '
+          'Timed out waiting for the delete-leg scan to render "Go to '
+          'dashboard": 10s pumped after the login-submit tap, plus the 12s '
+          'window inside acceptTermsIfShown. Post-sign-in clickwrap '
+          'interstitial seen this run: $sawReacceptance — true means the '
+          'session was already valid, so this is NOT an auth failure. The '
+          'cause is in the screen text: an "ApiException(5xx)" there is the '
+          'backend answering 5xx (join it to a GlitchTip event by request '
+          'id), while "Setting up your board" on its own means the scan was '
+          'still running when the window expired. '
           'On screen: ${onScreen(tester)}',
     );
     await tester.tap(find.text('Go to dashboard'));

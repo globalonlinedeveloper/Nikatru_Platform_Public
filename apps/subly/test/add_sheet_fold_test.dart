@@ -4,7 +4,7 @@
 // At the one viewport the store lane photographs, the add sheet's submit button
 // is IN THE TREE but BELOW THE FOLD: `find.byKey` matches and `tap` throws
 // nothing, and the tap still never reaches it. Presence is not reachability.
-// Measured in `integration_test/store_screenshots_test.dart:513-524`, which runs
+// Measured in `integration_test/store_screenshots_test.dart:528-539`, which runs
 // `workflow_dispatch`-only; this file is the same property under `flutter test`.
 //
 // 🔴 BOTH HALVES OF THE VIEWPORT ARE PINNED ON PURPOSE. `setSurfaceSize` moves
