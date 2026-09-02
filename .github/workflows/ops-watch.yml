@@ -42,6 +42,38 @@ on:
     # merge ~18h across two 36h scheduled-only clocks. Two slots halve that worst case.
     - cron: '50 8 * * *' # mid-morning slot (also healed the 2026-08-10 freeze same-day)
     - cron: '30 19 * * *' # evening slot — the standing densify
+    # ── DENSIFIED AGAIN 2026-09-02, and the 2026-08-10 note above is the reason
+    # this is a repeat rather than a new idea. The identical freeze recurred and
+    # was WORSE: the last green scheduled run was 2026-08-31T23:15Z, so by
+    # 2026-09-02T21:11Z the three duties that read this workflow's run history
+    # had been outside their 36h window for ~46h, and `assert-ops-register`
+    # froze every merge — CI, Deploy Web and Deploy Workers all red — over a
+    # register that was correct and a tree that was already fixed.
+    #
+    # 🔴 THE MEASURED FACT THAT MAKES FOUR SLOTS TOO FEW, and it is this repo's
+    # own number: GitHub delivers only **10.1% of scheduled runs on time** (899
+    # of 8,928, reproduced against Upptime's repo — research/76 §E). So a cron
+    # slot is not a run; it is a chance at a run. On 2026-09-02 the 19:30 slot
+    # was still undelivered 1h41m later, and the gap since the previous
+    # scheduled fire had reached ~8h. Densifying does not make GitHub punctual —
+    # nothing here can — it raises the number of chances inside the window.
+    #
+    # The four slots below fill the two big holes the existing three left: the
+    # 10h40m gap after 08:50 and the 12h gap after 19:30. Worst-case spacing
+    # goes from ~12h to ~3h, which is what actually shortens a freeze.
+    # ⚠️ This costs Actions minutes — 3 scheduled runs a day becomes 7. That is
+    # deliberate and it is watched: `assert-runner-budget.mjs` gates MINUTES
+    # against a $0.00 ceiling on every run of this very workflow, so the cost of
+    # this change reports itself rather than being assumed harmless.
+    # ⛔ The real fix is NOT more slots. It is to stop depending on GitHub's
+    # scheduler for the alarm clock at all — research/76 §C: a Cloudflare Worker
+    # cron (1-minute granularity) -> D1 -> Resend, with Healthchecks.io as the
+    # watcher-of-the-watcher. Until that exists, this is damage limitation and
+    # should be described as nothing more.
+    - cron: '30 0 * * *' # fills the overnight hole
+    - cron: '30 4 * * *' # ditto
+    - cron: '30 12 * * *' # fills the 08:50 -> 19:30 hole
+    - cron: '30 15 * * *' # ditto
 
 permissions: {}
 
