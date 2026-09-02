@@ -17,6 +17,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../shared/due.dart';
@@ -67,7 +68,25 @@ const EdgeInsets _pageInset = EdgeInsets.fromLTRB(
 /// [_CalendarScreenState._selectedDay] for why a day-of-month is the whole
 /// selection.
 class CalendarScreen extends ConsumerStatefulWidget {
-  const CalendarScreen({super.key});
+  const CalendarScreen({this.clock, super.key});
+
+  /// Injectable ONLY so this screen is reachable from a test at a KNOWN date: a
+  /// test process cannot choose what `DateTime.now()` reports, and this screen
+  /// renders "the month `DateTime.now()` falls in" against seed data with fixed
+  /// dates. That combination rots — `a11y_semantics_test` passed on 2026-08-31
+  /// and failed on 2026-09-02 with NO code change, because the demo renewals had
+  /// aged out of the rendered month and the contrast sweep lost its subjects
+  /// ("Expected: contains 'Notion'"; "Expected: <7> Actual: <2>").
+  ///
+  /// Same reasoning, and the same shape, as [CatchUpNudgeBanner.clock] and
+  /// [UpgradePromoCard.clock] in `home_screen.dart`.
+  ///
+  /// ⚠️ Production passes nothing and gets `DateTime.now`, so the screen still
+  /// "renders identically today and correctly tomorrow" as the note above says.
+  /// The alternative fix — making the seed dates relative to now — was rejected:
+  /// `demo_data.dart` also feeds `store-screenshots.yml`, so it would silently
+  /// change published store assets.
+  final DateTime Function()? clock;
 
   @override
   ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
@@ -96,7 +115,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final List<Subscription> subs =
         ref.watch(subscriptionsControllerProvider).valueOrNull ??
         const <Subscription>[];
-    final DateTime now = DateTime.now();
+    final DateTime Function() clockFn = widget.clock ?? ref.watch(nowProvider);
+    final DateTime now = clockFn();
     final int y = now.year, m = now.month;
     final int dim = DateTime(y, m + 1, 0).day;
 

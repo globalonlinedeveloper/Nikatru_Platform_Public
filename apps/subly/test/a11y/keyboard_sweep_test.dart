@@ -324,6 +324,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subly/core/app_config.dart';
 import 'package:subly/core/router.dart';
 import 'package:subly/state/money_providers.dart';
+import 'package:subly/state/providers.dart';
 
 import '../keyboard_traversal_test.dart' show kKeyboardSurface;
 import '../support/width_harness.dart';
@@ -388,6 +389,16 @@ const Map<String, Object?> kExtra = <String, Object?>{
 /// `the route tables name only routes that exist`, and the entry's reason is
 /// re-checked by `/manage-plan · the cancel row is only there in the Pro state`.
 final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
+  // 🔴 /calendar is PINNED TO A KNOWN DATE, and it has to be. The screen renders
+  // "the month `DateTime.now()` falls in" while `demo_data.dart` holds FIXED
+  // renewal dates, so its control count moves with the real calendar: this pair
+  // was `7 of 7` when measured and had decayed to a red by 2026-09-02 with NO
+  // code change. A count that changes with the wall clock grades nothing.
+  // 2026-08-21 is the date the sibling contrast sweep records as MEASURED, so
+  // both files now describe the same day.
+  '/calendar': <Override>[
+    nowProvider.overrideWithValue(() => DateTime(2026, 8, 21, 10, 0)),
+  ],
   '/manage-plan': <Override>[
     entitlementsProvider.overrideWith(
       (_) async => const core.Entitlements(
