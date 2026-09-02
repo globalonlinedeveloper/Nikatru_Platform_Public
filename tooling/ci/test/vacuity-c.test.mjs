@@ -124,7 +124,7 @@ const PATHSPECS = [
  *  copy loop which stopped copying cannot pass itself off as a caught mutation. */
 const MIN_MIRROR_FILES = 20;
 
-/** What ci.yml:1186 passes on the run line. Not a guess and not decoration: the
+/** What ci.yml:1232 passes on the run line. Not a guess and not decoration: the
  *  guard fails when a claimed bundle is not among the ones it scanned, so if a
  *  site is ever renamed, test 1 goes red naming the dangling claim rather than
  *  this file drifting quietly out of step with the workflow. */

@@ -2079,6 +2079,130 @@ async function probeCloudflareHeartbeat(q, root) {
   };
 }
 
+/** Pure. Turns ONE monitor payload plus ONE page of its checks into a probe
+ *  result, so every branch is reachable from a test with no network and no live
+ *  monitor. `probeGlitchtipHeartbeat` is the impure shell around it and holds no
+ *  verdict logic of its own — the same split `classifyScheduledTaskRow` and
+ *  `probeWindowsTasks` already use, and for the same reason: a reader whose only
+ *  evidence is "it worked against production today" has no recorded failing
+ *  case, and this file's rule is that an assertion which cannot fail is worse
+ *  than none. */
+export function classifyGlitchtipChecks(monitor, checks, q = {}) {
+  // A monitor converted from Heartbeat to GET no longer records THIS DUTY at
+  // all: it records whether a URL answers, which is a different fact that would
+  // go on looking healthy forever while the duty never ran again. The query RAN
+  // and answered, so this is `missing`, not `unreadable`.
+  if (monitor?.monitorType !== 'Heartbeat') {
+    return {
+      missing: true,
+      why:
+        `GlitchTip monitor ${q.monitor} exists but its type is ${JSON.stringify(monitor?.monitorType ?? null)}, not "Heartbeat" — ` +
+        'it no longer records this duty POSTing on success, so nothing about the duty can be read from it',
+    };
+  }
+  if (!Array.isArray(checks)) {
+    // NOT `lastSuccessMs: NaN` — that would assert "no successful run" over a
+    // payload nothing understood. Refusing to read is not reading a failure.
+    return { unreadable: true, why: `the checks endpoint for monitor ${q.monitor} did not return an array` };
+  }
+  const up = checks.filter((c) => c?.isUp === true && Number.isFinite(Date.parse(c?.startCheck ?? '')));
+  if (up.length === 0) {
+    // 🔴 THE BRANCH THIS WHOLE READER EXISTS FOR, and it is a FAILURE rather
+    // than a print. An empty page and a page of nothing but misses both mean the
+    // duty has not POSTed a success this query can see, and `classifyRunRecord`
+    // turns `lastSuccessMs: NaN` into "its record IS reachable and holds NO
+    // SUCCESSFUL RUN AT ALL". A heartbeat dead long enough to push its last
+    // success off the newest page lands here too, which is correct: that is not
+    // a duty anybody should be told is fine.
+    return {
+      lastSuccessMs: NaN,
+      detail:
+        `GlitchTip monitor ${q.monitor} exists and the newest ${checks.length} check(s) contain NO successful heartbeat — ` +
+        'the duty has not POSTed a success in any of them.',
+    };
+  }
+  const newest = up.reduce((a, b) => (Date.parse(a.startCheck) >= Date.parse(b.startCheck) ? a : b));
+  const missed = checks.filter((c) => c?.isUp === false).length;
+  return {
+    lastSuccessMs: Date.parse(newest.startCheck),
+    detail:
+      `GlitchTip monitor ${q.monitor} (Heartbeat, interval ${monitor.interval}s): newest SUCCESSFUL heartbeat at ` +
+      `${newest.startCheck}, from ${checks.length} check(s) on the newest page (${missed} of them recording a miss).`,
+  };
+}
+
+/** A GLITCHTIP HEARTBEAT MONITOR, read from outside — the duty POSTs on success
+ *  and the monitor records that POST as a check. The newest check with
+ *  `isUp: true` IS the duty's last successful run, which is the one question
+ *  [14]O-3 asks.
+ *
+ *  🔴 WHY THIS READER EXISTS AT ALL, because the obvious alternative is what it
+ *  replaces. `duty.laptop.nikatru-daily-backup` used to be read by
+ *  `windows-scheduled-task`, which is structurally unreadable on every Linux
+ *  runner — CI has no Task Scheduler and never will. That was tolerable only
+ *  while the row ALSO held `lastObserved: fail`, because a held failure
+ *  classifies as FAILING rather than as a print. On 2026-09-02 the backup was
+ *  repaired, the held failure was correctly cleared to `pass`, and the row fell
+ *  through to plain `unreadable` — taking the count to 8 against a ceiling of 7
+ *  and reddening the register's own end-to-end test. THE TWO TEMPTING FIXES ARE
+ *  BOTH WEAKENING: raising the ceiling makes the limb believe itself over a
+ *  domain it did not read, and teaching the held-failure regex to accept
+ *  `PASSING` inverts the evidence — a self-reported FAILURE is an admission
+ *  against interest, a self-reported success is not. The honest fix is to give
+ *  the duty a record a Linux runner CAN query, and the duty already had one: it
+ *  has POSTed to a GlitchTip heartbeat since 2026-07-27, and the register has
+ *  named that monitor as its `absenceWatcher` the whole time.
+ *
+ *  🔴 KEYED BY `id`, NEVER BY `name`. A monitor's name is prose somebody edits:
+ *  on 2026-09-02 `Oracle box backup chain` was renamed to `GlitchTip backup
+ *  chain (Box B)` and `tooling/ops/alarm-chains.json`, which keys by name, went
+ *  COVERAGE LOST on the next Ops watch run. The id survived that rename
+ *  untouched. `monitorName` is carried in the register for a human reading the
+ *  row and is deliberately NOT asserted on, so a future rename cannot redden
+ *  this limb for a reason that has nothing to do with the duty.
+ *
+ *  ⚠️ A NETWORK FAILURE HERE MUST NEVER BLOCK A MERGE. `probeRunRecords` catches
+ *  the throw into `unreadable`, which PRINTS and only fails once the ceiling is
+ *  exceeded — so a Box B outage costs one line of output, not the merge queue.
+ *  That is the condition under which ci.yml's standing objection to a CI limb
+ *  depending on the GlitchTip box ("would make every build depend on the Oracle
+ *  box, which is the very SPOF E-9b is about") is satisfied rather than ignored,
+ *  and it is why `_maxUnreadable` must keep headroom for every row read this
+ *  way rather than being ratcheted to exactly the count measured on a good day. */
+async function probeGlitchtipHeartbeat(q) {
+  const token = process.env.GLITCHTIP_TOKEN;
+  if (!token) {
+    return { unreadable: true, why: 'GLITCHTIP_TOKEN is not in the environment, so the monitor\'s check history cannot be read' };
+  }
+  const base = (process.env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').replace(/\/+$/, '');
+  // Both are interpolated into a URL path. The register is not a trust boundary
+  // anybody audits, so they are REFUSED rather than escaped — the same rule
+  // `probeCloudflareHeartbeat` applies to the table identifier it is handed.
+  if (!/^[0-9]+$/.test(String(q.monitor ?? ''))) {
+    return { unreadable: true, why: `\`recordQuery.monitor\` is not a numeric monitor id: ${JSON.stringify(q.monitor ?? null)}` };
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(String(q.org ?? ''))) {
+    return { unreadable: true, why: `\`recordQuery.org\` is not a plain organisation slug: ${JSON.stringify(q.org ?? null)}` };
+  }
+  const url = `${base}/api/0/organizations/${q.org}/monitors/${q.monitor}/`;
+  const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+  // 🔴 404 IS AN ANSWER, NOT A FAILURE TO READ. The query ran and GlitchTip said
+  // the monitor the register names is gone — the stale-row case this file's own
+  // header calls strictly worse than an absent one, because the register would
+  // go on asserting a duty watched by something that no longer exists.
+  if (res.status === 404) {
+    return { missing: true, why: `GlitchTip has no monitor ${q.monitor} in organisation \`${q.org}\` — the id the register names returns 404` };
+  }
+  if (!res.ok) throw new Error(`the GlitchTip API returned ${res.status} ${res.statusText} for monitor ${q.monitor}`);
+  const monitor = await res.json();
+  // Newest-first, capped at the API's page size. Every heartbeat POST creates a
+  // check, so page one covers the recent past densely.
+  const checksRes = await fetch(`${url}checks/`, { headers, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+  if (!checksRes.ok) throw new Error(`the GlitchTip API returned ${checksRes.status} ${checksRes.statusText} for monitor ${q.monitor} checks`);
+  return classifyGlitchtipChecks(monitor, await checksRes.json(), q);
+}
+
 async function probeRunRecords(reg, root) {
   const probes = new Map();
   const scheduled = (reg.rows ?? []).filter((r) => r.kind === 'duty' && TIME_CADENCE.test(String(r?.cadence ?? '')));
@@ -2102,6 +2226,8 @@ async function probeRunRecords(reg, root) {
         probes.set(r.id, q.reader === 'github-run-history' ? await probeGithubRun(q, repo) : await probeGithubIssue(q, repo));
       } else if (q.reader === 'cloudflare-d1-heartbeat') {
         probes.set(r.id, await probeCloudflareHeartbeat(q, root));
+      } else if (q.reader === 'glitchtip-heartbeat') {
+        probes.set(r.id, await probeGlitchtipHeartbeat(q));
       }
     } catch (e) {
       // 🔴 An error is UNREADABLE, never a pass and never a fail. "I could not

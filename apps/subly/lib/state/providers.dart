@@ -2333,3 +2333,22 @@ final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
 // [authRepositoryProvider], [entitlementCacheProvider], [kPlatformBaseUrl] and
 // the re-exported `analyticsProvider` from this file. See
 // Private/decisions/026-purchases-adapter-replaces-revenuecat-stub.md.
+
+/// The wall clock, injectable so a screen that renders "the month now falls in"
+/// is testable at a KNOWN date.
+///
+/// 🔴 WHY THIS EXISTS. `CalendarScreen` renders the month `DateTime.now()` falls
+/// in, while `demo_data.dart` holds FIXED renewal dates. That pair ROTS: with no
+/// code change at all, `a11y_semantics_test` passed CI on 2026-08-31 and failed
+/// on 2026-09-02 ("Expected: contains 'Notion'"; "Expected: <7> Actual: <2>"),
+/// and `a11y/keyboard_sweep_test` lost its `/calendar` control count the same
+/// way. A test that rots with the wall clock is not a test.
+///
+/// It is a PROVIDER and not only a widget parameter because `/calendar` is built
+/// by the router, so a test that sweeps routes cannot pass a constructor
+/// argument. `kSweptAs` in the keyboard sweep overrides this per route.
+///
+/// ⚠️ Production never overrides it, so behaviour is unchanged: the screen still
+/// "renders identically today and correctly tomorrow".
+final Provider<DateTime Function()> nowProvider =
+    Provider<DateTime Function()>((Ref ref) => DateTime.now);

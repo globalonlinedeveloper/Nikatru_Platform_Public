@@ -891,7 +891,7 @@ if (exprWorkflowsScanned === 0 || exprLinesScanned === 0) {
 // coverage check is the exact failure this file was written against:
 //   · IT DOES NOT RUN UNLESS IT IS GIVEN THE LIST. MEASURED 2026-08-27: this
 //     checkout holds 12 workflow files, `gh api …/actions/workflows` returns 14,
-//     and `ci.yml:682` passes no `--live-workflows` — so limb 5 prints NOT
+//     and `ci.yml:728` passes no `--live-workflows` — so limb 5 prints NOT
 //     CONSULTED, and a green here says those 12 files are SHA-pinned, never
 //     that the 14 GitHub lists are.
 //   · IT CANNOT DERIVE THE LIST LOCALLY. The obvious alternative — walk

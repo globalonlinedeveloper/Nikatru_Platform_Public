@@ -1277,7 +1277,7 @@ describe('stripComments — strings are tracked even when they are not blanked',
 //   · IMPORTED   → runs nothing, prints nothing, exits 0.
 //   · ENTRYPOINT → still runs the whole check, still exits 1 on a red tree and 0
 //                  on a green one, including when argv[1] is RELATIVE, which is
-//                  how CI invokes it (.github/workflows/ci.yml:457 runs
+//                  how CI invokes it (.github/workflows/ci.yml:483 runs
 //                  `node tooling/ci/assert-platform-register.mjs`).
 // The relative case is the one a naive `import.meta.url === process.argv[1]`
 // string compare gets wrong: it is never equal, so the check would never run and

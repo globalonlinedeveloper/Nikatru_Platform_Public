@@ -132,6 +132,7 @@ import {
   readScheduledTaskProbe,
   classifyScheduledTaskRow,
   formatTaskResult,
+  classifyGlitchtipChecks,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1213,7 +1214,26 @@ describe('assert-ops-register — [14]O-3 · the record-query limb, whose domain
     const T = /^\d+[hd]$/;
     const scheduled = real.rows.filter((r) => r.kind === 'duty' && T.test(String(r.cadence ?? '')));
     const win = scheduled.filter((r) => r.mechanism?.recordQuery?.reader === 'windows-scheduled-task');
-    assert.ok(win.length > 0, 'if no row uses this reader the rest of this test ranges over nothing');
+    // ⚠️ `win` IS LEGITIMATELY EMPTY SINCE 2026-09-02 and this test must not
+    // demand otherwise. Its last member, duty.laptop.nikatru-daily-backup, moved
+    // to `glitchtip-heartbeat` so the duty could be read from the Linux runner
+    // this test is named after, and `windows-scheduled-task` is parked in
+    // `_retiredReaders`. Re-asserting `win.length > 0` here would make the
+    // register's own remedy — "delete it, or point a row at it" — impossible to
+    // apply, which is a test holding a design in place rather than protecting a
+    // property.
+    //
+    // 🔴 WHAT THE PROPERTY ACTUALLY WAS, AND WHERE IT LIVES NOW. This test's
+    // subject is NOT Task Scheduler: it is "a duty last seen FAILING does not go
+    // green by going dark on a runner that cannot read it". That is still
+    // asserted, twice over — on fixtures at `a dark reader on a row held FAILING
+    // …` above, and on the real committed row in the `glitchtip-heartbeat`
+    // describe below, which drives the shipped register through a stale, a
+    // miss-only and a 404 probe and requires RED for each. So the guarantee is
+    // kept and only the reader carrying it changed. The loop below still runs
+    // over every remaining member, and reddens the day one is re-declared and
+    // starts holding a failure.
+    if (win.length === 0) return;
     // The guard's own non-Windows branch, driven by argument rather than by host,
     // so this assertion means the same thing on the laptop and on the runner.
     const byTask = readScheduledTaskProbe(win.map((r) => r.mechanism.recordQuery.task), { platform: 'linux' });
@@ -2525,4 +2545,156 @@ describe('assert-ops-register — a retired row is gone from BOTH live sets, wit
       assert.equal(entry.row?.id, id, `${id} — the preserved \`row\` must be the row that was retired, verbatim.`);
     });
   }
+});
+
+describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and THE PROPERTY IT WAS BUILT TO KEEP', () => {
+  // ── WHY THIS SUITE IS LONGER THAN THE READER IT TESTS ──────────────────────
+  // The reader exists because `duty.laptop.nikatru-daily-backup` moved off
+  // `windows-scheduled-task` on 2026-09-02: that reader is structurally
+  // unreadable on every Linux runner, so once the backup was repaired and its
+  // held failure was correctly cleared to `pass`, the row fell through to plain
+  // `unreadable` and took the count past its ceiling.
+  //
+  // 🔴 THE DANGER IN THAT FIX IS OBVIOUS AND IT IS WHAT THESE CASES GUARD: the
+  // easy way to make a row readable is to make it readable AND ALWAYS GREEN. A
+  // reader that answered "fine" whenever it could reach GlitchTip would drop the
+  // unreadable count, unblock the merge, and silently retire the only automated
+  // check that the laptop backup still runs. So the cases below are weighted
+  // toward the RED outcomes: a stale heartbeat, a page of nothing but misses, an
+  // empty page, a monitor that stopped being a Heartbeat, and a monitor that is
+  // gone. Every one of them must be a FAILURE, and none of them may be a print.
+  const MON = { monitorType: 'Heartbeat', interval: 43200 };
+  const Q = { org: 'nikatru', monitor: 6 };
+  const upAt = (iso) => ({ startCheck: iso, isUp: true, reason: null });
+  const downAt = (iso) => ({ startCheck: iso, isUp: false, reason: 'no heartbeat' });
+
+  test('a fresh heartbeat is the duty\'s last successful run, and the detail names the monitor and the timestamp', () => {
+    const r = classifyGlitchtipChecks(MON, [upAt('2026-09-02T13:42:42.162Z')], Q);
+    assert.equal(r.lastSuccessMs, Date.parse('2026-09-02T13:42:42.162Z'));
+    assert.equal(r.unreadable, undefined);
+    assert.equal(r.missing, undefined);
+    assert.match(r.detail, /monitor 6 \(Heartbeat, interval 43200s\)/);
+    assert.match(r.detail, /newest SUCCESSFUL heartbeat at 2026-09-02T13:42:42\.162Z/);
+  });
+
+  test('the NEWEST success wins even when the page is not ordered, so this never depends on the API\'s sort order', () => {
+    const r = classifyGlitchtipChecks(MON, [upAt('2026-09-01T01:00:00Z'), upAt('2026-09-02T13:42:42Z'), upAt('2026-08-30T01:00:00Z')], Q);
+    assert.equal(r.lastSuccessMs, Date.parse('2026-09-02T13:42:42Z'));
+  });
+
+  test('misses on the page do not hide a real success — they are COUNTED and reported beside it', () => {
+    const r = classifyGlitchtipChecks(MON, [downAt('2026-09-02T20:00:00Z'), downAt('2026-09-02T18:00:00Z'), upAt('2026-09-02T13:42:42Z')], Q);
+    assert.equal(r.lastSuccessMs, Date.parse('2026-09-02T13:42:42Z'));
+    assert.match(r.detail, /3 check\(s\) on the newest page \(2 of them recording a miss\)/);
+  });
+
+  test('🔴 THE HEARTBEAT STOPPED — a page of nothing but misses is NO SUCCESSFUL RUN, which is a failure and never a print', () => {
+    const r = classifyGlitchtipChecks(MON, [downAt('2026-09-03T02:00:00Z'), downAt('2026-09-02T14:00:00Z')], Q);
+    assert.ok(Number.isNaN(r.lastSuccessMs), 'must be NaN so classifyRunRecord routes it to the NO SUCCESSFUL RUN branch');
+    assert.equal(r.unreadable, undefined, 'a duty that is failing must not be reported as a duty that could not be read');
+    assert.match(r.detail, /contain NO successful heartbeat/);
+  });
+
+  test('🔴 THE MONITOR HAS NO CHECKS AT ALL — also a failure, for the same reason: absence of evidence is not evidence of a run', () => {
+    const r = classifyGlitchtipChecks(MON, [], Q);
+    assert.ok(Number.isNaN(r.lastSuccessMs));
+    assert.equal(r.unreadable, undefined);
+  });
+
+  test('a check with an unparseable timestamp is not a success — a success this reader cannot date cannot be compared to a window', () => {
+    const r = classifyGlitchtipChecks(MON, [{ startCheck: 'whenever', isUp: true }], Q);
+    assert.ok(Number.isNaN(r.lastSuccessMs));
+  });
+
+  test('🔴 `isUp` MUST BE STRICTLY TRUE — a truthy string or a 1 is not a heartbeat GlitchTip recorded as up', () => {
+    for (const bad of ['true', 1, {}, null, undefined]) {
+      const r = classifyGlitchtipChecks(MON, [{ startCheck: '2026-09-02T13:42:42Z', isUp: bad }], Q);
+      assert.ok(Number.isNaN(r.lastSuccessMs), `isUp: ${JSON.stringify(bad)} must not count as a success`);
+    }
+  });
+
+  test('🔴 A MONITOR THAT STOPPED BEING A HEARTBEAT IS `missing`, NOT a pass — a GET monitor answers a different question forever', () => {
+    const r = classifyGlitchtipChecks({ monitorType: 'GET', interval: 60 }, [upAt('2026-09-02T13:42:42Z')], Q);
+    assert.equal(r.missing, true);
+    assert.equal(r.lastSuccessMs, undefined, 'a fresh-looking check on the wrong monitor type must not become a success');
+    assert.match(r.why, /not "Heartbeat"/);
+  });
+
+  test('a payload that is not an array is `unreadable` — refusing to read is not reading a failure', () => {
+    for (const bad of [null, undefined, { detail: 'Not found.' }, 'nope']) {
+      const r = classifyGlitchtipChecks(MON, bad, Q);
+      assert.equal(r.unreadable, true, `${JSON.stringify(bad)} must be unreadable`);
+      assert.equal(r.lastSuccessMs, undefined, 'an unread payload must never assert that the duty failed');
+    }
+  });
+
+  // ── AND THE END-TO-END HALF: the register's own row, through the guard's own
+  // classifier, on a runner that is not Windows. This is the claim the fix rests
+  // on and it is asserted rather than believed.
+  const realRegister = () => JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+  const NOWG = Date.parse('2026-09-02T15:30:00Z');
+
+  test('THE SHIPPED ROW IS READABLE FROM LINUX — the whole point of the move, asserted against the committed register', () => {
+    const reg = realRegister();
+    const row = reg.rows.find((r) => r.id === 'duty.laptop.nikatru-daily-backup');
+    assert.ok(row, 'the row this reader was built for must still exist');
+    assert.equal(row.mechanism.recordQuery.reader, 'glitchtip-heartbeat');
+    assert.ok(reg._recordReaders['glitchtip-heartbeat'], 'the reader must be DECLARED, or the row names one nothing implements');
+    // No platform gate anywhere in the path: the same inputs give the same
+    // verdict on Windows, Linux and macOS, which `windows-scheduled-task` could
+    // never say.
+    const fresh = classifyGlitchtipChecks(MON, [upAt('2026-09-02T13:42:42.162Z')], row.mechanism.recordQuery);
+    const v = classifyRunRecord(row, fresh, NOWG, reg._recordReaders._windowMultiplier);
+    assert.equal(v.verdict, 'pass', v.line);
+  });
+
+  test('🔴 AND IT STILL GOES RED WHEN THE HEARTBEAT STOPS — the property the whole change had to preserve, on the REAL row', () => {
+    const reg = realRegister();
+    const row = reg.rows.find((r) => r.id === 'duty.laptop.nikatru-daily-backup');
+    const mult = reg._recordReaders._windowMultiplier;
+
+    // 1 · STALE. The duty's own cadence window (8h x 1.5 = 12h) has passed with
+    //     no new POST. This is what "the laptop stopped backing up" looks like.
+    const stale = classifyGlitchtipChecks(MON, [upAt('2026-09-01T00:00:00Z')], row.mechanism.recordQuery);
+    const vStale = classifyRunRecord(row, stale, NOWG, mult);
+    assert.equal(vStale.verdict, 'fail', vStale.line);
+    assert.match(vStale.line, /newest SUCCESSFUL run is [\d.]+h old, outside its own window/);
+
+    // 2 · NOTHING BUT MISSES on the newest page.
+    const missed = classifyGlitchtipChecks(MON, [downAt('2026-09-02T15:00:00Z')], row.mechanism.recordQuery);
+    const vMissed = classifyRunRecord(row, missed, NOWG, mult);
+    assert.equal(vMissed.verdict, 'fail', vMissed.line);
+    assert.match(vMissed.line, /holds NO SUCCESSFUL RUN AT ALL/);
+
+    // 3 · THE MONITOR IS GONE. A stale register row is worse than an absent one.
+    const gone = { missing: true, why: 'GlitchTip has no monitor 6 in organisation `nikatru` — the id the register names returns 404' };
+    const vGone = classifyRunRecord(row, gone, NOWG, mult);
+    assert.equal(vGone.verdict, 'fail', vGone.line);
+    assert.match(vGone.line, /DOES NOT EXIST/);
+
+    // 4 · AND NONE OF THE THREE IS OWNER-GATED INTO A PRINT. The row carries
+    //     `ownerGated: true`, which lifts the block ONLY on the held-failure
+    //     branch; a query that RAN and answered must still block. If this ever
+    //     flips, the duty is being watched by something that cannot say no.
+    for (const v of [vStale, vMissed, vGone]) {
+      assert.notEqual(v.gated, true, `a READ failure must never be gated into a print: ${v.line}`);
+    }
+  });
+
+  test('every reader the committed register DECLARES is one the guard actually dispatches', () => {
+    // The schema check next door proves a row cannot name an undeclared reader.
+    // Nothing proved the other direction: a reader could be declared, used by a
+    // row, and never dispatched by `probeRunRecords` — in which case the row
+    // gets no probe at all and silently degrades to `unreadable`, which prints.
+    // That is how this limb would go quiet without the number moving.
+    const declared = Object.keys(realRegister()._recordReaders).filter((k) => !k.startsWith('_'));
+    const src = readFileSync(resolve(CI_DIR, 'assert-ops-register.mjs'), 'utf8');
+    for (const name of declared) {
+      if (name === 'unreachable') continue; // by declaration, dispatched by nobody
+      assert.ok(
+        src.includes(`q.reader === '${name}'`),
+        `\`${name}\` is declared in _recordReaders and no branch of probeRunRecords dispatches it, so every row using it would go unreadable`,
+      );
+    }
+  });
 });

@@ -1189,6 +1189,24 @@ String expectedRingLabel(ProviderContainer c, AppLocalizations l10n) {
         );
 }
 
+/// 🔴 THE CALENDAR SCREEN IS PINNED TO A KNOWN DATE, AND IT HAS TO BE.
+///
+/// `CalendarScreen` renders "the month `DateTime.now()` falls in", while
+/// `demo_data.dart` holds FIXED renewal dates. So its contrast subjects change
+/// with the real calendar: this file passed CI on 2026-08-31 and failed on
+/// 2026-09-02 with NO code change, because the demo renewals had aged out of the
+/// rendered month — "Expected: contains 'Notion'" and "Expected: <7> Actual: <2>".
+/// A test that rots with the wall clock is not a test.
+///
+/// 2026-08-21 is not arbitrary: it is the date this file's own contrast note says
+/// the four `Due today` labels were MEASURED on, so pinning here restores exactly
+/// the conditions these expectations were written against.
+///
+/// ⚠️ The other fix — making the seed dates relative to `now()` — was rejected:
+/// `demo_data.dart` also feeds `store-screenshots.yml`, so it would silently
+/// change published store assets.
+DateTime _pinnedNow() => DateTime(2026, 8, 21, 10, 0);
+
 void main() {
   // ═══ THE SHARED PRIMITIVES ═════════════════════════════════════════════════
   // Asserted on their own rather than only through a screen: these four widgets
@@ -1566,7 +1584,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const CalendarScreen());
+        await pumpScreen(tester, CalendarScreen(clock: _pinnedNow));
         final DateSymbols symbols = DateFormat.yMMMM('en').dateSymbols;
         final List<String> labels = announced(tester);
 
@@ -1599,7 +1617,7 @@ void main() {
 
     testWidgets('nothing on calendar is naked', (WidgetTester tester) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const CalendarScreen());
+        await pumpScreen(tester, CalendarScreen(clock: _pinnedNow));
         // The renewal rows are hand-rolled InkWells — RowCard's twin, and the
         // control this sweep actually found.
         expectNothingNaked(tester, 'calendar');
@@ -3269,7 +3287,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const CalendarScreen());
+        await pumpScreen(tester, CalendarScreen(clock: _pinnedNow));
         // 3 subjects — the renewal rows, the hand-rolled RowCard twin whose
         // semantics the naked sweep found on this same pump.
         await expectGuidelineHadSubjects(tester, 'calendar');
@@ -4146,7 +4164,7 @@ void main() {
       await semantically(tester, () async {
         await pumpScreen(
           tester,
-          const CalendarScreen(),
+          CalendarScreen(clock: _pinnedNow),
           theme: appTheme(),
           paintBackground: true,
         );
