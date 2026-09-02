@@ -1019,7 +1019,7 @@
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
-        "what": "GlitchTip heartbeat monitor 16 'Oracle box backup chain', project `ops`, interval 3h, fed by backup-liveness.py's hourly POST.",
+        "what": "GlitchTip heartbeat monitor 16 'GlitchTip backup chain (Box B)', project `ops`, interval 3h, fed by backup-liveness.py's hourly POST. RENAMED 2026-09-02: it was 'Oracle box backup chain', but GlitchTip and its backup chain moved to Box B that day and the heartbeat URL moved with them, so the old name pointed whoever read an alert at the wrong machine. endpoint_id is unchanged.",
         "ownerGated": true,
         "downTransitionDrill": {
           "date": "2026-08-05",
