@@ -370,13 +370,41 @@ Future<void> recordAnalyticsConsent(
   WidgetRef ref, {
   required bool granted,
 }) async {
+  // 🔴 THE CONTAINER IS HOISTED BEFORE THE FIRST AWAIT, and this is the same
+  // move — for the same recorded reason — that `manage_plan_screen.dart`'s
+  // `_cancel` makes and that `money_providers.dart`'s `refreshEntitlementsIn`
+  // exists for. `WidgetRef.invalidate` is `_assertNotDisposed()` plus
+  // `container.invalidate`, and that assert throws a real `StateError` in
+  // RELEASE. The invalidate below CANNOT be moved before the awaits — it is
+  // what publishes the decision those awaits record — so the only way to keep
+  // it is to hold something that outlives the widget.
+  //
+  // MEASURED, NOT ANTICIPATED: `E2E (live)` run 33379415684 (2026-08-31) failed
+  // with `Bad state: Cannot use "ref" after the widget was disposed` at this
+  // file's line 390, thrown AFTER the test completed, from a continuation that
+  // began in `dio_consent_transport.dart:48`. A slow or failing consent upload
+  // is enough — the user navigating away mid-flight produces exactly the same
+  // shape in production, where it is an uncaught StateError in a
+  // fire-and-forget path rather than a red test.
+  //
+  // ⚠️ WHAT THIS DOES *NOT* DO IS SKIP THE INVALIDATE WHEN THE WIDGET IS GONE.
+  // That was the tempting one-line version and it reintroduces the exact defect
+  // the paragraph below this function warns about: `record` mutates the
+  // controller's own cache, so a container that is never invalidated keeps
+  // serving the stale decision for the rest of the SESSION — and the container
+  // outlives the widget, so "the widget is gone" is not "nobody is watching".
+  final ProviderContainer container = ProviderScope.containerOf(
+    ref.context,
+    listen: false,
+  );
+  final core.ConsentTransport transport = ref.read(consentTransportProvider);
   final core.ConsentController controller = await ref.read(
     consentControllerProvider.future,
   );
   final String anonId = await ref.read(installIdProvider.future);
   await applyConsentDecision(
     controller: controller,
-    transport: ref.read(consentTransportProvider),
+    transport: transport,
     appId: AppConfig.appId,
     anonId: anonId,
     granted: granted,
@@ -387,7 +415,7 @@ Future<void> recordAnalyticsConsent(
     // either way.
     analytics: ref.read(analyticsProvider).valueOrNull,
   );
-  ref.invalidate(consentControllerProvider);
+  container.invalidate(consentControllerProvider);
 }
 
 /// Record the GDPR **Art 21 objection** to promotional processing, upload the
@@ -410,13 +438,41 @@ Future<void> recordPromoObjection(
   WidgetRef ref, {
   required bool objected,
 }) async {
+  // 🔴 THE CONTAINER IS HOISTED BEFORE THE FIRST AWAIT, and this is the same
+  // move — for the same recorded reason — that `manage_plan_screen.dart`'s
+  // `_cancel` makes and that `money_providers.dart`'s `refreshEntitlementsIn`
+  // exists for. `WidgetRef.invalidate` is `_assertNotDisposed()` plus
+  // `container.invalidate`, and that assert throws a real `StateError` in
+  // RELEASE. The invalidate below CANNOT be moved before the awaits — it is
+  // what publishes the decision those awaits record — so the only way to keep
+  // it is to hold something that outlives the widget.
+  //
+  // MEASURED, NOT ANTICIPATED: `E2E (live)` run 33379415684 (2026-08-31) failed
+  // with `Bad state: Cannot use "ref" after the widget was disposed` at this
+  // file's line 390, thrown AFTER the test completed, from a continuation that
+  // began in `dio_consent_transport.dart:48`. A slow or failing consent upload
+  // is enough — the user navigating away mid-flight produces exactly the same
+  // shape in production, where it is an uncaught StateError in a
+  // fire-and-forget path rather than a red test.
+  //
+  // ⚠️ WHAT THIS DOES *NOT* DO IS SKIP THE INVALIDATE WHEN THE WIDGET IS GONE.
+  // That was the tempting one-line version and it reintroduces the exact defect
+  // the paragraph below this function warns about: `record` mutates the
+  // controller's own cache, so a container that is never invalidated keeps
+  // serving the stale decision for the rest of the SESSION — and the container
+  // outlives the widget, so "the widget is gone" is not "nobody is watching".
+  final ProviderContainer container = ProviderScope.containerOf(
+    ref.context,
+    listen: false,
+  );
+  final core.ConsentTransport transport = ref.read(consentTransportProvider);
   final core.ConsentController controller = await ref.read(
     consentControllerProvider.future,
   );
   final String anonId = await ref.read(installIdProvider.future);
   await applyConsentDecision(
     controller: controller,
-    transport: ref.read(consentTransportProvider),
+    transport: transport,
     appId: AppConfig.appId,
     anonId: anonId,
     purpose: core.ConsentPurpose.promo,
@@ -428,7 +484,7 @@ Future<void> recordPromoObjection(
   // controller's own cache, so nothing watching it would rebuild and the card
   // would keep rendering for the rest of the session against a decision the
   // user has already made.
-  ref.invalidate(consentControllerProvider);
+  container.invalidate(consentControllerProvider);
 }
 
 String _platformName() {
