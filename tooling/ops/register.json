@@ -950,9 +950,9 @@
           "reader": "windows-scheduled-task",
           "task": "NIKATRU daily backup",
           "lastObserved": {
-            "verdict": "fail",
-            "at": "2026-08-27T03:34:00Z",
-            "detail": "Get-ScheduledTaskInfo on the laptop: \"NIKATRU daily backup\" EXISTS and its LastRunTime is 2026-08-27 02:00:01 local, with LastTaskResult 4294770688 (0xFFFD0000) — not 0. Task Scheduler keeps only the most recent result, so this record holds no successful run at all."
+            "verdict": "pass",
+            "at": "2026-09-02T13:25:28Z",
+            "detail": "Get-ScheduledTaskInfo on the laptop: 'NIKATRU daily backup' LastRunTime 2026-09-02 18:55:28 local (13:25:28Z), LastTaskResult 0. FIRST SUCCESS ON RECORD. ROOT CAUSE, found 2026-09-02: the task's action invoked backup-knowledge.ps1 under the retired Android-apps project tree, whose entire parent directory no longer exists after the repo reorganisation — so the schedule fired every 8h and failed every time with 0xFFFD0000. It was never a missing task and never a broken script; it was a dead path. Repointed to the live backup-offsite.ps1, which is what this row's `what` describes ('the 8-hourly Windows task that bundles the repos and pushes the offsite copy') and what that script's own header claims. backup-project.ps1 was NOT used: it is RETIRED 2026-08-17 and gated to refuse before any rclone call. The PT8H repetition was preserved. Order was deliberate: the script's own -SelfTest was run FIRST and passed, with byte-identical restoration independently re-hashed, before the task was repointed. The run shipped 3.85 GiB across all sets and posted the heartbeat that feeds monitor 6. 🔴 AND IT SURFACED SOMETHING BIGGER: the run printed 'DISK NOT HEALTHY: ST1000LM048-2E7172 (dev 0) health=Warning op=Predictive Failure', verified independently with Get-PhysicalDisk (931.5 GB HDD = drive D:; the Kingston SSD carrying C: and the whole tree is Healthy). The script says this is the ONLY remaining signal about that disk — the two nightlies that carried it were retired 2026-08-12 — so a broken scheduled task had been SILENCING A DISK-FAILURE ALARM. Neither failure was visible while the other hid it. OWNER: replace the disk."
           }
         }
       },
