@@ -13,7 +13,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}  # FALSE ON MAIN ONLY. Every push to main resolves to the same group, so the 10:03 run was killed by the 10:08 push and a cancelled run notifies nobody and blocks nothing (deploy-web.yml:476, runs 145/146). PR events resolve to refs/pull/N/merge, and a plain false would queue every superseded feature-branch push. — RETRACTION 2026-08-25: the text that stood here read 'NOT REDDENABLE BY ANY FIXTURE, and said so rather than hidden: a grep for `concurrency` and for `cancel-in-progress` over tooling/ci/*.mjs and tooling/scripts/*.mjs returned ZERO hits on 2026-08-25, so nothing in this tree asserts a concurrency policy and no mutant of this line can be caught by a guard'. THAT IS FALSE and is withdrawn. The grep was literally true only because its domain was wrong — non-recursive, and one directory short. Re-measured this round: `grep -rniE "concurrency|cancel-in-progress" tooling/ci/ tooling/scripts/` -> 25 hits, every one in the safe-rerun test file under tooling/ci/test/. THE GUARD THAT READS THIS LINE IS safe-rerun.mjs, under tooling/ops/: its :221-282 parses every workflow's top-level `concurrency:`, and :333-344 `namedLaneProblem()` is pointed BY NAME at '.github/workflows/ci.yml' and asserts this very key. safe-rerun.test.mjs:351, under tooling/ci/test/, drives it against the REAL .github/workflows directory ('namedLaneProblem is null on the REAL tree — ci.yml is still the subject'), and that suite is executed by this workflow at ci.yml:134. MEASURED BY MUTATION 2026-08-25, against a copy of .github/workflows in a scratch directory: as written -> parse {group:'ci-${{ github.ref }}', cancelInProgress:true, cancelIsExpression:true}, namedLaneProblem null, suite 41 pass / 0 fail exit 0; this line replaced by a bare `cancel-in-progress: false` -> namedLaneProblem returns 'COVERAGE LOST — .github/workflows/ci.yml declares a group but `cancel-in-progress` is not true, so this tool would now allow every re-run on it.' A `false` MUTANT IS THEREFORE CAUGHT, by a fixture that was already in the tree. ⚠️ THE HALF THAT IS STILL TRUE, STATED AS IT IS RATHER THAN SOFTENED: NO FIXTURE HERE CATCHES AN EXPRESSION MUTANT. safe-rerun.mjs:280 collapses any `${{ ... }}` value to cancelling (`cancelIsExpression ? true : ...`), so `${{ github.ref == 'refs/heads/main' }}`, a typo'd ref literal (`refs/head/main`), a misspelled context path (`github.refx`) AND the original bare `true` each leave namedLaneProblem null — all four mutated and run this round. WE DID NOT BUILD A FIXTURE THAT DISTINGUISHES THEM; the gap is recorded, not closed. THE SOURCE MUTATION FOR THOSE FOUR IS THEREFORE THIS LINE ITSELF: put `true` back and every push to main can again kill the run in flight, and nothing here goes red. SEMANTIC DIRECTION — a different question from what a guard catches — was proven by rendering the scalar under github.ref = refs/heads/main -> false, refs/heads/feat/<slug> -> true, refs/pull/N/merge -> true, with each of the three wrong-expression mutants flipping main back to true. ⚠️ THE .mjs PATHS ABOVE ARE WRITTEN SPLIT (basename + 'under <dir>/') ON PURPOSE, NOT AS A STYLE: assert-guard-coverage.mjs matches /tooling\/([A-Za-z0-9._\/-]+\.mjs)/ over this file with only whole-line `#` comments stripped, so a trailing comment naming `tooling/ci/test/<x>.test.mjs` is read as a NESTED GUARD INVOCATION and turns that guard RED. Measured: writing them joined here produced '✗ COVERAGE LOST — 2 workflow step(s) invoke a tooling/ci path this FLAT scan cannot audit', exit 1; split, exit 0. See duty.workflow.ci.yml in tooling/ops/register.json for the measured cadence this was sized against.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}  # FALSE ON MAIN ONLY. Every push to main resolves to the same group, so the 10:03 run was killed by the 10:08 push and a cancelled run notifies nobody and blocks nothing (deploy-web.yml:476, runs 145/146). PR events resolve to refs/pull/N/merge, and a plain false would queue every superseded feature-branch push. — RETRACTION 2026-08-25: the text that stood here read 'NOT REDDENABLE BY ANY FIXTURE, and said so rather than hidden: a grep for `concurrency` and for `cancel-in-progress` over tooling/ci/*.mjs and tooling/scripts/*.mjs returned ZERO hits on 2026-08-25, so nothing in this tree asserts a concurrency policy and no mutant of this line can be caught by a guard'. THAT IS FALSE and is withdrawn. The grep was literally true only because its domain was wrong — non-recursive, and one directory short. Re-measured this round: `grep -rniE "concurrency|cancel-in-progress" tooling/ci/ tooling/scripts/` -> 25 hits, every one in the safe-rerun test file under tooling/ci/test/. THE GUARD THAT READS THIS LINE IS safe-rerun.mjs, under tooling/ops/: its :221-282 parses every workflow's top-level `concurrency:`, and :333-344 `namedLaneProblem()` is pointed BY NAME at '.github/workflows/ci.yml' and asserts this very key. safe-rerun.test.mjs:351, under tooling/ci/test/, drives it against the REAL .github/workflows directory ('namedLaneProblem is null on the REAL tree — ci.yml is still the subject'), and that suite is executed by this workflow at ci.yml:160. MEASURED BY MUTATION 2026-08-25, against a copy of .github/workflows in a scratch directory: as written -> parse {group:'ci-${{ github.ref }}', cancelInProgress:true, cancelIsExpression:true}, namedLaneProblem null, suite 41 pass / 0 fail exit 0; this line replaced by a bare `cancel-in-progress: false` -> namedLaneProblem returns 'COVERAGE LOST — .github/workflows/ci.yml declares a group but `cancel-in-progress` is not true, so this tool would now allow every re-run on it.' A `false` MUTANT IS THEREFORE CAUGHT, by a fixture that was already in the tree. ⚠️ THE HALF THAT IS STILL TRUE, STATED AS IT IS RATHER THAN SOFTENED: NO FIXTURE HERE CATCHES AN EXPRESSION MUTANT. safe-rerun.mjs:280 collapses any `${{ ... }}` value to cancelling (`cancelIsExpression ? true : ...`), so `${{ github.ref == 'refs/heads/main' }}`, a typo'd ref literal (`refs/head/main`), a misspelled context path (`github.refx`) AND the original bare `true` each leave namedLaneProblem null — all four mutated and run this round. WE DID NOT BUILD A FIXTURE THAT DISTINGUISHES THEM; the gap is recorded, not closed. THE SOURCE MUTATION FOR THOSE FOUR IS THEREFORE THIS LINE ITSELF: put `true` back and every push to main can again kill the run in flight, and nothing here goes red. SEMANTIC DIRECTION — a different question from what a guard catches — was proven by rendering the scalar under github.ref = refs/heads/main -> false, refs/heads/feat/<slug> -> true, refs/pull/N/merge -> true, with each of the three wrong-expression mutants flipping main back to true. ⚠️ THE .mjs PATHS ABOVE ARE WRITTEN SPLIT (basename + 'under <dir>/') ON PURPOSE, NOT AS A STYLE: assert-guard-coverage.mjs matches /tooling\/([A-Za-z0-9._\/-]+\.mjs)/ over this file with only whole-line `#` comments stripped, so a trailing comment naming `tooling/ci/test/<x>.test.mjs` is read as a NESTED GUARD INVOCATION and turns that guard RED. Measured: writing them joined here produced '✗ COVERAGE LOST — 2 workflow step(s) invoke a tooling/ci path this FLAT scan cannot audit', exit 1; split, exit 0. See duty.workflow.ci.yml in tooling/ops/register.json for the measured cadence this was sized against.
 
 # NOTE (2026-07-22): the Dart/Flutter per-package lanes (flutter/app, core, api_client,
 # design_system, telemetry) were RETIRED — `workspace_gate` runs `melos run analyze` +
@@ -125,6 +125,32 @@ jobs:
       # junit one makes the next step COVERAGE LOST, never quietly green.
       - name: The guards must be able to fail
         working-directory: ${{ github.workspace }}
+        # 🔴 THIS STEP HAD NO `env:` AT ALL UNTIL 2026-09-02, AND THAT WAS THE BUG.
+        # `ops-register.test.mjs`'s end-to-end case spawns the real
+        # assert-ops-register.mjs against the real register, inheriting THIS
+        # step's environment — so it ran with no credentials of any kind, every
+        # [14]O-3 reader went dark, and the unreadable count hit the ceiling.
+        # That ceiling exists to detect precisely this ("FAILS the moment the
+        # last query goes dark — which is what a lost GITHUB_TOKEN in ci.yml
+        # looks like"), so the guard was working and the environment was wrong.
+        # THE FIX IS THE TOKENS, NEVER A HIGHER CEILING — see
+        # `_recordReaders._maxUnreadableWhy` in tooling/ops/register.json.
+        #
+        # ⚠️ AND THIS DOES NOT MAKE THE MERGE QUEUE DEPEND ON EITHER BOX. Every
+        # reader fails to `unreadable`, which PRINTS; only breaching the ceiling
+        # fails. A GlitchTip or Cloudflare outage therefore costs one line of
+        # output. That is the condition under which the standing objection below
+        # ("would make every build depend on the Oracle box, which is the very
+        # SPOF E-9b is about") is answered rather than ignored.
+        #
+        # Every token-sensitive test in tooling/ci/test/ sets or deletes the
+        # variable it cares about explicitly, so arming these here changes no
+        # other case — checked across the suite before landing, not assumed.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         # ⚠️ `>-` AND NOT `|`, DELIBERATELY. A folded scalar joins these lines
         # with SPACES into ONE logical run line — the shape this step had before,
         # and the shape the shared workflow parser reads. A `|` block is joined
@@ -541,10 +567,16 @@ jobs:
       # an action on the owner's GlitchTip instance rather than a repo change, so
       # that gap PRINTS on every run instead of failing the build; what fails is
       # a deployed hostname nobody DECLARED. The live reconcile is
-      # tooling/ops/verify-monitors.mjs, run by hand until GLITCHTIP_TOKEN is a
-      # repository secret — a CI limb that needed a network token would either be
-      # skipped (and a skipped check reports ok) or would make every build depend
-      # on the Oracle box, which is the very SPOF E-9b is about. [pipeline 11]E-9
+      # tooling/ops/verify-monitors.mjs, run by hand — a CI limb that needed a
+      # network token would either be skipped (and a skipped check reports ok)
+      # or would make every build depend on the Oracle box, which is the very
+      # SPOF E-9b is about. ⚠️ THE PREMISE OF THE FIRST HALF EXPIRED: this said
+      # "until GLITCHTIP_TOKEN is a repository secret", and it IS one — measured
+      # 2026-09-02 against the account. So the reason to keep this by hand is
+      # now only the second half, the SPOF, which is a judgement rather than a
+      # blocker. [14]O-3's `glitchtip-heartbeat` reader shows the shape that
+      # answers it: fail to `unreadable`, which prints and never blocks a merge.
+      # [pipeline 11]E-9
       - name: Every deployed hostname is declared, and its monitor gap is visible
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-monitor-coverage.mjs
@@ -571,6 +603,17 @@ jobs:
           # 2026-08-06: build-platforms.yml, e2e.yml, ops-watch.yml run history
           # and the Renovate Dependency Dashboard issue all resolve.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # …and the `glitchtip-heartbeat` reader, added 2026-09-02 so
+          # duty.laptop.nikatru-daily-backup is readable from a Linux runner
+          # instead of only from the Windows host it runs on. Without it that
+          # row prints "GLITCHTIP_TOKEN is not in the environment" — a print,
+          # not a pass, and never a green over an unread duty.
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+          # …and the `cloudflare-d1-heartbeat` reader, which had been dark on
+          # this step since it was written: duty.platform-cron's record is a D1
+          # table and nothing here ever held the credential to read it.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tooling/ci/assert-ops-register.mjs
       # …and no alert among them closes itself by being IGNORED.
       #
@@ -597,8 +640,11 @@ jobs:
       #       being measured. [pipeline C-6]: an owner-gated gap prints. #151 is
       #       open too and is NOT flagged — its source is red right now.
       #
-      # No GlitchTip limb: GLITCHTIP_TOKEN is not a repository secret
-      # (OWNER_QUEUE S-8) and a limb that skips without one reports ok.
+      # No GlitchTip limb — and ⚠️ NOT for the reason this comment used to give.
+      # It said "GLITCHTIP_TOKEN is not a repository secret (OWNER_QUEUE S-8)";
+      # measured 2026-09-02, it IS one. What remains true is the rest: a limb
+      # that skips without a token reports ok. Wiring one is now possible and is
+      # a decision nobody has made, not a thing that cannot be done.
       # No comment-count heuristic: #24's seven comments are all
       # `github-actions[bot]`, the alarm manufacturing its own evidence.
       # FAILS CLOSED with no token. [pipeline 14]O-5

@@ -239,13 +239,64 @@
       "only by editing this file on a host that has just read a success, which the guard then demands."
     ],
     "_maxUnreachable": 5,
-    "_maxUnreadable": 7,
+    "_maxUnreadable": 3,
+    "_maxUnreadableWhy": [
+      "🔴 RATCHETED 7 -> 3 ON 2026-09-02, AND THE RATCHET IS THE POINT — this key exists to fall as credentials",
+      "and platforms arrive, never to rise when a row goes dark. What changed is that the last reader needing a",
+      "PLATFORM (Windows) became a reader needing a CREDENTIAL (GLITCHTIP_TOKEN), and a credential is something",
+      "a Linux runner can be given. So every one of the 8 readable rows is now readable in CI, and the measured",
+      "count on a good day is 0, not 7.",
+      "",
+      "3 IS DERIVED, NOT CHOSEN: it is the headroom for ONE network provider going dark, plus one spare. The",
+      "8 readable rows sit behind three providers — 6 on the GitHub API, 1 on Cloudflare D1, 1 on GlitchTip —",
+      "and a reader that cannot reach its provider returns `unreadable`, which PRINTS. That is the whole reason",
+      "ci.yml's standing objection to a CI limb depending on the GlitchTip box is answered rather than ignored:",
+      "a Box B outage costs one line of output and never the merge queue. Cloudflare dark costs 1, GlitchTip",
+      "dark costs 1, both at once costs 2, and 3 still absorbs it.",
+      "",
+      "⚠️ GITHUB IS THE ONE PROVIDER THIS CEILING DOES NOT ABSORB: its 6 rows would break the ceiling together.",
+      "That is deliberate and it is the sentence this key was written for — `FAILS the moment the last query",
+      "goes dark, which is what a lost GITHUB_TOKEN in ci.yml looks like`. It is also exactly what happened",
+      "before this ratchet: the `The guards must be able to fail` step in ci.yml had NO env block at all, so the",
+      "end-to-end test spawned this guard with no credentials of any kind, all 8 readers went dark, and the",
+      "ceiling caught it. The remedy was to give that step its tokens, which is what landed with this change —",
+      "NOT to raise the number.",
+      "",
+      "⬜ A HOST HOLDING NO CREDENTIALS NOW READS 0 OF 8 AND IS RED, where before it read 1 of 8 (Task Scheduler,",
+      "on Windows) and printed. That is a real change and it is stated rather than discovered: run this guard",
+      "with `.claude/secrets.env` sourced, or through tooling/scripts/preflight.mjs, which is the same remedy",
+      "the repo already applies to every other credentialed guard. `I could not look` must not read as `I looked",
+      "and it was fine` on a laptop either."
+    ],
     "_windowMultiplier": 1.5,
     "_windowMultiplierWhy": "The same 1.5x the absence watcher uses and for the same reason, written down once in tooling/ops/check-heartbeats.mjs: a window EQUAL to the cadence has zero margin and reports a duty dead on a single late run. One missed run is not an alarm; two are.",
-    "windows-scheduled-task": {
-      "queries": "Get-ScheduledTaskInfo -TaskName <task> — LastRunTime and LastTaskResult, read-only.",
-      "needs": "the Windows host itself (process.platform === 'win32' and powershell on PATH)",
-      "unreadableOn": "every Linux CI runner, where it prints the reason rather than failing"
+    "glitchtip-heartbeat": {
+      "queries": "GET /api/0/organizations/{org}/monitors/{id}/ then .../checks/ — the newest check with isUp = true, which IS the duty's last successful POST. A monitor that is not a Heartbeat, or a 404 on the declared id, is an ANSWERED query and a hard failure, never a print.",
+      "needs": "GLITCHTIP_TOKEN in the environment (optionally GLITCHTIP_URL; it defaults to https://glitchtip.nikatru.com)",
+      "unreadableOn": "any run with no token, and any run where the GlitchTip box cannot be reached — a network failure PRINTS, so a Box B outage costs one line of output and never the merge queue",
+      "why": [
+        "🔴 THIS READER REPLACED `windows-scheduled-task` ON duty.laptop.nikatru-daily-backup, 2026-09-02.",
+        "That reader is structurally unreadable on every Linux runner — CI has no Task Scheduler and never will",
+        "— and it was tolerable only while the row ALSO held `lastObserved: fail`, because a held failure",
+        "classifies as FAILING rather than as a print. Repairing the backup that day correctly cleared the held",
+        "failure to `pass`, the row fell through to plain `unreadable`, and the count went to 8 against a ceiling",
+        "of 7. BOTH OBVIOUS FIXES ARE WEAKENING: raising the ceiling makes the limb believe itself over a domain",
+        "it did not read, and teaching the held-failure branch to accept `PASSING` inverts the evidence — a",
+        "self-reported FAILURE is an admission against interest and a self-reported success is not.",
+        "",
+        "The duty already had a record CI can query. It has POSTed to a GlitchTip heartbeat since 2026-07-27 and",
+        "this register has named that monitor as its `absenceWatcher` the whole time; nothing new was built on",
+        "either box, and no duty changed behaviour. 🔴 IT STILL FAILS WHEN THE HEARTBEAT STOPS, which is the",
+        "only property that matters: no POST means no new isUp check, so `lastSuccessMs` ages out of the row's",
+        "own cadence window and the verdict is FAIL. That was proven by measurement, not by reading the code —",
+        "see `tooling/ci/test/ops-register.test.mjs`, which drives this reader with a stale, a down-only and an",
+        "empty check list and asserts RED for each.",
+        "",
+        "KEYED BY `id`, NEVER BY `name`. On the same day, renaming monitor `Oracle box backup chain` to",
+        "`GlitchTip backup chain (Box B)` sent `tooling/ops/alarm-chains.json` — which keys by name — COVERAGE",
+        "LOST on the next Ops watch run. The id survived that rename untouched. `monitorName` below is carried",
+        "for a human reading the row and is deliberately NOT asserted on."
+      ]
     },
     "github-run-history": {
       "queries": "GET /repos/{repo}/actions/workflows/{workflow}/runs?event=schedule&status=success&per_page=1 — the newest SUCCESSFUL run for the declared event.",
@@ -266,6 +317,28 @@
       "queries": "nothing, and the row must say why in `mechanism.recordQuery.why`.",
       "needs": "n/a — this is the register admitting the record is on a host it cannot read",
       "unreadableOn": "always, by declaration — capped by _maxUnreachable so it cannot become the whole domain"
+    }
+  },
+  "_retiredReaders": {
+    "_why": [
+      "A reader with no member is code that cannot fail, and this file's own error text gives exactly two",
+      "remedies: delete it, or point a row at it. This section is the first one, WITH ITS HISTORY, because the",
+      "keys here are matched by `readerNames` only when they do NOT start with `_` — so a reader parked in this",
+      "object is genuinely undeclared and cannot be used by a row, while the reason it went away survives for",
+      "whoever needs it back.",
+      "",
+      "⚠️ THE IMPLEMENTATION IS DELIBERATELY STILL IN `tooling/ci/assert-ops-register.mjs` AND STILL TESTED.",
+      "`probeWindowsTasks` / `readScheduledTaskProbe` / `classifyScheduledTaskRow` carry the most expensive",
+      "lesson in that file — the `[int]` cast that overflowed on an HRESULT-shaped UInt32 and reported a",
+      "RUNNING-AND-FAILING task as one that DID NOT EXIST — and 17 fixture-driven cases still exercise every",
+      "branch, so this is dormant code rather than dead code. Re-declaring it is a two-line change on the day a",
+      "Windows duty needs reading from the Windows host again."
+    ],
+    "windows-scheduled-task": {
+      "queries": "Get-ScheduledTaskInfo -TaskName <task> — LastRunTime and LastTaskResult, read-only.",
+      "needs": "the Windows host itself (process.platform === 'win32' and powershell on PATH)",
+      "unreadableOn": "every Linux CI runner, where it prints the reason rather than failing",
+      "retired": "2026-09-02 — its last member, `duty.laptop.nikatru-daily-backup`, moved to `glitchtip-heartbeat`. It was never wrong; it was structurally unreadable from the only place that gates a merge. See `_recordReaders.glitchtip-heartbeat.why` for the full reasoning, including why raising the ceiling and widening the held-failure regex were both refused."
     }
   },
   "_expiryCoverage": {
@@ -609,7 +682,7 @@
       ],
       "source": "verified",
       "_appended20260825ConcurrencyOnMain": "APPENDED 2026-08-25; nothing in this row was rewritten. ci.yml:16 read `cancel-in-progress: true` against a group of `ci-${{ github.ref }}`, so EVERY push to main resolved to the ONE group `ci-refs/heads/main` and a run in flight was killed by the next merge. MEASURED THIS RUN. Cadence, from `git log --first-parent --date=format:'%Y-%m-%d %H:%M:%S %z' main`: NINE merges landed on 2026-08-25 between 51df9ef 09:48:24 +0530 and 57e6e10 14:01:37 +0530, and FOUR of the eight intervals were under fifteen minutes — 51df9ef→f67ee2b 14m49s, f67ee2b→30ac08c 5m29s, 30ac08c→4d42e13 13m54s, 4d42e13→b8d2481 7m29s (the other four were 43m25s, 74m35s, 46m49s, 46m43s). Duration, from an isolated detached worktree on this machine: `node --test \"tooling/ci/test/*.test.mjs\"` ALONE took 1013 s (16m53s), exit 0, 5461 pass / 0 fail over 766 suites — wall clock on a loaded host, and above the 570-730 s band this corpus has recorded before, so read it as one sample rather than the floor. EITHER FIGURE SETTLES IT: at 1013 s all four short intervals cancel their predecessor's run, and even at 570 s the 5m29s and 7m29s intervals still do — and that is the TEST STEP ALONE, before the Workers, the brick stamp or the sites. A CANCELLED RUN NOTIFIES NOBODY AND BLOCKS NOTHING, because on main there is no pull-request check left to go red. The same mechanism is already an on-record incident one file over — deploy-web.yml:476, 'Runs 145/146 were concurrency-cancelled, so that unrecorded build stayed live'. THE LINE IS NOW `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`: false on main only. pull_request events resolve to refs/pull/N/merge and feature branches keep cancelling, because a bare `false` would queue every superseded feature-branch push and that is a cost regression, not a fix. 🔴 RETRACTED 2026-08-25 AS FALSE — see `_retracted20260825NotReddenableClaim` immediately below; the sentence is left standing rather than rewritten because this is a dated record. THE RETRACTED SENTENCE, VERBATIM: «⚠️ NOT REDDENABLE BY ANY FIXTURE, stated rather than hidden: no file under tooling/ci or tooling/scripts mentions `concurrency` or `cancel-in-progress` at all (grepped 2026-08-25, zero hits), so no guard in this repository reads a concurrency policy and none can catch a mutant of that line.» The source mutation is therefore recorded AT THE SITE, in the trailing comment on ci.yml:16 itself, and the direction was proven by rendering the scalar under three github.ref values (main -> false, feat/<slug> -> true, refs/pull/N/merge -> true) with four mutants — a typo'd ref literal, `==` for `!=`, a misspelled context path, and the original bare `true` — each flipping main back to true. The two workflows that must never be cancelled already carry `cancel-in-progress: false` (deploy-workers.yml:21-23, ops-watch.yml:48-50) and were not touched. THE EDIT WAS KEPT LINE-COUNT-NEUTRAL — one line replaced by one line, `git diff -U0` reporting a single `@@ -16 +16 @@` hunk — so no `ci.yml:NNNN` citation anywhere in the corpus shifted, which is the trap CLAUDE.md records against this file.",
-      "_retracted20260825NotReddenableClaim": "APPENDED 2026-08-25 (Round B), correcting the row above; nothing in it was rewritten. THE CLAIM MARKED «» ABOVE IS FALSE AND IS RETRACTED. It was true only of the domain it grepped: `tooling/ci/*.mjs` and `tooling/scripts/*.mjs`, non-recursive, which is 0 hits — but the guard that reads this policy is neither in tooling/ci/ nor in tooling/scripts/. MEASURED THIS RUN: `grep -rniE \"concurrency|cancel-in-progress\" tooling/ci/ tooling/scripts/` -> 25 hits, ALL in tooling/ci/test/safe-rerun.test.mjs; `grep -rlniE \"concurrency|cancel-in-progress\" tooling/ops/` -> tooling/ops/safe-rerun.mjs, tooling/ops/register.json, tooling/ops/manual-deploys.json. THE TRUE STATEMENT: tooling/ops/safe-rerun.mjs:221-282 parses every workflow's top-level `concurrency:`, and :333-344 `namedLaneProblem()` is pointed BY NAME at '.github/workflows/ci.yml' and asserts its `cancel-in-progress`. tooling/ci/test/safe-rerun.test.mjs:351 ('namedLaneProblem is null on the REAL tree — ci.yml is still the subject') runs it against the REAL .github/workflows directory, and that suite is executed in CI at .github/workflows/ci.yml:134 (`node --test \"tooling/ci/test/*.test.mjs\"`). PROVEN BY MUTATION THIS RUN, against a copy of .github/workflows in a scratch directory, calling loadWorkflows()+namedLaneProblem() from the real tooling/ops/safe-rerun.mjs: unmutated -> parse {group:'ci-${{ github.ref }}', cancelInProgress:true, cancelIsExpression:true}, namedLaneProblem null, and `node --test tooling/ci/test/safe-rerun.test.mjs` -> 41 pass / 0 fail, exit 0. Line 16 replaced by a bare `cancel-in-progress: false` -> parse {cancelInProgress:false, cancelIsExpression:false}, namedLaneProblem 'COVERAGE LOST — .github/workflows/ci.yml declares a group but `cancel-in-progress` is not true, so this tool would now allow every re-run on it.' SO THE LINE IS REDDENABLE, AND THE FIXTURE ALREADY EXISTED IN THE TREE BEFORE THIS CHANGE. ⚠️ WHAT REMAINS TRUE, STATED ACCURATELY AND NOT SOFTENED: NO fixture in this tree catches an EXPRESSION mutant. safe-rerun.mjs:280 collapses any `${{ ... }}` to cancelling (`const cancelInProgress = cancelIsExpression ? true : String(cancel).trim() === 'true'`), so all three of `${{ github.ref == 'refs/heads/main' }}`, `${{ github.ref != 'refs/head/main' }}` and `${{ github.refx != 'refs/heads/main' }}` return namedLaneProblem null — each mutated and run this round — and so does putting the original bare `true` back. WE DID NOT BUILD A FIXTURE THAT DISTINGUISHES THEM. That gap is recorded here and at the site, not closed. The source mutation for all four of those stays recorded in the trailing comment on ci.yml:16, which was corrected in the same change (one line replaced by one line, `git diff -U0` -> a single `@@ -16 +16 @@` hunk, so no ci.yml:NNNN citation shifted). ROUTED, NOT FIXED HERE: tooling/ops/safe-rerun.mjs:6-11 still quotes this workflow's block as `cancel-in-progress: true` and :333-336's doc-comment repeats it; both are stale as of the 2026-08-25 change and that file is owned elsewhere this round."
+      "_retracted20260825NotReddenableClaim": "APPENDED 2026-08-25 (Round B), correcting the row above; nothing in it was rewritten. THE CLAIM MARKED «» ABOVE IS FALSE AND IS RETRACTED. It was true only of the domain it grepped: `tooling/ci/*.mjs` and `tooling/scripts/*.mjs`, non-recursive, which is 0 hits — but the guard that reads this policy is neither in tooling/ci/ nor in tooling/scripts/. MEASURED THIS RUN: `grep -rniE \"concurrency|cancel-in-progress\" tooling/ci/ tooling/scripts/` -> 25 hits, ALL in tooling/ci/test/safe-rerun.test.mjs; `grep -rlniE \"concurrency|cancel-in-progress\" tooling/ops/` -> tooling/ops/safe-rerun.mjs, tooling/ops/register.json, tooling/ops/manual-deploys.json. THE TRUE STATEMENT: tooling/ops/safe-rerun.mjs:221-282 parses every workflow's top-level `concurrency:`, and :333-344 `namedLaneProblem()` is pointed BY NAME at '.github/workflows/ci.yml' and asserts its `cancel-in-progress`. tooling/ci/test/safe-rerun.test.mjs:351 ('namedLaneProblem is null on the REAL tree — ci.yml is still the subject') runs it against the REAL .github/workflows directory, and that suite is executed in CI at .github/workflows/ci.yml:160 (`node --test \"tooling/ci/test/*.test.mjs\"`). PROVEN BY MUTATION THIS RUN, against a copy of .github/workflows in a scratch directory, calling loadWorkflows()+namedLaneProblem() from the real tooling/ops/safe-rerun.mjs: unmutated -> parse {group:'ci-${{ github.ref }}', cancelInProgress:true, cancelIsExpression:true}, namedLaneProblem null, and `node --test tooling/ci/test/safe-rerun.test.mjs` -> 41 pass / 0 fail, exit 0. Line 16 replaced by a bare `cancel-in-progress: false` -> parse {cancelInProgress:false, cancelIsExpression:false}, namedLaneProblem 'COVERAGE LOST — .github/workflows/ci.yml declares a group but `cancel-in-progress` is not true, so this tool would now allow every re-run on it.' SO THE LINE IS REDDENABLE, AND THE FIXTURE ALREADY EXISTED IN THE TREE BEFORE THIS CHANGE. ⚠️ WHAT REMAINS TRUE, STATED ACCURATELY AND NOT SOFTENED: NO fixture in this tree catches an EXPRESSION mutant. safe-rerun.mjs:280 collapses any `${{ ... }}` to cancelling (`const cancelInProgress = cancelIsExpression ? true : String(cancel).trim() === 'true'`), so all three of `${{ github.ref == 'refs/heads/main' }}`, `${{ github.ref != 'refs/head/main' }}` and `${{ github.refx != 'refs/heads/main' }}` return namedLaneProblem null — each mutated and run this round — and so does putting the original bare `true` back. WE DID NOT BUILD A FIXTURE THAT DISTINGUISHES THEM. That gap is recorded here and at the site, not closed. The source mutation for all four of those stays recorded in the trailing comment on ci.yml:16, which was corrected in the same change (one line replaced by one line, `git diff -U0` -> a single `@@ -16 +16 @@` hunk, so no ci.yml:NNNN citation shifted). ROUTED, NOT FIXED HERE: tooling/ops/safe-rerun.mjs:6-11 still quotes this workflow's block as `cancel-in-progress: true` and :333-336's doc-comment repeats it; both are stale as of the 2026-08-25 change and that file is owned elsewhere this round."
     },
     {
       "id": "duty.workflow.build-platforms.yml",
@@ -945,10 +1018,13 @@
         "anchor": "Private/runbooks/backup-liveness.md",
         "record": "Windows Task Scheduler LastTaskResult + the GlitchTip heartbeat monitor",
         "failingValue": "LastTaskResult != 0, or the heartbeat not arriving inside its grace window",
-        "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop)",
+        "readBy": "the GlitchTip monitor (absence-alarming, from outside the laptop) — and, since 2026-09-02, QUERIED IN CI through that same monitor rather than through Task Scheduler, so the duty is readable from Linux instead of only from the one Windows host it runs on",
         "recordQuery": {
-          "reader": "windows-scheduled-task",
-          "task": "NIKATRU daily backup",
+          "reader": "glitchtip-heartbeat",
+          "org": "nikatru",
+          "monitor": 6,
+          "monitorName": "Laptop daily backup — carried for a HUMAN READER ONLY. The reader keys by `monitor` and never asserts this string; see `_recordReaders.glitchtip-heartbeat.why` for the rename that broke the file which did key by name.",
+          "why": "🔴 THE RECORD MOVED, THE DUTY DID NOT. This row's `record` has always named TWO things — Task Scheduler's LastTaskResult and the GlitchTip heartbeat — and `windows-scheduled-task` read the half no CI runner can reach. The heartbeat half is the same duty read from outside the laptop, and for THIS duty it is the stronger evidence: LastTaskResult = 0 says the script's process exited 0, whereas the heartbeat is POSTed only after the offsite copy has been made, so a POST asserts the OUTCOME where an exit code asserts only that the last line was reached. Task Scheduler is still where to look when this goes red — it holds the exit code and the run history that say WHY — it is simply no longer what CI reads to decide.",
           "lastObserved": {
             "verdict": "pass",
             "at": "2026-09-02T13:25:28Z",

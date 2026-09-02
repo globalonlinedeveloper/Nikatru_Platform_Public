@@ -365,7 +365,7 @@ const importsFrom = (rel, src) => {
   // indistinguishable from a live import. It is not hypothetical and it is not
   // cheap: PR #397 added two fixture strings to a sibling guard, this matcher
   // read `from '../e2e/canary_subject.mjs'` out of one of them, `copyWithImports`
-  // below demanded that path exist, and — this file being wired at ci.yml:1724,
+  // below demanded that path exist, and — this file being wired at ci.yml:1770,
   // which fires on every push — EVERY PUSH went red. #397 worked around it by
   // giving its fixtures a `#e2e/…` subpath specifier that can never be a
   // filesystem path, and recorded in its own commit message that the blindness
