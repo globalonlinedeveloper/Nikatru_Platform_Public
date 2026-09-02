@@ -221,9 +221,19 @@ export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLE
       }
     }
     const p = it.date.slice(0, 7);
-    if (!periods.has(p)) periods.set(p, { period: p, net: 0, gross: 0, discount: 0, minutes: 0, byRepo: new Map() });
+    if (!periods.has(p))
+      periods.set(p, { period: p, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, byRepo: new Map() });
     const acc = periods.get(p);
     acc.net += it.netAmount;
+    // 🔴 SPLIT, because the ceiling below is about MINUTES and this ledger mixes
+    // storage into the same `net`. MEASURED 2026-09-02: every minute row was fully
+    // discounted (net 0.0000) while `Actions storage` on an unrelated repo carried
+    // net 1.0714 — and GitHub's own page for that period read BILLABLE $0, because
+    // `netAmount` here is PRE-INCLUDED-ALLOWANCE and never subtracts the 2,000
+    // included minutes or the 0.5 GB included storage. Gating the whole sum turned
+    // that into a red that blocked every PR while nothing was being billed.
+    if (it.unitType === 'Minutes') acc.netMinutes += it.netAmount;
+    else acc.netStorage += it.netAmount;
     acc.gross += it.grossAmount;
     acc.discount += it.discountAmount;
     if (it.unitType === 'Minutes') acc.minutes += it.quantity;
@@ -235,7 +245,9 @@ export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLE
   }
 
   const period = billingPeriod(nowMs);
-  const current = periods.get(period) ?? { period, net: 0, gross: 0, discount: 0, minutes: 0, byRepo: new Map() };
+  const current =
+    periods.get(period) ??
+    { period, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, byRepo: new Map() };
   const prior = [...periods.values()].filter((p) => p.period !== period).sort((a, b) => a.period.localeCompare(b.period));
 
   return {
@@ -244,7 +256,9 @@ export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLE
     prior,
     priorBilled: prior.filter((p) => p.net > CEILING_EPSILON_USD),
     ceilingUsd,
-    over: current.net > ceilingUsd + CEILING_EPSILON_USD,
+    // The ceiling applies to MINUTES. Storage is reported (see `netStorage`) but
+    // cannot stop a workflow from STARTING, which is the risk this guard names.
+    over: current.netMinutes > ceilingUsd + CEILING_EPSILON_USD,
     rowsRead: actions.length,
   };
 }
@@ -458,9 +472,18 @@ async function main() {
     return EXIT_OVER_CEILING;
   }
 
+  // Report the number that was actually COMPARED, and name the rest separately.
+  // Printing the mixed total beside the ceiling produced the sentence
+  // "net $1.07 is within the declared ceiling $0.00", which is false on its face
+  // and trains a reader to stop believing the line.
   say(
-    `ok  runner budget — ${verdict.rowsRead} ledger row(s) read; period ${verdict.period} net ${usd(c.net)} ` +
-      `is within the declared ceiling ${usd(verdict.ceilingUsd)}`,
+    `ok  runner budget — ${verdict.rowsRead} ledger row(s) read; period ${verdict.period} ` +
+      `MINUTES net ${usd(c.netMinutes)} is within the declared ceiling ${usd(verdict.ceilingUsd)}` +
+      (c.netStorage > CEILING_EPSILON_USD
+        ? ` · storage net ${usd(c.netStorage)} is NOT gated: it cannot stop a run from STARTING, ` +
+          `and this ledger's netAmount is pre-included-allowance (GitHub's own page read BILLABLE $0 ` +
+          `with 0 GB of 0.5 GB storage used on 2026-09-02)`
+        : ''),
   );
   return EXIT_OK;
 }
