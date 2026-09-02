@@ -93,14 +93,20 @@ async function capture(ctx, sw, url, opts = {}) {
   await page.goto(url, { waitUntil: 'load' });
   await page.bringToFront();
   await page.waitForTimeout(opts.settleMs || 900);
-  /* A budget in milliseconds is a fact about the machine. CPU throttling is the
-     only honest way to put a real browser on a slow one; it is switched on for
-     exactly the fixture that needs it and off again afterwards. */
-  let cdp = null;
-  if (opts.cpuThrottle) {
-    cdp = await ctx.newCDPSession(page);
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: opts.cpuThrottle });
-  }
+  /* 🔴 A BUDGET IN MILLISECONDS IS A FACT ABOUT THE MACHINE, and this is where
+     that sentence used to be answered with CDP CPU throttling — put the browser
+     on a slow machine and hope 9,000 leaves take longer than 1,200 ms. That is
+     a race against the runner, and on 2026-08-31 the runner won: `timecap` came
+     back `truncatedBy: null`, `walkComplete: true`, and R1/R2/R3/B3/S6 failed
+     because the pass under test NEVER GAVE UP. The subject was non-deterministic,
+     not the assertions, so the subject is what changed: the walk's budget is now
+     injected through the settings the engine is handed (`redactWalkMs`, see
+     content/capture.js `fsPiiWalkBudget`), and `settings` on a shape below pins
+     it. Nothing here is throttled and nothing here is timed.
+
+     The assertions are untouched and they still bite: if the pin does not reach
+     the engine the walk simply finishes, and R1/R2/R3 fail exactly as they did
+     on 2026-08-31. */
   const wait = ctx.waitForEvent('page', {
     predicate: p => p.url().includes('pages/result.html'), timeout: 600000
   });
@@ -118,7 +124,6 @@ async function capture(ctx, sw, url, opts = {}) {
   const result = await wait;
   await result.waitForSelector('#view:not([hidden])', { timeout: 600000 });
   await result.waitForTimeout(opts.lineSettleMs || 1600);
-  if (cdp) { try { await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); } catch (_) {} }
   return { page, result };
 }
 
@@ -312,7 +317,19 @@ const SHAPES = [
   { name: 'walkcap', url: GIV + 'walkcap.html',
     colours: { late: [255, 90, 90] },
     want: { truncatedBy: 'elements', walkComplete: false, matchedComplete: false } },
-  { name: 'timecap', url: GIV + 'timecap.html', cpuThrottle: 20,
+  /* THE ONE SHAPE THAT CANNOT TRIP ITSELF. Every other fixture here trips its
+     giving-up point with MARKUP — 40,010 elements, a 4,001-character leaf, a
+     block that straddles the 2,000-box ceiling — and markup is the same on
+     every machine. A millisecond budget is not: whether 9,000 leaves take
+     longer than 1,200 ms is a property of the runner, and the runner is not
+     under test. So this shape pins the budget the engine races instead of
+     trying to outrun it. `redactWalkMs: 0` puts the deadline at the walk's
+     first instant, so `forEachDeep` takes the `time` branch at its first
+     deadline check whatever the hardware, and the page below stays exactly as
+     tall and as expensive as it was — a walk that stops after 512 of 9,000
+     elements leaves the email at its foot unread, which is the fact the
+     fixture exists to produce. */
+  { name: 'timecap', url: GIV + 'timecap.html', settings: { redactWalkMs: 0 },
     colours: { late: [255, 90, 90] },
     want: { truncatedBy: 'time', walkComplete: false, matchedComplete: false } },
   /* THE CROSS-SURFACE QUESTION. The one refusal that reaches `matchedComplete`
@@ -335,8 +352,16 @@ const SHAPES = [
     colours: {}, want: {}, huntControl: true }
 ];
 
+/* THE SETTINGS EVERY SHAPE RUNS UNDER unless it says otherwise. Written out in
+   full and re-asserted per shape rather than patched and left, because
+   `setSettings` writes until the value STICKS and a shape that pinned something
+   must not leak it into the next one — a fixture that trips a giving-up point
+   because the shape before it changed a budget is a fixture proving nothing. */
+const BASE_SETTINGS = { redactPII: true, redactWalkMs: -1 };
+
 async function runShape(ctx, sw, extBase, shape) {
   begin(shape.name);
+  await setSettings(sw, Object.assign({}, BASE_SETTINGS, shape.settings || {}));
   const { page, result } = await capture(ctx, sw, shape.url, shape);
   try {
     const scan = await lastScanLedger(sw);
@@ -583,6 +608,9 @@ async function runShape(ctx, sw, extBase, shape) {
    ========================================================================== */
 async function runSmuggle(ctx, sw, extBase) {
   begin('smuggling a verdict back in');
+  /* Re-asserted here for the same reason runShape does it: this pass runs
+     after every shape above, one of which pins a budget. */
+  await setSettings(sw, BASE_SETTINGS);
   const { page, result } = await capture(ctx, sw, FIX + 'control-pii.html');
   try {
     const attempts = [
@@ -681,7 +709,7 @@ async function runSmuggle(ctx, sw, extBase) {
   try {
     let [sw] = ctx.serviceWorkers();
     if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 20000 });
-    await setSettings(sw, { redactPII: true });
+    await setSettings(sw, BASE_SETTINGS);
     await installLedgerTap(sw);
     const extBase = sw.url().replace(/background\.js.*$/, '');
     for (const s of SHAPES) {

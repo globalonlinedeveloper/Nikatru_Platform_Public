@@ -54,10 +54,16 @@ const R_NO_START = 'FullShot could not start on this page. Reload the page and t
 const R_BLOCKED = 'This page cannot be captured (browser restriction).';
 const R_UNKNOWN = 'Unknown message.';
 const META = { totalW: 1200, totalH: 2400, vw: 1200, vh: 800, dpr: 1 };
-/* The settings keys background.js projects into FS_START for the engine. */
+/* The settings keys background.js projects into FS_START for the engine.
+   `redactWalkMs` joined the list on 2026-09-02: the redaction walk's time
+   budget is now handed to the engine with the rest of the settings instead of
+   living only as a constant inside content/capture.js, so that a test can pin
+   it and reach the walk's `time` giving-up point without racing the runner.
+   -1 is the shipped default and means "the engine's own FS_PII_WALK_MS", so
+   nothing about a production capture moved. */
 const ENGINE_KEYS = ['captureDelay', 'hideFixed', 'preScroll', 'maxPageHeight', 'expandInner',
   'unrollVirtual', 'expandInteractive', 'loadMore', 'infiniteScroll', 'waitStable',
-  'adaptiveWait', 'hideOverlays', 'redactPII', 'expandFrames'];
+  'adaptiveWait', 'hideOverlays', 'redactPII', 'redactWalkMs', 'expandFrames'];
 
 let FAILS = 0;
 function check(label, ok, extra) {
@@ -1174,7 +1180,7 @@ const quotaError = (message) => {
     const tab = env.addTab({ script: { onStart: 'silent' } });
     await startCapture(env, tab.id, 'full');
     const s = at(env.starts, 0).settings || {};
-    check('FS_START carries exactly the 14 engine keys',
+    check('FS_START carries exactly the 15 engine keys',
       Object.keys(s).sort().join(',') === ENGINE_KEYS.slice().sort().join(','), Object.keys(s).sort().join(','));
     check('a stored value beats the default (captureDelay 999)', s.captureDelay === 999, s.captureDelay);
     check('a stored false beats a true default (hideFixed)', s.hideFixed === false, String(s.hideFixed));
@@ -4765,7 +4771,7 @@ const quotaError = (message) => {
     const env = newEnv();
     await fire(env.onInstalled, { reason: 'install' });
     await pump(env);
-    check('a fresh install seeds every default', Object.keys(env.sync).length === 26, Object.keys(env.sync).length + ' keys');
+    check('a fresh install seeds every default', Object.keys(env.sync).length === 27, Object.keys(env.sync).length + ' keys');
     check('the seeded defaults are the shipped values',
       env.sync.expandInner === true && env.sync.captureDelay === 150 && env.sync.theme === 'system',
       JSON.stringify([env.sync.expandInner, env.sync.captureDelay, env.sync.theme]));

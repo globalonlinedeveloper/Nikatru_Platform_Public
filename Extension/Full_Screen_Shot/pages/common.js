@@ -15,6 +15,13 @@ const FS_DEFAULTS = {
   infiniteScroll: false,
   waitStable: false,
   redactPII: false,
+  /* The redaction walk's time budget in ms; -1 = the engine's own
+     FS_PII_WALK_MS. It has no control on the Options page and it is still in
+     this table on purpose: "Reset settings" writes THE DECLARED TABLE AND
+     NOTHING ELSE, so a key missing from here is a key a reset cannot put back.
+     Kept byte-for-byte in step with background.js's DEFAULTS — see the longer
+     note there for why the key exists at all. */
+  redactWalkMs: -1,
   maxPageHeight: 50000,
   filenameTemplate: 'fullshot-{domain}-{date}-{time}',
   pdfPaper: 'auto',

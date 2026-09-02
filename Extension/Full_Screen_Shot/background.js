@@ -122,6 +122,15 @@ const DEFAULTS = {
   infiniteScroll: false,     // scroll to the bottom to trigger no-button infinite feeds before capture (opt-in) (v1.6.12)
   waitStable: false,         // wait for skeleton/placeholder loaders to resolve to real content before measuring (opt-in) (v1.6.13)
   redactPII: false,          // detect emails/phones/cards/SSNs/tokens in the page and bake an opaque block over each (opt-in, local-only) (v1.7.0)
+  /* THE REDACTION WALK'S TIME BUDGET, in ms, and -1 means "the engine's own"
+     (content/capture.js FS_PII_WALK_MS = 1,200). There is NO OPTIONS CONTROL for
+     it and there is not meant to be one: it is here because a budget in
+     milliseconds is a fact about the machine, so the giving-up point it guards
+     cannot be reached from a test except by racing the runner — and on
+     2026-08-31 the runner won and test/e2e/giveup-verify.mjs went red for it.
+     A declared key rather than a hidden one, so `diagSettings` reports it and a
+     value somebody left behind is visible rather than silent. */
+  redactWalkMs: -1,
   maxPageHeight: 50000,      // CSS px safety cap for infinite feeds
   filenameTemplate: 'fullshot-{domain}-{date}-{time}',
   pdfPaper: 'auto',          // auto | a4 | letter | legal
@@ -743,6 +752,11 @@ async function startCapture(tab, mode, startDelay) {
           adaptiveWait: settings.adaptiveWait,
           hideOverlays: settings.hideOverlays,
           redactPII: settings.redactPII,
+          /* Named here rather than left to the engine's constant for the reason
+             the block above gives: the walk's budget travels WITH the settings
+             the pass is handed, so the ledger's `budgetMs` is the number that
+             pass actually raced. -1 (the shipped default) is "no override". */
+          redactWalkMs: settings.redactWalkMs,
           expandFrames
         }
       });

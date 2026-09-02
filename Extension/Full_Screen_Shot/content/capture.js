@@ -57,7 +57,16 @@
      Additive: every existing caller ignores the return value. `budgetMs` lets a
      caller bring its own clock — the redaction walk carries a style and a rect
      read per leaf and the user opted into paying for it, so it must not be
-     rationed by a budget sized for a layout hint (§2.2). */
+     rationed by a budget sized for a layout hint (§2.2).
+
+     `budgetMs` IS HONOURED AT ZERO, and that is not a formality. A budget of 0
+     puts the deadline at the instant the walk starts, so the first deadline
+     check the loop reaches is guaranteed past it whatever the machine's speed —
+     which is the only way a test can put this walk on the `time` branch without
+     betting on how slow the runner is. The old spelling was `budgetMs > 0`,
+     which silently turned a 0 into MAX_WALK_MS: "no budget" and "no time" are
+     different instructions and it read them as the same one. Absence is still
+     MAX_WALK_MS; a number is now taken at its word. */
   function forEachDeep(start, fn, budgetMs) {
     // start: Document | ShadowRoot | Element. fn(el) returning true stops.
     // Depth-first: each host's shadow tree is visited the moment the host is
@@ -67,7 +76,8 @@
     let stopped = false;
     let stop = null;
     let errored = false;
-    const deadline = performance.now() + (budgetMs > 0 ? budgetMs : MAX_WALK_MS);
+    const deadline = performance.now() +
+      ((typeof budgetMs === 'number' && isFinite(budgetMs) && budgetMs >= 0) ? budgetMs : MAX_WALK_MS);
     (function walk(root) {
       if (stopped) return;
       let els;
@@ -1015,6 +1025,35 @@
      that depends on how fast the user's machine is must at least say what it
      was racing. */
   const FS_PII_WALK_MS = 1200;
+
+  /* THE WALK'S CLOCK, INJECTED — and it exists because a budget in milliseconds
+     is a fact about the machine, so a test that wants the `time` branch has no
+     honest way to reach it. Until this, test/e2e/giveup-verify.mjs put the
+     browser on CDP CPU throttling and hoped 9,000 leaves took longer than 1,200
+     ms. That is a race against the runner, and on 2026-08-31 the runner won:
+     the walk FINISHED, `truncatedBy` came back null, `walkComplete` true, and
+     FIVE checks that grade what the pipeline does WHEN IT GIVES UP failed
+     (R1, R2, R3, B3, S6) because it never gave up. The suite had already
+     written the diagnosis in its own driver comment — "A budget in
+     milliseconds is a fact about the machine." A check whose subject only
+     sometimes happens is a check nobody can read.
+
+     So the budget is injectable, in the same shape as every other thing this
+     engine does: it arrives in the `settings` object content/capture.js is
+     HANDED at FS_START (background.js), which is already the one seam the whole
+     record is derived through. `-1` — the shipped default in background.js's
+     DEFAULTS — means "no override", and PRODUCTION NEVER SETS ANYTHING ELSE, so
+     the walk still gets FS_PII_WALK_MS and behaves exactly as it did. A pinned
+     0 puts the deadline at the walk's first instant, which trips the `time`
+     branch at the first deadline check on any machine at any speed.
+
+     ⚠️ It cannot be reached from the PAGE. A page that could shrink this budget
+     could switch the redaction pass off by starving it, so the value comes from
+     the extension's own storage and from nowhere else. */
+  function fsPiiWalkBudget(ms) {
+    return (typeof ms === 'number' && isFinite(ms) && ms >= 0) ? ms : FS_PII_WALK_MS;
+  }
+
   const FS_PII_MAX_BOXES = 2000;     // the box ceiling, named so the ledger can cite it
   const FS_PII_MAX_LEAF = 4000;      // per-leaf character cap
   const FS_PII_MAX_DEFER = 4000;     // spans held for the §2.3 re-measure
@@ -1166,8 +1205,12 @@
      childless elements only. The last of those is not a page shape; it is the
      most common markup on the web, and it is why the sentence built from
      `chars` says "of this page's text" and never "of the text on this page". */
-  function collectPIIBoxes(root, rootRect, totalH, totalW, sideJobs, inlineJobs) {
+  function collectPIIBoxes(root, rootRect, totalH, totalW, sideJobs, inlineJobs, walkMs) {
     const out = [];
+    /* Resolved ONCE, here, and then used for every walk this pass runs and
+       written into the ledger below. Resolving it per walk would let two walks
+       in the same pass race different budgets and still report one number. */
+    const walkBudgetMs = fsPiiWalkBudget(walkMs);
     const L = {
       v: 2,
       fed: 0, chars: 0,
@@ -1222,7 +1265,13 @@
       truncated: { walk: false, time: false, ceiling: false, error: false },
       walks: 0, walksCompleted: 0,
       remeasured: 0, movedUncovered: 0,
-      budgetMs: FS_PII_WALK_MS,
+      /* The budget this pass ACTUALLY RACED, not the constant it usually is.
+         The two are the same number in production; where they are not, a ledger
+         that reported the constant would say the walk was given 1,200 ms when
+         it was given something else, which is the one thing this field exists
+         to prevent ("a state that depends on how fast the user's machine is
+         must at least say what it was racing"). */
+      budgetMs: walkBudgetMs,
       /* THE COMPLETENESS THAT TRAVELS WITH `matched`, written at the seal from
          the facts recorded above. A COUNT WITHOUT ITS COMPLETENESS IS NOT A
          COUNT: `matched` is the number of matches in the text the detector was
@@ -1592,7 +1641,7 @@
     const runWalk = (start, fn) => {
       L.walks++;
       let res = null;
-      try { res = forEachDeep(start, fn, FS_PII_WALK_MS); } catch (_) { return; }
+      try { res = forEachDeep(start, fn, walkBudgetMs); } catch (_) { return; }
       L.walksCompleted++;
       if (!res) return;
       /* ONE FLAG PER REASON. `error` used to be reported as `walk`, which told
@@ -2237,7 +2286,8 @@
          found nothing — that is the difference the record is built on. */
       const piiPass = !!settings.redactPII;
       const piiScan = piiPass
-        ? collectPIIBoxes(root, rootRect, totalH, totalW, sideJobs, inlineJobs) : null;
+        ? collectPIIBoxes(root, rootRect, totalH, totalW, sideJobs, inlineJobs,
+                          settings.redactWalkMs) : null;
       const piiBoxes = piiScan ? piiScan.boxes : null;
 
       // Build scroll positions: rows top→bottom, columns left→right.

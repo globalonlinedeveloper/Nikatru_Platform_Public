@@ -2,16 +2,32 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>giveup — the redaction walk's 1,200 ms budget, on a slow machine</title>
-<!-- THE WALK'S TIME BUDGET (FS_PII_WALK_MS = 1,200).
+<title>giveup — the redaction walk's time budget, pinned so it always runs out</title>
+<!-- THE WALK'S TIME BUDGET (FS_PII_WALK_MS = 1,200 in production).
 
-     A budget in milliseconds is a fact about the machine, not about the page,
-     so the instrument is a slow machine: the driver turns on CDP CPU throttling
-     before the capture. The page supplies work that is expensive PER LEAF
-     rather than merely plentiful — every leaf sits under its own pair of
-     `overflow: hidden` ancestors, which is the one clause of the placement
-     measurement that walks up the tree reading a style and a rect at each step,
-     and the chains are unique so nothing is served from the memo cache.
+     A budget in milliseconds is a fact about the MACHINE, not about the page,
+     so this fixture cannot trip its own giving-up point the way every other
+     one in this directory does. It used to try: the driver put the browser on
+     20x CDP CPU throttling and the page supplied work that is expensive PER
+     LEAF rather than merely plentiful, in the hope that 9,000 leaves would
+     take longer than 1,200 ms. On 2026-08-31 a GitHub runner finished the walk
+     anyway and giveup-verify.mjs went red measuring truncatedBy=null,
+     walkComplete=true - a check whose subject only sometimes happens.
+
+     So the budget is PINNED instead of raced. giveup-verify.mjs sets
+     redactWalkMs: 0 for this shape (see content/capture.js fsPiiWalkBudget),
+     which puts the walk's deadline at its own first instant, and forEachDeep
+     takes the `time` branch at its first deadline check on any machine at any
+     speed. Production sets nothing and still gets 1,200 ms.
+
+     THE PAGE IS UNCHANGED and it still has to be this big. The walk gives up
+     after 512 of its ~9,000 elements, which is what leaves the email at the
+     foot of the document unread - the fact the checks below are about. Every
+     leaf still sits under its own pair of `overflow: hidden` ancestors (the
+     one clause of the placement measurement that walks up the tree reading a
+     style and a rect at each step) with unique chains, so nothing is served
+     from the memo cache and the page remains a genuinely expensive walk rather
+     than a page that merely stops early.
 
      What must be true when the budget runs out:
        walkComplete     false
