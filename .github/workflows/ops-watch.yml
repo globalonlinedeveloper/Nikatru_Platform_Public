@@ -58,9 +58,18 @@ on:
     # scheduled fire had reached ~8h. Densifying does not make GitHub punctual —
     # nothing here can — it raises the number of chances inside the window.
     #
-    # The four slots below fill the two big holes the existing three left: the
-    # 10h40m gap after 08:50 and the 12h gap after 19:30. Worst-case spacing
-    # goes from ~12h to ~3h, which is what actually shortens a freeze.
+    # The slots below fill the holes the original three left: the 10h40m gap
+    # after 08:50 and the 12h gap after 19:30. Worst-case spacing goes from
+    # ~12h to **3h**, which is what actually shortens a freeze.
+    #
+    # ⚠️ THE SPACING IS COMPUTED, NOT EYEBALLED, AND THE FIRST ATTEMPT AT IT WAS
+    # WRONG. The 2026-09-02 change claimed "~3h" while actually leaving a FIVE
+    # hour hole at 19:30->00:30 — the number was asserted from a glance at the
+    # list instead of from the arithmetic. Re-derived by sorting the slots into
+    # minutes-of-day and taking the max circular difference; every gap below is
+    # <= 3h. If you add or move a slot, RUN THAT SUM AGAIN — a schedule whose
+    # claimed spacing is not its real spacing is worse than an honest sparse
+    # one, because the next reader trusts the comment.
     # ⚠️ This costs Actions minutes — 3 scheduled runs a day becomes 7. That is
     # deliberate and it is watched: `assert-runner-budget.mjs` gates MINUTES
     # against a $0.00 ceiling on every run of this very workflow, so the cost of
@@ -71,9 +80,13 @@ on:
     # watcher-of-the-watcher. Until that exists, this is damage limitation and
     # should be described as nothing more.
     - cron: '30 0 * * *' # fills the overnight hole
+    - cron: '30 2 * * *' # ditto
     - cron: '30 4 * * *' # ditto
+    - cron: '0 11 * * *' # fills the 08:50 -> 12:30 hole
     - cron: '30 12 * * *' # fills the 08:50 -> 19:30 hole
     - cron: '30 15 * * *' # ditto
+    - cron: '30 17 * * *' # ditto
+    - cron: '30 22 * * *' # closes the 19:30 -> 00:30 hole, the worst one left
 
 permissions: {}
 
