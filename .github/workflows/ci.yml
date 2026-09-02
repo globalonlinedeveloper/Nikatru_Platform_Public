@@ -72,7 +72,7 @@ jobs:
     # every job wait on a complete toolchain would mean the day one script lands
     # nothing else has been exercised in weeks.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Every gate script these workflows call must exist
         shell: bash
         run: |
@@ -218,9 +218,9 @@ jobs:
       tools: ${{ steps.set.outputs.tools }}
       count: ${{ steps.set.outputs.count }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
 
       # The matrix below is derived, never listed. The failure mode of a derived
@@ -337,8 +337,8 @@ jobs:
     name: Secret scan (full tree)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - run: node scripts/secret-scan.mjs .
 
@@ -350,8 +350,8 @@ jobs:
     name: catalogue
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       # Delete-first. An `up to date` over a file nobody regenerated is the
       # vacuous pass: --check would compare the committed bytes against a
@@ -374,8 +374,8 @@ jobs:
     name: core sims
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
 
       # core/ is vendored into tools, so a regression in it is N outages at
@@ -414,8 +414,8 @@ jobs:
       matrix:
         tool: ${{ fromJSON(needs.discover.outputs.tools) }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: Syntax check every shipped script
         run: node scripts/lint.mjs ${{ matrix.tool }}
@@ -496,8 +496,8 @@ jobs:
         node: ['22', '24']
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ matrix.node }}' }
 
       # Runs exactly the commands in tool.json "tests". No npm install, ever —
@@ -507,7 +507,7 @@ jobs:
 
       - name: Upload pixel-sim output on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: pixels-${{ matrix.tool }}-node${{ matrix.node }}
           path: |
@@ -564,8 +564,8 @@ jobs:
     # the `gates` job. That is still strictly better than a line count, which
     # drifts silently instead of announcing itself in the count.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
 
       - name: Build package
@@ -667,7 +667,7 @@ jobs:
         if: matrix.target == 'firefox' && matrix.os == 'ubuntu-latest'
         run: npx --yes web-ext@8 lint --source-dir dist/unpacked-firefox --warnings-as-errors
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.os == 'ubuntu-latest'
         with:
           name: ${{ matrix.tool }}-${{ matrix.target }}
@@ -780,8 +780,8 @@ jobs:
     # The suite mutates a throwaway tree under os.tmpdir() and points each gate
     # at it with --repo-root, so it writes nothing into the checkout.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: Every gate must be proven to fail on a real mutation
         run: node scripts/test/selftest.node.js
@@ -838,7 +838,7 @@ jobs:
     # is an edit to scripts/lint.mjs, and until it lands an unparsed skeleton is
     # a worse outcome than an inline loop.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # ⚠️ THIS LINE READ `@v4` UNTIL 2026-08-25, AND IT WAS THE LAST ONE THAT
       # DID. 584ba1a ("ci: bump actions/setup-node from 4 to 7 (#1)") converted
       # eight of the nine refs in this file and left this one behind. Measured
@@ -851,7 +851,7 @@ jobs:
       # "Every action is referenced at ONE ref" step in the `gate-inventory` job
       # at the top of this file — the durable half, because fixing one ref
       # without it just resets the clock until the next partial bump.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: Every script under templates/ must parse
         shell: bash
@@ -1003,7 +1003,7 @@ jobs:
       R_TEMPLATES: ${{ needs.templates.result }}
       R_E2E_PROOF_FRESH: ${{ needs.e2e-proof-fresh.result }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Every job in this workflow is accounted for, and every outcome is graded
         shell: bash
         run: |
@@ -1166,8 +1166,8 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with: { node-version: '${{ env.NODE_VERSION }}' }
       - name: The weekly e2e proof must be RECENT, SCHEDULED and GREEN
         env:
