@@ -301,7 +301,12 @@ The rest of the app just reads `c.get('userId')`.
 
 subly-api no longer carries its own cron trigger. The nightly scheduler
 (`0 6 * * *`) is **consolidated into `services/platform`** so the whole
-portfolio shares ONE cron (staying under the 5-cron-triggers/account Free cap):
+portfolio shares one scheduler.
+⚠️ This said *"staying under the 5-cron-triggers/account Free cap"* until
+2026-09-03. The account is on **Workers Paid** — the ceiling is **250 per
+account** ([limits](https://developers.cloudflare.com/workers/platform/limits/)),
+and `services/platform` now declares two crons. Consolidating was forced; it is
+now a choice, kept because one place to look beats a Worker per job:
 
 1. **keepAliveSupabase** — a cheap daily GET to `${SUPABASE_URL}/auth/v1/health`
    (Supabase pauses free-tier projects after ~7 days idle). Platform-wide.

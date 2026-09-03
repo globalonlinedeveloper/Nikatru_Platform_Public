@@ -4,8 +4,15 @@
   //   • GET /config/<app>  — CFG-1 config chassis (KV-backed, edge-cached) with
   //                          compiled-in defaults; DATA/flags, never server UI.
   //   • cron 0 6 * * *     — CONSOLIDATED scheduler for the whole portfolio
-  //                          (Supabase keep-alive + per-app renewals fan-out),
-  //                          staying under the 5-cron-triggers/account Free cap.
+  //                          (Supabase keep-alive + per-app renewals fan-out).
+  //   • cron 0 18 * * *    — the GitHub dispatcher ALONE (see triggers below).
+  //
+  // ⚠️ "staying under the 5-cron-triggers/account Free cap" STOOD HERE UNTIL
+  // 2026-09-03 AND IS NO LONGER TRUE: the account is on Workers Paid, where the
+  // ceiling is 250 cron triggers per account, not 5
+  // (developers.cloudflare.com/workers/platform/limits). Consolidating was
+  // FORCED; it is now a CHOICE, kept because one place to look is worth more
+  // than a Worker per job.
   //
   // Sole applier of platform_db migrations (entitlements). Per-app APP_DBs are
   // bound read/write here ONLY for the renewals fan-out (subly today; add more
