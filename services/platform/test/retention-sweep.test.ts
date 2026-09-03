@@ -407,10 +407,13 @@ describe('the shipped constants and tooling/ops/register.json agree', () => {
 
   it('duty.platform-cron WATCHES this job — otherwise it runs nightly and nothing reads its outcome', () => {
     const cron = register.rows.find((r) => r.id === 'duty.platform-cron') as
-      | { watchedJobs?: string[] }
+      | { watchedJobs?: Record<string, string[]> }
       | undefined;
     expect(cron?.watchedJobs, 'duty.platform-cron declares no watchedJobs').toBeTruthy();
-    expect(cron?.watchedJobs).toContain(RETENTION_SWEEP_JOB);
+    // The map shape landed 2026-09-03: a bare list could only mean "every job
+    // runs on crons[0]", which stopped being true when the Worker gained a
+    // second schedule. The claim here is unchanged — this job is watched.
+    expect(Object.keys(cron?.watchedJobs ?? {})).toContain(RETENTION_SWEEP_JOB);
   });
 
   it.each(stores)('%s — the row NAMES the deleting job, declared or not', (store) => {

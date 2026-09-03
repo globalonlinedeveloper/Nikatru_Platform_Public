@@ -1624,9 +1624,36 @@ export async function dispatchGithubWorkflows(env: Env): Promise<void> {
   await recordHeartbeat(env, rows, GITHUB_DISPATCH_JOB);
 }
 
-export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, env, ctx) => {
+/**
+ * The cron on which THIS WORKER RUNS THE DISPATCHER AND NOTHING ELSE.
+ *
+ * 🔴 THE SECOND FIRING EXISTS TO GIVE THE EVIDENCE MARGIN, NOT TO DO MORE WORK.
+ * Measured over 30.8 days, the workflow it dispatches (ops-watch.yml) had 72
+ * successful SCHEDULED runs — 2.3/day against the 12 slots its cron block
+ * declares — with a MAX GAP of 48.8h and SIX gaps over the 36h freshness window
+ * in one month. A 24h dispatch cadence leaves 12h of margin on that window; 12h
+ * leaves 24h.
+ *
+ * ⛔ AND THE NIGHTLY LIMBS MUST NOT RUN TWICE. `retentionSweep` DELETES, and
+ * `keepAliveSupabase` / `eventsRollup` are shaped around a daily occurrence. So
+ * this firing takes the early return below and the 06:00 one is unchanged.
+ * ⚠️ AN UNRECOGNISED CRON RUNS EVERYTHING, deliberately: the failure that costs
+ * something is skipping the keep-alive that stands between a free-tier Supabase
+ * project and its ~7-day auto-pause, not dispatching a workflow twice. A typo
+ * here therefore degrades to "the sweep runs twice", which
+ * scheduled-crons.test.ts refuses by holding this value against the crons
+ * services/platform/wrangler.jsonc actually declares.
+ */
+export const DISPATCH_ONLY_CRON = '0 18 * * *';
+
+export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
+      // The margin firing: the dispatcher, and nothing else.
+      if (event?.cron === DISPATCH_ONLY_CRON) {
+        await dispatchGithubWorkflows(env);
+        return;
+      }
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
       // [research/76 §C] Phase 1 of the GitHub-scheduler replacement. Placed
