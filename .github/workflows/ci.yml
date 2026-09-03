@@ -135,11 +135,24 @@ jobs:
       #
       # THIS GRADES REF STRINGS, WHICH IS THE RIGHT UNIT HERE AND ONLY HERE.
       # ⚠️ It would report a 40-hex SHA and the tag it points at as a SPLIT,
-      # because it cannot resolve either. That is deliberate and it is not an
-      # invitation to convert this repo to SHA pins: dependabot.yml's own comment
-      # says CI "uses first-party actions only ... referenced by major tag — which
-      # is exactly what Dependabot can keep current", so the float is the written
-      # policy and SHA-pinning it would silently retire the updater.
+      # because it cannot resolve either — so every invocation of one action must
+      # use the SAME ref, whatever that ref is.
+      #
+      # 🔴 THE POLICY THIS COMMENT USED TO STATE IS DEAD, AND IT WAS WRONG IN
+      # BOTH HALVES BY 2026-09-03. It read: "not an invitation to convert this
+      # repo to SHA pins: dependabot.yml's own comment says CI uses first-party
+      # actions referenced by major tag ... so the float is the written policy
+      # and SHA-pinning it would silently retire the updater."
+      #   · Half one died 2026-09-02: every action in this tree WAS converted to
+      #     a full commit SHA (32 of them), after research/76 §D recorded 76 of
+      #     77 tags on one popular action being force-pushed to an infostealer
+      #     in March 2026. A floating major tag is the hole, not the policy.
+      #   · Half two died 2026-09-03: dependabot.yml is retired. Renovate now
+      #     runs here from the sibling repository and `helpers:pinGitHubActionDigests`
+      #     keeps the SHAs current — so pinning does NOT retire the updater, it
+      #     is exactly what the updater is configured to maintain.
+      # Left in full rather than deleted, because the reasoning was sound when
+      # written and the next reader deserves to know WHICH premise expired.
       #
       # ⚠️ WHAT THIS INPUT CLASS CANNOT EXPRESS: an action invoked from a file
       # OUTSIDE .github/workflows — a composite action under .github/actions/, or
@@ -207,7 +220,7 @@ jobs:
           echo
           echo "$actions distinct action(s) invoked; $split of them at more than one ref."
           if [ "$split" -gt 0 ]; then
-            echo "::error::$split action(s) above are invoked at more than one ref. Pick one ref per action and use it everywhere; do NOT resolve the disagreement by pinning a SHA, because dependabot.yml is configured against major tags."
+            echo "::error::$split action(s) above are invoked at more than one ref. Pick ONE ref per action and use it everywhere. Since 2026-09-02 the ref for this repo is a full 40-hex commit SHA, and Renovate's helpers:pinGitHubActionDigests keeps those SHAs current — so pinning is the FIX here, not the thing to avoid. (This message previously said the opposite, citing a dependabot.yml retired on 2026-09-03.)"
             exit 1
           fi
 

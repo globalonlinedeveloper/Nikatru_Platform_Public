@@ -1,0 +1,49 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Added 2026-09-03, REPLACING .github/dependabot.yml, which was retired in the same",
+    "commit. Two update bots on one repository open competing branches for the same",
+    "upgrade, and the resulting noise is what teaches people to stop reading dependency",
+    "PRs -- which costs more than either bot buys.",
+    "",
+    "WHY RENOVATE AND NOT DEPENDABOT. Dependabot here covered `github-actions` ALONE.",
+    "This repository also carries a real npm tree under Extension/Full_Screen_Shot/test/e2e",
+    "(package.json + package-lock.json) that NOTHING was updating. Renovate manages both",
+    "ecosystems from one config, and the sibling repository already runs it, so there is one",
+    "tool and one dashboard across the pipeline instead of two of each.",
+    "",
+    "🔴 AND IT IS WHAT MAKES THE PINNING SUSTAINABLE. 32 actions in this tree are pinned to",
+    "full commit SHAs (2026-09-02, after research/76 §D recorded 76 of 77 tags on one popular",
+    "action being force-pushed to an infostealer in March 2026). Every pin STOPS RECEIVING",
+    "SECURITY FIXES the moment it is applied. `helpers:pinGitHubActionDigests` is the half",
+    "that keeps them current -- without it the pins rot and this tree ends up LESS safe than",
+    "before they were added.",
+    "",
+    "⚠️ Renovate runs here from the SIBLING repository: Nikatru_Platform_Public's",
+    ".github/workflows/renovate.yml names both repos in RENOVATE_REPOSITORIES. There is no",
+    "workflow in THIS repo and there should not be a second one -- one schedule, one token,",
+    "one place to look when it stops. This file decides WHAT changes here; that workflow",
+    "decides WHEN and WHERE Renovate runs."
+  ],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Asia/Kolkata",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "automerge": false,
+  "dependencyDashboard": true,
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "branchPrefix": "chore/renovate-",
+  "commitMessagePrefix": "ci:",
+  "vulnerabilityAlerts": {
+    "description": "Security fixes bypass the weekly window entirely, the same posture as the sibling repository.",
+    "schedule": []
+  }
+}

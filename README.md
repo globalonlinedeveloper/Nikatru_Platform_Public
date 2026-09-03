@@ -28,7 +28,7 @@ core/                 the shared runtime, copied into a tool as vendor/core/ (MP
 scripts/              the repo-level gates and the scaffolder — lint, policy-check,
                         check-version, discover, new-tool, gen-catalog, sync-core
 docs/                 architecture, core policy, releasing, the store playbook
-.github/              CI workflows, issue forms, dependabot
+.github/              CI workflows, issue forms, renovate
 .githooks/            the pre-commit credential gate — git installs nothing, you do
 ```
 
