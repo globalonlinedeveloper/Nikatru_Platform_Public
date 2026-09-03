@@ -374,6 +374,34 @@ export function deriveWatchedJobs(root) {
       problems.push(`COVERAGE LOST — ${cfgRel} declares no \`triggers.crons\`, but ${row.id} says it is a cron duty. The register and the config disagree about whether the job exists at all.`);
       continue;
     }
+    // 🔴 EXACTLY ONE CRON, OR THIS READER SAYS SO RATHER THAN PICKING. Every
+    // line below computes "was the run that was due missed?" from `crons[0]`
+    // and silently ignores the rest. That is correct while a cloudflare-cron
+    // duty has one schedule — which is true today and is WHY the platform
+    // Worker's own header calls it "the CONSOLIDATED scheduler for the whole
+    // portfolio" — but it is an assumption nothing was checking.
+    //
+    // ⚠️ THE FAILURE IT PREVENTS IS CONCRETE AND WAS ABOUT TO BE WRITTEN.
+    // research/76 §C's Phase 2 wants the dispatcher to fire MORE OFTEN than the
+    // nightly limbs, because a 24h cadence against a 36h window leaves 12h of
+    // margin and the measured GitHub gap it replaces reached 48.8h. The obvious
+    // way to do that is a second `triggers.crons` entry — at which point every
+    // job's expected occurrence would still be computed from the FIRST one, and
+    // a job that only runs on the second would be judged against a schedule it
+    // does not keep. No line would change and no test would fail.
+    //
+    // So: more than one, and the reader refuses until the register can say which
+    // cron governs which job. Failing closed on an ambiguity is this file's own
+    // rule — "I could not tell" must never read as "it is fine".
+    if (crons.length > 1) {
+      problems.push(
+        `COVERAGE LOST — ${cfgRel} declares ${crons.length} cron expressions (${crons.join(', ')}) and this reader ` +
+          "computes every job's expected occurrence from the FIRST one alone. A job that runs on any other " +
+          'schedule would be judged against one it does not keep, silently. Teach the register which cron ' +
+          'governs which job before adding a second, or this limb is asserting about a schedule it invented.',
+      );
+      continue;
+    }
     // BOTH parsers must accept the expression, and they are checked against each
     // other here rather than trusted to stay in step. They are separate functions
     // over the same narrow grammar, so the failure that matters is one of them
