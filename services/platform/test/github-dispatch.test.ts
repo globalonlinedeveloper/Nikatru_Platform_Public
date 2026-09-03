@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   dispatchGithubWorkflows,
+  DISPATCHER_TARGET,
   GITHUB_DISPATCH_JOB,
   GITHUB_DISPATCH_TARGETS,
 } from '../src/scheduled';
@@ -39,6 +40,16 @@ const envWith = (db: ReturnType<typeof realPlatformDb>, token?: string) =>
 
 const rows = (db: ReturnType<typeof realPlatformDb>) =>
   db.rows(`SELECT * FROM cron_heartbeat WHERE job = '${GITHUB_DISPATCH_JOB}' ORDER BY target`);
+
+/** The rows for WORKFLOWS, excluding the dispatcher's own liveness row.
+ *  🔴 THE TWO ARE DIFFERENT CLAIMS: `(dispatcher)` says the timer ran, a target
+ *  row says that workflow was fired. Splitting them is what lets the dispatcher
+ *  run every 6h while a target keeps its own interval — see DISPATCHER_TARGET. */
+const workflowRows = (db: ReturnType<typeof realPlatformDb>) =>
+  rows(db).filter((r) => r.target !== DISPATCHER_TARGET);
+
+const dispatcherRow = (db: ReturnType<typeof realPlatformDb>) =>
+  rows(db).find((r) => r.target === DISPATCHER_TARGET);
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -118,8 +129,11 @@ describe('a dispatch that is accepted', () => {
     const db = realPlatformDb();
     stubFetch(204);
     await dispatchGithubWorkflows(envWith(db, 'tok'));
-    const out = rows(db);
+    const out = workflowRows(db);
     expect(out).toHaveLength(GITHUB_DISPATCH_TARGETS.length);
+    // …and the dispatcher's OWN row, always, saying what the run did.
+    expect(dispatcherRow(db)?.ok).toBe(1);
+    expect(String(dispatcherRow(db)?.detail)).toMatch(/fired=\d+ skipped=\d+/);
     // Rows come back ORDERED BY target, which is not the order of the target
     // list — so every assertion here is per-target rather than positional. The
     // first draft indexed `[0]` and started failing the moment a second target
@@ -162,8 +176,8 @@ describe('a dispatch that is accepted', () => {
     // 200 here means something answered that is not the dispatch endpoint
     // behaving as documented. Calling it a run would be the `status < 500` bug
     // the keep-alive header records, one endpoint over.
-    expect(rows(db)[0].ok).toBe(0);
-    expect(String(rows(db)[0].detail)).toContain('HTTP 200');
+    expect(workflowRows(db)[0].ok).toBe(0);
+    expect(String(workflowRows(db)[0].detail)).toContain('HTTP 200');
   });
 });
 
@@ -231,16 +245,20 @@ describe('🔴 the token never leaves the fetch — the mitigation for a broadly
 });
 
 describe('every way it can fail still leaves a row', () => {
-  it('no token configured — one ok=0 row per target, naming the missing secret, and NO request made', async () => {
+  it('no token configured — ONE ok=0 row, from the dispatcher, and NO request made', async () => {
     const db = realPlatformDb();
     const seen = stubFetch(204);
     await dispatchGithubWorkflows(envWith(db, undefined));
+    // 🔴 ONE ROW, NOT ONE PER TARGET, and the change is a claim about honesty
+    // rather than tidiness: with no credential nothing was attempted, so a row
+    // per workflow would report on firings that never happened. The dispatcher's
+    // own row is the whole of what is known.
     const out = rows(db);
-    expect(out).toHaveLength(GITHUB_DISPATCH_TARGETS.length);
-    for (const r of out) {
-      expect(r.ok).toBe(0);
-      expect(String(r.detail)).toContain('GITHUB_DISPATCH_TOKEN');
-    }
+    expect(out).toHaveLength(1);
+    expect(out[0].target).toBe(DISPATCHER_TARGET);
+    expect(out[0].ok).toBe(0);
+    expect(String(out[0].detail)).toContain('GITHUB_DISPATCH_TOKEN');
+    expect(workflowRows(db)).toHaveLength(0);
     // A fail-closed seam must not also be a silent one: it records, and it does
     // not fire a credential-less request that would 401 and confuse the record.
     expect(seen).toHaveLength(0);
@@ -250,9 +268,9 @@ describe('every way it can fail still leaves a row', () => {
     const db = realPlatformDb();
     stubFetch(404);
     await dispatchGithubWorkflows(envWith(db, 'tok'));
-    expect(rows(db)[0].ok).toBe(0);
-    expect(String(rows(db)[0].detail)).toContain('HTTP 404');
-    expect(String(rows(db)[0].detail)).toMatch(/token cannot see/);
+    expect(workflowRows(db)[0].ok).toBe(0);
+    expect(String(workflowRows(db)[0].detail)).toContain('HTTP 404');
+    expect(String(workflowRows(db)[0].detail)).toMatch(/token cannot see/);
   });
 
   it('a network error is ok=0, not an exception that swallows the whole cron', async () => {
@@ -261,8 +279,8 @@ describe('every way it can fail still leaves a row', () => {
     // 🔴 It must not throw: this limb runs inside the same `waitUntil` chain as
     // the retention sweep, and an escaping error would take the rest with it.
     await expect(dispatchGithubWorkflows(envWith(db, 'tok'))).resolves.toBeUndefined();
-    expect(rows(db)[0].ok).toBe(0);
-    expect(String(rows(db)[0].detail)).toContain('request failed');
+    expect(workflowRows(db)[0].ok).toBe(0);
+    expect(String(workflowRows(db)[0].detail)).toContain('request failed');
   });
 
   it('an abort (the 10s bound) lands on the same failing path as any other error', async () => {
@@ -271,15 +289,15 @@ describe('every way it can fail still leaves a row', () => {
     abort.name = 'AbortError';
     stubFetch(abort);
     await dispatchGithubWorkflows(envWith(db, 'tok'));
-    expect(rows(db)[0].ok).toBe(0);
-    expect(String(rows(db)[0].detail)).toContain('request failed');
+    expect(workflowRows(db)[0].ok).toBe(0);
+    expect(String(workflowRows(db)[0].detail)).toContain('request failed');
   });
 
   it('the detail is truncated to what the column takes, so a huge error cannot break the write', async () => {
     const db = realPlatformDb();
     stubFetch(new Error('x'.repeat(5000)));
     await dispatchGithubWorkflows(envWith(db, 'tok'));
-    expect(String(rows(db)[0].detail).length).toBeLessThanOrEqual(200);
-    expect(rows(db)[0].ok).toBe(0);
+    expect(String(workflowRows(db)[0].detail).length).toBeLessThanOrEqual(200);
+    expect(workflowRows(db)[0].ok).toBe(0);
   });
 });

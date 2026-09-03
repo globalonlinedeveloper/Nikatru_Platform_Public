@@ -181,19 +181,28 @@
   "triggers": {
     // ONE nightly cron for the whole portfolio (06:00 UTC).
     "crons": [
+      // 🔴 FOUR FIRINGS, SIX HOURS APART, AND ONLY ONE OF THEM IS THE NIGHTLY
+      // HANDLER. `0 6 * * *` runs everything; the other three run the GitHub
+      // dispatcher alone (src/scheduled.ts branches on `event.cron`), so
+      // `retentionSweep` — the one limb that DESTROYS anything — still fires
+      // once a day.
+      //
+      // ⚠️ WHY FOUR EXPRESSIONS RATHER THAN ONE HOURLY ONE. The reader that
+      // judges these (tooling/ops/check-heartbeats.mjs) accepts a deliberately
+      // narrow grammar: literal minute AND hour. `0 * * * *` and `0 0,6 * * *`
+      // are both REFUSED — measured, not assumed. Widening that parser is a
+      // change to the thing every freshness verdict rests on, and its own header
+      // warns that both parsers must move together. Four literal expressions
+      // need no such change and cost 4 of the 250 cron triggers Workers Paid
+      // allows (it was 5 on Free, which is why this file used to say "ONE cron").
+      //
+      // The margin this buys, measured: the schedule it replaces (ops-watch's
+      // own 12 slots) delivered 2.3 successful runs/day with a MAX GAP of 48.8h
+      // against a 36h freshness window — six breaches in one month. A 6h cadence
+      // leaves 30h of margin on that window.
+      "0 0 * * *",
       "0 6 * * *",
-      // 🔴 THE DISPATCHER'S SECOND FIRING, ADDED 2026-09-03, AND IT RUNS THE
-      // DISPATCHER ALONE. src/scheduled.ts branches on `event.cron`: at 18:00
-      // only `dispatchGithubWorkflows` runs, so the retention sweep — the one
-      // limb that DESTROYS anything — still fires once a day and not twice.
-      // ⚠️ WHY A SECOND FIRING AT ALL, measured rather than assumed: over 30.8
-      // days the workflow this dispatches (ops-watch.yml) had 72 successful
-      // SCHEDULED runs — 2.3/day against the 12 slots its cron block declares —
-      // with a MAX GAP of 48.8h and SIX gaps over the 36h freshness window in
-      // one month. A 24h dispatch cadence leaves 12h of margin on that window;
-      // 12h leaves 24h. tooling/ops/register.json's `watchedJobs` map says which
-      // jobs keep which cron, and check-heartbeats.mjs refuses a cron no job
-      // claims — so this line cannot be added without saying what watches it.
+      "0 12 * * *",
       "0 18 * * *"
     ]
   },

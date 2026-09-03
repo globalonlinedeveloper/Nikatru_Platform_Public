@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import wranglerRaw from '../wrangler.jsonc?raw';
 import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
-import { scheduled, DISPATCH_ONLY_CRON, GITHUB_DISPATCH_JOB } from '../src/scheduled';
+import { scheduled, NIGHTLY_CRON, DISPATCHER_TARGET, GITHUB_DISPATCH_JOB } from '../src/scheduled';
 import { realPlatformDb } from './harness';
 import type { Env } from '../src/types';
 
@@ -55,28 +55,42 @@ const WATCHED = (() => {
   return (reg.rows ?? []).find((r) => r.mechanism?.substrate === 'cloudflare-cron')?.watchedJobs ?? {};
 })();
 
-describe('the dispatch-only cron is a real one, and not the nightly one', () => {
-  it('DISPATCH_ONLY_CRON is a cron the deployed config actually declares', () => {
-    // 🔴 THE TYPO CASE. A value that matches no declared cron makes the early
-    // return unreachable, every firing runs the full handler, and the retention
-    // sweep runs TWICE A DAY — with both runs green and nothing to see.
-    expect(CRONS).toContain(DISPATCH_ONLY_CRON);
+describe('the nightly cron is a real one, and the others are margin firings', () => {
+  it('🔴 NIGHTLY_CRON is a cron the deployed config actually declares', () => {
+    // THE TYPO CASE, and it inverted when the constant did. It used to be "a
+    // value matching no cron makes the early return unreachable, so the sweep
+    // runs twice a day". Now the branch is `cron !== NIGHTLY_CRON`, so a typo
+    // means NO firing runs the nightly limbs — the keep-alive stops, and a
+    // free-tier Supabase project drifts toward its ~7-day auto-pause with every
+    // heartbeat green. Strictly worse, and this is the case that catches it.
+    expect(CRONS).toContain(NIGHTLY_CRON);
   });
 
-  it('it is NOT the first cron — the first is the full nightly handler', () => {
+  it('there is exactly ONE nightly cron and at least one margin firing', () => {
     expect(CRONS.length).toBeGreaterThan(1);
-    expect(CRONS[0]).not.toBe(DISPATCH_ONLY_CRON);
+    expect(CRONS.filter((c) => c === NIGHTLY_CRON)).toHaveLength(1);
   });
 
-  it('the register says the dispatcher keeps BOTH crons and every other job keeps one', () => {
+  it('the register says the dispatcher keeps EVERY cron and every other job keeps only the nightly one', () => {
     // The other direction of the same fact. check-heartbeats.mjs judges a job
     // against the crons named here, so a job whose real schedule and declared
-    // schedule disagree is measured against one it does not keep.
+    // schedule disagree is measured against one it does not keep. The nightly
+    // jobs run on ONE firing; the dispatcher runs on all of them.
     expect(WATCHED[GITHUB_DISPATCH_JOB]).toEqual(CRONS);
     for (const [job, jobCrons] of Object.entries(WATCHED)) {
       if (job === GITHUB_DISPATCH_JOB) continue;
-      expect(jobCrons, `${job} must keep only the nightly cron`).toEqual([CRONS[0]]);
+      expect(jobCrons, `${job} must keep only the nightly cron`).toEqual([NIGHTLY_CRON]);
     }
+  });
+
+  it('every margin cron is 6h apart from its neighbours — the margin is derived, not guessed', () => {
+    // A number with no derivation is a number somebody guessed. The window these
+    // firings feed is 36h (1d cadence x 1.5), and the schedule they replace had
+    // a MEASURED max gap of 48.8h. Even spacing is what turns "four crons" into
+    // "at most 6h stale".
+    const hours = CRONS.map((c) => Number(c.split(/\s+/)[1])).sort((a, b) => a - b);
+    const gaps = hours.map((h, i) => (i === 0 ? h + 24 - hours[hours.length - 1] : h - hours[i - 1]));
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(6);
   });
 });
 
@@ -98,23 +112,32 @@ async function runScheduled(cron: string | undefined) {
 }
 
 describe('which limbs run is decided by which cron fired', () => {
-  it('🔴 the 18:00 firing writes ONLY the dispatcher — the sweep does not run twice a day', async () => {
-    expect(await runScheduled(DISPATCH_ONLY_CRON)).toEqual([GITHUB_DISPATCH_JOB]);
+  it('🔴 EVERY margin firing writes ONLY the dispatcher — the sweep does not run four times a day', async () => {
+    for (const c of CRONS.filter((x) => x !== NIGHTLY_CRON)) {
+      expect(await runScheduled(c), `margin cron ${c}`).toEqual([GITHUB_DISPATCH_JOB]);
+    }
   });
 
   it('the nightly firing still writes every watched job', async () => {
-    const jobs = await runScheduled(CRONS[0]);
+    const jobs = await runScheduled(NIGHTLY_CRON);
     expect(jobs.sort()).toEqual(Object.keys(WATCHED).sort());
   });
 
-  it('⚠️ an UNRECOGNISED cron runs everything — the fail-safe direction is stated, not assumed', async () => {
-    // Skipping the keep-alive that stands between a free-tier Supabase project
-    // and its ~7-day auto-pause costs more than dispatching a workflow twice, so
-    // an unknown value degrades to "does all the work" rather than "does none".
-    expect((await runScheduled('7 7 7 7 7')).sort()).toEqual(Object.keys(WATCHED).sort());
+  it('⚠️ an UNRECOGNISED cron runs the DISPATCHER ONLY — and that inverted on 2026-09-03', async () => {
+    // 🔴 IT USED TO RUN EVERYTHING, and that was right with ONE margin firing.
+    // With four, the same default would run the retention sweep FOUR TIMES A DAY
+    // if NIGHTLY_CRON were ever mistyped — every run green, nothing to see.
+    // The risk moved rather than vanished (a typo now means the nightly limbs
+    // never run), and THAT risk has a test: `NIGHTLY_CRON is a cron the deployed
+    // config actually declares`. The old direction had no such check available.
+    expect(await runScheduled('7 7 7 7 7')).toEqual([GITHUB_DISPATCH_JOB]);
   });
 
-  it('a firing with NO cron at all also runs everything', async () => {
+  it('a firing with NO cron at all still runs everything — only a STRING can be a margin firing', async () => {
+    // `event.cron` absent is not "some other schedule", it is "no schedule was
+    // reported" — a local invocation, a test double, a runtime that stopped
+    // sending it. Running the full handler is the safe reading of that, and it
+    // is why the branch tests `typeof === 'string'` before comparing.
     expect((await runScheduled(undefined)).sort()).toEqual(Object.keys(WATCHED).sort());
   });
 });
