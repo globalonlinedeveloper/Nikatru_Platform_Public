@@ -144,6 +144,7 @@
   "vendor-portability.test.mjs": 29,
   "walks-bounded.test.mjs": 42,
   "web-cache-policy.test.mjs": 40,
+  "web-sourcemaps.test.mjs": 18,
   "windows-signing.test.mjs": 73,
   "windows-store-submission.test.mjs": 20,
   "worker-error-sink.test.mjs": 18,

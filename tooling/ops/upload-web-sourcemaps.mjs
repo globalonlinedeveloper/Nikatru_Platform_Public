@@ -84,20 +84,65 @@ import { deflateRawSync, gzipSync } from 'node:zlib';
 const SOURCE_EXT = /\.(?:js|cjs|mjs)$/;
 const MAP_EXT = /\.map$/;
 
+class Fatal extends Error {}
+
 const die = (msg) => {
   console.error(`::error title=source maps::${msg}`);
   console.error(`\nupload-web-sourcemaps: FAILED — ${msg}`);
-  process.exit(1);
+  throw new Fatal(msg);
 };
 
+// 🔴 `process.exit()` IS NOT WHAT ENDS THIS SCRIPT, AND THAT IS THE POINT.
+// `die` used to call it. Called from the SYNC phase that is harmless; called
+// after the multipart chunk POST — while undici still holds the socket — it
+// aborts inside libuv on Windows:
+//
+//     Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c:94
+//
+// and the process leaves with 0xC0000409 (3221226505) instead of the 1 the
+// script chose. A CRASH WHERE A REFUSAL WAS INTENDED is the exact shape of
+// failure this whole file exists to stop reporting, and the two assemble
+// refusals — `state: error` and `state: not_found` — are both on that side of
+// the first POST. Measured on 2026-09-03 by the negative test, which asserts
+// the code is 1 and nothing else.
+//
+// So `die` throws and the loop is left to drain the sockets on its own. That it
+// DOES drain, rather than hanging on a keep-alive socket, is measured by the
+// same test: every failing protocol case terminates.
+process.on('uncaughtException', (err) => {
+  process.exitCode = 1;
+  // A Fatal has already printed the reason a human should read. Anything else
+  // is a bug or an unreachable host, and its stack is the only thing that will
+  // explain it — printing it here rather than letting Node's default handler
+  // abort keeps the exit code ours in both cases.
+  if (!(err instanceof Fatal)) console.error(err);
+});
+
 // ── argv ─────────────────────────────────────────────────────────────────────
+// ⚠️ FLAGS THAT TAKE NO VALUE MUST BE DECLARED, or they silently eat the next
+// argument. `--dry-run` written last bound `undefined`, so the dry-run branch
+// (`!== undefined`) never fired and the script UPLOADED; written anywhere else
+// it swallowed the option after it. A flag that does the opposite of what it
+// says, quietly, on a script whose job is to refuse quiet successes.
+const NO_VALUE = new Set(['dry-run']);
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 1) {
   const a = process.argv[i];
   if (!a.startsWith('--')) die(`unexpected argument "${a}"`);
   const eq = a.indexOf('=');
-  if (eq > -1) args.set(a.slice(2, eq), a.slice(eq + 1));
-  else args.set(a.slice(2), process.argv[(i += 1)]);
+  if (eq > -1) {
+    args.set(a.slice(2, eq), a.slice(eq + 1));
+    continue;
+  }
+  const key = a.slice(2);
+  if (NO_VALUE.has(key)) {
+    args.set(key, 'yes');
+    continue;
+  }
+  const value = process.argv[i + 1];
+  if (value === undefined || value.startsWith('--')) die(`--${key} needs a value, and none followed it`);
+  args.set(key, value);
+  i += 1;
 }
 const opt = (k) => {
   const v = args.get(k);
