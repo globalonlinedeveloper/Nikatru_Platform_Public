@@ -133,6 +133,7 @@ import {
   classifyScheduledTaskRow,
   formatTaskResult,
   classifyGlitchtipChecks,
+  classifyRunHistoryAnswer,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1993,7 +1994,7 @@ describe('assert-ops-register — HOSTNAMES ARE DELEGATED, and the delegation ca
         record: 'GitHub Actions run history, filtered to event = schedule',
         failingValue: 'conclusion = failure on event = schedule',
         readBy: 'this guard, by querying the run history',
-        recordQuery: { reader: 'github-run-history', workflow: 'ci.yml', event: 'schedule' },
+        recordQuery: { reader: 'github-run-history', workflow: 'ci.yml', event: 'schedule', headBranch: 'main' },
       },
       // [14]O-10 wants an IN-TREE freshness reader or a written gap. This
       // fixture root has no guards in it, so the gap is the honest answer — and
@@ -2784,6 +2785,83 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
       // is narrower and is the one that matters — the committed value is legal.
       const mine = limbErrors(REAL()).filter((e) => /firstDue/.test(e));
       assert.deepEqual(mine, [], 'the committed firstDue must be legal: ' + mine.join(' | '));
+    });
+  });
+
+  // ── the BRANCH half of a run-history read ───────────────────────────────
+  // Added 2026-09-03. Today every row pairs `headBranch` with `event: schedule`
+  // and GitHub fires schedules only on the default branch, so none of this
+  // changes a verdict — which is exactly why the cases exist: the guarantee is
+  // real, implied, and would vanish silently the day Phase 2 widens the event
+  // filter. These are what make it survive that edit.
+  describe('recordQuery.headBranch — the guarantee that was only ever implied', () => {
+    const Q = { workflow: 'e2e.yml', event: 'schedule', headBranch: 'main' };
+    const run = (over = {}) => ({ id: 7, updated_at: '2026-09-03T04:00:00Z', head_branch: 'main', ...over });
+
+    test('a run on the named branch is accepted, and the branch is IN the detail', () => {
+      const r = classifyRunHistoryAnswer(Q, run(), 'owner/repo');
+      assert.equal(r.lastSuccessMs, Date.parse('2026-09-03T04:00:00Z'));
+      assert.match(r.detail, /on main/, 'a reader must be able to see which branch the verdict is about');
+    });
+
+    test('🔴 A RUN ON ANOTHER BRANCH IS REFUSED — the API filter is a REQUEST, this is the ANSWER', () => {
+      // The case that matters: a `branch=` parameter silently ignored by a future
+      // API version would widen this guard with nothing to notice it. Checking
+      // what came BACK is the difference between asking and knowing.
+      const r = classifyRunHistoryAnswer(Q, run({ head_branch: 'feat/something' }), 'owner/repo');
+      assert.ok(Number.isNaN(r.lastSuccessMs), 'a run from another branch must not satisfy a claim about main');
+      assert.match(r.detail, /branch filter did not hold/);
+      assert.match(r.detail, /feat.something/, 'the branch that came back must be named, or nobody can debug it');
+    });
+
+    test('a missing head_branch is refused too — absent is not "probably main"', () => {
+      const r = classifyRunHistoryAnswer(Q, run({ head_branch: undefined }), 'owner/repo');
+      assert.ok(Number.isNaN(r.lastSuccessMs));
+      assert.match(r.detail, /branch filter did not hold/);
+    });
+
+    test('with NO headBranch declared the answer is unchanged — the field is opt-in at this layer', () => {
+      const { headBranch, ...noBranch } = Q;
+      const r = classifyRunHistoryAnswer(noBranch, run({ head_branch: 'anything' }), 'owner/repo');
+      assert.equal(r.lastSuccessMs, Date.parse('2026-09-03T04:00:00Z'));
+      assert.doesNotMatch(r.detail, / on /);
+    });
+
+    test('an empty history says so, and names the branch it looked on', () => {
+      const r = classifyRunHistoryAnswer(Q, undefined, 'owner/repo');
+      assert.ok(Number.isNaN(r.lastSuccessMs));
+      assert.match(r.detail, /NO successful/);
+      assert.match(r.detail, /on main/);
+    });
+
+    // ── and the SCHEMA half: the field cannot be dropped, and cannot be put
+    //    where nothing would apply it.
+    test('🔴 the schema REFUSES a github-run-history row with no headBranch — this is the ratchet', () => {
+      const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+      const row = reg.rows.find((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history');
+      assert.ok(row, 'no committed row reads run history, so this ratchet would be vacuous');
+      delete row.mechanism.recordQuery.headBranch;
+      const errs = evaluateRunRecords(reg, new Map(), Date.now()).errors ?? [];
+      assert.ok(errs.some((e) => /with no `headBranch`/.test(e)), 'dropping headBranch must fail; got: ' + errs.join(' | '));
+    });
+
+    test('the schema refuses headBranch on a reader that reads no run history', () => {
+      const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+      const row = reg.rows.find((r) => {
+        const q = r?.mechanism?.recordQuery;
+        return q && q.reader !== 'github-run-history' && q.reader !== 'unreachable';
+      });
+      assert.ok(row, 'no committed row uses another readable reader');
+      row.mechanism.recordQuery.headBranch = 'main';
+      const errs = evaluateRunRecords(reg, new Map(), Date.now()).errors ?? [];
+      assert.ok(errs.some((e) => /which reads no run history/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('EVERY committed run-history row names a branch — the guarantee is total, not sampled', () => {
+      const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+      const rows = reg.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history');
+      assert.ok(rows.length >= 5, `expected the five workflow rows and Renovate; found ${rows.length}`);
+      for (const r of rows) assert.equal(r.mechanism.recordQuery.headBranch, 'main', r.id);
     });
   });
 

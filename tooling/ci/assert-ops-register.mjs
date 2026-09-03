@@ -591,6 +591,33 @@ export function evaluateRunRecords(reg, probes, nowMs) {
     // window (a 7d duty can be ungated for at most 7d x 1.5, never longer), and
     // it may not coexist with a `lastObserved` that already saw a PASS, because a
     // record that has held a success is past its bootstrap by definition.
+    // 🔴 REQUIRED ON EVERY RUN-HISTORY READ, ADDED 2026-09-03, AND THE POINT IS
+    // THE RATCHET RATHER THAN TODAY'S VERDICT. Paired with `event: schedule`
+    // this changes nothing — GitHub fires schedules only on the default branch.
+    // But that makes the branch guarantee a property of GITHUB'S BEHAVIOUR, not
+    // of this register, and research/76 §C's Phase 2 must eventually widen the
+    // event filter to accept a Worker's dispatch. On the day it does, an implied
+    // guarantee vanishes with nothing to delete and no test to fail: a run built
+    // from any branch would satisfy a freshness claim about main.
+    // assert-platform-proof-fresh.mjs:128 states the coupling outright — "GitHub
+    // fires schedules only on the default branch, so the branch filter was never
+    // what made freshness a claim about main." Requiring it HERE means the
+    // widening cannot happen quietly, because the field it would have to remove
+    // is one this limb refuses to be without.
+    if (q.reader === 'github-run-history' && !nonEmpty(q.headBranch)) {
+      errors.push(
+        `${r.id} — \`recordQuery.reader: "github-run-history"\` with no \`headBranch\`. A run-history read is a ` +
+          'claim about a BRANCH as well as a timer, and right now that half is true only because GitHub fires ' +
+          'schedules on the default branch alone. Name the branch, so widening the event filter cannot drop the ' +
+          'guarantee silently.',
+      );
+    }
+    if (q.headBranch !== undefined && q.reader !== 'github-run-history') {
+      errors.push(
+        `${r.id} — \`recordQuery.headBranch\` on reader \`${q.reader}\`, which reads no run history. Nothing ` +
+          'would apply it, so it would read as a guarantee this row does not actually make.',
+      );
+    }
     if (q.firstDue !== undefined) {
       const dueMs = typeof q.firstDue === 'string' ? Date.parse(q.firstDue) : NaN;
       const days = cadenceDays(r.cadence);
@@ -2066,20 +2093,48 @@ function probeWindowsTasks(names) {
  *  a workflow_dispatch green run proves somebody pressed a button, which is the
  *  opposite of what a cadence claim means. Same distinction
  *  assert-e2e-proof-fresh.mjs makes, for the same reason. */
-async function probeGithubRun(q, repo) {
-  const ev = q.event ? `event=${encodeURIComponent(q.event)}&` : '';
-  const body = await ghJson(`/repos/${repo}/actions/workflows/${encodeURIComponent(q.workflow)}/runs?${ev}status=success&per_page=1`);
-  const newest = body?.workflow_runs?.[0];
+/** PURE. Turns ONE run-history answer into a probe result, so every branch of
+ *  the verdict is reachable from a test without a network — the same shell/pure
+ *  split `probeGlitchtipHeartbeat` / `classifyGlitchtipChecks` already uses.
+ *  `probeGithubRun` below is the impure shell and holds no verdict logic. */
+export function classifyRunHistoryAnswer(q, newest, repo) {
+  const on = q.headBranch ? ` on ${q.headBranch}` : '';
   if (!newest) {
     return {
       lastSuccessMs: NaN,
-      detail: `${repo} has NO successful \`${q.event ?? 'any'}\` run of ${q.workflow} in its run history at all.`,
+      detail: `${repo} has NO successful \`${q.event ?? 'any'}\` run of ${q.workflow}${on} in its run history at all.`,
+    };
+  }
+  // 🔴 THE FILTER IS THE REQUEST; THIS IS THE ANSWER, CHECKED. A query parameter
+  // silently ignored by a future API version would widen this guard with nothing
+  // to notice — the same reason the ceiling keys in this file are asserted rather
+  // than trusted. `branch=` is a request; `head_branch` is what came back.
+  if (q.headBranch && newest.head_branch !== q.headBranch) {
+    return {
+      lastSuccessMs: NaN,
+      detail:
+        `${repo} answered with run ${newest.id} on branch ${JSON.stringify(newest.head_branch ?? null)} for a query ` +
+        `that asked for ${JSON.stringify(q.headBranch)}. The branch filter did not hold, so no verdict about ` +
+        `${q.headBranch} is available.`,
     };
   }
   return {
     lastSuccessMs: Date.parse(newest.updated_at),
-    detail: `run ${newest.id} (${q.event ?? 'any'}) succeeded at ${newest.updated_at}.`,
+    detail: `run ${newest.id} (${q.event ?? 'any'}${on}) succeeded at ${newest.updated_at}.`,
   };
+}
+
+/** The newest SUCCESSFUL run for the declared event AND branch. `event=schedule`
+ *  matters: a workflow_dispatch green run proves somebody pressed a button, which
+ *  is the opposite of what a cadence claim means. `branch` matters for a reason
+ *  that is currently INVISIBLE — see the schema limb above. The impure shell only. */
+async function probeGithubRun(q, repo) {
+  const ev = q.event ? `event=${encodeURIComponent(q.event)}&` : '';
+  const br = q.headBranch ? `branch=${encodeURIComponent(q.headBranch)}&` : '';
+  const body = await ghJson(
+    `/repos/${repo}/actions/workflows/${encodeURIComponent(q.workflow)}/runs?${ev}${br}status=success&per_page=1`,
+  );
+  return classifyRunHistoryAnswer(q, body?.workflow_runs?.[0], repo);
 }
 
 /** duty.renovate's record is the Dependency Dashboard issue: Renovate rewrites
