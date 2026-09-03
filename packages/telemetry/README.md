@@ -50,10 +50,35 @@ final telemetry = await TelemetryBootstrap.init(
     dsn: cfg.glitchtipDsn, // '' => NoOpTelemetryClient
     release: cfg.release,
     environment: cfg.env,
+    dist: AppConfig.releaseChannel, // '' => no dist is sent at all
   ),
   appRunner: () async => runApp(const App()),
 );
 ```
+
+### `dist`, and what it is actually for
+
+`dist` is the build VARIANT of `release`: the same commit built for `web` and
+for `windows-store` produces two artifacts that differ in nothing else. The apps
+pass `AppConfig.releaseChannel`, so the value is the compile-time
+`RELEASE_CHANNEL` define and every value it can take already resolves to a row
+in `tooling/channel-register.json`.
+
+⚠️ **It is metadata, not the lookup key on this backend, and the difference is
+worth knowing before you debug a failed symbolication.** GlitchTip resolves a
+minified web stack trace against a `DebugSymbolBundle`, which is keyed on
+`(organization, debug_id)` or on `(release, file name)` - there is no `dist`
+column, and `apps/files/assemble.py` carries the line *"Sentry OSS would add
+dist to release here"* over nothing (read from glitchtip-backend on 2026-09-03).
+So `dist` is sent because it is correct Sentry-protocol metadata and costs
+nothing; what actually makes the trace readable is
+`.github/workflows/deploy-web.yml` uploading the maps, via
+`tooling/ops/upload-web-sourcemaps.mjs`.
+
+⚠️ **Empty means "no variant declared" and the SDK then sends nothing.** An
+empty `dist` is not the absence of one - it is a value that matches no uploaded
+bundle, so `TelemetryBootstrap` sets `options.dist` only when the string is
+non-empty.
 
 ## Testing
 

@@ -185,9 +185,19 @@ class AppConfig {
   /// string has. `'dev'` is the default because an unstamped build IS a
   /// developer build, and saying so is better than claiming a channel.
   ///
-  /// ⚠️ MEASURED DEAD IN DART at P2.5: three workflows pass the define and
-  /// `assert-channel-register.mjs` validates the value, but no Dart call site
-  /// reads this constant. The define is doing real work; the const is not.
+  /// ✅ CORRECTED 2026-09-03 — THIS CONSTANT IS NO LONGER DEAD IN DART, and the
+  /// old text is amended rather than deleted because it was a DATED MEASUREMENT
+  /// and it was true when it was taken. It read: "⚠️ MEASURED DEAD IN DART at
+  /// P2.5: three workflows pass the define and `assert-channel-register.mjs`
+  /// validates the value, but no Dart call site reads this constant. The define
+  /// is doing real work; the const is not."
+  ///
+  /// `main.dart` now passes it as `TelemetryConfig.dist`, which is the second
+  /// half of the key GlitchTip stores an uploaded source map under. So the
+  /// constant has exactly one reader and that reader decides whether a minified
+  /// web stack trace can be read at all. ⛔ Do not "clean up" this declaration
+  /// on the strength of the paragraph above; re-grep before believing any
+  /// dead-code note in this file.
   static const String releaseChannel = String.fromEnvironment(
     'RELEASE_CHANNEL',
     defaultValue: 'dev',

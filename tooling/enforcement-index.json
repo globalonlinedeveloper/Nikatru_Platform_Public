@@ -2007,6 +2007,18 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "R-7"
+    ],
+    "invokedBy": [
+      ".github/workflows/deploy-web.yml#deploy-web"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/upload-web-sourcemaps.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/ops-watch.yml#glitchtip"
