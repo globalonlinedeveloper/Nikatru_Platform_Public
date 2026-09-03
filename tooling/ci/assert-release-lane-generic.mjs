@@ -234,6 +234,26 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'it. Grading it would add a workflow to the denominator that can never move the answer.',
   ],
   [
+    'renovate.yml',
+    'runs Renovate self-hosted across both PUBLIC repositories. It opens dependency pull requests; it ' +
+      'builds no app, produces no release artifact and names no app id. R-1 quantifies over the ' +
+      'workspace APP set to prove a lane is generic, so a lane that ships no app has nothing for this ' +
+      'guard to compare and would sit in the denominator as a permanent empty-set pass — the same ' +
+      'reason already written out for deploy-workers.yml, ops-watch.yml and site-drift-repair.yml. ' +
+      'The owning stage is stage 14 ops, through the duty row `duty.workflow.renovate.yml` in ' +
+      'tooling/ops/register.json, and that ownership is not prose: assert-ops-register.mjs holds ' +
+      '`watched workflows === .github/workflows/*.yml` in BOTH directions, so this lane cannot be in ' +
+      'the tree without a row there. 🔴 AND IT IS THE ONE LANE THAT ACTS ON A REPOSITORY THIS ' +
+      'WORKSPACE DOES NOT CONTAIN: RENOVATE_REPOSITORIES names Nikatru_Extensions_Public as well, ' +
+      'deliberately, so that two schedules cannot silently diverge. Grading it against THIS ' +
+      "workspace's app set would therefore be doubly meaningless — it would measure genericity over " +
+      'apps for a lane whose subject is repositories. What holds its behaviour correct is each ' +
+      "repository's own renovate.json, which decides WHAT changes there while this workflow decides " +
+      'only WHEN and WHERE Renovate runs. Classified 2026-09-03, the round the workflow landed; ' +
+      'before it, this guard exited 1 naming the file — the unclassified-lane limb working exactly as ' +
+      'designed, and it caught this one locally before CI did.',
+  ],
+  [
     'site-drift-repair.yml',
     'regenerates the discovery surface after a push to main and opens a pull request when the regenerated ' +
       'bytes differ from what main carries. It builds no app, produces no release artifact and names no ' +

@@ -156,11 +156,18 @@
       "reaches is DELETED rather than kept: a mapping about nothing inflates the domain while resolving",
       "nothing.",
       "",
-      "⚠️ `renovate-app` resolves to `github` deliberately, and it is the one judgement call in this map.",
-      "The Renovate app is hosted by Mend, not by GitHub — but its RECORD (the Dependency Dashboard issue,",
-      "the `chore/renovate-*` branches) lives entirely on GitHub, and a watcher reading that record",
-      "therefore shares the substrate that carries it. The map answers 'where would a watcher have to",
-      "look', which is the question the criterion is about."
+      "⚠️ `renovate-app` resolves to `github` deliberately, and it USED TO BE the one judgement call in",
+      "this map. It no longer is: the Mend-hosted App was UNINSTALLED on 2026-09-03 and Renovate now runs",
+      "from .github/workflows/renovate.yml, so the duty runs on GitHub Actions and its RECORD (the",
+      "Dependency Dashboard issue, the `chore/renovate-*` branches) lives on GitHub too. The mapping is",
+      "unchanged and the REASON for it is not: it was a judgement about a third-party host whose record",
+      "happened to live here, and it is now simply where the thing runs.",
+      "🔴 THE SUBSTRATE NAME IS KEPT ON PURPOSE, not out of inertia. `duty.renovate` is about the BOT",
+      "proposing updates; `duty.workflow.renovate.yml` is about the WORKFLOW firing. They fail",
+      "independently — the workflow can run green every day while the bot proposes nothing — so renaming",
+      "this substrate to `github-actions` would read as one duty where there are two. The map answers",
+      "'where would a watcher have to look', which is the question the criterion is about, and both",
+      "answers are still `github`."
     ],
     "cloudflare-cron": "cloudflare",
     "github-actions": "github",
@@ -965,6 +972,41 @@
         "github"
       ],
       "source": "verified"
+    },
+    {
+      "id": "duty.workflow.renovate.yml",
+      "kind": "duty",
+      "what": "Renovate, run as a GitHub Action across BOTH public repositories, replacing the free Mend-hosted App on owner instruction so no third party clones the code.",
+      "detector": "The weekly scheduled run's own history, plus duty.renovate's Dependency Dashboard issue, which Renovate rewrites on every pass. Two independent records: the workflow RAN, and the bot DID something.",
+      "response": "Dependency and container pins stop being refreshed. 🔴 That is not cosmetic here: F-2, F-8 and F-11 pinned every build version, dependency and action, and EACH STOPS RECEIVING SECURITY FIXES the moment it is pinned. Renovate is the half that makes pinning sustainable; without it the tree ends up LESS safe than before the pins were added.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/renovate.yml",
+        "record": "GitHub Actions run history for renovate.yml, filtered to event = schedule",
+        "failingValue": "no scheduled success inside the window",
+        "readBy": "nothing in-tree reads this cadence specifically — see `freshnessGap` below rather than inferring a reader from the [14]O-3 limb, which queries it but is not a guard about it",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "renovate.yml",
+          "event": "schedule",
+      "firstDue": "2026-09-05T12:00:00Z",
+      "firstDueWhy": "🔴 THE BOOTSTRAP DATE, AND IT EXPIRES BY ARITHMETIC. This row was declared 2026-09-03; the workflow it names cannot appear in GitHub's run history until it is on the DEFAULT BRANCH, and this guard holds `watched workflows === .github/workflows/*.yml` in BOTH directions, so the row cannot wait for the run either. Without this field the merge that lands the workflow reddens every CI run until a scheduled slot is delivered — the deadlock is structural and every future workflow row hits it exactly once. The value is the second daily 03:00Z slot plus nine hours of delivery slack, NOT a round number: two chances to exist on a scheduler measured at 10.1% on-time. ⚠️ It gates ONLY the \"no successful run at all\" branch — a STALE success and a MISSING workflow both still block — it still PRINTS the word FAILING, and assert-ops-register.mjs refuses any value more than one cadence window ahead of now, which is what stops it becoming a waiver. DELETE IT once the first scheduled run has landed.",
+          "why": "🔴 `event: schedule` DELIBERATELY, EVEN THOUGH THE PRIMARY TRIGGER IS A DISPATCH. The Cloudflare Worker cron fires this workflow through `workflow_dispatch`, because GitHub delivers only ~10.1% of scheduled runs on time and that unreliability froze this repository's merge queue twice. But a reader CANNOT DISTINGUISH a Worker's dispatch from a human pressing the button, and 'somebody pressed a button' is the opposite of a cadence claim — the rule every other workflow row here obeys. So the weekly `schedule:` backstop is what EVIDENCES the cadence, and the Worker is what makes the updates timely. The two triggers do different jobs and only one of them is proof."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "Nothing outside GitHub watches this workflow's absence.",
+        "ownerGated": true,
+        "gap": "⚠️ SAME CIRCULARITY AS EVERY OTHER WORKFLOW ROW, and it is stated rather than implied: the duty runs on GitHub Actions and the only record of it is GitHub Actions' own run history, so a provider outage removes the failure and the evidence together. It is TOLERABLE HERE in a way it is not for duty.workflow.ops-watch.yml, because nothing gates a merge or a deploy on Renovate having run — a silent Renovate costs freshness, not the ability to ship. Closing it properly is research/76 §C: the Worker cron writes its own record to D1 and the register reads THAT instead of GitHub's history."
+      },
+      "freshnessGap": "🔴 NO DEDICATED FRESHNESS READER, AND THAT IS A CHOICE RATHER THAN AN OVERSIGHT. build-platforms.yml has assert-platform-proof-fresh.mjs and e2e.yml has assert-e2e-proof-fresh.mjs, because a stale six-platform build or a stale nightly means the thing they prove is unproven and a merge should stop. NOTHING GATES A MERGE OR A DEPLOY ON RENOVATE HAVING RUN, so a blocking guard here would buy a red build for a duty whose failure costs FRESHNESS, not correctness — and this repository has learned twice this week what a blocking guard on an unreliable schedule costs (~18h on 2026-08-10, ~46h on 2026-09-02). ⚠️ AND THE SENTENCE THAT STOOD HERE FOR AN HOUR ON 2026-09-03 WAS WRONG, WHICH IS WHY IT IS CORRECTED IN PLACE RATHER THAN DELETED: it said the [14]O-3 limb 'will print it as FAILING when it goes stale'. It does not print — a live `fail` verdict goes into `errors` and BLOCKS, and only a dark reader holding a past failure is ever gated into a print. So this row DOES gate the merge queue once its record goes stale, on the same terms as every other workflow row, and the mitigation is margin rather than a waiver: the workflow fires DAILY against a 7d × 1.5 = 252h window, so the evidence has roughly ten chances to exist instead of one, on a scheduler measured at 10.1% on-time delivery. ⚠️ The residual risk is stated plainly: Renovate can stop for a fortnight and the only thing that says so is a line in CI output nobody is required to read. The real close is research/76 §C — the Cloudflare Worker cron writes its own record to D1 and the register reads THAT, which also removes the circularity of GitHub Actions being both the duty and the evidence. Declared 2026-09-03.",
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified",
+      "verifiedHow": "2026-09-03 — the workflow was added with the action pinned to renovatebot/github-action@39b914146caeff8cd512e61c8992f1d5913af85c (v46.2.5, published 2026-08-31), RENOVATE_TOKEN set as a repository secret, and both repositories named explicitly in RENOVATE_REPOSITORIES rather than left to autodiscover — which for a classic PAT would reach every private repository on the account."
     },
     {
       "id": "duty.renovate",

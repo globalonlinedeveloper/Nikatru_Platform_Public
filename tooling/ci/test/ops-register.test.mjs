@@ -2681,6 +2681,112 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
     }
   });
 
+  // ── `firstDue`: the bootstrap gate, and every way it must NOT work ────────
+  // It is the only thing in this limb that lifts a block on a query that RAN
+  // and answered, so it gets the same treatment the held-failure gate got: the
+  // one case it may cover, and four it may not.
+  describe('recordQuery.firstDue — the bootstrap gate', () => {
+    const REAL = () => JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    // The schema half lives inside `evaluateRunRecords`, so it is exercised the
+    // way the guard exercises it: no probes, which makes every reader dark and
+    // raises its own unreadable-ceiling error. Filter to the claim under test.
+    const limbErrors = (reg) => evaluateRunRecords(reg, new Map(), Date.now()).errors ?? [];
+    const NOWF = Date.parse('2026-09-03T06:00:00Z');
+    const MULT = () => REAL()._recordReaders._windowMultiplier;
+    const EMPTY = { lastSuccessMs: NaN, detail: 'globalonlinedeveloper/X has NO successful `schedule` run of w.yml in its run history at all.' };
+    const rowWith = (firstDue) => ({
+      id: 'duty.workflow.test.yml',
+      kind: 'duty',
+      cadence: '7d',
+      mechanism: { recordQuery: { reader: 'github-run-history', workflow: 'w.yml', event: 'schedule', ...(firstDue === undefined ? {} : { firstDue }) } },
+    });
+
+    test('a duty declared before its first slot PRINTS instead of blocking — the deadlock this field exists to break', () => {
+      const c = classifyRunRecord(rowWith('2026-09-05T12:00:00Z'), EMPTY, NOWF, MULT());
+      assert.equal(c.verdict, 'fail', 'it is still counted as FAILING — the gate lifts the block, never the verdict');
+      assert.equal(c.gated, true, c.line);
+      assert.match(c.line, /NOT YET DUE/);
+      assert.match(c.line, /2026-09-05T12:00:00Z/, 'the date must be in the line, or nobody can tell when it stops printing');
+    });
+
+    test('🔴 AND IT BLOCKS THE MOMENT THE DATE PASSES, with nobody editing the row', () => {
+      const row = rowWith('2026-09-05T12:00:00Z');
+      const after = Date.parse('2026-09-05T12:00:01Z');
+      const c = classifyRunRecord(row, EMPTY, after, MULT());
+      assert.equal(c.verdict, 'fail');
+      assert.notEqual(c.gated, true, 'one second past its own date the gate must be gone: this is what makes it a wait and not a waiver');
+      assert.match(c.line, /has PASSED, so it gates nothing: delete the field/);
+    });
+
+    test('🔴 IT NEVER GATES A STALE SUCCESS — a duty that ran and then stopped is exactly what this limb is for', () => {
+      const stale = { lastSuccessMs: NOWF - 400 * 3_600_000, detail: 'run 1 (schedule) succeeded.' };
+      const c = classifyRunRecord(rowWith('2026-09-05T12:00:00Z'), stale, NOWF, MULT());
+      assert.equal(c.verdict, 'fail');
+      assert.notEqual(c.gated, true, 'a record WITH a success is past its bootstrap; gating staleness would be the weakening');
+      assert.match(c.line, /outside its own window/);
+    });
+
+    test('🔴 IT NEVER GATES A MISSING MECHANISM — a workflow that has been deleted is not a workflow waiting to start', () => {
+      const gone = { missing: true, why: 'the workflow the register names returns 404' };
+      const c = classifyRunRecord(rowWith('2026-09-05T12:00:00Z'), gone, NOWF, MULT());
+      assert.equal(c.verdict, 'fail');
+      assert.notEqual(c.gated, true);
+      assert.match(c.line, /DOES NOT EXIST/);
+    });
+
+    test('a row with NO firstDue is unchanged — the gate is opt-in and the default is still red', () => {
+      const c = classifyRunRecord(rowWith(undefined), EMPTY, NOWF, MULT());
+      assert.equal(c.verdict, 'fail');
+      assert.notEqual(c.gated, true);
+      assert.match(c.line, /holds NO SUCCESSFUL RUN AT ALL/);
+      assert.doesNotMatch(c.line, /firstDue/);
+    });
+
+    test('an unparseable firstDue gates nothing — a field that lifts a block is a timestamp or it is nothing', () => {
+      for (const bad of ['soon', '', 'next monday', null]) {
+        const c = classifyRunRecord(rowWith(bad), EMPTY, NOWF, MULT());
+        assert.notEqual(c.gated, true, `${JSON.stringify(bad)} must not gate`);
+      }
+    });
+
+    // ── and the schema half: the guard must REFUSE the shapes that would turn
+    //    the wait into a waiver. Run through the real limb over the real file.
+    test('🔴 THE SCHEMA REFUSES A DATE PARKED IN THE FUTURE — the one way this becomes permanent', () => {
+      const reg = REAL();
+      const row = reg.rows.find((r) => r.id === 'duty.workflow.renovate.yml');
+      assert.ok(row, 'the committed row this field was added for must still exist');
+      assert.equal(row.mechanism.recordQuery.firstDue, '2026-09-05T12:00:00Z');
+      const far = JSON.parse(JSON.stringify(reg));
+      far.rows.find((r) => r.id === 'duty.workflow.renovate.yml').mechanism.recordQuery.firstDue = '2030-01-01T00:00:00Z';
+      const out = limbErrors(far);
+      assert.ok(
+        out.some((e) => /more than one cadence window/.test(e)),
+        `a firstDue four years out must be refused; got:\n${out.join('\n')}`,
+      );
+    });
+
+    test('the schema refuses an unparseable firstDue and one on an `unreachable` reader', () => {
+      const reg = REAL();
+      const bad = JSON.parse(JSON.stringify(reg));
+      bad.rows.find((r) => r.id === 'duty.workflow.renovate.yml').mechanism.recordQuery.firstDue = 'soon';
+      assert.ok(limbErrors(bad).some((e) => /not a parseable instant/.test(e)));
+
+      const unreachable = JSON.parse(JSON.stringify(reg));
+      const q = unreachable.rows.find((r) => r.id === 'duty.workflow.renovate.yml').mechanism.recordQuery;
+      q.reader = 'unreachable';
+      q.why = 'built for this mutation only';
+      assert.ok(limbErrors(unreachable).some((e) => /reader is `unreachable`/.test(e)));
+    });
+
+    test('the committed register raises NO firstDue error of its own — the mutations above are the only red', () => {
+      // NOT `errors === []`: with an empty probe map every reader is dark, which
+      // is its own (correct) error about the unreadable ceiling. The claim here
+      // is narrower and is the one that matters — the committed value is legal.
+      const mine = limbErrors(REAL()).filter((e) => /firstDue/.test(e));
+      assert.deepEqual(mine, [], 'the committed firstDue must be legal: ' + mine.join(' | '));
+    });
+  });
+
   test('every reader the committed register DECLARES is one the guard actually dispatches', () => {
     // The schema check next door proves a row cannot name an undeclared reader.
     // Nothing proved the other direction: a reader could be declared, used by a
