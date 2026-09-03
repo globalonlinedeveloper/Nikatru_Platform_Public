@@ -118,7 +118,7 @@ class _ResetAuth extends core.AuthRepository {
       const Stream<core.AuthUser?>.empty();
 
   @override
-  Future<void> sendPasswordReset(String email) async {
+  Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
     sentTo.add(email);
     if (refusal != null) throw refusal!;
   }
@@ -151,6 +151,7 @@ class _SignInAuth extends core.AuthRepository {
   Future<core.AuthUser> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     attempts.add('$email/$password');
     throw core.AuthFailure('invalid_credentials');

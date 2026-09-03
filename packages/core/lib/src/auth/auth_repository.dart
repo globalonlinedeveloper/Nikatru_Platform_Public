@@ -48,14 +48,33 @@ abstract class AuthRepository {
         ),
       );
 
+  /// 🔴 `captchaToken` IS THE SEAM FOR A GATE THAT DOES NOT EXIST YET ON THE
+  /// PROVIDER WE CURRENTLY POINT AT, AND THAT IS DELIBERATE.
+  ///
+  /// Self-hosted GoTrue on Box A now enforces Cloudflare Turnstile on SIX
+  /// endpoints — `signup`, `token?grant_type=password`, `recover`, `otp`,
+  /// `magiclink` and `resend` — measured 2026-09-03. Production auth is still
+  /// the HOSTED project, which has no gate, and GoTrue ignores the field when
+  /// captcha is disabled. So this parameter can land, ship and sit unused
+  /// against hosted, and then be correct on the day `SUPABASE_URL` moves.
+  ///
+  /// ⚠️ It is OPTIONAL and defaults to null, which is exactly today's request.
+  /// A required parameter would have broken every implementor and every test
+  /// for a behaviour change that has not happened yet.
+  ///
+  /// Passing it is NOT the same as satisfying the gate: the token has to come
+  /// from a rendered Turnstile widget, is single-use, and is short-lived. The
+  /// screens own that; this seam only carries it.
   Future<AuthUser> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   });
 
   Future<AuthUser> signUpWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   });
 
   /// OAuth (Apple/Google). Completes via redirect/deep link — the resulting
@@ -79,7 +98,7 @@ abstract class AuthRepository {
   /// Says NOTHING about whether the address has an account, by design and by
   /// contract: returning normally either way is what keeps this from being an
   /// account-enumeration oracle. The screen's message must be equally silent.
-  Future<void> sendPasswordReset(String email);
+  Future<void> sendPasswordReset(String email, {String? captchaToken});
 
   /// Set a NEW password on the session in hand, and return the fresh user.
   ///
@@ -151,7 +170,7 @@ abstract class AuthRepository {
   ///
   /// Throws [AuthFailure] when nobody is signed in, when the provider refused,
   /// or when the implementation has no such capability at all.
-  Future<void> resendVerificationEmail() async {
+  Future<void> resendVerificationEmail({String? captchaToken}) async {
     throw AuthFailure(
       'Resending the confirmation email is not available here.',
     );

@@ -1085,6 +1085,7 @@ class _RefusingAuth extends core.AuthRepository {
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async => throw core.AuthFailure('that address is already registered');
 
   @override

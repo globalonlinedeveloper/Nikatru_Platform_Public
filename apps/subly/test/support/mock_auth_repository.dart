@@ -81,7 +81,9 @@ class MockAuthRepository extends AuthRepository {
   Future<AuthUser> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
+    lastCaptchaToken = captchaToken;
     _user = _demoUser(email);
     _controller.add(_user);
     return _user!;
@@ -91,7 +93,20 @@ class MockAuthRepository extends AuthRepository {
   Future<AuthUser> signUpWithEmail({
     required String email,
     required String password,
-  }) => signInWithEmail(email: email, password: password);
+    String? captchaToken,
+  }) => signInWithEmail(
+    email: email,
+    password: password,
+    captchaToken: captchaToken,
+  );
+
+  /// RECORDED, NOT DISCARDED. The captcha token is the one argument a screen can
+  /// silently stop sending while every existing test stays green - the request
+  /// simply goes out without it and this fake accepts it anyway. Keeping the
+  /// last value here is what lets a test assert the screen actually passed one,
+  /// so "the widget is wired up" becomes checkable rather than assumed.
+  /// Null is the honest default: it is exactly what today's screens send.
+  String? lastCaptchaToken;
 
   @override
   Future<void> signInWithApple() async {
@@ -100,7 +115,9 @@ class MockAuthRepository extends AuthRepository {
   }
 
   @override
-  Future<void> sendPasswordReset(String email) async {}
+  Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
+    lastCaptchaToken = captchaToken;
+  }
 
   @override
   Future<void> signOut() async {

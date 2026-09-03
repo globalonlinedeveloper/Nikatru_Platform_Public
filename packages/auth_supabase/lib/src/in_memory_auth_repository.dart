@@ -159,10 +159,12 @@ class InMemoryAuthRepository implements core.AuthRepository {
   Future<core.AuthUser> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     if (email.isEmpty || password.isEmpty) {
       throw core.AuthFailure('Email and password are required');
     }
+    lastCaptchaToken = captchaToken;
     return _signIn(email);
   }
 
@@ -170,8 +172,22 @@ class InMemoryAuthRepository implements core.AuthRepository {
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
-  }) async =>
-      signInWithEmail(email: email, password: password);
+    String? captchaToken,
+  }) async => signInWithEmail(
+    email: email,
+    password: password,
+    captchaToken: captchaToken,
+  );
+
+  /// The captcha token most recently handed to any method here, or null.
+  ///
+  /// RECORDED FOR THE SAME REASON [verificationResends] IS. A screen that stops
+  /// sending the token does not fail against a fake - the call simply arrives
+  /// without it and this class is perfectly happy. Keeping the last value is
+  /// what makes "the widget is actually wired to this call" assertable instead
+  /// of assumed, which is the only way that wiring can be tested before the
+  /// gate exists on the provider we point at.
+  String? lastCaptchaToken;
 
   @override
   Future<void> signInWithApple() async => _signIn('apple.user@example.com');
@@ -182,8 +198,10 @@ class InMemoryAuthRepository implements core.AuthRepository {
   final List<String> passwordResetsRequested = <String>[];
 
   @override
-  Future<void> sendPasswordReset(String email) async =>
-      passwordResetsRequested.add(email);
+  Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
+    lastCaptchaToken = captchaToken;
+    passwordResetsRequested.add(email);
+  }
 
   /// There is no mailbox behind this class, so there is nothing to resend — but
   /// it must not THROW either: with [emailVerified] true (the default) no user
@@ -192,8 +210,9 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// the screen. Recorded rather than silent, so "the button is wired" is
   /// assertable without asserting the absence of a crash.
   @override
-  Future<void> resendVerificationEmail() async {
+  Future<void> resendVerificationEmail({String? captchaToken}) async {
     if (_user == null) throw core.AuthFailure('Not signed in');
+    lastCaptchaToken = captchaToken;
     verificationResends++;
   }
 
