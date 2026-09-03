@@ -85,33 +85,57 @@
       "Exactly one row may carry role: \"observability\", and the guard requires that row to exist —",
       "otherwise 'is the monitor host itself monitored' is a question nothing in the tree asks.",
       "",
-      "⚠️ WIDENED 2026-09-03, AND THE WIDENING IS BOUNDED BY A RULE RATHER THAN BY A COUNT. Until that",
-      "day `declared` held exactly one row — glitchtip.nikatru.com, the watcher. It now also holds",
-      "api-auth.nikatru.com and studio.nikatru.com, the self-hosted Supabase stack whose monitors",
-      "first appeared on the instance on 2026-09-02. A row may be `declared` only when BOTH hold: (a)",
-      "nothing in the tree deploys it, so the three derivations structurally cannot produce it — grep",
-      "either string across the whole tree at HEAD and you get zero files; AND (b) a live monitor for it",
-      "already exists. (b) is the half that stops `declared` decaying into the hand-typed list this",
-      "file was built to replace: it can only ever RECORD a monitor that is already there, never",
-      "invent a monitoring obligation nobody accepted."
-    ],
-    "🔴 notHostnamesAtAll": [
-      "A HEARTBEAT MONITOR HAS NO HOSTNAME AND THEREFORE GETS NO ROW HERE. That is a rule, not an",
-      "oversight. Monitors 6 (`Laptop daily backup`), 16 (`GlitchTip backup chain`) and 19 (`Supabase",
-      "backup chain`) are type Heartbeat: they carry no url at all, and what they assert is that a POST",
-      "ARRIVED — not that a host answered. tooling/ops/verify-monitors.mjs prints each of them as `not",
-      "filed under any hostname in the register` on every scheduled run, correctly. Filing one under a",
-      "hostname would make this file say that something watches that host, which is the one claim it",
-      "must never make falsely.",
-      "",
-      "THEY ARE STILL DECLARED, AND THEIR DISAPPEARANCE STILL FAILS A GUARD — in",
-      "tooling/ops/alarm-chains.json → expectedMonitors, which is keyed by monitor id and asks nothing",
-      "about hostnames. 📌 On 2026-09-03 monitor 19 was added THERE and deliberately not here, while",
-      "monitors 17 and 18 — found in the same sweep, live and undeclared since 2026-09-02 — became rows",
-      "here, because they are hostname monitors and 19 is not. Twelve monitors were live; nine were",
-      "declared; a canary naming nine of twelve cannot notice the other three being deleted."
+      "⚠️ AND IT IS NOT A GENERAL HATCH FOR 'A HOST SOMEBODY MONITORS' — see `_notInThisRegister`",
+      "below, which records the 2026-09-03 attempt to widen it and what that attempt measured. 🔴 NOTE",
+      "ALSO THAT ONLY REAL SOURCES MAY LIVE IN THIS OBJECT: tooling/ops/status.mjs reads EVERY key here",
+      "whose name does not start with an underscore as a derivation source and reports COVERAGE LOST",
+      "when one yields no row. Prose belongs at the top level of this file or behind a leading",
+      "underscore — a note filed here as a bare key fails [14]O-2's derivation, which is how the first",
+      "attempt was caught."
     ]
   },
+
+  "_notInThisRegister": [
+    "🔴 THREE LIVE MONITORS ARE DELIBERATELY NOT ROWS HERE — ids 17, 18 AND 19, ALL CREATED 2026-09-02",
+    "and found undeclared on 2026-09-03. Written down because 'absent from this file' and 'nobody has",
+    "looked' are indistinguishable, and because the first attempt that day DID add two of them as rows",
+    "and had to be reverted. What follows is what that attempt measured.",
+    "",
+    "· 19 `Supabase backup chain` — type Heartbeat. It has no url at all: it asserts that a POST",
+    "  ARRIVED, not that a host answered, so there is no hostname to file it under. Monitors 6 and 16",
+    "  have been in exactly this position since they were made, and tooling/ops/verify-monitors.mjs",
+    "  prints all three as `not filed under any hostname in the register` on every scheduled run —",
+    "  correctly, and that print is the whole of what this file can honestly say about them.",
+    "",
+    "· 17 `Supabase auth chain` (api-auth.nikatru.com) and 18 `Studio Access gate`",
+    "  (studio.nikatru.com) — real hostname monitors, but NOT hostnames this factory deploys: no",
+    "  wrangler.jsonc route, no catalog/apps.json field, no site canonical, and grep for either string",
+    "  across the whole tree at HEAD returns zero files. `declared` is not a general escape hatch for",
+    "  'some host somebody monitors'. It exists for the ONE hostname the derivation structurally",
+    "  cannot produce — the watcher — and the guard bounds it by requiring that row to exist rather",
+    "  than by counting, which is only safe while the hatch stays that narrow.",
+    "",
+    "🔴 AND A ROW HERE IS NOT ONLY A DECLARATION — IT IS AN ENTRY IN [14]O-2's PROBE SET. That is the",
+    "half the first attempt had not read. tooling/ops/status.mjs derives its surfaces from `hosts`,",
+    "probes each one UNAUTHENTICATED from outside, and for any row that declares a `path` it requires",
+    "a body that parses as JSON and CARRIES SOMETHING. Measured 2026-09-03 against",
+    "api-auth.nikatru.com, which has exactly one unauthenticated 200 in the whole of /auth/v1:",
+    "  · GET /auth/v1/.well-known/jwks.json → 200, body {\"keys\":[]}. An EMPTY array, so status.mjs's",
+    "    `carries` test is false and the surface reports `vacuous` — RED, on a service that is up.",
+    "  · GET / → 404, so a row with NO `path` is red on the status limb instead.",
+    "  · Everything else — /auth/v1/health, /settings, /user, /sso, /logout, /factors, /token,",
+    "    /admin/users, /oauth/clients, and both other .well-known spellings — answers 401 from the",
+    "    gateway, without ever reaching GoTrue.",
+    "There is no shape of row for that host which O-2 can probe today. A register entry that reddens a",
+    "healthy surface teaches people to ignore the prober, and that costs more than the missing row.",
+    "",
+    "⚠️ SO WHERE IS THE COVERAGE? All three ids are in tooling/ops/alarm-chains.json →",
+    "expectedMonitors, which is keyed by monitor id, asks nothing about hostnames, needs no probe, and",
+    "is the ONLY guard in the tree that fails when one of them is deleted. That is the entire",
+    "obligation this file would otherwise have carried for them, and it is now carried. 📌 THE DAY",
+    "api-auth SERVES AN UNAUTHENTICATED 200 WITH A NON-EMPTY BODY — a populated JWKS would do it — a",
+    "row here becomes possible, and this bullet is the thing to delete."
+  ],
 
   "hosts": [
     {
@@ -216,42 +240,6 @@
         "howItWasClosed": "Created via the GlitchTip API and exercised with the production perform_checks task against https://config.nikatru.com/config/subly — up, 36 ms.",
         "note": "⚠️ THE MONITORED PATH NAMES ONE APP. `/config/:app` is per-app, so a monitor has to pick one, and `subly` is the only shipping client today. When a second app ships, this checks that the config surface ANSWERS, not that the second app's config exists — and nothing here will say so. Revisit when the portfolio grows past one client."
       }
-    },
-    {
-      "hostname": "api-auth.nikatru.com",
-      "what": "the self-hosted Supabase auth surface — GoTrue behind an Envoy gateway, and the sign-in path for the only shipping client",
-      "derivedFrom": "declared",
-      "why": "Nothing in this tree deploys it or names it: no wrangler.jsonc route, no catalog/apps.json field, no site canonical, and a grep for the string across the whole tree at HEAD returns zero files. It is the self-hosted Supabase stack named by SUPABASE_SELFHOST_API_URL in the local vault, not anything this factory deploys. ⚠️ WHICH BOX SERVES IT IS NOT RECORDED ANYWHERE IN THIS REPOSITORY, and it is not inferred here: the 401 below was measured on Box A's gateway log, while GlitchTip moved to Box B on the same day these monitors appeared, and 'they arrived together' is not evidence that they run together. It is declared because a live hostname monitor already watches it — and because until 2026-09-03 that monitor appeared in NO declaration in this repository, so nothing here could say it existed, let alone that it was broken.",
-      "monitor": { "id": 17, "name": "Supabase auth chain", "type": "GET", "path": "/auth/v1/.well-known/jwks.json", "expectedStatus": 200, "expectedBody": "\"keys\"", "confirmationThreshold": 2, "intervalSeconds": 60, "verifiedOn": "2026-09-03" },
-      "closedGap": {
-        "why": "🔴 IT WAS A MONITOR THAT COULD NOT FAIL — the sharpest defect in this file's history, because it is the one that reads as coverage on every surface. From its creation on 2026-09-02 it polled GET /auth/v1/health with `expectedStatus: 401`, and 401 is what that path returns whether GoTrue is healthy, wedged or gone: the Envoy gateway rejects the request for a missing apikey BEFORE it reaches the auth service. Measured 2026-09-03 on the gateway's own request log (Box A): 1,464 of the last 2,000 requests to that path were 401. It asserted the gateway's own refusal, so it was green over exactly the failure it was named for.",
-        "🔴 theProofThatTheRequestNeverReachedGoTrue": "Measured from outside, 2026-09-03, and it is a single header. The 200 on /auth/v1/.well-known/jwks.json carries `x-envoy-upstream-service-time: 0` — an upstream produced it. The 401 on /auth/v1/health carries NO such header at all — the gateway produced it alone, and nothing behind the gateway was ever consulted. That header is the difference between 'the auth service answered' and 'the door said no', and no status code could have told them apart.",
-        "openedOn": "2026-09-02",
-        "closedOn": "2026-09-03",
-        "howItWasClosed": "PUT /api/0/organizations/nikatru/monitors/17/. ⚠️ PATCH DOES NOT EXIST ON THIS ENDPOINT — measured, not assumed: OPTIONS returns 405 with `allow: DELETE, GET, PUT`, so the full-replace PUT is the only route and the 2026-08-11 discipline is mandatory. Every field was re-sent unchanged with `project: \"1\"` included, and the read-back was diffed field by field against the read-before: exactly three changed — url /auth/v1/health → /auth/v1/.well-known/jwks.json, expectedStatus 401 → 200, expectedBody \"\" → \"\\\"keys\\\"\" — and projectID/projectName stayed \"1\"/subly, which is the field whose silent loss detached all nine monitors from their alert recipients under nine HTTP 200s on 2026-08-11 (tooling/channel-register.json:813). The save's off-cadence check at 2026-09-03T10:03:35.371Z UTC came back up in 34 ms.",
-        "whyThisPathAndNotTheAlternatives": "Every candidate was fetched live before one was chosen. /auth/v1/health, /auth/v1/settings, /auth/v1/user, /auth/v1/sso, /auth/v1/logout, /auth/v1/factors and /auth/v1/ all answer 401 from the gateway. /auth/v1/verify answers 400 from GoTrue itself — real evidence of life, but a register that asserts 400 is the healthy state is a register nobody can read. /auth/v1/.well-known/jwks.json answers 200 with {\"keys\":[]}, from the upstream, with no apikey at all. THE REJECTED OPTION WAS CHANGING expectedStatus TO 401: it would have made the monitor assert today's reality, and it still could not have told a healthy GoTrue from a dead one — which is the entire defect, restated as a declaration. THE OTHER REJECTED OPTION was putting an apikey on the monitor URL: it works, and it would put a key in a monitor URL and in this PUBLIC file, to be rotated in two places forever.",
-        "note": "⚠️ WHAT IT STILL CANNOT SEE, stated so the green is read correctly. JWKS is a static handler: a 200 proves GoTrue's process is up and serving, NOT that it can reach Postgres or issue a token, so a database-side auth outage answers this check 200 all day. The did-it-actually-sign-in half is not in GlitchTip at all. The body matcher is \"keys\" — six characters, codepoints [34,107,101,121,115,34], no space — and it holds whether the key set is empty (it is today, HS256) or populated. ⚠️ AND ONE CACHING CAVEAT, MEASURED NOT ASSUMED: the response carries `Cache-Control: public, max-age=600`, so were a Cloudflare cache rule ever to start caching it, this monitor could read a stale 200 for up to ten minutes after GoTrue died. Three consecutive fetches on 2026-09-03 all returned `cf-cache-status: DYNAMIC` — not cached today. The day that reads HIT, this monitor has gone soft and this row has to say so."
-      }
-    },
-    {
-      "hostname": "studio.nikatru.com",
-      "what": "the self-hosted Supabase Studio — the admin console for the same self-hosted Supabase stack as api-auth.nikatru.com, published to the internet behind Cloudflare Access",
-      "derivedFrom": "declared",
-      "why": "The same rule as api-auth.nikatru.com, and the same two facts: nothing in this tree deploys it or names it, and a live hostname monitor (id 18) has watched it since 2026-09-02 while appearing in no declaration here until 2026-09-03.",
-      "monitor": { "id": 18, "name": "Studio Access gate", "type": "GET", "path": "/", "expectedStatus": 200, "expectedBody": "Cloudflare Access", "confirmationThreshold": 2, "intervalSeconds": 60, "verifiedOn": "2026-09-03" },
-      "🔴 whatThisMonitorIsForAndWhatItIsNot": [
-        "READ THE MATCHER BEFORE READING THE GREEN. `Cloudflare Access` is the text of the interstitial",
-        "LOGIN page. So this monitor is green when an anonymous request to the admin console is STOPPED",
-        "by the Access gate, and it goes red if the gate is removed or bypassed and Studio starts",
-        "answering the internet directly. It watches an exposure, not an uptime.",
-        "",
-        "⚠️ IT THEREFORE SAYS NOTHING ABOUT STUDIO ITSELF. Access renders its login page whether the",
-        "console behind it is healthy, stopped or deleted, so a dead Studio is green here. That is NOT",
-        "monitor 17's defect — this check can fail, and it fails on the thing it is named for — but a",
-        "reader who takes this row as 'the admin console is up' is reading a claim it does not make.",
-        "Recorded rather than fixed: asserting Studio's liveness needs a credential, and a credential",
-        "in a monitor is a way in."
-      ]
     }
   ],
 
@@ -296,7 +284,8 @@
     "🔴 tlsExpiry": {
       "state": "UNWATCHED — and NOT declared as watched. Measured 2026-09-03.",
       "why": [
-        "ZERO SSL MONITORS EXIST. All nine hostname monitors above are GET + expectedStatus 200, and a",
+        "ZERO SSL MONITORS EXIST. All nine hostname monitors on the instance — the seven declared",
+        "above and ids 17 and 18 from `_notInThisRegister` — are GET + expectedStatus 200, and a",
         "GET notices a dead certificate only when the fetch itself fails — which is after the outage has",
         "started, never before it. The instance's own MonitorType enum is",
         "[\"Ping\",\"GET\",\"POST\",\"TCP Port\",\"SSL\",\"Heartbeat\"], so the mechanism has been sitting there",
@@ -332,7 +321,7 @@
       "ownerChecklist": {
         "whyOwner": "NOT capability — creating monitors through the API is proven agent work (2026-08-05, and again for monitor 17 on 2026-09-03), and this file's own `🔴 whyItStayedOpen` warns that 'owner action' is a claim needing evidence rather than a category. What is owner work is the step that has to come FIRST: finding out why the SSL check path returns down in 0 ms with a null reason. That is a container log on a host this repository cannot reach.",
         "step1_diagnose": "On Box B, watch the uptime worker while an SSL monitor is saved — `docker compose logs -f worker` in the GlitchTip compose project. A 0 ms down with a NULL reason is the shape of an exception inside the check function, not of a failed handshake: a real handshake failure takes milliseconds and sets a reason. Check the image tag while you are there; SSL is the least-exercised MonitorType and this instance has never run one.",
-        "step2_ifItIsRepaired": "One SSL monitor per row in this file, by the same rule that derives the rows — nine of them, for nikatru.com, rajasekarselvam.com, subly.nikatru.com, api.nikatru.com, glitchtip.nikatru.com, platform.nikatru.com, config.nikatru.com, api-auth.nikatru.com and studio.nikatru.com. For each: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/monitors/ with {\"monitorType\":\"SSL\",\"name\":\"<hostname> TLS\",\"url\":\"https://<hostname>\",\"expectedStatus\":null,\"expectedBody\":\"\",\"interval\":86400,\"timeout\":20,\"confirmationThreshold\":1,\"project\":\"1\"}.",
+        "step2_ifItIsRepaired": "One SSL monitor per hostname the instance already watches — nine of them: the seven rows in this file plus the two in `_notInThisRegister`, for nikatru.com, rajasekarselvam.com, subly.nikatru.com, api.nikatru.com, glitchtip.nikatru.com, platform.nikatru.com, config.nikatru.com, api-auth.nikatru.com and studio.nikatru.com. For each: POST https://glitchtip.nikatru.com/api/0/organizations/nikatru/monitors/ with {\"monitorType\":\"SSL\",\"name\":\"<hostname> TLS\",\"url\":\"https://<hostname>\",\"expectedStatus\":null,\"expectedBody\":\"\",\"interval\":86400,\"timeout\":20,\"confirmationThreshold\":1,\"project\":\"1\"}.",
         "🔴 projectIsNotOptional": "`project` must be in that body. A monitor created without it belongs to no project, therefore to no project's alert rule, therefore to no recipient — that is monitor 6's exact defect, it went Down 13 times of 41 checks and told nobody, and it is the reason tooling/ops/alarm-chains.json exists. Verify with `node tooling/ops/verify-alarm-chains.mjs`, not by looking at the dashboard.",
         "⚠️ interval86400IsADecisionNotAMeasurement": "One check a day. Certificate expiry moves on a scale of weeks, and 1440 TLS handshakes a day per host would buy nothing — but this file's rule is that no threshold may be invented, so it is recorded here as a CHOICE with its reason rather than beside the `intervalSeconds` values above, every one of which is a measured fact read off the live API.",
         "step3_inTheSameChange": "Add the nine new ids to tooling/ops/alarm-chains.json → expectedMonitors and re-run `node tooling/ops/verify-alarm-chains.mjs` for exit 0. That list is the ONLY guard that would notice one of them later being deleted, and it is keyed by id, never by name.",

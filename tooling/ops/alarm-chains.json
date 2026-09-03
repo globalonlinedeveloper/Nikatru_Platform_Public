@@ -54,13 +54,14 @@
     "in the prose, and it opened on the same day and in the same move as the rename above. All twelve",
     "are now listed.",
     "",
-    "⚠️ MONITOR 19 IS DECLARED HERE AND NOWHERE ELSE, ON PURPOSE. It is type Heartbeat: no url, and",
-    "what it asserts is that a POST arrived, not that a host answered — so it cannot have a row in a",
-    "register keyed by hostname without that register claiming something watches a host. Monitors 6",
-    "and 16 have been in exactly that position since the day they were made. This id-keyed list is",
-    "where a heartbeat's disappearance is made to fail; see tooling/monitor-register.json →",
-    "_derivation → `🔴 notHostnamesAtAll`. Monitors 17 and 18 DO have hostnames and became rows there",
-    "on 2026-09-03."
+    "⚠️ AND ALL THREE ARE DECLARED HERE AND NOWHERE ELSE, ON PURPOSE. 19 is a Heartbeat — no url, so",
+    "there is no hostname to file it under, the position monitors 6 and 16 have held since they were",
+    "made. 17 and 18 DO have hostnames, and are still not rows in tooling/monitor-register.json: that",
+    "file derives its rows from what THIS REPO deploys, and its rows are also [14]O-2's unauthenticated",
+    "probe set — api-auth.nikatru.com has no surface that probe can call healthy, measured. The full",
+    "reasoning is in that file under `_notInThisRegister`; a first attempt on 2026-09-03 made them rows",
+    "and had to be reverted. So THIS list is the only place a delete of any of the three fails a guard,",
+    "which is exactly what an id-keyed canary is for."
   ],
   "expectedMonitors": [
     {
