@@ -1576,6 +1576,29 @@
       "source": "verified"
     },
     {
+      "id": "recovery.supabase-auth-postgres",
+      "kind": "recovery-path",
+      "what": "Restore the SELF-HOSTED Supabase auth database on Box A from its dump. This is the recovery path for every identity in the portfolio once the cutover lands: auth.users, auth.identities and auth.refresh_tokens live in one Postgres on one Mumbai VM.",
+      "detector": "This row's cadence against lastDrill.",
+      "response": "Private/runbooks/operations.md section F.",
+      "cadence": "180d",
+      "lastDrill": "2026-09-03",
+      "drillEvidence": "FIRST EVER RECORDED PASS 2026-09-03, run twice, the second time with a labelled banner. Restored sb-postgres-2026-09-03-1815.dump (321550 B) plus sb-globals-2026-09-03-1815.sql.gz into a throwaway container and two throwaway volumes on supabase/postgres:17.6.1.136, with sb-pgsodium_root.key seeded explicitly because it lives in a named volume that a directory copy does not capture. pg_restore reported ZERO error lines and the self-calibrating manifest came back byte-identical: 0|0|0|31|6|7|0|27|supabase_admin|23 on both sides. Production was read-only throughout; the throwaway was destroyed at teardown. 🔴 WHAT THE PASS DOES NOT PROVE, because auth.users is 0 on this box today: the three columns this drill EXISTS FOR compared 0 to 0. Six of ten columns carried a real non-zero comparison (31 roles, 6 extensions, 7 roles with passwords, 27 RLS tables, the auth schema owner, its 23 tables), so the restore MECHANISM and the schema are proven and identity-row survival is NOT. The drill now PRINTS its own vacuous columns so a later reader cannot take it for more than it is, and that limb was negative-tested against three manifest shapes including all-zero. The Vault assertion is vacuous too (0|0). ⚠️ AND _supabase IS BACKED UP BUT NOT DRILLED: the backup set is four artefacts and all four are current (all stamped 18:15, sb-_supabase at 566174 B, LARGER than the postgres dump), but the drill restores globals + postgres only. ⚠️ The drill script had its own defect until this date: its banner escaped $ inside double quotes, so every earlier run printed the literal text $(basename $DUMP) and could not say which backup it had restored.",
+      "mechanism": {
+        "substrate": "oci-docker",
+        "anchor": "Private/runbooks/operations.md",
+        "record": "the dump files and their timestamps on Box A, /opt/supabase/backups",
+        "failingValue": "no dated restore drill",
+        "readBy": "nothing yet"
+      },
+      "accessProviders": [
+        "oci"
+      ],
+      "ownerGated": true,
+      "ownerGap": "DRILLED 2026-09-03 (first time) - see drillEvidence. 🔴 THE CADENCE IS NOT THE BINDING CONSTRAINT HERE. 180d puts the next run at 2027-03-02, but the CUTOVER is what makes this drill meaningful: it creates the first real auth.users rows, and the run immediately after it is the first one whose identity comparison is not vacuous. Re-drill then, not in March. ⚠️ Residual risk recorded rather than hidden: nothing reads this row, so it fails only by going stale against its own cadence - and the _supabase half of the backup set has no drill at all.",
+      "source": "verified"
+    },
+{
       "id": "recovery.oci-boot-volume",
       "kind": "recovery-path",
       "what": "Restore the Oracle box's boot volume.",
