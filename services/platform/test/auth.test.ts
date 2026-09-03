@@ -229,7 +229,7 @@ describe('platformAuth SURVIVES a JWKS outage without widening what it accepts',
     jwksThrows = true;
     const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(200);
-    expect((await res.json()).userId).toBe('user-a');
+    expect(((await res.json()) as { userId: string }).userId).toBe('user-a');
   });
 
   it('JWKS unreachable + valid token + EMPTY cache ⇒ 401, still fails closed', async () => {
