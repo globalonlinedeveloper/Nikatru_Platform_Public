@@ -93,12 +93,30 @@ app.use('*', corsMiddleware);
 //                  is ASYMMETRIC-ONLY with no secret fallback, so a broken JWKS
 //                  takes erasure down completely rather than degrading it.
 //
-// JWKS_CACHE is deliberately NOT probed. It is a warm-start cache: `jose` fetches
-// the JWKS itself, so a KV failure there costs latency on a cold isolate and
-// nothing else (src/middleware/auth.ts says so in its header). Reporting it as a
-// dependency would make the endpoint say `ok:false` for a fault no request can
-// feel — and a health check that cries about something harmless is one somebody
-// stops reading. What the cache is FOR is covered by `supabase_jwks` below.
+// JWKS_CACHE is deliberately NOT probed — but 🔴 THE REASON CHANGED AND THE OLD
+// ONE IS NO LONGER TRUE, so read this rather than the sentence it replaced.
+//
+// It USED to say: "It is a warm-start cache: `jose` fetches the JWKS itself, so a
+// KV failure there costs latency on a cold isolate and nothing else
+// (src/middleware/auth.ts says so in its header)." That was accurate when
+// written and is now WRONG. Since the stale-JWKS fallback landed
+// (services/platform in #433, THIS Worker in #435), `src/middleware/auth.ts`
+// READS this cache on the failure path: when the JWKS endpoint cannot be
+// reached, the cached copy is what still verifies tokens. So a KV failure is no
+// longer harmless in every world — it is the difference between surviving a
+// Box A outage and not, and on THIS Worker it is also the difference between
+// staying asymmetric and falling through to the legacy HS256 secret, and between
+// erasure working and erasure stopping.
+//
+// ⚠️ IT IS STILL NOT PROBED, AND THE ARGUMENT IS NOW CONDITIONAL RATHER THAN
+// ABSOLUTE. With the JWKS endpoint healthy — which is the state `supabase_jwks`
+// below actually asserts — a KV failure still costs only latency on a cold
+// isolate, so reporting it would say `ok:false` for a fault no request can feel,
+// and a health check that cries about something harmless is one somebody stops
+// reading. The cache only matters IN CONJUNCTION WITH the endpoint being down,
+// and that conjunction is already visible: `supabase_jwks` goes unhealthy first.
+// ➡️ If this Worker ever needs to distinguish "degraded but surviving on the
+// cache" from "healthy", THAT is the reading to add — not a bare KV probe.
 //
 // The reads are the cheapest that would DIFFER if the dependency were broken;
 // each names a real table so a database that is reachable but carries no schema
