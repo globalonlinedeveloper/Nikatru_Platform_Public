@@ -166,6 +166,23 @@ export interface Env {
    */
   SUPABASE_ANON_KEY?: string;
   /**
+   * GitHub token used ONLY to fire `workflow_dispatch` on the workflows named in
+   * `GITHUB_DISPATCH_TARGETS` (services/platform/src/scheduled.ts).
+   *
+   * 🔴 OPTIONAL, AND THE LIMB WRITES `ok = 0` WITHOUT IT rather than skipping.
+   * A dispatcher with no credential and no row is indistinguishable from a
+   * dispatcher that is working, which is the exact shape of every silent
+   * failure this portfolio has paid for. Absent ⇒ one heartbeat row per target
+   * saying so, and `check-heartbeats.mjs` turns that into a durable issue.
+   *
+   * ⚠️ SCOPE IS THE WHOLE POINT: this wants `Actions: read and write` on the two
+   * public repositories and NOTHING ELSE. Do not reuse a classic PAT from the
+   * vault — those carry `repo`, `admin:org` and `delete_repo`, and this Worker
+   * is a public-facing service whose secrets are worth exactly what they can do.
+   * Set with `wrangler secret put GITHUB_DISPATCH_TOKEN`, never as a var.
+   */
+  GITHUB_DISPATCH_TOKEN?: string;
+  /**
    * Supabase SERVICE ROLE key — used ONLY by DELETE /v1/account, to remove the
    * identity record itself.
    *

@@ -1449,11 +1449,165 @@ export async function retentionSweep(
 }
 
 /** Cron entrypoint. `ctx.waitUntil` keeps the isolate alive for the async work. */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [research/76 §C] PHASE 1 OF REPLACING GITHUB'S SCHEDULER AS THE ALARM CLOCK.
+//
+// 🔴 WHY AT ALL. GitHub delivers a measured 10.1% of scheduled runs ON TIME
+// (899 of 8,928; research/76 §E, reproduced against Upptime's own repository),
+// and that unreliability has frozen this repository's merge queue TWICE — ~18h
+// on 2026-08-10 and ~46h on 2026-09-02 — because three register duties read the
+// newest successful `event=schedule` run inside a fixed window. Cloudflare's
+// cron has 1-minute granularity and is the substrate this portfolio already
+// trusts for its nightly work.
+//
+// ⚠️ RENOVATE IS THE DELIBERATE FIRST TARGET BECAUSE NOTHING GATES A MERGE ON
+// IT. If this limb never fires, dependency PRs arrive late; if it fires
+// wrongly, a workflow runs that would have run anyway. That is the whole reason
+// Phase 1 is Renovate and not ops-watch: the proving ground has to be somewhere
+// a mistake is cheap, and ops-watch is the one place in this tree where a
+// scheduling mistake costs the ability to ship.
+//
+// ⛔ THIS IS NOT PHASE 2, AND CONFUSING THEM RE-CREATES THE 46-HOUR FREEZE. A
+// dispatched run arrives as `event=workflow_dispatch`, which every duty reader
+// here deliberately REFUSES — "somebody pressed a button" is the opposite of a
+// cadence claim. So moving ops-watch/e2e/build-platforms onto this rail means
+// repointing the EVIDENCE too: this Worker writes its own `cron_heartbeat` row
+// (below) and the register reads THAT. Repointing the trigger alone would leave
+// the duty rows reading a `schedule` history that has stopped being written.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The job name recorded in `cron_heartbeat` for the workflow dispatcher. */
+export const GITHUB_DISPATCH_JOB = 'github_dispatch';
+
+/**
+ * The workflows this cron fires, declared IN THE TREE rather than in an env var.
+ *
+ * 🔴 A LIST IN CODE IS REVIEWABLE; A LIST IN A DASHBOARD IS NOT. Whoever adds a
+ * workflow here is proposing a diff that CI, the register and a human all see —
+ * and `check-heartbeats.mjs` derives the watched job set from the `*_JOB`
+ * constants in this file, so the job cannot exist without the register watching
+ * it.
+ *
+ * ⚠️ `ref` IS THE DEFAULT BRANCH ON PURPOSE. `workflow_dispatch` runs the
+ * workflow FILE FROM THE REF IT IS GIVEN, so a ref pointing anywhere else would
+ * let a branch decide what the portfolio's alarm clock executes.
+ */
+export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
+  owner: string;
+  repo: string;
+  workflow: string;
+  ref: string;
+}> = [{ owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'renovate.yml', ref: 'main' }];
+
+/**
+ * Fire each declared workflow through the GitHub REST dispatches API, and write
+ * one `cron_heartbeat` row per target whatever happens.
+ *
+ * 🔴 EVERY BRANCH WRITES A ROW, INCLUDING THE ONES THAT DID NOTHING. No token,
+ * no targets, a 404, a network error — each lands as `ok = 0` with a detail
+ * naming which. That is the difference between this and the class of failure
+ * this portfolio keeps paying for: a dispatcher that quietly does nothing looks
+ * exactly like a dispatcher that is working, and `check-heartbeats.mjs` cannot
+ * distinguish "no row because it is broken" from "no row because nobody wrote
+ * one" — so a row is ALWAYS written.
+ *
+ * ⚠️ BOUNDED, because this runs inside the same `waitUntil` chain as the
+ * retention sweep. A hung fetch here must not delay a limb that deletes data on
+ * a schedule, so every request carries a 10s abort.
+ */
+export async function dispatchGithubWorkflows(env: Env): Promise<void> {
+  // Zero targets is a configuration failure, not a no-op — the same reading the
+  // keep-alive applies to an empty target list, for the same reason.
+  if (GITHUB_DISPATCH_TARGETS.length === 0) {
+    console.log('[cron] github dispatch: NO TARGETS DECLARED');
+    await recordHeartbeat(
+      env,
+      [{ target: '(none)', ok: false, detail: 'no dispatch targets declared' }],
+      GITHUB_DISPATCH_JOB,
+    );
+    return;
+  }
+
+  const token = env.GITHUB_DISPATCH_TOKEN;
+  if (!token) {
+    // 🔴 NOT A SKIP. The rows say the credential is missing, on every target, on
+    // every run, until somebody sets it — a fail-closed seam with no proven open
+    // path is a dead feature that reports healthy.
+    console.log('[cron] github dispatch: NO GITHUB_DISPATCH_TOKEN CONFIGURED');
+    await recordHeartbeat(
+      env,
+      GITHUB_DISPATCH_TARGETS.map((t) => ({
+        target: `${t.repo}/${t.workflow}`,
+        ok: false,
+        detail: 'GITHUB_DISPATCH_TOKEN is not set on this Worker',
+      })),
+      GITHUB_DISPATCH_JOB,
+    );
+    return;
+  }
+
+  const rows: { target: string; ok: boolean; detail: string }[] = [];
+  for (const t of GITHUB_DISPATCH_TARGETS) {
+    const target = `${t.repo}/${t.workflow}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${t.owner}/${t.repo}/actions/workflows/${t.workflow}/dispatches`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            // ⚠️ REQUIRED, AND THIS PORTFOLIO HAS ALREADY BEEN BITTEN BY A
+            // DEFAULT ONE: GitHub answers 403 to a request with no User-Agent,
+            // and Cloudflare's own bot check returned 403/1010 to Python's stock
+            // agent for weeks while the sender saw a plain error and the sink
+            // saw pure silence (tooling/ops/register.json, duty.oci.disk-alert).
+            'User-Agent': 'nikatru-platform-cron',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ref: t.ref }),
+        },
+      );
+      // 🔴 204 IS THE ONLY SUCCESS, and it is checked as a number rather than
+      // through `res.ok` for the reason the keep-alive gives one limb up: `.ok`
+      // is routinely omitted by hand-rolled test doubles, and a double missing
+      // it turns every success into a failure. GitHub answers 204 No Content on
+      // an accepted dispatch; a 2xx that is not 204 means something else
+      // happened and this row must not call it a run.
+      const ok = res.status === 204;
+      const detail = ok
+        ? `HTTP 204 - dispatched ${t.workflow} on ${t.ref}`
+        : `HTTP ${res.status} - dispatch REFUSED (a 404 here usually means the token cannot see the workflow, not that it is missing)`;
+      console.log(`[cron] github dispatch ${target}: ${res.status}`);
+      rows.push({ target, ok, detail });
+    } catch (err) {
+      // An abort lands here too, and it must read as a failure rather than as
+      // "nothing to report".
+      console.log(`[cron] github dispatch ${target}: ${String(err)}`);
+      rows.push({ target, ok: false, detail: `request failed: ${String(err)}`.slice(0, 200) });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  await recordHeartbeat(env, rows, GITHUB_DISPATCH_JOB);
+}
+
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (_event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
       await keepAliveSupabase(env);
       await analyticsLiveness(env);
+      // [research/76 §C] Phase 1 of the GitHub-scheduler replacement. Placed
+      // here rather than last because it is bounded (10s per target) and writes
+      // nothing destructive; the sweep stays last for its own stated reason. It
+      // fires Renovate, which nothing gates a merge on - the deliberately cheap
+      // proving ground for the rail ops-watch will eventually move to.
+      await dispatchGithubWorkflows(env);
       await renewalsFanOut(env);
       // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
       // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json

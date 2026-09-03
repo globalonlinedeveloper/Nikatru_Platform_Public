@@ -373,7 +373,7 @@ describe('the census is actually wired into the nightly cron', () => {
     expect(tokens(mine[0].detail).undrained).toBe('1');
 
     // AND THE WHOLE CENSUS, not just this limb. `duty.platform-cron.watchedJobs`
-    // in tooling/ops/register.json names six jobs; a job the register watches
+    // in tooling/ops/register.json names SEVEN jobs (six until 2026-09-03); a job the register watches
     // and the handler never runs reads as "absent" forever, which is the
     // `analytics_liveness` incident. This is the only test in the tree that runs
     // the real handler, so it is the only place that fact is checkable.
@@ -382,7 +382,7 @@ describe('the census is actually wired into the nightly cron', () => {
     // 17/17 green because SQLite happened to return the DISTINCT set in that
     // order anyway. It is KEPT because its mutation is one-directional — losing
     // it can only ever turn a passing run into a FALSE RED, never hide a job the
-    // handler failed to write, since the same six names are still compared.
+    // handler failed to write, since the same seven names are still compared.
     // (The sibling `ORDER BY request_id` below is the same class but IS red on
     // removal — there the rowid order and the expected order genuinely differ.)
     //
@@ -410,6 +410,12 @@ describe('the census is actually wired into the nightly cron', () => {
       'analytics_liveness',
       'cancellation_drain',
       'events_rollup',
+      // Added 2026-09-03 with the [research/76 §C] Phase 1 dispatcher. This
+      // assertion went RED the moment that limb was wired, which is the case
+      // doing exactly what its header says: it is the only test in the tree
+      // that runs the real handler, so it is the only place a newly wired job
+      // is checkable at all.
+      'github_dispatch',
       'renewals',
       'retention_sweep',
       'supabase_keepalive',

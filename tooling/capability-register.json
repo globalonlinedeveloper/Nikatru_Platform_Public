@@ -205,6 +205,31 @@
         "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes",
         "swapCost": "Low — one config value, because the protocol is open."
       }
+    },
+    "github": {
+      "surface": "GitHub Actions workflow dispatch — the alarm clock's outbound leg. The `platform` Worker POSTs `workflow_dispatch` so that a Cloudflare cron, not GitHub's own scheduler, decides WHEN a workflow runs. [research/76 §C] Phase 1.",
+      "stickiness": "★★★★★ — the stickiest entry in this register, and it is written down rather than implied. GitHub holds the repositories, CI, the release lanes, the issue-based alert chain and the RECORD every duty row reads. ⚠️ WHAT THIS SURFACE ADDS IS NOT NEW LOCK-IN — it is one more call into a dependency the whole pipeline already rests on. Declaring it here makes that dependency countable instead of assumed, which is the only thing this register can honestly buy on a vendor nobody is leaving.",
+      "surfaces": [
+        "GITHUB_DISPATCH_TOKEN"
+      ],
+      "openProtocol": "NO — `POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches` is GitHub-specific. But the CALLER is one fetch with a JSON body, and the shape is common to every forge with an API-triggered pipeline (GitLab pipeline triggers, Forgejo/Gitea actions), so the port is a URL and a header rather than a rewrite.",
+      "seam": {
+        "file": "services/platform/src/scheduled.ts",
+        "symbol": "dispatchGithubWorkflows"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "A Worker secret (`wrangler secret put GITHUB_DISPATCH_TOKEN`), never a committed var — it can push work into two public repositories. 🔴 ABSENT IS A RECORDED STATE, NOT A SKIP: the limb writes one `cron_heartbeat` row per target saying the credential is missing, because a dispatcher that quietly does nothing is indistinguishable from one that is working."
+      },
+      "ownTheRecord": "PARTLY, AND THE GAP IS PHASE 2. The record that the dispatch HAPPENED is `platform_db.cron_heartbeat`, which is ours and is read by tooling/ops/check-heartbeats.mjs from outside Cloudflare. The record that the dispatched WORKFLOW ran is GitHub's own run history — which is the circularity research/76 §C exists to break, and the reason Phase 2 repoints the duty readers at D1 rather than merely repointing the trigger.",
+      "exportPath": {
+        "path": "services/platform/migrations",
+        "detail": "cron_heartbeat is a D1 table in this repository's own migrations; the dispatch record leaves with the database, not with GitHub."
+      },
+      "exitPlan": {
+        "alternative": "The dispatched workflow's own `schedule:` block, which is deliberately KEPT as a backstop and is what evidences the cadence today — so losing this surface degrades timeliness and loses nothing else.",
+        "swapCost": "Low — one URL, one header set, one status code. The fallback needs no change at all because it was never removed."
+      }
     }
   },
   "nonVendorSurfaces": {
