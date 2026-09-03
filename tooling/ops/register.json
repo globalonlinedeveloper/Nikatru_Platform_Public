@@ -640,7 +640,8 @@
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",
-          "event": "schedule"
+          "event": "schedule",
+          "headBranch": "main"
         }
       },
       "absenceWatcher": {
@@ -675,7 +676,8 @@
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",
-          "event": "schedule"
+          "event": "schedule",
+          "headBranch": "main"
         }
       },
       "absenceWatcher": {
@@ -730,7 +732,8 @@
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "build-platforms.yml",
-          "event": "schedule"
+          "event": "schedule",
+          "headBranch": "main"
         }
       },
       "absenceWatcher": {
@@ -760,7 +763,8 @@
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "e2e.yml",
-          "event": "schedule"
+          "event": "schedule",
+          "headBranch": "main"
         }
       },
       "absenceWatcher": {
@@ -832,7 +836,8 @@
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",
-          "event": "schedule"
+          "event": "schedule",
+          "headBranch": "main"
         }
       },
       "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03. ✅ PARTLY ANSWERED 2026-09-03, AND THE PART THAT MOVED IS THE TRIGGER, NOT THE EVIDENCE. services/platform/src/scheduled.ts now dispatches this workflow from the Cloudflare cron as well (GITHUB_DISPATCH_TARGETS), so it no longer depends on GitHub's scheduler to RUN — which is the half that froze this repository for ~18h on 2026-08-10 and ~46h on 2026-09-02. ⚠️ BUT THIS ROW STILL READS `event=schedule`, and it must until the timer claim moves, because a dispatched run arrives as `event=workflow_dispatch` and that is INDISTINGUISHABLE FROM A HAND-PRESS: accepting it here would make freshness green on somebody being awake, the exact failure assert-platform-proof-fresh.mjs names in its own header (\"counting manual runs is what let a never-firing cron look healthy\"). So the 12 `schedule:` slots STAY, and services/platform/test/github-dispatch.test.ts fails the build if a dispatched workflow that any row still reads this way loses them. ⬜ WHAT CLOSES IT PROPERLY: the timer claim comes from the `cron_heartbeat` row the dispatcher writes (a record only the timer can write), and this reader drops to OUTCOME only — newest successful run with an explicit `head_branch === main`, because the `event=schedule` filter is ALSO what silently guaranteed the branch.",
@@ -991,6 +996,7 @@
           "reader": "github-run-history",
           "workflow": "renovate.yml",
           "event": "schedule",
+          "headBranch": "main",
       "firstDue": "2026-09-05T12:00:00Z",
       "firstDueWhy": "🔴 THE BOOTSTRAP DATE, AND IT EXPIRES BY ARITHMETIC. This row was declared 2026-09-03; the workflow it names cannot appear in GitHub's run history until it is on the DEFAULT BRANCH, and this guard holds `watched workflows === .github/workflows/*.yml` in BOTH directions, so the row cannot wait for the run either. Without this field the merge that lands the workflow reddens every CI run until a scheduled slot is delivered — the deadlock is structural and every future workflow row hits it exactly once. The value is the second daily 03:00Z slot plus nine hours of delivery slack, NOT a round number: two chances to exist on a scheduler measured at 10.1% on-time. ⚠️ It gates ONLY the \"no successful run at all\" branch — a STALE success and a MISSING workflow both still block — it still PRINTS the word FAILING, and assert-ops-register.mjs refuses any value more than one cadence window ahead of now, which is what stops it becoming a waiver. DELETE IT once the first scheduled run has landed.",
           "why": "🔴 `event: schedule` DELIBERATELY, EVEN THOUGH THE PRIMARY TRIGGER IS A DISPATCH. The Cloudflare Worker cron fires this workflow through `workflow_dispatch`, because GitHub delivers only ~10.1% of scheduled runs on time and that unreliability froze this repository's merge queue twice. But a reader CANNOT DISTINGUISH a Worker's dispatch from a human pressing the button, and 'somebody pressed a button' is the opposite of a cadence claim — the rule every other workflow row here obeys. So the weekly `schedule:` backstop is what EVIDENCES the cadence, and the Worker is what makes the updates timely. The two triggers do different jobs and only one of them is proof."
