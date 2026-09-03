@@ -278,16 +278,47 @@ export function evaluateJob(job, rows, cronExpr, nowMs) {
     };
   }
   // ⚠️ Presence is NOT the assertion. The outcome column is.
-  if (Number(newest.ok) !== 1) {
+  //
+  // 🔴 AND IT IS ASKED PER TARGET, BECAUSE A FAN-OUT JOB IS SEVERAL DUTIES UNDER
+  // ONE NAME. `recordHeartbeat` writes one row per target and stamps the whole
+  // batch with a SINGLE `ran_at`, so a fan-out job's rows are not merely close
+  // in time — they are IDENTICAL in time. Asking `newest.ok` then asked about
+  // whichever row the reduce happened to keep, which for equal stamps is
+  // whichever the query returned first: a FAILING TARGET COULD BE HIDDEN BY A
+  // SUCCEEDING ONE, decided by SQLite's row order.
+  //
+  // Latent until 2026-09-03 — `supabase_keepalive` and `renewals` are fan-outs
+  // with one target each, so no two rows ever shared a stamp. Adding
+  // `ops-watch.yml` beside `renovate.yml` under `github_dispatch` made it live,
+  // and the target it could hide was the workflow whose lateness froze this
+  // repository twice.
+  //
+  // ⬜ THE RESIDUAL, STATED RATHER THAN LEFT TO BE FOUND: a target that stops
+  // being written ENTIRELY is still invisible here. Its last row stays newest
+  // FOR THAT TARGET and green, while the job's overall freshness is carried by
+  // the targets that do still write. Closing that needs a DECLARED target set to
+  // compare against — the register names jobs, not targets — and without one a
+  // removed target would be permanently absent and permanently red.
+  const newestPerTarget = new Map();
+  for (const r of rows) {
+    const key = r.target ?? '(none)';
+    const prev = newestPerTarget.get(key);
+    if (!prev || Date.parse(r.ran_at) > Date.parse(prev.ran_at)) newestPerTarget.set(key, r);
+  }
+  const failing = [...newestPerTarget.entries()].filter(([, r]) => Number(r.ok) !== 1);
+  if (failing.length > 0) {
     return {
       ok: false,
       kind: 'red',
       ageHours,
       reason:
-        `${job}: the newest heartbeat is FRESH and says the job FAILED — ok=${newest.ok}` +
-        (newest.detail ? `, detail: ${String(newest.detail).slice(0, 200)}` : '') +
-        `${newest.target ? ` (target ${newest.target})` : ''}. ` +
-        'A check that only asked "did a row land today" would be green on exactly this.',
+        `${job}: the newest heartbeat is FRESH and says the job FAILED — ` +
+        `${failing.length} of ${newestPerTarget.size} target(s): ` +
+        failing
+          .map(([t, r]) => `target ${t}: ok=${r.ok}${r.detail ? `, detail: ${String(r.detail).slice(0, 200)}` : ''}`)
+          .join(' · ') +
+        '. A check that only asked "did a row land today" would be green on exactly this, and one that asked ' +
+        'only about the newest ROW would be green whenever another target of the same job succeeded.',
     };
   }
   // The green line names the occurrence it covered, so a reader can check the

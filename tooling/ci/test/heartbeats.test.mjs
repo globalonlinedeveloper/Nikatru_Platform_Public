@@ -70,6 +70,79 @@ const NOW = Date.parse('2026-08-02T09:00:00Z');
 const CRON = '0 6 * * *';
 const row = (over = {}) => ({ job: 'j', target: 't', ok: 1, detail: '', ran_at: '2026-08-02T06:00:00Z', ...over });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 A FAN-OUT JOB IS SEVERAL DUTIES UNDER ONE NAME, AND THE VERDICT USED TO SEE
+// ONLY ONE OF THEM.
+//
+// `recordHeartbeat` writes ONE ROW PER TARGET and stamps the whole batch with a
+// SINGLE `ran_at`, so a fan-out job's rows are not merely close in time — they
+// are IDENTICAL in time. `rows.reduce((a, b) => b.ran_at > a.ran_at ? b : a)`
+// with a strict `>` therefore keeps whichever row the query returned first, and
+// the outcome check then asked about that row alone. Whether a failing target
+// was seen depended on SQLite's row order for equal timestamps.
+//
+// It was latent until 2026-09-03: `supabase_keepalive` and `renewals` are both
+// fan-outs but have exactly one target each today, so no two rows ever shared a
+// stamp. Adding `ops-watch.yml` beside `renovate.yml` under `github_dispatch`
+// made it live — a failed dispatch of the workflow whose lateness froze this
+// repository twice could be hidden by a successful dispatch of Renovate.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a job with several targets is judged on ALL of them', () => {
+  const at = '2026-08-02T06:00:00Z';
+
+  test('🔴 one failing target is RED even when another target of the same job succeeded', () => {
+    // Both orders, because the defect was an ORDERING accident: with a strict
+    // `>` and equal stamps the reduce keeps the first element, so the old code
+    // passed or failed depending on which row came back first.
+    for (const rows of [
+      [row({ target: 'a', ok: 1, ran_at: at }), row({ target: 'b', ok: 0, detail: 'HTTP 404', ran_at: at })],
+      [row({ target: 'b', ok: 0, detail: 'HTTP 404', ran_at: at }), row({ target: 'a', ok: 1, ran_at: at })],
+    ]) {
+      const v = evaluateJob('j', rows, CRON, NOW);
+      assert.equal(v.ok, false, `order ${rows.map((r) => r.target).join(',')} must be RED`);
+      assert.equal(v.kind, 'red');
+      assert.match(v.reason, /target b/, 'the failing TARGET must be named, or an operator cannot act on it');
+      assert.match(v.reason, /HTTP 404/, 'the failing detail must survive into the reason');
+    }
+  });
+
+  test('every failing target is named, not just the first one found', () => {
+    const v = evaluateJob('j', [
+      row({ target: 'a', ok: 0, detail: 'first', ran_at: at }),
+      row({ target: 'b', ok: 1, ran_at: at }),
+      row({ target: 'c', ok: 0, detail: 'third', ran_at: at }),
+    ], CRON, NOW);
+    assert.equal(v.ok, false);
+    assert.match(v.reason, /first/);
+    assert.match(v.reason, /third/);
+  });
+
+  test('all targets green is still a pass — the widening must not invent failures', () => {
+    const v = evaluateJob('j', [
+      row({ target: 'a', ok: 1, ran_at: at }),
+      row({ target: 'b', ok: 1, ran_at: at }),
+    ], CRON, NOW);
+    assert.equal(v.ok, true, v.reason);
+  });
+
+  test("a target's OLD failure does not outvote its own newer success", () => {
+    // Per TARGET, the newest row wins — otherwise a repaired target would stay
+    // red forever and the check would be switched off, which is the failure
+    // mode this file's header warns about one level up.
+    const v = evaluateJob('j', [
+      row({ target: 'a', ok: 1, ran_at: at }),
+      row({ target: 'a', ok: 0, detail: 'yesterday', ran_at: '2026-08-01T06:00:00Z' }),
+    ], CRON, NOW);
+    assert.equal(v.ok, true, v.reason);
+  });
+
+  test('a row with no target at all is still judged — it is one group, not zero', () => {
+    const v = evaluateJob('j', [{ job: 'j', ok: 0, detail: 'no target', ran_at: at }], CRON, NOW);
+    assert.equal(v.ok, false);
+    assert.equal(v.kind, 'red');
+  });
+});
+
 describe('check-heartbeats — the three ways to be red, and the one that matters most', () => {
   test('a fresh row saying ok=1 is the only pass', () => {
     const v = evaluateJob('j', [row()], CRON, NOW);
