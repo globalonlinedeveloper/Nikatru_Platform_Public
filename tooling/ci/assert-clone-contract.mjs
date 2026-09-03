@@ -10,6 +10,40 @@
 // at app #10, when unwinding it means N migrations and N wrangler
 // reconfigurations.
 //
+// ⏱ CORRECTED 2026-09-03 — THE PARAGRAPH ABOVE IS LEFT AS WRITTEN AND ITS
+// ARITHMETIC IS NOW DEAD. The account is on Workers Paid, where the ceiling is
+// 50,000 databases and 10 GB per database, so "at most nine apps" describes a
+// constraint that expired. Three further measurements retire the capacity
+// argument completely rather than merely raising its numbers:
+//
+//   1. The D1 included allowance is PER ACCOUNT, not per database. Cloudflare's
+//      pricing footnote 7: storage "is based on the sum of all databases in your
+//      account". So splitting buys NO headroom and changes NO bill. The only
+//      thing a split relieves is the PER-DATABASE cap — and platform_db is
+//      282 kB against 10 GB.
+//   2. Deleted rows DO return space. Gate R4-04, measured 2026-09-03: a probe D1
+//      went to 9,150,464 bytes on 20,000 rows and a plain DELETE returned it to
+//      16,384 — no VACUUM, no wait. A retention sweep bounds the ceiling, so it
+//      is not a high-water mark.
+//   3. Splitting does not break the bundle read either: every app Worker binds
+//      PLATFORM_DB as a SECOND binding and reads entitlements there, so
+//      [ADR 057]'s union stays inside one database however many app databases
+//      exist.
+//
+// 🔴 THE DEFAULT IS STILL CLIENT-ONLY, AND THIS GUARD STILL EARNS ITS KEEP —
+// but for the reasons below, not the ceiling above. State them correctly,
+// because a guard defended by a dead argument is one somebody deletes:
+//   · BLAST RADIUS. One bad migration in a shared database is a portfolio
+//     outage. [ADR 020] rejected the app_id-discriminator design on exactly this.
+//   · MIGRATION COST. `wrangler d1 migrations apply` takes ONE database. N
+//     databases is a loop with no cross-database transactionality — succeeding
+//     on four and failing on the fifth is a split brain with no rollback — and
+//     INV-419, which would catch the drift, has no enforcer at all.
+//   · YAGNI. An app that does not store user rows server-side should not own a
+//     database, a migration set and an erasure route it never needed.
+//
+// Full evidence: Private/research/80-DATABASE-LAYOUT-PER-APP-VS-SHARED.md.
+//
 // Checks are STRUCTURAL, never textual. An earlier version of this grepped for
 // the string "r2_buckets" and matched the comment in the template explaining
 // why there is no r2_buckets — the same comment-vs-code confusion the migration

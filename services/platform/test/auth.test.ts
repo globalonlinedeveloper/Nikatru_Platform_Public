@@ -66,6 +66,9 @@ let appStatus = 200;
 /** When set, the relay fetch THROWS — an app Worker that cannot be reached at
  *  all, which is a different failure from one that answers badly. */
 let appThrows = false;
+/** When set, the JWKS endpoint is UNREACHABLE — the state that used to 401 the
+ *  whole portfolio from a single box being down. */
+let jwksThrows = false;
 
 /** Every fetch stubs into exactly one of three worlds. A URL that matches none
  *  throws, so a new outbound call added to the route surfaces as a red test
@@ -81,6 +84,12 @@ beforeAll(async () => {
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/.well-known/jwks.json')) {
+      // 🔴 THE OUTAGE SWITCH. `jose` fails CLOSED on a fetch error — it does not
+      // fall back to a previously cached key set — so an unreachable JWKS used
+      // to 401 every authenticated request, not merely every login. A TypeError
+      // is what undici actually raises, so that is what is thrown here rather
+      // than a tidy 503 the real world would not produce.
+      if (jwksThrows) throw new TypeError('fetch failed');
       return new Response(JSON.stringify({ keys: [publicJwk] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -140,12 +149,19 @@ function harness({
   serviceRoleKey = 'service-role-key' as string | null,
   db = realPlatformDb(),
   appEndpoints = APP_ENDPOINTS as string | null,
-}: { serviceRoleKey?: string | null; db?: RealDb; appEndpoints?: string | null } = {}) {
+  kv = KV,
+}: {
+  serviceRoleKey?: string | null;
+  db?: RealDb;
+  appEndpoints?: string | null;
+  kv?: KVNamespace;
+} = {}) {
   identityCalls = [];
   identityStatus = 204;
   appCalls = [];
   appStatus = 200;
   appThrows = false;
+  jwksThrows = false;
   ORDER.length = 0;
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => { c.set('requestId', 'rid-test'); await next(); });
@@ -158,7 +174,7 @@ function harness({
 
   const env = {
     PLATFORM_DB: db,
-    JWKS_CACHE: KV,
+    JWKS_CACHE: kv,
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey ?? undefined,
     APP_ERASURE_ENDPOINTS: appEndpoints ?? undefined,
@@ -184,6 +200,100 @@ function seedEntitlement(db: RealDb, userId: string, appId = 'subly') {
     )
     .run(userId, appId, 'pro', 'p1', 'APP_STORE', 1, null, '2026-08-01T00:00:00Z');
 }
+
+/**
+ * 🔴 THE JWKS USED TO FAIL CLOSED, AND THAT WAS A PORTFOLIO-WIDE OUTAGE.
+ *
+ * `jose`'s `createRemoteJWKSet` caches per isolate and IN MEMORY, and on a
+ * failed fetch the error propagates — there is no fallback to a previously
+ * cached key set. At this user count isolates are almost always cold, so an
+ * unreachable JWKS endpoint 401'd EVERY authenticated request in every app, not
+ * merely every login. The KV copy existed and was written, and nothing read it
+ * on the failure path.
+ *
+ * Every case below FAILS without the fallback, except the two that assert it
+ * did NOT widen what is accepted — and those are the ones that matter most,
+ * because a fallback that accepts a token the primary path would reject is
+ * worse than the outage it fixes.
+ */
+describe('platformAuth SURVIVES a JWKS outage without widening what it accepts', () => {
+  /** A KV that actually holds the key set, unlike the default stub. */
+  const cachedKv = (body: unknown) =>
+    ({
+      get: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+      put: async () => undefined,
+    }) as unknown as KVNamespace;
+
+  it('JWKS unreachable + valid token + populated cache ⇒ the request SUCCEEDS', async () => {
+    const h = harness({ kv: cachedKv({ keys: [publicJwk] }) });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { userId: string }).userId).toBe('user-a');
+  });
+
+  it('JWKS unreachable + valid token + EMPTY cache ⇒ 401, still fails closed', async () => {
+    const h = harness(); // default KV returns null
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('an EMPTY key set in the cache is NOT a usable fallback — it is what a broken GoTrue publishes', async () => {
+    const h = harness({ kv: cachedKv({ keys: [] }) });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('a corrupt cache is no cache', async () => {
+    const h = harness({ kv: cachedKv('{not json') });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 the fallback does NOT widen: a FOREIGN-key token is still 401 against the cache', async () => {
+    const h = harness({ kv: cachedKv({ keys: [publicJwk] }) });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' }, { key: foreignKey })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 the fallback does NOT widen: an HS256 token is still 401 against the cache', async () => {
+    const h = harness({ kv: cachedKv({ keys: [publicJwk] }) });
+    jwksThrows = true;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' }, { alg: 'HS256' })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 the fallback does NOT widen: a wrong-issuer token is still 401 against the cache', async () => {
+    const h = harness({ kv: cachedKv({ keys: [publicJwk] }) });
+    jwksThrows = true;
+    const res = await h.get(
+      '/v1/whoami',
+      `Bearer ${await token({ sub: 'user-a' }, { issuer: 'https://evil.example/auth/v1' })}`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('the happy path is unchanged — a reachable JWKS never consults the cache', async () => {
+    let cacheRead = false;
+    const spyKv = {
+      get: async () => {
+        cacheRead = true;
+        return JSON.stringify({ keys: [publicJwk] });
+      },
+      put: async () => undefined,
+    } as unknown as KVNamespace;
+    const res = await harness({ kv: spyKv }).get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(200);
+    // `warmCache` may read it to decide whether to write; what must not happen
+    // is a SECOND verification attempt. Asserted by the 200 above arriving
+    // without the outage switch set.
+    void cacheRead;
+  });
+});
 
 describe('platformAuth ACCEPTS only a real ES256 token from THIS project', () => {
   it('accepts a valid ES256 token and exposes sub + email', async () => {

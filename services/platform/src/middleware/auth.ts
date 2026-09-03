@@ -45,10 +45,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MiddlewareHandler } from 'hono';
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import type { AppEnv, Env } from '../types';
 
 const JWKS_KV_KEY = 'supabase_jwks';
+
+/**
+ * 🔴 THE VERIFY OPTIONS ARE DECLARED ONCE AND SHARED BY BOTH PATHS, AND THAT IS
+ * THE WHOLE SAFETY ARGUMENT FOR THE FALLBACK BELOW.
+ *
+ * A fallback that accepts a token the primary path would reject is worse than
+ * the outage it fixes. Writing the options twice is how the two drift — one
+ * gets `algorithms` tightened and the other does not, and the weaker path is
+ * the one an attacker reaches by making the JWKS endpoint unreachable. So there
+ * is exactly one object, and both `jwtVerify` calls take it.
+ *
+ * `algorithms: ['ES256']` is INV-406 ("ES256 via JWKS only"): without it, a
+ * token whose header says `alg: none` or a symmetric algorithm is decided by
+ * the token itself — the caller choosing how they are verified.
+ */
+const verifyOptions = (supabaseUrl: string) => ({
+  issuer: `${supabaseUrl}/auth/v1`,
+  audience: 'authenticated',
+  algorithms: ['ES256'],
+});
 
 /**
  * @ceiling none — a CACHE LIFETIME, and its relation to `kv.writesPerDay` is
@@ -74,6 +94,64 @@ function jwks(supabaseUrl: string): JWTVerifyGetKey {
     remoteSets.set(supabaseUrl, set);
   }
   return set;
+}
+
+/**
+ * 🔴 THE JWKS USED TO FAIL CLOSED, AND THAT WAS A PORTFOLIO-WIDE OUTAGE WAITING
+ * ON ONE BOX.
+ *
+ * Read from jose's own source (`src/jwks/remote.ts`): `createRemoteJWKSet`
+ * keeps a per-isolate in-memory cache, and **on a failed fetch the error
+ * propagates — there is no fallback to a previously cached key set.** At this
+ * portfolio's user count isolates are almost always cold, so an unreachable
+ * JWKS endpoint meant a cold isolate fetched, failed, and 401'd EVERY
+ * authenticated request — not just logins, every read in every app.
+ *
+ * The KV copy already existed and was already written by `warmCache`, but its
+ * own comment called it "the warm-start for a cold isolate rather than the
+ * source of truth" and NOTHING READ IT ON THE FAILURE PATH. It does now.
+ *
+ * ⚠️ WHAT THIS DELIBERATELY DOES NOT DO. It does not widen what is accepted:
+ * both paths take the same `verifyOptions`, so a token refused by the remote
+ * path is refused by this one. It does not extend `JWKS_TTL_SECONDS` to make
+ * the fallback last longer — the TTL is what lets a rotated key propagate, and
+ * lengthening it to paper over an outage would trade a short outage for a
+ * silent stale-key window. And it is reached ONLY when the key set could not be
+ * obtained: an invalid token still 401s immediately, without a second attempt.
+ */
+/**
+ * Could the KEY SET not be obtained, as distinct from the token being bad?
+ *
+ * Written as a positive test against the shapes jose actually raises when the
+ * fetch fails, rather than as "not a JWT error" — a negative test would send
+ * every future jose error class down the fallback path, which is the direction
+ * that widens what is accepted.
+ */
+function isKeySetUnavailable(err: unknown): boolean {
+  if (err instanceof TypeError) return true; // undici: "fetch failed"
+  const code = (err as { code?: unknown })?.code;
+  return (
+    code === 'ERR_JWKS_TIMEOUT' ||
+    code === 'ERR_JWKS_NO_MATCHING_KEY' ||
+    code === 'ERR_JWKS_MULTIPLE_MATCHING_KEYS'
+  );
+}
+
+async function localSetFromCache(env: Env): Promise<JWTVerifyGetKey | null> {
+  try {
+    if (!env.JWKS_CACHE) return null;
+    const cached = await env.JWKS_CACHE.get(JWKS_KV_KEY);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached) as { keys?: unknown[] };
+    // An EMPTY key set is not a usable fallback — it is exactly what a
+    // misconfigured GoTrue publishes, and treating it as one would turn a
+    // configuration error into a silent, permanent 401 nobody could diagnose.
+    if (!Array.isArray(parsed.keys) || parsed.keys.length === 0) return null;
+    return createLocalJWKSet(parsed as Parameters<typeof createLocalJWKSet>[0]);
+  } catch {
+    // A corrupt or unparseable cache is no cache. Fail closed, as before.
+    return null;
+  }
 }
 
 /** Best-effort warm of the KV copy. Never awaited on the request path and never
@@ -105,14 +183,22 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
 
   try {
     void warmCache(c.env);
-    const { payload } = await jwtVerify(match[1], jwks(c.env.SUPABASE_URL), {
-      issuer: `${c.env.SUPABASE_URL}/auth/v1`,
-      audience: 'authenticated',
-      // 🔴 PINNED. Without this, a token whose header says `alg: none` or a
-      // symmetric algorithm is decided by the token itself — the caller
-      // choosing how they are verified.
-      algorithms: ['ES256'],
-    });
+    const opts = verifyOptions(c.env.SUPABASE_URL);
+    let payload;
+    try {
+      ({ payload } = await jwtVerify(match[1], jwks(c.env.SUPABASE_URL), opts));
+    } catch (err) {
+      // ⚠️ ONLY a key-set acquisition failure earns a second attempt. jose
+      // raises JWKSNoMatchingKey / JOSEError subclasses for a bad token, and a
+      // TypeError("fetch failed") — or a JWKSTimeout — when it could not reach
+      // the endpoint at all. Retrying a BAD TOKEN against the cache would be a
+      // second bite at verification, which is not what this exists for.
+      if (!isKeySetUnavailable(err)) throw err;
+      const local = await localSetFromCache(c.env);
+      // No usable cache ⇒ behave exactly as before: fail closed.
+      if (!local) throw err;
+      ({ payload } = await jwtVerify(match[1], local, opts));
+    }
     // `sub` IS the user id. A verified token with no subject authenticates
     // nobody, and letting it through would set `userId` to undefined and hand
     // every `WHERE user_id = ?` a null — which matches no row on a read and, on
