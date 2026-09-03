@@ -101,4 +101,18 @@ jobs:
           # decides WHEN and WHERE Renovate runs, never WHAT it changes.
           RENOVATE_ONBOARDING: 'false'
           RENOVATE_REQUIRE_CONFIG: 'required'
+          # ⚠️ WITHOUT THIS, EVERY DEPENDENCY COMMIT IN BOTH REPOSITORIES IS
+          # AUTHORED `renovate@whitesourcesoftware.com` — Mend's default, warned
+          # about on every run, and a vendor address in the history of a project
+          # that deliberately stopped using that vendor on 2026-09-03.
+          # 🔴 THE NAME IS A LABEL, NOT AN AUTHENTICATION CLAIM, and the
+          # distinction is worth stating: these pushes are made with
+          # RENOVATE_TOKEN, which belongs to the owner's account, so GitHub
+          # attributes them there whatever this field says. What the field buys
+          # is a reader of `git log` being able to tell a bot commit from a hand
+          # -written one. It is NOT `github-actions[bot]` (the identity
+          # site-drift-repair.yml and store-screenshots.yml use) because this is
+          # not that App and borrowing its address would be a false claim about
+          # provenance in the one place provenance is recorded.
+          RENOVATE_GIT_AUTHOR: 'nikatru-renovate <renovate@nikatru.com>'
           LOG_LEVEL: info

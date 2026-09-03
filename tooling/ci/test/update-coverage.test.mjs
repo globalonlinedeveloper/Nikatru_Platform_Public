@@ -47,7 +47,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +76,7 @@ function baseInputs(over = {}) {
         {
           customType: 'regex',
           depNameTemplate: 'flutter',
+          datasourceTemplate: 'flutter-version',
           matchStrings: ['"flutter":\\s*"(?<currentValue>[^"]+)"'],
           managerFilePatterns: ['/^tooling\\/versions\\.json$/'],
         },
@@ -273,5 +274,42 @@ describe('assert-update-coverage — end to end, against the real repository', (
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /no `key` or no `why`/);
+  });
+});
+
+// ── U11/U12 · THE DATASOURCE THAT DOES NOT EXIST ────────────────────────────
+// Added 2026-09-03, after `pub` (Renovate ships `dart`) stood in the real
+// renovate.json and left `melos` and `mason_cli` advanced by nobody while every
+// limb above reported green. Renovate does not fail on an unknown datasource —
+// it logs `WARN: Missing datasource!` — so nothing outside this guard can tell.
+describe('assert-update-coverage — a manager may only name a datasource somebody verified', () => {
+  test('U11 · the historic value `pub` FAILS, and the message names the real id', () => {
+    const inputs = baseInputs();
+    inputs.config.customManagers[0].datasourceTemplate = 'pub';
+    const errs = evaluate(inputs).errors.join(' ');
+    assert.match(errs, /is not an id this repo has verified/);
+    assert.match(errs, /dart/, 'the accepted set must be printed, or the reader cannot act on the failure');
+    assert.match(errs, /melos.+mason_cli|mason_cli/, 'the message must carry the real incident, not a generic scold');
+  });
+
+  test('U12 · NO `datasourceTemplate` at all FAILS — an extracted version looked up nowhere', () => {
+    const inputs = baseInputs();
+    delete inputs.config.customManagers[0].datasourceTemplate;
+    assert.match(evaluate(inputs).errors.join(' '), /no `datasourceTemplate`/);
+  });
+
+  test('every datasource the REAL renovate.json names is accepted — the guard must not redden the tree it ships with', () => {
+    // Reads the committed config rather than a fixture: a fixture would only
+    // prove the set matches itself.
+    const real = JSON.parse(readFileSync(join(REPO, 'renovate.json'), 'utf8'));
+    for (const m of real.customManagers ?? []) {
+      const inputs = baseInputs();
+      inputs.config.customManagers[0].datasourceTemplate = m.datasourceTemplate;
+      assert.deepEqual(
+        evaluate(inputs).errors,
+        [],
+        `the committed config names \`${m.datasourceTemplate}\`, which this guard refuses`,
+      );
+    }
   });
 });

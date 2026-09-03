@@ -15,8 +15,27 @@
     "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Asia/Kolkata",
+  "_scheduleWhy": [
+    "🔴 \"on monday\", NOT \"before 6am on monday\", AND THE OLD VALUE MEANT RENOVATE COULD NEVER OPEN",
+    "A PULL REQUEST AT ALL. This window is evaluated in Asia/Kolkata, so 'before 6am on monday' is",
+    "Sunday 18:30 UTC to Monday 00:30 UTC -- and the ONLY thing that now runs Renovate is",
+    ".github/workflows/renovate.yml, whose cron fires at 03:00 UTC. 03:00 UTC is 08:30 IST. The two",
+    "sets never intersect, so every run evaluated the tree, wrote the dashboard, and deferred every",
+    "update forever. MEASURED, not reasoned: the first self-hosted run left SIXTEEN updates under",
+    "'Awaiting Schedule' on the Dependency Dashboard (issue #417, 2026-09-03).",
+    "",
+    "⚠️ IT WAS ALREADY BROKEN BEFORE THE SELF-HOSTED MOVE, which is why nobody noticed: the",
+    "Mend-hosted App ran on ITS OWN cadence, several times a day, so it always found the window. The",
+    "moment the schedule became ours, the mismatch became total. The lesson generalises: A SCHEDULE",
+    "IS NOT A SETTING, IT IS AN INTERSECTION -- with whatever fires it, in whatever timezone.",
+    "",
+    "'on monday' is the whole of Monday IST = Sunday 18:30 UTC to Monday 18:30 UTC, so the 03:00 UTC",
+    "Monday firing lands inside it with about 15 HOURS of delivery lateness to spare -- which matters",
+    "on a scheduler measured at 10.1% on-time. The DUTY is still weekly; the widening buys margin on",
+    "the evidence, never a change of cadence. Same principle as the daily cron behind a 7d duty row."
+  ],
   "schedule": [
-    "before 6am on monday"
+    "on monday"
   ],
   "automerge": false,
   "dependencyDashboard": true,
@@ -183,7 +202,7 @@
         "\"melos\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "melos",
-      "datasourceTemplate": "pub",
+      "datasourceTemplate": "dart",
       "managerFilePatterns": [
         "/^tooling\\/versions\\.json$/"
       ]
@@ -215,7 +234,7 @@
         "\"mason_cli\":\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "depNameTemplate": "mason_cli",
-      "datasourceTemplate": "pub",
+      "datasourceTemplate": "dart",
       "managerFilePatterns": [
         "/^tooling\\/versions\\.json$/"
       ]
