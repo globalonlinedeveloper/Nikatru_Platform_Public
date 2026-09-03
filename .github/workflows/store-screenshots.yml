@@ -233,8 +233,23 @@ jobs:
 
       # Must MATCH the installed Chrome major version or the WebDriver handshake
       # fails with a version mismatch that reads like a Flutter error.
+      # 🔴 REPINNED 2026-09-03, AND THE OLD PIN WAS FROZEN RATHER THAN MERELY OLD.
+      # It read `@ef5c64a9 # v2` — a real commit, but an UNTAGGED one (16 minutes
+      # past v2.4.0, i.e. what the floating `v2` tag pointed at), and upstream has
+      # since DELETED the `v2` tag entirely. Renovate cannot resolve a tag that no
+      # longer exists, so it reported `Could not determine new digest for update`
+      # and proposed nothing: this action had been receiving no updates at all
+      # since March, silently, with the pin looking perfectly healthy in the diff.
+      # ⚠️ THAT IS THE FAILURE MODE SHA-PINNING BUYS AND `helpers:pinGitHubActionDigests`
+      # is supposed to pay for — and it went unnoticed because nothing in this tree
+      # checks that the `# vN` comment names a tag that still exists. The detector
+      # is Renovate itself, which found it in its FIRST self-hosted run.
+      # v3.0.0 is a TypeScript rewrite that states behavioural parity (same install
+      # locations, same PATH resolution) and this repo passes it no inputs at all,
+      # so the depended-on surface is unchanged. It also carries the download
+      # retry/backoff and the `qs` DoS fix.
       - name: Set up ChromeDriver
-        uses: nanasess/setup-chromedriver@ef5c64a93512d266b23b80bae95e46a67f30e703 # v2
+        uses: nanasess/setup-chromedriver@e913548694400f275b4070efcd90f47dbbc8914c # v3.0.0
 
       - name: flutter pub get
         working-directory: apps/subly
