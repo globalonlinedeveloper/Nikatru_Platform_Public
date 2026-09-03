@@ -30,8 +30,18 @@
     "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Asia/Kolkata",
+  "_scheduleWhy": [
+    "🔴 \"on monday\", NOT \"before 6am on monday\". The sibling repository's renovate.yml is the ONLY",
+    "thing that runs Renovate here, and its cron fires at 03:00 UTC = 08:30 IST. 'before 6am on monday'",
+    "is Sunday 18:30 UTC to Monday 00:30 UTC in this timezone, so the two sets NEVER INTERSECT and every",
+    "update would be deferred forever -- measured on 2026-09-03, when the first self-hosted run left the",
+    "dashboard full of 'Awaiting Schedule' entries. 'on monday' is the whole of Monday IST, which the",
+    "03:00 UTC firing lands inside with ~15h of lateness to spare. The DUTY is still weekly.",
+    "⚠️ It was already broken before the move; the Mend-hosted App ran several times a day and always",
+    "found the window, so nothing surfaced it. A SCHEDULE IS NOT A SETTING, IT IS AN INTERSECTION."
+  ],
   "schedule": [
-    "before 6am on monday"
+    "on monday"
   ],
   "automerge": false,
   "dependencyDashboard": true,
