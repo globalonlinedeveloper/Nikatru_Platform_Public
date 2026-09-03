@@ -53,7 +53,7 @@
 //
 //   M1 the HOME moved 400 → 365 (events)          -> "RETENTION PERIODS DISAGREE …
 //                                                     data-inventory.json:312 says 365 and
-//                                                     register.json:1967 says 400"
+//                                                     register.json:2122 says 400"
 //   M2 the COPY moved 730 → 1825 (provider_notif) -> same message from the other side
 //   M3 the home's `periodDays` deleted (events_daily)
 //                                                 -> "a copy with no home" (limb v-b),
