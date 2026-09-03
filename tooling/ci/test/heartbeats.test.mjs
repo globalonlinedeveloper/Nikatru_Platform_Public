@@ -458,6 +458,31 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
     assert.match(problems.join(' '), /the register and the config disagree|declares no `triggers.crons`/);
   });
 
+  // 🔴 ADDED 2026-09-03, AND THE FAILURE IT PREVENTS WAS ABOUT TO BE WRITTEN.
+  // Everything downstream computes the expected occurrence from `crons[0]` and
+  // ignores the rest — correct while a cloudflare-cron duty has ONE schedule,
+  // and an unchecked assumption until now. research/76 §C's Phase 2 wants the
+  // dispatcher to fire more often than the nightly limbs (a 24h cadence against
+  // a 36h window leaves 12h of margin, and the measured GitHub gap it replaces
+  // reached 48.8h), and the obvious way is a second `triggers.crons` entry. At
+  // that moment every job would still be judged against the FIRST cron, a job
+  // running only on the second would be measured against a schedule it does not
+  // keep, and NO LINE WOULD CHANGE AND NO TEST WOULD FAIL.
+  test('🔴 MORE THAN ONE CRON IS COVERAGE LOST — the reader must not pick one and say nothing', () => {
+    const { problems } = deriveWatchedJobs(
+      makeRepo((s) => { s.wrangler.triggers.crons = ['0 6 * * *', '0 18 * * *']; }),
+    );
+    assert.match(problems.join(' '), /declares 2 cron expressions/);
+    assert.match(problems.join(' '), /FIRST one alone/, 'the message must say WHAT it would otherwise have done');
+    assert.match(problems.join(' '), /0 18 \* \* \*/, 'both expressions must be named, or nobody can see which was ignored');
+  });
+
+  test('exactly one cron is still accepted — the refusal is about ambiguity, not about crons', () => {
+    const { jobs, problems } = deriveWatchedJobs(makeRepo());
+    assert.equal(problems.length, 0, problems.join(' '));
+    assert.ok(jobs.length > 0);
+  });
+
   test('a cron the parser cannot read fails closed rather than guessing a window', () => {
     const { problems } = deriveWatchedJobs(makeRepo((s) => { s.wrangler.triggers.crons = ['*/5 * * * *']; }));
     assert.match(problems.join(' '), /failing closed rather than guessing/);
