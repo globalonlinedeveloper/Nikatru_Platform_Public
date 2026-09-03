@@ -122,19 +122,55 @@ function jwks(supabaseUrl: string): JWTVerifyGetKey {
 /**
  * Could the KEY SET not be obtained, as distinct from the token being bad?
  *
- * Written as a positive test against the shapes jose actually raises when the
- * fetch fails, rather than as "not a JWT error" — a negative test would send
- * every future jose error class down the fallback path, which is the direction
- * that widens what is accepted.
+ * 🔴 CORRECTED. The first version of this predicate was BOTH TOO NARROW TO
+ * FIRE IN PRODUCTION AND TOO WIDE TO BE SAFE, and it passed its tests either
+ * way. Both halves were established by reading the INSTALLED jose dist
+ * (`dist/browser/`, the build these Workers bundle), not from memory.
+ *
+ * TOO NARROW. It keyed on `err instanceof TypeError`, justified as "what undici
+ * raises". Undici is NODE. These Workers run on workerd, and the tests run in
+ * Node - so the one shape the tests exercised is the one shape production
+ * cannot produce. Worse, `runtime/fetch_jwks.js` turns a NON-200 response into
+ * bare `JOSEError("Expected 200 OK from the JSON Web Key Set HTTP response")`,
+ * and a non-200 is the MOST LIKELY outage shape of all: Box A is reached through
+ * a Cloudflare Tunnel, and a tunnel with no origin behind it answers 502/530. So
+ * the commonest real outage fell straight through this predicate and 401'd -
+ * the exact bug the fallback exists to fix.
+ *
+ * TOO WIDE. It accepted `ERR_JWKS_NO_MATCHING_KEY` and
+ * `ERR_JWKS_MULTIPLE_MATCHING_KEYS`. Those are raised by `getKey` AFTER a key
+ * set has been obtained: they mean "your `kid` is not in it", which is a fact
+ * about the TOKEN. Falling back to a stale cache on them is a second bite at
+ * verification against an OLDER key set, so a token signed by a key that had
+ * since been ROTATED OUT would have been accepted from the cache. That is a
+ * security regression, not a resilience feature. Both codes are gone.
+ *
+ * WHAT IT KEYS ON NOW, and why each is precise rather than broad:
+ *   - `ERR_JWKS_TIMEOUT` - jose's own abort timeout on the JWKS fetch.
+ *   - `ERR_JOSE_GENERIC` - bare `JOSEError`. Measured: a grep for `new JOSEError(`
+ *     over the whole installed browser dist returns EXACTLY TWO hits, both in
+ *     `runtime/fetch_jwks.js` - the non-200 and the unparseable body. Nothing in
+ *     the verification path throws it, so this is a narrow signal, not a broad one.
+ *   - An error carrying NO jose `code` - it came from the runtime's `fetch`,
+ *     because `fetch_jwks.js` rethrows the runtime's own rejection unwrapped.
+ *     This is what makes the fallback work on workerd at all.
+ *
+ * ⚠️ AND IT IS STILL NOT THE "not a JWT error" NEGATIVE TEST THAT WAS RIGHTLY
+ * REFUSED. Every jose error class sets a `code` in its constructor (checked
+ * across all of `util/errors.js`), so a FUTURE jose class arrives WITH a code
+ * and is excluded by the last clause rather than swept into the fallback. That
+ * is the property the negative test could not offer.
  */
 function isKeySetUnavailable(err: unknown): boolean {
-  if (err instanceof TypeError) return true; // undici: "fetch failed"
-  const code = (err as { code?: unknown })?.code;
-  return (
-    code === 'ERR_JWKS_TIMEOUT' ||
-    code === 'ERR_JWKS_NO_MATCHING_KEY' ||
-    code === 'ERR_JWKS_MULTIPLE_MATCHING_KEYS'
-  );
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: unknown }).code;
+  // No jose code at all => the runtime's fetch failed (workerd network errors,
+  // undici's TypeError). Not a verification outcome.
+  if (typeof code !== 'string') return true;
+  if (code === 'ERR_JWKS_TIMEOUT' || code === 'ERR_JOSE_GENERIC') return true;
+  // A non-jose code such as ECONNREFUSED / ENOTFOUND is still a transport
+  // failure; every jose code is prefixed `ERR_`.
+  return !code.startsWith('ERR_');
 }
 
 async function localSetFromCache(env: Env): Promise<JWTVerifyGetKey | null> {

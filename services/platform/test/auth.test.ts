@@ -67,8 +67,27 @@ let appStatus = 200;
  *  all, which is a different failure from one that answers badly. */
 let appThrows = false;
 /** When set, the JWKS endpoint is UNREACHABLE — the state that used to 401 the
- *  whole portfolio from a single box being down. */
+ *  whole portfolio from a single box being down.
+ *
+ *  🔴 THE THROWN SHAPE IS THE POINT, AND IT USED TO BE THE WRONG ONE. This threw
+ *  `new TypeError('fetch failed')`, justified as "what undici raises" — and
+ *  undici is NODE. These Workers run on workerd, which raises a PLAIN `Error`
+ *  ("Network connection lost", "connection attempt failed") with no `code`. The
+ *  predicate under test keyed on `TypeError`, so the suite was green against a
+ *  shape production cannot produce while the production shape fell through and
+ *  401'd. It now throws the workerd shape, so every case below asserts against
+ *  the real thing. */
 let jwksThrows = false;
+let rotatedJwk: Record<string, unknown>;
+/** When set, the JWKS endpoint ANSWERS, badly — the shape a Cloudflare Tunnel
+ *  with no origin behind it actually returns, and the likeliest real outage.
+ *  jose turns a non-200 into a BARE `JOSEError` (`ERR_JOSE_GENERIC`), which is a
+ *  different branch of the predicate from an unreachable host. */
+let jwksStatus = 0;
+/** When set, the JWKS endpoint answers 200 with a key set that does NOT contain
+ *  the token's `kid` — key rotation, not an outage. jose raises
+ *  `ERR_JWKS_NO_MATCHING_KEY`, and this MUST NOT reach the stale cache. */
+let jwksRotated = false;
 
 /** Every fetch stubs into exactly one of three worlds. A URL that matches none
  *  throws, so a new outbound call added to the route surfaces as a red test
@@ -80,16 +99,31 @@ beforeAll(async () => {
   signingKey = pair.privateKey;
   publicJwk = { ...(await exportJWK(pair.publicKey)), alg: 'ES256', kid: 'test-key-1' };
   foreignKey = (await generateKeyPair('ES256', { extractable: true })).privateKey;
+  // The key the JWKS publishes AFTER a rotation: a real key, a DIFFERENT `kid`,
+  // so a token minted under `test-key-1` finds no match in the fresh key set.
+  const rotated = await generateKeyPair('ES256', { extractable: true });
+  rotatedJwk = { ...(await exportJWK(rotated.publicKey)), alg: 'ES256', kid: 'test-key-2' };
 
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/.well-known/jwks.json')) {
       // 🔴 THE OUTAGE SWITCH. `jose` fails CLOSED on a fetch error — it does not
       // fall back to a previously cached key set — so an unreachable JWKS used
-      // to 401 every authenticated request, not merely every login. A TypeError
-      // is what undici actually raises, so that is what is thrown here rather
-      // than a tidy 503 the real world would not produce.
-      if (jwksThrows) throw new TypeError('fetch failed');
+      // to 401 every authenticated request, not merely every login.
+      //
+      // ⚠️ A PLAIN `Error`, NOT A `TypeError`. workerd is the runtime; undici is
+      // not. See the comment on `jwksThrows`.
+      if (jwksThrows) throw new Error('Network connection lost');
+      // A tunnel with no origin answers, and answers badly. jose maps this to a
+      // bare JOSEError, which is the branch the first predicate missed entirely.
+      if (jwksStatus) return new Response('bad gateway', { status: jwksStatus });
+      // Reachable and healthy, but the signing key has ROTATED past this token.
+      if (jwksRotated) {
+        return new Response(JSON.stringify({ keys: [rotatedJwk] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       return new Response(JSON.stringify({ keys: [publicJwk] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -150,11 +184,21 @@ function harness({
   db = realPlatformDb(),
   appEndpoints = APP_ENDPOINTS as string | null,
   kv = KV,
+  // ⚠️ OVERRIDABLE BECAUSE THE KEY-SET CACHE IS KEYED BY IT. `jwks()` memoises
+  // one `createRemoteJWKSet` per SUPABASE_URL for the life of the MODULE, and
+  // jose then keeps that set "fresh" for its own cache window — so a test that
+  // makes the endpoint publish a DIFFERENT key set leaves every later test
+  // verifying against it. That is not a property of the code under test, it is
+  // one isolate's memo, and a test suite that shares it is asserting on
+  // execution order. Giving such a test its own URL gives it its own memo,
+  // which is also what a real cold isolate has.
+  supabaseUrl = SUPABASE_URL,
 }: {
   serviceRoleKey?: string | null;
   db?: RealDb;
   appEndpoints?: string | null;
   kv?: KVNamespace;
+  supabaseUrl?: string;
 } = {}) {
   identityCalls = [];
   identityStatus = 204;
@@ -162,6 +206,8 @@ function harness({
   appStatus = 200;
   appThrows = false;
   jwksThrows = false;
+  jwksStatus = 0;
+  jwksRotated = false;
   ORDER.length = 0;
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => { c.set('requestId', 'rid-test'); await next(); });
@@ -175,7 +221,7 @@ function harness({
   const env = {
     PLATFORM_DB: db,
     JWKS_CACHE: kv,
-    SUPABASE_URL,
+    SUPABASE_URL: supabaseUrl,
     SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey ?? undefined,
     APP_ERASURE_ENDPOINTS: appEndpoints ?? undefined,
     APP_ID: 'platform',
@@ -273,6 +319,48 @@ describe('platformAuth SURVIVES a JWKS outage without widening what it accepts',
     const res = await h.get(
       '/v1/whoami',
       `Bearer ${await token({ sub: 'user-a' }, { issuer: 'https://evil.example/auth/v1' })}`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 A NON-200 FROM THE JWKS ENDPOINT ALSO FALLS BACK — the shape a dead tunnel returns', async () => {
+    // This is the case the first predicate missed COMPLETELY. Box A is reached
+    // through a Cloudflare Tunnel; a tunnel with no origin behind it answers
+    // 502/530, jose turns that into a bare JOSEError, and the old
+    // `instanceof TypeError` test said "that is a bad token" and 401'd.
+    for (const status of [502, 530, 503]) {
+      const h = harness({ kv: cachedKv({ keys: [publicJwk] }) });
+      jwksStatus = status;
+      const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+      expect(res.status, `status ${status} should fall back`).toBe(200);
+    }
+  });
+
+  it('a non-200 with an EMPTY cache still fails closed', async () => {
+    const h = harness();
+    jwksStatus = 502;
+    const res = await h.get('/v1/whoami', `Bearer ${await token({ sub: 'user-a' })}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('🔴 A ROTATED-OUT KEY IS REFUSED, NOT SERVED FROM THE STALE CACHE', async () => {
+    // The reason ERR_JWKS_NO_MATCHING_KEY was REMOVED from the predicate. The
+    // JWKS is reachable and healthy; it simply no longer publishes the key this
+    // token was signed with. Accepting it from the cache would mean a token
+    // signed by a retired key still verifies for as long as the cache lives —
+    // resilience bought with the one property rotation exists to provide.
+    //
+    // ⚠️ ITS OWN SUPABASE_URL, deliberately: this is the one case that makes the
+    // endpoint publish a different key set, and `jwks()` memoises per URL for
+    // the life of the module. On the shared URL it would leave every later test
+    // verifying `test-key-1` tokens against `test-key-2` — which is exactly what
+    // it did first time, turning 22 unrelated cases red.
+    const ROT = 'https://rotated.test';
+    const h = harness({ kv: cachedKv({ keys: [publicJwk] }), supabaseUrl: ROT });
+    jwksRotated = true;
+    const res = await h.get(
+      '/v1/whoami',
+      `Bearer ${await token({ sub: 'user-a' }, { issuer: `${ROT}/auth/v1` })}`,
     );
     expect(res.status).toBe(401);
   });
