@@ -1,7 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Consolidated nightly cron (see triggers.crons in wrangler.jsonc). ONE cron for
-// the whole portfolio (Free-tier 5-cron cap): a platform-wide Supabase keep-alive
-// plus a per-app renewals fan-out. Each job contains its own errors.
+// Consolidated scheduler (see triggers.crons in wrangler.jsonc): a platform-wide
+// Supabase keep-alive plus a per-app renewals fan-out, and since 2026-09-03 a
+// second cron that runs the GitHub dispatcher ALONE. Each job contains its own
+// errors.
+//
+// ⚠️ THIS SAID "ONE CRON FOR THE WHOLE PORTFOLIO (Free-tier 5-cron cap)" AND BOTH
+// HALVES ARE NOW FALSE. There are two crons, and the account moved to Workers
+// Paid on 2026-09-03: the cron-trigger ceiling is 250 per account, not 5
+// (developers.cloudflare.com/workers/platform/limits — Account plan limits).
+// 🔴 THE DESIGN DID NOT CHANGE, ONLY THE REASON FOR IT. Consolidating was FORCED
+// by the cap; it is now a CHOICE, kept because one place to look is worth more
+// than a Worker per job — this portfolio's recurring failure is a schedule that
+// silently stopped, and every extra scheduler is another thing to notice. State
+// it as a choice, so nobody re-derives a constraint that has been paid off.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';

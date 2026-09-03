@@ -65,8 +65,13 @@ because a caller can get them wrong in ways the others do not offer.)
    (`edge:<colo>:<asn>`) ceiling `/v1/events` uses — the 5-minute edge cache does
    not collapse cache-busting query strings, so without it an anonymous caller
    can spend one KV read per request.
-2. **Consolidated nightly cron** (`0 6 * * *`) — ONE cron for the whole account
-   (Free-tier caps at 5 cron triggers/account):
+2. **Consolidated nightly cron** (`0 6 * * *`) — one cron for the whole account,
+   plus `0 18 * * *` which runs the GitHub dispatcher and nothing else.
+   ⚠️ This read *"(Free-tier caps at 5 cron triggers/account)"* until 2026-09-03.
+   The account is on **Workers Paid**, where the ceiling is **250 per account**
+   ([limits](https://developers.cloudflare.com/workers/platform/limits/)).
+   Consolidating was forced; it is now a choice, kept because one place to look
+   beats a Worker per job:
    - **keepAliveSupabase** — cheap daily GET to `${SUPABASE_URL}/auth/v1/health`
      (Supabase pauses free-tier projects after ~7 days idle).
    - **renewals fan-out** — for each app in `appTargets(env)`, rolls past-due
