@@ -708,7 +708,7 @@ for (const p of tracked) {
 // a token, and it cost two false findings on the first run of this guard:
 //
 //   tooling/legal/duty-matrix.json:188  "… is docs/legal/privacy-direct-marketing-draft.md."
-//   tooling/dod-register.json:555       "… app_icon_foreground.png/.svg, app_icon_maskable.svg}"
+//   tooling/dod-register.json:577       "… app_icon_foreground.png/.svg, app_icon_maskable.svg}"
 //
 // A sentence-ending full stop and a closing brace are punctuation, not part of
 // the name, so both references were read as tokens that match nothing and both

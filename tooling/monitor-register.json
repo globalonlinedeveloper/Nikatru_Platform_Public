@@ -23,7 +23,7 @@
     "    token and no network. Fails on an undeclared deployed hostname or a dead row.",
     "  · tooling/ops/verify-monitors.mjs          LIVE, AND IT IS A SCHEDULED CI JOB — NOT the hand-run",
     "    command this bullet used to call it. OWNER_QUEUE S-8 CLOSED at 2026-08-11T16:55:34Z when",
-    "    GLITCHTIP_TOKEN became a repository secret (tooling/channel-register.json:791), and",
+    "    GLITCHTIP_TOKEN became a repository secret (tooling/channel-register.json:813), and",
     "    .github/workflows/ops-watch.yml:456 has run it unattended ever since, in the `glitchtip` job, on",
     "    FOUR schedules — 07:30, 08:50 and 19:30 UTC daily plus 07:45 UTC Mondays — and on",
     "    workflow_dispatch. ⚠️ The script's OWN header still reads 'NOT RUN BY CI, AND THAT IS THE",
@@ -140,7 +140,7 @@
         "⚠️ theReconcileIsNotSILENCED": "Nothing was added to an ignore list and no check was weakened. The declared-body limb is DECLARED-ONLY by design (tooling/ops/verify-monitors.mjs:179-190) precisely so a row may decline to assert; withdrawing the claim USES that design rather than blunting it, and the limb still guards monitors 3, 4, 5, 11 and 12 on every scheduled run. The moment the PUT lands and `expectedBody` returns to `monitor` above, it guards this row too.",
         "theLiveChangeThatClosesThis": {
           "ownerAction": true,
-          "whyOwner": "A write to a live third-party instance, not a repository change. ⚠️ AND NOTE THIS FILE'S OWN WARNING at `🔴 whyItStayedOpen` under platform.nikatru.com: 'owner action' here is a claim needing evidence, not a category — the GlitchTip API demonstrably takes GLITCHTIP_TOKEN and mutates monitors. What gates THIS one is blast radius, not capability: tooling/channel-register.json:791 records that on 2026-08-11 echoing a monitor's own representation back through this full-replace PUT detached all nine monitors from their projects — from every alert recipient — under nine consecutive HTTP 200s ([ADR 043], amended).",
+          "whyOwner": "A write to a live third-party instance, not a repository change. ⚠️ AND NOTE THIS FILE'S OWN WARNING at `🔴 whyItStayedOpen` under platform.nikatru.com: 'owner action' here is a claim needing evidence, not a category — the GlitchTip API demonstrably takes GLITCHTIP_TOKEN and mutates monitors. What gates THIS one is blast radius, not capability: tooling/channel-register.json:813 records that on 2026-08-11 echoing a monitor's own representation back through this full-replace PUT detached all nine monitors from their projects — from every alert recipient — under nine consecutive HTTP 200s ([ADR 043], amended).",
           "method": "PUT",
           "endpoint": "https://glitchtip.nikatru.com/api/0/organizations/nikatru/monitors/2/",
           "field": "expectedBody",
