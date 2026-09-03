@@ -37,8 +37,24 @@ on:
   # here the unreliable scheduler is a perfectly good BACKSTOP: if the Worker
   # ever stops firing, dependency updates degrade to "weekly-ish" instead of
   # stopping dead. Belt and braces, with the braces named.
+  #
+  # 🔴 DAILY, FOR A WEEKLY DUTY, AND THAT IS MARGIN RATHER THAN SLOPPINESS. This
+  # workflow's run history is the ONLY evidence `duty.workflow.renovate.yml` has
+  # (a Worker dispatch arrives as `event=workflow_dispatch`, which the reader
+  # deliberately refuses — "somebody pressed a button" is the opposite of a
+  # cadence claim). A weekly cron against a 7d x 1.5 = 252h window gives that
+  # evidence ONE OR TWO chances to exist, on a scheduler measured at 10.1%
+  # on-time delivery — so two skipped Mondays would redden every CI run in both
+  # repositories, which is the third merge-queue freeze waiting to happen. Daily
+  # gives the same window ~10 chances. It is the pattern this portfolio already
+  # runs on its heartbeats: a 3h monitor against an hourly post.
+  # ⚠️ IT DOES NOT MAKE RENOVATE ACT DAILY. Each repository's renovate.json
+  # carries `schedule: ["before 6am on monday"]`, so six runs a week start,
+  # find themselves outside their own window and exit in about a minute. The
+  # extra cost is Actions minutes; the thing bought is an evidence trail that
+  # does not depend on one cron delivery a week.
   schedule:
-    - cron: '0 3 * * 1'
+    - cron: '0 3 * * *'
 
 # Least privilege: every write this workflow makes is authenticated with
 # RENOVATE_TOKEN, never the ambient GITHUB_TOKEN. 🔴 That is not a style choice

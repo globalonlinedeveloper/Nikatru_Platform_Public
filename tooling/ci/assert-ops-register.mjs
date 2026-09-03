@@ -468,11 +468,43 @@ export function classifyRunRecord(row, probe, nowMs, multiplier) {
     };
   }
   if (typeof probe.lastSuccessMs !== 'number' || Number.isNaN(probe.lastSuccessMs)) {
+    // 🔴 THE BOOTSTRAP CASE, AND IT IS THE ONE BRANCH WHERE "no success ever" IS
+    // NOT A FAILURE OF THE DUTY. A row declared today for a workflow whose first
+    // scheduled slot has not arrived has an EMPTY record for a reason that is not
+    // the duty being broken — and every workflow row in this register has to pass
+    // through that state exactly once, because the record cannot exist until the
+    // file is on the default branch and the file cannot land without a row (this
+    // guard holds `watched workflows === .github/workflows/*.yml` in BOTH
+    // directions). Without this branch that bootstrap is a DEADLOCK whose only
+    // exits are shipping a red merge queue for days or deleting the bijection —
+    // the second of which is how a whole class of duty stops being watched.
+    //
+    // ⚠️ IT IS A GATE, NOT A PASS, AND THE DIFFERENCE IS THE POINT. The verdict
+    // stays `fail`, the word FAILING stays next to the count, and the line prints
+    // on every run; only the BLOCK is lifted, through the same `gated` channel
+    // CLAUDE.md C-6 already uses for owner-gated rows. It is bounded four ways:
+    // it applies ONLY here (a STALE success and a MISSING mechanism both still
+    // block), only while `now < firstDue`, only to a date the schema limb holds
+    // within one cadence window of now, and it expires by arithmetic rather than
+    // by anybody remembering to remove it.
+    const firstDueMs = q.firstDue ? Date.parse(q.firstDue) : NaN;
+    if (!Number.isNaN(firstDueMs) && nowMs < firstDueMs) {
+      return {
+        verdict: 'fail',
+        gated: true,
+        line:
+          `${id} — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL, and it is NOT YET DUE: ` +
+          `\`recordQuery.firstDue\` is ${q.firstDue}, ${((firstDueMs - nowMs) / 3_600_000).toFixed(1)}h from now. ` +
+          `${probe.detail} [window ${windowLabel}] — the duty was declared before its first slot could arrive, ` +
+          'so this prints and does not block. It BLOCKS from that moment on, whether or not anybody edits this row.',
+      };
+    }
     return {
       verdict: 'fail',
       line:
         `${id} — its record IS reachable and holds NO SUCCESSFUL RUN AT ALL. ${probe.detail} ` +
-        `[window ${windowLabel}] — [14]O-3: a record that exists and records only failure is not a run of the duty.`,
+        `[window ${windowLabel}] — [14]O-3: a record that exists and records only failure is not a run of the duty.` +
+        (q.firstDue ? ` \`recordQuery.firstDue\` (${q.firstDue}) has PASSED, so it gates nothing: delete the field.` : ''),
     };
   }
   const ageMs = nowMs - probe.lastSuccessMs;
@@ -550,6 +582,38 @@ export function evaluateRunRecords(reg, probes, nowMs) {
     }
     if (q.reader === 'unreachable' && !nonEmpty(q.why)) {
       errors.push(`${r.id} — \`reader: "unreachable"\` with no \`why\`. "Nothing can read it" is a state this register may record; it is not one it may pass over.`);
+    }
+    // 🔴 `firstDue` LIFTS A BLOCK, SO ITS SHAPE IS HELD HARDER THAN ANYTHING ELSE
+    // ON THIS OBJECT. It exists for the bootstrap case in `classifyRunRecord` —
+    // a duty declared before its first scheduled slot could arrive — and the one
+    // way it could become a permanent waiver is a date parked in the future. So:
+    // it must PARSE, it must not sit further ahead than this row's own cadence
+    // window (a 7d duty can be ungated for at most 7d x 1.5, never longer), and
+    // it may not coexist with a `lastObserved` that already saw a PASS, because a
+    // record that has held a success is past its bootstrap by definition.
+    if (q.firstDue !== undefined) {
+      const dueMs = typeof q.firstDue === 'string' ? Date.parse(q.firstDue) : NaN;
+      const days = cadenceDays(r.cadence);
+      const mult = decl._windowMultiplier;
+      if (Number.isNaN(dueMs)) {
+        errors.push(
+          `${r.id} — \`recordQuery.firstDue: ${JSON.stringify(q.firstDue)}\` is not a parseable instant. This field ` +
+            'lifts a block, so it is a timestamp a machine expires or it is nothing.',
+        );
+      } else if (q.reader === 'unreachable') {
+        errors.push(`${r.id} — \`recordQuery.firstDue\` on a row whose reader is \`unreachable\`. Nothing queries this record, so no query can be waiting for it.`);
+      } else if (q.lastObserved?.verdict === 'pass') {
+        errors.push(
+          `${r.id} — \`recordQuery.firstDue\` alongside \`lastObserved: { verdict: "pass" }\`. A record that has ` +
+            'already held a success is past its bootstrap; the field would then be a waiver rather than a wait.',
+        );
+      } else if (days !== null && Number.isFinite(mult) && dueMs - Date.now() > days * 86_400_000 * mult) {
+        errors.push(
+          `${r.id} — \`recordQuery.firstDue: ${q.firstDue}\` is more than one cadence window ` +
+            `(${r.cadence} x ${mult}) into the future. THAT IS THE ONLY WAY THIS FIELD BECOMES A PERMANENT ` +
+            'WAIVER, and it is refused here: a duty may wait for its first slot, never for an arbitrary date.',
+        );
+      }
     }
     // The held observation is the only thing standing between a known-bad duty
     // and a green runner that cannot read it, so its shape is checked, not trusted.
