@@ -90,6 +90,7 @@ class _ConfirmationRequiredAuth extends core.AuthRepository {
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     signUps.add(email);
     return core.AuthUser(id: 'u1', email: email);
@@ -115,6 +116,7 @@ class _ImmediateSessionAuth extends core.AuthRepository {
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     _user = core.AuthUser(id: 'u1', email: email, emailVerified: true);
     changes.add(_user);

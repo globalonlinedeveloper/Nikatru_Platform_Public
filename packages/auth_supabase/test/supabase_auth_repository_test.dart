@@ -714,6 +714,107 @@ void main() {
       expect(users, hasLength(1), reason: 'the real emission still arrives');
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // THE CAPTCHA TOKEN REACHES THE PROVIDER, AND ITS ABSENCE IS THE OLD SHAPE.
+  //
+  // Self-hosted GoTrue enforces Turnstile on six endpoints, four of which this
+  // seam owns. The token is the one argument that can be dropped with NOTHING
+  // going red: the call still compiles, the fake still answers, and against the
+  // hosted project — which has no gate — the real server accepts it too. The
+  // failure only appears on the day SUPABASE_URL moves, in production, on every
+  // sign-in at once. So it is asserted here, against the SDK's own method
+  // signature, while it is still cheap.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('the captcha token is FORWARDED to the SDK, and null when not given',
+      () {
+    test('sendPasswordReset forwards the token verbatim', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        passwordResetRedirectTo: 'https://subly.nikatru.com/',
+      );
+
+      await auth.sendPasswordReset('a@b.com', captchaToken: 'tok-abc123');
+
+      expect(g.resetCaptchaTokens, <String?>['tok-abc123']);
+    });
+
+    // The honest null. This is a SEPARATE claim from the one above: it is what
+    // pins the parameter as OPTIONAL, so the seam can land and ship long before
+    // any screen renders a widget, and every existing caller keeps working.
+    test('sendPasswordReset sends null when the caller has no token', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        passwordResetRedirectTo: 'https://subly.nikatru.com/',
+      );
+
+      await auth.sendPasswordReset('a@b.com');
+
+      expect(g.resetCaptchaTokens, <String?>[null]);
+      // …and the redirect is still there. A forwarding change that quietly
+      // dropped a sibling argument would pass the line above.
+      expect(g.resetRequests, <List<String?>>[
+        <String?>['a@b.com', 'https://subly.nikatru.com/'],
+      ]);
+    });
+
+    test('signInWithEmail forwards the token verbatim, and null without one',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.signInWithEmail(
+        email: 'a@b.com',
+        password: 'pw',
+        captchaToken: 'tok-signin-1',
+      );
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      expect(g.signInCaptchaTokens, <String?>['tok-signin-1', null]);
+    });
+
+    test('signUpWithEmail forwards the token verbatim, and null without one',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.signUpWithEmail(
+        email: 'a@b.com',
+        password: 'pw',
+        captchaToken: 'tok-signup-2',
+      );
+      await auth.signUpWithEmail(email: 'a@b.com', password: 'pw');
+
+      expect(g.signUpCaptchaTokens, <String?>['tok-signup-2', null]);
+    });
+
+    test('resendVerificationEmail forwards the token verbatim', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g);
+
+      await auth.resendVerificationEmail(captchaToken: 'tok-resend-9');
+
+      expect(g.resendCaptchaTokens, <String?>['tok-resend-9']);
+      // The address still comes from the SESSION, not from anywhere else —
+      // the property this method already had, re-asserted because a new
+      // argument is exactly when an old one gets mislaid.
+      expect(g.resendEmails, <String>['a@b.com']);
+    });
+
+    test('resendVerificationEmail sends null when the caller has no token',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth =
+          SupabaseAuthRepository(client: g);
+
+      await auth.resendVerificationEmail();
+
+      expect(g.resendCaptchaTokens, <String?>[null]);
+    });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -788,8 +889,21 @@ class _FakeGoTrue extends sb.GoTrueClient {
     String email, {
     String? redirectTo,
     String? captchaToken,
-  }) async =>
-      resetRequests.add(<String?>[email, redirectTo]);
+  }) async {
+    resetRequests.add(<String?>[email, redirectTo]);
+    resetCaptchaTokens.add(captchaToken);
+  }
+
+  /// The captcha token each call carried, in order, null included.
+  ///
+  /// Kept in its OWN list rather than appended to [resetRequests] on purpose:
+  /// widening that list would have rewritten an existing assertion about the
+  /// redirect, and a test that has to be edited to accommodate a new claim is
+  /// one that stops testing the old one.
+  final List<String?> resetCaptchaTokens = <String?>[];
+
+  /// The captcha token each [resend] carried, in order, null included.
+  final List<String?> resendCaptchaTokens = <String?>[];
 
   @override
   Future<sb.UserResponse> updateUser(
@@ -819,6 +933,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
     String? captchaToken,
   }) async {
     resendEmails.add(email ?? '(none)');
+    resendCaptchaTokens.add(captchaToken);
     return sb.ResendResponse();
   }
 
@@ -852,6 +967,44 @@ class _FakeGoTrue extends sb.GoTrueClient {
   Future<void> signOut({sb.SignOutScope scope = sb.SignOutScope.local}) async {
     signOutCalls++;
     session = null;
+  }
+
+  /// The captcha token each password sign-in carried, in order, null included.
+  final List<String?> signInCaptchaTokens = <String?>[];
+
+  /// The captcha token each sign-up carried, in order, null included.
+  final List<String?> signUpCaptchaTokens = <String?>[];
+
+  /// OVERRIDDEN PURELY SO THE TOKEN IS OBSERVABLE. These two are the flows the
+  /// captcha gate hits hardest -- login and sign-up -- and until now this fake
+  /// left them to the real network methods, so nothing in this suite could see
+  /// what the seam passed them. Returning a session rather than a bare response
+  /// keeps the repository's own `_map`/null-check path exercised.
+  @override
+  Future<sb.AuthResponse> signInWithPassword({
+    String? email,
+    String? phone,
+    String? password,
+    String? captchaToken,
+  }) async {
+    signInCaptchaTokens.add(captchaToken);
+    session = _session('signed-in');
+    return sb.AuthResponse(session: session);
+  }
+
+  @override
+  Future<sb.AuthResponse> signUp({
+    String? email,
+    String? phone,
+    required String password,
+    String? emailRedirectTo,
+    Map<String, dynamic>? data,
+    String? captchaToken,
+    sb.OtpChannel channel = sb.OtpChannel.sms,
+  }) async {
+    signUpCaptchaTokens.add(captchaToken);
+    session = _session('signed-up');
+    return sb.AuthResponse(session: session);
   }
 }
 

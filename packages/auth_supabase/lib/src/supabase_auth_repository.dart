@@ -189,10 +189,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   Future<core.AuthUser> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     final sb.AuthResponse res = await _auth.signInWithPassword(
       email: email,
       password: password,
+      captchaToken: captchaToken,
     );
     final core.AuthUser? u = _map(res.user);
     if (u == null) throw core.AuthFailure('Sign-in failed');
@@ -203,10 +205,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async {
     final sb.AuthResponse res = await _auth.signUp(
       email: email,
       password: password,
+      captchaToken: captchaToken,
     );
     final core.AuthUser? u = _map(res.user);
     if (u == null) throw core.AuthFailure('Sign-up failed');
@@ -247,8 +251,12 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// session. That is a property of the flow, not a bug to be worked around
   /// here; the reset screen's job is to say so plainly when it happens.
   @override
-  Future<void> sendPasswordReset(String email) =>
-      _auth.resetPasswordForEmail(email, redirectTo: passwordResetRedirectTo);
+  Future<void> sendPasswordReset(String email, {String? captchaToken}) =>
+      _auth.resetPasswordForEmail(
+        email,
+        redirectTo: passwordResetRedirectTo,
+        captchaToken: captchaToken,
+      );
 
   /// 🔴 REFUSES WITH NO SESSION RATHER THAN LETTING THE SDK THROW ITS OWN TYPE.
   /// `updateUser` raises `AuthSessionMissingException` — a Supabase class — and
@@ -293,12 +301,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// different link, and sending it to a user who has not confirmed their
   /// ORIGINAL address confirms nothing.
   @override
-  Future<void> resendVerificationEmail() async {
+  Future<void> resendVerificationEmail({String? captchaToken}) async {
     final String? email = _auth.currentUser?.email;
     if (email == null || email.isEmpty) {
       throw core.AuthFailure('Sign in first, then we can resend the email.');
     }
-    await _auth.resend(type: sb.OtpType.signup, email: email);
+    await _auth.resend(
+      type: sb.OtpType.signup,
+      email: email,
+      captchaToken: captchaToken,
+    );
   }
 
   /// 🔴 `refreshSession()`, NOT A LOCAL RE-READ. Confirmation happens in a mail

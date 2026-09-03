@@ -73,11 +73,13 @@ class _SignedInAuth extends core.AuthRepository {
   Future<core.AuthUser> signInWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async => currentUser!;
   @override
   Future<core.AuthUser> signUpWithEmail({
     required String email,
     required String password,
+    String? captchaToken,
   }) async => currentUser!;
   @override
   Future<void> deleteAccount() async {}
@@ -86,7 +88,7 @@ class _SignedInAuth extends core.AuthRepository {
   @override
   Future<core.AuthSession?> currentSession() async => null;
   @override
-  Future<void> sendPasswordReset(String email) async {}
+  Future<void> sendPasswordReset(String email, {String? captchaToken}) async {}
   @override
   Future<void> signInWithApple() async {}
   @override
