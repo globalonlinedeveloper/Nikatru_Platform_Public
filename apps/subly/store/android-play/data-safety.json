@@ -45,10 +45,8 @@
     "⚠️ NOT LEGAL ADVICE AND NOT WRITTEN BY A LAWYER — the same disclaimer tooling/legal/README.md",
     "carries. Rows record what this repository can OBSERVE."
   ],
-
   "app": "subly",
   "channel": "android-play",
-
   "sources": {
     "_why": [
       "🔴 EVERY EXTERNAL REQUIREMENT CARRIES A URL AND A FETCH DATE, and the guard refuses a citation",
@@ -57,7 +55,11 @@
       "summarising Play policy cannot be re-verified later, and a compliance corpus is worth exactly its",
       "ability to be re-checked."
     ],
-    "allowedHosts": ["support.google.com", "developer.android.com", "play.google.com"],
+    "allowedHosts": [
+      "support.google.com",
+      "developer.android.com",
+      "play.google.com"
+    ],
     "vocabulary": {
       "url": "https://support.google.com/googleplay/android-developer/answer/10787469",
       "fetched": "2026-08-04",
@@ -104,7 +106,6 @@
       "quote": "Apps that allow users to create an account must provide both an 'in-app path to delete their app accounts and associated data' and a 'web link resource where users can request app account deletion and associated data deletion'; the web link is submitted in the Data safety form, must be functional, must reference the app or developer name, and the deletion pathway 'should be prominently featured and easily discoverable on the page'. Data may be retained 'for legitimate reasons such as security, fraud prevention or regulatory compliance' if users are clearly informed."
     }
   },
-
   "vocabulary": {
     "_why": [
       "🔴 PLAY'S OWN CATEGORY/TYPE LIST, AS STRUCTURE RATHER THAN PROSE. `sources.vocabulary` carries the",
@@ -121,7 +122,10 @@
     ],
     "citedBy": "sources.vocabulary",
     "categories": {
-      "Location": ["Approximate location", "Precise location"],
+      "Location": [
+        "Approximate location",
+        "Precise location"
+      ],
       "Personal info": [
         "Name",
         "Email address",
@@ -133,14 +137,39 @@
         "Sexual orientation",
         "Other info"
       ],
-      "Financial info": ["User payment info", "Purchase history", "Credit score", "Other financial info"],
-      "Health and fitness": ["Health info", "Fitness info"],
-      "Messages": ["Emails", "SMS or MMS", "Other in-app messages"],
-      "Photos and videos": ["Photos", "Videos"],
-      "Audio files": ["Voice or sound recordings", "Music files", "Other audio files"],
-      "Files and docs": ["Files and docs"],
-      "Calendar": ["Calendar events"],
-      "Contacts": ["Contacts"],
+      "Financial info": [
+        "User payment info",
+        "Purchase history",
+        "Credit score",
+        "Other financial info"
+      ],
+      "Health and fitness": [
+        "Health info",
+        "Fitness info"
+      ],
+      "Messages": [
+        "Emails",
+        "SMS or MMS",
+        "Other in-app messages"
+      ],
+      "Photos and videos": [
+        "Photos",
+        "Videos"
+      ],
+      "Audio files": [
+        "Voice or sound recordings",
+        "Music files",
+        "Other audio files"
+      ],
+      "Files and docs": [
+        "Files and docs"
+      ],
+      "Calendar": [
+        "Calendar events"
+      ],
+      "Contacts": [
+        "Contacts"
+      ],
       "App activity": [
         "App interactions",
         "In-app search history",
@@ -148,9 +177,17 @@
         "Other user-generated content",
         "Other actions"
       ],
-      "Web browsing": ["Web browsing history"],
-      "App info and performance": ["Crash logs", "Diagnostics", "Other app performance data"],
-      "Device or other IDs": ["Device or other IDs"]
+      "Web browsing": [
+        "Web browsing history"
+      ],
+      "App info and performance": [
+        "Crash logs",
+        "Diagnostics",
+        "Other app performance data"
+      ],
+      "Device or other IDs": [
+        "Device or other IDs"
+      ]
     },
     "purposes": [
       "App functionality",
@@ -162,7 +199,6 @@
       "Account management"
     ]
   },
-
   "advertisingPurpose": {
     "_why": [
       "🔴 A ZERO NOBODY DECLARED IS A ZERO NOBODY IS ACCOUNTABLE FOR. \"Advertising or marketing\" is in the",
@@ -180,7 +216,6 @@
     "basis": "No data type is collected for advertising or marketing. There is no ad SDK, no attribution SDK, no advertising identifier and — the half no dependency can prove — no promotional surface anywhere in the widget tree and no armed promotional lever in the served config. The format-keyed derivation lives in ads-declaration.json; this row is the Data safety form's half of the same question, and the two are compared on every run.",
     "crossCheckedBy": "tooling/ci/assert-ads-declarations.mjs"
   },
-
   "clientAbsenceRequiredFor": {
     "_why": [
       "🔴 REQUIRED_COVERAGE FOR THE `clientAbsence` LIMB, because the limb protects a claim that is INVISIBLE",
@@ -206,7 +241,6 @@
       "Device or other IDs|Device or other IDs"
     ]
   },
-
   "buildPosture": {
     "_why": [
       "🔴 THIS BLOCK IS WHY THE GUARD CAN BITE AT ALL. Every answer below is a claim about an ARTEFACT,",
@@ -278,9 +312,20 @@
     ],
     "lane": ".github/workflows/build-platforms.yml",
     "buildCommandContains": "flutter build appbundle",
-    "expectedDefines": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "API_BASE_URL", "GLITCHTIP_DSN", "APP_VERSION", "RELEASE_CHANNEL"],
+    "expectedDefines": [
+      "SUPABASE_URL",
+      "SUPABASE_ANON_KEY",
+      "API_BASE_URL",
+      "GLITCHTIP_DSN",
+      "APP_VERSION",
+      "RELEASE_CHANNEL"
+    ],
     "_definesNote2026_08_08": "APP_VERSION and RELEASE_CHANNEL added when build-platforms.yml began threading the release line into store artefacts ([9]R-2 residual). Checked against every answer in this form before declaring: APP_VERSION is the app's own version string compiled in for crash/release attribution — the same define the web lane has shipped since deploy-web.yml existed, no data-category change. RELEASE_CHANNEL selects which first-party update-source config key the app reads ([9]R-10, owner decision #19) — no new collection, no new sharing, no third party. Neither define alters any dataSecurity answer above.",
-    "identityDefines": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "API_BASE_URL"],
+    "identityDefines": [
+      "SUPABASE_URL",
+      "SUPABASE_ANON_KEY",
+      "API_BASE_URL"
+    ],
     "gateFile": "apps/subly/lib/core/app_config.dart",
     "current": "backend-live",
     "postures": {
@@ -288,42 +333,77 @@
       "backend-live": "SUPABASE_URL + SUPABASE_ANON_KEY + API_BASE_URL all supplied. Real account, subscriptions/budget/payment rows synced to services/subly-api, consent-gated first-party analytics to services/platform. This is the posture .github/workflows/deploy-web.yml builds, and — since 2026-08-04 — the posture EVERY store lane builds: both Android steps, both Windows steps and both Apple steps were passing no identity defines at all, so every store artefact in the tree was the demo build. tooling/ci/assert-store-build-config.mjs now derives the required set from AppConfig.isBackendLive and grades every build step a `kind: store` row declares."
     }
   },
-
   "answers": [
     {
       "category": "Location",
       "type": "Approximate location",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": false,
-      "purposes": ["Analytics"],
+      "purposes": [
+        "Analytics"
+      ],
       "clientAbsence": {
         "claim": "The DEVICE never provides a location. The only geo that exists anywhere is inferred at the Cloudflare edge from the connection, which is why this row is `collected` but `required: false` and purpose Analytics only. If any tell below appeared, that sentence would become false in the most consequential way available — the collection would be DEVICE location, `required` would have to be reconsidered, the purposes would change, and the Precise location row beneath would very likely have to flip too.",
-        "androidPermissions": ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"],
-        "dartPackages": ["geolocator", "location", "geocoding", "flutter_map_location_marker", "background_locator_2"],
-        "iosUsageDescriptionKeys": ["NSLocationWhenInUseUsageDescription", "NSLocationAlwaysAndWhenInUseUsageDescription"]
+        "androidPermissions": [
+          "android.permission.ACCESS_COARSE_LOCATION",
+          "android.permission.ACCESS_FINE_LOCATION"
+        ],
+        "dartPackages": [
+          "geolocator",
+          "location",
+          "geocoding",
+          "flutter_map_location_marker",
+          "background_locator_2"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSLocationWhenInUseUsageDescription",
+          "NSLocationAlwaysAndWhenInUseUsageDescription"
+        ]
       },
       "evidence": [
         "services/platform/src/routes/events.ts",
         "services/platform/migrations/0002_analytics.sql",
         "packages/core/lib/src/analytics/consent.dart"
       ],
-      "inventoryRows": ["table:platform_db.events"],
+      "inventoryRows": [
+        "table:platform_db.events"
+      ],
       "basis": "🔴 SETTLED 2026-08-04 AGAINST A PRIMARY SOURCE THAT WAS ON THE PAGE THIS FILE ALREADY CITED. This answer was `null` on the recorded ground that 'no primary source answering this was found'. The statement exists, in the Approximate location row of the data-types table at support.google.com/googleplay/android-developer/answer/10787469 — the SAME URL `sources.vocabulary` already quotes — and it is explicit: 'Note: Approximate location that is inferred, such as via IP address or Access Point Name, must be disclosed here.' The FAQ further down the same page adds: 'where developers use IP addresses as a means to determine location, then that data type should be declared.' See sources.inferredLocation and sources.ipAddressUsage. The lesson is recorded rather than quietly fixed: the page had been fetched and quoted for a DIFFERENT paragraph, and a citation already in the file was treated as exhausted.\n\nWHAT THIS APP ACTUALLY DOES. The client transmits no location — see `clientAbsence`, which is asserted on EVERY run precisely because this row is no longer 'never collected' and its tells would otherwise stop being evaluated. The geo is derived at the edge and then RETAINED: services/platform/src/routes/events.ts:117-126 reads country/region/city off `request.cf`; lines 254 and 288-290 bind them into the events INSERT; services/platform/migrations/0002_analytics.sql:47-50 declares them as columns. Derived-and-discarded would have been a different answer — that is the distinction the question turned on — but this is derived-and-stored, which is why `ephemeral` is false. City granularity sits squarely inside Play's definition ('an area greater than or equal to 3 square kilometers, such as the city a user is in').\n\nOPTIONAL, and that is enforced upstream rather than claimed here: a geo only exists on a row, and a row only exists for a CONSENTED analytics event. Consent defaults OFF (ConsentStatus.unknown is the launch state and is not consent) and the app is fully usable without it, which is Play's own test for optional. ANALYTICS ONLY — no other route stores geo; the consent-artifact INSERT at events.ts:363 takes no geo columns. NOT SHARED: Cloudflare is a service provider processing on our behalf, which Play's `shared` definition excludes.\n\nFALSE under demo because NoOpAnalytics posts no event at all, so no row exists for a geo to be written onto. ⚠️ ONE RESIDUAL, STATED RATHER THAN BURIED: the crash rail is on in BOTH postures, and whether the self-hosted GlitchTip instance runs its own GeoIP over the connecting address is a property of that deployment, not of this repository — it is listed in the guard's CANNOT-SEE output. It cannot change the value typed into the console, because buildPosture.current is `backend-live`, where this row is already true; it could only ever move the demo column, which is not the shipping one."
     },
     {
       "category": "Location",
       "type": "Precise location",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": null,
       "purposes": [],
       "tells": {
-        "androidPermissions": ["android.permission.ACCESS_FINE_LOCATION"],
-        "dartPackages": ["geolocator", "location", "background_locator_2"],
-        "iosUsageDescriptionKeys": ["NSLocationAlwaysAndWhenInUseUsageDescription"]
+        "androidPermissions": [
+          "android.permission.ACCESS_FINE_LOCATION"
+        ],
+        "dartPackages": [
+          "geolocator",
+          "location",
+          "background_locator_2"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSLocationAlwaysAndWhenInUseUsageDescription"
+        ]
       },
       "evidence": [],
       "inventoryRows": [],
@@ -332,12 +412,24 @@
     {
       "category": "Personal info",
       "type": "Name",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": null,
       "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.GET_ACCOUNTS"], "dartPackages": [], "iosUsageDescriptionKeys": [] },
+      "tells": {
+        "androidPermissions": [
+          "android.permission.GET_ACCOUNTS"
+        ],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
       "evidence": [],
       "inventoryRows": [],
       "basis": "Subly's sign-up is email and password only (apps/subly/lib/features/auth/login_screen.dart) — there is no name field anywhere in the app, and packages/core/lib/src/auth/auth_models.dart carries id and email and nothing else. ⚠️ platform_db.provider_notifications DOES hold a buyer's name verbatim, and it is excluded here rather than ignored: see `inventory.notFromThisApp` — that row is written by a merchant-of-record webhook arriving server-to-server from the provider, not by anything transmitted from this app, which is what Play's `collected` definition is about."
@@ -345,14 +437,25 @@
     {
       "category": "Personal info",
       "type": "Email address",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["Account management", "App functionality"],
+      "purposes": [
+        "Account management",
+        "App functionality"
+      ],
       "clientAbsence": {
         "claim": "The address is TYPED BY THE USER into a sign-in form. The app never reads the device's account list, so the only address it can ever hold is one somebody deliberately entered. If GET_ACCOUNTS appeared, the app could harvest addresses the user never typed, and `required: true` for Account management would stop describing what actually happens.",
-        "androidPermissions": ["android.permission.GET_ACCOUNTS"],
+        "androidPermissions": [
+          "android.permission.GET_ACCOUNTS"
+        ],
         "dartPackages": [],
         "iosUsageDescriptionKeys": []
       },
@@ -367,13 +470,29 @@
     {
       "category": "Personal info",
       "type": "User IDs",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["Account management", "App functionality"],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": ["packages/auth_supabase/lib/src/supabase_auth_repository.dart", "packages/api_client/lib/src/rest_client.dart"],
+      "purposes": [
+        "Account management",
+        "App functionality"
+      ],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [
+        "packages/auth_supabase/lib/src/supabase_auth_repository.dart",
+        "packages/api_client/lib/src/rest_client.dart"
+      ],
       "inventoryRows": [
         "table:subly_db.subscriptions",
         "table:subly_db.budgets",
@@ -385,83 +504,204 @@
     {
       "category": "Personal info",
       "type": "Address",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No postal-address field exists in the app; grep of every TextEditingController in apps/subly/lib returns exactly five inputs (subscription name, price, email, and two passwords)."
     },
     {
       "category": "Personal info",
       "type": "Phone number",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_PHONE_STATE", "android.permission.READ_PHONE_NUMBERS"], "dartPackages": ["sms_autofill", "telephony"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_PHONE_STATE",
+          "android.permission.READ_PHONE_NUMBERS"
+        ],
+        "dartPackages": [
+          "sms_autofill",
+          "telephony"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No phone field, no phone permission, no telephony package. Auth is email/password only."
     },
     {
       "category": "Personal info",
       "type": "Race and ethnicity",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No such field exists in any screen, model or migration in the tree."
     },
     {
       "category": "Personal info",
       "type": "Political or religious beliefs",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No such field exists in any screen, model or migration in the tree."
     },
     {
       "category": "Personal info",
       "type": "Sexual orientation",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No such field exists in any screen, model or migration in the tree."
     },
     {
       "category": "Personal info",
       "type": "Other info",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "The user-entered content this app holds is subscription names and prices, declared under App activity > Other user-generated content and Financial info > Other financial info rather than here, so that it is declared once and in the most specific place. No other personal field exists."
     },
     {
       "category": "Financial info",
       "type": "User payment info",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": ["in_app_purchase", "purchases_flutter", "flutter_stripe", "razorpay_flutter", "square_in_app_payments"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [
+          "in_app_purchase",
+          "purchases_flutter",
+          "flutter_stripe",
+          "razorpay_flutter",
+          "square_in_app_payments"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "🔴 NO CARD, BANK OR ACCOUNT NUMBER IS STORED ANYWHERE, and that is already an asserted claim rather than a belief: tooling/legal/policy-claims.json carries it and assert-policy-claims.mjs checks it against every migration in the tree. subly_db.payment_history holds a date and an amount the USER recorded against their own subscription — a record OF payments, not a payment instrument. Since P2.4b (2026-08-08) Subly DOES carry the first-party client rail (nikatru_purchases — see the Purchase-history row below, flipped in the same commit), but that changes nothing in THIS row: the rail reads entitlement state and contains no checkout — payment happens on the apex web page ([ADR 038]) in a browser, so no payment instrument ever enters or transits the app. The RevenueCat tombstone (apps/subly/pubspec.yaml:123-131, updated with the same commit) records why no billing aggregator will reintroduce one."
     },
     {
       "category": "Financial info",
       "type": "Purchase history",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": false, "purposes": ["App functionality"],
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": false,
+      "purposes": [
+        "App functionality"
+      ],
       "clientAbsence": {
         "claim": "Purchase EXECUTION never happens on the device. There is no Play Billing, no billing SDK and no payment form in this codebase — checkout is the apex web page ([ADR 038]) in a browser, and what the app itself does is READ entitlement state (the subscription this account holds) from the platform Worker via nikatru_purchases over the declared api_client transports. If any tell below appeared, that sentence would be false: collection would become on-device purchase execution, `shared` would need rework (a billing SDK is a third party), and the User-payment-info row above would very likely flip too.",
-        "androidPermissions": ["com.android.vending.BILLING"],
-        "dartPackages": ["in_app_purchase", "purchases_flutter", "flutter_stripe", "razorpay_flutter", "square_in_app_payments"],
+        "androidPermissions": [
+          "com.android.vending.BILLING"
+        ],
+        "dartPackages": [
+          "in_app_purchase",
+          "purchases_flutter",
+          "flutter_stripe",
+          "razorpay_flutter",
+          "square_in_app_payments"
+        ],
         "iosUsageDescriptionKeys": []
       },
       "evidence": [
@@ -469,28 +709,55 @@
         "packages/purchases/lib/src/entitlement_convergence.dart",
         "services/platform/src/routes/entitlements.ts"
       ],
-      "inventoryRows": ["table:platform_db.entitlements"],
+      "inventoryRows": [
+        "table:platform_db.entitlements"
+      ],
       "basis": "FLIPPED (backend-live only) 2026-08-08 with productization P2.4b, in the SAME commit that made nikatru_purchases a dependency — this row's tells named that package in advance precisely so the dep and the answer could never move separately (the 2026-08-0x sentence 'packages/purchases is deliberately not a dependency' expired with the [ADR 036] freeze dissolution). What backend-live collection means here: the app fetches this account's entitlement/subscription state from platform_db.entitlements — a record OF this app's own subscription, keyed to the User ID, used to unlock features (App functionality; required false because the free tier works signed-out). At the time of the flip the package has ZERO call sites (first caller: the chassis money surfaces, P2.6a; paywall flip: Phase 4), so this column leads the code by design rather than trailing it. And it is the column that COUNTS: assert-play-declarations derives the lane posture from build-platforms.yml as backend-live (its own output, this same commit), so this flip DOES change what the console form would say — deliberately, in the only safe direction (a label may over-state collection; under-stating is the enforcement case), and the submission itself stays owner-gated at A-3. The purchases the USER TYPES IN about other companies' services remain user-generated content, declared elsewhere — that half of the old basis survives."
     },
     {
       "category": "Financial info",
       "type": "Credit score",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No such field, no credit-bureau integration, no such column in any migration."
     },
     {
       "category": "Financial info",
       "type": "Other financial info",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["App functionality"],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
+      "purposes": [
+        "App functionality"
+      ],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
       "evidence": [
         "apps/subly/lib/features/add/add_subscription_sheet.dart",
         "services/subly-api/src/routes/subscriptions.ts",
@@ -507,145 +774,427 @@
     {
       "category": "Health and fitness",
       "type": "Health info",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.BODY_SENSORS"], "dartPackages": ["health"], "iosUsageDescriptionKeys": ["NSHealthShareUsageDescription", "NSHealthUpdateUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.BODY_SENSORS"
+        ],
+        "dartPackages": [
+          "health"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSHealthShareUsageDescription",
+          "NSHealthUpdateUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No health permission, package or entitlement anywhere in the tree."
     },
     {
       "category": "Health and fitness",
       "type": "Fitness info",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.ACTIVITY_RECOGNITION"], "dartPackages": ["health", "pedometer"], "iosUsageDescriptionKeys": ["NSMotionUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.ACTIVITY_RECOGNITION"
+        ],
+        "dartPackages": [
+          "health",
+          "pedometer"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSMotionUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No activity-recognition permission, no fitness package, no motion usage key."
     },
     {
       "category": "Messages",
       "type": "Emails",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_SMS"], "dartPackages": ["enough_mail", "flutter_email_sender"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_SMS"
+        ],
+        "dartPackages": [
+          "enough_mail",
+          "flutter_email_sender"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "🔴 THE APP READS NO MAILBOX, AND THE COPY THAT SUGGESTED OTHERWISE WAS ALREADY REMOVED. apps/subly/lib/features/scan/scan_screen.dart:19-28 records why: the scan screen's labels once said 'Scanning inbox receipts' and 'Reading bank statements' and were changed on 2026-07-27 because 'the app does NONE of those: there is no bank or mail integration anywhere in the dependency graph'. The screen is a Timer.periodic over five fixed strings. The EMAIL ADDRESS a user signs in with is declared under Personal info > Email address; that is an identifier, not a message."
     },
     {
       "category": "Messages",
       "type": "SMS or MMS",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_SMS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS"], "dartPackages": ["telephony", "sms_autofill"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_SMS",
+          "android.permission.RECEIVE_SMS",
+          "android.permission.SEND_SMS"
+        ],
+        "dartPackages": [
+          "telephony",
+          "sms_autofill"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No SMS permission and no SMS package. There is no OTP-by-SMS path — auth is email/password and magic link."
     },
     {
       "category": "Messages",
       "type": "Other in-app messages",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": ["firebase_messaging", "stream_chat_flutter", "onesignal_flutter"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [
+          "firebase_messaging",
+          "stream_chat_flutter",
+          "onesignal_flutter"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "Subly is single-user. There is no chat, comment, share or any other user-to-user surface: every route in services/subly-api is scoped to the caller's own user_id and there is no route that reads another user's rows. Local renewal reminders are generated on-device by flutter_local_notifications and are not messages between people."
     },
     {
       "category": "Photos and videos",
       "type": "Photos",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_MEDIA_IMAGES", "android.permission.READ_EXTERNAL_STORAGE"], "dartPackages": ["image_picker", "photo_manager"], "iosUsageDescriptionKeys": ["NSPhotoLibraryUsageDescription", "NSPhotoLibraryAddUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_MEDIA_IMAGES",
+          "android.permission.READ_EXTERNAL_STORAGE"
+        ],
+        "dartPackages": [
+          "image_picker",
+          "photo_manager"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSPhotoLibraryUsageDescription",
+          "NSPhotoLibraryAddUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No media permission, no picker package, no photo-library usage key. The app has no image input of any kind."
     },
     {
       "category": "Photos and videos",
       "type": "Videos",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_MEDIA_VIDEO"], "dartPackages": ["image_picker", "video_player", "camera"], "iosUsageDescriptionKeys": ["NSCameraUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_MEDIA_VIDEO"
+        ],
+        "dartPackages": [
+          "image_picker",
+          "video_player",
+          "camera"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSCameraUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No video permission, no camera or video package, no camera usage key."
     },
     {
       "category": "Audio files",
       "type": "Voice or sound recordings",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.RECORD_AUDIO"], "dartPackages": ["record", "speech_to_text", "flutter_sound"], "iosUsageDescriptionKeys": ["NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.RECORD_AUDIO"
+        ],
+        "dartPackages": [
+          "record",
+          "speech_to_text",
+          "flutter_sound"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSMicrophoneUsageDescription",
+          "NSSpeechRecognitionUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No microphone permission, no recording or speech package, no microphone usage key."
     },
     {
       "category": "Audio files",
       "type": "Music files",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_MEDIA_AUDIO"], "dartPackages": ["just_audio", "audioplayers", "on_audio_query"], "iosUsageDescriptionKeys": ["NSAppleMusicUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_MEDIA_AUDIO"
+        ],
+        "dartPackages": [
+          "just_audio",
+          "audioplayers",
+          "on_audio_query"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSAppleMusicUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No audio-media permission and no audio package in apps/subly/pubspec.yaml."
     },
     {
       "category": "Audio files",
       "type": "Other audio files",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_MEDIA_AUDIO"], "dartPackages": ["just_audio", "audioplayers"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_MEDIA_AUDIO"
+        ],
+        "dartPackages": [
+          "just_audio",
+          "audioplayers"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "Same evidence as Music files: no audio-media permission and no audio package."
     },
     {
       "category": "Files and docs",
       "type": "Files and docs",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.MANAGE_EXTERNAL_STORAGE", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"], "dartPackages": ["file_picker", "share_plus", "path_provider"], "iosUsageDescriptionKeys": ["NSDocumentsFolderUsageDescription", "NSDesktopFolderUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.MANAGE_EXTERNAL_STORAGE",
+          "android.permission.READ_EXTERNAL_STORAGE",
+          "android.permission.WRITE_EXTERNAL_STORAGE"
+        ],
+        "dartPackages": [
+          "file_picker",
+          "share_plus",
+          "path_provider"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSDocumentsFolderUsageDescription",
+          "NSDesktopFolderUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No storage permission, no file-picker or share package, and no direct path_provider dependency — the app performs no file I/O of its own. The Settings 'Export data (CSV)' row is an INERT placeholder with a null onTap (apps/subly/lib/features/settings/settings_screen.dart), so nothing is written or read."
     },
     {
       "category": "Calendar",
       "type": "Calendar events",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"], "dartPackages": ["device_calendar", "add_2_calendar"], "iosUsageDescriptionKeys": ["NSCalendarsUsageDescription", "NSCalendarsFullAccessUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_CALENDAR",
+          "android.permission.WRITE_CALENDAR"
+        ],
+        "dartPackages": [
+          "device_calendar",
+          "add_2_calendar"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSCalendarsUsageDescription",
+          "NSCalendarsFullAccessUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "⚠️ SUBLY HAS A SCREEN CALLED 'CALENDAR' AND IT IS NOT THE OS CALENDAR. apps/subly/lib/features/calendar/calendar_screen.dart renders a month grid of the app's OWN subscription renewal dates. No calendar permission, no calendar package, no calendar usage key — the OS calendar is never read or written."
     },
     {
       "category": "Contacts",
       "type": "Contacts",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS", "android.permission.GET_ACCOUNTS"], "dartPackages": ["flutter_contacts", "contacts_service"], "iosUsageDescriptionKeys": ["NSContactsUsageDescription"] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.READ_CONTACTS",
+          "android.permission.WRITE_CONTACTS",
+          "android.permission.GET_ACCOUNTS"
+        ],
+        "dartPackages": [
+          "flutter_contacts",
+          "contacts_service"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSContactsUsageDescription"
+        ]
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No contacts permission, no contacts package, no contacts usage key."
     },
     {
       "category": "App activity",
       "type": "App interactions",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": false,
-      "purposes": ["Analytics"],
+      "purposes": [
+        "Analytics"
+      ],
       "clientAbsence": {
         "claim": "Analytics here is FIRST-PARTY ONLY — the events go to services/platform, which is ours. Any of these packages arriving would make `shared: false` false on this row, because a third-party analytics or attribution SDK transmits to its own vendor and that is precisely what Play's `shared` definition covers. It would also break the `required: false` claim, since none of them is gated on this app's consent controller.",
         "androidPermissions": [],
-        "dartPackages": ["firebase_analytics", "amplitude_flutter", "mixpanel_flutter", "posthog_flutter", "appsflyer_sdk", "flutter_branch_sdk"],
+        "dartPackages": [
+          "firebase_analytics",
+          "amplitude_flutter",
+          "mixpanel_flutter",
+          "posthog_flutter",
+          "appsflyer_sdk",
+          "flutter_branch_sdk"
+        ],
         "iosUsageDescriptionKeys": []
       },
       "evidence": [
@@ -653,127 +1202,276 @@
         "packages/api_client/lib/src/dio_event_transport.dart",
         "services/platform/src/routes/events.ts"
       ],
-      "inventoryRows": ["table:platform_db.events", "table:platform_db.events_daily", "table:platform_db.consent_artifacts"],
+      "inventoryRows": [
+        "table:platform_db.events",
+        "table:platform_db.events_daily",
+        "table:platform_db.consent_artifacts"
+      ],
       "basis": "OPTIONAL, and that is enforced rather than claimed. Collection is first-party only (no third-party analytics SDK exists in the dependency graph) and is gated on an explicit opt-in that defaults OFF: ConsentStatus.unknown is the launch state and is not consent (packages/core/lib/src/analytics/consent.dart:20-22), AnalyticsRecorder.log discards unless granted and does not buffer for replay, an unreadable consent store resolves to `unknown` rather than to consent, and withdrawal purges the queue and the disk key before the network call. Four events can actually fire: first_launch, app_open, return_visit and activation. Params are enumerable scalars only, capped at 12 keys and 64 characters — no free text and no user content. Under demo the whole rail is NoOpAnalytics and no consent prompt is shown at all."
     },
     {
       "category": "App activity",
       "type": "In-app search history",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "There is no search field in the app, and no analytics event carries a query. Analytics params are enumerable values only (packages/core/lib/src/analytics/analytics.dart:64-90), so a search term could not travel even if a search existed."
     },
     {
       "category": "App activity",
       "type": "Installed apps",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": ["android.permission.QUERY_ALL_PACKAGES"], "dartPackages": ["device_apps", "installed_apps"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [
+          "android.permission.QUERY_ALL_PACKAGES"
+        ],
+        "dartPackages": [
+          "device_apps",
+          "installed_apps"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "No QUERY_ALL_PACKAGES and no package-listing dependency. The only <queries> element in the manifest is Flutter's default PROCESS_TEXT intent filter, which resolves a text-selection action and enumerates nothing."
     },
     {
       "category": "App activity",
       "type": "Other user-generated content",
-      "collected": { "demo": false, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": false,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["App functionality"],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": ["apps/subly/lib/features/add/add_subscription_sheet.dart", "services/subly-api/src/routes/subscriptions.ts"],
-      "inventoryRows": ["table:subly_db.subscriptions"],
+      "purposes": [
+        "App functionality"
+      ],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [
+        "apps/subly/lib/features/add/add_subscription_sheet.dart",
+        "services/subly-api/src/routes/subscriptions.ts"
+      ],
+      "inventoryRows": [
+        "table:subly_db.subscriptions"
+      ],
       "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:29). Under backend-live it is transmitted and stored in subly_db.subscriptions; under demo it stays in an in-memory list. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
     },
     {
       "category": "App activity",
       "type": "Other actions",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "Everything this app records about what a user does is the four funnel events, declared under App interactions. Nothing else about user behaviour is captured — there is no session replay, no interaction tracing (Sentry's enableUserInteractionTracing is left at its default of false) and no screenshot or view-hierarchy attachment."
     },
     {
       "category": "Web browsing",
       "type": "Web browsing history",
-      "collected": { "demo": false, "backend-live": false },
-      "shared": { "demo": false, "backend-live": false },
-      "ephemeral": false, "required": null, "purposes": [],
-      "tells": { "androidPermissions": [], "dartPackages": ["webview_flutter", "flutter_inappwebview"], "iosUsageDescriptionKeys": [] },
-      "evidence": [], "inventoryRows": [],
+      "collected": {
+        "demo": false,
+        "backend-live": false
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
+      "ephemeral": false,
+      "required": null,
+      "purposes": [],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [
+          "webview_flutter",
+          "flutter_inappwebview"
+        ],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [],
+      "inventoryRows": [],
       "basis": "There is no in-app browser and no WebView dependency. url_launcher is used only to hand four hardcoded nikatru.com legal URLs to the system browser, which returns nothing to the app."
     },
     {
       "category": "App info and performance",
       "type": "Crash logs",
-      "collected": { "demo": true, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": true,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["App functionality"],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": ["apps/subly/lib/main.dart", "packages/telemetry/lib/src/telemetry_bootstrap.dart", "packages/telemetry/lib/src/pii_scrubber.dart"],
+      "purposes": [
+        "App functionality"
+      ],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [
+        "apps/subly/lib/main.dart",
+        "packages/telemetry/lib/src/telemetry_bootstrap.dart",
+        "packages/telemetry/lib/src/pii_scrubber.dart"
+      ],
       "inventoryRows": [],
       "basis": "🔴 THE ONE THING THE PLAY BUILD COLLECTS TODAY. The .aab lane passes --dart-define=GLITCHTIP_DSN, and TelemetryConfig.enabled is `dsn.isNotEmpty` — so on a trusted CI run the crash rail is ON in the shipping artefact and is its only network egress. REQUIRED: there is no opt-out in the app. Reports go to a self-hosted GlitchTip on Oracle Cloud, which is our own infrastructure and a service provider, so not `shared`. Before send: sendDefaultPii=false, enableAutoSessionTracking=false, and a beforeSend scrubber that redacts PAN, Aadhaar, email addresses, Indian mobile numbers and any run of >=10 digits out of the message, tags, extra, breadcrumb messages, breadcrumb data and exception values. ⚠️ The sink is NOT in tooling/legal/data-inventory.json because that register enumerates stores THIS REPOSITORY declares — D1 tables, KV namespaces and R2 buckets — and GlitchTip is an external service with no binding here. That is a real gap in the inventory's reach and it is recorded in `inventory.notInRegister` below rather than glossed."
     },
     {
       "category": "App info and performance",
       "type": "Diagnostics",
-      "collected": { "demo": true, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": true,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["App functionality"],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": ["packages/telemetry/lib/src/telemetry_bootstrap.dart", "packages/telemetry/lib/src/telemetry_config.dart"],
+      "purposes": [
+        "App functionality"
+      ],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [
+        "packages/telemetry/lib/src/telemetry_bootstrap.dart",
+        "packages/telemetry/lib/src/telemetry_config.dart"
+      ],
       "inventoryRows": [],
       "basis": "Declared true rather than argued down. A crash event carries more than the stack: the SDK attaches device and OS context and lifecycle breadcrumbs by default, and those are NOT removed by scrubEvent, which reaches message, tags, extra, breadcrumbs and exceptions and does not touch event.contexts. 📌 THE CONTENTS ARE NO LONGER A 'WHATEVER IT CONTAINS' — this used to end by saying the identifier half was `null` under Device or other IDs and written up in `unresolved`. Both were settled on 2026-08-04 by reading the pinned SDK (see `resolved` and `crashSdkSurface`). sentry-android 8.51.0 DeviceInfoUtil.collectDeviceInformation sets manufacturer, brand, family, model, modelId, archs, chipset, orientation, simulator, screen width/height/density/dpi, boot time, timezone, locale, processor count/frequency and total memory — every one of which is diagnostic data leaving the device, so this answer stays `true`. The one field that is an IDENTIFIER rather than a characteristic is `device.id`, and it is now declared under Device or other IDs (true in both postures) rather than left open."
     },
     {
       "category": "App info and performance",
       "type": "Other app performance data",
-      "collected": { "demo": true, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": true,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["App functionality"],
-      "tells": { "androidPermissions": [], "dartPackages": [], "iosUsageDescriptionKeys": [] },
-      "evidence": ["packages/telemetry/lib/src/telemetry_bootstrap.dart", "packages/telemetry/lib/src/telemetry_config.dart"],
+      "purposes": [
+        "App functionality"
+      ],
+      "tells": {
+        "androidPermissions": [],
+        "dartPackages": [],
+        "iosUsageDescriptionKeys": []
+      },
+      "evidence": [
+        "packages/telemetry/lib/src/telemetry_bootstrap.dart",
+        "packages/telemetry/lib/src/telemetry_config.dart"
+      ],
       "inventoryRows": [],
       "basis": "options.tracesSampleRate is set from TelemetryConfig, whose default is 0.01 (telemetry_config.dart:11), so roughly one launch in a hundred also sends a performance transaction. A sampled trace is still transmitted performance data; declaring 'no' because the rate is low would be a declaration about frequency, not about whether it happens."
     },
     {
       "category": "Device or other IDs",
       "type": "Device or other IDs",
-      "collected": { "demo": true, "backend-live": true },
-      "shared": { "demo": false, "backend-live": false },
+      "collected": {
+        "demo": true,
+        "backend-live": true
+      },
+      "shared": {
+        "demo": false,
+        "backend-live": false
+      },
       "ephemeral": false,
       "required": true,
-      "purposes": ["Analytics", "App functionality"],
+      "purposes": [
+        "Analytics",
+        "App functionality"
+      ],
       "clientAbsence": {
         "claim": "🔴 NEITHER IDENTIFIER IS AN ADVERTISING ID. The two this app transmits are a self-minted install UUID (`anon_id`) and the crash SDK's own install UUID (`contexts.device.id`) — both random, both per-install, both un-resettable-by-the-ad-framework and un-joinable to any ad network, because no ads or attribution SDK exists in the dependency graph. That sentence is the whole reason this row can be `shared: false` with purposes limited to Analytics and App functionality. Any tell below arriving would make it false at once, and would additionally require the AD_ID permission declaration and an 'Advertising or marketing' purpose on this form.",
-        "androidPermissions": ["com.google.android.gms.permission.AD_ID"],
-        "dartPackages": ["google_mobile_ads", "appsflyer_sdk", "flutter_branch_sdk", "app_tracking_transparency", "advertising_id", "adjust_sdk"],
-        "iosUsageDescriptionKeys": ["NSUserTrackingUsageDescription"]
+        "androidPermissions": [
+          "com.google.android.gms.permission.AD_ID"
+        ],
+        "dartPackages": [
+          "google_mobile_ads",
+          "appsflyer_sdk",
+          "flutter_branch_sdk",
+          "app_tracking_transparency",
+          "advertising_id",
+          "adjust_sdk"
+        ],
+        "iosUsageDescriptionKeys": [
+          "NSUserTrackingUsageDescription"
+        ]
       },
       "evidence": [
         "apps/subly/lib/state/analytics_providers.dart",
         "packages/api_client/lib/src/dio_event_transport.dart",
         "packages/telemetry/lib/src/telemetry_bootstrap.dart"
       ],
-      "inventoryRows": ["table:platform_db.events", "table:platform_db.events_daily", "table:platform_db.consent_artifacts"],
+      "inventoryRows": [
+        "table:platform_db.events",
+        "table:platform_db.events_daily",
+        "table:platform_db.consent_artifacts"
+      ],
       "basis": "TRUE IN BOTH POSTURES. Two independent contributions, and the second is the one that was `null`.\n\n(1) anon_id — BACKEND-LIVE ONLY. A 128-bit random install identifier minted from Random.secure() and kept in shared_preferences under `nikatru.install_id`; it travels on every analytics and consent request. It is NOT an advertising ID and never has been — analytics_providers.dart:56 says 'Never a device ad-ID', the consent prompt tells the user in those words, and no ads or attribution SDK exists in the dependency graph.\n\n(2) THE CRASH RAIL — BOTH POSTURES. 🔴 SETTLED 2026-08-04 BY READING THE SDK, NOT BY OBSERVING THE SINK. The recorded procedure was to build on CI, trigger a crash and inspect the stored event, on the stated ground that the payload 'is not derivable from source, because it is assembled inside the vendored SDK'. That ground was wrong: the vendored SDK IS source, it is pinned in pubspec.lock, and it is on disk in the pub cache. The chain, read end to end at the versions in `crashSdkSurface`:\n  · sentry_flutter 9.26.0 lib/src/sentry_flutter_options.dart:34 — `autoInitializeNativeSdk = true` by default, and packages/telemetry does not override it, so the Android native SDK is initialised.\n  · lib/src/sentry_flutter.dart:203-205 — LoadContextsIntegration is installed when `!platform.isWeb && native.supportsLoadContexts`; lib/src/native/sentry_native_channel.dart:135 makes that true for Android.\n  · lib/src/integrations/load_contexts_integration.dart:172-174 — its event processor merges the native `contexts` map into `event.contexts` on every event.\n  · sentry-android 8.51.0 DeviceInfoUtil.java:133-135 — `if (device.getId() == null) { device.setId(getDeviceId()); }`. The string `sendDefaultPii` DOES NOT OCCUR ANYWHERE in that 502-line file, so `options.sendDefaultPii = false` (telemetry_bootstrap.dart:42) does not suppress it. DeviceInfoUtil.java:492-500 resolves it to `Installation.id(context)`.\n  · Installation.java:37-53 and 64-73 — a random UUID written once to a file named INSTALLATION in the app's files dir and read back on every later launch. STABLE FOR THE LIFE OF THE INSTALL.\n  · It serialises under the key `id` (sentry-java Device.JsonKeys.ID). The Dart mirror does not model that key: sentry 9.26.0 lib/src/protocol/sentry_device.dart:195-226 sweeps unmodelled keys into `unknown`, and toJson() spreads `...?unknown` FIRST — so it round-trips to the sink verbatim rather than being dropped.\n  · packages/telemetry/lib/src/telemetry_bootstrap.dart:84-139 — scrubEvent reaches message, tags, extra, breadcrumbs and exception values and never touches `event.contexts`, so nothing in this repository removes it.\nA stable per-install identifier therefore leaves the device on every crash and on every sampled performance transaction, in the demo build as much as the live one, because GLITCHTIP_DSN is passed to both.\n\nREQUIRED rather than optional: the crash-rail contribution has no user-facing opt-out and is present in every shipped posture. The anon_id half is consent-gated, and Play asks one answer per type, so the stricter of the two is the answer.\n\n⚠️ THE ANSWER IS NOT UNIFORM ACROSS PLATFORMS, and this file governs the Play channel, so the Android column is the one that decides it. Android and iOS/macOS both attach a persistent per-install id — on Apple via sentry-cocoa 8.58.4 SentryClient.m:826, which calls setUserIdIfNoUserSet unconditionally inside prepareEvent, filling user.userId from SentryInstallation (SentryClient.m:979-988). Windows and Linux do NOT: factory_real.dart:14-15 selects the C binding, whose `supportsLoadContexts` is false (native/c/sentry_native.dart:149) and whose loadContexts() returns null (:152-155), so LoadContextsIntegration is never even installed, and the Dart-only IoEnricherEventProcessor fills name, processorCount, memorySize and freeMemory alone (sentry 9.26.0 io_enricher_event_processor.dart:41-48) — none of which identifies anything. Web is excluded by the same `!platform.isWeb` guard."
     }
   ],
-
   "unresolved": [],
-
   "_resolved_why": [
     "🔴 A SETTLED QUESTION KEEPS ITS WRITE-UP, OR THE NEXT PERSON RE-OPENS IT. Both entries below were",
     "`unresolved` and both blocked the form. Deleting them on the day they were answered would leave two",
@@ -786,11 +1484,12 @@
     "backsliding that a prose-only record cannot catch, and the one this file would never print as blocking,",
     "because the blocking list is built from `unresolved`."
   ],
-
   "resolved": [
     {
       "id": "sentry-device-context",
-      "affects": ["Device or other IDs"],
+      "affects": [
+        "Device or other IDs"
+      ],
       "ownerItem": "O-3",
       "question": "Does the crash rail transmit anything that counts as a device identifier? sendDefaultPii=false stops the SDK attaching user.ip_address, but it does not disable the default `contexts.device` payload or the Sentry Android SDK's own installation id, and packages/telemetry's scrubEvent covers message, tags, extra, breadcrumbs and exceptions — not event.contexts.",
       "answer": "YES on Android (and on iOS/macOS). sentry-android 8.51.0 sets contexts.device.id to a UUID persisted in the app's files dir for the life of the install, ungated by sendDefaultPii; the Dart layer passes the unmodelled key through verbatim and scrubEvent never reaches contexts. Device or other IDs is therefore `true` under BOTH postures, and `required`, because the crash rail has no opt-out. NOT true on Windows or Linux, where the contexts integration is never installed at all.",
@@ -800,7 +1499,9 @@
     },
     {
       "id": "edge-derived-coarse-geo",
-      "affects": ["Approximate location"],
+      "affects": [
+        "Approximate location"
+      ],
       "ownerItem": "O-3",
       "question": "services/platform/src/routes/events.ts:118-126 stores country, region and city on every analytics row, read from Cloudflare's `request.cf` at the edge rather than from anything the app sends. Does Play's Data safety form count server-side geo inferred from the connection as the app collecting Approximate location?",
       "answer": "YES, and Play says so in one sentence: 'Approximate location that is inferred, such as via IP address or Access Point Name, must be disclosed here.' Because the derived value is also STORED (three columns on `events`) rather than used in flight, it is neither out of scope nor ephemeral. Declared collected under backend-live, optional, purpose Analytics, not shared.",
@@ -809,7 +1510,6 @@
       "coversOnly": "The analytics rail, which is the only place this repository stores geo. It does NOT establish whether the self-hosted GlitchTip instance derives geo of its own from the connecting address — see `crashSdkSurface.cannotSee`. That could only ever affect the `demo` column, which is not the shipping posture."
     }
   ],
-
   "crashSdkSurface": {
     "_why": [
       "🔴 THE DEVICE-ID ANSWER IS A FACT ABOUT A PINNED VERSION, NOT AN ETERNAL ONE. It was established by",
@@ -825,7 +1525,10 @@
       "A bump of the Dart pin is the event that invalidates them, and that IS caught."
     ],
     "lockfile": "pubspec.lock",
-    "pinned": { "sentry_flutter": "9.26.0", "sentry": "9.26.0" },
+    "pinned": {
+      "sentry_flutter": "9.26.0",
+      "sentry": "9.26.0"
+    },
     "transitiveNativeObserved": {
       "sentry-android": "8.51.0",
       "sentry-cocoa": "8.58.4",
@@ -835,19 +1538,24 @@
     "finding": "contexts.device.id is a stable per-install UUID on Android; it is NOT gated by sendDefaultPii and is NOT reached by packages/telemetry's scrubEvent. Windows and Linux attach no native contexts at all.",
     "cannotSee": "⚠️ WHAT THE GLITCHTIP SERVER DOES AFTER RECEIPT. Everything above is about the payload leaving the device. A Sentry-protocol server can enrich on ingest — most obviously by inferring geo from the connecting address — and the instance is self-hosted on Oracle Cloud with no configuration in this repository. That is why `Approximate location` under the `demo` posture rests on the analytics rail being off, and nothing else. It cannot affect the value typed into the console, because buildPosture.current is `backend-live`, where Approximate location is already true. Settling it means reading the GlitchTip instance's own configuration, not this tree."
   },
-
   "dataSecurity": {
     "encryptedInTransit": {
       "answer": true,
       "basis": "Every endpoint the client can reach is https and the guard proves no `http://` string literal exists anywhere in the shipped Dart (apps/subly/lib, packages/*/lib). TLS terminates at the Cloudflare edge, provisioned by `custom_domain: true` in each Worker's wrangler config. No certificate pinning is used and tooling/ci/assert-no-tls-pinning.mjs keeps it that way.",
-      "clientRoots": ["apps/subly/lib", "packages"]
+      "clientRoots": [
+        "apps/subly/lib",
+        "packages"
+      ]
     },
     "deletionRequestSupported": {
       "answer": true,
       "webDeletionUrl": "https://nikatru.com/delete-account",
       "sitePage": "sites/nikatru/delete-account.html",
       "inAppControl": "apps/subly/lib/features/settings/settings_screen.dart",
-      "guards": ["tooling/ci/assert-deletion-control.mjs", "tooling/ci/assert-erasure-reach.mjs"],
+      "guards": [
+        "tooling/ci/assert-deletion-control.mjs",
+        "tooling/ci/assert-erasure-reach.mjs"
+      ],
       "basis": "Both halves Play requires exist. In-app: Settings carries a delete-account control that re-authenticates with the password and calls DELETE /v1/account, and assert-deletion-control.mjs fails the build if any app that can create an account ships without one. Web: sites/nikatru/delete-account.html. Server: the erasure routes are derived from this file's `erasureRoutes`, which is itself derived from tooling/legal/data-inventory.json rather than typed here.",
       "notReached": [
         "platform_db.events and platform_db.consent_artifacts are keyed on `anon_id` and there is NO anon_id -> user_id map anywhere ([ADR 020] forbids one being written), so an account deletion provably cannot address those rows. tooling/legal/data-inventory.json declares this as erasure kind `pseudonymous` and assert-data-inventory.mjs fails the day either table grows a user-shaped column. Play's account-deletion policy permits retention with disclosure; the inventory already records that privacy.html's wording is wider than what the route can do, under owner item O-3.",
@@ -865,7 +1573,6 @@
       "humanOwned": true
     }
   },
-
   "inventory": {
     "_why": [
       "🔴 THIS IS THE LIMB THAT KEEPS THE FORM HONEST AS THE SCHEMA MOVES. tooling/legal/data-inventory.json",
@@ -888,7 +1595,6 @@
       "THE CRASH SINK. GlitchTip (self-hosted, Oracle Cloud) receives crash and performance events from the shipping artefact and appears in NO row of data-inventory.json, because that register's three walks enumerate D1 tables, wrangler bindings and Pages-Function KV — an external service with no binding in this repository is outside all three. It is registered as a provider in tooling/legal/provider-register.json (row `oracle-cloud`), which is where the disclosure obligation is tracked, but the store-level 'what does it hold and for how long' question has no row anywhere. That is a real gap in the inventory's reach and it is written here rather than left for somebody to notice."
     ]
   },
-
   "androidPermissions": {
     "_why": [
       "PARSED OUT OF EVERY AndroidManifest.xml IN THE APP, WITH XML COMMENTS STRIPPED FIRST, and compared",
@@ -902,8 +1608,12 @@
     ],
     "declaredInRepo": {
       "apps/subly/android/app/src/main/AndroidManifest.xml": [],
-      "apps/subly/android/app/src/debug/AndroidManifest.xml": ["android.permission.INTERNET"],
-      "apps/subly/android/app/src/profile/AndroidManifest.xml": ["android.permission.INTERNET"]
+      "apps/subly/android/app/src/debug/AndroidManifest.xml": [
+        "android.permission.INTERNET"
+      ],
+      "apps/subly/android/app/src/profile/AndroidManifest.xml": [
+        "android.permission.INTERNET"
+      ]
     },
     "merged": {
       "_why": [
@@ -1002,8 +1712,7 @@
       ]
     },
     "cannotSee": "⚠️ THE MERGED MANIFEST. Gradle merges permissions contributed by every plugin's own AndroidManifest.xml, and none of those files is in this repository. Reading the locked plugin set, the expected additions are VIBRATE and POST_NOTIFICATIONS (flutter_local_notifications) and INTERNET / ACCESS_NETWORK_STATE (the sentry-android AAR pulled in by sentry_flutter) — none of which is a collection signal on its own. That set was NOT read from a built artefact and is not asserted anywhere: Android cannot be built on the maintainer's machine, and the guard says so on every run instead of pretending. To settle it, run `bundletool dump manifest` on a CI-built .aab. What the guard CAN do about it is `dependencySurface` below — a permission-bearing plugin cannot arrive without a new dependency, and a new dependency fails the build.  ┃  APPENDED 2026-08-26 — MEASURED, AND THE GUESS ABOVE WAS 3-FOR-4. The sentence in front of this one stands exactly as it was written, because it was true the day it was written; this says what changed and when. The merged set has now been read — from the signed .aab of CI run 32869814582 — and is recorded in `merged` above. VIBRATE and POST_NOTIFICATIONS arrived from flutter_local_notifications as predicted, and INTERNET arrived; ACCESS_NETWORK_STATE DID NOT, and a fourth permission nobody predicted did: com.nikatru.subly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, an ${applicationId}-substituted signature permission contributed by androidx.core. Three named right, one named wrong, one missed — which is the whole argument for reading an artefact instead of reasoning about a plugin list. WHAT IS STILL NOT VISIBLE FROM HERE, and it is narrower than it was: (1) WHICH library declares INTERNET. No AAR manifest is in this repository and none is on the measuring host (no Gradle cache; Android builds in CI), so the reading says INTERNET is in the merged set and nothing here says who put it there — it is carried as a named finding in `merged.unattributed`, not as a footnote. (2) That the reading is one build's snapshot rather than a standing derivation: nothing in CI downloads its own .aab back to re-read it, so `merged.pinned` and `merged.expectedButAbsent` are what stop it going quietly stale — re-take it from a fresh .aab whenever either of them fires."
-    },
-
+  },
   "dependencySurface": {
     "_why": [
       "🔴 THE MECHANISM BY WHICH A DATA-COLLECTING SDK ACTUALLY ARRIVES. Nobody adds ACCESS_FINE_LOCATION",
@@ -1019,29 +1728,106 @@
     ],
     "manifest": "apps/subly/pubspec.yaml",
     "direct": {
-      "flutter": { "introduces": [], "why": "The SDK itself." },
-      "nikatru_core": { "introduces": [], "why": "First-party. Domain models, the Result type, the analytics recorder and the consent controller — no I/O of its own; every transport is injected." },
-      "nikatru_api_client": { "introduces": ["User IDs", "Other financial info", "Other user-generated content", "App interactions", "Device or other IDs"], "why": "First-party. The Dio transports that actually send subscriptions, budget, analytics events and the consent artifact. It is the package through which everything declared collected under backend-live leaves the device." },
-      "nikatru_design_system": { "introduces": [], "why": "First-party. Tokens, theming and widgets. No network, no storage." },
-      "nikatru_platform_storage": { "introduces": [], "why": "First-party. shared_preferences and flutter_secure_storage adapters. Writes ON the device only — nothing here transmits." },
-      "nikatru_auth_supabase": { "introduces": ["Email address", "User IDs"], "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:58 gates on isSupabaseConfigured)." },
-      "nikatru_telemetry": { "introduces": ["Crash logs", "Diagnostics", "Other app performance data"], "why": "First-party wrapper over sentry_flutter. THE ONLY THING THAT TRANSMITS IN THE DEMO POSTURE, and the source of the unresolved device-context question." },
-      "flutter_riverpod": { "introduces": [], "why": "State management. No I/O." },
-      "go_router": { "introduces": [], "why": "Navigation. No I/O." },
-      "dio": { "introduces": [], "why": "HTTP client. A transport, not a collector — what travels over it is declared by the api_client entry above." },
-      "supabase_flutter": { "introduces": ["Email address", "User IDs"], "why": "The identity SDK. Sends the email and password to Supabase GoTrue and returns the session. Inert under demo, where MockAuthRepository is selected instead." },
+      "flutter": {
+        "introduces": [],
+        "why": "The SDK itself."
+      },
+      "nikatru_core": {
+        "introduces": [],
+        "why": "First-party. Domain models, the Result type, the analytics recorder and the consent controller — no I/O of its own; every transport is injected."
+      },
+      "nikatru_api_client": {
+        "introduces": [
+          "User IDs",
+          "Other financial info",
+          "Other user-generated content",
+          "App interactions",
+          "Device or other IDs"
+        ],
+        "why": "First-party. The Dio transports that actually send subscriptions, budget, analytics events and the consent artifact. It is the package through which everything declared collected under backend-live leaves the device."
+      },
+      "nikatru_design_system": {
+        "introduces": [],
+        "why": "First-party. Tokens, theming and widgets. No network, no storage."
+      },
+      "nikatru_platform_storage": {
+        "introduces": [],
+        "why": "First-party. shared_preferences and flutter_secure_storage adapters. Writes ON the device only — nothing here transmits."
+      },
+      "nikatru_auth_supabase": {
+        "introduces": [
+          "Email address",
+          "User IDs"
+        ],
+        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:58 gates on isSupabaseConfigured)."
+      },
+      "nikatru_telemetry": {
+        "introduces": [
+          "Crash logs",
+          "Diagnostics",
+          "Other app performance data"
+        ],
+        "why": "First-party wrapper over sentry_flutter. THE ONLY THING THAT TRANSMITS IN THE DEMO POSTURE, and the source of the unresolved device-context question."
+      },
+      "flutter_riverpod": {
+        "introduces": [],
+        "why": "State management. No I/O."
+      },
+      "go_router": {
+        "introduces": [],
+        "why": "Navigation. No I/O."
+      },
+      "dio": {
+        "introduces": [],
+        "why": "HTTP client. A transport, not a collector — what travels over it is declared by the api_client entry above."
+      },
+      "supabase_flutter": {
+        "introduces": [
+          "Email address",
+          "User IDs"
+        ],
+        "why": "The identity SDK. Sends the email and password to Supabase GoTrue and returns the session. Inert under demo, where MockAuthRepository is selected instead."
+      },
       "nikatru_notifications": {
-      "introduces": [],
-      "why": "First-party wrapper (packages/notifications) over the flutter_local_notifications + timezone pair already declared below — [13]T-9 routes the retention-touch attribution through it so a tap is attributable to its reminder. It schedules LOCAL notifications only: no new permission, no network, no data category beyond what its two wrapped deps (both already in this surface) declare. Added 2026-08-08 with PR #195 under [ADR 036]."
-    },
-    "flutter_local_notifications": { "introduces": [], "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions — which stopped being an inference on 2026-08-26: both were read out of a built .aab and both were traced back to this package's own plugin manifest. See androidPermissions.merged." },
-      "timezone": { "introduces": [], "why": "Local timezone database for scheduling the reminders above. Offline data, no I/O." },
-      "intl": { "introduces": [], "why": "Number formatting. Subly's entire use is one NumberFormat in lib/core/format/currency.dart." },
-      "cupertino_icons": { "introduces": [], "why": "An icon font." },
-      "url_launcher": { "introduces": [], "why": "Hands four hardcoded nikatru.com legal URLs to the system browser. The app receives nothing back and learns nothing about what the browser does." },
-      "package_info_plus": { "introduces": [], "why": "Reads the app's OWN version and build number from the OS package manager — input to the CFG-1 force-update kill-switch comparison. No personal data, no network. Added 2026-08-08 with productization P2.4a under [ADR 037]." },
-      "nikatru_purchases": { "introduces": [], "why": "First-party client rail (packages/purchases) for the money rail: offerings, entitlement state and convergence ([5]M-8), fetched over the api_client/dio transports already declared above and keyed to the authenticated account — so its data categories (User IDs, the entitlement read now declared under Financial info > Purchase history) are carried by entries and answer rows, not new here, hence introduces []. It contains NO checkout: purchase execution happens on the apex web page ([ADR 038]) in a browser, and no billing SDK or payment instrument exists in this codebase (see the Purchase-history row's clientAbsence). Zero call sites at the time of writing — the first caller lands with the chassis money surfaces (P2.6a) and the paywall flip is Phase 4. Added 2026-08-08 with productization P2.4b under [ADR 037]; the Purchase-history answer row moved in the same commit because that row's tells named this package in advance, exactly so the two could never move separately." },
-      "flutter_localizations": { "introduces": [], "why": "The SDK localization package driving gen-l10n from lib/l10n/*.arb. Offline string tables, no I/O. Added 2026-08-08 with productization P2.4a under [ADR 037]." }
+        "introduces": [],
+        "why": "First-party wrapper (packages/notifications) over the flutter_local_notifications + timezone pair already declared below — [13]T-9 routes the retention-touch attribution through it so a tap is attributable to its reminder. It schedules LOCAL notifications only: no new permission, no network, no data category beyond what its two wrapped deps (both already in this surface) declare. Added 2026-08-08 with PR #195 under [ADR 036]."
+      },
+      "flutter_local_notifications": {
+        "introduces": [],
+        "why": "Schedules renewal reminders ON THE DEVICE. Nothing is sent anywhere — there is no push service, no token registration and no Firebase. It is the source of the merged VIBRATE and POST_NOTIFICATIONS permissions — which stopped being an inference on 2026-08-26: both were read out of a built .aab and both were traced back to this package's own plugin manifest. See androidPermissions.merged."
+      },
+      "timezone": {
+        "introduces": [],
+        "why": "Local timezone database for scheduling the reminders above. Offline data, no I/O."
+      },
+      "intl": {
+        "introduces": [],
+        "why": "Number formatting. Subly's entire use is one NumberFormat in lib/core/format/currency.dart."
+      },
+      "cupertino_icons": {
+        "introduces": [],
+        "why": "An icon font."
+      },
+      "url_launcher": {
+        "introduces": [],
+        "why": "Hands four hardcoded nikatru.com legal URLs to the system browser. The app receives nothing back and learns nothing about what the browser does."
+      },
+      "package_info_plus": {
+        "introduces": [],
+        "why": "Reads the app's OWN version and build number from the OS package manager — input to the CFG-1 force-update kill-switch comparison. No personal data, no network. Added 2026-08-08 with productization P2.4a under [ADR 037]."
+      },
+      "nikatru_purchases": {
+        "introduces": [],
+        "why": "First-party client rail (packages/purchases) for the money rail: offerings, entitlement state and convergence ([5]M-8), fetched over the api_client/dio transports already declared above and keyed to the authenticated account — so its data categories (User IDs, the entitlement read now declared under Financial info > Purchase history) are carried by entries and answer rows, not new here, hence introduces []. It contains NO checkout: purchase execution happens on the apex web page ([ADR 038]) in a browser, and no billing SDK or payment instrument exists in this codebase (see the Purchase-history row's clientAbsence). Zero call sites at the time of writing — the first caller lands with the chassis money surfaces (P2.6a) and the paywall flip is Phase 4. Added 2026-08-08 with productization P2.4b under [ADR 037]; the Purchase-history answer row moved in the same commit because that row's tells named this package in advance, exactly so the two could never move separately."
+      },
+      "flutter_localizations": {
+        "introduces": [],
+        "why": "The SDK localization package driving gen-l10n from lib/l10n/*.arb. Offline string tables, no I/O. Added 2026-08-08 with productization P2.4a under [ADR 037]."
+      },
+      "cloudflare_turnstile": {
+        "introduces": [],
+        "why": "Renders the Cloudflare Turnstile challenge that self-hosted GoTrue requires on signup, password sign-in, recover and resend. On Android it draws the challenge in an embedded web view (flutter_inappwebview), because Turnstile needs a DOM and a native app has none. INTRODUCES NOTHING, and that is a reading rather than an assumption: the challenge is served by Cloudflare from challenges.cloudflare.com and returns a single opaque token, which this app forwards to its own auth server and never stores. No identifier of ours is sent to it, nothing is written to disk, and the plugin's own Apple manifest declares NSPrivacyTracking false with every array empty - the same binary, audited on the platform that makes vendors say so in writing. WHAT A LATER READER SHOULD CHECK RATHER THAN INHERIT: Cloudflare sets its own cookie inside that web view for bot scoring, and Play counts what the APP collects, not what an embedded third party does for its own anti-abuse. If the Play answer key ever grows a row for embedded third-party content, this entry is the one to revisit."
+      }
     }
   }
 }

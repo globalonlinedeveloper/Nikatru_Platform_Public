@@ -119,6 +119,7 @@ dependencies:
   # exactly what the [pipeline S-4] widening was for.
   flutter_localizations:
     sdk: flutter
+  cloudflare_turnstile: ^3.8.1
 
   # 🪦 THE REVENUECAT LINE THAT USED TO SIT HERE IS GONE — [ADR 026], [ADR 004],
   # and it STAYS gone: RevenueCat is an aggregator over Apple/Google in-app

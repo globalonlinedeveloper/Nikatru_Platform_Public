@@ -6,6 +6,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import 'turnstile_gate.dart';
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -41,6 +42,10 @@ class VerifyEmailScreen extends ConsumerStatefulWidget {
 class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   bool _busy = false;
   String? _notice;
+
+  /// See `login_screen.dart` for the full note. Null today; required after the
+  /// cutover, because `resend` is one of the six captcha-gated endpoints.
+  String? _captchaToken;
 
   /// Runs [action] with the busy flag held and the outcome shown inline.
   ///
@@ -122,12 +127,19 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                 child: Text(l10n.verifyEmailContinue),
               ),
               const SizedBox(height: 12),
+              // The resend endpoint is captcha-gated too, so the button needs
+              // a token like every other door. Renders nothing without a key.
+              TurnstileGate(
+                onToken: (String? t) => setState(() => _captchaToken = t),
+              ),
               OutlinedButton(
                 key: VerifyEmailScreen.resendButton,
                 onPressed: _busy
                     ? null
                     : () => _run(() async {
-                        await auth.resendVerificationEmail();
+                        await auth.resendVerificationEmail(
+                          captchaToken: _captchaToken,
+                        );
                         return l10n.verifyEmailResent;
                       }),
                 child: Text(l10n.verifyEmailResend),

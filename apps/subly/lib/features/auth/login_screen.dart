@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+
+import 'turnstile_gate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
@@ -119,6 +121,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// the node the email field asked to focus would already have been discarded.
   final FocusNode _passwordFocus = FocusNode();
 
+  /// The current Turnstile token, or null when there is not a usable one.
+  ///
+  /// Null is the normal state today: with no `TURNSTILE_SITE_KEY` compiled in
+  /// the gate renders nothing and never calls back, so every request goes out
+  /// exactly as it did before. It becomes load-bearing the day SUPABASE_URL
+  /// points at Box A, where six auth endpoints refuse a request without one.
+  String? _captchaToken;
+
   @override
   void dispose() {
     _email.dispose();
@@ -163,6 +173,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await auth.signUpWithEmail(
           email: _email.text.trim(),
           password: _password.text,
+          captchaToken: _captchaToken,
         );
         // 🔴 AFTER THE ACCOUNT EXISTS — same ordering and same reason as
         // `sign_up_screen.dart`, which carries the full note. The short version:
@@ -191,6 +202,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await auth.signInWithEmail(
           email: _email.text.trim(),
           password: _password.text,
+          captchaToken: _captchaToken,
         );
       }
       if (mounted) context.go('/scan');
@@ -236,7 +248,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
     try {
-      await ref.read(authRepositoryProvider).sendPasswordReset(email);
+      await ref
+          .read(authRepositoryProvider)
+          .sendPasswordReset(email, captchaToken: _captchaToken);
       // 🔴 THE "(demo)" LEAK IS GONE. This said "Password reset sent (demo)." —
       // a build-mode detail shown to a user, and a claim the app cannot make:
       // it does not know whether that address has an account, and saying so
@@ -473,6 +487,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ],
                 const SizedBox(height: 12),
+                // Directly above the button, which is where a challenge belongs:
+                // the user meets it at the moment they are about to submit, not
+                // half a form earlier where an expiring token can go stale while
+                // they are still typing. Renders NOTHING when no site key is
+                // compiled in, which is every build today.
+                TurnstileGate(
+                  onToken: (String? t) => setState(() => _captchaToken = t),
+                  onError: _snack,
+                ),
                 GradientButton(
                   key: E2EKeys.loginSubmit,
                   label: _loading
