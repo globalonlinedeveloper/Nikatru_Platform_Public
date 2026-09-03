@@ -1509,8 +1509,13 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   repo: string;
   workflow: string;
   ref: string;
+  everyHours?: number;
 }> = [
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'renovate.yml', ref: 'main' },
+  // ⏱️ ONCE A DAY IS PLENTY. renovate.json confines PR creation to Mondays in
+  // Asia/Kolkata, so extra firings evaluate the tree and exit in about a minute
+  // — real Actions minutes for nothing. The dispatcher runs every 6h; this
+  // target takes one of those four.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'renovate.yml', ref: 'main', everyHours: 20 },
   // ── PHASE 2, FIRST WORKFLOW, ADDED 2026-09-03 ────────────────────────────
   // 🔴 THE ONE WHOSE LATENESS FROZE THIS REPOSITORY TWICE. Three duty rows read
   // ops-watch.yml's newest successful run inside a fixed window, so a schedule
@@ -1535,59 +1540,74 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // writes — with the run-history read reduced to OUTCOME plus an explicit
   // `head_branch === main`, because the `event=schedule` filter is also what
   // silently guaranteed the branch.
+  // ⏱️ NO INTERVAL — fires on EVERY dispatcher run, which is the point. This is
+  // the workflow whose lateness froze the repository twice, and three duty rows
+  // read its freshness against a 36h window. Firing it every 6h costs a cheap
+  // read-only check and buys 30h of margin.
   { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main' },
 ];
 
-/**
- * Fire each declared workflow through the GitHub REST dispatches API, and write
- * one `cron_heartbeat` row per target whatever happens.
+/** The row target under which the DISPATCHER records its own liveness, as
+ *  opposed to a workflow it fired.
  *
- * 🔴 EVERY BRANCH WRITES A ROW, INCLUDING THE ONES THAT DID NOTHING. No token,
- * no targets, a 404, a network error — each lands as `ok = 0` with a detail
- * naming which. That is the difference between this and the class of failure
- * this portfolio keeps paying for: a dispatcher that quietly does nothing looks
- * exactly like a dispatcher that is working, and `check-heartbeats.mjs` cannot
- * distinguish "no row because it is broken" from "no row because nobody wrote
- * one" — so a row is ALWAYS written.
+ *  🔴 THE TWO CLAIMS ARE DIFFERENT AND THE FREE-TIER CAP USED TO FUSE THEM.
+ *  "The timer ran" and "workflow X was fired" have different natural cadences —
+ *  the first wants to be as fresh as possible, because it is the evidence a
+ *  freshness window is measured against; the second wants to be as rare as the
+ *  duty allows, because every firing costs a real workflow run. With a ceiling
+ *  of 5 cron triggers per account there was no way to express both, so one cron
+ *  meant one cadence for everything. Workers Paid lifts that to 250, and this
+ *  row is the split: the dispatcher records itself EVERY run, and each target
+ *  records itself only when it actually fires.
+ */
+export const DISPATCHER_TARGET = '(dispatcher)';
+
+/**
+ * Fire each declared workflow that is DUE, and write one `cron_heartbeat` row
+ * for the dispatcher itself plus one per target actually fired.
+ *
+ * 🔴 A ROW IS WRITTEN ON EVERY PATH — no token, no targets, a 404, a network
+ * error. A dispatcher that quietly does nothing is indistinguishable from one
+ * that is working, and that is the shape of every silent failure this portfolio
+ * has paid for.
  *
  * ⚠️ BOUNDED, because this runs inside the same `waitUntil` chain as the
- * retention sweep. A hung fetch here must not delay a limb that deletes data on
- * a schedule, so every request carries a 10s abort.
+ * retention sweep on the nightly firing. A hung fetch must not delay a limb that
+ * deletes data on a schedule, so every request carries a 10s abort.
  */
 export async function dispatchGithubWorkflows(env: Env): Promise<void> {
-  // Zero targets is a configuration failure, not a no-op — the same reading the
-  // keep-alive applies to an empty target list, for the same reason.
+  const rows: { target: string; ok: boolean; detail: string }[] = [];
+
   if (GITHUB_DISPATCH_TARGETS.length === 0) {
     console.log('[cron] github dispatch: NO TARGETS DECLARED');
-    await recordHeartbeat(
-      env,
-      [{ target: '(none)', ok: false, detail: 'no dispatch targets declared' }],
-      GITHUB_DISPATCH_JOB,
-    );
+    await recordHeartbeat(env, [{ target: DISPATCHER_TARGET, ok: false, detail: 'no dispatch targets declared' }], GITHUB_DISPATCH_JOB);
     return;
   }
 
   const token = env.GITHUB_DISPATCH_TOKEN;
   if (!token) {
-    // 🔴 NOT A SKIP. The rows say the credential is missing, on every target, on
-    // every run, until somebody sets it — a fail-closed seam with no proven open
-    // path is a dead feature that reports healthy.
+    // 🔴 NOT A SKIP. The row says the credential is missing, on every run, until
+    // somebody sets it — a fail-closed seam with no proven open path is a dead
+    // feature that reports healthy.
     console.log('[cron] github dispatch: NO GITHUB_DISPATCH_TOKEN CONFIGURED');
     await recordHeartbeat(
       env,
-      GITHUB_DISPATCH_TARGETS.map((t) => ({
-        target: `${t.repo}/${t.workflow}`,
-        ok: false,
-        detail: 'GITHUB_DISPATCH_TOKEN is not set on this Worker',
-      })),
+      [{ target: DISPATCHER_TARGET, ok: false, detail: 'GITHUB_DISPATCH_TOKEN is not set on this Worker' }],
       GITHUB_DISPATCH_JOB,
     );
     return;
   }
 
-  const rows: { target: string; ok: boolean; detail: string }[] = [];
+  let fired = 0;
+  let skipped = 0;
   for (const t of GITHUB_DISPATCH_TARGETS) {
     const target = `${t.repo}/${t.workflow}`;
+    const due = await targetIsDue(env, target, t.everyHours);
+    if (!due.fire) {
+      skipped++;
+      console.log(`[cron] github dispatch ${target}: not due (${due.why})`);
+      continue;
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
@@ -1611,57 +1631,109 @@ export async function dispatchGithubWorkflows(env: Env): Promise<void> {
           body: JSON.stringify({ ref: t.ref }),
         },
       );
-      // 🔴 204 IS THE ONLY SUCCESS, and it is checked as a number rather than
-      // through `res.ok` for the reason the keep-alive gives one limb up: `.ok`
-      // is routinely omitted by hand-rolled test doubles, and a double missing
-      // it turns every success into a failure. GitHub answers 204 No Content on
-      // an accepted dispatch; a 2xx that is not 204 means something else
-      // happened and this row must not call it a run.
+      // 🔴 204 IS THE ONLY SUCCESS, checked as a number rather than through
+      // `res.ok`: `.ok` is routinely omitted by hand-rolled test doubles, and a
+      // double missing it turns every success into a failure.
       const ok = res.status === 204;
       const detail = ok
-        ? `HTTP 204 - dispatched ${t.workflow} on ${t.ref}`
+        ? `HTTP 204 - dispatched ${t.workflow} on ${t.ref} (${due.why})`
         : `HTTP ${res.status} - dispatch REFUSED (a 404 here usually means the token cannot see the workflow, not that it is missing)`;
       console.log(`[cron] github dispatch ${target}: ${res.status}`);
       rows.push({ target, ok, detail });
+      if (ok) fired++;
     } catch (err) {
-      // An abort lands here too, and it must read as a failure rather than as
-      // "nothing to report".
       console.log(`[cron] github dispatch ${target}: ${String(err)}`);
       rows.push({ target, ok: false, detail: `request failed: ${String(err)}`.slice(0, 200) });
     } finally {
       clearTimeout(timeout);
     }
   }
+
+  // The dispatcher's OWN row, last so its detail can report the run. This is
+  // the one that is always fresh, and the one a freshness window should be
+  // measured against once [research/76 §C] Phase 2 repoints the duty readers.
+  rows.push({
+    target: DISPATCHER_TARGET,
+    ok: true,
+    detail: `fired=${fired} skipped=${skipped} targets=${GITHUB_DISPATCH_TARGETS.length}`,
+  });
   await recordHeartbeat(env, rows, GITHUB_DISPATCH_JOB);
 }
 
 /**
- * The cron on which THIS WORKER RUNS THE DISPATCHER AND NOTHING ELSE.
+ * Has this target's own interval elapsed since it last fired successfully?
  *
- * 🔴 THE SECOND FIRING EXISTS TO GIVE THE EVIDENCE MARGIN, NOT TO DO MORE WORK.
- * Measured over 30.8 days, the workflow it dispatches (ops-watch.yml) had 72
- * successful SCHEDULED runs — 2.3/day against the 12 slots its cron block
- * declares — with a MAX GAP of 48.8h and SIX gaps over the 36h freshness window
- * in one month. A 24h dispatch cadence leaves 12h of margin on that window; 12h
- * leaves 24h.
- *
- * ⛔ AND THE NIGHTLY LIMBS MUST NOT RUN TWICE. `retentionSweep` DELETES, and
- * `keepAliveSupabase` / `eventsRollup` are shaped around a daily occurrence. So
- * this firing takes the early return below and the 06:00 one is unchanged.
- * ⚠️ AN UNRECOGNISED CRON RUNS EVERYTHING, deliberately: the failure that costs
- * something is skipping the keep-alive that stands between a free-tier Supabase
- * project and its ~7-day auto-pause, not dispatching a workflow twice. A typo
- * here therefore degrades to "the sweep runs twice", which
- * scheduled-crons.test.ts refuses by holding this value against the crons
- * services/platform/wrangler.jsonc actually declares.
+ * ⚠️ THE FAIL-SAFE DIRECTION IS "FIRE", AND IT IS A CHOICE RATHER THAN AN
+ * ACCIDENT. If the D1 read throws, the honest options are to fire (risking a
+ * duplicate run of a workflow that is idempotent and gated on its own config)
+ * or to skip (risking a duty that never runs while every heartbeat stays
+ * green). The second is the failure this whole line of work exists to end, so
+ * an unreadable history fires and SAYS SO in the row's detail.
  */
-export const DISPATCH_ONLY_CRON = '0 18 * * *';
+async function targetIsDue(
+  env: Env,
+  target: string,
+  everyHours: number | undefined,
+): Promise<{ fire: boolean; why: string }> {
+  // No interval declared = fire on every dispatcher run. That is the right
+  // default for a duty whose freshness is the point (ops-watch), and the wrong
+  // one for a duty whose firing costs a real build — so the field is explicit
+  // on the targets that need it rather than defaulted to a number nobody chose.
+  if (everyHours === undefined) return { fire: true, why: 'every run' };
+  try {
+    const row = await env.PLATFORM_DB.prepare(
+      'SELECT MAX(ran_at) AS last FROM cron_heartbeat WHERE job = ? AND target = ? AND ok = 1',
+    )
+      .bind(GITHUB_DISPATCH_JOB, target)
+      .first<{ last: string | null }>();
+    const last = row?.last ? Date.parse(row.last) : NaN;
+    if (Number.isNaN(last)) return { fire: true, why: 'never fired' };
+    const ageHours = (Date.now() - last) / 3_600_000;
+    return ageHours >= everyHours
+      ? { fire: true, why: `${ageHours.toFixed(1)}h since last, interval ${everyHours}h` }
+      : { fire: false, why: `${ageHours.toFixed(1)}h since last, interval ${everyHours}h` };
+  } catch (err) {
+    return { fire: true, why: `history unreadable (${String(err).slice(0, 80)}), firing rather than skipping` };
+  }
+}
+
+/**
+ * The ONE cron that runs the whole nightly handler. Every other declared cron
+ * runs the GitHub dispatcher and nothing else.
+ *
+ * 🔴 THE SPLIT EXISTS BECAUSE TWO CLAIMS HAVE DIFFERENT NATURAL CADENCES, and
+ * the free-tier cap used to fuse them. Evidence freshness wants the timer to run
+ * OFTEN — it is what a 36h window is measured against, and the schedule it
+ * replaces was measured at a 48.8h max gap. The nightly limbs want to run ONCE:
+ * `retentionSweep` DELETES, and `keepAliveSupabase` / `eventsRollup` are shaped
+ * around a daily occurrence. With a ceiling of 5 cron triggers per account there
+ * was no way to say both; Workers Paid lifts it to 250, so now there is.
+ *
+ * 🔴 THE FAIL-SAFE DIRECTION INVERTED WHEN THIS CONSTANT DID, AND SAYING SO IS
+ * THE POINT. Until 2026-09-03 the branch was `cron === DISPATCH_ONLY_CRON`, so
+ * an unrecognised cron ran EVERYTHING — safe when there was one margin firing,
+ * because the failure that costs something is skipping the keep-alive that
+ * stands between a free-tier Supabase project and its ~7-day auto-pause. With
+ * four firings that default is the expensive one: a mistyped constant would run
+ * the retention sweep FOUR TIMES A DAY, every run green.
+ *
+ * So the branch is now `cron !== NIGHTLY_CRON`, and an unrecognised cron runs
+ * the DISPATCHER ONLY. That moves the risk rather than removing it — a typo here
+ * means the nightly limbs never run at all — and the new risk is the one a test
+ * can close: scheduled-crons.test.ts asserts this value is a cron
+ * services/platform/wrangler.jsonc actually declares. The other direction had no
+ * such check available, because "four sweeps a day" is indistinguishable from
+ * "one" in every record either of them writes.
+ */
+export const NIGHTLY_CRON = '0 6 * * *';
 
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
-      // The margin firing: the dispatcher, and nothing else.
-      if (event?.cron === DISPATCH_ONLY_CRON) {
+      // Every cron but the nightly one is a MARGIN firing: the dispatcher, and
+      // nothing else. An unrecognised value falls through to the full handler —
+      // see NIGHTLY_CRON for why that is the safe direction.
+      if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
         await dispatchGithubWorkflows(env);
         return;
       }
