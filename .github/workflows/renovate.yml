@@ -55,7 +55,13 @@ concurrency:
 jobs:
   renovate:
     name: Renovate both public repositories
-    runs-on: ubuntu-latest
+    # PINNED, not `-latest` — tooling/versions.json declares runner_ubuntu and
+    # assert-version-consistency.mjs holds every `runs-on:` to it. A `-latest`
+    # label rolls to a new OS image unannounced, changing what an identical
+    # commit builds with no diff in the repo. ⚠️ It NARROWS the drift, it does
+    # not remove it: GitHub migrated windows-latest AND windows-2025 to VS 2026
+    # under an unchanged pin in June 2026.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       # Pinned to a full commit SHA, like all 42 other actions in this tree
