@@ -118,6 +118,69 @@ describe('a dispatch that is accepted', () => {
   });
 });
 
+describe('🔴 the token never leaves the fetch — the mitigation for a broadly-scoped credential', () => {
+  // OWNER DECISION 2026-09-03: the Worker is given an EXISTING vault PAT rather
+  // than a fine-grained one. Measured that day, all three vault PATs carry
+  // `repo`, `admin:org`, `delete_repo` and `admin:enterprise` — so the credential
+  // in this Worker can delete repositories and administer the organisation.
+  //
+  // ⚠️ THAT MAKES THE REALISTIC LEAK PATH WORTH CLOSING MECHANICALLY RATHER THAN
+  // BY INTENTION. Cloudflare secrets cannot be read back out, so the exposure is
+  // not the store — it is this code putting the value somewhere it can be seen: a
+  // `console.log` that lands in Workers Logs, or a `detail` string that lands in
+  // `cron_heartbeat` and is then read by check-heartbeats.mjs and pasted into a
+  // PUBLIC GitHub issue by the ops-watch alert job. The second one is the real
+  // hazard, and it is one interpolation away in a file whose whole idiom is
+  // "put the reason in the detail".
+  const TOKEN = 'ghp_SENTINEL_VALUE_THAT_MUST_NOT_APPEAR_ANYWHERE';
+
+  it('no heartbeat detail contains the token, on the success path or any failure path', async () => {
+    for (const outcome of [204, 200, 404, 500, new Error('boom with context')]) {
+      const db = realPlatformDb();
+      stubFetch(outcome as number | Error);
+      await dispatchGithubWorkflows(envWith(db, TOKEN));
+      for (const r of rows(db)) {
+        expect(String(r.detail)).not.toContain(TOKEN);
+        expect(String(r.detail)).not.toContain('ghp_');
+        expect(String(r.target)).not.toContain(TOKEN);
+      }
+    }
+  });
+
+  it('no console line contains the token', async () => {
+    const said: string[] = [];
+    const realLog = console.log;
+    console.log = (...a: unknown[]) => { said.push(a.map(String).join(' ')); };
+    try {
+      for (const outcome of [204, 404, new Error('boom')]) {
+        const db = realPlatformDb();
+        stubFetch(outcome as number | Error);
+        await dispatchGithubWorkflows(envWith(db, TOKEN));
+      }
+    } finally {
+      console.log = realLog;
+    }
+    expect(said.length).toBeGreaterThan(0);
+    for (const line of said) expect(line).not.toContain(TOKEN);
+  });
+
+  it('the token reaches exactly one place — the Authorization header of the dispatch request', async () => {
+    const db = realPlatformDb();
+    const seen = stubFetch(204);
+    await dispatchGithubWorkflows(envWith(db, TOKEN));
+    const carrying = seen.filter((s) => JSON.stringify(s).includes(TOKEN));
+    expect(carrying).toHaveLength(seen.length);
+    for (const s of seen) {
+      // In the header, and nowhere else in the request — not the URL (which
+      // would put it in GitHub's own access logs and in any proxy's) and not
+      // the body.
+      expect((s.init.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`);
+      expect(s.url).not.toContain(TOKEN);
+      expect(String(s.init.body)).not.toContain(TOKEN);
+    }
+  });
+});
+
 describe('every way it can fail still leaves a row', () => {
   it('no token configured — one ok=0 row per target, naming the missing secret, and NO request made', async () => {
     const db = realPlatformDb();
