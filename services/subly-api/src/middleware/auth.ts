@@ -35,6 +35,7 @@
 
 import type { MiddlewareHandler } from 'hono';
 import {
+  createLocalJWKSet,
   createRemoteJWKSet,
   jwtVerify,
   type JWTPayload,
@@ -99,6 +100,123 @@ async function warmJwksCache(env: Env): Promise<void> {
 }
 
 /**
+ * 🔴 THE JWKS FAILED CLOSED HERE TOO, AND ON THIS WORKER IT FAILED TWO
+ * DIFFERENT WAYS, ONE OF THEM SILENT.
+ *
+ * `services/platform` got this fix in #433. THIS file did not, and it is
+ * `api.nikatru.com` — the product's data API. Read from jose's own source
+ * (`src/jwks/remote.ts`): `createRemoteJWKSet` keeps a per-isolate, in-memory
+ * cache and **on a failed fetch the error propagates — there is no fallback to a
+ * previously cached key set.** `warmJwksCache` below already kept a copy in KV
+ * and its own comment said *"we don't feed this into jose's getter"*. Nothing
+ * read it on the failure path. It does now.
+ *
+ * What an unreachable JWKS endpoint did to THIS worker, before this change:
+ *
+ *   · [supabaseAuth] — the asymmetric path threw, and `verifySupabaseToken`
+ *     caught it and tried the LEGACY HS256 SHARED SECRET. So when
+ *     `SUPABASE_JWT_SECRET` is configured, a Box A outage did not 401: it
+ *     SILENTLY DOWNGRADED every authenticated request from a signature to a
+ *     shared string, and recorded `tokenAssurance: 'symmetric'` while doing it.
+ *     [erasureAuth]'s own comment already named this exact hazard — *"a fallback
+ *     that triggers on ANY primary failure triggers when Supabase is merely
+ *     unreachable"* — and it was live on the permissive boundary.
+ *   · [erasureAuth] — no fallback of any kind, so the outage was a hard 401 and
+ *     account deletion stopped working entirely.
+ *
+ * Both are fixed by the same limb, and it makes the downgrade RARER rather than
+ * more likely: the asymmetric path now survives the outage, so the HS256 branch
+ * is not reached by mere unreachability.
+ *
+ * ⚠️ WHY THIS TAKES A `KVNamespace` AND NOT `Env`, WHICH IS NOT A STYLE CHOICE.
+ * [verifyAsymmetric] deliberately receives `supabaseUrl` rather than the
+ * environment, so *"this path cannot fall back to a shared secret"* is a
+ * property of the SIGNATURE — checkable by reading four lines — rather than a
+ * claim about a body a later edit could falsify. Handing it `Env` to reach
+ * `JWKS_CACHE` would have destroyed exactly that guarantee, in the file whose
+ * comments rest on it. It gets the ONE binding it needs. The cached JWKS is a
+ * PUBLIC document, so caching it adds no secret to this scope.
+ */
+const verifyOptions = (supabaseUrl: string) => ({
+  issuer: `${supabaseUrl}/auth/v1`,
+  audience: 'authenticated',
+  // 🔴 PINNED. Without this the TOKEN decides how it is verified — a header
+  // saying `alg: none`, or `alg: HS256` against a key the verifier holds.
+  algorithms: ['ES256'],
+});
+
+/**
+ * Could the KEY SET not be obtained, as distinct from the token being bad?
+ *
+ * 🔴 CORRECTED, AND THE CORRECTION MATTERS MORE ON THIS FILE THAN ON PLATFORM.
+ * The first version of this predicate was BOTH TOO NARROW TO FIRE IN PRODUCTION
+ * AND TOO WIDE TO BE SAFE, and it passed its tests either way. Established by
+ * reading the INSTALLED jose dist (`dist/browser/`, the build these Workers
+ * bundle), not from memory.
+ *
+ * TOO NARROW: it keyed on `err instanceof TypeError`, justified as "what undici
+ * raises". Undici is NODE; these Workers run on workerd and the tests run in
+ * Node, so the one shape the tests exercised is the one production cannot
+ * produce. And `runtime/fetch_jwks.js` turns a NON-200 into bare
+ * `JOSEError("Expected 200 OK ...")` - which is the MOST LIKELY outage shape,
+ * because Box A is reached through a Cloudflare Tunnel and a tunnel with no
+ * origin answers 502/530.
+ *
+ * 🔴 ON THIS FILE THAT MISS WAS NOT MERELY A 401. A primary failure here falls
+ * through to the LEGACY HS256 SHARED SECRET, so the commonest outage shape would
+ * still have silently downgraded every request from a signature to a shared
+ * string. Widening the predicate correctly is what actually closes that.
+ *
+ * TOO WIDE: it accepted `ERR_JWKS_NO_MATCHING_KEY` and
+ * `ERR_JWKS_MULTIPLE_MATCHING_KEYS`. Those are raised AFTER a key set was
+ * obtained and mean "your `kid` is not in it" - a fact about the TOKEN. Falling
+ * back to a stale cache on them is a second bite at verification against an
+ * OLDER key set, so a token signed by a ROTATED-OUT key would have been
+ * accepted from the cache. Both codes are gone.
+ *
+ * WHAT IT KEYS ON NOW: `ERR_JWKS_TIMEOUT`; `ERR_JOSE_GENERIC` (measured - a grep
+ * for `new JOSEError(` over the entire installed browser dist returns EXACTLY
+ * TWO hits, both in `runtime/fetch_jwks.js`, so this is narrow, not broad); and
+ * an error carrying NO jose `code`, which can only have come from the runtime
+ * `fetch` because `fetch_jwks.js` rethrows that rejection unwrapped.
+ *
+ * ⚠️ STILL NOT THE NEGATIVE TEST THAT WAS RIGHTLY REFUSED: every jose class sets
+ * a `code` in its constructor, so a FUTURE jose class arrives WITH one and is
+ * excluded by the last clause rather than swept into the fallback - and on this
+ * file that is what keeps a bad token from reaching the HS256 branch twice.
+ */
+function isKeySetUnavailable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: unknown }).code;
+  // No jose code at all => the runtime fetch failed (workerd network errors,
+  // undici TypeError). Not a verification outcome.
+  if (typeof code !== 'string') return true;
+  if (code === 'ERR_JWKS_TIMEOUT' || code === 'ERR_JOSE_GENERIC') return true;
+  // A non-jose code such as ECONNREFUSED / ENOTFOUND is still a transport
+  // failure; every jose code is prefixed `ERR_`.
+  return !code.startsWith('ERR_');
+}
+
+async function localSetFromCache(
+  jwksCache: KVNamespace | undefined,
+): Promise<JWTVerifyGetKey | null> {
+  try {
+    if (!jwksCache) return null;
+    const cached = await jwksCache.get(JWKS_KV_KEY);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached) as { keys?: unknown[] };
+    // An EMPTY key set is not a usable fallback — it is exactly what a
+    // misconfigured GoTrue publishes, and treating it as one would turn a
+    // configuration error into a silent, permanent 401 nobody could diagnose.
+    if (!Array.isArray(parsed.keys) || parsed.keys.length === 0) return null;
+    return createLocalJWKSet(parsed as Parameters<typeof createLocalJWKSet>[0]);
+  } catch {
+    // A corrupt or unparseable cache is no cache. Fail closed, as before.
+    return null;
+  }
+}
+
+/**
  * THE ASYMMETRIC PATH, ON ITS OWN, WITH NO SECRET IN SCOPE.
  *
  * 🔴 It takes `SUPABASE_URL` rather than `Env` ON PURPOSE. A function that never
@@ -111,15 +229,24 @@ async function warmJwksCache(env: Env): Promise<void> {
 async function verifyAsymmetric(
   token: string,
   supabaseUrl: string,
+  jwksCache?: KVNamespace,
 ): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, getRemoteJWKS(supabaseUrl), {
-    issuer: `${supabaseUrl}/auth/v1`,
-    audience: 'authenticated',
-    // 🔴 PINNED. Without this the TOKEN decides how it is verified — a header
-    // saying `alg: none`, or `alg: HS256` against a key the verifier holds.
-    algorithms: ['ES256'],
-  });
-  return payload;
+  const opts = verifyOptions(supabaseUrl);
+  try {
+    const { payload } = await jwtVerify(token, getRemoteJWKS(supabaseUrl), opts);
+    return payload;
+  } catch (err) {
+    // ⚠️ ONLY a key-set acquisition failure earns a second attempt, and it is
+    // verified against the SAME `opts` object — one declaration, both paths, so
+    // the two cannot drift into a weaker one an attacker reaches by making the
+    // JWKS endpoint unreachable. A bad token still fails here and now.
+    if (!isKeySetUnavailable(err)) throw err;
+    const local = await localSetFromCache(jwksCache);
+    // No usable cache ⇒ behave exactly as before: rethrow, fail closed.
+    if (!local) throw err;
+    const { payload } = await jwtVerify(token, local, opts);
+    return payload;
+  }
 }
 
 async function verifySupabaseToken(
@@ -132,7 +259,10 @@ async function verifySupabaseToken(
   try {
     // Fire-and-forget KV warm; verification does not block on it.
     void warmJwksCache(env);
-    return { payload: await verifyAsymmetric(token, env.SUPABASE_URL), assurance: 'asymmetric' };
+    return {
+      payload: await verifyAsymmetric(token, env.SUPABASE_URL, env.JWKS_CACHE),
+      assurance: 'asymmetric',
+    };
   } catch (primaryErr) {
     // FALLBACK: legacy HS256 shared-secret verification, if configured.
     // Issuer + alg enforced: a token from any OTHER Supabase project must fail.
@@ -211,7 +341,11 @@ export const erasureAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
 
   try {
     void warmJwksCache(c.env);
-    const payload = await verifyAsymmetric(token, c.env.SUPABASE_URL);
+    const payload = await verifyAsymmetric(
+      token,
+      c.env.SUPABASE_URL,
+      c.env.JWKS_CACHE,
+    );
     // `sub` IS the user id. A verified token with no subject authenticates
     // nobody, and letting it through would hand every `WHERE user_id = ?` an
     // undefined — which on a DELETE is the difference between erasing nothing
