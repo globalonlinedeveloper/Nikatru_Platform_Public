@@ -1498,7 +1498,34 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   repo: string;
   workflow: string;
   ref: string;
-}> = [{ owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'renovate.yml', ref: 'main' }];
+}> = [
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'renovate.yml', ref: 'main' },
+  // ── PHASE 2, FIRST WORKFLOW, ADDED 2026-09-03 ────────────────────────────
+  // 🔴 THE ONE WHOSE LATENESS FROZE THIS REPOSITORY TWICE. Three duty rows read
+  // ops-watch.yml's newest successful run inside a fixed window, so a schedule
+  // GitHub does not deliver stops every merge — ~18h on 2026-08-10 and ~46h on
+  // 2026-09-02. Cloudflare's cron has 1-minute granularity and now fires it too.
+  //
+  // ⚠️ ITS 12 `schedule:` SLOTS STAY, AND THAT IS THE WHOLE SAFETY OF THIS STEP.
+  // The three duty rows still read `event=schedule`, and a dispatched run
+  // arrives as `event=workflow_dispatch` — which those readers refuse, exactly
+  // as they should, because a dispatch is indistinguishable from a hand-press
+  // and freshness is a claim about the TIMER. So this ADDS a reliable trigger
+  // and CHANGES NO EVIDENCE: the workflow simply runs more often than its
+  // schedule manages on its own. `dispatch-targets.test.ts` holds that
+  // invariant against the real workflow files.
+  //
+  // ⛔ MOVING THE EVIDENCE IS A SEPARATE INCREMENT and it is not a filter swap:
+  // accepting `event=workflow_dispatch` in those readers would make them green
+  // on a hand-press, which is the precise failure assert-platform-proof-fresh
+  // and assert-e2e-proof-fresh were built to prevent ("counting manual runs is
+  // what let a never-firing cron look healthy"). The timer claim has to come
+  // from a record only the timer can write — the `cron_heartbeat` row THIS limb
+  // writes — with the run-history read reduced to OUTCOME plus an explicit
+  // `head_branch === main`, because the `event=schedule` filter is also what
+  // silently guaranteed the branch.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main' },
+];
 
 /**
  * Fire each declared workflow through the GitHub REST dispatches API, and write

@@ -6,6 +6,16 @@ import {
 } from '../src/scheduled';
 import { realPlatformDb } from './harness';
 import type { Env } from '../src/types';
+import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
+
+/** Every workflow file, as a fact about the directory rather than a list a
+ *  future edit can silently shorten — the reason insights-queries.test.ts
+ *  globs rather than importing by name. */
+const WORKFLOWS = import.meta.glob('../../../.github/workflows/*.yml', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [research/76 §C] PHASE 1 — the Cloudflare cron that fires a GitHub workflow.
@@ -62,14 +72,44 @@ describe('the declared targets are safe by construction', () => {
     }
   });
 
-  it('Phase 1 fires ONLY workflows that gate nothing — ops-watch is Phase 2 and must not be here', () => {
-    // ⛔ ops-watch.yml, e2e.yml and build-platforms.yml all leave records that
-    // duty rows read as `event=schedule`. A dispatch arrives as
-    // `event=workflow_dispatch`, which those readers refuse — so adding one here
-    // WITHOUT repointing its evidence re-creates the 46-hour freeze of
-    // 2026-09-02. This test is the tripwire on that mistake.
-    const forbidden = ['ops-watch.yml', 'e2e.yml', 'build-platforms.yml'];
-    for (const t of GITHUB_DISPATCH_TARGETS) expect(forbidden).not.toContain(t.workflow);
+  it('🔴 a dispatched workflow whose duty rows still read `event=schedule` MUST keep its own schedule', () => {
+    // ⛔ THE INVARIANT THAT REPLACED A BLANKET BAN, 2026-09-03. The first version
+    // of this case simply forbade ops-watch.yml, e2e.yml and build-platforms.yml
+    // — which was right for Phase 1 and wrong as a rule, because it forbids the
+    // thing Phase 2 exists to do while saying nothing about WHEN it becomes
+    // safe. This says when.
+    //
+    // A dispatched run arrives as `event=workflow_dispatch`. Every duty row that
+    // reads a workflow with `event: schedule` refuses it — correctly, because a
+    // dispatch is indistinguishable from a hand-press and freshness is a claim
+    // about the TIMER, not about somebody being awake. So while any row still
+    // reads a workflow that way, that workflow's OWN `schedule:` block is what
+    // keeps the evidence alive, and adding a Worker dispatch is purely additive.
+    // Remove the schedule before moving the evidence and three duty rows go
+    // stale inside their windows: the 46-hour freeze of 2026-09-02, self-inflicted.
+    //
+    // Checked against the REAL files — the register and the workflows — so it
+    // cannot drift from either.
+    const register = JSON.parse(REGISTER_RAW) as { rows?: Record<string, unknown>[] };
+    const scheduleRead = new Set(
+      (register.rows ?? [])
+        .map((r) => (r as { mechanism?: { recordQuery?: { workflow?: string; event?: string } } }).mechanism?.recordQuery)
+        .filter((q): q is { workflow: string; event: string } => q?.event === 'schedule' && typeof q?.workflow === 'string')
+        .map((q) => q.workflow),
+    );
+    expect(scheduleRead.size, 'no row reads any workflow as `event: schedule` — this invariant would be vacuous').toBeGreaterThan(0);
+
+    for (const t of GITHUB_DISPATCH_TARGETS) {
+      if (!scheduleRead.has(t.workflow)) continue; // evidence has moved: the schedule may go
+      const file = WORKFLOWS[`../../../.github/workflows/${t.workflow}`];
+      expect(file, `dispatch target ${t.workflow} is not a workflow in this repository`).toBeTruthy();
+      expect(
+        /^\s*schedule:\s*$/m.test(file),
+        `${t.workflow} is dispatched by the Worker AND still read as \`event: schedule\` by a duty row, ` +
+          'but it declares no `schedule:` trigger. Its evidence would go stale inside its own window. ' +
+          'Move the evidence first, or keep the schedule.',
+      ).toBe(true);
+    }
   });
 });
 
@@ -80,9 +120,18 @@ describe('a dispatch that is accepted', () => {
     await dispatchGithubWorkflows(envWith(db, 'tok'));
     const out = rows(db);
     expect(out).toHaveLength(GITHUB_DISPATCH_TARGETS.length);
-    expect(out[0].ok).toBe(1);
-    expect(String(out[0].detail)).toContain('HTTP 204');
-    expect(String(out[0].detail)).toContain(GITHUB_DISPATCH_TARGETS[0].workflow);
+    // Rows come back ORDERED BY target, which is not the order of the target
+    // list — so every assertion here is per-target rather than positional. The
+    // first draft indexed `[0]` and started failing the moment a second target
+    // was added ahead of it alphabetically, which is a test breaking on its own
+    // fixture rather than on the property.
+    for (const t of GITHUB_DISPATCH_TARGETS) {
+      const row = out.find((r) => r.target === `${t.repo}/${t.workflow}`);
+      expect(row, `no heartbeat row for ${t.repo}/${t.workflow}`).toBeTruthy();
+      expect(row!.ok).toBe(1);
+      expect(String(row!.detail)).toContain('HTTP 204');
+      expect(String(row!.detail)).toContain(t.workflow);
+    }
   });
 
   it('sends the request GitHub actually requires — method, ref, and a User-Agent', async () => {
