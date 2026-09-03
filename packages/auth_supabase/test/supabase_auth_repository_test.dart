@@ -760,6 +760,36 @@ void main() {
       ]);
     });
 
+    test('signInWithEmail forwards the token verbatim, and null without one',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.signInWithEmail(
+        email: 'a@b.com',
+        password: 'pw',
+        captchaToken: 'tok-signin-1',
+      );
+      await auth.signInWithEmail(email: 'a@b.com', password: 'pw');
+
+      expect(g.signInCaptchaTokens, <String?>['tok-signin-1', null]);
+    });
+
+    test('signUpWithEmail forwards the token verbatim, and null without one',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.signUpWithEmail(
+        email: 'a@b.com',
+        password: 'pw',
+        captchaToken: 'tok-signup-2',
+      );
+      await auth.signUpWithEmail(email: 'a@b.com', password: 'pw');
+
+      expect(g.signUpCaptchaTokens, <String?>['tok-signup-2', null]);
+    });
+
     test('resendVerificationEmail forwards the token verbatim', () async {
       final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
       final SupabaseAuthRepository auth =
@@ -937,6 +967,44 @@ class _FakeGoTrue extends sb.GoTrueClient {
   Future<void> signOut({sb.SignOutScope scope = sb.SignOutScope.local}) async {
     signOutCalls++;
     session = null;
+  }
+
+  /// The captcha token each password sign-in carried, in order, null included.
+  final List<String?> signInCaptchaTokens = <String?>[];
+
+  /// The captcha token each sign-up carried, in order, null included.
+  final List<String?> signUpCaptchaTokens = <String?>[];
+
+  /// OVERRIDDEN PURELY SO THE TOKEN IS OBSERVABLE. These two are the flows the
+  /// captcha gate hits hardest -- login and sign-up -- and until now this fake
+  /// left them to the real network methods, so nothing in this suite could see
+  /// what the seam passed them. Returning a session rather than a bare response
+  /// keeps the repository's own `_map`/null-check path exercised.
+  @override
+  Future<sb.AuthResponse> signInWithPassword({
+    String? email,
+    String? phone,
+    String? password,
+    String? captchaToken,
+  }) async {
+    signInCaptchaTokens.add(captchaToken);
+    session = _session('signed-in');
+    return sb.AuthResponse(session: session);
+  }
+
+  @override
+  Future<sb.AuthResponse> signUp({
+    String? email,
+    String? phone,
+    required String password,
+    String? emailRedirectTo,
+    Map<String, dynamic>? data,
+    String? captchaToken,
+    sb.OtpChannel channel = sb.OtpChannel.sms,
+  }) async {
+    signUpCaptchaTokens.add(captchaToken);
+    session = _session('signed-up');
+    return sb.AuthResponse(session: session);
   }
 }
 
