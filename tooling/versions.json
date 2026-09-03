@@ -254,6 +254,45 @@
     "is published — never to reintroduce the caret."
   ],
   "wrangler": "4.120.0",
+
+  "$glitchtip_cli_comment": [
+    "ADDED 2026-09-03. THE TOOL THAT MAKES A WEB CRASH READABLE, and until this key existed there was",
+    "no such tool in the tree at all.",
+    "",
+    "MEASURED, not suspected: GET /api/0/organizations/nikatru/releases/{version}/files/ answers 200",
+    "with a ZERO-LENGTH list for every one of the 12 releases GlitchTip holds for project `subly`, and",
+    "`dsyms` is []. Nothing has ever been uploaded. The consequence is two OPEN, UNRESOLVED production",
+    "issues nobody can read: `minified:a0X: GoError: There is nothing to pop` (4 occurrences, level",
+    "fatal) and `minified:ng: AuthException(...)`, whose frames read `main.dart.js k7.er 63099`.",
+    "",
+    "🔴 glitchtip-cli, NOT sentry-cli, AND THE CHOICE IS THE WHOLE POINT. sentry-cli against a",
+    "self-hosted GlitchTip has standing reports of EXITING 0 WHILE STORING NOTHING (glitchtip#38,",
+    "glitchtip-backend#299) — the one failure shape this repository refuses everywhere else, because a",
+    "green step that uploaded nothing is indistinguishable from a green step that worked until six",
+    "weeks later when a crash needs reading. glitchtip-cli is the vendor's own client for the vendor's",
+    "own server.",
+    "",
+    "⚠️ THE DIGEST BELOW IS PART OF THIS PIN, NOT A SEPARATE FACT. A version number names a release;",
+    "the sha256 names the BYTES. The release asset is served from a GitLab job artifact",
+    "(/-/jobs/artifacts/v<ver>/raw/...), which is a mutable-by-construction address in a way a git tag",
+    "is not — re-running that job would republish under the same URL. Same reasoning as F-11's",
+    "40-character action SHAs: a label is not an address. Renovate can move `glitchtip_cli`; it cannot",
+    "compute the digest, so a bump PR arrives RED at the checksum step until a human supplies the new",
+    "one. That is deliberate and it is loud — the alternative is a bump that silently installs bytes",
+    "nobody has looked at, holding a GlitchTip auth token.",
+    "",
+    "VERIFIED 2026-09-03 BY RUNNING THE BINARY, not by reading the docs page: v1.0.0 is",
+    "`glitchtip-cli 1.0.0`, a 14,420,352-byte static-pie ELF; `sourcemaps upload` takes",
+    "-r/--release, -d/--dist, -u/--url-prefix (default `~`), -o/--org, -p/--project and --validate,",
+    "and it DISCOVERS .js/.map pairs WITHOUT debug IDs (`Found 2 file(s) to upload.` on a fixture that",
+    "had none), so `sourcemaps inject` is not a precondition. It reads SENTRY_URL, SENTRY_AUTH_TOKEN",
+    "and SENTRY_ORG from the environment — also proven by running it, because `releases new --url`",
+    "SHADOWS the global `--url` with 'Optional URL for this release', so passing the server address as",
+    "a flag there would post the release to sentry.io. deploy-web.yml therefore passes the server",
+    "address ONLY as SENTRY_URL."
+  ],
+  "glitchtip_cli": "1.0.0",
+  "glitchtip_cli_sha256": "de1c035aa61931a6265d7b29b1614781dfee925466142a907508cb097082dfef",
   "runner_ubuntu": "ubuntu-24.04",
   "runner_windows": "windows-2025",
   "runner_macos": "macos-26",
@@ -288,6 +327,10 @@
     {
       "key": "runner_macos",
       "why": "Same as runner_ubuntu. It also decides which Xcode compiles iOS and macOS, so moving it is a deliberate act with a six-platform build behind it, not a routine dependency PR."
+    },
+    {
+      "key": "glitchtip_cli_sha256",
+      "why": "NOT A VERSION — it is the sha256 of the bytes `glitchtip_cli` names, and it is exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is not published as a version series, it is computed from a download. It is pinned here anyway, beside the version it belongs to, because the release asset is a GitLab JOB ARTIFACT URL rather than an immutable tag object — see $glitchtip_cli_comment. It advances with `glitchtip_cli` and only with it: a Renovate bump of that key lands RED at deploy-web.yml's `sha256sum --check` until a human downloads the new asset and writes its digest here. That failure is the mechanism, not a gap in it. ⛔ Do NOT 'fix' a red bump by deleting the checksum step."
     },
     {
       "key": "xcode",

@@ -37,6 +37,19 @@ class TelemetryBootstrap {
         options.dsn = config.dsn;
         options.release = config.release;
         options.environment = config.environment;
+        // 🔴 SET ONLY WHEN DECLARED, AND THE `if` IS THE WHOLE POINT.
+        // [pipeline 9]R-7, web limb. A source-map artifact is stored under
+        // (release, dist) and matched against the event's (release, dist), so
+        // an EMPTY string is not "no dist" — it is a dist value that matches
+        // no bundle, which is strictly worse than sending none. Two open
+        // production issues were unreadable on 2026-09-03 for want of the
+        // upload; sending a dist nobody uploaded under would leave them
+        // unreadable with the upload in place, and look configured while doing
+        // it. Apps that declare a channel pass it (`AppConfig.releaseChannel`);
+        // a developer build declares nothing and sends nothing.
+        if (config.dist.isNotEmpty) {
+          options.dist = config.dist;
+        }
         options.tracesSampleRate = config.tracesSampleRate;
         // Belt and braces: never attach default PII (ip address, ...).
         options.sendDefaultPii = false;

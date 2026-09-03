@@ -273,7 +273,7 @@ jobs:
       # over-encoding; this citation is the consequence it did ask for.
       - name: Build web (release, no service worker)
         run: >
-          flutter build web --release --pwa-strategy=none
+          flutter build web --release --pwa-strategy=none --source-maps
           --build-name=${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
           --build-number=${{ github.run_number }}
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
@@ -317,9 +317,183 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+
+      # ── SOURCE MAPS · INSTALL AND INJECT, BEFORE THE ARTIFACT IS SMOKED ─────
+      # 🔴 WHAT THIS PAIR OF STEPS BUYS, MEASURED 2026-09-03 AND NOT INFERRED.
+      # `GET /api/0/organizations/nikatru/releases/{version}/files/` answered 200
+      # with a ZERO-LENGTH list for ALL TWELVE releases GlitchTip holds for
+      # `subly`, and `dsyms` was `[]`. Nothing had ever been uploaded, and
+      # nothing could have been: `flutter build web --release` emits no source
+      # maps at all. Two OPEN, UNRESOLVED production issues are the bill —
+      # `minified:a0X: GoError: There is nothing to pop` (4 occurrences, level
+      # fatal) and `minified:ng: AuthException(...)` — whose frames read
+      # `main.dart.js k7.er 63099`, `aQU.$0 130674`, `JY.hG 116903`. That is a
+      # crash sink that receives everything and explains nothing.
+      #
+      # ⚠️ THEY SIT ABOVE THE SMOKE ON PURPOSE, AND THAT IS [pipeline 9]R-13's
+      # RULE, NOT A PREFERENCE. `sourcemaps inject` REWRITES `main.dart.js` —
+      # it prepends a debug-id snippet and adds a `//# debugId=` trailer — so
+      # running it after the smoke would publish an artifact that was never
+      # launched. R-13's subject is the bytes that ship; anything that edits
+      # them belongs above it. The upload and the deletion below edit nothing
+      # the browser executes, so they sit under it.
+      - name: Install glitchtip-cli (pinned by version AND by digest)
+        working-directory: .
+        run: |
+          set -euo pipefail
+          ver="$(node -p "require('./tooling/versions.json').glitchtip_cli")"
+          sum="$(node -p "require('./tooling/versions.json').glitchtip_cli_sha256")"
+          # The release asset is a GitLab JOB ARTIFACT, which is a re-runnable
+          # address rather than an immutable object — so the version alone is a
+          # label, and the digest is what makes it an address. Same reasoning as
+          # F-11's 40-character action SHAs. Both halves live in versions.json.
+          url="https://gitlab.com/glitchtip/glitchtip-cli/-/jobs/artifacts/v${ver}/raw/artifacts/glitchtip-cli-linux-x86_64?job=build-linux-x86_64"
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --output "${RUNNER_TEMP}/glitchtip-cli" "$url"
+          printf '%s  %s\n' "$sum" "${RUNNER_TEMP}/glitchtip-cli" | sha256sum --check --strict -
+          chmod +x "${RUNNER_TEMP}/glitchtip-cli"
+          got="$("${RUNNER_TEMP}/glitchtip-cli" --version)"
+          if [ "$got" != "glitchtip-cli ${ver}" ]; then
+            echo "::error title=glitchtip-cli::the pinned binary reports \"${got}\", not \"glitchtip-cli ${ver}\""
+            exit 1
+          fi
+          echo "$got"
+
+      # Debug ids are the STRONGEST key GlitchTip has: `DebugSymbolBundle` is
+      # unique on `(organization, debug_id)`, and unlike a release string a
+      # debug id cannot drift from what the SDK reports — it is derived from the
+      # bytes. Without one the server falls back to `(release, file name)`,
+      # which still works and is why the upload below passes `--release`
+      # regardless. This is the one part of glitchtip-cli's source-map support
+      # that is purely local and provably correct; see the header of
+      # tooling/ops/upload-web-sourcemaps.mjs for why `sourcemaps upload` is not
+      # used and what it does instead of uploading.
+      - name: Inject debug ids into the web bundle
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/glitchtip-cli" sourcemaps inject build/web
+
       - name: Launch the built bundle once, before it is published
         working-directory: .
         run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+
+      # ── SOURCE MAPS · THE RELEASE EXISTS BEFORE ANY FILE IS HUNG OFF IT ─────
+      # glitchtip-backend#299 ("release not found error on sourcemap file
+      # upload") is the failure this closes. The assemble endpoint does
+      # `Release.objects.get_or_create`, so this is belt AND braces rather than
+      # strictly required — but a release created as a side effect of an upload
+      # has no `dateReleased`, and the deploys/finalize path is what puts one
+      # there. It is idempotent: creating a release that exists is a no-op.
+      #
+      # ⚠️ THE SERVER ADDRESS IS DERIVED FROM THE DSN, NEVER TYPED. The maps have
+      # to land on the SAME instance the shipped bundle reports to; a second
+      # literal is a second thing to drift, and the drift would be silent —
+      # uploads succeeding against a server that never sees the events. The DSN
+      # already reaches this job (the build step passes it as a --dart-define),
+      # and its origin is exactly that server.
+      #
+      # 🔴 AND IT GOES IN AS `SENTRY_URL`, NOT AS `--url`. Measured by running
+      # the binary on 2026-09-03: `glitchtip-cli releases new --url` is
+      # "Optional URL for this release" and SHADOWS the global server flag, so
+      # passing the address there posts the release to sentry.io instead. The
+      # environment variable is not shadowed by anything.
+      - name: Create and finalize the GlitchTip release
+        working-directory: .
+        env:
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+          APP: ${{ matrix.app }}
+          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          server="$(printf '%s' "$GLITCHTIP_DSN" | sed -E 's#^(https?)://[^@/]+@([^/]+)/.*$#\1://\2#')"
+          if ! printf '%s' "$server" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+            echo "::error title=source maps::GLITCHTIP_DSN did not parse into a server origin. Expected https://<key>@<host>/<project id>."
+            exit 1
+          fi
+          # THE RELEASE STRING IS THE SDK'S, RECOMPOSED — and then CHECKED, so
+          # this cannot silently drift from the build step above. `main.dart`
+          # reports `AppConfig.telemetryRelease` = `<app id>@<APP_VERSION>`, and
+          # APP_VERSION is the `--dart-define` two steps up. version.json is
+          # Flutter's own record of what it stamped, so comparing against it
+          # catches an edit to either line.
+          version="${RELEASE_LINE}.${RUN_NUMBER}"
+          built="$(node -e "console.log(require('./apps/' + process.env.APP + '/build/web/version.json').version)")"
+          if [ "$built" != "$version" ]; then
+            echo "::error title=source maps::the built bundle stamps version \"${built}\" but this step composed \"${version}\". The release id the SDK reports and the one the maps are stored under would not match, so no stack trace could be resolved."
+            exit 1
+          fi
+          release="${APP}@${version}+${GITHUB_SHA::7}"
+          echo "release=${release}" >> "$GITHUB_ENV"
+          echo "sentry_url=${server}" >> "$GITHUB_ENV"
+          SENTRY_URL="$server" "${RUNNER_TEMP}/glitchtip-cli" releases new "$release" \
+            --finalize --org nikatru --project "$APP"
+
+      # ── SOURCE MAPS · UPLOADED, AND PROVEN UPLOADED ─────────────────────────
+      # ⛔ DO NOT REPLACE THIS WITH `glitchtip-cli sourcemaps upload`. It was
+      # tried first and it does not work against this server: it POSTs a gzipped
+      # single file where the backend expects a zip artifact bundle, the
+      # assemble endpoint answers `{"state":"created"}` before the async task
+      # runs, and the task then logs "not a valid zip archive" and deletes
+      # everything — a green step that stores nothing, which is the same defect
+      # as the sentry-cli reports (glitchtip#38, backend#299) that sent us to
+      # the CLI in the first place. The full citation, read from both projects'
+      # sources and reproduced against a protocol stub, is in the header of
+      # tooling/ops/upload-web-sourcemaps.mjs.
+      #
+      # THE SCRIPT ENDS BY READING BACK `GET .../releases/{version}/files/` —
+      # the exact call whose empty answer is the defect — and exits non-zero
+      # while it stays empty. So this step cannot be green over an empty sink.
+      - name: Upload the source maps to GlitchTip
+        working-directory: .
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          # `release` and `sentry_url` reach here through $GITHUB_ENV, written by
+          # the step above. `set -u` is what makes a missing one loud.
+          export SENTRY_URL="$sentry_url"
+          node tooling/ops/upload-web-sourcemaps.mjs \
+            --dir "apps/${APP}/build/web" \
+            --release "$release" \
+            --org nikatru \
+            --project "$APP" \
+            --dist web \
+            --url-prefix '~'
+
+      # ── ⛔ THE MAPS ARE UPLOADED, THEY ARE NOT PUBLISHED ─────────────────────
+      # `wrangler pages deploy build/web` uploads EVERY file in that directory,
+      # so without this step `main.dart.js.map` would be served from
+      # https://<app>.nikatru.com/main.dart.js.map to anyone who asks. A Dart
+      # source map carries `sourcesContent` — the ORIGINAL SOURCE of every
+      # compiled library, this app's `lib/` included. That is a publication
+      # decision nobody made, and it is not covered by `_headers`, which sets
+      # cache policy and cannot remove a file from a deploy.
+      #
+      # DELETION, NOT AN IGNORE FILE, AND THE DIFFERENCE IS THE POINT. Pages
+      # honours no `.gitignore`, and whether a given wrangler honours an
+      # `.assetsignore` for a Direct Upload project is a property of the version
+      # the action installs. A file that is not on disk cannot be uploaded by
+      # any version of anything, so this is the only form of the rule that
+      # cannot quietly stop applying.
+      #
+      # It runs AFTER the upload and BEFORE the deploy, which is the only window
+      # where both are true. The `//# sourceMappingURL=` comment stays in
+      # main.dart.js and will 404 for anyone who opens devtools against
+      # production; that is deliberate and harmless — the map is meant to be
+      # readable by GlitchTip, not by the page.
+      - name: Delete the source maps from the bundle that gets published
+        run: |
+          set -euo pipefail
+          find build/web -type f -name '*.map' -print -delete
+          left="$(find build/web -type f -name '*.map' | wc -l)"
+          if [ "$left" -ne 0 ]; then
+            echo "::error title=source maps::${left} .map file(s) survived the delete and would be published. Refusing to deploy."
+            exit 1
+          fi
+          echo "0 .map files remain in build/web"
 
       # ── [10]D-2b limb (b) · THE PAGES PROJECT IS CREATED, NOT ASSUMED ────────
       # 🔴 THE PREVIOUS VERSION OF THIS FILE SAID "uploads the built site to the

@@ -101,6 +101,11 @@ class AppConfig {
   // `tooling/channel-register.json` — `assert-channel-register.mjs` fails on a
   // typo, which is the one failure mode a free-text string has. `dev` is the
   // default because an unstamped build IS a developer build.
+  // ⚠️ IT HAS A DART READER, and that is new as of 2026-09-03: `main.dart`
+  // passes it as `TelemetryConfig.dist`, the second half of the key the crash
+  // sink stores an uploaded source map under. Changing or removing it does not
+  // just change a label — it decides whether a minified stack trace from this
+  // app can be read.
   static const String releaseChannel = String.fromEnvironment(
     'RELEASE_CHANNEL',
     defaultValue: 'dev',

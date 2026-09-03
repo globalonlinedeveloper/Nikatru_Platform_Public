@@ -55,6 +55,14 @@ Future<void> main() async {
     dsn: String.fromEnvironment('GLITCHTIP_DSN'),
     release: AppConfig.telemetryRelease,
     environment: String.fromEnvironment('APP_ENV', defaultValue: 'dev'),
+    // The build VARIANT the crash sink keys a source-map lookup on, together
+    // with `release`. It is `AppConfig.releaseChannel` and not a literal for
+    // the same reason `release` is not: the channel is a fact about THIS
+    // artifact, every value it can take resolves to a row in
+    // `tooling/channel-register.json`, and the lane that uploads the maps
+    // (`deploy-web.yml`) passes the identical string to `--dist`. A build with
+    // no channel stamped reports none, and the SDK then sends no `dist` at all.
+    dist: AppConfig.releaseChannel,
   );
 
   await TelemetryBootstrap.init(

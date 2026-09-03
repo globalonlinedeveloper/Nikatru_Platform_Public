@@ -149,6 +149,23 @@
       "enabled": false
     },
     {
+      "description": [
+        "glitchtip_cli gets its own PR and a needs-manual-check label, never a group. Its pin has TWO halves",
+        "in tooling/versions.json — the version and the sha256 of the release asset — and Renovate can move",
+        "only the first. Every proposal therefore arrives RED at deploy-web.yml checksum step until a human",
+        "downloads the new binary and writes its digest. Labelling it says so on the PR instead of leaving",
+        "the next reader to rediscover it from a failing job log.",
+        "Same shape as flutter_local_notifications above: surfaced, never routine."
+      ],
+      "matchPackageNames": [
+        "glitchtip/glitchtip-cli"
+      ],
+      "labels": [
+        "dependencies",
+        "needs-manual-check"
+      ]
+    },
+    {
       "description": "Dev-only tooling can travel together; it cannot reach users.",
       "matchDepTypes": [
         "devDependencies",
@@ -223,6 +240,32 @@
       ],
       "depNameTemplate": "wrangler",
       "datasourceTemplate": "npm",
+      "managerFilePatterns": [
+        "/^tooling\\/versions\\.json$/"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": [
+        "tooling/versions.json - glitchtip_cli [pipeline F-2, 14]O-9",
+        "ADDED 2026-09-03 with the pin itself, so assert-update-coverage.mjs never sees it uncovered.",
+        "🔴 depNameTemplate AND packageNameTemplate DIFFER ON PURPOSE, and both halves are load-bearing.",
+        "assert-update-coverage.mjs keys its coverage map on depNameTemplate, so that must be the",
+        "versions.json KEY (glitchtip_cli) or the pin reads as advanced by nobody. Renovate gitlab-releases",
+        "looks up a PROJECT PATH, so packageName must be glitchtip/glitchtip-cli or it resolves nothing.",
+        "Collapsing the two breaks exactly one of those, silently — the house failure mode.",
+        "extractVersionTemplate strips the leading v: the project tags v1.0.0 and this file declares 1.0.0,",
+        "because the value is also spliced into a download URL as v<version>.",
+        "⚠️ A BUMP FROM THIS MANAGER LANDS RED BY DESIGN — glitchtip_cli_sha256 is the digest of the bytes",
+        "and Renovate cannot compute it. See $glitchtip_cli_comment and the $updateExemptions entry."
+      ],
+      "matchStrings": [
+        "\"glitchtip_cli\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "glitchtip_cli",
+      "packageNameTemplate": "glitchtip/glitchtip-cli",
+      "datasourceTemplate": "gitlab-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
       "managerFilePatterns": [
         "/^tooling\\/versions\\.json$/"
       ]

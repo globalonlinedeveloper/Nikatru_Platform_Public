@@ -60,6 +60,33 @@
 //   question it asks of every other target, and the answer can be "the flag was
 //   a no-op, delete it".
 //
+// ── ➕ APPENDED 2026-09-03 · TWO OF THE NOTES ABOVE ARE NOW STALE, AND ONE ────
+//    MEASUREMENT IS RE-TAKEN RATHER THAN ASSUMED TO HOLD.
+//
+// 🔬 RE-MEASURED TODAY: still ZERO. 16 `flutter build` commands across 13
+// workflows, 0 of them carrying `--obfuscate` or `--split-debug-info` — the
+// guard prints both numbers on every run, so the 2026-08-03 sentence above is
+// re-confirmed rather than merely left standing. `.github/workflows/
+// deploy-web.yml` gained `--source-maps` on this date and that is NEITHER flag:
+// it makes the web build EMIT a mapping instead of renaming symbols, so it
+// changes nothing this guard asks. Said explicitly because the next reader will
+// see a symbol-adjacent flag land in a build command and wonder.
+//
+// ⚠️ "IT NEEDS AN AUTH TOKEN, WHICH IS OWNER WORK" IS DONE. `GLITCHTIP_TOKEN`
+// exists as a repository secret and deploy-web.yml now uses it to upload the
+// web bundle's SOURCE MAPS on every deploy. So shape (a) — an upload to the
+// crash sink — is no longer hypothetical in this tree; it is live on one lane.
+//
+// ⛔ AND THAT UPLOAD IS NOT IN `SYMBOL_UPLOAD` BELOW, DELIBERATELY. Web source
+// maps are not a split-debug-info directory, and this guard's question is
+// strictly "did an obfuscating build retain ITS mapping". Adding the web lane's
+// command to the accept list would widen what satisfies the guard without
+// widening what it checks — a gate weakening dressed as coverage. What the next
+// person WILL need: the day a mobile build starts obfuscating and uploads its
+// symbols with `glitchtip-cli debug-files upload` or `dart-symbol-map` (both
+// exist on that CLI, verified by running it), THOSE are the patterns to add
+// here, and the addition is then load-bearing rather than cosmetic.
+//
 // Usage:  node tooling/ci/assert-obfuscation-coupled.mjs [repoRoot]
 // Exit 0 = no build obfuscates without retaining its symbols.
 // ─────────────────────────────────────────────────────────────────────────────
