@@ -252,14 +252,24 @@ export function evaluateJob(job, rows, cronExpr, nowMs) {
   // already refuses to build a job from a cron this reader cannot read, so
   // reaching here with one means the two parsers disagree — which is exactly
   // the state that must fail closed rather than be assumed benign.
-  const dueMs = lastExpectedFireMs(cronExpr, nowMs);
+  // 🔴 ONE JOB MAY KEEP SEVERAL SCHEDULES, and the occurrence that matters is
+  // the MOST RECENT one due across all of them. `github_dispatch` fires on both
+  // of the Worker's crons while the nightly limbs fire on one; judging it
+  // against the 06:00 expression alone would call it absent every evening.
+  // A string is still accepted so the 50-odd single-cron cases read unchanged.
+  const cronList = Array.isArray(cronExpr) ? cronExpr : [cronExpr];
+  const dues = cronList.map((c) => lastExpectedFireMs(c, nowMs));
+  // ⚠️ ANY unreadable expression is refused, not skipped: taking the max over
+  // "the ones that parsed" would quietly judge a job against a subset of its own
+  // schedule, which is the shape of every silent narrowing in this file.
+  const dueMs = dues.some((d) => d === null) || dues.length === 0 ? null : Math.max(...dues);
   if (dueMs === null) {
     return {
       ok: false,
       kind: 'unknown',
       ageHours,
       reason:
-        `${job}: cron expression \`${cronExpr}\` yields no computable occurrence, so "was the run that was due missed?" ` +
+        `${job}: cron expression \`${cronList.join('` `')}\` yields no computable occurrence, so "was the run that was due missed?" ` +
         'cannot be asked. Failing closed rather than falling back to a staleness guess.',
     };
   }
@@ -270,7 +280,7 @@ export function evaluateJob(job, rows, cronExpr, nowMs) {
       kind: 'absent',
       ageHours,
       reason:
-        `${job}: the run due at ${new Date(dueMs).toISOString()} (cron \`${cronExpr}\`) left NO row. ` +
+        `${job}: the run due at ${new Date(dueMs).toISOString()} (cron \`${cronList.join('` `')}\`) left NO row. ` +
         `It is now ${sinceDueHours.toFixed(1)}h past due, beyond the ${MISSED_RUN_GRACE_HOURS}h grace, and the newest row is ` +
         `${new Date(stamp).toISOString()} (${ageHours.toFixed(1)}h old) — written BEFORE that occurrence. ` +
         'The timer did not fire, or the job can no longer write. ' +
@@ -374,55 +384,78 @@ export function deriveWatchedJobs(root) {
       problems.push(`COVERAGE LOST — ${cfgRel} declares no \`triggers.crons\`, but ${row.id} says it is a cron duty. The register and the config disagree about whether the job exists at all.`);
       continue;
     }
-    // 🔴 EXACTLY ONE CRON, OR THIS READER SAYS SO RATHER THAN PICKING. Every
-    // line below computes "was the run that was due missed?" from `crons[0]`
-    // and silently ignores the rest. That is correct while a cloudflare-cron
-    // duty has one schedule — which is true today and is WHY the platform
-    // Worker's own header calls it "the CONSOLIDATED scheduler for the whole
-    // portfolio" — but it is an assumption nothing was checking.
-    //
-    // ⚠️ THE FAILURE IT PREVENTS IS CONCRETE AND WAS ABOUT TO BE WRITTEN.
-    // research/76 §C's Phase 2 wants the dispatcher to fire MORE OFTEN than the
-    // nightly limbs, because a 24h cadence against a 36h window leaves 12h of
-    // margin and the measured GitHub gap it replaces reached 48.8h. The obvious
-    // way to do that is a second `triggers.crons` entry — at which point every
-    // job's expected occurrence would still be computed from the FIRST one, and
-    // a job that only runs on the second would be judged against a schedule it
-    // does not keep. No line would change and no test would fail.
-    //
-    // So: more than one, and the reader refuses until the register can say which
-    // cron governs which job. Failing closed on an ambiguity is this file's own
-    // rule — "I could not tell" must never read as "it is fine".
-    if (crons.length > 1) {
-      problems.push(
-        `COVERAGE LOST — ${cfgRel} declares ${crons.length} cron expressions (${crons.join(', ')}) and this reader ` +
-          "computes every job's expected occurrence from the FIRST one alone. A job that runs on any other " +
-          'schedule would be judged against one it does not keep, silently. Teach the register which cron ' +
-          'governs which job before adding a second, or this limb is asserting about a schedule it invented.',
-      );
-      continue;
-    }
+    // 🔴 EVERY DECLARED CRON IS PARSED, NOT JUST THE FIRST. Until 2026-09-03
+    // this read `crons[0]` and silently ignored the rest, and the increment
+    // before this one turned that into COVERAGE LOST — "teach the register which
+    // cron governs which job before adding a second". This is that: `watchedJobs`
+    // is a MAP from job to the crons it keeps, so a second schedule is now
+    // expressible instead of merely refused. The refusal was the right shape for
+    // one increment and is retired by the thing it was holding the door for.
     // BOTH parsers must accept the expression, and they are checked against each
     // other here rather than trusted to stay in step. They are separate functions
     // over the same narrow grammar, so the failure that matters is one of them
     // being widened alone: the reader would then compute an occurrence for a
     // schedule the other had already refused, and nothing would say so.
-    const intervalHours = cronIntervalHours(crons[0]);
-    const probeDue = lastExpectedFireMs(crons[0], Date.now());
+    const unreadable = crons.filter((c) => cronIntervalHours(c) === null || lastExpectedFireMs(c, Date.now()) === null);
+    const intervalHours = unreadable.length ? null : cronIntervalHours(crons[0]);
+    const probeDue = unreadable.length ? null : lastExpectedFireMs(crons[0], Date.now());
     if (intervalHours === null || probeDue === null) {
       problems.push(
-        `${row.id}: cron expression \`${crons[0]}\` is not one this reader can read ` +
+        `${row.id}: cron expression \`${(unreadable[0] ?? crons[0])}\` is not one this reader can read ` +
           `(interval=${intervalHours === null ? 'refused' : intervalHours + 'h'}, ` +
           `occurrence=${probeDue === null ? 'refused' : 'computable'}), so "was the run that was due missed?" ` +
           'cannot be asked — failing closed rather than guessing.',
       );
       continue;
     }
+    // 🔴 A MAP FROM JOB TO THE CRONS IT KEEPS, not a bare list of names. A list
+    // could only ever mean "every job runs on crons[0]", which was true by
+    // accident while the Worker had one schedule and became a lie the moment it
+    // had two. The map makes the pairing a fact somebody wrote down.
     const watched = row.watchedJobs;
-    if (!Array.isArray(watched) || watched.length === 0) {
-      problems.push(`COVERAGE LOST — ${row.id} declares no \`watchedJobs\`, so this reader would query nothing and exit 0.`);
+    if (!watched || typeof watched !== 'object' || Array.isArray(watched) || Object.keys(watched).length === 0) {
+      problems.push(
+        `COVERAGE LOST — ${row.id}.watchedJobs must be a non-empty MAP of job -> [cron, ...]` +
+          `${Array.isArray(watched) ? ' (it is still an ARRAY: a list of names cannot say which schedule each job keeps)' : ''}. ` +
+          'This reader would otherwise query nothing and exit 0.',
+      );
       continue;
     }
+    // BOTH DIRECTIONS. A job naming a cron the config does not declare is judged
+    // against a schedule that does not exist; a declared cron no job names is a
+    // schedule that fires with nothing watching what it did. The second is the
+    // one that stays silent, so it is checked rather than assumed.
+    const claimed = new Set();
+    let mapBroken = false;
+    for (const [job, jobCrons] of Object.entries(watched)) {
+      if (!Array.isArray(jobCrons) || jobCrons.length === 0) {
+        problems.push(`COVERAGE LOST — ${row.id}.watchedJobs["${job}"] names no cron, so nothing says when that job is due.`);
+        mapBroken = true;
+        continue;
+      }
+      for (const c of jobCrons) {
+        if (!crons.includes(c)) {
+          problems.push(
+            `${row.id}.watchedJobs["${job}"] names cron \`${c}\`, which ${cfgRel} does not declare ` +
+              `(it has ${crons.map((x) => `\`${x}\``).join(', ')}). The job would be judged against a schedule that does not exist.`,
+          );
+          mapBroken = true;
+        } else {
+          claimed.add(c);
+        }
+      }
+    }
+    for (const c of crons) {
+      if (!claimed.has(c)) {
+        problems.push(
+          `COVERAGE LOST — ${cfgRel} declares cron \`${c}\` and no job in ${row.id}.watchedJobs keeps it. ` +
+            'That schedule fires and NOTHING watches what it did — the quiet half of this check, which is why it is asked ' +
+            'in both directions rather than only "does every job have a cron".',
+        );
+        mapBroken = true;
+      }
+    }
+    if (mapBroken) continue;
     // The self-check: the job name must exist in the Worker's own source.
     const srcDir = join(root, dirname(cfgRel), 'src');
     const src = existsSync(srcDir) ? readSourceTree(srcDir) : '';
@@ -431,7 +464,7 @@ export function deriveWatchedJobs(root) {
       problems.push(`COVERAGE LOST — ${cfgRel} has no D1 binding carrying \`migrations_dir\`, so the database that owns the heartbeat table cannot be resolved.`);
       continue;
     }
-    for (const job of watched) {
+    for (const [job, jobCrons] of Object.entries(watched)) {
       if (!src.includes(`'${job}'`) && !src.includes(`"${job}"`)) {
         problems.push(
           `COVERAGE LOST — ${row.id} watches job \`${job}\`, and that literal appears NOWHERE in ${dirname(cfgRel)}/src. ` +
@@ -439,7 +472,7 @@ export function deriveWatchedJobs(root) {
         );
         continue;
       }
-      jobs.push({ id: row.id, job, databaseId: dbId, cron: crons[0] });
+      jobs.push({ id: row.id, job, databaseId: dbId, cron: jobCrons });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -487,11 +520,11 @@ export function deriveWatchedJobs(root) {
         );
         continue;
       }
-      if (!watched.includes(job)) {
+      if (!Object.prototype.hasOwnProperty.call(watched, job)) {
         problems.push(
           `COVERAGE LOST — the scheduler declares and uses job "${job}" (\`${constName}\`), and ${row.id}.watchedJobs does NOT name it. ` +
             'It runs every night and NOTHING reads its outcome. This is the direction that stayed silent while `analytics_liveness` ' +
-            `went unwatched from the day it shipped. Add "${job}" to watchedJobs in ${REGISTER_REL}.`,
+            `went unwatched from the day it shipped. Add "${job}": ["<cron>"] to watchedJobs in ${REGISTER_REL}.`,
         );
       }
     }

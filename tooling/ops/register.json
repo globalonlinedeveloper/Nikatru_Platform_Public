@@ -583,15 +583,31 @@
       "detector": "tooling/ops/check-heartbeats.mjs, run by .github/workflows/ops-watch.yml — deliberately a DIFFERENT provider from the thing it watches.",
       "response": "Open or refresh the durable ops-watch issue; the keep-alive failing means the shared auth project is drifting toward its ~7-day idle pause, which takes sign-in down portfolio-wide.",
       "cadence": "1d",
-      "watchedJobs": [
-        "supabase_keepalive",
-        "analytics_liveness",
-        "renewals",
-        "events_rollup",
-        "retention_sweep",
-        "cancellation_drain",
-        "github_dispatch"
+      "_watchedJobsWhy": [
+        "🔴 A MAP FROM JOB TO THE CRONS IT KEEPS, changed from a bare list 2026-09-03. A list could only",
+        "ever mean 'every job runs on crons[0]', which was true by accident while this Worker had ONE",
+        "schedule and became a lie the moment it had two. tooling/ops/check-heartbeats.mjs refuses the",
+        "array shape outright rather than guessing, and checks BOTH directions: a job naming a cron the",
+        "config does not declare is judged against a schedule that does not exist, and a declared cron no",
+        "job keeps is a schedule that fires with nothing watching what it did.",
+        "",
+        "⚠️ `github_dispatch` KEEPS BOTH, and that is the whole reason the second cron exists. Measured",
+        "over 30.8 days of ops-watch history: 72 successful SCHEDULED runs -- 2.3/day, not the 12 its cron",
+        "block declares -- median gap 10.4h, p90 22.8h, MAX 48.8h, and SIX gaps over the 36h freshness",
+        "window in one month. A 24h dispatch cadence would leave 12h of margin against that window; 12h",
+        "leaves 24h. The nightly limbs stay on 06:00 alone because the second firing runs the dispatcher",
+        "and nothing else -- see the `event.cron` branch in services/platform/src/scheduled.ts, which is",
+        "what keeps a DESTRUCTIVE limb (the retention sweep) firing once a day and not twice."
       ],
+      "watchedJobs": {
+        "supabase_keepalive": ["0 6 * * *"],
+        "analytics_liveness": ["0 6 * * *"],
+        "renewals": ["0 6 * * *"],
+        "events_rollup": ["0 6 * * *"],
+        "retention_sweep": ["0 6 * * *"],
+        "cancellation_drain": ["0 6 * * *"],
+        "github_dispatch": ["0 6 * * *", "0 18 * * *"]
+      },
       "mechanism": {
         "substrate": "cloudflare-cron",
         "anchor": "services/platform/wrangler.jsonc",

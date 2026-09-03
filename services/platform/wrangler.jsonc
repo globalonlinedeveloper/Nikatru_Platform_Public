@@ -173,7 +173,22 @@
   ],
   "triggers": {
     // ONE nightly cron for the whole portfolio (06:00 UTC).
-    "crons": ["0 6 * * *"]
+    "crons": [
+      "0 6 * * *",
+      // 🔴 THE DISPATCHER'S SECOND FIRING, ADDED 2026-09-03, AND IT RUNS THE
+      // DISPATCHER ALONE. src/scheduled.ts branches on `event.cron`: at 18:00
+      // only `dispatchGithubWorkflows` runs, so the retention sweep — the one
+      // limb that DESTROYS anything — still fires once a day and not twice.
+      // ⚠️ WHY A SECOND FIRING AT ALL, measured rather than assumed: over 30.8
+      // days the workflow this dispatches (ops-watch.yml) had 72 successful
+      // SCHEDULED runs — 2.3/day against the 12 slots its cron block declares —
+      // with a MAX GAP of 48.8h and SIX gaps over the 36h freshness window in
+      // one month. A 24h dispatch cadence leaves 12h of margin on that window;
+      // 12h leaves 24h. tooling/ops/register.json's `watchedJobs` map says which
+      // jobs keep which cron, and check-heartbeats.mjs refuses a cron no job
+      // claims — so this line cannot be added without saying what watches it.
+      "0 18 * * *"
+    ]
   },
   "routes": [
     // CFG-1 bootstrap host. Already-released Subly builds have this compiled

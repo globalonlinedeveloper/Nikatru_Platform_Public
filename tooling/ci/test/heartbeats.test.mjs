@@ -28,6 +28,7 @@
 // byte-compare -> re-verify green.
 //
 //   H1 the cron duty row loses `watchedJobs`             -> COVERAGE LOST
+//      (a MAP of job -> [cron, ...] since 2026-09-03; an ARRAY is refused by name)
 //   H2 the job constant is renamed in the Worker while
 //      the register still names the old one              -> COVERAGE LOST (the
 //                                                           reader would query a
@@ -345,7 +346,7 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
         id: 'duty.cron',
         kind: 'duty',
         cadence: '1d',
-        watchedJobs: ['demo_job'],
+        watchedJobs: { demo_job: ['0 6 * * *'] },
         mechanism: { substrate: 'cloudflare-cron', anchor: 'services/svc/wrangler.jsonc' },
       },
     };
@@ -361,10 +362,11 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
     assert.deepEqual(problems, []);
     assert.equal(jobs.length, 1);
     assert.equal(jobs[0].job, 'demo_job');
-    // The cron EXPRESSION travels with the job, not a derived interval: the
+    // The cron EXPRESSIONS travel with the job, not a derived interval: the
     // absence limb needs the occurrence, and carrying a number nothing reads is
-    // how a stale second copy of the schedule gets created.
-    assert.equal(jobs[0].cron, '0 6 * * *');
+    // how a stale second copy of the schedule gets created. A LIST since
+    // 2026-09-03, because one job may keep several schedules.
+    assert.deepEqual(jobs[0].cron, ['0 6 * * *']);
     assert.equal(jobs[0].intervalHours, undefined);
     assert.equal(jobs[0].databaseId, 'abc');
   });
@@ -402,7 +404,7 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
       makeRepo((s) => {
         // Declared, watched, and never passed to anything.
         s.source += "export const GHOST_JOB = 'ghost_job';\n";
-        s.row.watchedJobs = ['demo_job', 'ghost_job'];
+        s.row.watchedJobs = { demo_job: ['0 6 * * *'], ghost_job: ['0 6 * * *'] };
       }),
     );
     assert.match(problems.join(' '), /`GHOST_JOB` \(job "ghost_job"\) is declared .* and NEVER USED/s);
@@ -425,7 +427,7 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
     const { problems } = deriveWatchedJobs(
       makeRepo((s) => {
         s.source = 'export const SOMETHING_ELSE = 1;\n';
-        s.row.watchedJobs = ['demo_job'];
+        s.row.watchedJobs = { demo_job: ['0 6 * * *'] };
       }),
     );
     assert.match(problems.join(' '), /the derived job set is EMPTY/);
@@ -439,12 +441,12 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
 
   test('no watchedJobs is COVERAGE LOST — the reader would query nothing and exit 0', () => {
     const { problems } = deriveWatchedJobs(makeRepo((s) => { delete s.row.watchedJobs; }));
-    assert.match(problems.join(' '), /declares no `watchedJobs`/);
+    assert.match(problems.join(' '), /must be a non-empty MAP/);
   });
 
   test('an empty watchedJobs is COVERAGE LOST too', () => {
-    const { problems } = deriveWatchedJobs(makeRepo((s) => { s.row.watchedJobs = []; }));
-    assert.match(problems.join(' '), /declares no `watchedJobs`/);
+    const { problems } = deriveWatchedJobs(makeRepo((s) => { s.row.watchedJobs = {}; }));
+    assert.match(problems.join(' '), /must be a non-empty MAP/);
   });
 
   test('no cloudflare-cron row at all is COVERAGE LOST', () => {
@@ -468,13 +470,46 @@ describe('check-heartbeats — the watched set is DERIVED, and cannot silently e
   // that moment every job would still be judged against the FIRST cron, a job
   // running only on the second would be measured against a schedule it does not
   // keep, and NO LINE WOULD CHANGE AND NO TEST WOULD FAIL.
-  test('🔴 MORE THAN ONE CRON IS COVERAGE LOST — the reader must not pick one and say nothing', () => {
-    const { problems } = deriveWatchedJobs(
-      makeRepo((s) => { s.wrangler.triggers.crons = ['0 6 * * *', '0 18 * * *']; }),
-    );
-    assert.match(problems.join(' '), /declares 2 cron expressions/);
-    assert.match(problems.join(' '), /FIRST one alone/, 'the message must say WHAT it would otherwise have done');
-    assert.match(problems.join(' '), /0 18 \* \* \*/, 'both expressions must be named, or nobody can see which was ignored');
+  test('🔴 A SECOND CRON IS NOW EXPRESSIBLE — the map says which job keeps it', () => {
+    // SUPERSEDES the 2026-09-03 refusal one increment earlier, which said
+    // "teach the register which cron governs which job before adding a second".
+    // This is that. The refusal was the right shape for one increment and is
+    // retired by the thing it was holding the door for.
+    const { jobs, problems } = deriveWatchedJobs(makeRepo((s) => {
+      s.wrangler.triggers.crons = ['0 6 * * *', '0 18 * * *'];
+      s.row.watchedJobs = { demo_job: ['0 6 * * *', '0 18 * * *'] };
+    }));
+    assert.deepEqual(problems, []);
+    assert.deepEqual(jobs[0].cron, ['0 6 * * *', '0 18 * * *']);
+  });
+
+  test('🔴 A DECLARED CRON NO JOB KEEPS IS COVERAGE LOST — the quiet half', () => {
+    // A schedule that fires with nothing watching what it did. This is the
+    // direction that stays silent, which is why it is asked rather than assumed:
+    // the loud direction (a job with no cron) announces itself the first time
+    // the reader tries to compute an occurrence.
+    const { problems } = deriveWatchedJobs(makeRepo((s) => {
+      s.wrangler.triggers.crons = ['0 6 * * *', '0 18 * * *'];
+      s.row.watchedJobs = { demo_job: ['0 6 * * *'] };
+    }));
+    assert.match(problems.join(' '), /declares cron `0 18 \* \* \*` and no job/);
+  });
+
+  test('a job naming a cron the config does not declare is refused', () => {
+    const { problems } = deriveWatchedJobs(makeRepo((s) => {
+      s.row.watchedJobs = { demo_job: ['0 6 * * *', '0 23 * * *'] };
+    }));
+    assert.match(problems.join(' '), /which .* does not declare/);
+  });
+
+  test('an ARRAY watchedJobs is refused BY NAME — it cannot say which schedule each job keeps', () => {
+    const { problems } = deriveWatchedJobs(makeRepo((s) => { s.row.watchedJobs = ['demo_job']; }));
+    assert.match(problems.join(' '), /it is still an ARRAY/);
+  });
+
+  test('a job mapped to an EMPTY cron list is refused — nothing would say when it is due', () => {
+    const { problems } = deriveWatchedJobs(makeRepo((s) => { s.row.watchedJobs = { demo_job: [] }; }));
+    assert.match(problems.join(' '), /names no cron/);
   });
 
   test('exactly one cron is still accepted — the refusal is about ambiguity, not about crons', () => {

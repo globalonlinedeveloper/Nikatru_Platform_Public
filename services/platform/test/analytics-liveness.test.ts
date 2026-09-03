@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 // `?raw` rather than node:fs — a Workers tsconfig has no node types on purpose.
 import wranglerRaw from '../wrangler.jsonc?raw';
+import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
 import {
   analyticsLiveness,
   ANALYTICS_LIVENESS_JOB,
@@ -114,8 +115,22 @@ describe('the window is DERIVED from the cron cadence, not chosen', () => {
     // the interval between runs, so every period is reported exactly once — no
     // gap, no double-count. If the schedule ever changes, this fails instead of
     // the constant silently describing a window that no longer matches.
-    expect(crons).toHaveLength(1);
-    const [minute, hour, dom, month, dow] = crons[0].split(/\s+/);
+    //
+    // ⚠️ AND IT IS THIS JOB'S OWN CRON, NOT `crons[0]`. The Worker gained a
+    // SECOND schedule on 2026-09-03 that runs the GitHub dispatcher and nothing
+    // else, so "the deployed cron" stopped being a single thing. Reading the
+    // register's `watchedJobs` map keeps this derivation about the schedule
+    // analytics_liveness actually keeps — the same mistake, one layer up, that
+    // check-heartbeats.mjs had been making with `crons[0]`.
+    const register = JSON.parse(REGISTER_RAW) as {
+      rows?: { mechanism?: { substrate?: string }; watchedJobs?: Record<string, string[]> }[];
+    };
+    const cronRow = (register.rows ?? []).find((r) => r.mechanism?.substrate === 'cloudflare-cron');
+    const mine = cronRow?.watchedJobs?.[ANALYTICS_LIVENESS_JOB];
+    expect(mine, `the register does not say which cron ${ANALYTICS_LIVENESS_JOB} keeps`).toBeTruthy();
+    expect(mine).toHaveLength(1);
+    expect(crons, 'the register names a cron the config does not declare').toContain(mine![0]);
+    const [minute, hour, dom, month, dow] = mine![0].split(/\s+/);
     expect([dom, month, dow]).toEqual(['*', '*', '*']); // every day
     expect(Number.isInteger(Number(minute))).toBe(true);
     expect(Number.isInteger(Number(hour))).toBe(true);
