@@ -589,7 +589,8 @@
         "renewals",
         "events_rollup",
         "retention_sweep",
-        "cancellation_drain"
+        "cancellation_drain",
+        "github_dispatch"
       ],
       "mechanism": {
         "substrate": "cloudflare-cron",

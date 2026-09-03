@@ -141,7 +141,7 @@
   "vacuity-a.test.mjs": 4,
   "vacuity-b.test.mjs": 19,
   "vacuity-c.test.mjs": 6,
-  "vendor-portability.test.mjs": 26,
+  "vendor-portability.test.mjs": 29,
   "walks-bounded.test.mjs": 42,
   "web-cache-policy.test.mjs": 40,
   "windows-signing.test.mjs": 73,

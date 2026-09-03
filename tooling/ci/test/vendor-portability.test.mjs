@@ -434,6 +434,53 @@ describe('assert-vendor-portability', () => {
       assert.match(out, /16 Worker Env key\(s\)/);
     });
 
+    // ── the FUNCTION seam, added 2026-09-03 with the `github` dispatch vendor ──
+    // ⚠️ THE FIXTURE CONTENT IS NOT IDIOMATIC DART, AND THAT IS DELIBERATE: part 2
+    // is a language-agnostic regex over comment-stripped source, so these cases are
+    // about the DECLARATION FORM and nothing else. Writing them into the existing
+    // .dart fixture keeps them in the same tree as the class case they sit beside,
+    // which is what makes the pair readable as one decision.
+    // 🔴 EACH FIXTURE KEEPS `AuthRepository`, because THREE OTHER VENDORS in the
+    // fixture name that same seam file and symbol. Overwriting it made the first
+    // draft of these cases fail for somebody else's reason — which is the fixture
+    // hazard this suite's own header warns about, met in the writing of it.
+    // Every vendor in this register hid behind a class or an interface, so those
+    // were the only two forms part 2 accepted. `github`'s seam is one exported
+    // function. The pair below is what makes that widening safe: the first says
+    // a real declaration is accepted, the SECOND says the property the block
+    // exists for did not move — a symbol that appears only in a comment, or only
+    // at a call site, is still refused.
+    test('a FUNCTION declaration satisfies part 2 — a seam is a declared boundary, not necessarily a class', () => {
+      const root = tree({
+        mutate: (r) => { r.vendors.supabase.seam = { file: 'packages/core/lib/seam.dart', symbol: 'signIn' }; return r; },
+      });
+      writeFileSync(join(root, 'packages/core/lib/seam.dart'), 'abstract interface class AuthRepository {} Future<void> function signIn() async {}');
+      const { code, out } = run(root);
+      assert.equal(code, 0, out);
+    });
+
+    test('🔴 a function name that appears ONLY at a call site is still refused — the keyword is what is required', () => {
+      const root = tree({
+        mutate: (r) => { r.vendors.supabase.seam = { file: 'packages/core/lib/seam.dart', symbol: 'signIn' }; return r; },
+      });
+      // A call and an import, and no declaration anywhere. Matching the bare
+      // name would accept this, which is why the regex requires the keyword.
+      writeFileSync(join(root, 'packages/core/lib/seam.dart'), 'abstract interface class AuthRepository {} void main() { signIn(); }');
+      const { code, out } = run(root);
+      assert.equal(code, 1);
+      assert.match(out, /names seam symbol `signIn`.*which does not declare it/s);
+    });
+
+    test('🔴 a COMMENTED-OUT function declaration is still refused, exactly like the class case below', () => {
+      const root = tree({
+        mutate: (r) => { r.vendors.supabase.seam = { file: 'packages/core/lib/seam.dart', symbol: 'signIn' }; return r; },
+      });
+      writeFileSync(join(root, 'packages/core/lib/seam.dart'), 'abstract interface class AuthRepository {} // Future<void> function signIn() async {}');
+      const { code, out } = run(root);
+      assert.equal(code, 1);
+      assert.match(out, /names seam symbol `signIn`.*which does not declare it/s);
+    });
+
     test('a seam whose only class declaration is commented out does not satisfy part 2', () => {
       const root = tree();
       writeFileSync(join(root, 'packages/core/lib/seam.dart'), '// abstract interface class AuthRepository {}\n');

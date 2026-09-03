@@ -392,9 +392,21 @@ for (const [id, v] of Object.entries(vendors)) {
         );
       }
       const seamSrc = stripSourceComments(readFileSync(p, 'utf8'), seamExt);
+      // 🔴 A SEAM IS A DECLARED BOUNDARY, NOT NECESSARILY A CLASS — widened
+      // 2026-09-03, and the widening is about SHAPE rather than strictness. Every
+      // vendor in this register happened to hide behind a class or an interface, so
+      // those two forms were the whole list; the `github` dispatch surface is one
+      // exported FUNCTION, which is just as much "the single place this vendor is
+      // reachable" and just as bounded to swap.
+      // ⚠️ WHAT IS NOT WIDENED IS THE PROPERTY THIS BLOCK EXISTS FOR: the symbol
+      // must be DECLARED in the named file, in source whose comments are already
+      // stripped, so a commented-out or merely-mentioned symbol is still refused.
+      // A keyword is required before the name for exactly that reason — matching the
+      // bare name would accept the call site, the import and a doc comment.
       if (
         !new RegExp(`\\b(?:abstract\\s+)?(?:interface\\s+)?class\\s+${v.seam.symbol}\\b`).test(seamSrc) &&
-        !new RegExp(`\\binterface\\s+${v.seam.symbol}\\b`).test(seamSrc)
+        !new RegExp(`\\binterface\\s+${v.seam.symbol}\\b`).test(seamSrc) &&
+        !new RegExp(`\\bfunction\\s+${v.seam.symbol}\\b`).test(seamSrc)
       ) {
         problems.push(`vendor \`${id}\` names seam symbol \`${v.seam.symbol}\` in \`${v.seam.file}\`, which does not declare it.`);
       }

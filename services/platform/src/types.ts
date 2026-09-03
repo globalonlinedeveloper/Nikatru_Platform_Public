@@ -166,6 +166,42 @@ export interface Env {
    */
   SUPABASE_ANON_KEY?: string;
   /**
+   * GitHub token used ONLY to fire `workflow_dispatch` on the workflows named in
+   * `GITHUB_DISPATCH_TARGETS` (services/platform/src/scheduled.ts).
+   *
+   * 🔴 OPTIONAL, AND THE LIMB WRITES `ok = 0` WITHOUT IT rather than skipping.
+   * A dispatcher with no credential and no row is indistinguishable from a
+   * dispatcher that is working, which is the exact shape of every silent
+   * failure this portfolio has paid for. Absent ⇒ one heartbeat row per target
+   * saying so, and `check-heartbeats.mjs` turns that into a durable issue.
+   *
+   * 🔴 IT HOLDS AN EXISTING VAULT PAT, BY OWNER DECISION 2026-09-03, AND THAT IS
+   * RECORDED RATHER THAN GLOSSED. What this limb NEEDS is `Actions: read and
+   * write` on two public repositories. What it HAS carries `repo`, `admin:org`,
+   * `delete_repo` and `admin:enterprise` — measured that day against
+   * `x-oauth-scopes`, on all three PATs in the vault, which are identical. So
+   * the credential in this public-facing Worker can delete repositories and
+   * administer the organisation, and the honest sentence is that the blast
+   * radius is bounded by trust in this code rather than by the token.
+   *
+   * ⚠️ THE STORE IS NOT THE EXPOSURE — Cloudflare secrets cannot be read back
+   * out. The realistic leak path is this Worker putting the value somewhere
+   * visible, and there are exactly two: a `console.log` that lands in Workers
+   * Logs, and a `detail` string that lands in `cron_heartbeat`, which
+   * check-heartbeats.mjs reads and the ops-watch alert job pastes into a PUBLIC
+   * GitHub issue. Both are closed by assertion in test/github-dispatch.test.ts
+   * ("the token never leaves the fetch"), not by intention.
+   *
+   * ⬜ THE DOWNGRADE IS ONE COMMAND, and it is worth taking whenever convenient:
+   * mint a fine-grained PAT scoped to `Actions: read and write` on the two repos
+   * and re-run `wrangler secret put GITHUB_DISPATCH_TOKEN`. Nothing in the code
+   * changes — the Worker reads a NAME, never a particular token.
+   * Set with `wrangler secret put GITHUB_DISPATCH_TOKEN`, never as a var. There
+   * is NO new key in .claude/secrets.env: the value is the vault's existing
+   * `Project_Cross_Platform_Apps_GITHUB_PAT`.
+   */
+  GITHUB_DISPATCH_TOKEN?: string;
+  /**
    * Supabase SERVICE ROLE key — used ONLY by DELETE /v1/account, to remove the
    * identity record itself.
    *
