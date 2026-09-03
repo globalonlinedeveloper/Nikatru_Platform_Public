@@ -1152,7 +1152,7 @@
         "",
         "They also carry the finding that made [14]O-4's substrate comparison a HOST comparison. All four",
         "run on the Oracle box; the GlitchTip instance that watches them runs on the Oracle box; the alert",
-        "evaluation and the Resend SMTP hop run on the Oracle box. Comparing the substrate NAMES",
+        "evaluation and the Resend SMTP hop run on the Oracle box. ⏱ 2026-09-03: all four moved to BOX B on 2026-09-02 and this paragraph is left EXACTLY as written — it is the argument for why the comparison resolves to a HOST, and it was true of the machine it was written about. Comparing the substrate NAMES",
         "(`oci-cron` vs `glitchtip-heartbeat`) would have called that 'different infrastructure'. It is one",
         "machine, and its death is indistinguishable from perfect health. That is [pipeline E-9b], it is",
         "recorded as undecided in tooling/monitor-register.json -> observability.spof, and these rows are",
@@ -1165,7 +1165,7 @@
       ],
       "id": "duty.oci.glitchtip-pg-dump",
       "kind": "duty",
-      "what": "/opt/glitchtip/backup.sh, root cron 02:00 daily on the Oracle box: pg_dump -Fc from INSIDE the container (consistent, running) plus pg_dumpall --globals-only, written to /opt/glitchtip/backups as gt-<date>.sql.gz.",
+      "what": "/opt/glitchtip/backup.sh, root cron 02:00 daily on BOX B (Hostinger) — ⏱ CORRECTED 2026-09-03: this field read 'on the Oracle box' and had been stale since the 2026-09-02 move, so the row's own headline sent an incident responder to the machine that does NOT hold this backup, while its own absenceWatcher recorded the move correctly two fields below. A row that contradicts itself is read top-down: pg_dump -Fc from INSIDE the container (consistent, running) plus pg_dumpall --globals-only, written to /opt/glitchtip/backups as gt-<date>.sql.gz.",
       "detector": "/opt/glitchtip/backup-liveness.py (hourly, :41) — it asserts the dump EXISTS, is RECENT, is NOT TRUNCATED and REACHED Drive, and treats 'could not confirm Drive' as unhealthy rather than as fine. A failure raises a GlitchTip event within a minute and exits non-zero so cron also mails root.",
       "response": "Read the event. A script can exit 0 having written nothing — which is exactly how the laptop transcript backup failed on a dying disk — so the exit code is never the answer here; the dump's size, age and presence on Drive are.",
       "cadence": "1d",
@@ -1189,7 +1189,7 @@
           "how": "Two failures were FORCED against the real checker rather than simulated: a stale dump and a truncated one. Each produced a real GlitchTip event. ⚠️ This drilled the OUTCOME-EVENT leg, not the heartbeat-ABSENCE leg — the monitor-16 Down transition itself has never been forced. The two are different code paths (process_event_alerts + send_notification vs send_monitor_notification), which is precisely why the box's disk alert was tested rather than assumed on the same day.",
           "evidence": "Both events delivered in one mail, '2 errors reported in ops', 13:38:15Z; test issues OPS-3 and OPS-4, both resolved. Recorded in Private/runbooks/operations.md."
         },
-        "gap": "🔴 THE WATCHER IS ON THE MACHINE IT WATCHES. backup-liveness.py, the GlitchTip instance holding monitor 16, the alert evaluation and the Resend hop are all on this one Oracle box — including monitor id 1, which watches GlitchTip itself. If the box is down, the check that would notice is down and the mail that would say so is down with it. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case that matters most. [pipeline E-9b], owner-gated and recorded as undecided in tooling/monitor-register.json -> observability.spof; do NOT read a green verify-alarm-chains.mjs run as an answer to it. The third path — a non-zero exit so cron mails root — does not depend on GlitchTip but still depends on the box."
+        "gap": "🔴 THE WATCHER IS ON THE MACHINE IT WATCHES. backup-liveness.py, the GlitchTip instance holding monitor 16, the alert evaluation and the Resend hop are all on this one box — BOX B (Hostinger) since 2026-09-02; this said 'Oracle box' until it was corrected on 2026-09-03, and the argument is unchanged by WHICH box it is, but the name was wrong — including monitor id 1, which watches GlitchTip itself. If the box is down, the check that would notice is down and the mail that would say so is down with it. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case that matters most. [pipeline E-9b], owner-gated and recorded as undecided in tooling/monitor-register.json -> observability.spof; do NOT read a green verify-alarm-chains.mjs run as an answer to it. The third path — a non-zero exit so cron mails root — does not depend on GlitchTip but still depends on the box."
       },
       "accessProviders": [
         "oci"
@@ -1247,7 +1247,7 @@
         "readBy": "GlitchTip monitor 16 — which runs on this same box",
         "recordQuery": {
           "reader": "unreachable",
-          "why": "The record is heartbeat POSTs against GlitchTip monitor 16, on the GlitchTip instance that runs on the same Oracle box. No credential for that API is held in this repository."
+          "why": "The record is heartbeat POSTs against GlitchTip monitor 16, on the GlitchTip instance that runs on the same box (BOX B / Hostinger since 2026-09-02; this said 'Oracle box' until 2026-09-03). No credential for that API is held in this repository."
         }
       },
       "absenceWatcher": {
