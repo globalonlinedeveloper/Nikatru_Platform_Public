@@ -160,7 +160,7 @@ both of which push to `problems` and therefore fail the build:
 Not the zero-clients claim. The register DECLARES a resolving client for one of the
 two routes — `subly-entitlements`, `client.expression` `_rest.get('/entitlements')`
 — so for that route the machine asserts the OPPOSITE of zero clients, and "no live
-caller" is a hand-written note at `tooling/platform-register.json:270`. The only
+caller" is a hand-written note at `tooling/platform-register.json:292`. The only
 thing that fails over a missing client is an entry carrying NEITHER a `client` NOR
 an `unconsumedReason` (:611-616): an UNDECLARED gap fails, a declared one prints.
 

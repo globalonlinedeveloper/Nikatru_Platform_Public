@@ -172,18 +172,66 @@ async function check() {
   // ── limb D — the coverage canary. Run first: everything else is scoped by
   // what the API returned, so a silently shortened list would shrink the whole
   // check while every other limb still printed ok.
-  const seen = new Set(monitors.map((x) => x.name));
-  for (const name of m.expectedMonitorNames ?? []) {
-    if (!seen.has(name)) {
-      problems.push(
-        `COVERAGE LOST: expected monitor ${JSON.stringify(name)} is not in the live list. Either it was ` +
-          `deleted — in which case remove it from alarm-chains.json in the same change, deliberately — or ` +
-          `this script is now checking less than it believes it is.`,
+  //
+  // 🔴 KEYED BY `id`, NEVER BY `name` — CHANGED 2026-09-03, AND THE REASON IS A
+  // 46-HOUR PRODUCTION FREEZE. This limb used to match `expectedMonitorNames`
+  // against live monitor NAMES. Relocating GlitchTip from the Oracle box to the
+  // Hostinger box on 2026-09-02 renamed one monitor —
+  // `Oracle box backup chain` → `GlitchTip backup chain (Box B)` — because the
+  // name said which machine it was on. The rename was correct. The declaration
+  // went stale, this limb reported COVERAGE LOST, Ops watch went red, and the
+  // three register duties that read its run history aged out of their 36h
+  // window. `assert-ops-register` then froze EVERY MERGE AND BOTH DEPLOYS for
+  // ~46 hours, over a register that was correct and a tree that was fine.
+  //
+  // ⚠️ THE COST IS THE POINT: a box move is planned work, but the failure it
+  // caused surfaced 36 HOURS LATER, in a guard about ops duties, with nothing
+  // naming the move. With live users that is not an inconvenience — it is an
+  // outage of the ability to ship a fix.
+  //
+  // GlitchTip's monitor `id` is a database primary key. It survives renames,
+  // project moves and host moves; it changes only if the monitor is DELETED and
+  // recreated, which is exactly the event this canary should fail on. So the id
+  // is the identity and the name is prose: `expectedMonitors` carries both, and
+  // ONLY the id is asserted. `name` is printed to make a failure readable and is
+  // deliberately never compared — see the drift note below, which reports a
+  // rename WITHOUT failing, so the ledger can be tidied on purpose rather than
+  // by a red build.
+  const expected = m.expectedMonitors ?? null;
+  if (!Array.isArray(expected) || expected.length === 0) {
+    problems.push(
+      'COVERAGE LOST: `expectedMonitors` is missing or empty, so the canary can never fire. ' +
+        'Never "fix" a failure by emptying it. (This key replaced `expectedMonitorNames` on 2026-09-03; ' +
+        'if you are seeing this after an upgrade, the ledger still has the old name-keyed list.)',
+    );
+  } else {
+    const byId = new Map(monitors.map((x) => [String(x.id), x]));
+    for (const row of expected) {
+      const id = String(row?.id ?? '');
+      if (!/^[0-9]+$/.test(id)) {
+        problems.push(`COVERAGE LOST: \`expectedMonitors\` entry ${JSON.stringify(row)} has no numeric \`id\`; the canary keys on the id.`);
+        continue;
+      }
+      const live = byId.get(id);
+      if (!live) {
+        problems.push(
+          `COVERAGE LOST: expected monitor id ${id} (${JSON.stringify(row.name ?? '')}) is not in the live list. ` +
+            'An id disappears only when the monitor is DELETED and recreated — a rename or a move to another ' +
+            'box does NOT change it. So either it was deleted (remove it from alarm-chains.json in the same ' +
+            'change, deliberately) or this script is now checking less than it believes it is.',
       );
+        continue;
+      }
+      // A RENAME IS REPORTED, NOT FAILED. The ledger's `name` is a human label;
+      // letting it drift silently would make the file lie, but failing on it
+      // would rebuild the exact coupling this change removed.
+      if (row.name && row.name !== live.name) {
+        console.error(
+          `⬜ RENAMED: monitor ${id} is now ${JSON.stringify(live.name)}, the ledger says ${JSON.stringify(row.name)}. ` +
+            'Not a failure — the id matched, so coverage is intact. Tidy the label when convenient.',
+        );
+      }
     }
-  }
-  if ((m.expectedMonitorNames ?? []).length === 0) {
-    problems.push('COVERAGE LOST: expectedMonitorNames is empty, so the canary can never fire. Never "fix" a failure by emptying it.');
   }
 
   // ── limb A — every monitor resolves to a project. Monitor 6's exact defect.

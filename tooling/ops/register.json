@@ -166,8 +166,30 @@
     "github-actions": "github",
     "renovate-app": "github",
     "oci-console": "oci",
-    "oci-cron": "oci",
-    "glitchtip-heartbeat": "oci",
+    "_portabilityWhy": [
+      "🔴 A SUBSTRATE NAMES A ROLE, NEVER A BOX — CHANGED 2026-09-03, AND THE COST OF LEARNING THAT WAS 46",
+      "HOURS OF FROZEN DEPLOYMENTS. `oci-cron` and `glitchtip-heartbeat` both resolved to `oci`. GlitchTip",
+      "and its whole backup chain moved to the Hostinger box on 2026-09-02, and BOTH mappings silently",
+      "became false: measured on 2026-09-03, all four `/opt/glitchtip/*` crons run on Box B (02:00, 02:30,",
+      ":41, :17 — matched against the live crontab, not inferred), and GlitchTip itself serves from Box B.",
+      "",
+      "⚠️ THE STALENESS INVERTED A SAFETY CHECK RATHER THAN JUST AGEING. [14]O-4 asks whether a duty's",
+      "WATCHER is on different infrastructure from the duty. With both sides pinned to `oci` it kept",
+      "reporting the Oracle-box SPOF after the duties had left that box — a true-sounding finding about a",
+      "machine that no longer ran them. A map that is wrong in this direction is worse than absent: it",
+      "answers confidently.",
+      "",
+      "➡️ THE PROPERTY THIS BUYS, AND IT IS THE WHOLE POINT WITH LIVE USERS: moving a service to another",
+      "box is now ONE edit — the host on the right-hand side here. Nothing else in the register, and",
+      "nothing in tooling/ops/alarm-chains.json (which keys monitors by `id` since 2026-09-03), needs to",
+      "change. Before this, a move required at least four scattered edits and missing any one froze every",
+      "merge and both deploys 36 HOURS LATER, with nothing in the failure naming the move.",
+      "",
+      "⛔ NEVER put a box name in a substrate, a monitor name, or a row id. `glitchtip-box-cron` says WHICH",
+      "SERVICE'S box; the answer to WHICH MACHINE lives here and only here."
+    ],
+    "glitchtip-box-cron": "hostinger",
+    "glitchtip-heartbeat": "hostinger",
     "windows-task-scheduler": "laptop"
   },
   "_kinds": [
@@ -1083,7 +1105,7 @@
       "response": "Read the event. A script can exit 0 having written nothing — which is exactly how the laptop transcript backup failed on a dying disk — so the exit code is never the answer here; the dump's size, age and presence on Drive are.",
       "cadence": "1d",
       "mechanism": {
-        "substrate": "oci-cron",
+        "substrate": "glitchtip-box-cron",
         "anchor": "Private/runbooks/glitchtip.md",
         "record": "the gt-*.sql.gz files in /opt/glitchtip/backups and their mtimes and sizes",
         "failingValue": "no dump newer than the window, or one small enough to be truncated — 3,379,805 bytes was the healthy size measured 2026-08-05",
@@ -1120,7 +1142,7 @@
       "response": "Read the event, then check the rclone leg specifically: this script running under `set -euo pipefail` means an abort before the prune step leaves a correctly-sized dump on Drive with every other assertion still passing.",
       "cadence": "1d",
       "mechanism": {
-        "substrate": "oci-cron",
+        "substrate": "glitchtip-box-cron",
         "anchor": "Private/runbooks/glitchtip.md",
         "record": "the objects under gbiz:nikatru-backup/glitchtip/ on Drive (PLAINTEXT since [ADR 046] — browsable is a recovery property), plus /opt/glitchtip/.gt-drive-sync.done",
         "failingValue": "the newest dump absent from Drive, or the .done stamp older than the newest dump",
@@ -1153,7 +1175,7 @@
       "response": "The box, the checker or the network is gone. Note the ordering property: a broken BACKUP produces an event within a minute, while this script or the box dying produces heartbeat absence within 3h — two independent signals with different latencies, on purpose.",
       "cadence": "1h",
       "mechanism": {
-        "substrate": "oci-cron",
+        "substrate": "glitchtip-box-cron",
         "anchor": "Private/runbooks/operations.md",
         "record": "the heartbeat POSTs recorded against GlitchTip monitor 16, and the events raised in project `ops`",
         "failingValue": "no POST inside the 3h monitor interval",
@@ -1186,7 +1208,7 @@
       "response": "Fail-loud is the only backstop it has today: if the send fails it exits non-zero so cron mails root, because a monitor that cannot report is worse than none.",
       "cadence": "1h",
       "mechanism": {
-        "substrate": "oci-cron",
+        "substrate": "glitchtip-box-cron",
         "anchor": "Private/runbooks/operations.md",
         "record": "events in the GlitchTip `ops` project",
         "failingValue": "no event when usage is over the threshold — which is indistinguishable from no event because usage is under it",

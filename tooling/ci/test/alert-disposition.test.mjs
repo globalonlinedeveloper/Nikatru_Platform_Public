@@ -12,7 +12,7 @@
 // same misunderstanding as the guard you write.
 //
 // ── THE MUTATION THAT MATTERS, ALSO RUN IN PLACE ON THE REAL TREE ───────────
-// 2026-08-07, against the committed tooling/ops/register.json:640 — the clause
+// 2026-08-07, against the committed tooling/ops/register.json:662 — the clause
 // `+ the reused issue titled 'Scheduled duty is not reporting healthy'` was
 // deleted from the live file, the guard was run for real against the live GitHub
 // API, and it exited 1 with:

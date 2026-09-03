@@ -27,21 +27,63 @@
     "today's projects and 404s for the first one that is not. It found that itself, during --self-test,",
     "on a throwaway project called 'TEMP alarm-chain selftest'."
   ],
-
   "org": "nikatru",
-
-  "expectedMonitorNames": [
-    "GlitchTip",
-    "Subly API health",
-    "Subly web",
-    "nikatru.com",
-    "rajasekarselvam.com",
-    "Laptop daily backup",
-    "GlitchTip backup chain (Box B)",
-    "platform.nikatru.com",
-    "config.nikatru.com"
+  "_expectedMonitorsWhy": [
+    "🔴 KEYED BY `id`, NEVER BY `name` — 2026-09-03, after a 46-hour production freeze.",
+    "This list used to be `expectedMonitorNames`. Moving GlitchTip from the Oracle box to the",
+    "Hostinger box renamed one monitor (`Oracle box backup chain` -> `GlitchTip backup chain",
+    "(Box B)`) because the NAME said which machine it was on. The rename was correct; the",
+    "declaration went stale; verify-alarm-chains reported COVERAGE LOST; Ops watch went red;",
+    "and the three register duties reading its run history aged out of a 36h window, freezing",
+    "EVERY MERGE AND BOTH DEPLOYS for ~46h.",
+    "",
+    "A GlitchTip monitor `id` is a database primary key: it survives renames, project changes",
+    "and host moves, and changes only on delete-and-recreate — which is precisely the event",
+    "this canary SHOULD fail on. `name` here is a human label. It is printed on failure and",
+    "on drift, and it is NEVER asserted; a rename reports and does not redden.",
+    "",
+    "⛔ DO NOT reintroduce a name comparison, and do not put a box name in a monitor name.",
+    "The ability to move a box without freezing deployments is the property this buys, and",
+    "with live users that property is the difference between a migration and an outage."
   ],
-
+  "expectedMonitors": [
+    {
+      "id": 1,
+      "name": "GlitchTip"
+    },
+    {
+      "id": 2,
+      "name": "Subly API health"
+    },
+    {
+      "id": 3,
+      "name": "Subly web"
+    },
+    {
+      "id": 4,
+      "name": "nikatru.com"
+    },
+    {
+      "id": 5,
+      "name": "rajasekarselvam.com"
+    },
+    {
+      "id": 6,
+      "name": "Laptop daily backup"
+    },
+    {
+      "id": 16,
+      "name": "GlitchTip backup chain"
+    },
+    {
+      "id": 11,
+      "name": "platform.nikatru.com"
+    },
+    {
+      "id": 12,
+      "name": "config.nikatru.com"
+    }
+  ],
   "chainsObserved": {
     "ops": {
       "date": "2026-08-05",
@@ -77,7 +119,6 @@
       "evidence": "Resend delivery record 56bde711-db92-48c6-9eae-a0bb21660d18 to support@nikatru.com, status=delivered, 'GlitchTip: TEMP alarm-chain proof (delete me) is down', 08:58:40Z"
     }
   },
-
   "_notObservable": [
     "🔴 WHAT THIS LEDGER STILL CANNOT PROVE, stated so it is not mistaken for coverage.",
     "",

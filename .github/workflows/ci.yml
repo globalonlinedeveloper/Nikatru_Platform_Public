@@ -630,7 +630,7 @@ jobs:
       #       history must actually enumerate against the API. Deleting the
       #       declaration clause narrows the source set and MUST redden — the
       #       `check-migrations 5→4` class. Proven by mutating the live
-      #       register.json:640 and running it for real (exit 1).
+      #       register.json:662 and running it for real (exit 1).
       #   B · THE DISPOSITION GAP, PRINTS ONLY. Issue #24 is open 11 days while
       #       e2e.yml's scheduled runs are green — a real undispositioned firing.
       #       But duty.workflow.e2e.yml states the disposition IS a human closing
