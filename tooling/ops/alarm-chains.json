@@ -44,7 +44,24 @@
     "",
     "⛔ DO NOT reintroduce a name comparison, and do not put a box name in a monitor name.",
     "The ability to move a box without freezing deployments is the property this buys, and",
-    "with live users that property is the difference between a migration and an outage."
+    "with live users that property is the difference between a migration and an outage.",
+    "",
+    "📌 AND THE LIST IS COMPLETE AS OF 2026-09-03, WHICH IT WAS NOT THE DAY BEFORE. Monitors 17",
+    "(`Supabase auth chain`), 18 (`Studio Access gate`) and 19 (`Supabase backup chain`) were created",
+    "live on 2026-09-02, the day of the Box B move, and appeared in NEITHER this file nor",
+    "tooling/monitor-register.json: twelve monitors live, nine declared. A canary that names nine of",
+    "twelve cannot notice the other three being deleted — so the gap was in the guard itself, not only",
+    "in the prose, and it opened on the same day and in the same move as the rename above. All twelve",
+    "are now listed.",
+    "",
+    "⚠️ AND ALL THREE ARE DECLARED HERE AND NOWHERE ELSE, ON PURPOSE. 19 is a Heartbeat — no url, so",
+    "there is no hostname to file it under, the position monitors 6 and 16 have held since they were",
+    "made. 17 and 18 DO have hostnames, and are still not rows in tooling/monitor-register.json: that",
+    "file derives its rows from what THIS REPO deploys, and its rows are also [14]O-2's unauthenticated",
+    "probe set — api-auth.nikatru.com has no surface that probe can call healthy, measured. The full",
+    "reasoning is in that file under `_notInThisRegister`; a first attempt on 2026-09-03 made them rows",
+    "and had to be reverted. So THIS list is the only place a delete of any of the three fails a guard,",
+    "which is exactly what an id-keyed canary is for."
   ],
   "expectedMonitors": [
     {
@@ -82,6 +99,18 @@
     {
       "id": 12,
       "name": "config.nikatru.com"
+    },
+    {
+      "id": 17,
+      "name": "Supabase auth chain"
+    },
+    {
+      "id": 18,
+      "name": "Studio Access gate"
+    },
+    {
+      "id": 19,
+      "name": "Supabase backup chain"
     }
   ],
   "chainsObserved": {
@@ -122,12 +151,18 @@
   "_notObservable": [
     "🔴 WHAT THIS LEDGER STILL CANNOT PROVE, stated so it is not mistaken for coverage.",
     "",
-    "Every monitor above, the alert evaluation, and the Resend SMTP hop all run on ONE Oracle box —",
+    "Every monitor above, the alert evaluation, and the Resend SMTP hop all run on ONE box —",
     "including monitor id 1, which watches GlitchTip itself. If that box is down, the check that would",
     "notice is down and the mail that would say so is down with it, and the result is indistinguishable",
     "from perfect health. Proving the chain delivers WHILE THE BOX IS UP says nothing about the case",
     "that matters most. That is [pipeline E-9b], it is owner-gated, and it is recorded as undecided in",
     "tooling/monitor-register.json → observability.spof. Do not read a green run of",
-    "verify-alarm-chains.mjs as an answer to it."
+    "verify-alarm-chains.mjs as an answer to it.",
+    "",
+    "⚠️ THIS PARAGRAPH SAID 'ONE ORACLE BOX' UNTIL 2026-09-03, and the correction is one word rather",
+    "than a change of state. The box became the Hostinger box (Box B) on 2026-09-02 — the same move",
+    "whose rename is the subject of _expectedMonitorsWhy above, and the same move that put monitors 17,",
+    "18 and 19 on the instance. It is still ONE box, so E-9b is exactly as open as it was; naming the",
+    "old text is how a reader can tell a correction from a resolution."
   ]
 }
