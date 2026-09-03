@@ -175,11 +175,30 @@ export interface Env {
    * failure this portfolio has paid for. Absent ⇒ one heartbeat row per target
    * saying so, and `check-heartbeats.mjs` turns that into a durable issue.
    *
-   * ⚠️ SCOPE IS THE WHOLE POINT: this wants `Actions: read and write` on the two
-   * public repositories and NOTHING ELSE. Do not reuse a classic PAT from the
-   * vault — those carry `repo`, `admin:org` and `delete_repo`, and this Worker
-   * is a public-facing service whose secrets are worth exactly what they can do.
-   * Set with `wrangler secret put GITHUB_DISPATCH_TOKEN`, never as a var.
+   * 🔴 IT HOLDS AN EXISTING VAULT PAT, BY OWNER DECISION 2026-09-03, AND THAT IS
+   * RECORDED RATHER THAN GLOSSED. What this limb NEEDS is `Actions: read and
+   * write` on two public repositories. What it HAS carries `repo`, `admin:org`,
+   * `delete_repo` and `admin:enterprise` — measured that day against
+   * `x-oauth-scopes`, on all three PATs in the vault, which are identical. So
+   * the credential in this public-facing Worker can delete repositories and
+   * administer the organisation, and the honest sentence is that the blast
+   * radius is bounded by trust in this code rather than by the token.
+   *
+   * ⚠️ THE STORE IS NOT THE EXPOSURE — Cloudflare secrets cannot be read back
+   * out. The realistic leak path is this Worker putting the value somewhere
+   * visible, and there are exactly two: a `console.log` that lands in Workers
+   * Logs, and a `detail` string that lands in `cron_heartbeat`, which
+   * check-heartbeats.mjs reads and the ops-watch alert job pastes into a PUBLIC
+   * GitHub issue. Both are closed by assertion in test/github-dispatch.test.ts
+   * ("the token never leaves the fetch"), not by intention.
+   *
+   * ⬜ THE DOWNGRADE IS ONE COMMAND, and it is worth taking whenever convenient:
+   * mint a fine-grained PAT scoped to `Actions: read and write` on the two repos
+   * and re-run `wrangler secret put GITHUB_DISPATCH_TOKEN`. Nothing in the code
+   * changes — the Worker reads a NAME, never a particular token.
+   * Set with `wrangler secret put GITHUB_DISPATCH_TOKEN`, never as a var. There
+   * is NO new key in .claude/secrets.env: the value is the vault's existing
+   * `Project_Cross_Platform_Apps_GITHUB_PAT`.
    */
   GITHUB_DISPATCH_TOKEN?: string;
   /**
