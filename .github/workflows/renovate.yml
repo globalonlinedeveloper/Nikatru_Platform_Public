@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Renovate — SELF-HOSTED, run as a GitHub Action rather than by Mend.
+#
+# WHY SELF-HOSTED AT ALL. The free Mend-hosted App does the same job and needs
+# no token of ours. It was moved here on owner instruction so that no third
+# party clones the repositories. ⚠️ For these two repos that buys no privacy —
+# both are PUBLIC — so the honest statement of the trade is: we accept a token,
+# a scheduler dependency and a supply-chain surface, in exchange for the bot
+# running on infrastructure we already trust. Recorded so the next reader does
+# not mistake it for a security improvement it is not.
+#
+# 🔴 ONE WORKFLOW, TWO REPOSITORIES, ON PURPOSE. `RENOVATE_REPOSITORIES` below
+# names both. The alternative — a copy of this file in each repo — doubles the
+# number of schedules that can silently stop, and silent-stopping is this
+# project's recurring failure mode. One schedule, one token, one place to look.
+#
+# ⛔ THIS MUST NOT RUN ALONGSIDE THE MEND-HOSTED APP. Two Renovates on one repo
+# open competing branches for the same upgrade. Before this lands, the Mend
+# Renovate GitHub App has to be uninstalled (or suspended) for both repos —
+# an account-level action no repository token can perform.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Renovate
+
+on:
+  # 🔴 THE PRIMARY TRIGGER, and it is `workflow_dispatch` deliberately. GitHub
+  # delivers only ~10.1% of scheduled runs on time (research/76 §E, reproduced
+  # against Upptime's own repository), and that unreliability froze this
+  # repository's merge queue twice — ~18h on 2026-08-10 and ~46h on 2026-09-02.
+  # The alarm clock is therefore a Cloudflare Worker cron (1-minute
+  # granularity), which fires this workflow through
+  # POST /repos/{owner}/{repo}/actions/workflows/renovate.yml/dispatches.
+  workflow_dispatch:
+
+  # ⚠️ AND A SCHEDULE ANYWAY, WHICH IS NOT A CONTRADICTION. A late Renovate run
+  # costs nothing — it opens its PRs an hour later. That is the opposite of
+  # ops-watch.yml, where lateness ages a freshness window and blocks merges. So
+  # here the unreliable scheduler is a perfectly good BACKSTOP: if the Worker
+  # ever stops firing, dependency updates degrade to "weekly-ish" instead of
+  # stopping dead. Belt and braces, with the braces named.
+  schedule:
+    - cron: '0 3 * * 1'
+
+# Least privilege: every write this workflow makes is authenticated with
+# RENOVATE_TOKEN, never the ambient GITHUB_TOKEN. 🔴 That is not a style choice
+# — PRs opened with GITHUB_TOKEN do not trigger `on: pull_request` workflows, so
+# Renovate's PRs would arrive with NO CI AT ALL in a repository whose entire
+# discipline is that a merge is gated on ci-gate.
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Renovate both public repositories
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Pinned to a full commit SHA, like all 42 other actions in this tree
+      # ([pipeline F-11]). A floating tag is the supply-chain hole this
+      # repository already closed once: research/76 §D records 76 of 77 tags on
+      # one popular action being force-pushed to an infostealer in March 2026.
+      # v46.2.5, published 2026-08-31.
+      - name: Run Renovate
+        uses: renovatebot/github-action@39b914146caeff8cd512e61c8992f1d5913af85c
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          # Both repositories, explicitly. NOT `autodiscover` — that would pick
+          # up every repository the token can reach, which for a classic PAT is
+          # every private repository on the account. Naming them is the control.
+          RENOVATE_REPOSITORIES: >-
+            globalonlinedeveloper/Nikatru_Platform_Public,
+            globalonlinedeveloper/Nikatru_Extensions_Public
+          # Each repository's own renovate.json still governs what it does —
+          # the schedule, automerge: false, the pinned-digest helper. This file
+          # decides WHEN and WHERE Renovate runs, never WHAT it changes.
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: 'required'
+          LOG_LEVEL: info

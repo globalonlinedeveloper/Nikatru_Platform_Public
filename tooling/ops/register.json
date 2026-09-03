@@ -967,6 +967,39 @@
       "source": "verified"
     },
     {
+      "id": "duty.workflow.renovate.yml",
+      "kind": "duty",
+      "what": "Renovate, run as a GitHub Action across BOTH public repositories, replacing the free Mend-hosted App on owner instruction so no third party clones the code.",
+      "detector": "The weekly scheduled run's own history, plus duty.renovate's Dependency Dashboard issue, which Renovate rewrites on every pass. Two independent records: the workflow RAN, and the bot DID something.",
+      "response": "Dependency and container pins stop being refreshed. 🔴 That is not cosmetic here: F-2, F-8 and F-11 pinned every build version, dependency and action, and EACH STOPS RECEIVING SECURITY FIXES the moment it is pinned. Renovate is the half that makes pinning sustainable; without it the tree ends up LESS safe than before the pins were added.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/renovate.yml",
+        "record": "GitHub Actions run history for renovate.yml, filtered to event = schedule",
+        "failingValue": "no scheduled success inside the window",
+        "readBy": "nothing in-tree reads this cadence specifically — see `freshnessGap` below rather than inferring a reader from the [14]O-3 limb, which queries it but is not a guard about it",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "renovate.yml",
+          "event": "schedule",
+          "why": "🔴 `event: schedule` DELIBERATELY, EVEN THOUGH THE PRIMARY TRIGGER IS A DISPATCH. The Cloudflare Worker cron fires this workflow through `workflow_dispatch`, because GitHub delivers only ~10.1% of scheduled runs on time and that unreliability froze this repository's merge queue twice. But a reader CANNOT DISTINGUISH a Worker's dispatch from a human pressing the button, and 'somebody pressed a button' is the opposite of a cadence claim — the rule every other workflow row here obeys. So the weekly `schedule:` backstop is what EVIDENCES the cadence, and the Worker is what makes the updates timely. The two triggers do different jobs and only one of them is proof."
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "Nothing outside GitHub watches this workflow's absence.",
+        "ownerGated": true,
+        "gap": "⚠️ SAME CIRCULARITY AS EVERY OTHER WORKFLOW ROW, and it is stated rather than implied: the duty runs on GitHub Actions and the only record of it is GitHub Actions' own run history, so a provider outage removes the failure and the evidence together. It is TOLERABLE HERE in a way it is not for duty.workflow.ops-watch.yml, because nothing gates a merge or a deploy on Renovate having run — a silent Renovate costs freshness, not the ability to ship. Closing it properly is research/76 §C: the Worker cron writes its own record to D1 and the register reads THAT instead of GitHub's history."
+      },
+      "freshnessGap": "🔴 NO DEDICATED FRESHNESS READER, AND THAT IS A CHOICE RATHER THAN AN OVERSIGHT. build-platforms.yml has assert-platform-proof-fresh.mjs and e2e.yml has assert-e2e-proof-fresh.mjs, because a stale six-platform build or a stale nightly means the thing they prove is unproven and a merge should stop. NOTHING GATES A MERGE OR A DEPLOY ON RENOVATE HAVING RUN, so a blocking guard here would buy a red build for a duty whose failure costs FRESHNESS, not correctness — and this repository has learned twice this week what a blocking guard on an unreliable schedule costs (~18h on 2026-08-10, ~46h on 2026-09-02). The [14]O-3 limb DOES query this row's run history on every CI run and will print it as FAILING when it goes stale; that print is the intended signal. ⚠️ The residual risk is stated plainly: Renovate can stop for a fortnight and the only thing that says so is a line in CI output nobody is required to read. The real close is research/76 §C — the Cloudflare Worker cron writes its own record to D1 and the register reads THAT, which also removes the circularity of GitHub Actions being both the duty and the evidence. Declared 2026-09-03.",
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified",
+      "verifiedHow": "2026-09-03 — the workflow was added with the action pinned to renovatebot/github-action@39b914146caeff8cd512e61c8992f1d5913af85c (v46.2.5, published 2026-08-31), RENOVATE_TOKEN set as a repository secret, and both repositories named explicitly in RENOVATE_REPOSITORIES rather than left to autodiscover — which for a classic PAT would reach every private repository on the account."
+    },
+    {
       "id": "duty.renovate",
       "kind": "duty",
       "what": "Advances every pinned input — actions, npm, pub, and the toolchain versions in tooling/versions.json — by proposal, never by memory.",
