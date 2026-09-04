@@ -1561,8 +1561,17 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // a 36h window leaves a whole spare firing of margin if one is missed.
   //
   // ⚠️ e2e.yml KEEPS ITS `schedule:` SLOT. It is the rollback path, and
-  // assert-e2e-proof-fresh.mjs — a SEPARATE reader, MAX_AGE_DAYS = 3 under an
-  // owner lock — still requires `event=schedule` and is NOT part of this change.
+  // assert-e2e-proof-fresh.mjs — a SEPARATE reader — still requires
+  // `event=schedule` and is NOT part of this change.
+  // ⚫ CORRECTED 2026-09-04: this line said "MAX_AGE_DAYS = 3 under an owner
+  // lock". Inverted, and the inversion was propagated to three files in one day.
+  // The lock is on the SIBLING assert-platform-proof-fresh.mjs's 14 — its header
+  // reads "It is not DERIVED from the cron — that is a standing owner lock".
+  // This file's 3 is the opposite: DERIVED from e2e.yml's daily cron, and
+  // machine-enforced by `assertWatchedWorkflowIntact`, which fails the build the
+  // moment that cron stops being daily. What defers moving it is BLAST RADIUS on
+  // the repository's most safety-critical guard, NOT permission — and calling it
+  // "locked" would have stopped a later reader from even asking.
   { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 20 },
 ];
 

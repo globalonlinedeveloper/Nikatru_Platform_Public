@@ -136,6 +136,8 @@ import {
   classifyRunHistoryAnswer,
   combineLimbProbes,
   describeNarrowing,
+  dispatchTargetsFromSource,
+  checkTimerTargetsAgainstDispatcher,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -2938,7 +2940,53 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
       assert.equal(q.headBranch, 'main', 'the branch guarantee rode on the event filter and must now be explicit');
       assert.equal(q.timer.reader, 'cloudflare-d1-heartbeat');
       assert.equal(q.timer.job, 'github_dispatch');
-      assert.equal(q.timer.target, 'e2e.yml', 'a timer row for ANOTHER workflow would prove nothing about this one');
+      // 🔴 DERIVED FROM THE WORKER, NOT TYPED OUT. The first version of this
+      // assertion read `'e2e.yml'` — a hand-written expectation checked against a
+      // hand-written register, i.e. two copies of one belief. The Worker actually
+      // writes `${repo}/${workflow}`, so the row it was "confirming" matched ZERO
+      // heartbeat rows and the duty would have gone red the moment `firstDue`
+      // expired. An expectation that does not come from the producer cannot fail
+      // when the producer is what you got wrong.
+      const src = readFileSync(resolve(CI_DIR, '..', '..', 'services', 'platform', 'src', 'scheduled.ts'), 'utf8');
+      const { targets } = dispatchTargetsFromSource(src);
+      assert.ok(targets.includes(q.timer.target), `the dispatcher writes ${targets.join(', ')}; the row declares ${q.timer.target}`);
+      assert.match(q.timer.target, /e2e\.yml$/, 'a timer row for ANOTHER workflow would prove nothing about this one');
+    });
+
+    // ── the guard that would have caught the above, negative-tested ──────────
+    test('🔴 a target the dispatcher does NOT write is REFUSED — the bug that shipped', () => {
+      const reg = registerCopy();
+      e2eRow(reg).mechanism.recordQuery.timer.target = 'e2e.yml'; // the shipped mistake, verbatim
+      const src = readFileSync(resolve(CI_DIR, '..', '..', 'services', 'platform', 'src', 'scheduled.ts'), 'utf8');
+      const probs = checkTimerTargetsAgainstDispatcher(reg, src);
+      assert.equal(probs.length, 1, 'exactly the e2e row should fail; got: ' + probs.join(' | '));
+      assert.match(probs[0], /is not a target the dispatcher writes/);
+      assert.match(probs[0], /EXACT equality/, 'the message must say WHY a near-miss is silent, or the next reader repeats it');
+    });
+
+    test('the committed register AGREES with the dispatcher — the bijection, not a spot check', () => {
+      const src = readFileSync(resolve(CI_DIR, '..', '..', 'services', 'platform', 'src', 'scheduled.ts'), 'utf8');
+      assert.deepEqual(checkTimerTargetsAgainstDispatcher(registerCopy(), src), []);
+    });
+
+    test('a dispatcher whose target TEMPLATE changed is COVERAGE LOST, not a silent pass', () => {
+      const r = dispatchTargetsFromSource('const target = `${t.workflow}`;\nGITHUB_DISPATCH_TARGETS = [\n];');
+      assert.ok(r.error, 'a template this guard cannot reproduce must be an error');
+      assert.match(r.error, /does not know how to reproduce/);
+    });
+
+    test('a dispatcher with ZERO parsed targets is an error — an empty set would pass vacuously', () => {
+      const r = dispatchTargetsFromSource('const target = `${t.repo}/${t.workflow}`;\nexport const GITHUB_DISPATCH_TARGETS: X = [\n];');
+      assert.ok(r.error);
+      assert.match(r.error, /ZERO entries/);
+    });
+
+    test('the targets are read from the source, and COMMENTED-OUT ones do not count', () => {
+      const src = readFileSync(resolve(CI_DIR, '..', '..', 'services', 'platform', 'src', 'scheduled.ts'), 'utf8');
+      const { targets, error } = dispatchTargetsFromSource(src);
+      assert.equal(error, undefined);
+      assert.ok(targets.length >= 3, `expected renovate, ops-watch and e2e at least; got ${targets.join(', ')}`);
+      for (const t of targets) assert.match(t, /^[\w-]+\/[\w.-]+\.yml$/, `target ${t} is not repo/workflow shaped`);
     });
 
     // ── the VERDICT half: pure, so every branch is reachable with no network ──

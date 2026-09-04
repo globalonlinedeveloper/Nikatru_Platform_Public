@@ -82,7 +82,7 @@
   "no-secret-defines.test.mjs": 14,
   "no-tls-pinning.test.mjs": 13,
   "obfuscation-coupled.test.mjs": 14,
-  "ops-register.test.mjs": 228,
+  "ops-register.test.mjs": 233,
   "ops-status.test.mjs": 46,
   "ops-verifiers.test.mjs": 15,
   "package-boundaries.test.mjs": 18,

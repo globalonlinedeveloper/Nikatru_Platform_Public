@@ -786,7 +786,7 @@
             "table": "cron_heartbeat",
             "wrangler": "services/platform/wrangler.jsonc",
             "job": "github_dispatch",
-            "target": "e2e.yml"
+            "target": "Nikatru_Platform_Public/e2e.yml"
           },
           "firstDue": "2026-09-05T00:00:00Z",
           "_why": [
@@ -814,7 +814,7 @@
             "⚠️ e2e.yml KEEPS ITS `schedule:` SLOT. It costs a duplicate run on the ~40% of nights GitHub delivers,",
             "and it is the rollback: revert this row and the old evidence is still being written.",
             "🔴 AND THIS ROW IS NOT THE ONLY READER OF THIS FACT. tooling/ci/assert-e2e-proof-fresh.mjs still",
-            "requires `event=schedule` against MAX_AGE_DAYS = 3, a constant under a standing owner lock. It is not",
+            "still requires `event=schedule`. Its MAX_AGE_DAYS = 3 is NOT under an owner lock -- that was an INVERTED CITATION, corrected 2026-09-04. The lock is on the SIBLING assert-platform-proof-fresh.mjs's 14, whose own header says 'It is not DERIVED from the cron -- that is a standing owner lock'. This file's 3 is the opposite: DERIVED from e2e.yml's daily cron and machine-enforced by assertWatchedWorkflowIntact, which fails the build if that cron stops being daily. So what defers moving it is BLAST RADIUS on the repository's most safety-critical guard, NOT permission -- and the word 'locked' would have stopped a later reader from even asking. It is not",
             "blocking today (72h ceiling vs this row's 36h) and it is deliberately NOT moved in the same change —",
             "but it stays a 72h dependency on a 10.1%-on-time scheduler, so PHASE 2 IS NOT FINISHED UNTIL IT MOVES."
           ]
