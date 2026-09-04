@@ -7,6 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'legal_consent_fields.dart';
+import 'turnstile_gate.dart';
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
 ///
@@ -28,6 +29,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final TextEditingController _password = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  /// See the note on the same field in `login_screen.dart`: null is today's
+  /// normal state, and it becomes load-bearing only after the cutover.
+  String? _captchaToken;
 
   /// 🔴 BOTH FALSE, ALWAYS. `assert-signup-consent-shape.mjs` fails the build if
   /// either initialiser ever says `true` — a pre-ticked consent is a dark
@@ -63,6 +68,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       await auth.signUpWithEmail(
         email: _email.text.trim(),
         password: _password.text,
+        captchaToken: _captchaToken,
       );
       // 🔴 AFTER THE ACCOUNT EXISTS, AND THE ORDER WAS THE OTHER WAY ROUND FOR
       // A DAY. Recording first was justified as "a user through the door with
@@ -174,6 +180,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               // marketing box is. An optional consent that gates the service is
               // GDPR Art 7(4) conditionality, which research/43 declined as
               // legally unavailable rather than as a preference.
+              // Immediately above the button — see the note in login_screen.
+              TurnstileGate(
+                onToken: (String? t) => setState(() => _captchaToken = t),
+                onError: (String m) => setState(() => _error = m),
+              ),
               FilledButton(
                 key: SignUpScreen.submitButton,
                 onPressed: (_busy || !_acceptedTerms)

@@ -1,780 +1,804 @@
 {
-  "_readme": [
-    "THE CAPABILITY REGISTER — [pipeline C-1] Private/requirements/ (was pipeline/02-shared-chassis.md, folded into the JSON spec 2026-08-15)",
-    "",
-    "The complete set of non-app-specific capabilities the factory provides: what it is, which package",
-    "owns it, which SEAM INTERFACE (file + symbol + methods) others code against, and who consumes it.",
-    "",
-    "Why it exists: 'every capability' cannot be checked against a list that does not exist. THREE",
-    "notification implementations were written because nobody had a place to look that would have said",
-    "one already existed. The third is still in the tree -- see violations on `notifications`.",
-    "",
-    "THE ARCHITECTURE THIS ENCODES: packages/core DECLARES the contracts; other packages IMPLEMENT them.",
-    "So `seams` are the interfaces a package declares, and `implementsSeams` names contracts declared",
-    "elsewhere that it satisfies. v1 of this file pointed every seam at a package barrel file, which",
-    "described nothing -- corrected 2026-07-28.",
-    "",
-    "Enforced by tooling/ci/assert-capability-register.mjs:",
-    "  · every packages/* dir on disk has an entry, and every path named here exists",
-    "  · every declared seam SYMBOL really appears in the file that claims it",
-    "  · every declared seam METHOD really appears in that interface  [decision item 12]",
-    "  · consumers verified in BOTH directions against real pubspecs",
-    "  · no registered seam may be implemented under apps/ unless declared as a violation  [C-3, widened]",
-    "",
-    "VIOLATIONS ARE DECLARED, DATED AND PRINTED ON EVERY RUN. A known gap that nobody sees becomes",
-    "permanent. Each names why it is not yet fixed and what would unblock it."
+ "_readme": [
+  "THE CAPABILITY REGISTER — [pipeline C-1] Private/requirements/ (was pipeline/02-shared-chassis.md, folded into the JSON spec 2026-08-15)",
+  "",
+  "The complete set of non-app-specific capabilities the factory provides: what it is, which package",
+  "owns it, which SEAM INTERFACE (file + symbol + methods) others code against, and who consumes it.",
+  "",
+  "Why it exists: 'every capability' cannot be checked against a list that does not exist. THREE",
+  "notification implementations were written because nobody had a place to look that would have said",
+  "one already existed. The third is still in the tree -- see violations on `notifications`.",
+  "",
+  "THE ARCHITECTURE THIS ENCODES: packages/core DECLARES the contracts; other packages IMPLEMENT them.",
+  "So `seams` are the interfaces a package declares, and `implementsSeams` names contracts declared",
+  "elsewhere that it satisfies. v1 of this file pointed every seam at a package barrel file, which",
+  "described nothing -- corrected 2026-07-28.",
+  "",
+  "Enforced by tooling/ci/assert-capability-register.mjs:",
+  "  · every packages/* dir on disk has an entry, and every path named here exists",
+  "  · every declared seam SYMBOL really appears in the file that claims it",
+  "  · every declared seam METHOD really appears in that interface  [decision item 12]",
+  "  · consumers verified in BOTH directions against real pubspecs",
+  "  · no registered seam may be implemented under apps/ unless declared as a violation  [C-3, widened]",
+  "",
+  "VIOLATIONS ARE DECLARED, DATED AND PRINTED ON EVERY RUN. A known gap that nobody sees becomes",
+  "permanent. Each names why it is not yet fixed and what would unblock it."
+ ],
+ "consumerRoots": [
+  "apps/subly",
+  "tooling/bricks/app/__brick__/apps/{{app_id}}",
+  "packages/purchases"
+ ],
+ "vendors": {
+  "_why": [
+   "[pipeline C-8] EVERY VENDOR SATISFIES THE PORTABILITY CHECKLIST, not just 'behind a seam'.",
+   "",
+   "Top-down from the charter kept 'behind a seam' and silently dropped the rest -- which is how a",
+   "seam ends up LOOKING like portability while a vendor swap still needs a store release.",
+   "",
+   "SIX PARTS, not four. The requirement's own title says 'four-part' and portability-standard.md's",
+   "checklist lists SIX; the lock resolved the contradiction to six, the checklist being the primary",
+   "record. Four are machine-checkable and BLOCK; two are judgement and PRINT:",
+   "  1 openProtocol   PRINTS  -- does it speak a standard, or is there a compatibility layer",
+   "  2 seam           CHECKED -- the named symbol must exist where it claims to",
+   "  3 configKeyed    CHECKED -- every surface is runtime-config-keyed, or compile-time WITH a",
+   "                              reason. 'No release to repoint' is the property.",
+   "  4 ownTheRecord   PRINTS  -- the app depends on OUR record, not the vendor's",
+   "  5 exportPath     CHECKED -- the cited runbook/script must exist on disk",
+   "  6 exitPlan       CHECKED -- a named alternative and its swap cost, non-empty",
+   "",
+   "SURFACES ARE DERIVED FROM THE TREE, never typed here, and from FOUR sources because any one",
+   "alone is blind (all four verified 2026-07-28):",
+   "  a. `*.fromEnvironment('KEY')` in Dart -- MULTILINE. A line-based grep finds 2 of the 11 that",
+   "     exist, because dart format wraps the literal onto the next line. UPDATE_URL is one it misses.",
+   "  b. `interface Env` in services/*/src/types.ts -- REVENUECAT_WEBHOOK_SECRET lives ONLY here, so",
+   "     without it RevenueCat, the amendment's own example, is invisible.",
+   "  c. wrangler `binding` keys AND `ratelimits[].name` -- ratelimits uses `name`, not `binding`, so",
+   "     a binding-only scan cannot see EVENTS_LIMITER.",
+   "  d. `triggers.crons` -- a schedule is an external surface too; a dead cron looks like a live one.",
+   "",
+   "Every derived surface must be claimed by exactly one vendor or declared a non-vendor surface.",
+   "That is what stops a new vendor arriving unnoticed -- the failure this whole register exists for.",
+   "",
+   "SCOPE: services, not libraries. portability-standard.md's checklist opens 'before adopting any new",
+   "SERVICE'. Dart package dependencies are [2]C-5's limb (c), which already stops an app importing a",
+   "vendor SDK the seam wraps; duplicating them here would be two lists to keep in step."
   ],
-  "consumerRoots": [
+  "supabase": {
+   "surface": "Portfolio-wide identity/auth (project Cross_Platform_Auth) and the Postgres behind it.",
+   "stickiness": "★★★ — portability-standard.md names RLS coupling as one of three sticky points.",
+   "surfaces": [
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_JWT_SECRET",
+    "SUPABASE_KEEPALIVE_URLS",
+    "SUPABASE_SERVICE_ROLE_KEY"
+   ],
+   "openProtocol": "YES — OIDC/JWKS for tokens and plain Postgres underneath. Verification is against standard JWKS claims, not a Supabase SDK call, which is what makes the identity provider swappable.",
+   "seam": {
+    "file": "packages/core/lib/src/auth/auth_repository.dart",
+    "symbol": "AuthRepository"
+   },
+   "configKeyed": {
+    "kind": "runtime",
+    "detail": "URL and anon key are dart-defines with compiled-in fallbacks, and the Worker reads SUPABASE_URL from its own env — repointing needs no app release."
+   },
+   "ownTheRecord": "YES — entitlements and app state live in OUR D1, keyed on the standard `sub` claim. The app depends on our record, not Supabase's.",
+   "exportPath": {
+    "path": "Private/runbooks/operations.md",
+    "detail": "pg_dump via the Supabase dashboard/API; the schema is plain Postgres with no proprietary types."
+   },
+   "exitPlan": {
+    "alternative": "any OIDC provider (Auth0, Clerk, self-hosted Keycloak) behind the same AuthRepository seam",
+    "swapCost": "Medium — JWKS verification is standard, so the cost is re-issuing sessions and migrating the user table, NOT rewriting the app."
+   }
+  },
+  "cloudflare": {
+   "surface": "Workers runtime, D1 (platform_db, subly_db), KV (config, JWKS cache), and the events/config rate-limiters. NO R2 surface as of 2026-08-01 — see exportPath.",
+   "stickiness": "★★★ — portability-standard.md names KV/DO as a sticky point.",
+   "surfaces": [
+    "PLATFORM_DB",
+    "SUBLY_DB",
+    "APP_DB",
+    "CONFIG_KV",
+    "JWKS_CACHE",
+    "EVENTS_LIMITER",
+    "EVENTS_CEILING_LIMITER",
+    "CONFIG_CEILING_LIMITER",
+    "triggers.crons"
+   ],
+   "openProtocol": "PARTIAL — D1 is SQLite dialect and R2 is S3-compatible, both portable. KV and the rate-limiter are proprietary; the crons are a Workers-only scheduler. This is the honest weak spot, and it is why the stickiness is ★★★.",
+   "seam": {
+    "file": "packages/core/lib/src/config/config_loader.dart",
+    "symbol": "ConfigTransport"
+   },
+   "configKeyed": {
+    "kind": "runtime",
+    "detail": "Bindings are wrangler config, not code — swapping a database or bucket is a config edit and a deploy, never an app release."
+   },
+   "ownTheRecord": "YES — D1 IS our record. The risk here is not losing the record to a vendor, it is the SQLite dialect and the KV semantics.",
+   "exportPath": {
+    "path": "services/platform/migrations",
+    "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ✅ CLOSED 2026-08-01: the FINDING of 2026-07-28 — the subly-api `EXPORTS` R2 binding declared in types.ts and referenced NOWHERE in the code, a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch — was routed to stage 4 and executed there. The binding and its type declaration are gone ([4]B-18), and tooling/ci/assert-platform-register.mjs now fails on ANY binding in ANY wrangler config in the repo (brick template included) with no resolved reader, so this cannot recur silently. ⚠️ The BUCKET is still in the account: deleting it is destructive and is the owner's. There is therefore NO R2 surface in this list today, which is correct — the rule is ONE portfolio bucket bound in services/platform when object storage is genuinely needed, addressed by an `<app_id>/` prefix."
+   },
+   "exitPlan": {
+    "alternative": "Postgres/Neon + S3 + any Node host behind the same Worker handlers",
+    "swapCost": "High for KV/DO semantics, Low for D1/R2. Deliberately kept: nothing durable lives in KV."
+   }
+  },
+  "cloudflare-turnstile": {
+   "surface": "Cloudflare Turnstile — the bot-detection challenge on the four gated auth screens (sign-in, sign-up, forgot-password, resend-verification). TURNSTILE_SITE_KEY is the PUBLIC site key, passed as a dart-define; the secret half lives on the auth box as CAPTCHA_SECRET and never reaches this repo.",
+   "stickiness": "★☆☆ — one widget, one public key, one server-side verify URL. The lowest-stickiness vendor in this register.",
+   "surfaces": [
+    "TURNSTILE_SITE_KEY"
+   ],
+   "openProtocol": "NO — the widget script, the token format and the siteverify endpoint are all proprietary to Cloudflare. That sounds worse than it is: hCaptcha and reCAPTCHA expose the SAME shape (embed a script keyed by a public site key, receive an opaque token, POST it to the vendor's verify endpoint), so the interface is de-facto uniform across the alternatives even though no standard names it.",
+   "seam": {
+    "file": "apps/subly/lib/features/auth/turnstile_gate.dart",
+    "symbol": "TurnstileGate"
+   },
+   "configKeyed": {
+    "kind": "compile-time",
+    "reason": "TURNSTILE_SITE_KEY is a --dart-define, so repointing it is a WEB BUILD, not a config edit — this vendor is the exception to the runtime rule the other rows keep, and it is recorded rather than hidden. Two things bound the cost: `web` is the only channel with served: true, so there are no installed clients holding a compiled-in key; and the key is PUBLIC by design, so a rotation is a redeploy and never a secret-handling exercise. ⚠️ It stops being cheap at the first store release, when installed clients would hold the old key until they update."
+   },
+   "ownTheRecord": "NOT APPLICABLE, AND THAT IS THE POINT — Turnstile holds no record of ours. It answers one question (is this caller a bot) and keeps nothing we would need back. This row exists to say that explicitly: a vendor that stores nothing still has to be claimed, or an unreviewed dependency is indistinguishable from one nobody has looked at.",
+   "exportPath": {
+    "detail": "NO EXPORT PATH, BECAUSE THERE IS NOTHING TO EXPORT. Deliberately no `path`: the field is present so the checklist is answered, and empty so it cannot be read as an untested exit. Contrast the `cloudflare` row above, whose exportPath cites services/platform/migrations because D1 IS our record — filing Turnstile under that vendor would have made that sentence cover a surface it says nothing about, which is why this is a separate row rather than one more name in cloudflare.surfaces."
+   },
+   "exitPlan": {
+    "alternative": "hCaptcha (drop-in: same public-site-key + opaque-token + siteverify shape), or GoTrue's own rate limiting alone",
+    "swapCost": "LOW — replace the body of TurnstileGate, swap one dart-define, and change GOTRUE_SECURITY_CAPTCHA_PROVIDER on the auth box. ⚠️ The cost that is NOT low is the store declarations: the current implementation reaches Turnstile through cloudflare_turnstile → flutter_inappwebview, a linked binary that carries sworn rows in ios-appstore/privacy-manifest.json and android-play/data-safety.json. A provider swap that changes the webview dependency changes those sworn answers too, so the exit is cheap in code and NOT free in paperwork."
+   }
+  },
+  "revenuecat": {
+   "surface": "Subscription entitlement provider — the client SDK key and the server webhook secret.",
+   "stickiness": "★★★★ — payments, the stickiest point the standard names.",
+   "surfaces": [
+    "REVENUECAT_KEY",
+    "REVENUECAT_WEBHOOK_SECRET"
+   ],
+   "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. This is precisely why part 4 carries the weight for this vendor.",
+   "seam": {
+    "file": "packages/core/lib/src/entitlement_cache.dart",
+    "symbol": "EntitlementCache"
+   },
+   "configKeyed": {
+    "kind": "runtime",
+    "detail": "Client key is a dart-define with a fallback; the webhook secret is Worker env. Neither requires an app release to rotate."
+   },
+   "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — entitlements live in OUR table fed by a per-provider adapter, so the payment vendor is swappable even though payment APIs are not. This is the one line the audit note said to carry forward verbatim.",
+   "exportPath": {
+    "path": "Private/runbooks/operations.md",
+    "detail": "Entitlements are ours in D1 and export with it. RevenueCat itself holds no record we depend on."
+   },
+   "exitPlan": {
+    "alternative": "Paddle (the locked MoR, ADR 004) or direct store IAP, behind the same entitlement adapter",
+    "swapCost": "Medium — a new adapter and a webhook, but no app data migration, because we own the record."
+   },
+   "note": "⬜ NOT YET LIVE. Nobody can pay NIKATRU today; stage 5 owns the money rail. ⚠️ 2026-08-01: the CLIENT rail now exists too (packages/purchases + the brick wiring), so what remains is not any code. — CORRECTION 2026-08-28: that sentence ended ‘so what remains is the seller account itself (A-1), not any code’, and the seller account is no longer what remains: the Paddle account went LIVE 2026-08-11 ([ADR 044]). What still stops a payment is `paywall.enabled: false` for every app in services/platform/src/app-config-data.json plus the unset PADDLE_NOTIFICATION_SECRET — so the opening sentence of this note, ‘Nobody can pay NIKATRU today’, is still TRUE, for different reasons than it was written for. Recorded now because the surfaces already exist in the tree, and a vendor whose keys are wired before its checklist is exactly the adoption-without-review this requirement stops."
+  },
+  "paddle": {
+   "surface": "MERCHANT OF RECORD for web/desktop — the legal seller, which remits global VAT/GST on our behalf. The surface in this repo is ONE value: the per-destination webhook notification secret. — CORRECTION 2026-08-25: it is TWO. `PADDLE_API_KEY`, the seller API key `POST /v1/checkout` creates a transaction with, is the second, and it was invisible to this register rather than absent from the tree: `routes/checkout.ts` read it as `(c.env as unknown as Record<string, string | undefined>)['PADDLE_API_KEY']`, so it appeared in no `interface Env` and this guard’s derivation could not see it. Declaring the binding surfaced it. Both are Worker SECRETS (`wrangler secret put`), never committed vars; both are OWNER-GATED on the same seller account (OWNER_QUEUE A-1); and neither changes anything else in this record — the seam, the export path and the exit plan below are about the entitlement the rail produces, not about how many credentials open the door. The key is additionally world-bound: checkout.ts refuses a `pdl_sdbx_apikey_` prefix on a `live` deploy and vice versa ([5]M-12).",
+   "stickiness": "★★★★ — payments, the stickiest point the portability standard names. Mitigated to the extent it can be: the entitlement RECORD is ours, and the rail is one interface with per-provider adapters.",
+   "surfaces": [
+    "PADDLE_NOTIFICATION_SECRET",
+    "PADDLE_API_KEY"
+   ],
+   "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. Which is exactly why parts 2 and 4 carry the weight here: the SIGNATURE SCHEME is proprietary and lives in one adapter file, and the entitlement it produces is written in our own vocabulary into our own table.",
+   "seam": {
+    "file": "services/platform/src/lib/mor/contract.ts",
+    "symbol": "MoRWebhookVerifier",
+    "note": "[ADR 004] specifies this seam by name: 'build the payment webhook provider-agnostic (MoRWebhookVerifier interface + per-provider signature adapters) so the choice can flip with zero app changes'. Every Paddle-specific fact — the header name, the HMAC construction, the status vocabulary, the id prefixes — lives in services/platform/src/lib/mor/paddle.ts and nowhere else, and each one carries the developer.paddle.com URL it was verified against."
+   },
+   "configKeyed": {
+    "kind": "runtime",
+    "detail": "The notification secret is a Worker secret (`wrangler secret put`), never a committed var and never a compile-time define. Rotating it, or switching the whole rail to a different merchant of record (NOT Lemon Squeezy — retired 2026-08-09 by [ADR 039] D4; see exitPlan below), is a secret change plus a registry line — no app release, and no already-shipped client is affected, because clients never talk to the rail."
+   },
+   "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — the entitlement lives in OUR platform_db, keyed by our own (user_id, app_id, entitlement), written in OUR vocabulary by a per-provider adapter. Paddle holds the buyer relationship and the money; it holds no record the apps depend on. The one thing that is genuinely theirs and not ours is the CUSTOMER: a buyer's payment method and billing history stay with the merchant of record, which is the deal being made when someone else is the legal seller.",
+   "exportPath": {
+    "path": "services/platform/migrations",
+    "detail": "PUBLIC, CHECKABLE EVIDENCE: 0004_money_rail.sql IS the export shape. Every fact the rail depends on is a column in plain SQL in this repo — the provider, the environment, the provider's own ids, its status verbatim, both dates, the revocation reason — plus `provider_notifications`, which keeps every notification byte for byte. So the migration path OUT of Paddle is: point the new rail's adapter at the same table. The verbatim store also means a derivation defect is repairable from data we hold rather than from data we would have to ask a vendor for."
+   },
+   "exitPlan": {
+    "alternative": "A successor merchant of record — FastSpring / Polar / Creem / direct Stripe plus a tax engine — or an India-native MoR, behind the same MoRWebhookVerifier. ⚠️ CORRECTED 2026-08-28: this read 'Lemon Squeezy (the parallel rail [ADR 004] applies for on the same day, PayPal payout from India)'. [ADR 039] D4 (2026-08-09) RETIRED that clause of [ADR 004] — the parallel application was never evidenced and the product is sunsetting into Stripe. WHICH successor is a queued owner decision and is deliberately not answered by putting a name here; tooling/legal/provider-register.json's `lemon-squeezy` row carries the same retirement.",
+    "swapCost": "Medium — one adapter file and one destination secret. No app release, no client change, and NO DATA MIGRATION, because the entitlement table is ours and speaks nobody's vocabulary but our own."
+   },
+   "note": "🟢 THE SELLER ACCOUNT IS LIVE — CORRECTED 2026-08-28. This note read, verbatim: '⬜ NOT YET LIVE, AND THE GAP IS ONE SIGNUP. The rail is built, tested and mounted; PADDLE_NOTIFICATION_SECRET does not exist because it can only be generated in the Paddle seller console, which needs the seller account — OWNER_QUEUE A-1, PENDING.' THE SIGNUP HALF IS DONE: [ADR 044], LOCKED 2026-08-11, evidences a PRODUCTION credential — PADDLE_API_KEY_LIVE (prefix `pdl_live_apikey_`) authenticating against api.paddle.com, 403’d by the SANDBOX host with the same key (which is what proves it is production), and a live POST /transactions returning 201 with txn_01kzs3qcvryq785t7shpq5d7wj. tooling/legal/provider-register.json’s paddle row is `status: live` for the same reason. ⚠️ WHAT REMAINS IS THE DESTINATION SECRET, NOT AN ACCOUNT: PADDLE_NOTIFICATION_SECRET is generated per notification-destination in the seller console and set with `wrangler secret put`, and a Worker secret is invisible to every guard in this tree — so until it is set POST /v1/money/paddle answers 503, and tooling/ci/assert-mor-adapters.mjs PRINTS that one gap on every run rather than failing the build over work only the owner can do. [ADR 004]’s 2026-07-24 sequencing constraint — apply only after a reviewable product with a live paywall and complete legal pages exists — is HISTORICAL now that the application has landed; it is kept because it explains the date. ⛔ AND `live` HERE IS PER CHANNEL: Apple and Google Play remain the merchant of record on their own in-app purchases ([ADR 039] D1, LOCKED 2026-08-09)."
+  },
+  "glitchtip": {
+   "surface": "Crash and error reporting sink (self-hostable Sentry-protocol server).",
+   "stickiness": "★ — deliberately the least sticky choice available.",
+   "surfaces": [
+    "GLITCHTIP_DSN"
+   ],
+   "openProtocol": "YES — speaks the Sentry protocol, so the sentry_flutter SDK talks to it unmodified and any Sentry-protocol sink is a drop-in.",
+   "seam": {
+    "file": "packages/telemetry/lib/src/telemetry_client.dart",
+    "symbol": "TelemetryClient"
+   },
+   "configKeyed": {
+    "kind": "compile-time",
+    "reason": "OWNER DECISION 2026-07-27: GLITCHTIP_DSN stays compile-time while UPDATE_URL moves to runtime. A DSN is a build-identity fact — a build reports as itself — and routing crash reports through runtime config would mean a broken config could silently disable the very channel that reports it being broken."
+   },
+   "ownTheRecord": "N/A — telemetry is a diagnostic stream, not a record the app depends on. Losing history costs insight, never correctness.",
+   "exportPath": {
+    "path": "Private/runbooks/glitchtip.md",
+    "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup."
+   },
+   "exitPlan": {
+    "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes",
+    "swapCost": "Low — one config value, because the protocol is open."
+   }
+  },
+  "github": {
+   "surface": "GitHub Actions workflow dispatch — the alarm clock's outbound leg. The `platform` Worker POSTs `workflow_dispatch` so that a Cloudflare cron, not GitHub's own scheduler, decides WHEN a workflow runs. [research/76 §C] Phase 1.",
+   "stickiness": "★★★★★ — the stickiest entry in this register, and it is written down rather than implied. GitHub holds the repositories, CI, the release lanes, the issue-based alert chain and the RECORD every duty row reads. ⚠️ WHAT THIS SURFACE ADDS IS NOT NEW LOCK-IN — it is one more call into a dependency the whole pipeline already rests on. Declaring it here makes that dependency countable instead of assumed, which is the only thing this register can honestly buy on a vendor nobody is leaving.",
+   "surfaces": [
+    "GITHUB_DISPATCH_TOKEN"
+   ],
+   "openProtocol": "NO — `POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches` is GitHub-specific. But the CALLER is one fetch with a JSON body, and the shape is common to every forge with an API-triggered pipeline (GitLab pipeline triggers, Forgejo/Gitea actions), so the port is a URL and a header rather than a rewrite.",
+   "seam": {
+    "file": "services/platform/src/scheduled.ts",
+    "symbol": "dispatchGithubWorkflows"
+   },
+   "configKeyed": {
+    "kind": "runtime",
+    "reason": "A Worker secret (`wrangler secret put GITHUB_DISPATCH_TOKEN`), never a committed var — it can push work into two public repositories. 🔴 ABSENT IS A RECORDED STATE, NOT A SKIP: the limb writes one `cron_heartbeat` row per target saying the credential is missing, because a dispatcher that quietly does nothing is indistinguishable from one that is working."
+   },
+   "ownTheRecord": "PARTLY, AND THE GAP IS PHASE 2. The record that the dispatch HAPPENED is `platform_db.cron_heartbeat`, which is ours and is read by tooling/ops/check-heartbeats.mjs from outside Cloudflare. The record that the dispatched WORKFLOW ran is GitHub's own run history — which is the circularity research/76 §C exists to break, and the reason Phase 2 repoints the duty readers at D1 rather than merely repointing the trigger.",
+   "exportPath": {
+    "path": "services/platform/migrations",
+    "detail": "cron_heartbeat is a D1 table in this repository's own migrations; the dispatch record leaves with the database, not with GitHub."
+   },
+   "exitPlan": {
+    "alternative": "The dispatched workflow's own `schedule:` block, which is deliberately KEPT as a backstop and is what evidences the cadence today — so losing this surface degrades timeliness and loses nothing else.",
+    "swapCost": "Low — one URL, one header set, one status code. The fallback needs no change at all because it was never removed."
+   }
+  }
+ },
+ "nonVendorSurfaces": {
+  "_why": [
+   "Derived surfaces that are NOT third-party services. They still have to be classified, or an",
+   "unclaimed token would be indistinguishable from a vendor nobody reviewed.",
+   "",
+   "A surface here may still carry a VIOLATION -- see UPDATE_URL, which is a decided fix, not a",
+   "judgement call."
+  ],
+  "API_BASE_URL": "our own subly-api Worker",
+  "CONFIG_BASE_URL": "our own config service (CFG-1)",
+  "PLATFORM_BASE_URL": "our own shared platform Worker",
+  "APP_ERASURE_ENDPOINTS": "OUR OWN app Workers, listed as `<appId>=<https origin>` so the shared erasure route can reach each app's own database. No external system is behind it: every origin in the list is a Worker in this repository. It exists because a route reads the databases it reads, not the ones its Worker binds — services/platform sweeps platform_db and BINDS subly_db, so before this list the only app in the field was the one app account deletion did not reach, and every subscription, budget and payment survived behind an account that no longer existed. DELETE /v1/account now relays the caller's own bearer token to each named app's own DELETE /v1/account, after the service-role precondition and before the identity is deleted; a missing or malformed list is a 501 refusal rather than a silent skip. `https://` is required and checked at runtime, because the relay forwards a live session token. tooling/ci/assert-erasure-reach.mjs holds the both-directions relation between this list and the app Workers that own a database. Added 2026-08-04.",
+  "ALLOWED_ORIGINS": "our own domains — the CORS allowlist, guarded by assert-cors-allowlist.mjs",
+  "APP_ENV": "build metadata",
+  "STORE_CAPTURE_ALLOW_DEMO": "OUR OWN test-harness switch, and it exists to make a mistake LOUD rather than to enable a feature. No external system is behind it. apps/subly/integration_test/store_screenshots_test.dart refuses to run against a DEMO build unless this define is set, because a demo build is a different app on screen — app_shell.dart paints 'Demo data - sample subscriptions, not your account' over every screen and demo_data.dart seeds twelve third-party trademarks, both confirmed by capturing one on 2026-08-04 — and a screenshot of that must never reach a Play listing. It is passed ONLY by `tooling/store/capture-play-screenshots.mjs --proof`, which sends its output to a throwaway directory and refuses to point at the listing directory at all; the live lane never sets it. It reaches no shipping binary: the suite is under integration_test/, which `flutter build` does not compile. Read once, at the top of the capture suite, as a bool.fromEnvironment that defaults false — so the fail-closed direction is the default and setting it is the deliberate act. Added 2026-08-04.",
+  "APP_VERSION": "build metadata — injected at build time, deliberately not read from package_info_plus",
+  "RELEASE": "build metadata — the commit a WORKER was deployed from, supplied as `--var RELEASE:<sha>` by deploy-workers.yml and used as the release id on the crash reports services/*/src/lib/error-sink.ts sends ([pipeline 11]E-8). No external system is behind it: it is OUR OWN git SHA. It exists as a separate surface rather than reusing `API_VERSION` because that var is the literal \"v1\" in both Workers and has never changed, so using it as a release id would group every error this factory ever reports into one bucket named after a URL prefix. [9]R-2 replaces it with a real release id. Added 2026-08-02.",
+  "RELEASE_CHANNEL": "OUR OWN id for the distribution channel a binary was built for — a row id in tooling/channel-register.json, e.g. `web`. No external system is behind it: it is a fact ABOUT the artifact, in the same class as APP_VERSION and RELEASE above. Compile-time on purpose, and deliberately the OPPOSITE of UPDATE_URL below: an update DESTINATION baked into a binary makes the force-update wall circular (owner decision #19), while the CHANNEL is what distinguishes two artifacts built from ONE commit for two channels — a value fetched at runtime could not tell them apart at all. A typo is the one failure mode a free-text define has, so assert-channel-register.mjs fails the build on any value that does not resolve to a register row. Added 2026-08-03, [pipeline 9]R-10 limb 3.",
+  "APP_ID": "app identity",
+  "API_VERSION": "our own API contract version",
+  "SKIP_REMOTE_CONFIG": "test/demo switch, no external system behind it",
+  "UPDATE_URL": "where the force-update wall sends users. FIXED 2026-07-28 — it was compile-time only, which made the kill-switch circular: the one thing the wall must do in an emergency is send users somewhere, but its destination was frozen at build time, so redirecting it meant shipping the very build the wall exists to replace. Now `AppConfig.updateUrl` in the RUNTIME config (core), read by the brick's app.dart with the compiled-in define as the offline fallback. This guard is what caught it; the owner decision of 2026-07-27 is what settled it.",
+  "E2E_EMAIL": "throwaway CI test credential — e2e.yml provisions a pre-confirmed user before the run and purges it after, so this names no durable external account",
+  "E2E_PASSWORD": "throwaway CI test credential — see E2E_EMAIL",
+  "E2E_DELETE_EMAIL": "throwaway CI test credential for the SECOND user e2e.yml provisions — the one golden-path leg 6 destroys. Same non-durable account as E2E_EMAIL and from the same tooling/e2e/provision_user.mjs, so it names no external system this factory did not create minutes earlier. It is separate because the delete walk erases the account it signs in with, and the first user's row is what tooling/e2e/verify_row.mjs asserts still exists after the drive — one user would mean leg 6 could only pass by turning leg 2 red. Added 2026-08-08.",
+  "E2E_DELETE_PASSWORD": "throwaway CI test credential — see E2E_DELETE_EMAIL. Used twice inside the run: once to sign in, once to re-authenticate at the delete-account dialog, which will not enable its destructive button until a password has been typed.",
+  "APP_STORE_ID": "OUR OWN listing's numeric id on Apple's App Store — an identifier of a thing we publish, not a credential and not a service we call. `in_app_review` needs it to open the listing on iOS/macOS (ArgumentError.checkNotNull, in release), and it does not EXIST until the app is registered, which is why it is a define with an empty default rather than a stamped constant. Empty reads as StoreListingOutcome.notConfigured, never as success. Added 2026-08-01.",
+  "MICROSOFT_STORE_ID": "OUR OWN Microsoft Store ProductId — see APP_STORE_ID. Windows has NO inline review prompt, so the listing is its only route to a store, and without this id that route threw inside the plugin and was swallowed. Added 2026-08-01.",
+  "MONEY_ENVIRONMENT": "OUR OWN declaration of which money world a deploy is — exactly `live` or `sandbox`, [pipeline 5]M-12. No external system is behind it: it exists because NEITHER the notification payload NOR the destination secret distinguishes sandbox from live (developer.paddle.com documents one `pdl_ntfset_` prefix for both), so the deploy has to say. POST /v1/money/:provider answers 503 when it is absent or unrecognised — a default in either direction would silently honour sandbox money as real, or silently stop honouring real money. Added 2026-08-01.",
+  "MONEY_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on. Added 2026-08-01.",
+  "CHECKOUT_RETURN_URL": "OUR OWN return address for a hosted checkout — the page the merchant of record sends the buyer back to. Not a vendor surface: it is a URL WE host and WE choose, and it carries no credential. It exists as a define rather than a constant because the web case is a full-page navigation AWAY from a canvas-rendered Flutter app, so the returning session is a cold start that has to land somewhere that knows a purchase was in flight (G-43's fragment-vs-query lesson, for auth, is the same shape). Added 2026-08-01, [pipeline 5]M-6."
+ },
+ "packageEarnReasons": {
+  "_why": [
+   "[pipeline C-4] A PACKAGE IS EARNED, NEVER NAMED. 39-CHASSIS §2 adjudicated this and it was",
+   "written nowhere that binds. A capability name is not a reason: followed loosely, the remaining",
+   "gap list would spawn packages for share, deep-links, review, purchases, connectivity and",
+   "analytics -- six pubspecs, six analysis_options, six workspace entries, six test harnesses and",
+   "six CI surfaces, forever, for one founder. Applied correctly, share_plus / app_links /",
+   "in_app_review all land in the existing platform_storage.",
+   "",
+   "Keyed by PACKAGE, not capability, because two capabilities can share one package (core owns",
+   "both `core` and `analytics_funnel`) and the cost being controlled is the package.",
+   "",
+   "THE ENUM IS CLOSED and each reason must SUBSTANTIATE ITSELF AGAINST THE TREE -- free text was",
+   "rejected at lock time because a justification nobody can check is a justification that always",
+   "passes:",
+   "  native-binary    evidence.dependency must be declared in that package's own pubspec",
+   "  licence-exposure evidence.dependency must be declared, and evidence.licence named",
+   "  codegen          evidence.buildFile must exist on disk",
+   "  GRANDFATHERED    predates the rule; needs declaredOn + detail, and PRINTS on every run",
+   "",
+   "Rejections already adjudicated, recorded so no future session re-litigates them: do NOT rename",
+   "platform_storage -> platform_adapters, and do NOT merge notifications into it. Both were built",
+   "under the older reading; the rename is churn across every pubspec and import for zero",
+   "user-visible value."
+  ],
+  "packages/auth_supabase": {
+   "reason": "native-binary",
+   "evidence": {
+    "dependency": "supabase_flutter"
+   },
+   "detail": "Ships platform code: the secure-storage bridges and the deep-link/callback handling that completes an OAuth redirect, which differ on all six targets. It is also the ONLY package permitted to import the Supabase SDK — [2]C-5 limb (c) fails the build for any app that reaches for it directly, which is what keeps the identity provider swappable."
+  },
+  "packages/platform_storage": {
+   "reason": "native-binary",
+   "evidence": {
+    "dependency": "flutter_secure_storage"
+   },
+   "detail": "Keychain on iOS/macOS, KeyStore on Android, DPAPI on Windows, libsecret on Linux -- five different native implementations behind one Dart call. This is the shape that earns a package: the platform difference is real and somebody must absorb it once."
+  },
+  "packages/notifications": {
+   "reason": "native-binary",
+   "evidence": {
+    "dependency": "flutter_local_notifications"
+   },
+   "detail": "Native scheduling APIs per platform, and the capability genuinely differs per platform (Linux shows but cannot schedule; Windows on the pinned 17.x does neither; web has no plugin at all) -- which is why NotificationCapabilities exists at all."
+  },
+  "packages/telemetry": {
+   "reason": "native-binary",
+   "evidence": {
+    "dependency": "sentry_flutter"
+   },
+   "detail": "Ships native crash handlers -- a Dart-only reporter cannot catch a native crash, which is the class of failure this package exists for."
+  },
+  "packages/tokens": {
+   "reason": "codegen",
+   "evidence": {
+    "buildFile": "packages/tokens/style-dictionary.config.mjs"
+   },
+   "detail": "A build step, not a library: style-dictionary compiles the token source into sites/_shared/assets/tokens.css, and ci.yml's `tokens` lane rebuilds and fails on any diff. It has no pubspec because it is a Node package."
+  },
+  "packages/core": {
+   "reason": "GRANDFATHERED",
+   "declaredOn": "2026-07-28",
+   "detail": "The spine, not an earned split -- it is what the other packages are separate FROM, so the earn test does not really apply to it. Substantiates none of the three (crypto and cryptography are both pure Dart). Left grandfathered rather than given an invented reason: an exemption you can see is safer than a justification that is not true."
+  },
+  "packages/design_system": {
+   "reason": "GRANDFATHERED",
+   "declaredOn": "2026-07-28",
+   "detail": "Pure Flutter widgets -- no native payload, no licence exposure, no codegen. Its real justification is the C-5 boundary (it must not be able to see the domain), which is a boundary argument rather than one of the three structural reasons. Recorded honestly instead of stretching the enum to fit."
+  },
+  "packages/api_client": {
+   "reason": "GRANDFATHERED",
+   "declaredOn": "2026-07-28",
+   "detail": "dio is pure Dart, so this substantiates nothing. It is the single most likely package to be MERGED if the rule is ever applied retroactively -- kept because [2]C-3 has just moved all three dio transports into it and moving them twice would be churn."
+  },
+  "packages/analysis": {
+   "reason": "GRANDFATHERED",
+   "declaredOn": "2026-07-28",
+   "detail": "A lint ruleset -- config, not code, and flutter_lints is not a native payload. It is nonetheless the one grandfathered package with a clear reason to stay separate: [2]C-12 made it the single convention set that every package, every app and the brick template inherits, so one rule edit reaches every app the factory will ever stamp. (Until 2026-07-28 it had ZERO consumers and its own include sat commented out, which is why this entry originally read 'delivers nothing'.)"
+  },
+  "packages/purchases": {
+   "reason": "native-binary",
+   "evidence": {
+    "dependency": "url_launcher"
+   },
+   "detail": "A hosted checkout is an external URL, and opening one is a per-platform native call with real gaps -- which is why PurchaseCapabilities exists. It also has to be a package rather than app code for three requirements to be enforceable at all: assert-adapter-capabilities.mjs derives its domain from packages/ with a third-party dep, assert-no-seam-forks.mjs forbids a registered seam under apps/, and assert-no-price-literals.mjs needs the price to live behind a model. Leaving the adapter in apps/subly satisfied none of them while appearing to satisfy M-15 -- see [ADR 026]."
+  }
+ },
+ "demandGatedModules": {
+  "_why": [
+   "[13]T-12 -- THE DEMAND GATE. A capability the requirements describe in full, and that must NOT",
+   "be built until an app asks for it. The habit / streak / daily-goal mechanic is the first of",
+   "them: ONE chassis module, progress tied to content mastery and never to empty points, designed",
+   "for a habit-formation horizon of ~66 days, built once when the first app that needs it is being",
+   "built and inherited thereafter -- never per app.",
+   "",
+   "WHY THE DECLARATION LIVES HERE AND NOT IN THE BRICK'S `vars`. Both surfaces were considered and",
+   "the full reasoning is written at the head of the [13]T-12 section of",
+   "tooling/ci/assert-capability-register.mjs, beside the guard the choice has to serve. In short: a",
+   "brick var is consumed at STAMP time and leaves nothing on disk to quantify over, and apps/subly",
+   "was never stamped by this brick at all -- so a brick-var domain would exclude the only shipped",
+   "app. `consumerRoots` at the top of this file is already the machine-readable set of apps, each",
+   "verified against a real pubspec.",
+   "",
+   "FIELDS.",
+   "  id           the module's name. THE PRINTED LINE IS DERIVED FROM IT (`no consumer declares the",
+   "               <id> module`) rather than stored as prose, so the register cannot drift from the",
+   "               sentence the requirement demands.",
+   "  requirement  the pipeline id that owns it.",
+   "  capability   what it would be, in one sentence, so nobody has to go and look before deciding.",
+   "  declaredBy   THE DEMAND, and the whole point of the row. Consumer roots (apps, or the brick",
+   "               template every future app inherits from) that declare a need for the module.",
+   "               EMPTY IS THE NORMAL, CORRECT STATE, and it is printed dated on every run.",
+   "  module       what must then exist: the `owner` directory, the `package` name, and the",
+   "               `symbols` whose declaration anywhere in the tree means the module has been built.",
+   "  neverPerApp  the module may never be implemented inside apps/ or stamped per app by the brick.",
+   "               Its own limb, so an app-local rebuild fails whether or not demand was declared.",
+   "",
+   "BOTH DIRECTIONS FAIL THE BUILD. A module present with an empty `declaredBy` is a [2]C-2",
+   "violation -- a capability that is wired, guarded, green and useless. A non-empty `declaredBy`",
+   "with no module is the other direction, and the build stays red until the module exists as shared",
+   "code with a `capabilities` entry below that lists every declarer as a consumer.",
+   "",
+   "DELIBERATELY NOT ENFORCED YET. The requirement also denylists points / xp / coins / gems /",
+   "currency / score from the module's public API. The module does not exist, so that limb has an",
+   "EMPTY DOMAIN: there is no input to this tree that could make it fail, which by this repo's own",
+   "rule is an assertion worse than none -- it inflates apparent coverage while checking nothing. It",
+   "lands with the module's first line, not before."
+  ],
+  "modules": [
+   {
+    "id": "habit",
+    "requirement": "[13]T-12",
+    "capability": "The streak / daily-goal mechanic as a single chassis module: progress tied to content mastery, never to empty points, designed for a habit-formation horizon of ~66 days.",
+    "declaredBy": [],
+    "module": {
+     "owner": "packages/habit",
+     "package": "nikatru_habit",
+     "symbols": [
+      "HabitService",
+      "StreakService",
+      "StreakEngine",
+      "DailyGoalService"
+     ]
+    },
+    "neverPerApp": true,
+    "why": "Demand-gated because a habit mechanic bolted onto an app that does not need one is the exact shape [2]C-2 forbids: it costs a pubspec, an analysis_options, a workspace entry, a test harness and a CI surface forever, and delivers nothing. No app in this factory declares one today -- the notifications package already carries the reminder half, which is the only piece any shipped app has needed. The moment an app declares here, the module is built ONCE, shared, and inherited."
+   }
+  ]
+ },
+ "capabilities": [
+  {
+   "id": "core",
+   "capability": "The app-neutral spine: it DECLARES most of the factory's seam contracts, and owns config, caches and domain models. Nothing here may know about a specific app.",
+   "owner": "packages/core",
+   "package": "nikatru_core",
+   "seams": [
+    {
+     "file": "packages/core/lib/src/analytics/analytics.dart",
+     "symbol": "Analytics"
+    },
+    {
+     "file": "packages/core/lib/src/analytics/analytics.dart",
+     "symbol": "EventTransport"
+    },
+    {
+     "file": "packages/core/lib/src/analytics/consent_transport.dart",
+     "symbol": "ConsentTransport"
+    },
+    {
+     "file": "packages/core/lib/src/auth/auth_repository.dart",
+     "symbol": "AuthRepository"
+    },
+    {
+     "file": "packages/core/lib/src/config/config_loader.dart",
+     "symbol": "ConfigTransport"
+    },
+    {
+     "file": "packages/core/lib/src/content/content_pack_source.dart",
+     "symbol": "ContentPackSource"
+    },
+    {
+     "file": "packages/core/lib/src/content/pack_verifier.dart",
+     "symbol": "PackVerifier"
+    },
+    {
+     "file": "packages/core/lib/src/storage/key_value_store.dart",
+     "symbol": "KeyValueStore"
+    },
+    {
+     "file": "packages/core/lib/src/storage/secure_store.dart",
+     "symbol": "SecureStore"
+    },
+    {
+     "file": "packages/core/lib/src/notifications/notification_service.dart",
+     "symbol": "NotificationService",
+     "methods": [
+      "init",
+      "requestPermission",
+      "showNow",
+      "scheduleDaily",
+      "cancel",
+      "cancelAll",
+      "notificationTaps"
+     ],
+     "_closedGap": "[13]T-9, 2026-08-07. This seam CARRIED a `missingMethods` waiver for the notification tap / open surface. It is closed, so the waiver is gone -- leaving it would have been the stale waiver its own `closedIf` clauses existed to catch, and both of them now match: the seam declares `notificationTaps()` and the adapter registers `onDidReceiveNotificationResponse`. The protection did not go with it. `SEAMS_OWING_A_DECLARED_GAP` in tooling/ci/assert-capability-register.mjs required this seam to keep DECLARING the gap; `WIRED_SURFACES_THAT_MAY_NOT_REGRESS` in the same file now requires it to keep the gap CLOSED -- seam method, adapter registration and a live emitter, each failing the build on its own. Strictly stronger: the old list could only notice the waiver being deleted, the new one notices the feature being deleted."
+    },
+    {
+     "file": "packages/core/lib/src/review/review_prompter.dart",
+     "symbol": "ReviewPrompter"
+    },
+    {
+     "file": "packages/core/lib/src/entitlement_transport.dart",
+     "symbol": "EntitlementTransport"
+    },
+    {
+     "file": "packages/core/lib/src/cancellation_transport.dart",
+     "symbol": "CancellationTransport"
+    }
+   ],
+   "consumers": [
+    "apps/subly",
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+   ]
+  },
+  {
+   "id": "api_client",
+   "capability": "HTTP transport to the shared platform Worker — config, consent and analytics event delivery.",
+   "owner": "packages/api_client",
+   "package": "nikatru_api_client",
+   "seams": [],
+   "implementsSeams": [
+    "ConfigTransport",
+    "ConsentTransport",
+    "EventTransport"
+   ],
+   "consumers": [
+    "apps/subly",
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+   ],
+   "note": "Gained its first real consumers at 5f3466b when [2]C-3 moved all three dio transports here out of apps/subly and the brick.",
+   "capabilityMatrix": {
+    "file": "packages/api_client/lib/src/http_capabilities.dart",
+    "symbol": "HttpCapabilities",
+    "test": "packages/api_client/test/http_capabilities_test.dart",
+    "pinnedTo": "dio 5.x",
+    "degradesOn": "Web is a different network stack: CORS is enforced by the browser and only fixable SERVER-side, User-Agent cannot be set and the assignment is silently IGNORED, and certificate pinning is impossible because the page never sees the socket. Uses its own HttpPlatform enum rather than TargetPlatform because this package is pure Dart and declares no Flutter dependency."
+   }
+  },
+  {
+   "id": "auth",
+   "capability": "Identity: sign-in/up, OAuth redirect, session and bearer token, and the CLIENT half of account deletion. The only package that imports the Supabase SDK.",
+   "owner": "packages/auth_supabase",
+   "package": "nikatru_auth_supabase",
+   "seams": [],
+   "implementsSeams": [
+    "AuthRepository"
+   ],
+   "consumers": [
+    "tooling/bricks/app/__brick__/apps/{{app_id}}",
+    "apps/subly"
+   ],
+   "note": "[2]C-15, 2026-07-28. Before this the ONLY implementations lived inside apps/subly, so the brick wired no auth and no tokenProvider — every stamped app was born unable to authenticate. Ships SupabaseAuthRepository, a REAL InMemoryAuthRepository (wired, not mocked — a stub returning null from everything is the fail-closed shape [2]C-6 exists to catch), SecureSessionStorage (G-43: the SDK defaults to plaintext shared_preferences for the access AND refresh tokens), and AuthCapabilities, the declared six-platform matrix with Linux SUPPORTED — the contrary claim was checked against pub.dev and is false. 2026-08-01: `initNikatruAuth` — the function that passes SecureSessionStorage, and the ONLY reason apps/subly is now a consumer — had ZERO callers tree-wide, so the brick initialised the SDK nowhere (a backend-live stamp died at launch on `Supabase.instance`) and the one shipping app called `Supabase.initialize` bare, persisting its refresh token in plaintext. Both call sites now exist and assert-seams-wired counts the seam. `DELETE /v1/account` is stamped by the brick and its client hook is wired; the route refuses with 501 unless it can delete the IDENTITY record too, so a deletion is never reported that leaves the login working.",
+   "resolved": [
+    {
+     "path": "apps/subly/lib/data/auth/supabase_auth_repository.dart",
+     "wasKind": "seam-implemented-in-app",
+     "declaredOn": "2026-07-28",
+     "resolvedOn": "2026-08-10",
+     "detail": "CUT-1 REVERSAL (owner approval 2026-08-09: 'Cut-1 reversal APPROVED — supabase auth repository moves into the chassis'). The file is DELETED and apps/subly now constructs the chassis SupabaseAuthRepository from packages/auth_supabase. The violation entry is REMOVED rather than annotated, because a declared exception whose file no longer exists is an exemption over nothing: assert-no-seam-forks only prints a waiver when a matching suspect is found, so a stale path sat silent and dead while reading like a known-and-managed fork. That gap is now itself a guard limb (the stale-declaration self-check in assert-no-seam-forks.mjs), and removing this entry is what negative-tested it. What the fork cost while it stood: no expiry-driven token refresh, no single-flight refresh, and no kIsWeb OAuth launch-mode arm — three chassis fixes that never reached the one shipping app.",
+     "movedTo": "packages/auth_supabase/lib/src/supabase_auth_repository.dart"
+    },
+    {
+     "path": "apps/subly/lib/data/auth/mock_auth_repository.dart",
+     "wasKind": "seam-implemented-in-app",
+     "declaredOn": "2026-07-28",
+     "resolvedOn": "2026-08-12",
+     "detail": "RESOLVED BY RELOCATION, NOT BY RETIREMENT — and the distinction is the whole point. This was never a live fork: it is a TEST DOUBLE that sat under lib/, and its ONLY importer tree-wide was already apps/subly/test/delete_account_test.dart (re-measured 2026-08-12: one hit, `rg -n mock_auth_repository --glob '*.dart'`). The app resolves the chassis InMemoryAuthRepository from packages/auth_supabase in every non-live posture including `--proof`. 02-STAGE-2-LOCKED.md:24 already states the rule it broke — 'fakes belong in tests' — and BOTH guards encode that rule, which is why moving the file ends the violation honestly rather than waiving it: assert-capability-register scans apps/*/lib only, and assert-no-seam-forks' EXEMPT_DIR exempts test/. Nothing about the class changed; the two shim imports became package: imports. WHAT THIS DOES NOT DO: it does not discharge the chassis work the old blockedBy described. delete_account_test.dart still drives the ADR-027 501-vs-502 outcomes through this double, and re-pointing it at InMemoryAuthRepository still needs that class to produce both refusals. That work is real and remains unowned — it is the subject of OWNER_QUEUE D-8. The waiver blocked DELETING the class; it never blocked putting a fake where fakes live, and for four and a half months nobody separated the two.",
+     "movedTo": "apps/subly/test/support/mock_auth_repository.dart"
+    }
+   ],
+   "violations": [],
+   "capabilityMatrix": {
+    "file": "packages/auth_supabase/lib/src/auth_capabilities.dart",
+    "symbol": "AuthCapabilities",
+    "test": "packages/auth_supabase/test/auth_capabilities_test.dart",
+    "pinnedTo": "supabase_flutter 2.16.0 + app_links 7.2.1",
+    "degradesOn": "Web has no OS keychain for a page, so the session is NOT OS-backed; the OAuth token arrives in the URL FRAGMENT (query parsing fails silently) and the flow must be a full-page redirect, never a popup. Linux IS supported — the contrary claim was checked against pub.dev and is false."
+   }
+  },
+  {
+   "id": "design_system",
+   "capability": "Shared widgets and theming. Deliberately domain-free — the lock DECISION stays with the caller so this package never learns what a paywall is ([2]C-5 boundary).",
+   "owner": "packages/design_system",
+   "package": "nikatru_design_system",
+   "seams": [],
+   "consumers": [
+    "apps/subly",
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+   ],
+   "noSeamReason": "A widget library, not a contract — callers use the widgets directly. The one decision that COULD have become a seam (what to lock) is deliberately left with the caller so this package never learns domain vocabulary: that is [2]C-5's boundary, and PaywallGate is the example."
+  },
+  {
+   "id": "platform_storage",
+   "capability": "Secure-token and key-value storage across all six platforms.",
+   "owner": "packages/platform_storage",
+   "package": "nikatru_platform_storage",
+   "seams": [],
+   "implementsSeams": [
+    "SecureStore",
+    "KeyValueStore"
+   ],
+   "consumers": [
+    "apps/subly",
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+   ],
+   "capabilityMatrix": {
+    "file": "packages/platform_storage/lib/src/storage_capabilities.dart",
+    "symbol": "StorageCapabilities",
+    "test": "packages/platform_storage/test/storage_capabilities_test.dart",
+    "pinnedTo": "flutter_secure_storage 9.x + shared_preferences 2.x",
+    "degradesOn": "Linux secure storage is CONDITIONAL ON THE ENVIRONMENT: libsecret must be installed AND a Secret Service daemon running and unlocked. Headless, kiosk and CI sessions often have neither, so a write can fail at runtime where every other desktop succeeds. Web is not OS-backed at all."
+   }
+  },
+  {
+   "id": "review",
+   "capability": "Store-review prompt: the OS rating dialog, and the timing rule that decides when it may be shown.",
+   "owner": "packages/platform_storage",
+   "package": "nikatru_platform_storage",
+   "seams": [],
+   "implementsSeams": [
+    "ReviewPrompter"
+   ],
+   "consumers": [
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+   ],
+   "note": "[2]C-13, 2026-07-29. A SECOND capability on an existing package, not a new one: [2]C-4 adjudicated that share_plus, app_links and in_app_review all land in platform_storage, because a capability name is not a reason to spawn a pubspec. The WHEN half is `core.ReviewGate` -- pure arithmetic over four persisted numbers, so every branch is reachable from a test without simulating four months of calendar time. The refusal this replaced was \"there are no users to ask\", which is an argument about timing and not about whether the mechanism can be built.",
+   "capabilityMatrix": {
+    "file": "packages/platform_storage/lib/src/review_capabilities.dart",
+    "symbol": "ReviewCapabilities",
+    "test": "packages/platform_storage/test/review_capabilities_test.dart",
+    "pinnedTo": "in_app_review 2.0.12",
+    "degradesOn": "Linux and web have NO implementation at all -- reaching the plugin there throws MissingPluginException, so the adapter checks the matrix before touching it. Windows is the asymmetric row: openStoreListing() exists and the inline prompt does not, so collapsing the two booleans into one would silently lose Windows' only route to the store. Android additionally needs the Play Store present ON THE DEVICE, which no build-time fact can know, so isAvailable() is asked at runtime. iOS requestReview() does NOTHING in TestFlight -- the one build a developer is most likely to test it in. 2026-08-01: the matrix also declares `requiredStoreId` (StoreIdRequirement), because openStoreListing() was being called with NO arguments while the pinned plugin runs ArgumentError.checkNotNull on appStoreId (iOS/macOS) and microsoftStoreId (Windows) -- a RELEASE-build throw, swallowed by the adapter's catch, so the listing was dead on three of the four store platforms and reported success. The ids arrive as APP_STORE_ID / MICROSOFT_STORE_ID dart-defines and are OWNER-GATED (they do not exist until the app is registered); an absent id now reads as core.StoreListingOutcome.notConfigured."
+   }
+  },
+  {
+   "id": "telemetry",
+   "capability": "Crash and error reporting sink.",
+   "owner": "packages/telemetry",
+   "package": "nikatru_telemetry",
+   "seams": [
+    {
+     "file": "packages/telemetry/lib/src/telemetry_client.dart",
+     "symbol": "TelemetryClient"
+    }
+   ],
+   "consumers": [
+    "apps/subly",
+    "tooling/bricks/app/__brick__/apps/{{app_id}}"
+   ],
+   "note": "Wired into Subly at 5f3466b. Until then the only app in production had NO crash reporting: the package existed, passed 8 tests, and shipped to nobody.",
+   "capabilityMatrix": {
+    "file": "packages/telemetry/lib/src/telemetry_capabilities.dart",
+    "symbol": "TelemetryCapabilities",
+    "test": "packages/telemetry/test/telemetry_capabilities_test.dart",
+    "pinnedTo": "sentry_flutter 9.x",
+    "degradesOn": "Dart errors report everywhere, but NATIVE crashes only on Android/iOS/macOS. On desktop Windows and Linux a segfault or OOM kill produces NO report — which is exactly what a user means by \"it just closed\". Collapsing the two is how a portfolio believes it has crash reporting and does not."
+   }
+  },
+  {
+   "id": "notifications",
+   "capability": "Local notification scheduling adapter (flutter_local_notifications baseline).",
+   "owner": "packages/notifications",
+   "package": "nikatru_notifications",
+   "seams": [
+    {
+     "file": "packages/notifications/lib/src/local_notification_service_io.dart",
+     "symbol": "NotificationPlugin"
+    }
+   ],
+   "implementsSeams": [
+    "NotificationService"
+   ],
+   "consumers": [
+    "tooling/bricks/app/__brick__/apps/{{app_id}}",
+    "apps/subly"
+   ],
+   "note": "The FLN 17.x pin stays because 39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. ⚠️ DATED DECLARED EXCEPTION (2026-08-07, [13]T-9) to that cut, the third one and the same shape as the two already standing (nikatru_telemetry per [pipeline C-2], nikatru_auth_supabase per [G-43]): apps/subly now consumes this package for the INBOUND half only. This adapter is the one place in the tree that registers `onDidReceiveNotificationResponse`, so without it a tapped Subly renewal reminder opens nothing and `notification_opened` stays unemittable. Subly's frozen fork keeps every scheduling call it has and gains no chassis feature; `FlutterLocalNotificationsPlugin()` is a process singleton, so the two wrap ONE plugin and there is ONE registration -- see the ordering note in apps/subly/lib/main.dart. [2]C-3's de-forking removes the duplication.",
+   "violations": [
+    {
+     "path": "apps/subly/lib/services/notifications/notification_service.dart",
+     "kind": "seam-implemented-in-app",
+     "symbol": "NotificationService",
+     "detail": "A third, independent implementation: its own `class NotificationService` singleton calling flutter_local_notifications 17.x directly, and importing Subly's own Subscription model. This is the exact fork [2]C-1's audit note cites as the reason the register exists. ⚠️ MEASURED 2026-08-12 — 'FORK' IS ACCURATE FOR THE GUARD AND MISLEADING FOR THE READER, so here is the surface. Seam (packages/core/lib/src/notifications/notification_service.dart:70-100): init · requestPermission · showNow · scheduleDaily · cancel · cancelAll · notificationTaps. This class: init · requestPermissions · scheduleRenewalReminder · scheduleWeeklyDigest · cancelWeeklyDigest · cancelForSubscription · cancelAll · syncAll. ONLY `init` and `cancelAll` overlap even by NAME. This is a DOMAIN reminder scheduler over Subly's Subscription model, not a copy of the seam — what actually trips check 5 is the NAME COLLISION on `class NotificationService`, plus a second wrap of the same process-singleton plugin. 🔴 CONSEQUENCE FOR WHOEVER TAKES THIS: a rename alone (e.g. SublyReminderScheduler) WOULD GO GREEN AND FIX NOTHING — the duplicate plugin wrap would remain. Both providers coexist on purpose today: providers.dart:1074 notificationServiceProvider = the chassis seam, :1090 sublyNotificationServiceProvider = this class.",
+     "declaredOn": "2026-07-28",
+     "fixOwner": "OWNER_QUEUE D-8 — define or retire [2]C-3's de-forking increment",
+     "blockedBy": "🔄 RE-MEASURED 2026-08-12, AND THE PREVIOUS REASON HAD BEEN VOID FOR FOUR DAYS. It read: '39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting this fork reverses an agreed cut, which the standing authorization does not cover — owner decided 2026-07-28 to declare it rather than move it.' [ADR 036] (2026-08-08, OWNER-ORDERED, Private/decisions/036-subly-freeze-dissolved-by-owner-order.md:61 — cited under the old `knowledge/decisions/` prefix until the 2026-08-15 flatten merged `knowledge/` into `Private/`; the :61 anchor is unmoved) DISSOLVED that freeze: 'Cut 1's freeze on apps/subly is DISSOLVED.' So the stated block had no subject, and the waiver went on reading as managed. Nothing re-measures a waiver's REASON — assert-no-seam-forks.mjs:272-283 says exactly that of itself, and it is why this sat. WHAT ACTUALLY BLOCKS IT, measured the same day: 'de-fork' is the WRONG VERB, so there is no mechanical move to perform. The surfaces barely overlap (see detail), which leaves a genuine DESIGN choice nobody has made — either the chassis seam grows a schedule-many / cancel-by-key surface able to carry renewal reminders and a weekly digest, or this class is renamed and re-based onto the seam. Second, [ADR 037] Phase 3 currently KEEPS it BY DESIGN: Private/plans/subly-restamp-execution.md:44-47 (same flatten) rules the pubspec merge a UNION and says 'Do NOT drop bypassed deps yet ... dep-removal + bypass-entry-removal = one commit each, Phase 3', and Phase 3 is unwritten. So removing this fork is a dependency of a phase that does not exist yet. Owner decision queued as OWNER_QUEUE D-8."
+    }
+   ],
+   "capabilityMatrix": {
+    "file": "packages/notifications/lib/src/notification_capabilities.dart",
+    "symbol": "NotificationCapabilities",
+    "test": "packages/notifications/test/notification_capabilities_test.dart",
+    "pinnedTo": "flutter_local_notifications 17.x — re-review on any bump",
+    "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition.",
+    "scheduleContract": {
+     "file": "packages/notifications/lib/src/local_notification_service_io.dart",
+     "unobservable": "[13]T-7, 2026-08-02. These two arguments are passed BELOW the NotificationPlugin port -- the port's scheduleDaily takes (id, title, body, when) and nothing else -- so no fake plugin can observe them and NO behavioural test can be written for either. That is stated here rather than papered over with a test that asserts something else: this is a source-shape assertion, and it is the only kind available.",
+     "requires": [
+      {
+       "code": "androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle",
+       "why": "INEXACT is what keeps the daily nudge free of the SCHEDULE_EXACT_ALARM permission on Android 13+. Flipping it to exactAllowWhileIdle compiles, passes every test, and makes every stamped app request a special-access permission Play reviews against a narrow list of allowed use cases -- for a reminder that tolerates OS batching."
+      },
+      {
+       "code": "matchDateTimeComponents: DateTimeComponents.time",
+       "why": "The repeat. Without it zonedSchedule fires ONCE and the daily reminder is a one-off, which looks identical to a working reminder for exactly one day. The chassis schedules a single stable id precisely because this argument makes that one entry cover every day."
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "purchases",
+   "capability": "The CLIENT half of the money rail: offerings priced by the rail config, a hosted checkout owned by the merchant of record, the bounded convergence wait that turns an async webhook into an unlock, the ROSCA cancel request, and the four money funnel events. [pipeline 5]M-5/M-6/M-9/M-10/M-11/M-13/M-15/M-16.",
+   "owner": "packages/purchases",
+   "package": "nikatru_purchases",
+   "seams": [
+    {
+     "file": "packages/purchases/lib/src/purchase_rail.dart",
+     "symbol": "PurchaseRail"
+    },
+    {
+     "file": "packages/purchases/lib/src/checkout_launcher.dart",
+     "symbol": "CheckoutLauncher"
+    }
+   ],
+   "implementsSeams": [
+    "EntitlementTransport",
+    "CancellationTransport"
+   ],
+   "consumers": [
+    "tooling/bricks/app/__brick__/apps/{{app_id}}",
+    "apps/subly"
+   ],
+   "note": "⬜ THE RAIL IS BUILT AND CANNOT YET TAKE MONEY, and the gap is one signup. `RailConfig.checkoutUrlTemplate` is ABSENT because the merchant of record's hosted-checkout URL shape is an UNVERIFIED vendor fact and no seller account exists to check it against (OWNER_QUEUE A-1, PENDING). With it absent `canCheckout` is false and the paywall says purchases are unavailable, which is true. apps/subly became a consumer 2026-08-08 with productization P2.4b ([ADR 037]; the [ADR 036] freeze dissolution retired the sentence that used to stand here — 'deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze'). Zero call sites until the chassis money surfaces land (P2.6a); [ADR 026]'s reasoning for deleting the RevenueCat stub rather than moving it is unchanged.",
+   "capabilityMatrix": {
+    "file": "packages/purchases/lib/src/purchase_capabilities.dart",
+    "symbol": "PurchaseCapabilities",
+    "test": "packages/purchases/test/purchase_capabilities_test.dart",
+    "pinnedTo": "url_launcher 6.x, and store commerce policy as read on 2026-08-01 — re-review on any dependency bump AND whenever a channel changes its policy",
+    "degradesOn": "TWO FIELDS PER ROW, and the distinction is what makes this a compliance artifact rather than a table of booleans: `technicallySupported` is url_launcher's question (yes on all six targets) and `channelPermitted` is a store-policy question (no on the mobile stores no matter how well the code works). A one-boolean matrix has to pick a lie -- 'we cannot take payment on iOS' (false: the code works) or 'we can' (false in the way that gets an app rejected). FORBIDDEN: ios-appstore + macos-appstore (App Store Review Guideline 3.1.1 requires IAP for digital content; an external checkout is a documented rejection cause), android-play (Play Billing required; 39-CHASSIS S4 cut 5 defers a native IAP rail so nothing is sold there), windows-store (UNVERIFIED -- Microsoft Store commerce policy has never been read against a primary source in this repo, and undecidable means denied). PERMITTED: web, windows-direct, linux-snap, linux-appimage. `forPlatform` takes the RESTRICTIVE answer where a platform ships through more than one channel, because a build cannot tell at runtime which channel installed it."
+   }
+  },
+  {
+   "id": "analytics_funnel",
+   "capability": "The portfolio-wide conversion funnel: launch, activation, paywall viewed, checkout started, purchase success/failed, notification opened. Entirely app-neutral — it names no Subly concept.",
+   "owner": "packages/core",
+   "package": "nikatru_core",
+   "seams": [],
+   "consumers": [
+    "apps/subly",
+    "packages/purchases"
+   ],
+   "violations": [
+    {
+     "path": "apps/subly/lib/state/analytics_funnel.dart",
+     "kind": "capability-implemented-in-app",
+     "symbol": "AnalyticsFunnel",
+     "detail": "Lives inside an app despite being app-neutral, so no other app or stamped brick can emit the funnel. [5]M-16 already records that four of its methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) have ZERO callers — the analytics rail emits everything except the money. ⚠️ UPDATED 2026-08-01: the four money methods now have real callers, but NOT these four -- [5]M-16 was satisfied by moving the money half into `packages/purchases/lib/src/money_funnel.dart` (MoneyFunnel), which the brick calls, so every stamped app is born measuring its own conversion. THIS declaration is still stranded inside apps/subly; [2]C-3 now has less to move. ✅ SHRUNK 2026-08-12 — the four dead money methods were DELETED from this class (they had zero callers from the day MoneyFunnel took over; verified by resolving each call site, not by name-matching). apps/subly full suite 541 passed before and after, and assert-pseudonymity-firewall stayed green because it resolves the four events BY SYMBOL and excludes declaring files, so it was counting the live MoneyFunnel callers all along. What is left to relocate is now exactly TWO methods: onActivation and onNotificationOpened.",
+     "declaredOn": "2026-07-28",
+     "fixOwner": "OWNER_QUEUE D-8 — define or retire [2]C-3's de-forking increment",
+     "owningPackageAlreadyAssigned": "packages/core, beside the Analytics seam it wraps — 00-RECONCILIATION-DECISIONS.md PART 2.2 item 15 ('C-1 assigns an owning package'). Recorded separately from fixOwner because the two were conflated: the PACKAGE is settled, and what has no owner is the INCREMENT that performs the move. ⚠️ TWO OWNERS ARE NAMED FOR ONE MOVE — 11-measurement.md:94 routes the same relocation to 'stage 2 · C-1/C-3'; reconcile when D-8 is answered.",
+     "blockedBy": "🔄 RE-MEASURED 2026-08-12, AND THE PREVIOUS REASON HAD BEEN VOID FOR FOUR DAYS. It read: 'Moving it edits apps/subly, frozen by 39-CHASSIS cut 1. Owner decided 2026-07-28 to declare the assignment now and move it in [2]C-3's increment.' [ADR 036] (2026-08-08, OWNER-ORDERED) DISSOLVED that freeze, so editing apps/subly is no longer blocked at all and the stated reason has no subject. WHAT REMAINS, measured 2026-08-12 by resolving every call site rather than trusting the method names: the four money methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) had ZERO callers — the two apparent hits in apps/subly/lib/features/monetization/paywall_screen.dart:70,:77 resolve to `final MoneyFunnel funnel`, i.e. packages/purchases, not this class, and the only other mentions repo-wide were prose in comments. onLaunch had already left for packages/core/lib/src/analytics/analytics_lifecycle.dart. ✅ THE FOUR DEAD METHODS WERE DELETED 2026-08-12 (that half needed no decision, so it was not left for the owner): apps/subly 541 tests passed before and after, and assert-pseudonymity-firewall stayed green, since it resolves those four events by symbol across apps/packages/bricks and excludes declaring files — the callers it counts are MoneyFunnel's, and always were. So exactly TWO live methods remain to be re-homed: onActivation (1 caller, state/subscriptions_controller.dart:186) and onNotificationOpened (1 caller, state/notification_tap_observer.dart:42). WHAT STILL NEEDS A DECISION IS WHERE `activation` LIVES: it is a locked-taxonomy event name carrying an app-specific kind ('first_subscription_added'), so moving it to core means core gains an event whose payload only the app can supply — a taxonomy call, not agent judgement. For the tap half the chassis has already answered: the brick's NotificationTapObserver (tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/notification_tap_observer.dart:23-28) logs notification_opened straight through core.Analytics with NO funnel object at all. Owner decision queued as OWNER_QUEUE D-8."
+    }
+   ],
+   "noSeamReason": "A concrete funnel over the Analytics seam that core already declares; it adds no contract of its own. Callers use it directly."
+  },
+  {
+   "id": "lints",
+   "capability": "The shared analysis ruleset — the one convention set every package and stamped app should inherit.",
+   "owner": "packages/analysis",
+   "package": "nikatru_lints",
+   "seams": [],
+   "seam": "packages/analysis/lib/analysis_options.yaml",
+   "consumers": [
     "apps/subly",
     "tooling/bricks/app/__brick__/apps/{{app_id}}",
     "packages/purchases"
-  ],
-  "vendors": {
-    "_why": [
-      "[pipeline C-8] EVERY VENDOR SATISFIES THE PORTABILITY CHECKLIST, not just 'behind a seam'.",
-      "",
-      "Top-down from the charter kept 'behind a seam' and silently dropped the rest -- which is how a",
-      "seam ends up LOOKING like portability while a vendor swap still needs a store release.",
-      "",
-      "SIX PARTS, not four. The requirement's own title says 'four-part' and portability-standard.md's",
-      "checklist lists SIX; the lock resolved the contradiction to six, the checklist being the primary",
-      "record. Four are machine-checkable and BLOCK; two are judgement and PRINT:",
-      "  1 openProtocol   PRINTS  -- does it speak a standard, or is there a compatibility layer",
-      "  2 seam           CHECKED -- the named symbol must exist where it claims to",
-      "  3 configKeyed    CHECKED -- every surface is runtime-config-keyed, or compile-time WITH a",
-      "                              reason. 'No release to repoint' is the property.",
-      "  4 ownTheRecord   PRINTS  -- the app depends on OUR record, not the vendor's",
-      "  5 exportPath     CHECKED -- the cited runbook/script must exist on disk",
-      "  6 exitPlan       CHECKED -- a named alternative and its swap cost, non-empty",
-      "",
-      "SURFACES ARE DERIVED FROM THE TREE, never typed here, and from FOUR sources because any one",
-      "alone is blind (all four verified 2026-07-28):",
-      "  a. `*.fromEnvironment('KEY')` in Dart -- MULTILINE. A line-based grep finds 2 of the 11 that",
-      "     exist, because dart format wraps the literal onto the next line. UPDATE_URL is one it misses.",
-      "  b. `interface Env` in services/*/src/types.ts -- REVENUECAT_WEBHOOK_SECRET lives ONLY here, so",
-      "     without it RevenueCat, the amendment's own example, is invisible.",
-      "  c. wrangler `binding` keys AND `ratelimits[].name` -- ratelimits uses `name`, not `binding`, so",
-      "     a binding-only scan cannot see EVENTS_LIMITER.",
-      "  d. `triggers.crons` -- a schedule is an external surface too; a dead cron looks like a live one.",
-      "",
-      "Every derived surface must be claimed by exactly one vendor or declared a non-vendor surface.",
-      "That is what stops a new vendor arriving unnoticed -- the failure this whole register exists for.",
-      "",
-      "SCOPE: services, not libraries. portability-standard.md's checklist opens 'before adopting any new",
-      "SERVICE'. Dart package dependencies are [2]C-5's limb (c), which already stops an app importing a",
-      "vendor SDK the seam wraps; duplicating them here would be two lists to keep in step."
-    ],
-    "supabase": {
-      "surface": "Portfolio-wide identity/auth (project Cross_Platform_Auth) and the Postgres behind it.",
-      "stickiness": "★★★ — portability-standard.md names RLS coupling as one of three sticky points.",
-      "surfaces": [
-        "SUPABASE_URL",
-        "SUPABASE_ANON_KEY",
-        "SUPABASE_JWT_SECRET",
-        "SUPABASE_KEEPALIVE_URLS",
-        "SUPABASE_SERVICE_ROLE_KEY"
-      ],
-      "openProtocol": "YES — OIDC/JWKS for tokens and plain Postgres underneath. Verification is against standard JWKS claims, not a Supabase SDK call, which is what makes the identity provider swappable.",
-      "seam": {
-        "file": "packages/core/lib/src/auth/auth_repository.dart",
-        "symbol": "AuthRepository"
-      },
-      "configKeyed": {
-        "kind": "runtime",
-        "detail": "URL and anon key are dart-defines with compiled-in fallbacks, and the Worker reads SUPABASE_URL from its own env — repointing needs no app release."
-      },
-      "ownTheRecord": "YES — entitlements and app state live in OUR D1, keyed on the standard `sub` claim. The app depends on our record, not Supabase's.",
-      "exportPath": {
-        "path": "Private/runbooks/operations.md",
-        "detail": "pg_dump via the Supabase dashboard/API; the schema is plain Postgres with no proprietary types."
-      },
-      "exitPlan": {
-        "alternative": "any OIDC provider (Auth0, Clerk, self-hosted Keycloak) behind the same AuthRepository seam",
-        "swapCost": "Medium — JWKS verification is standard, so the cost is re-issuing sessions and migrating the user table, NOT rewriting the app."
-      }
-    },
-    "cloudflare": {
-      "surface": "Workers runtime, D1 (platform_db, subly_db), KV (config, JWKS cache), and the events/config rate-limiters. NO R2 surface as of 2026-08-01 — see exportPath.",
-      "stickiness": "★★★ — portability-standard.md names KV/DO as a sticky point.",
-      "surfaces": [
-        "PLATFORM_DB",
-        "SUBLY_DB",
-        "APP_DB",
-        "CONFIG_KV",
-        "JWKS_CACHE",
-        "EVENTS_LIMITER",
-        "EVENTS_CEILING_LIMITER",
-        "CONFIG_CEILING_LIMITER",
-        "triggers.crons"
-      ],
-      "openProtocol": "PARTIAL — D1 is SQLite dialect and R2 is S3-compatible, both portable. KV and the rate-limiter are proprietary; the crons are a Workers-only scheduler. This is the honest weak spot, and it is why the stickiness is ★★★.",
-      "seam": {
-        "file": "packages/core/lib/src/config/config_loader.dart",
-        "symbol": "ConfigTransport"
-      },
-      "configKeyed": {
-        "kind": "runtime",
-        "detail": "Bindings are wrangler config, not code — swapping a database or bucket is a config edit and a deploy, never an app release."
-      },
-      "ownTheRecord": "YES — D1 IS our record. The risk here is not losing the record to a vendor, it is the SQLite dialect and the KV semantics.",
-      "exportPath": {
-        "path": "services/platform/migrations",
-        "detail": "PUBLIC, CHECKABLE EVIDENCE: the D1 schema is plain SQL migrations in this repo — that IS the export shape, and it is why a D1 export lands in any SQLite or Postgres. R2 is S3-compatible so rclone moves it. KV has no bulk export primitive; the mitigation is that KV holds only last-good config and a JWKS cache, both regenerable, so nothing in KV is a record of record. ✅ CLOSED 2026-08-01: the FINDING of 2026-07-28 — the subly-api `EXPORTS` R2 binding declared in types.ts and referenced NOWHERE in the code, a bound bucket with no writer, the same fail-closed-with-no-open-path shape [2]C-6 exists to catch — was routed to stage 4 and executed there. The binding and its type declaration are gone ([4]B-18), and tooling/ci/assert-platform-register.mjs now fails on ANY binding in ANY wrangler config in the repo (brick template included) with no resolved reader, so this cannot recur silently. ⚠️ The BUCKET is still in the account: deleting it is destructive and is the owner's. There is therefore NO R2 surface in this list today, which is correct — the rule is ONE portfolio bucket bound in services/platform when object storage is genuinely needed, addressed by an `<app_id>/` prefix."
-      },
-      "exitPlan": {
-        "alternative": "Postgres/Neon + S3 + any Node host behind the same Worker handlers",
-        "swapCost": "High for KV/DO semantics, Low for D1/R2. Deliberately kept: nothing durable lives in KV."
-      }
-    },
-    "revenuecat": {
-      "surface": "Subscription entitlement provider — the client SDK key and the server webhook secret.",
-      "stickiness": "★★★★ — payments, the stickiest point the standard names.",
-      "surfaces": [
-        "REVENUECAT_KEY",
-        "REVENUECAT_WEBHOOK_SECRET"
-      ],
-      "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. This is precisely why part 4 carries the weight for this vendor.",
-      "seam": {
-        "file": "packages/core/lib/src/entitlement_cache.dart",
-        "symbol": "EntitlementCache"
-      },
-      "configKeyed": {
-        "kind": "runtime",
-        "detail": "Client key is a dart-define with a fallback; the webhook secret is Worker env. Neither requires an app release to rotate."
-      },
-      "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — entitlements live in OUR table fed by a per-provider adapter, so the payment vendor is swappable even though payment APIs are not. This is the one line the audit note said to carry forward verbatim.",
-      "exportPath": {
-        "path": "Private/runbooks/operations.md",
-        "detail": "Entitlements are ours in D1 and export with it. RevenueCat itself holds no record we depend on."
-      },
-      "exitPlan": {
-        "alternative": "Paddle (the locked MoR, ADR 004) or direct store IAP, behind the same entitlement adapter",
-        "swapCost": "Medium — a new adapter and a webhook, but no app data migration, because we own the record."
-      },
-      "note": "⬜ NOT YET LIVE. Nobody can pay NIKATRU today; stage 5 owns the money rail. ⚠️ 2026-08-01: the CLIENT rail now exists too (packages/purchases + the brick wiring), so what remains is not any code. — CORRECTION 2026-08-28: that sentence ended ‘so what remains is the seller account itself (A-1), not any code’, and the seller account is no longer what remains: the Paddle account went LIVE 2026-08-11 ([ADR 044]). What still stops a payment is `paywall.enabled: false` for every app in services/platform/src/app-config-data.json plus the unset PADDLE_NOTIFICATION_SECRET — so the opening sentence of this note, ‘Nobody can pay NIKATRU today’, is still TRUE, for different reasons than it was written for. Recorded now because the surfaces already exist in the tree, and a vendor whose keys are wired before its checklist is exactly the adoption-without-review this requirement stops."
-    },
-    "paddle": {
-      "surface": "MERCHANT OF RECORD for web/desktop — the legal seller, which remits global VAT/GST on our behalf. The surface in this repo is ONE value: the per-destination webhook notification secret. — CORRECTION 2026-08-25: it is TWO. `PADDLE_API_KEY`, the seller API key `POST /v1/checkout` creates a transaction with, is the second, and it was invisible to this register rather than absent from the tree: `routes/checkout.ts` read it as `(c.env as unknown as Record<string, string | undefined>)['PADDLE_API_KEY']`, so it appeared in no `interface Env` and this guard’s derivation could not see it. Declaring the binding surfaced it. Both are Worker SECRETS (`wrangler secret put`), never committed vars; both are OWNER-GATED on the same seller account (OWNER_QUEUE A-1); and neither changes anything else in this record — the seam, the export path and the exit plan below are about the entitlement the rail produces, not about how many credentials open the door. The key is additionally world-bound: checkout.ts refuses a `pdl_sdbx_apikey_` prefix on a `live` deploy and vice versa ([5]M-12).",
-      "stickiness": "★★★★ — payments, the stickiest point the portability standard names. Mitigated to the extent it can be: the entitlement RECORD is ours, and the rail is one interface with per-provider adapters.",
-      "surfaces": [
-        "PADDLE_NOTIFICATION_SECRET",
-        "PADDLE_API_KEY"
-      ],
-      "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. Which is exactly why parts 2 and 4 carry the weight here: the SIGNATURE SCHEME is proprietary and lives in one adapter file, and the entitlement it produces is written in our own vocabulary into our own table.",
-      "seam": {
-        "file": "services/platform/src/lib/mor/contract.ts",
-        "symbol": "MoRWebhookVerifier",
-        "note": "[ADR 004] specifies this seam by name: 'build the payment webhook provider-agnostic (MoRWebhookVerifier interface + per-provider signature adapters) so the choice can flip with zero app changes'. Every Paddle-specific fact — the header name, the HMAC construction, the status vocabulary, the id prefixes — lives in services/platform/src/lib/mor/paddle.ts and nowhere else, and each one carries the developer.paddle.com URL it was verified against."
-      },
-      "configKeyed": {
-        "kind": "runtime",
-        "detail": "The notification secret is a Worker secret (`wrangler secret put`), never a committed var and never a compile-time define. Rotating it, or switching the whole rail to a different merchant of record (NOT Lemon Squeezy — retired 2026-08-09 by [ADR 039] D4; see exitPlan below), is a secret change plus a registry line — no app release, and no already-shipped client is affected, because clients never talk to the rail."
-      },
-      "ownTheRecord": "YES, AND IT IS THE WHOLE STRATEGY — the entitlement lives in OUR platform_db, keyed by our own (user_id, app_id, entitlement), written in OUR vocabulary by a per-provider adapter. Paddle holds the buyer relationship and the money; it holds no record the apps depend on. The one thing that is genuinely theirs and not ours is the CUSTOMER: a buyer's payment method and billing history stay with the merchant of record, which is the deal being made when someone else is the legal seller.",
-      "exportPath": {
-        "path": "services/platform/migrations",
-        "detail": "PUBLIC, CHECKABLE EVIDENCE: 0004_money_rail.sql IS the export shape. Every fact the rail depends on is a column in plain SQL in this repo — the provider, the environment, the provider's own ids, its status verbatim, both dates, the revocation reason — plus `provider_notifications`, which keeps every notification byte for byte. So the migration path OUT of Paddle is: point the new rail's adapter at the same table. The verbatim store also means a derivation defect is repairable from data we hold rather than from data we would have to ask a vendor for."
-      },
-      "exitPlan": {
-        "alternative": "A successor merchant of record — FastSpring / Polar / Creem / direct Stripe plus a tax engine — or an India-native MoR, behind the same MoRWebhookVerifier. ⚠️ CORRECTED 2026-08-28: this read 'Lemon Squeezy (the parallel rail [ADR 004] applies for on the same day, PayPal payout from India)'. [ADR 039] D4 (2026-08-09) RETIRED that clause of [ADR 004] — the parallel application was never evidenced and the product is sunsetting into Stripe. WHICH successor is a queued owner decision and is deliberately not answered by putting a name here; tooling/legal/provider-register.json's `lemon-squeezy` row carries the same retirement.",
-        "swapCost": "Medium — one adapter file and one destination secret. No app release, no client change, and NO DATA MIGRATION, because the entitlement table is ours and speaks nobody's vocabulary but our own."
-      },
-      "note": "🟢 THE SELLER ACCOUNT IS LIVE — CORRECTED 2026-08-28. This note read, verbatim: '⬜ NOT YET LIVE, AND THE GAP IS ONE SIGNUP. The rail is built, tested and mounted; PADDLE_NOTIFICATION_SECRET does not exist because it can only be generated in the Paddle seller console, which needs the seller account — OWNER_QUEUE A-1, PENDING.' THE SIGNUP HALF IS DONE: [ADR 044], LOCKED 2026-08-11, evidences a PRODUCTION credential — PADDLE_API_KEY_LIVE (prefix `pdl_live_apikey_`) authenticating against api.paddle.com, 403’d by the SANDBOX host with the same key (which is what proves it is production), and a live POST /transactions returning 201 with txn_01kzs3qcvryq785t7shpq5d7wj. tooling/legal/provider-register.json’s paddle row is `status: live` for the same reason. ⚠️ WHAT REMAINS IS THE DESTINATION SECRET, NOT AN ACCOUNT: PADDLE_NOTIFICATION_SECRET is generated per notification-destination in the seller console and set with `wrangler secret put`, and a Worker secret is invisible to every guard in this tree — so until it is set POST /v1/money/paddle answers 503, and tooling/ci/assert-mor-adapters.mjs PRINTS that one gap on every run rather than failing the build over work only the owner can do. [ADR 004]’s 2026-07-24 sequencing constraint — apply only after a reviewable product with a live paywall and complete legal pages exists — is HISTORICAL now that the application has landed; it is kept because it explains the date. ⛔ AND `live` HERE IS PER CHANNEL: Apple and Google Play remain the merchant of record on their own in-app purchases ([ADR 039] D1, LOCKED 2026-08-09)."
-    },
-    "glitchtip": {
-      "surface": "Crash and error reporting sink (self-hostable Sentry-protocol server).",
-      "stickiness": "★ — deliberately the least sticky choice available.",
-      "surfaces": [
-        "GLITCHTIP_DSN"
-      ],
-      "openProtocol": "YES — speaks the Sentry protocol, so the sentry_flutter SDK talks to it unmodified and any Sentry-protocol sink is a drop-in.",
-      "seam": {
-        "file": "packages/telemetry/lib/src/telemetry_client.dart",
-        "symbol": "TelemetryClient"
-      },
-      "configKeyed": {
-        "kind": "compile-time",
-        "reason": "OWNER DECISION 2026-07-27: GLITCHTIP_DSN stays compile-time while UPDATE_URL moves to runtime. A DSN is a build-identity fact — a build reports as itself — and routing crash reports through runtime config would mean a broken config could silently disable the very channel that reports it being broken."
-      },
-      "ownTheRecord": "N/A — telemetry is a diagnostic stream, not a record the app depends on. Losing history costs insight, never correctness.",
-      "exportPath": {
-        "path": "Private/runbooks/glitchtip.md",
-        "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup."
-      },
-      "exitPlan": {
-        "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes",
-        "swapCost": "Low — one config value, because the protocol is open."
-      }
-    },
-    "github": {
-      "surface": "GitHub Actions workflow dispatch — the alarm clock's outbound leg. The `platform` Worker POSTs `workflow_dispatch` so that a Cloudflare cron, not GitHub's own scheduler, decides WHEN a workflow runs. [research/76 §C] Phase 1.",
-      "stickiness": "★★★★★ — the stickiest entry in this register, and it is written down rather than implied. GitHub holds the repositories, CI, the release lanes, the issue-based alert chain and the RECORD every duty row reads. ⚠️ WHAT THIS SURFACE ADDS IS NOT NEW LOCK-IN — it is one more call into a dependency the whole pipeline already rests on. Declaring it here makes that dependency countable instead of assumed, which is the only thing this register can honestly buy on a vendor nobody is leaving.",
-      "surfaces": [
-        "GITHUB_DISPATCH_TOKEN"
-      ],
-      "openProtocol": "NO — `POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches` is GitHub-specific. But the CALLER is one fetch with a JSON body, and the shape is common to every forge with an API-triggered pipeline (GitLab pipeline triggers, Forgejo/Gitea actions), so the port is a URL and a header rather than a rewrite.",
-      "seam": {
-        "file": "services/platform/src/scheduled.ts",
-        "symbol": "dispatchGithubWorkflows"
-      },
-      "configKeyed": {
-        "kind": "runtime",
-        "reason": "A Worker secret (`wrangler secret put GITHUB_DISPATCH_TOKEN`), never a committed var — it can push work into two public repositories. 🔴 ABSENT IS A RECORDED STATE, NOT A SKIP: the limb writes one `cron_heartbeat` row per target saying the credential is missing, because a dispatcher that quietly does nothing is indistinguishable from one that is working."
-      },
-      "ownTheRecord": "PARTLY, AND THE GAP IS PHASE 2. The record that the dispatch HAPPENED is `platform_db.cron_heartbeat`, which is ours and is read by tooling/ops/check-heartbeats.mjs from outside Cloudflare. The record that the dispatched WORKFLOW ran is GitHub's own run history — which is the circularity research/76 §C exists to break, and the reason Phase 2 repoints the duty readers at D1 rather than merely repointing the trigger.",
-      "exportPath": {
-        "path": "services/platform/migrations",
-        "detail": "cron_heartbeat is a D1 table in this repository's own migrations; the dispatch record leaves with the database, not with GitHub."
-      },
-      "exitPlan": {
-        "alternative": "The dispatched workflow's own `schedule:` block, which is deliberately KEPT as a backstop and is what evidences the cadence today — so losing this surface degrades timeliness and loses nothing else.",
-        "swapCost": "Low — one URL, one header set, one status code. The fallback needs no change at all because it was never removed."
-      }
-    }
+   ],
+   "note": "✅ [2]C-12 WIRED IT 2026-07-28. It previously had ZERO consumers — including its own analysis_options.yaml, where the include sat inside a COMMENT, so the package's only mention of the mechanism it exists to provide was not code. Score was 0 of 10: every analysis_options.yaml in the tree included flutter_lints or lints directly. All eight non-exempt files now inherit it, each with the dev_dependency that makes the include resolve. The two exempt files are the shared set itself and the package's own self-apply, which uses a relative include so the lint package can analyze itself before the workspace resolves. Enforced by tooling/ci/assert-lint-inheritance.mjs — which also asserts the set still ESCALATES a rule to `error`, because inheritance at default severity prints and ships (measured: analyze exits 0)."
   },
-  "nonVendorSurfaces": {
-    "_why": [
-      "Derived surfaces that are NOT third-party services. They still have to be classified, or an",
-      "unclaimed token would be indistinguishable from a vendor nobody reviewed.",
-      "",
-      "A surface here may still carry a VIOLATION -- see UPDATE_URL, which is a decided fix, not a",
-      "judgement call."
-    ],
-    "API_BASE_URL": "our own subly-api Worker",
-    "CONFIG_BASE_URL": "our own config service (CFG-1)",
-    "PLATFORM_BASE_URL": "our own shared platform Worker",
-    "APP_ERASURE_ENDPOINTS": "OUR OWN app Workers, listed as `<appId>=<https origin>` so the shared erasure route can reach each app's own database. No external system is behind it: every origin in the list is a Worker in this repository. It exists because a route reads the databases it reads, not the ones its Worker binds — services/platform sweeps platform_db and BINDS subly_db, so before this list the only app in the field was the one app account deletion did not reach, and every subscription, budget and payment survived behind an account that no longer existed. DELETE /v1/account now relays the caller's own bearer token to each named app's own DELETE /v1/account, after the service-role precondition and before the identity is deleted; a missing or malformed list is a 501 refusal rather than a silent skip. `https://` is required and checked at runtime, because the relay forwards a live session token. tooling/ci/assert-erasure-reach.mjs holds the both-directions relation between this list and the app Workers that own a database. Added 2026-08-04.",
-    "ALLOWED_ORIGINS": "our own domains — the CORS allowlist, guarded by assert-cors-allowlist.mjs",
-    "APP_ENV": "build metadata",
-    "STORE_CAPTURE_ALLOW_DEMO": "OUR OWN test-harness switch, and it exists to make a mistake LOUD rather than to enable a feature. No external system is behind it. apps/subly/integration_test/store_screenshots_test.dart refuses to run against a DEMO build unless this define is set, because a demo build is a different app on screen — app_shell.dart paints 'Demo data - sample subscriptions, not your account' over every screen and demo_data.dart seeds twelve third-party trademarks, both confirmed by capturing one on 2026-08-04 — and a screenshot of that must never reach a Play listing. It is passed ONLY by `tooling/store/capture-play-screenshots.mjs --proof`, which sends its output to a throwaway directory and refuses to point at the listing directory at all; the live lane never sets it. It reaches no shipping binary: the suite is under integration_test/, which `flutter build` does not compile. Read once, at the top of the capture suite, as a bool.fromEnvironment that defaults false — so the fail-closed direction is the default and setting it is the deliberate act. Added 2026-08-04.",
-    "APP_VERSION": "build metadata — injected at build time, deliberately not read from package_info_plus",
-    "RELEASE": "build metadata — the commit a WORKER was deployed from, supplied as `--var RELEASE:<sha>` by deploy-workers.yml and used as the release id on the crash reports services/*/src/lib/error-sink.ts sends ([pipeline 11]E-8). No external system is behind it: it is OUR OWN git SHA. It exists as a separate surface rather than reusing `API_VERSION` because that var is the literal \"v1\" in both Workers and has never changed, so using it as a release id would group every error this factory ever reports into one bucket named after a URL prefix. [9]R-2 replaces it with a real release id. Added 2026-08-02.",
-    "RELEASE_CHANNEL": "OUR OWN id for the distribution channel a binary was built for — a row id in tooling/channel-register.json, e.g. `web`. No external system is behind it: it is a fact ABOUT the artifact, in the same class as APP_VERSION and RELEASE above. Compile-time on purpose, and deliberately the OPPOSITE of UPDATE_URL below: an update DESTINATION baked into a binary makes the force-update wall circular (owner decision #19), while the CHANNEL is what distinguishes two artifacts built from ONE commit for two channels — a value fetched at runtime could not tell them apart at all. A typo is the one failure mode a free-text define has, so assert-channel-register.mjs fails the build on any value that does not resolve to a register row. Added 2026-08-03, [pipeline 9]R-10 limb 3.",
-    "APP_ID": "app identity",
-    "API_VERSION": "our own API contract version",
-    "SKIP_REMOTE_CONFIG": "test/demo switch, no external system behind it",
-    "UPDATE_URL": "where the force-update wall sends users. FIXED 2026-07-28 — it was compile-time only, which made the kill-switch circular: the one thing the wall must do in an emergency is send users somewhere, but its destination was frozen at build time, so redirecting it meant shipping the very build the wall exists to replace. Now `AppConfig.updateUrl` in the RUNTIME config (core), read by the brick's app.dart with the compiled-in define as the offline fallback. This guard is what caught it; the owner decision of 2026-07-27 is what settled it.",
-    "E2E_EMAIL": "throwaway CI test credential — e2e.yml provisions a pre-confirmed user before the run and purges it after, so this names no durable external account",
-    "E2E_PASSWORD": "throwaway CI test credential — see E2E_EMAIL",
-    "E2E_DELETE_EMAIL": "throwaway CI test credential for the SECOND user e2e.yml provisions — the one golden-path leg 6 destroys. Same non-durable account as E2E_EMAIL and from the same tooling/e2e/provision_user.mjs, so it names no external system this factory did not create minutes earlier. It is separate because the delete walk erases the account it signs in with, and the first user's row is what tooling/e2e/verify_row.mjs asserts still exists after the drive — one user would mean leg 6 could only pass by turning leg 2 red. Added 2026-08-08.",
-    "E2E_DELETE_PASSWORD": "throwaway CI test credential — see E2E_DELETE_EMAIL. Used twice inside the run: once to sign in, once to re-authenticate at the delete-account dialog, which will not enable its destructive button until a password has been typed.",
-    "APP_STORE_ID": "OUR OWN listing's numeric id on Apple's App Store — an identifier of a thing we publish, not a credential and not a service we call. `in_app_review` needs it to open the listing on iOS/macOS (ArgumentError.checkNotNull, in release), and it does not EXIST until the app is registered, which is why it is a define with an empty default rather than a stamped constant. Empty reads as StoreListingOutcome.notConfigured, never as success. Added 2026-08-01.",
-    "MICROSOFT_STORE_ID": "OUR OWN Microsoft Store ProductId — see APP_STORE_ID. Windows has NO inline review prompt, so the listing is its only route to a store, and without this id that route threw inside the plugin and was swallowed. Added 2026-08-01.",
-    "MONEY_ENVIRONMENT": "OUR OWN declaration of which money world a deploy is — exactly `live` or `sandbox`, [pipeline 5]M-12. No external system is behind it: it exists because NEITHER the notification payload NOR the destination secret distinguishes sandbox from live (developer.paddle.com documents one `pdl_ntfset_` prefix for both), so the deploy has to say. POST /v1/money/:provider answers 503 when it is absent or unrecognised — a default in either direction would silently honour sandbox money as real, or silently stop honouring real money. Added 2026-08-01.",
-    "MONEY_CEILING_LIMITER": "OUR OWN Cloudflare rate-limit namespace for POST /v1/money/:provider, keyed `edge:<colo>:<asn>`. Not a vendor surface — it is the same Workers Rate Limiting binding already claimed under `cloudflare`'s platform surfaces, given its own namespace so a flood of forged notifications cannot exhaust the budget analytics ingest and config resolution depend on. Added 2026-08-01.",
-    "CHECKOUT_RETURN_URL": "OUR OWN return address for a hosted checkout — the page the merchant of record sends the buyer back to. Not a vendor surface: it is a URL WE host and WE choose, and it carries no credential. It exists as a define rather than a constant because the web case is a full-page navigation AWAY from a canvas-rendered Flutter app, so the returning session is a cold start that has to land somewhere that knows a purchase was in flight (G-43's fragment-vs-query lesson, for auth, is the same shape). Added 2026-08-01, [pipeline 5]M-6."
-  },
-  "packageEarnReasons": {
-    "_why": [
-      "[pipeline C-4] A PACKAGE IS EARNED, NEVER NAMED. 39-CHASSIS §2 adjudicated this and it was",
-      "written nowhere that binds. A capability name is not a reason: followed loosely, the remaining",
-      "gap list would spawn packages for share, deep-links, review, purchases, connectivity and",
-      "analytics -- six pubspecs, six analysis_options, six workspace entries, six test harnesses and",
-      "six CI surfaces, forever, for one founder. Applied correctly, share_plus / app_links /",
-      "in_app_review all land in the existing platform_storage.",
-      "",
-      "Keyed by PACKAGE, not capability, because two capabilities can share one package (core owns",
-      "both `core` and `analytics_funnel`) and the cost being controlled is the package.",
-      "",
-      "THE ENUM IS CLOSED and each reason must SUBSTANTIATE ITSELF AGAINST THE TREE -- free text was",
-      "rejected at lock time because a justification nobody can check is a justification that always",
-      "passes:",
-      "  native-binary    evidence.dependency must be declared in that package's own pubspec",
-      "  licence-exposure evidence.dependency must be declared, and evidence.licence named",
-      "  codegen          evidence.buildFile must exist on disk",
-      "  GRANDFATHERED    predates the rule; needs declaredOn + detail, and PRINTS on every run",
-      "",
-      "Rejections already adjudicated, recorded so no future session re-litigates them: do NOT rename",
-      "platform_storage -> platform_adapters, and do NOT merge notifications into it. Both were built",
-      "under the older reading; the rename is churn across every pubspec and import for zero",
-      "user-visible value."
-    ],
-    "packages/auth_supabase": {
-      "reason": "native-binary",
-      "evidence": {
-        "dependency": "supabase_flutter"
-      },
-      "detail": "Ships platform code: the secure-storage bridges and the deep-link/callback handling that completes an OAuth redirect, which differ on all six targets. It is also the ONLY package permitted to import the Supabase SDK — [2]C-5 limb (c) fails the build for any app that reaches for it directly, which is what keeps the identity provider swappable."
-    },
-    "packages/platform_storage": {
-      "reason": "native-binary",
-      "evidence": {
-        "dependency": "flutter_secure_storage"
-      },
-      "detail": "Keychain on iOS/macOS, KeyStore on Android, DPAPI on Windows, libsecret on Linux -- five different native implementations behind one Dart call. This is the shape that earns a package: the platform difference is real and somebody must absorb it once."
-    },
-    "packages/notifications": {
-      "reason": "native-binary",
-      "evidence": {
-        "dependency": "flutter_local_notifications"
-      },
-      "detail": "Native scheduling APIs per platform, and the capability genuinely differs per platform (Linux shows but cannot schedule; Windows on the pinned 17.x does neither; web has no plugin at all) -- which is why NotificationCapabilities exists at all."
-    },
-    "packages/telemetry": {
-      "reason": "native-binary",
-      "evidence": {
-        "dependency": "sentry_flutter"
-      },
-      "detail": "Ships native crash handlers -- a Dart-only reporter cannot catch a native crash, which is the class of failure this package exists for."
-    },
-    "packages/tokens": {
-      "reason": "codegen",
-      "evidence": {
-        "buildFile": "packages/tokens/style-dictionary.config.mjs"
-      },
-      "detail": "A build step, not a library: style-dictionary compiles the token source into sites/_shared/assets/tokens.css, and ci.yml's `tokens` lane rebuilds and fails on any diff. It has no pubspec because it is a Node package."
-    },
-    "packages/core": {
-      "reason": "GRANDFATHERED",
-      "declaredOn": "2026-07-28",
-      "detail": "The spine, not an earned split -- it is what the other packages are separate FROM, so the earn test does not really apply to it. Substantiates none of the three (crypto and cryptography are both pure Dart). Left grandfathered rather than given an invented reason: an exemption you can see is safer than a justification that is not true."
-    },
-    "packages/design_system": {
-      "reason": "GRANDFATHERED",
-      "declaredOn": "2026-07-28",
-      "detail": "Pure Flutter widgets -- no native payload, no licence exposure, no codegen. Its real justification is the C-5 boundary (it must not be able to see the domain), which is a boundary argument rather than one of the three structural reasons. Recorded honestly instead of stretching the enum to fit."
-    },
-    "packages/api_client": {
-      "reason": "GRANDFATHERED",
-      "declaredOn": "2026-07-28",
-      "detail": "dio is pure Dart, so this substantiates nothing. It is the single most likely package to be MERGED if the rule is ever applied retroactively -- kept because [2]C-3 has just moved all three dio transports into it and moving them twice would be churn."
-    },
-    "packages/analysis": {
-      "reason": "GRANDFATHERED",
-      "declaredOn": "2026-07-28",
-      "detail": "A lint ruleset -- config, not code, and flutter_lints is not a native payload. It is nonetheless the one grandfathered package with a clear reason to stay separate: [2]C-12 made it the single convention set that every package, every app and the brick template inherits, so one rule edit reaches every app the factory will ever stamp. (Until 2026-07-28 it had ZERO consumers and its own include sat commented out, which is why this entry originally read 'delivers nothing'.)"
-    },
-    "packages/purchases": {
-      "reason": "native-binary",
-      "evidence": {
-        "dependency": "url_launcher"
-      },
-      "detail": "A hosted checkout is an external URL, and opening one is a per-platform native call with real gaps -- which is why PurchaseCapabilities exists. It also has to be a package rather than app code for three requirements to be enforceable at all: assert-adapter-capabilities.mjs derives its domain from packages/ with a third-party dep, assert-no-seam-forks.mjs forbids a registered seam under apps/, and assert-no-price-literals.mjs needs the price to live behind a model. Leaving the adapter in apps/subly satisfied none of them while appearing to satisfy M-15 -- see [ADR 026]."
-    }
-  },
-  "demandGatedModules": {
-    "_why": [
-      "[13]T-12 -- THE DEMAND GATE. A capability the requirements describe in full, and that must NOT",
-      "be built until an app asks for it. The habit / streak / daily-goal mechanic is the first of",
-      "them: ONE chassis module, progress tied to content mastery and never to empty points, designed",
-      "for a habit-formation horizon of ~66 days, built once when the first app that needs it is being",
-      "built and inherited thereafter -- never per app.",
-      "",
-      "WHY THE DECLARATION LIVES HERE AND NOT IN THE BRICK'S `vars`. Both surfaces were considered and",
-      "the full reasoning is written at the head of the [13]T-12 section of",
-      "tooling/ci/assert-capability-register.mjs, beside the guard the choice has to serve. In short: a",
-      "brick var is consumed at STAMP time and leaves nothing on disk to quantify over, and apps/subly",
-      "was never stamped by this brick at all -- so a brick-var domain would exclude the only shipped",
-      "app. `consumerRoots` at the top of this file is already the machine-readable set of apps, each",
-      "verified against a real pubspec.",
-      "",
-      "FIELDS.",
-      "  id           the module's name. THE PRINTED LINE IS DERIVED FROM IT (`no consumer declares the",
-      "               <id> module`) rather than stored as prose, so the register cannot drift from the",
-      "               sentence the requirement demands.",
-      "  requirement  the pipeline id that owns it.",
-      "  capability   what it would be, in one sentence, so nobody has to go and look before deciding.",
-      "  declaredBy   THE DEMAND, and the whole point of the row. Consumer roots (apps, or the brick",
-      "               template every future app inherits from) that declare a need for the module.",
-      "               EMPTY IS THE NORMAL, CORRECT STATE, and it is printed dated on every run.",
-      "  module       what must then exist: the `owner` directory, the `package` name, and the",
-      "               `symbols` whose declaration anywhere in the tree means the module has been built.",
-      "  neverPerApp  the module may never be implemented inside apps/ or stamped per app by the brick.",
-      "               Its own limb, so an app-local rebuild fails whether or not demand was declared.",
-      "",
-      "BOTH DIRECTIONS FAIL THE BUILD. A module present with an empty `declaredBy` is a [2]C-2",
-      "violation -- a capability that is wired, guarded, green and useless. A non-empty `declaredBy`",
-      "with no module is the other direction, and the build stays red until the module exists as shared",
-      "code with a `capabilities` entry below that lists every declarer as a consumer.",
-      "",
-      "DELIBERATELY NOT ENFORCED YET. The requirement also denylists points / xp / coins / gems /",
-      "currency / score from the module's public API. The module does not exist, so that limb has an",
-      "EMPTY DOMAIN: there is no input to this tree that could make it fail, which by this repo's own",
-      "rule is an assertion worse than none -- it inflates apparent coverage while checking nothing. It",
-      "lands with the module's first line, not before."
-    ],
-    "modules": [
-      {
-        "id": "habit",
-        "requirement": "[13]T-12",
-        "capability": "The streak / daily-goal mechanic as a single chassis module: progress tied to content mastery, never to empty points, designed for a habit-formation horizon of ~66 days.",
-        "declaredBy": [],
-        "module": {
-          "owner": "packages/habit",
-          "package": "nikatru_habit",
-          "symbols": [
-            "HabitService",
-            "StreakService",
-            "StreakEngine",
-            "DailyGoalService"
-          ]
-        },
-        "neverPerApp": true,
-        "why": "Demand-gated because a habit mechanic bolted onto an app that does not need one is the exact shape [2]C-2 forbids: it costs a pubspec, an analysis_options, a workspace entry, a test harness and a CI surface forever, and delivers nothing. No app in this factory declares one today -- the notifications package already carries the reminder half, which is the only piece any shipped app has needed. The moment an app declares here, the module is built ONCE, shared, and inherited."
-      }
-    ]
-  },
-  "capabilities": [
-    {
-      "id": "core",
-      "capability": "The app-neutral spine: it DECLARES most of the factory's seam contracts, and owns config, caches and domain models. Nothing here may know about a specific app.",
-      "owner": "packages/core",
-      "package": "nikatru_core",
-      "seams": [
-        {
-          "file": "packages/core/lib/src/analytics/analytics.dart",
-          "symbol": "Analytics"
-        },
-        {
-          "file": "packages/core/lib/src/analytics/analytics.dart",
-          "symbol": "EventTransport"
-        },
-        {
-          "file": "packages/core/lib/src/analytics/consent_transport.dart",
-          "symbol": "ConsentTransport"
-        },
-        {
-          "file": "packages/core/lib/src/auth/auth_repository.dart",
-          "symbol": "AuthRepository"
-        },
-        {
-          "file": "packages/core/lib/src/config/config_loader.dart",
-          "symbol": "ConfigTransport"
-        },
-        {
-          "file": "packages/core/lib/src/content/content_pack_source.dart",
-          "symbol": "ContentPackSource"
-        },
-        {
-          "file": "packages/core/lib/src/content/pack_verifier.dart",
-          "symbol": "PackVerifier"
-        },
-        {
-          "file": "packages/core/lib/src/storage/key_value_store.dart",
-          "symbol": "KeyValueStore"
-        },
-        {
-          "file": "packages/core/lib/src/storage/secure_store.dart",
-          "symbol": "SecureStore"
-        },
-        {
-          "file": "packages/core/lib/src/notifications/notification_service.dart",
-          "symbol": "NotificationService",
-          "methods": [
-            "init",
-            "requestPermission",
-            "showNow",
-            "scheduleDaily",
-            "cancel",
-            "cancelAll",
-            "notificationTaps"
-          ],
-          "_closedGap": "[13]T-9, 2026-08-07. This seam CARRIED a `missingMethods` waiver for the notification tap / open surface. It is closed, so the waiver is gone -- leaving it would have been the stale waiver its own `closedIf` clauses existed to catch, and both of them now match: the seam declares `notificationTaps()` and the adapter registers `onDidReceiveNotificationResponse`. The protection did not go with it. `SEAMS_OWING_A_DECLARED_GAP` in tooling/ci/assert-capability-register.mjs required this seam to keep DECLARING the gap; `WIRED_SURFACES_THAT_MAY_NOT_REGRESS` in the same file now requires it to keep the gap CLOSED -- seam method, adapter registration and a live emitter, each failing the build on its own. Strictly stronger: the old list could only notice the waiver being deleted, the new one notices the feature being deleted."
-        },
-        {
-          "file": "packages/core/lib/src/review/review_prompter.dart",
-          "symbol": "ReviewPrompter"
-        },
-        {
-          "file": "packages/core/lib/src/entitlement_transport.dart",
-          "symbol": "EntitlementTransport"
-        },
-        {
-          "file": "packages/core/lib/src/cancellation_transport.dart",
-          "symbol": "CancellationTransport"
-        }
-      ],
-      "consumers": [
-        "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ]
-    },
-    {
-      "id": "api_client",
-      "capability": "HTTP transport to the shared platform Worker — config, consent and analytics event delivery.",
-      "owner": "packages/api_client",
-      "package": "nikatru_api_client",
-      "seams": [],
-      "implementsSeams": [
-        "ConfigTransport",
-        "ConsentTransport",
-        "EventTransport"
-      ],
-      "consumers": [
-        "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ],
-      "note": "Gained its first real consumers at 5f3466b when [2]C-3 moved all three dio transports here out of apps/subly and the brick.",
-      "capabilityMatrix": {
-        "file": "packages/api_client/lib/src/http_capabilities.dart",
-        "symbol": "HttpCapabilities",
-        "test": "packages/api_client/test/http_capabilities_test.dart",
-        "pinnedTo": "dio 5.x",
-        "degradesOn": "Web is a different network stack: CORS is enforced by the browser and only fixable SERVER-side, User-Agent cannot be set and the assignment is silently IGNORED, and certificate pinning is impossible because the page never sees the socket. Uses its own HttpPlatform enum rather than TargetPlatform because this package is pure Dart and declares no Flutter dependency."
-      }
-    },
-    {
-      "id": "auth",
-      "capability": "Identity: sign-in/up, OAuth redirect, session and bearer token, and the CLIENT half of account deletion. The only package that imports the Supabase SDK.",
-      "owner": "packages/auth_supabase",
-      "package": "nikatru_auth_supabase",
-      "seams": [],
-      "implementsSeams": [
-        "AuthRepository"
-      ],
-      "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}",
-        "apps/subly"
-      ],
-      "note": "[2]C-15, 2026-07-28. Before this the ONLY implementations lived inside apps/subly, so the brick wired no auth and no tokenProvider — every stamped app was born unable to authenticate. Ships SupabaseAuthRepository, a REAL InMemoryAuthRepository (wired, not mocked — a stub returning null from everything is the fail-closed shape [2]C-6 exists to catch), SecureSessionStorage (G-43: the SDK defaults to plaintext shared_preferences for the access AND refresh tokens), and AuthCapabilities, the declared six-platform matrix with Linux SUPPORTED — the contrary claim was checked against pub.dev and is false. 2026-08-01: `initNikatruAuth` — the function that passes SecureSessionStorage, and the ONLY reason apps/subly is now a consumer — had ZERO callers tree-wide, so the brick initialised the SDK nowhere (a backend-live stamp died at launch on `Supabase.instance`) and the one shipping app called `Supabase.initialize` bare, persisting its refresh token in plaintext. Both call sites now exist and assert-seams-wired counts the seam. `DELETE /v1/account` is stamped by the brick and its client hook is wired; the route refuses with 501 unless it can delete the IDENTITY record too, so a deletion is never reported that leaves the login working.",
-      "resolved": [
-        {
-          "path": "apps/subly/lib/data/auth/supabase_auth_repository.dart",
-          "wasKind": "seam-implemented-in-app",
-          "declaredOn": "2026-07-28",
-          "resolvedOn": "2026-08-10",
-          "detail": "CUT-1 REVERSAL (owner approval 2026-08-09: 'Cut-1 reversal APPROVED — supabase auth repository moves into the chassis'). The file is DELETED and apps/subly now constructs the chassis SupabaseAuthRepository from packages/auth_supabase. The violation entry is REMOVED rather than annotated, because a declared exception whose file no longer exists is an exemption over nothing: assert-no-seam-forks only prints a waiver when a matching suspect is found, so a stale path sat silent and dead while reading like a known-and-managed fork. That gap is now itself a guard limb (the stale-declaration self-check in assert-no-seam-forks.mjs), and removing this entry is what negative-tested it. What the fork cost while it stood: no expiry-driven token refresh, no single-flight refresh, and no kIsWeb OAuth launch-mode arm — three chassis fixes that never reached the one shipping app.",
-          "movedTo": "packages/auth_supabase/lib/src/supabase_auth_repository.dart"
-        },
-        {
-          "path": "apps/subly/lib/data/auth/mock_auth_repository.dart",
-          "wasKind": "seam-implemented-in-app",
-          "declaredOn": "2026-07-28",
-          "resolvedOn": "2026-08-12",
-          "detail": "RESOLVED BY RELOCATION, NOT BY RETIREMENT — and the distinction is the whole point. This was never a live fork: it is a TEST DOUBLE that sat under lib/, and its ONLY importer tree-wide was already apps/subly/test/delete_account_test.dart (re-measured 2026-08-12: one hit, `rg -n mock_auth_repository --glob '*.dart'`). The app resolves the chassis InMemoryAuthRepository from packages/auth_supabase in every non-live posture including `--proof`. 02-STAGE-2-LOCKED.md:24 already states the rule it broke — 'fakes belong in tests' — and BOTH guards encode that rule, which is why moving the file ends the violation honestly rather than waiving it: assert-capability-register scans apps/*/lib only, and assert-no-seam-forks' EXEMPT_DIR exempts test/. Nothing about the class changed; the two shim imports became package: imports. WHAT THIS DOES NOT DO: it does not discharge the chassis work the old blockedBy described. delete_account_test.dart still drives the ADR-027 501-vs-502 outcomes through this double, and re-pointing it at InMemoryAuthRepository still needs that class to produce both refusals. That work is real and remains unowned — it is the subject of OWNER_QUEUE D-8. The waiver blocked DELETING the class; it never blocked putting a fake where fakes live, and for four and a half months nobody separated the two.",
-          "movedTo": "apps/subly/test/support/mock_auth_repository.dart"
-        }
-      ],
-      "violations": [],
-      "capabilityMatrix": {
-        "file": "packages/auth_supabase/lib/src/auth_capabilities.dart",
-        "symbol": "AuthCapabilities",
-        "test": "packages/auth_supabase/test/auth_capabilities_test.dart",
-        "pinnedTo": "supabase_flutter 2.16.0 + app_links 7.2.1",
-        "degradesOn": "Web has no OS keychain for a page, so the session is NOT OS-backed; the OAuth token arrives in the URL FRAGMENT (query parsing fails silently) and the flow must be a full-page redirect, never a popup. Linux IS supported — the contrary claim was checked against pub.dev and is false."
-      }
-    },
-    {
-      "id": "design_system",
-      "capability": "Shared widgets and theming. Deliberately domain-free — the lock DECISION stays with the caller so this package never learns what a paywall is ([2]C-5 boundary).",
-      "owner": "packages/design_system",
-      "package": "nikatru_design_system",
-      "seams": [],
-      "consumers": [
-        "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ],
-      "noSeamReason": "A widget library, not a contract — callers use the widgets directly. The one decision that COULD have become a seam (what to lock) is deliberately left with the caller so this package never learns domain vocabulary: that is [2]C-5's boundary, and PaywallGate is the example."
-    },
-    {
-      "id": "platform_storage",
-      "capability": "Secure-token and key-value storage across all six platforms.",
-      "owner": "packages/platform_storage",
-      "package": "nikatru_platform_storage",
-      "seams": [],
-      "implementsSeams": [
-        "SecureStore",
-        "KeyValueStore"
-      ],
-      "consumers": [
-        "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ],
-      "capabilityMatrix": {
-        "file": "packages/platform_storage/lib/src/storage_capabilities.dart",
-        "symbol": "StorageCapabilities",
-        "test": "packages/platform_storage/test/storage_capabilities_test.dart",
-        "pinnedTo": "flutter_secure_storage 9.x + shared_preferences 2.x",
-        "degradesOn": "Linux secure storage is CONDITIONAL ON THE ENVIRONMENT: libsecret must be installed AND a Secret Service daemon running and unlocked. Headless, kiosk and CI sessions often have neither, so a write can fail at runtime where every other desktop succeeds. Web is not OS-backed at all."
-      }
-    },
-    {
-      "id": "review",
-      "capability": "Store-review prompt: the OS rating dialog, and the timing rule that decides when it may be shown.",
-      "owner": "packages/platform_storage",
-      "package": "nikatru_platform_storage",
-      "seams": [],
-      "implementsSeams": [
-        "ReviewPrompter"
-      ],
-      "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ],
-      "note": "[2]C-13, 2026-07-29. A SECOND capability on an existing package, not a new one: [2]C-4 adjudicated that share_plus, app_links and in_app_review all land in platform_storage, because a capability name is not a reason to spawn a pubspec. The WHEN half is `core.ReviewGate` -- pure arithmetic over four persisted numbers, so every branch is reachable from a test without simulating four months of calendar time. The refusal this replaced was \"there are no users to ask\", which is an argument about timing and not about whether the mechanism can be built.",
-      "capabilityMatrix": {
-        "file": "packages/platform_storage/lib/src/review_capabilities.dart",
-        "symbol": "ReviewCapabilities",
-        "test": "packages/platform_storage/test/review_capabilities_test.dart",
-        "pinnedTo": "in_app_review 2.0.12",
-        "degradesOn": "Linux and web have NO implementation at all -- reaching the plugin there throws MissingPluginException, so the adapter checks the matrix before touching it. Windows is the asymmetric row: openStoreListing() exists and the inline prompt does not, so collapsing the two booleans into one would silently lose Windows' only route to the store. Android additionally needs the Play Store present ON THE DEVICE, which no build-time fact can know, so isAvailable() is asked at runtime. iOS requestReview() does NOTHING in TestFlight -- the one build a developer is most likely to test it in. 2026-08-01: the matrix also declares `requiredStoreId` (StoreIdRequirement), because openStoreListing() was being called with NO arguments while the pinned plugin runs ArgumentError.checkNotNull on appStoreId (iOS/macOS) and microsoftStoreId (Windows) -- a RELEASE-build throw, swallowed by the adapter's catch, so the listing was dead on three of the four store platforms and reported success. The ids arrive as APP_STORE_ID / MICROSOFT_STORE_ID dart-defines and are OWNER-GATED (they do not exist until the app is registered); an absent id now reads as core.StoreListingOutcome.notConfigured."
-      }
-    },
-    {
-      "id": "telemetry",
-      "capability": "Crash and error reporting sink.",
-      "owner": "packages/telemetry",
-      "package": "nikatru_telemetry",
-      "seams": [
-        {
-          "file": "packages/telemetry/lib/src/telemetry_client.dart",
-          "symbol": "TelemetryClient"
-        }
-      ],
-      "consumers": [
-        "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}"
-      ],
-      "note": "Wired into Subly at 5f3466b. Until then the only app in production had NO crash reporting: the package existed, passed 8 tests, and shipped to nobody.",
-      "capabilityMatrix": {
-        "file": "packages/telemetry/lib/src/telemetry_capabilities.dart",
-        "symbol": "TelemetryCapabilities",
-        "test": "packages/telemetry/test/telemetry_capabilities_test.dart",
-        "pinnedTo": "sentry_flutter 9.x",
-        "degradesOn": "Dart errors report everywhere, but NATIVE crashes only on Android/iOS/macOS. On desktop Windows and Linux a segfault or OOM kill produces NO report — which is exactly what a user means by \"it just closed\". Collapsing the two is how a portfolio believes it has crash reporting and does not."
-      }
-    },
-    {
-      "id": "notifications",
-      "capability": "Local notification scheduling adapter (flutter_local_notifications baseline).",
-      "owner": "packages/notifications",
-      "package": "nikatru_notifications",
-      "seams": [
-        {
-          "file": "packages/notifications/lib/src/local_notification_service_io.dart",
-          "symbol": "NotificationPlugin"
-        }
-      ],
-      "implementsSeams": [
-        "NotificationService"
-      ],
-      "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}",
-        "apps/subly"
-      ],
-      "note": "The FLN 17.x pin stays because 39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. ⚠️ DATED DECLARED EXCEPTION (2026-08-07, [13]T-9) to that cut, the third one and the same shape as the two already standing (nikatru_telemetry per [pipeline C-2], nikatru_auth_supabase per [G-43]): apps/subly now consumes this package for the INBOUND half only. This adapter is the one place in the tree that registers `onDidReceiveNotificationResponse`, so without it a tapped Subly renewal reminder opens nothing and `notification_opened` stays unemittable. Subly's frozen fork keeps every scheduling call it has and gains no chassis feature; `FlutterLocalNotificationsPlugin()` is a process singleton, so the two wrap ONE plugin and there is ONE registration -- see the ordering note in apps/subly/lib/main.dart. [2]C-3's de-forking removes the duplication.",
-      "violations": [
-        {
-          "path": "apps/subly/lib/services/notifications/notification_service.dart",
-          "kind": "seam-implemented-in-app",
-          "symbol": "NotificationService",
-          "detail": "A third, independent implementation: its own `class NotificationService` singleton calling flutter_local_notifications 17.x directly, and importing Subly's own Subscription model. This is the exact fork [2]C-1's audit note cites as the reason the register exists. ⚠️ MEASURED 2026-08-12 — 'FORK' IS ACCURATE FOR THE GUARD AND MISLEADING FOR THE READER, so here is the surface. Seam (packages/core/lib/src/notifications/notification_service.dart:70-100): init · requestPermission · showNow · scheduleDaily · cancel · cancelAll · notificationTaps. This class: init · requestPermissions · scheduleRenewalReminder · scheduleWeeklyDigest · cancelWeeklyDigest · cancelForSubscription · cancelAll · syncAll. ONLY `init` and `cancelAll` overlap even by NAME. This is a DOMAIN reminder scheduler over Subly's Subscription model, not a copy of the seam — what actually trips check 5 is the NAME COLLISION on `class NotificationService`, plus a second wrap of the same process-singleton plugin. 🔴 CONSEQUENCE FOR WHOEVER TAKES THIS: a rename alone (e.g. SublyReminderScheduler) WOULD GO GREEN AND FIX NOTHING — the duplicate plugin wrap would remain. Both providers coexist on purpose today: providers.dart:1074 notificationServiceProvider = the chassis seam, :1090 sublyNotificationServiceProvider = this class.",
-          "declaredOn": "2026-07-28",
-          "fixOwner": "OWNER_QUEUE D-8 — define or retire [2]C-3's de-forking increment",
-          "blockedBy": "🔄 RE-MEASURED 2026-08-12, AND THE PREVIOUS REASON HAD BEEN VOID FOR FOUR DAYS. It read: '39-CHASSIS cut 1 froze apps/subly as a legacy rail-prover. Deleting this fork reverses an agreed cut, which the standing authorization does not cover — owner decided 2026-07-28 to declare it rather than move it.' [ADR 036] (2026-08-08, OWNER-ORDERED, Private/decisions/036-subly-freeze-dissolved-by-owner-order.md:61 — cited under the old `knowledge/decisions/` prefix until the 2026-08-15 flatten merged `knowledge/` into `Private/`; the :61 anchor is unmoved) DISSOLVED that freeze: 'Cut 1's freeze on apps/subly is DISSOLVED.' So the stated block had no subject, and the waiver went on reading as managed. Nothing re-measures a waiver's REASON — assert-no-seam-forks.mjs:272-283 says exactly that of itself, and it is why this sat. WHAT ACTUALLY BLOCKS IT, measured the same day: 'de-fork' is the WRONG VERB, so there is no mechanical move to perform. The surfaces barely overlap (see detail), which leaves a genuine DESIGN choice nobody has made — either the chassis seam grows a schedule-many / cancel-by-key surface able to carry renewal reminders and a weekly digest, or this class is renamed and re-based onto the seam. Second, [ADR 037] Phase 3 currently KEEPS it BY DESIGN: Private/plans/subly-restamp-execution.md:44-47 (same flatten) rules the pubspec merge a UNION and says 'Do NOT drop bypassed deps yet ... dep-removal + bypass-entry-removal = one commit each, Phase 3', and Phase 3 is unwritten. So removing this fork is a dependency of a phase that does not exist yet. Owner decision queued as OWNER_QUEUE D-8."
-        }
-      ],
-      "capabilityMatrix": {
-        "file": "packages/notifications/lib/src/notification_capabilities.dart",
-        "symbol": "NotificationCapabilities",
-        "test": "packages/notifications/test/notification_capabilities_test.dart",
-        "pinnedTo": "flutter_local_notifications 17.x — re-review on any bump",
-        "degradesOn": "Linux shows but cannot schedule (zonedSchedule unimplemented in 17.x-19.x); Windows can do neither on 17.x (support landed in 18.x); web and fuchsia neither. Unsupported calls no-op so a caller falls back to an in-app nudge. 2026-08-01, TIMEZONE: with no LocalTimezoneResolver injected the service used to install tz.local = UTC, so a reminder core documents as firing at [hour]:[minute] LOCAL time was built at that hour in UTC -- 14:30 IST for a 09:00 reminder, and the middle of the night across the Americas. No consumer injected a resolver and every test injected 'UTC', the one value where the bug and the correct behaviour agree. The fallback is now the DEVICE's own current UTC offset (deviceOffsetLocation), exact for the schedule being made and needing no plugin; an injected IANA resolver still wins and is what removes the residual one-hour drift across a DST transition.",
-        "scheduleContract": {
-          "file": "packages/notifications/lib/src/local_notification_service_io.dart",
-          "unobservable": "[13]T-7, 2026-08-02. These two arguments are passed BELOW the NotificationPlugin port -- the port's scheduleDaily takes (id, title, body, when) and nothing else -- so no fake plugin can observe them and NO behavioural test can be written for either. That is stated here rather than papered over with a test that asserts something else: this is a source-shape assertion, and it is the only kind available.",
-          "requires": [
-            {
-              "code": "androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle",
-              "why": "INEXACT is what keeps the daily nudge free of the SCHEDULE_EXACT_ALARM permission on Android 13+. Flipping it to exactAllowWhileIdle compiles, passes every test, and makes every stamped app request a special-access permission Play reviews against a narrow list of allowed use cases -- for a reminder that tolerates OS batching."
-            },
-            {
-              "code": "matchDateTimeComponents: DateTimeComponents.time",
-              "why": "The repeat. Without it zonedSchedule fires ONCE and the daily reminder is a one-off, which looks identical to a working reminder for exactly one day. The chassis schedules a single stable id precisely because this argument makes that one entry cover every day."
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "purchases",
-      "capability": "The CLIENT half of the money rail: offerings priced by the rail config, a hosted checkout owned by the merchant of record, the bounded convergence wait that turns an async webhook into an unlock, the ROSCA cancel request, and the four money funnel events. [pipeline 5]M-5/M-6/M-9/M-10/M-11/M-13/M-15/M-16.",
-      "owner": "packages/purchases",
-      "package": "nikatru_purchases",
-      "seams": [
-        {
-          "file": "packages/purchases/lib/src/purchase_rail.dart",
-          "symbol": "PurchaseRail"
-        },
-        {
-          "file": "packages/purchases/lib/src/checkout_launcher.dart",
-          "symbol": "CheckoutLauncher"
-        }
-      ],
-      "implementsSeams": [
-        "EntitlementTransport",
-        "CancellationTransport"
-      ],
-      "consumers": [
-        "tooling/bricks/app/__brick__/apps/{{app_id}}",
-        "apps/subly"
-      ],
-      "note": "⬜ THE RAIL IS BUILT AND CANNOT YET TAKE MONEY, and the gap is one signup. `RailConfig.checkoutUrlTemplate` is ABSENT because the merchant of record's hosted-checkout URL shape is an UNVERIFIED vendor fact and no seller account exists to check it against (OWNER_QUEUE A-1, PENDING). With it absent `canCheckout` is false and the paywall says purchases are unavailable, which is true. apps/subly became a consumer 2026-08-08 with productization P2.4b ([ADR 037]; the [ADR 036] freeze dissolution retired the sentence that used to stand here — 'deliberately NOT given to apps/subly, which 39-CHASSIS cut 1 froze'). Zero call sites until the chassis money surfaces land (P2.6a); [ADR 026]'s reasoning for deleting the RevenueCat stub rather than moving it is unchanged.",
-      "capabilityMatrix": {
-        "file": "packages/purchases/lib/src/purchase_capabilities.dart",
-        "symbol": "PurchaseCapabilities",
-        "test": "packages/purchases/test/purchase_capabilities_test.dart",
-        "pinnedTo": "url_launcher 6.x, and store commerce policy as read on 2026-08-01 — re-review on any dependency bump AND whenever a channel changes its policy",
-        "degradesOn": "TWO FIELDS PER ROW, and the distinction is what makes this a compliance artifact rather than a table of booleans: `technicallySupported` is url_launcher's question (yes on all six targets) and `channelPermitted` is a store-policy question (no on the mobile stores no matter how well the code works). A one-boolean matrix has to pick a lie -- 'we cannot take payment on iOS' (false: the code works) or 'we can' (false in the way that gets an app rejected). FORBIDDEN: ios-appstore + macos-appstore (App Store Review Guideline 3.1.1 requires IAP for digital content; an external checkout is a documented rejection cause), android-play (Play Billing required; 39-CHASSIS S4 cut 5 defers a native IAP rail so nothing is sold there), windows-store (UNVERIFIED -- Microsoft Store commerce policy has never been read against a primary source in this repo, and undecidable means denied). PERMITTED: web, windows-direct, linux-snap, linux-appimage. `forPlatform` takes the RESTRICTIVE answer where a platform ships through more than one channel, because a build cannot tell at runtime which channel installed it."
-      }
-    },
-    {
-      "id": "analytics_funnel",
-      "capability": "The portfolio-wide conversion funnel: launch, activation, paywall viewed, checkout started, purchase success/failed, notification opened. Entirely app-neutral — it names no Subly concept.",
-      "owner": "packages/core",
-      "package": "nikatru_core",
-      "seams": [],
-      "consumers": [
-        "apps/subly",
-        "packages/purchases"
-      ],
-      "violations": [
-        {
-          "path": "apps/subly/lib/state/analytics_funnel.dart",
-          "kind": "capability-implemented-in-app",
-          "symbol": "AnalyticsFunnel",
-          "detail": "Lives inside an app despite being app-neutral, so no other app or stamped brick can emit the funnel. [5]M-16 already records that four of its methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) have ZERO callers — the analytics rail emits everything except the money. ⚠️ UPDATED 2026-08-01: the four money methods now have real callers, but NOT these four -- [5]M-16 was satisfied by moving the money half into `packages/purchases/lib/src/money_funnel.dart` (MoneyFunnel), which the brick calls, so every stamped app is born measuring its own conversion. THIS declaration is still stranded inside apps/subly; [2]C-3 now has less to move. ✅ SHRUNK 2026-08-12 — the four dead money methods were DELETED from this class (they had zero callers from the day MoneyFunnel took over; verified by resolving each call site, not by name-matching). apps/subly full suite 541 passed before and after, and assert-pseudonymity-firewall stayed green because it resolves the four events BY SYMBOL and excludes declaring files, so it was counting the live MoneyFunnel callers all along. What is left to relocate is now exactly TWO methods: onActivation and onNotificationOpened.",
-          "declaredOn": "2026-07-28",
-          "fixOwner": "OWNER_QUEUE D-8 — define or retire [2]C-3's de-forking increment",
-          "owningPackageAlreadyAssigned": "packages/core, beside the Analytics seam it wraps — 00-RECONCILIATION-DECISIONS.md PART 2.2 item 15 ('C-1 assigns an owning package'). Recorded separately from fixOwner because the two were conflated: the PACKAGE is settled, and what has no owner is the INCREMENT that performs the move. ⚠️ TWO OWNERS ARE NAMED FOR ONE MOVE — 11-measurement.md:94 routes the same relocation to 'stage 2 · C-1/C-3'; reconcile when D-8 is answered.",
-          "blockedBy": "🔄 RE-MEASURED 2026-08-12, AND THE PREVIOUS REASON HAD BEEN VOID FOR FOUR DAYS. It read: 'Moving it edits apps/subly, frozen by 39-CHASSIS cut 1. Owner decided 2026-07-28 to declare the assignment now and move it in [2]C-3's increment.' [ADR 036] (2026-08-08, OWNER-ORDERED) DISSOLVED that freeze, so editing apps/subly is no longer blocked at all and the stated reason has no subject. WHAT REMAINS, measured 2026-08-12 by resolving every call site rather than trusting the method names: the four money methods (onPaywallViewed, onCheckoutStarted, onPurchaseSuccess, onPurchaseFailed) had ZERO callers — the two apparent hits in apps/subly/lib/features/monetization/paywall_screen.dart:70,:77 resolve to `final MoneyFunnel funnel`, i.e. packages/purchases, not this class, and the only other mentions repo-wide were prose in comments. onLaunch had already left for packages/core/lib/src/analytics/analytics_lifecycle.dart. ✅ THE FOUR DEAD METHODS WERE DELETED 2026-08-12 (that half needed no decision, so it was not left for the owner): apps/subly 541 tests passed before and after, and assert-pseudonymity-firewall stayed green, since it resolves those four events by symbol across apps/packages/bricks and excludes declaring files — the callers it counts are MoneyFunnel's, and always were. So exactly TWO live methods remain to be re-homed: onActivation (1 caller, state/subscriptions_controller.dart:186) and onNotificationOpened (1 caller, state/notification_tap_observer.dart:42). WHAT STILL NEEDS A DECISION IS WHERE `activation` LIVES: it is a locked-taxonomy event name carrying an app-specific kind ('first_subscription_added'), so moving it to core means core gains an event whose payload only the app can supply — a taxonomy call, not agent judgement. For the tap half the chassis has already answered: the brick's NotificationTapObserver (tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/notification_tap_observer.dart:23-28) logs notification_opened straight through core.Analytics with NO funnel object at all. Owner decision queued as OWNER_QUEUE D-8."
-        }
-      ],
-      "noSeamReason": "A concrete funnel over the Analytics seam that core already declares; it adds no contract of its own. Callers use it directly."
-    },
-    {
-      "id": "lints",
-      "capability": "The shared analysis ruleset — the one convention set every package and stamped app should inherit.",
-      "owner": "packages/analysis",
-      "package": "nikatru_lints",
-      "seams": [],
-      "seam": "packages/analysis/lib/analysis_options.yaml",
-      "consumers": [
-        "apps/subly",
-        "tooling/bricks/app/__brick__/apps/{{app_id}}",
-        "packages/purchases"
-      ],
-      "note": "✅ [2]C-12 WIRED IT 2026-07-28. It previously had ZERO consumers — including its own analysis_options.yaml, where the include sat inside a COMMENT, so the package's only mention of the mechanism it exists to provide was not code. Score was 0 of 10: every analysis_options.yaml in the tree included flutter_lints or lints directly. All eight non-exempt files now inherit it, each with the dev_dependency that makes the include resolve. The two exempt files are the shared set itself and the package's own self-apply, which uses a relative include so the lint package can analyze itself before the workspace resolves. Enforced by tooling/ci/assert-lint-inheritance.mjs — which also asserts the set still ESCALATES a rule to `error`, because inheritance at default severity prints and ships (measured: analyze exits 0)."
-    },
-    {
-      "id": "tokens",
-      "capability": "Design tokens built by style-dictionary into sites/_shared/assets/tokens.css, which the websites serve.",
-      "owner": "packages/tokens",
-      "package": null,
-      "seams": [],
-      "seam": "packages/tokens/style-dictionary.config.mjs",
-      "consumers": [],
-      "unconsumedReason": "A Node package with no pubspec.yaml, so the Dart-consumer test cannot apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane which rebuilds and fails on any diff. 39-CHASSIS cut 3's 'zero consumers, delete it' premise was falsified 2026-07-26 — recorded as SUPERSEDED BY FACTS rather than executed blindly."
-    }
-  ],
-  "cloneTells": {
-    "_why": "[pipeline C-10] limb 2. Domain vocabulary that belongs to ONE app's problem, not to the chassis. MUST NOT BE EMPTY -- an empty list passes everything silently, which is the failure this repo has hit repeatedly. App NAMES are derived from apps/ on disk, never listed here, so they cannot go stale.",
-    "domainNouns": [
-      "subscription",
-      "renewal",
-      "billingCycle",
-      "freeTrial",
-      "payee",
-      "merchantName"
-    ]
+  {
+   "id": "tokens",
+   "capability": "Design tokens built by style-dictionary into sites/_shared/assets/tokens.css, which the websites serve.",
+   "owner": "packages/tokens",
+   "package": null,
+   "seams": [],
+   "seam": "packages/tokens/style-dictionary.config.mjs",
+   "consumers": [],
+   "unconsumedReason": "A Node package with no pubspec.yaml, so the Dart-consumer test cannot apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane which rebuilds and fails on any diff. 39-CHASSIS cut 3's 'zero consumers, delete it' premise was falsified 2026-07-26 — recorded as SUPERSEDED BY FACTS rather than executed blindly."
   }
+ ],
+ "cloneTells": {
+  "_why": "[pipeline C-10] limb 2. Domain vocabulary that belongs to ONE app's problem, not to the chassis. MUST NOT BE EMPTY -- an empty list passes everything silently, which is the failure this repo has hit repeatedly. App NAMES are derived from apps/ on disk, never listed here, so they cannot go stale.",
+  "domainNouns": [
+   "subscription",
+   "renewal",
+   "billingCycle",
+   "freeTrial",
+   "payee",
+   "merchantName"
+  ]
+ }
 }
