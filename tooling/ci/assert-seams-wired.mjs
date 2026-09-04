@@ -586,7 +586,7 @@ const EXCLUSIVE_TRIGGERS = [
     // repeats this line; a call site outside a providers spine never gets one.
     allowed: [
       `${BRICK_APP}/lib/state/providers.dart`,
-      'apps/subly/lib/state/providers.dart',
+      'apps/subly/lib/state/providers/review.dart',
     ],
     why:
       'ReviewPromptController.maybeAsk is the only thing allowed to ask, because the decision belongs to ' +
@@ -620,7 +620,7 @@ const EXCLUSIVE_TRIGGERS = [
     // `signOutAndForgetUser` (every user-facing control).
     allowed: [
       `${BRICK_APP}/lib/state/providers.dart`,
-      'apps/subly/lib/state/providers.dart',
+      'apps/subly/lib/state/providers/auth.dart',
     ],
     why:
       'A session-ending control that calls signOut() directly skips `signOutAndForgetUser`, so the entitlement ' +

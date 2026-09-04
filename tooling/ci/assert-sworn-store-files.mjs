@@ -549,14 +549,14 @@ const LINE_ANCHORS = [
   {
     doc: 'android-play/data-safety.json',
     cite: 'providers.dart',
-    file: 'apps/{app}/lib/state/providers.dart',
+    file: 'apps/{app}/lib/state/providers/auth.dart',
     anchor: 'InMemoryAuthRepository()',
     why: 'the auth-repo branch the Account row is answered from',
   },
   {
     doc: 'android-play/data-safety.json',
     cite: 'providers.dart',
-    file: 'apps/{app}/lib/state/providers.dart',
+    file: 'apps/{app}/lib/state/providers/subscriptions.dart',
     anchor: 'SeedApiClient()',
     why: 'the in-memory API client that makes "never leaves the device" true',
   },

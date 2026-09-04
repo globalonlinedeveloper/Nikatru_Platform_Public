@@ -88,16 +88,25 @@ void main() {
     );
   });
 
-  // The regression witness for apps/subly/lib/state/providers.dart:1662, where
+  // The regression witness for
+  // apps/subly/lib/state/providers/subscriptions.dart:55, where
   // `ref.watch(authRepositoryProvider).currentAccessToken` survived #258.
   //
-  // ⚠️ ITS DEMONSTRATED FAILING CASE IS NOT THE :1662 REVERT, and saying so is
+  // 🔴 THIS POINTER READ `providers.dart:1662` AND HAD ALREADY DRIFTED — the
+  // spine split only made it visible. Re-walked 2026-09-04: line 1662 of the
+  // pre-split file was inside `LegalAcceptanceController._hydrate`, a comment
+  // about clobbering a user mid-read, and had nothing to do with this tear-off.
+  // The claim was true and the number pointed somewhere else, which is the
+  // failure `assert-sworn-store-files.mjs`'s limb 8 exists for and which no
+  // guard covers here.
+  //
+  // ⚠️ ITS DEMONSTRATED FAILING CASE IS NOT THE :55 REVERT, and saying so is
   // the point. `apiClientProvider` returns `SeedApiClient()` before it watches
   // anything when `AppConfig.isApiConfigured` is false, and a `flutter test`
   // takes no `--dart-define`s — so under `flutter test` the tear-off line never
   // runs and reverting it leaves this GREEN (measured 2026-08-09, not assumed).
   // What DOES turn it red is the watch escaping the configured branch, which is
-  // the shape a later edit would take. The :1662 revert itself is caught by the
+  // the shape a later edit would take. The :55 revert itself is caught by the
   // static guard, which reads the source rather than running it — the division
   // of labour this pair of checks exists for.
   test('the erasure closure can resolve the TYPED api client', () {
