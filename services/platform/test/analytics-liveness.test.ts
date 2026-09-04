@@ -80,12 +80,19 @@ const insertConsent = (
   serverTs: string,
   id: string,
   granted = 1,
+  // 🔴 A PARAMETER SINCE 2026-09-04, AND ITS ABSENCE IS WHY 17 GREEN TESTS SAT
+  // OVER A REAL DEFECT. Every fixture here hardcoded 'analytics', so the suite
+  // could not tell a query that filters the purpose from one that does not —
+  // and the shipped query did not. `consent_artifacts` holds
+  // 'analytics' | 'sync_backup' | 'promo', and 0002_analytics.sql:75-80 says in
+  // writing that anything aggregating `granted` must branch on `purpose`.
+  purpose = 'analytics',
 ) =>
   db.db
     .prepare(
       'INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts) VALUES (?,?,?,?,?,?,?)',
     )
-    .run(id, appId, 'anon-1', 'analytics', granted, 'v1', serverTs);
+    .run(id, appId, 'anon-1', purpose, granted, 'v1', serverTs);
 
 const hours = (n: number) => new Date(Date.now() - n * 60 * 60 * 1000).toISOString();
 
@@ -383,6 +390,55 @@ describe('the portfolio row carries the independent consent signal', () => {
     await analyticsLiveness(envWith(db));
 
     expect(tokens(portfolio(db).detail)).toMatchObject({ consents: '0', consented_apps: '0' });
+  });
+
+  it('🔴 A GRANTED `promo` CONSENT IS NOT ANALYTICS REACH — the live false alarm of 2026-09-04', async () => {
+    // ops-watch went RED at 06:00 with `events=0, consents=2` and the sentence
+    // "reach is PROVEN and arrivals are ZERO". Reach was NOT proven. The query
+    // filtered `granted = 1` across EVERY purpose, so two granted `promo` rows —
+    // a legitimate-interest artifact under GDPR Art 21 — were read as evidence
+    // that ANALYTICS sessions should be emitting events.
+    //
+    // 0002_analytics.sql:75-80 had already forbidden this in writing: "Anything
+    // aggregating this column must branch on `purpose`". Nothing tested it,
+    // because every fixture in this file hardcoded purpose='analytics' — a suite
+    // that cannot express the wrong value cannot catch it.
+    //
+    // Where the rows came from: the E2E walk DECLINES analytics ("No thanks")
+    // and TICKS the marketing box, so zero events was the CORRECT behaviour.
+    const db = realPlatformDb();
+    insertConsent(db, 'subly', hours(1), 'p1', 1, 'promo');
+    insertConsent(db, 'subly', hours(2), 'p2', 1, 'sync_backup');
+
+    await analyticsLiveness(envWith(db));
+
+    const row = portfolio(db);
+    expect(tokens(row.detail)).toMatchObject({
+      events: '0',
+      consented_apps: '0',
+      consents: '0',
+    });
+    // The reader's FAIL branch is `consents > 0 AND events = 0`. With the
+    // purpose filter these are zeros, so it reads as the honest
+    // "cannot yet distinguish a broken rail from no sessions" — a PRINT, not an
+    // alarm. A false alarm in the alarm chain is worse than no alarm: it is what
+    // teaches people to skip the page.
+    expect(row.detail).toContain('Cannot yet distinguish');
+  });
+
+  it('an analytics grant in the same window still counts — the filter narrows, it does not silence', async () => {
+    // The other direction, so the fix cannot be "return zero always".
+    const db = realPlatformDb();
+    insertConsent(db, 'subly', hours(1), 'p1', 1, 'promo');
+    insertConsent(db, 'subly', hours(2), 'a1');
+
+    await analyticsLiveness(envWith(db));
+
+    expect(tokens(portfolio(db).detail)).toMatchObject({
+      events: '0',
+      consented_apps: '1',
+      consents: '1',
+    });
   });
 
   it('the consent count obeys the SAME trailing window as the events count', async () => {
