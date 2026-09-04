@@ -1573,6 +1573,26 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // the repository's most safety-critical guard, NOT permission — and calling it
   // "locked" would have stopped a later reader from even asking.
   { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 20 },
+  // ── PHASE 2, THIRD WORKFLOW, ADDED 2026-09-04 ────────────────────────────
+  // ⚠️ AND THIS ONE IS DEFENCE IN DEPTH, NOT A FIX FOR A LIVE PROBLEM. Say so
+  // plainly, because the two above were urgent and this reads like the third of
+  // a set. `duty.workflow.build-platforms.yml` has a 7d cadence against a
+  // 7 x 1.5 = 252h window and GitHub fires it TWICE weekly (Mon + Thu), so even
+  // a missed slot leaves 168h inside 252h. Its second reader,
+  // assert-platform-proof-fresh.mjs, is more forgiving still at 14 days. Unlike
+  // e2e's 36h window, this duty was never close to the edge.
+  //
+  // ⏱️ `everyHours: 84` — 3.5 days, which is exactly the Mon/Thu spacing the
+  // workflow already keeps, and a multiple of the dispatcher's 6h grid. Three
+  // firings fit inside the 252h window (252 / 84 = 3), so TWO consecutive misses
+  // are survivable; weekly (168) would not be, because 2 x 168 > 252.
+  //
+  // 💸 IT DOES COST DUPLICATE RUNS, and this is the expensive workflow: 7 jobs
+  // across ubuntu/windows/macOS, ~12 minutes wall, and macOS bills at 10x. On a
+  // PUBLIC repository standard runners are free, so this is queue time rather
+  // than money — but it is a real doubling (2 scheduled + 2 dispatched per week)
+  // and it buys reliability, not evidence. Drop to 120 if that trade sours.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'build-platforms.yml', ref: 'main', everyHours: 84 },
 ];
 
 /** The row target under which the DISPATCHER records its own liveness, as

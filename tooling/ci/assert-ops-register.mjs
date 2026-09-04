@@ -740,6 +740,42 @@ export function evaluateRunRecords(reg, probes, nowMs) {
       ],
     };
   }
+  // 🔴 THE CEILING IS DERIVED, SO DERIVE IT — IT WENT STALE THE DAY AFTER IT WAS
+  // WRITTEN. `_maxUnreadableWhy` states the arithmetic in prose: "headroom for
+  // ONE network provider going dark, plus one spare", counted as "6 on the
+  // GitHub API, 1 on Cloudflare D1, 1 on GlitchTip … both at once costs 2, and
+  // 3 still absorbs it". Adding the e2e timer limb on 2026-09-04 made Cloudflare
+  // TWO rows, so both-dark became 3 — the ceiling exactly, with zero headroom —
+  // and not one character of the prose moved. A hand-maintained derived number
+  // is a number that silently stops being derived.
+  // 🔴 AND THE TWO DIRECTIONS ARE NOT THE SAME MISTAKE, which the first version
+  // of this check got wrong by demanding equality. A ceiling ABOVE the
+  // derivation is a WEAKENING — it tolerates more darkness than the stated rule
+  // buys, which is how `unreadable` becomes the escape hatch [14]O-3 replaced,
+  // so it FAILS. A ceiling BELOW it is STRICTER: nothing is let through, the
+  // register simply no longer keeps the headroom it promises, and a provider
+  // outage will redden CI on a measurement problem rather than a duty failure.
+  // That is worth SAYING and not worth blocking — and `_maxUnreadable: 0`, which
+  // this register's own tests call legal, is exactly that case.
+  const derived = deriveUnreadableCeiling(reg);
+  const arithmetic =
+    `derivation: max(rows behind any single NON-GitHub provider) + 1 spare = ${derived.ceiling} ` +
+    `[${derived.perProvider.map(([p, n]) => `${p}=${n}`).join(', ') || 'no non-GitHub providers'}]. ` +
+    'A row with a `timer` limb counts against BOTH its providers, because either going dark makes the ' +
+    'combined probe unreadable. GitHub is excluded on purpose: its rows are MEANT to break the ceiling ' +
+    'together, since that is what a lost GITHUB_TOKEN looks like.';
+  if (readCap > derived.ceiling) {
+    errors.push(
+      `\`_recordReaders._maxUnreadable\` is ${readCap}, ABOVE the register's own derivation of ${derived.ceiling}. ` +
+        `That tolerates more darkness than the rule it claims to follow buys. ${arithmetic}`,
+    );
+  } else if (readCap < derived.ceiling) {
+    prints.push(
+      `[14]O-3 — \`_maxUnreadable\` is ${readCap} but the derivation now gives ${derived.ceiling}, so the ` +
+        '"one provider dark, plus one spare" headroom this key promises NO LONGER HOLDS: a single provider ' +
+        `outage can redden CI on a measurement problem. ${arithmetic}`,
+    );
+  }
   for (const name of readerNames) {
     if (!used.has(name)) {
       errors.push(
@@ -2333,6 +2369,38 @@ export function checkTimerTargetsAgainstDispatcher(reg, src) {
     }
   }
   return problems;
+}
+
+/** Which external provider a reader depends on. `unreachable` and the local
+ *  Windows reader depend on no network provider and so cannot be knocked out by
+ *  one going dark. */
+const READER_PROVIDER = {
+  'github-run-history': 'github',
+  'github-issue-activity': 'github',
+  'cloudflare-d1-heartbeat': 'cloudflare',
+  'glitchtip-heartbeat': 'glitchtip',
+};
+
+/** Pure. Re-derives `_maxUnreadable` from the rows, so the constant cannot drift
+ *  from the rule it claims to follow.
+ *
+ *  ⚠️ A ROW WITH A `timer` LIMB COUNTS TWICE — once for each provider. Either
+ *  one going dark makes `combineLimbProbes` return unreadable for that row, so
+ *  it is genuinely exposed to both, and counting it once would under-state the
+ *  blast radius of exactly the change that introduced it. */
+export function deriveUnreadableCeiling(reg) {
+  const counts = new Map();
+  const bump = (p) => { if (p && p !== 'github') counts.set(p, (counts.get(p) ?? 0) + 1); };
+  for (const r of reg.rows ?? []) {
+    if (r?.kind !== 'duty' || !TIME_CADENCE.test(String(r?.cadence ?? ''))) continue;
+    const q = r?.mechanism?.recordQuery;
+    if (!q) continue;
+    bump(READER_PROVIDER[q.reader]);
+    if (q.timer) bump(READER_PROVIDER[q.timer.reader]);
+  }
+  const perProvider = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const worst = perProvider.length ? perProvider[0][1] : 0;
+  return { ceiling: worst + 1, perProvider, worst };
 }
 
 /** Names the narrowing in the same words the register used, so a failing line
