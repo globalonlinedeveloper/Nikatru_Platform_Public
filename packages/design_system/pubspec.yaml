@@ -17,6 +17,70 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # ── WHY STATE AND ROUTING LIVE IN *THIS* PACKAGE (PHASE 0 — enabling only) ───
+  # NOTHING HAS MOVED YET. These two lines exist so the shared chassis is ALLOWED
+  # to host state and routing code later; today not one line of it is here. The
+  # change is reversible by deleting these two dependency entries and nothing
+  # else. Read that as the scope: this is a permission, not a migration.
+  #
+  # The package was chosen by MEASUREMENT against the guards, not by taste. The
+  # portfolio has three candidate homes for shared state/routing and two of them
+  # are closed:
+  #
+  #   · packages/core is FORBIDDEN a new dependency. Its dependency list is an
+  #     ALLOWLIST, not a ban-list — `CORE_ALLOWED` in
+  #     tooling/ci/assert-package-boundaries.mjs:115-118 has exactly two entries
+  #     (`crypto`, `cryptography`), and :127-131 fails ANY name that is not one
+  #     of them. Adding flutter_riverpod there is a build failure by
+  #     construction, and rightly so: core is pure Dart, and `sdk: flutter` is
+  #     the exact dependency limb A exists to reject.
+  #
+  #   · ANY OTHER package under packages/ is legal but expensive. Limb C derives
+  #     the adapter set from the tree (assert-package-boundaries.mjs:190) — every
+  #     package that is not core and not design_system and declares a
+  #     third-party dep IS an adapter, and :197 records each of its third-party
+  #     deps as a WRAPPED vendor. Putting riverpod/go_router in, say,
+  #     platform_storage would therefore declare them "wrapped behind a seam",
+  #     and :288-298 would then fail every app that imports them directly —
+  #     roughly 66 existing import sites, none of which are going through a
+  #     seam and none of which should. assert-adapter-capabilities.mjs:206
+  #     applies the same derivation and would additionally demand a
+  #     `capabilityMatrix` across all six platforms for two libraries that have
+  #     no platform surface to matrix.
+  #
+  #   · packages/design_system is the one home where neither cost lands. It is
+  #     EXPLICITLY EXCLUDED from the adapter derivation in both guards
+  #     (assert-package-boundaries.mjs:190 and
+  #     assert-adapter-capabilities.mjs:205 both `continue` on this name), so
+  #     these libraries do not become wrapped vendors and no existing import
+  #     site is retroactively illegal. Its own limb B (:154-158) bans exactly
+  #     one thing — dependencies whose name starts with `nikatru_` — because the
+  #     invariant that actually matters here is that the design system must not
+  #     be able to see the DOMAIN. flutter_riverpod and go_router are
+  #     domain-free infrastructure, so the invariant is untouched.
+  #
+  # assert-package-earned.mjs governs CREATING a package, not adding a
+  # dependency to an existing one: its domain is `listDir('packages')` filtered
+  # to directories (:77-80), it loops over packages (:112-118), and
+  # `declaredDeps` is consulted ONLY to substantiate the single dependency named
+  # in an `evidence` block (:137-146). This package is GRANDFATHERED in
+  # tooling/capability-register.json and names no evidence.dependency, so its
+  # pubspec is never read by that guard.
+  #
+  # Constraints are pinned to whatever apps/subly already resolves (its pubspec
+  # is the source, not a guess) so the workspace resolution is unchanged.
+  #
+  # THE STANDING RULE THIS CREATES: what may live here is domain-FREE state and
+  # routing plumbing — providers, router scaffolding, guards over generic
+  # session state. The moment something in here needs to know what an app
+  # SELLS, limb B is the wall and it belongs in the app.
+
+  # State management — see the block above before adding a third entry here.
+  flutter_riverpod: ^2.5.0
+
+  # Navigation (real URLs on web; deep links on all 6 platforms).
+  go_router: ^14.2.0
+
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
   nikatru_lints:
