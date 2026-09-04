@@ -29,7 +29,6 @@
     "E2E_PASSWORD for VENDOR review — 'which third party sees this'. This file asks 'does this end up",
     "in bytes a stranger downloads'. Same two names, two different questions, two different answers."
   ],
-
   "scope": {
     "_why": [
       "The workflows scanned for `--dart-define` and `--dart-define-from-file`. Derived from the",
@@ -39,7 +38,6 @@
     ],
     "workflowDir": ".github/workflows"
   },
-
   "inputs": {
     "SUPABASE_URL": {
       "reason": "The project URL is the address of a public API endpoint. Every browser request to Supabase carries it in the clear, so it is public the moment the app makes its first call — compiling it in changes nothing about who can see it.",
@@ -77,6 +75,10 @@
       "reason": "🔴 THE ENTRY THAT MATTERS MOST, AND ITS REASON IS ENTIRELY ABOUT SCOPE. This is a real password for a real Supabase account, and it is acceptable ONLY because it is generated per run for a throwaway user, is passed to a build that is never published, and is purged at `e2e.yml`'s teardown. There is no reading under which this value may be compiled into a shipped artifact.",
       "residual": "If the purge ever fails — a cancelled run, a runner killed mid-job, a Supabase outage during teardown — a live account's password sits in the build logs and the process table of a public repository's workflow. It is scoped to one throwaway user with no data, but it is a working credential and it does not expire on its own. Writing that down is most of this entry's value: the day somebody reuses this define on a lane that publishes, the reason above is what makes the mistake obvious."
     },
+    "E2E_TOKEN_HASH": {
+      "reason": "A SINGLE-USE magic-link token for one throwaway E2E user, minted per run by tooling/e2e/provision_user.mjs via admin/generate_link and exchanged once at /verify. It exists because Box A enforces Turnstile on token?grant_type=password, so a headless driver cannot log in by typing credentials at all after the cutover. Acceptable on the same terms as E2E_PASSWORD and on one stronger term: it is passed to a build that is never published, it belongs to a throwaway user purged at teardown, AND it is spent by the first exchange - a replay returns HTTP 403, measured against Box A 2026-09-04.",
+      "residual": "Strictly SMALLER than E2E_PASSWORD's, and the difference is the point. A leaked password is a standing credential that does not expire on its own; this token dies the moment the run uses it, which it does within seconds. The window where a leaked value is live is the gap between provisioning and the driver's first sign-in. What it does NOT reduce is the blast radius if the purge fails, because the USER still exists - that residual belongs to E2E_EMAIL and E2E_PASSWORD and is unchanged here."
+    },
     "E2E_DELETE_EMAIL": {
       "reason": "🔴 NOT A PUBLISHED VALUE, and it is a SECOND throwaway address rather than a reuse of E2E_EMAIL for a reason that is not cosmetic: golden-path leg 6 (`account delete purges`) makes the app really delete the account it signs in with, and the first user's row is what `tooling/e2e/verify_row.mjs` asserts still exists after the drive. Same scope as E2E_EMAIL in every other respect — created by tooling/e2e/provision_user.mjs at the start of the run, reaches only e2e.yml's `flutter drive` debug build served to a headless Chrome on the runner, and nothing that carries it is uploaded, deployed or published.",
       "residual": "Identical to E2E_EMAIL's, with one difference in the happy case: this account is normally destroyed by the app itself mid-run, so the window in which it exists is shorter. On a run that fails before the delete walk it is a stale account like any other, and tooling/e2e/purge.mjs is what removes it."
@@ -84,6 +86,10 @@
     "E2E_DELETE_PASSWORD": {
       "reason": "🔴 A REAL PASSWORD FOR A REAL SUPABASE ACCOUNT, on exactly the terms E2E_PASSWORD is accepted on and no wider: generated per run for a throwaway user, passed to a build that is never published, and purged at e2e.yml's teardown. It is passed twice inside the app — once to sign in, once to RE-AUTHENTICATE at the delete-account dialog, which refuses to enable its destructive button until a password has been typed. There is no reading under which this value may be compiled into a shipped artifact.",
       "residual": "Same as E2E_PASSWORD's: if the teardown ever fails, a working credential for a live account sits in the build logs of a public repository's workflow, and it does not expire on its own. It is scoped to one throwaway user whose only data is the single subscription the run itself created."
+    },
+    "E2E_DELETE_TOKEN_HASH": {
+      "reason": "The same, for the second throwaway user the delete-account leg drives. Separate define because the token is single use: one exchange per user, and the two legs sign in independently.",
+      "residual": "Identical to E2E_TOKEN_HASH's. Recorded separately rather than cross-referenced because a shared note is a note that gets edited for one entry and read for two."
     }
   }
 }
