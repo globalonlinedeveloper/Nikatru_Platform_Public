@@ -982,7 +982,31 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     // Token first; the form is the fallback for a run with no token supplied
     // (a hosted target, or a hand-run drive).
     final bool signedInWithToken = await signInWithMagicToken(tester, tokenHash);
-    if (!signedInWithToken) {
+    if (signedInWithToken) {
+      // 🔴 STAND IN FOR `LoginScreen._submit`'s `context.go('/scan')`, AND DO IT
+      // HERE — BEFORE the clickwrap, not after.
+      //
+      // /scan has exactly one entry point in this app: that call. Every other
+      // occurrence in the tree is a comment ABOUT it. Signing in outside the
+      // form means nobody makes it, so the walk never reaches step 03.
+      //
+      // ⚠️ THE ORDER IS THE WHOLE THING, and getting it wrong looks identical.
+      // router.dart:385 records this as a past regression with THIS symptom:
+      // "A user signing in runs context.go('/scan'), the gate intercepts, and
+      // this line then handed them '/home' … ScanScreen is the ONLY renderer of
+      // l10n.goToDashboard, so find.text('Go to dashboard') found nothing."
+      // The gate does not block the destination, it BANKS it — `_gateWithNext`
+      // stores /scan as `?next=`, and after the interstitial
+      // `_nextOr(state, '/home')` hands it back. Navigate AFTER the clickwrap is
+      // cleared and there is no gate left to bank anything, which is exactly
+      // what run 33843443550 measured: home shell on screen, scan never reached.
+      //
+      // A Scaffold is the context, not AppShell: at this moment the router has
+      // already put an authenticated user on the /reaccept-terms interstitial,
+      // where no AppShell exists.
+      GoRouter.of(tester.firstElement(find.byType(Scaffold))).go('/scan');
+      await pumpFor(tester, const Duration(seconds: 2));
+    } else {
       await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
       await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
       await pumpFor(tester, const Duration(milliseconds: 500));
@@ -1001,31 +1025,6 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     // here is the suite's own proof that sign-in succeeded.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
 
-    // 🔴 /scan HAS EXACTLY ONE ENTRY POINT IN THIS APP, AND IT IS THE FORM.
-    // `login_screen.dart:209` runs `context.go('/scan')` inside `_submit`;
-    // every other mention of that call in the tree is a COMMENT about it, and
-    // `router.dart:98` says /scan's absence from the redirect logic "IS the
-    // fix" for a race between the session appearing and that go() landing.
-    //
-    // So signing in outside the form leaves a perfectly valid session sitting
-    // on the dashboard, and the walk never reaches step 03. Measured exactly
-    // that way on run 33842764872: `sawReacceptance` was TRUE — the router had
-    // already served an authenticated-only screen — while the scan assertion
-    // found the HOME shell on screen.
-    //
-    // The harness therefore performs the navigation the form would have. It is
-    // standing in for a UI side effect, not reaching around a gate: the session
-    // is real, and everything from here on is the same walk.
-    //
-    // ⚠️ COVERAGE THIS COSTS, STATED SO NOBODY DISCOVERS IT LATER: after the
-    // cutover nothing exercises login_screen's own `context.go('/scan')`,
-    // because no headless driver can submit that form against a live captcha.
-    // The form's FAILURE paths stay covered by the empty-field and
-    // wrong-password legs; its SUCCESS path does not.
-    if (signedInWithToken) {
-      GoRouter.of(tester.firstElement(find.byType(AppShell))).go('/scan');
-      await pumpFor(tester, const Duration(seconds: 10));
-    }
 
     // ── 03 Scan ──────────────────────────────────────────────────────────────
     await shot('03-scan');
