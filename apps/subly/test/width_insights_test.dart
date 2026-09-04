@@ -45,7 +45,7 @@
 // grid, at any surface.
 //
 // 🔴 WHAT IS PUMPED IS `InsightsScreen`, NOT the router's `_GatedInsights`.
-// `router.dart:265` wraps this screen in the chassis `PaywallGate` (unlocked by
+// `router/shell.dart:78` wraps this screen in the chassis `PaywallGate` (unlocked by
 // default). Width is a property of the SCREEN; the gate is a property of the
 // route, and it is tested where it lives. Pumping the wrapper here would make
 // this file go red the day the gate's default flips — a failure that names the

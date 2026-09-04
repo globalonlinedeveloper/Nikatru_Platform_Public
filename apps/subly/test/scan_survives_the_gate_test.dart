@@ -182,7 +182,8 @@ void main() {
             'token, stands in for the form\'s context.go(\'/scan\'), clears '
             'this interstitial and then asserts ScanScreen rendered "Go to '
             'dashboard". Landing on /home here reproduces that red locally, '
-            'and is the router.dart:385 regression arriving by a second route',
+            'and is the router/gates.dart:376 regression arriving by a second '
+            'route',
       );
     },
   );

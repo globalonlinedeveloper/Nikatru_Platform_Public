@@ -89,7 +89,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     // root-scope `Provider` with no `ref.watch` in its body, so it is never
     // recomputed and its instance lives as long as the container —
     // `routerProvider` holds the same one for the life of the app
-    // (`router.dart:173`).
+    // (`router/router_provider.dart:19-22`; the P1b split moved it out of the
+    // barrel, and `router.dart:173` had never been that line anyway).
     final Future<String?> Function() accessToken = ref
         .read(authRepositoryProvider)
         .currentAccessToken;

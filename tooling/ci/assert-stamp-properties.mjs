@@ -2202,9 +2202,28 @@ const resolveSource = (root, file) => (SHARED_PREFIX.test(file) ? file : `${root
  * app that has not split keeps a one-element domain and is read exactly as
  * before — `money_providers.dart` included, since the suffix test requires a
  * path separator immediately before `providers.dart`.
+ *
+ * 🔴 WIDENED AGAIN 2026-09-04 (P1b) FOR THE ROUTER, AND FOR THE SAME REASON.
+ * `apps/subly`'s `lib/core/router.dart` is now a barrel over `lib/core/router/`
+ * — the ORDERED gate chain, the route table, the shell wiring, the navigator key
+ * and the `GoRouter` those assemble into. Three ROUTER anchors this app really
+ * does satisfy are evaluated for it today (the `refreshListenable` join, the
+ * first-run destination statement, and the `loggedIn ? … : false` guard on the
+ * re-acceptance read); read as a single file after the split, all three read as
+ * ABSENT and the ratchet would have gone 10 -> 13. It is back at exactly 10 and
+ * the ten witnesses are the SAME ten properties as before.
+ *
+ * ⚠️ THE WIDENING DOES NOT WEAKEN THE ANCHORS THAT ARE MEANT TO FAIL. The one
+ * ROUTER anchor `apps/subly` misses — `matchedLocation == '/reaccept-terms'`,
+ * which this app spells through a hoisted local — still misses across the whole
+ * spine, and it is one of the ten. A widened domain that turned a recorded gap
+ * green would be the ratchet failing in the CAUGHT-UP direction, which is a FAIL
+ * here and not a pass.
  */
+const SPINE_BARRELS = ['/providers.dart', '/router.dart'];
+
 const anchorDomain = (path) => {
-  if (!path.endsWith('/providers.dart')) return [path];
+  if (!SPINE_BARRELS.some((b) => path.endsWith(b))) return [path];
   const dir = path.slice(0, -'.dart'.length);
   let entries;
   try {
