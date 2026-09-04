@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:subly/core/e2e_keys.dart';
@@ -979,8 +980,9 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     await expectLandedOnLogin(tester, 'the boot for the full-walk test');
     await shot('02-login');
     // Token first; the form is the fallback for a run with no token supplied
-    // (a hosted target, or a hand-run drive). Both end on /scan with a session.
-    if (!await signInWithMagicToken(tester, tokenHash)) {
+    // (a hosted target, or a hand-run drive).
+    final bool signedInWithToken = await signInWithMagicToken(tester, tokenHash);
+    if (!signedInWithToken) {
       await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
       await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
       await pumpFor(tester, const Duration(milliseconds: 500));
@@ -998,6 +1000,32 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     // router serves this interstitial to an AUTHENTICATED user only, so `true`
     // here is the suite's own proof that sign-in succeeded.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
+
+    // 🔴 /scan HAS EXACTLY ONE ENTRY POINT IN THIS APP, AND IT IS THE FORM.
+    // `login_screen.dart:209` runs `context.go('/scan')` inside `_submit`;
+    // every other mention of that call in the tree is a COMMENT about it, and
+    // `router.dart:98` says /scan's absence from the redirect logic "IS the
+    // fix" for a race between the session appearing and that go() landing.
+    //
+    // So signing in outside the form leaves a perfectly valid session sitting
+    // on the dashboard, and the walk never reaches step 03. Measured exactly
+    // that way on run 33842764872: `sawReacceptance` was TRUE — the router had
+    // already served an authenticated-only screen — while the scan assertion
+    // found the HOME shell on screen.
+    //
+    // The harness therefore performs the navigation the form would have. It is
+    // standing in for a UI side effect, not reaching around a gate: the session
+    // is real, and everything from here on is the same walk.
+    //
+    // ⚠️ COVERAGE THIS COSTS, STATED SO NOBODY DISCOVERS IT LATER: after the
+    // cutover nothing exercises login_screen's own `context.go('/scan')`,
+    // because no headless driver can submit that form against a live captcha.
+    // The form's FAILURE paths stay covered by the empty-field and
+    // wrong-password legs; its SUCCESS path does not.
+    if (signedInWithToken) {
+      GoRouter.of(tester.firstElement(find.byType(AppShell))).go('/scan');
+      await pumpFor(tester, const Duration(seconds: 10));
+    }
 
     // ── 03 Scan ──────────────────────────────────────────────────────────────
     await shot('03-scan');
