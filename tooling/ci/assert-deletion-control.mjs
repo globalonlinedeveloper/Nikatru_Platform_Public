@@ -7,6 +7,20 @@
 // account can be created at all. It cannot be left to a support email, and it
 // cannot be left to the next app.
 //
+// [ADR 065] moved the confirmation itself into the shared chassis, so the
+// properties in front of the control are now asserted where they LIVE as well as
+// where they are called from. The server hook that makes any of it real is
+// [pipeline C-15]: the brick shipped `requestServerDeletion: null` until then —
+// every other limb passing against a flow that can only ever refuse — and limb 5
+// below still refuses that shape.
+//
+// 🔴 THE THREE CITATIONS ABOVE ARE LOAD-BEARING AND MUST STAY IN THE FIRST 60
+// LINES. `build-enforcement-index.mjs` reads citations from that window only, so
+// a citation pushed past it leaves the machine-readable claim map SILENTLY —
+// the guard still says the true thing and the index stops recording that it
+// does. Measured on 2026-09-05: this header grew, C-15 slid from line 47 to line
+// 89, and the regenerated index dropped it from this row without a word.
+//
 // ── THE HOLE THIS EXISTS FOR, AND WHY NOTHING ELSE COVERED IT ────────────────
 // `assert-stamp-properties.mjs` already enforces `account-deletion-works` — for
 // THE BRICK AND EVERY STAMPED APP. Its domain carries `EXEMPT_APPS =
