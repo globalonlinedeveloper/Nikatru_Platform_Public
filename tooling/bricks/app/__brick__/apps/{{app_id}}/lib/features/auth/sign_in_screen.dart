@@ -100,6 +100,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     // …and whether the SERVER will accept the provider at all, which the
     // capability matrix does not describe. Both must be true; see below.
     final AuthProviders providers = ref.watch(authProvidersProvider);
+    // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE.
+    //
+    // `deleteAccount()` signs the user out whichever way the request went, so
+    // the router lands them HERE — and takes the settings screen, its dialog and
+    // any SnackBar with it. This is the surface the redirect arrives on, which
+    // is the only reason the outcome is readable at all. See
+    // [lastAccountDeletionOutcomeProvider] for the measurement. [ADR 027]
+    final core.AccountDeletionOutcome? deletion = ref.watch(
+      lastAccountDeletionOutcomeProvider,
+    );
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.signInTitle)),
@@ -117,6 +127,37 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // ⚠️ ABOVE THE FIELDS, NOT BELOW THEM. It is the answer to
+              // something the user did on a different screen, so it has to be
+              // the first thing on this one; under the button it would be read
+              // after they had already started typing a password into an
+              // account that may no longer exist.
+              //
+              // Renders NOTHING when there is nothing to say, which is every
+              // arrival except the one after a deletion.
+              DestructiveOutcomeNotice(
+                report: deletion == null
+                    ? null
+                    : DestructiveActionReport(
+                        message: deletion.plainMessage,
+                        succeeded: deletion.accountIsGone,
+                      ),
+                detail: ref.watch(lastAccountDeletionDetailProvider),
+                // ⚠️ THE RIGHT WORD FROM THE WRONG KEY, and it is flagged
+                // rather than hidden: `catchUpDismiss` is "Got it", which is
+                // exactly the label this control wants, but the arb has no
+                // `close` of its own. Adding one is a one-line change in both
+                // locales and this call site is where it lands.
+                dismissLabel: l10n.catchUpDismiss,
+                onDismiss: () {
+                  // Cleared on dismissal so it cannot resurface at some later,
+                  // unrelated sign-out — the notice answers ONE act.
+                  ref.read(lastAccountDeletionOutcomeProvider.notifier).state =
+                      null;
+                  ref.read(lastAccountDeletionDetailProvider.notifier).state =
+                      null;
+                },
+              ),
               // 🔴 `AuthField`, NOT A BARE `TextField`, AND THE DIFFERENCE IS
               // MEASURED. Until 2026-09-04 ([ADR 065], chassis step 2) these
               // were two plain boxes with `labelText` and nothing else, so
