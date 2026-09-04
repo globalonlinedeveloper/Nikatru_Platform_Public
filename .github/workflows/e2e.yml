@@ -233,6 +233,8 @@ jobs:
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           E2E_DELETE_EMAIL: ${{ steps.delete_user.outputs.email }}
           E2E_DELETE_PASSWORD: ${{ steps.delete_user.outputs.password }}
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
+          E2E_DELETE_TOKEN_HASH: ${{ steps.delete_user.outputs.token_hash }}
         run: |
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
@@ -290,6 +292,8 @@ jobs:
             --dart-define=E2E_EMAIL="$E2E_EMAIL" \
             --dart-define=E2E_PASSWORD="$E2E_PASSWORD" \
             --dart-define=E2E_DELETE_EMAIL="$E2E_DELETE_EMAIL" \
+            --dart-define=E2E_TOKEN_HASH="$E2E_TOKEN_HASH" \
+            --dart-define=E2E_DELETE_TOKEN_HASH="$E2E_DELETE_TOKEN_HASH" \
             --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
 

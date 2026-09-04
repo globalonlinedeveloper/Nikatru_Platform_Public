@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:subly/core/e2e_keys.dart';
 import 'package:subly/features/auth/legal_consent_fields.dart';
@@ -45,6 +47,7 @@ void main() {
 
   const String email = String.fromEnvironment('E2E_EMAIL');
   const String password = String.fromEnvironment('E2E_PASSWORD');
+  const String tokenHash = String.fromEnvironment('E2E_TOKEN_HASH');
 
   // 🔴 A SECOND, SEPARATE THROWAWAY USER, AND IT HAS TO BE SEPARATE.
   //
@@ -58,6 +61,7 @@ void main() {
   // `tooling/e2e/provision_user.mjs`. [pipeline N-6 leg 6]
   const String deleteEmail = String.fromEnvironment('E2E_DELETE_EMAIL');
   const String deletePassword = String.fromEnvironment('E2E_DELETE_PASSWORD');
+  const String deleteTokenHash = String.fromEnvironment('E2E_DELETE_TOKEN_HASH');
 
   // The app animates forever in places (scan progress ring/timer, loaders), so
   // pumpAndSettle() would hang. Advance a fixed wall-clock slice instead — this
@@ -769,6 +773,73 @@ void main() {
   /// `test/legal_gates_test.dart` and the `legal-reacceptance-gated` chassis
   /// property, both of which control the store. This helper's job is to get a
   /// live walk past a screen a real user also has to get past.
+/// Signs in WITHOUT the login form, by spending the single-use magic-link token
+/// the harness minted, and returns whether it did.
+///
+/// 🔴 WHY THE FORM STOPS WORKING, MEASURED. Box A enforces Cloudflare Turnstile,
+/// and `token?grant_type=password` is one of the six gated routes — so the
+/// moment `SUPABASE_URL` moves there, typing credentials is refused with
+/// `captcha_failed` BEFORE the password is checked. A headless driver cannot
+/// solve a Turnstile challenge; that is the entire point of one.
+///
+/// `/verify` is NOT gated (auth-cutover.md §4.7) and this is the path an emailed
+/// link takes, so the browser still genuinely authenticates and still receives a
+/// real session — it just does not type. Verified against Box A 2026-09-04:
+/// HTTP 200, correct user, refresh token present, and a REPLAY returns 403.
+///
+/// ⚠️ SINGLE USE. One call per provisioned user; each leg signs in once.
+/// ⚠️ It goes through `Supabase.instance.client`, the same client the app holds,
+/// so `onAuthStateChange` fires and the router reacts exactly as it would after
+/// a form login. Nothing here reaches into app state directly.
+/// ⚠️ WHAT THIS GIVES UP: the login FORM is no longer exercised on this path.
+/// The keystrokes are still covered by the empty-field and wrong-password legs
+/// above; what is not covered post-cutover is a SUCCESSFUL form submit, which no
+/// headless driver can do against a live captcha.
+///
+/// 🔴 AND IT NAVIGATES TO `/scan` ITSELF — THE NAVIGATION IS PART OF SIGNING IN
+/// ON THIS PATH, NOT SOMETHING THE CALLER REMEMBERS TO ADD. `/scan` has exactly
+/// one entry point in the app: `LoginScreen._submit`'s `context.go('/scan')`.
+/// Every other occurrence in the tree is a comment ABOUT it. So a sign-in that
+/// skips the form skips the navigation too, and the caller lands on the home
+/// shell instead.
+///
+/// ⚠️ WHY IT LIVES HERE RATHER THAN AT THE CALL SITE, AND THE COST OF LEARNING
+/// THAT THE OTHER WAY. It was written at the call site first, in the full-walk
+/// test only. The full walk went green — 17 screenshots, /scan reached — and
+/// run 33844142953 still failed, because the DELETE-ACCOUNT test signs in the
+/// same way with its own token and never got the two lines. Its screen text was
+/// `Home | Calendar | Insights | Budget | More | Good morning` — the home shell,
+/// exactly the symptom the full walk had just stopped showing. Two call sites,
+/// one of them patched, and the diff looked complete. A helper that leaves out
+/// the step its own doc comment says is mandatory is a trap for the next caller
+/// as well as this one.
+///
+/// ⚠️ A `Scaffold` IS THE CONTEXT, NOT `AppShell`. By this point the router has
+/// already put an authenticated user with no clickwrap record on the
+/// `/reaccept-terms` interstitial, where no `AppShell` exists.
+///
+/// 🔴 BEFORE THE CLICKWRAP, NOT AFTER — the gate does not BLOCK the destination,
+/// it BANKS it. `_gateWithNext` stores `/scan` as `?next=` and the gate's exit
+/// hands it back via `_nextOr(state, '/home')`. Navigate after the interstitial
+/// is cleared and there is no gate left to bank anything, which is what run
+/// 33843443550 measured. Pinned locally, on the real router, by
+/// `test/scan_survives_the_gate_test.dart` — both halves: that asking for
+/// `/scan` while the gate is CLOSED banks `?next=%2Fscan`, and that clearing it
+/// the way a user clears it lands on `/scan`.
+Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
+  if (tokenHash.isEmpty) return false;
+  await sb.Supabase.instance.client.auth.verifyOTP(
+    type: sb.OtpType.magiclink,
+    tokenHash: tokenHash,
+  );
+  // The same settle the form path takes: GoTrue round trip + route change.
+  await pumpFor(tester, const Duration(seconds: 10));
+  // Stand in for `LoginScreen._submit`'s `context.go('/scan')`. See above.
+  GoRouter.of(tester.firstElement(find.byType(Scaffold))).go('/scan');
+  await pumpFor(tester, const Duration(seconds: 2));
+  return true;
+}
+
   Future<bool> acceptTermsIfShown(WidgetTester tester) async {
     final Finder accept = find.byKey(ReacceptTermsScreen.acceptButton);
     if (accept.evaluate().isEmpty) return false;
@@ -942,12 +1013,22 @@ void main() {
     // assertion, both ways.
     await expectLandedOnLogin(tester, 'the boot for the full-walk test');
     await shot('02-login');
-    await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
-    await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
-    await pumpFor(tester, const Duration(milliseconds: 500));
-    await tester.tap(find.byKey(E2EKeys.loginSubmit));
-    // GoTrue sign-in + navigation to /scan.
-    await pumpFor(tester, const Duration(seconds: 10));
+    // Token first; the form is the fallback for a run with no token supplied
+    // (a hosted target, or a hand-run drive).
+    //
+    // 🔴 NO `/scan` NAVIGATION HERE ANY MORE, AND ITS ABSENCE IS THE FIX. It
+    // stood in this block until 2026-09-04, which made the walk green and left
+    // the delete-account test — the only other caller — on the home shell. The
+    // navigation is now inside `signInWithMagicToken`, where no caller can be
+    // written without it. The form branch below needs none: `_submit` navigates.
+    if (!await signInWithMagicToken(tester, tokenHash)) {
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
+      await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
+      await pumpFor(tester, const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(E2EKeys.loginSubmit));
+      // GoTrue sign-in + navigation to /scan.
+      await pumpFor(tester, const Duration(seconds: 10));
+    }
 
     // ── 02b Re-acceptance ────────────────────────────────────────────────────
     // The admin-API user this suite signs in as holds no clickwrap record, so
@@ -958,6 +1039,7 @@ void main() {
     // router serves this interstitial to an AUTHENTICATED user only, so `true`
     // here is the suite's own proof that sign-in succeeded.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
+
 
     // ── 03 Scan ──────────────────────────────────────────────────────────────
     await shot('03-scan');
@@ -1357,11 +1439,14 @@ void main() {
     // with text Welcome back` reads identically whether a tap was swallowed
     // (see expectNothingCoveringTheApp) or the redirect is merely slow.
     await expectLandedOnLogin(tester, 'the boot for the delete-leg walk');
-    await tester.enterText(find.byKey(E2EKeys.loginEmail), deleteEmail);
-    await tester.enterText(find.byKey(E2EKeys.loginPassword), deletePassword);
-    await pumpFor(tester, const Duration(milliseconds: 500));
-    await tester.tap(find.byKey(E2EKeys.loginSubmit));
-    await pumpFor(tester, const Duration(seconds: 10));
+    // Its OWN token: the tokens are single use, so the two legs cannot share one.
+    if (!await signInWithMagicToken(tester, deleteTokenHash)) {
+      await tester.enterText(find.byKey(E2EKeys.loginEmail), deleteEmail);
+      await tester.enterText(find.byKey(E2EKeys.loginPassword), deletePassword);
+      await pumpFor(tester, const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(E2EKeys.loginSubmit));
+      await pumpFor(tester, const Duration(seconds: 10));
+    }
 
     // The delete-leg user is a SECOND admin-API user with its own empty
     // acceptance record, so it meets the interstitial independently of whatever
