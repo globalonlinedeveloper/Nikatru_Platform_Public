@@ -225,8 +225,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     // failure into the message under the fields. An early `return` here would
     // clear `_busy` and say nothing at all, which is the shape of a button that
     // looks broken.
-    final core.CredentialsProblem? problem =
-        core.signInProblem(email: email, password: _password.text);
+    final core.CredentialsProblem? problem = core.signInProblem(
+      email: email,
+      password: _password.text,
+    );
     if (problem != null) {
       throw core.AuthFailure(switch (problem) {
         core.CredentialsProblem.incomplete => l10n.authEnterBoth,
@@ -236,10 +238,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         core.CredentialsProblem.emailMissing => l10n.emailRequired,
       });
     }
-    await auth.signInWithEmail(
-      email: email,
-      password: _password.text,
-    );
+    await auth.signInWithEmail(email: email, password: _password.text);
     // No navigation here: the router's redirect guard moves the user the moment
     // the session appears. Pushing from both places is how you get two routes
     // racing to be the top of the stack.
