@@ -431,6 +431,7 @@
   {
     "claims": [
       "ADR 027",
+      "ADR 065",
       "C-15"
     ],
     "invokedBy": [

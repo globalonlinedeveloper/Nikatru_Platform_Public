@@ -6,8 +6,25 @@
 // broken version (`assert-seams-wired.mjs`, whose caller check matched the
 // function's own declaration): a fixture you write encodes the same
 // misunderstanding as the guard you write. The copy below carries the real
-// brick, the real apps/subly and the real root pubspec, so a mutation here is
+// brick, the real apps/subly, the real root pubspec and — since [ADR 065]
+// chassis step 2 — the real shared confirmation widget, so a mutation here is
 // the mutation a person would actually make.
+//
+// ── AND EVERY CASE WAS PROVED ABLE TO FAIL (2026-09-05) ─────────────────────
+// Three tests in this repo were found measuring nothing. So each limb of the
+// guard was DELETED in turn and this file re-run; the cases that went red are
+// recorded beside the limb they stand for:
+//
+//   limb removed from the guard                    tests that went RED
+//   the chassis property loop                      the 4 shared-confirmation cases
+//   the chassis presence COVERAGE LOST             "DELETING THE WIDGET"
+//   the chassis line floor                         "STUBBING IT BELOW ITS OWN FLOOR"
+//   limb 3 back to a bare `showDialog` substring   "THE OTHER DIALOGS…", "DROPPING barrierDismissible…"
+//   the per-root local-branch property loop        the 3 apps/subly-carries-its-own cases
+//   the branch dropped from the passing line       "names both roots AND the branch", "STEP 4 DONE RIGHT"
+//
+// Every new case is on that table. A case that appears on none of these rows is
+// a case that measures nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,15 +48,31 @@ const SUBLY_SETTINGS = `${SUBLY}/lib/features/settings/settings_screen.dart`;
 // nothing proves nothing" self-check is what fails — which is the design
 // working, and the reason this line is a constant rather than a literal.
 const SUBLY_AUTH_PROVIDERS = `${SUBLY}/lib/state/providers/auth.dart`;
+// The SECOND subject, since [ADR 065] chassis step 2: the confirmation itself.
+const CHASSIS = 'packages/design_system/lib/src/widgets/destructive_confirm_dialog.dart';
+// The guard's own full-checkout sentinel. See [realTree].
+const SENTINEL = 'tooling/ci/assert-deletion-control.mjs';
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-deletion-control-'));
   mkdirSync(join(root, BRICK), { recursive: true });
   mkdirSync(join(root, SUBLY), { recursive: true });
+  mkdirSync(join(root, dirname(CHASSIS)), { recursive: true });
+  mkdirSync(join(root, dirname(SENTINEL)), { recursive: true });
   cpSync(join(REPO, 'pubspec.yaml'), join(root, 'pubspec.yaml'));
   cpSync(join(REPO, BRICK, 'lib'), join(root, BRICK, 'lib'), { recursive: true });
   cpSync(join(REPO, SUBLY, 'lib'), join(root, SUBLY, 'lib'), { recursive: true });
+  // The shared confirmation. Without it every case below would be COVERAGE
+  // LOST for a reason that has nothing to do with what it is testing.
+  cpSync(join(REPO, CHASSIS), join(root, CHASSIS));
+  // 🔴 THE SENTINEL IS COPIED ON PURPOSE, so this tree counts as a full
+  // checkout and the chassis LINE FLOOR is applied here. The floor is a
+  // measurement of the real repository and would mean nothing over a fixture —
+  // but this tree is not a fixture: it carries the real brick, the real
+  // apps/subly and the real widget, byte for byte. Leaving the sentinel out
+  // would make the floor the one limb no test could ever reach.
+  cpSync(join(REPO, SENTINEL), join(root, SENTINEL));
   return root;
 }
 
@@ -58,14 +91,44 @@ const edit = (root, rel, fn) => {
   writeFileSync(p, fn(readFileSync(p, 'utf8')));
 };
 
+/**
+ * [edit], but a replacement that changed nothing FAILS THE TEST.
+ *
+ * 🔴 THREE TESTS IN THIS REPO WERE FOUND MEASURING NOTHING. Every case below
+ * mutates the real tree by literal string, so a refactor upstream that changes
+ * the spelling silently turns the mutation into a no-op and the "guard caught
+ * it" assertion into "the guard was red for some other reason, or green over an
+ * untouched tree". The one inline check at `requestServerDeletion` already
+ * existed for this; it is a helper now so no new case can forget it.
+ */
+const mutate = (root, rel, fn) => {
+  const p = join(root, rel);
+  const before = readFileSync(p, 'utf8');
+  const after = fn(before);
+  assert.notEqual(
+    after,
+    before,
+    `the mutation of ${rel} did not apply — a test that mutates nothing proves nothing`,
+  );
+  writeFileSync(p, after);
+};
+
 describe('the real tree', () => {
-  test('passes, and names both roots', () => {
+  test('passes, and names both roots AND the branch each one took', () => {
     withTree(
       () => {},
       (r) => {
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /2 of 2 root\(s\) offer accounts/);
         assert.match(r.stdout, /apps\/subly/);
+        // 🔴 THE PASSING LINE HAS TO SAY WHERE IT LOOKED. Naming the roots and
+        // nothing else stayed literally true while every property of the
+        // confirmation had left those trees for packages/design_system and
+        // gone unchecked — see the guard's header.
+        assert.match(r.stdout, /=delegates to the shared confirmation/);
+        assert.match(r.stdout, /apps\/subly=carries its own confirmation/);
+        assert.match(r.stdout, /holds all 3 propert\(ies\)/);
+        assert.match(r.stdout, /floor 90/, 'the tmp tree must count as a full checkout');
       },
     );
   });
@@ -79,6 +142,10 @@ describe('the real tree', () => {
         const real = readFileSync(join(REPO, SUBLY_SETTINGS), 'utf8');
         assert.ok(real.includes('.deleteAccount('), 'apps/subly must really carry the call site');
         assert.ok(real.includes('accountDeletionOutcomeOf('), 'and really classify the outcome');
+        // And the second subject is the shipped widget, not a stand-in.
+        const widget = readFileSync(join(REPO, CHASSIS), 'utf8');
+        assert.ok(widget.includes('class DestructiveConfirmDialog'), 'the shared confirmation is real');
+        assert.ok(widget.includes('PopScope(canPop: !_busy'), 'and really refuses to close mid-flight');
       },
     );
   });
@@ -158,6 +225,45 @@ describe('the confirmation must not be one tap away', () => {
       (r) => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /opens no dialog/);
+      },
+    );
+  });
+
+  test('🔴 THE OTHER DIALOGS ON THE SCREEN DO NOT COVER THE DELETION', () => {
+    // The brick's settings screen opens a reminder-priming dialog at :434 and
+    // an edit-profile dialog at :530. Remove ONLY the deletion's own
+    // confirmation and a bare `showDialog` substring is still satisfied by
+    // either of them — which is how this limb could stay green over a deletion
+    // with no confirmation at all. Coverage of a screen is not coverage of its
+    // rules, and this is the case that says so.
+    withTree(
+      (root) =>
+        mutate(root, BRICK_SETTINGS, (s) => {
+          const bd = s.indexOf('barrierDismissible: false');
+          const at = s.lastIndexOf('showDialog', bd);
+          return (
+            s.slice(0, at) +
+            'showNothing' +
+            s.slice(at + 'showDialog'.length).replace('      barrierDismissible: false,\n', '')
+          );
+        }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /NOT ONE of them is the deletion's own undismissable confirmation/);
+        // And it says how many it DID find, so the reader can see that the
+        // screen still has dialogs and that having them is not the point.
+        assert.match(r.stderr, /2 `showDialog` call\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 DROPPING barrierDismissible: false FAILS — the barrier is half the lock', () => {
+    withTree(
+      (root) =>
+        mutate(root, BRICK_SETTINGS, (s) => s.replace('      barrierDismissible: false,\n', '')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /NOT ONE of them is the deletion's own undismissable confirmation/);
       },
     );
   });
@@ -309,6 +415,212 @@ describe('coverage self-checks', () => {
         assert.equal(r.status, 1);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /only 1 root\(s\) resolved/);
+      },
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE SECOND SUBJECT — the confirmation itself, since [ADR 065] chassis step 2.
+//
+// 🔴 EVERY CASE IN THIS SECTION WAS GREEN BEFORE THE GUARD CHANGE THEY BELONG
+// TO. Measured on 2026-09-05 by running the PREVIOUS version of the guard
+// (`git show HEAD:tooling/ci/assert-deletion-control.mjs`) against these exact
+// mutations of this worktree: gutting the secret gate exited 0, flipping
+// `canPop` to `true` exited 0, and DELETING THE WIDGET FILE exited 0. The
+// brick's settings tree still called `showDialog`, so the old limb 3 stayed
+// satisfied over a confirmation that had none of the properties limb 3 stands
+// for.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the shared confirmation keeps its properties where it now lives', () => {
+  test('🔴 GUTTING THE SECRET GATE FAILS — one stray tap must not reach the deletion', () => {
+    withTree(
+      (root) =>
+        mutate(root, CHASSIS, (s) =>
+          s
+            .replace('final bool ready = !_busy && value.text.isNotEmpty;', 'final bool ready = !_busy;')
+            .replace('onPressed: ready ? _run : null,', 'onPressed: _run,'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /destructive_confirm_dialog\.dart: the shared confirmation/);
+        assert.match(r.stderr, /INERT until the secret is typed/);
+      },
+    );
+  });
+
+  test('keeping the read but making the button unconditional fails too', () => {
+    // The FIRST draft of this limb passed this exactly: it asked for
+    // `.text.isEmpty` anywhere and for an `onPressed` that could be `null`
+    // anywhere, and the CANCEL button satisfies the second half in every
+    // version of this file. A limb that cannot fail is not a limb.
+    withTree(
+      (root) => mutate(root, CHASSIS, (s) => s.replace('onPressed: ready ? _run : null,', 'onPressed: _run,')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /INERT until the secret is typed/);
+      },
+    );
+  });
+
+  test('🔴 MAKING IT DISMISSIBLE MID-FLIGHT FAILS', () => {
+    // And this one caught a real defect in the guard rather than in the widget:
+    // the first `PopScope` check was a negative lookahead that `\s*` could
+    // backtrack past, so `canPop: true` matched "not true" and this mutation
+    // exited 0. The value is captured and compared now.
+    withTree(
+      (root) =>
+        mutate(root, CHASSIS, (s) =>
+          s.replace(
+            'return PopScope(canPop: !_busy, child: _form(context));',
+            'return PopScope(canPop: true, child: _form(context));',
+          ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /NOTHING may dismiss it while the request is in flight/);
+      },
+    );
+  });
+
+  test('🔴 COLLAPSING THE RESULT PHASE TO A FIXED STRING FAILS', () => {
+    // 501 (nothing was deleted) and 502 (the data is gone and the login still
+    // works) must not read identically — the same defect limb 5 covers on the
+    // app side, asserted on the side that actually paints the sentence.
+    withTree(
+      (root) =>
+        mutate(root, CHASSIS, (s) =>
+          s
+            .replace(
+              'Text(report.message, key: widget.resultKey),',
+              'Text(widget.confirmLabel, key: widget.resultKey),',
+            )
+            .replace(
+              'final DestructiveActionReport report = await widget.onConfirm();',
+              'final DestructiveActionReport report = await _go();',
+            ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /says WHAT ACTUALLY HAPPENED/);
+      },
+    );
+  });
+
+  test('🔴 DELETING THE WIDGET IS COVERAGE LOST, NOT A PASS', () => {
+    withTree(
+      (root) => rmSync(join(root, CHASSIS), { force: true }),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /destructive_confirm_dialog\.dart is not a file/);
+      },
+    );
+  });
+
+  test('🔴 STUBBING IT BELOW ITS OWN FLOOR IS COVERAGE LOST — one floor for this root alone', () => {
+    // A stub failing three property limbs would read as three behavioural
+    // regressions when the truth is that the subject is gone. And the floor is
+    // this root's OWN: no neighbouring tree can carry it, which is the failure
+    // assert-workspace-coverage.mjs:130-136 and assert-no-tls-pinning.mjs:75-93
+    // both record.
+    withTree(
+      (root) => writeFileSync(join(root, CHASSIS), 'class DestructiveConfirmDialog {}\n'),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /below its floor of 90/);
+      },
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENFORCEMENT FOLLOWS THE BEHAVIOUR, WHICH IS WHAT CHASSIS STEP 4 NEEDS.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a root that carries its own confirmation owes the properties itself', () => {
+  test('🔴 apps/subly LOSING ITS IN-FLIGHT LOCK FAILS', () => {
+    withTree(
+      (root) =>
+        mutate(root, SUBLY_SETTINGS, (s) =>
+          s.replace(
+            'return PopScope(canPop: !_busy, child: _form(context));',
+            'return PopScope(canPop: true, child: _form(context));',
+          ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /apps\/subly: its OWN confirmation/);
+        assert.match(r.stderr, /NOTHING may dismiss it while the request is in flight/);
+      },
+    );
+  });
+
+  test('🔴 apps/subly LOSING ITS SECRET GATE FAILS', () => {
+    withTree(
+      (root) =>
+        mutate(root, SUBLY_SETTINGS, (s) =>
+          s.replace('onPressed: (_busy || widget.password.text.isEmpty) ? null : _run,', 'onPressed: _run,'),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /apps\/subly: its OWN confirmation/);
+        assert.match(r.stderr, /INERT until the secret is typed/);
+      },
+    );
+  });
+
+  test('🔴 STEP 4 DONE WRONG — the copy emptied and nothing delegated — FAILS', () => {
+    withTree(
+      (root) =>
+        mutate(root, SUBLY_SETTINGS, (s) =>
+          s
+            .replace(
+              'return PopScope(canPop: !_busy, child: _form(context));',
+              'return PopScope(canPop: true, child: _form(context));',
+            )
+            .replace('onPressed: (_busy || widget.password.text.isEmpty) ? null : _run,', 'onPressed: _run,')
+            .replace(
+              'final core.AccountDeletionOutcome outcome = await widget.onConfirm();',
+              'final core.AccountDeletionOutcome outcome = await _go();',
+            ),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /apps\/subly: its OWN confirmation/);
+        assert.match(r.stderr, /Delegating to `packages\/design_system/);
+      },
+    );
+  });
+
+  test('✅ STEP 4 DONE RIGHT — the copy emptied AND the tree delegates — STAYS GREEN', () => {
+    // The point of the whole design. When chassis step 4 takes apps/subly's own
+    // dialog away, the properties are still enforced — over the widget it now
+    // renders — and the passing line SAYS the branch flipped, so the move is
+    // visible in the log rather than inferred. Without the last replacement
+    // this is the failing case immediately above, which is what makes this
+    // green a measurement and not an absence.
+    withTree(
+      (root) =>
+        mutate(root, SUBLY_SETTINGS, (s) =>
+          s
+            .replace(
+              'return PopScope(canPop: !_busy, child: _form(context));',
+              'return PopScope(canPop: true, child: _form(context));',
+            )
+            .replace('onPressed: (_busy || widget.password.text.isEmpty) ? null : _run,', 'onPressed: _run,')
+            .replace(
+              'final core.AccountDeletionOutcome outcome = await widget.onConfirm();',
+              'final core.AccountDeletionOutcome outcome = await _go();',
+            )
+            .replace(
+              'builder: (BuildContext dialogContext) => _DeleteAccountDialog(',
+              'builder: (BuildContext dialogContext) => DestructiveConfirmDialog(',
+            ),
+        ),
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /apps\/subly=delegates to the shared confirmation/);
       },
     );
   });
