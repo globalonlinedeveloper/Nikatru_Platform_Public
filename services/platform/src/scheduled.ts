@@ -323,17 +323,30 @@ export async function analyticsLiveness(env: Env): Promise<void> {
     // purpose, which is the exact thing 0002_analytics.sql:75-80 forbids in
     // writing: "Anything aggregating this column must branch on `purpose`;
     // summing it portfolio-wide counts refusals and objections as the same
-    // event, which they are not." A granted `promo` row is a legitimate-interest
-    // artifact under GDPR Art 21 — it says nothing whatever about whether an
-    // ANALYTICS session should be emitting events.
+    // event, which they are not."
     //
     // What it cost: ops-watch went RED at 2026-09-04T06:00 with
     // `events=0, consents=2` and the sentence "reach is PROVEN and arrivals are
-    // ZERO". Reach was not proven. The E2E walk DECLINES analytics ("No thanks",
-    // app_test.dart's answerConsentIfPrompted) and TICKS the marketing box, so
-    // the two artifacts were `promo` grants and zero events was the correct
-    // behaviour, not a broken rail. A false alarm in the alarm chain is worse
-    // than no alarm: it is the thing that teaches people to skip the page.
+    // ZERO". Reach was not proven. The two artifacts were **`terms`** rows —
+    // clickwrap acceptances — and a signed clickwrap says nothing whatever about
+    // whether an ANALYTICS session should be emitting events. The E2E walk
+    // DECLINES analytics ("No thanks", app_test.dart's answerConsentIfPrompted),
+    // which the same window records as `analytics granted=0`, so zero events was
+    // the correct behaviour and not a broken rail. A false alarm in the alarm
+    // chain is worse than no alarm: it is the thing that teaches people to skip
+    // the page.
+    //
+    // ⚫ THIS COMMENT SAID `promo` UNTIL 2026-09-04 AND THAT WAS NEVER MEASURED.
+    // It named a granted `promo` row and attached a GDPR Art 21 legitimate-
+    // interest argument to it. Queried against production the same day: the live
+    // purposes are `analytics`, `terms` and `marketing-email` — **there is no
+    // `promo` row in this database and never has been.** The word was taken from
+    // the type comment's ILLUSTRATIVE union in 0002_analytics.sql ("'analytics' |
+    // 'sync_backup' | 'promo' | …") and written down as a measurement. The filter
+    // was right for a reason its own justification got wrong, which is the more
+    // dangerous kind of correct. ➡️ Read the DATA for the purpose set
+    // (`SELECT purpose, granted, COUNT(*) FROM consent_artifacts GROUP BY 1,2`),
+    // never the example list in a type comment.
     //
     // ⚠️ NO PER-APP ROW IS WRITTEN FOR THIS. The portfolio row carries the
     // aggregate and the reader judges the aggregate; adding per-app consent rows
