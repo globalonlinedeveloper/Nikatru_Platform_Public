@@ -222,7 +222,12 @@ describe('a blocked leg`s excuse is itself checked', () => {
     // rail.
     withTree(
       (root) => {
-        const p = join(root, 'apps/subly/lib/state/providers.dart');
+        // `state/providers.dart` until 2026-09-04: the spine was split into
+        // per-capability files behind that barrel and `kAppDefaultConfig` — the
+        // declaration this mutation flips — went to `providers/config.dart`.
+        // The guard itself reads the whole `lib` tree, so IT never stopped
+        // seeing the declaration; only this mutation had to follow it.
+        const p = join(root, 'apps/subly/lib/state/providers/config.dart');
         writeFileSync(p, readFileSync(p, 'utf8').replace('PaywallConfig(enabled: false)', 'PaywallConfig(enabled: true)'));
       },
       (r) => {
@@ -518,7 +523,16 @@ describe('coverage self-checks', () => {
     // wrong reason.
     const root = realTree();
     try {
-      for (const p of [REGISTER, SUITE, WORKFLOW, join(APP_LIB, 'state/providers.dart')]) {
+      for (const p of [
+        REGISTER,
+        SUITE,
+        WORKFLOW,
+        join(APP_LIB, 'state/providers.dart'),
+        // The file the paywall mutation above actually edits. Without it this
+        // self-check covered the barrel and not the declaration, which is the
+        // gap that let that mutation silently become a no-op.
+        join(APP_LIB, 'state/providers/config.dart'),
+      ]) {
         assert.ok(existsSync(join(root, p)), `${p} missing from the tree copy`);
         assert.equal(readFileSync(join(root, p), 'utf8'), readFileSync(join(REPO, p), 'utf8'), `${p} differs from the real tree`);
       }

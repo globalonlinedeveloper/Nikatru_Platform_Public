@@ -85,7 +85,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     // `StateError` [userStateDrops] records — and `_buy` has no `catch`, so it
     // became an unhandled async error with `_phase` stuck at pending.
     //
-    // SAFE TO HOLD: `authRepositoryProvider` (`providers.dart:573`) is a
+    // SAFE TO HOLD: `authRepositoryProvider` (`providers/auth.dart:97`) is a
     // root-scope `Provider` with no `ref.watch` in its body, so it is never
     // recomputed and its instance lives as long as the container —
     // `routerProvider` holds the same one for the life of the app

@@ -112,7 +112,7 @@
       "clientBasePath": "/v1",
       "_clientBasePathWhy": [
         "Subly's Dart seam is constructed with `baseUrl: '${AppConfig.apiBaseUrl}/v1'`",
-        "(apps/subly/lib/state/providers.dart:2310), so every call site in dio_api_client.dart names the",
+        "(apps/subly/lib/state/providers/subscriptions.dart:52), so every call site in dio_api_client.dart names the",
         "path BELOW /v1 — `_rest.get('/budget')`, not `/v1/budget`. Requiring the full path in the client",
         "expression would have made ten honest clients unresolvable and pushed them into",
         "`unconsumedReason`, which is how a real client becomes a written excuse. The guard does not take",
@@ -154,7 +154,7 @@
           "client": {
             "file": "services/platform/src/routes/account.ts",
             "expression": "`${origin}/v1/account`",
-            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subly/lib/state/providers.dart:539-577 records the same thing from the other side)."
+            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subly/lib/state/providers/auth.dart:63-101 records the same thing from the other side)."
           }
         },
         {
