@@ -83,9 +83,15 @@ const insertConsent = (
   // 🔴 A PARAMETER SINCE 2026-09-04, AND ITS ABSENCE IS WHY 17 GREEN TESTS SAT
   // OVER A REAL DEFECT. Every fixture here hardcoded 'analytics', so the suite
   // could not tell a query that filters the purpose from one that does not —
-  // and the shipped query did not. `consent_artifacts` holds
-  // 'analytics' | 'sync_backup' | 'promo', and 0002_analytics.sql:75-80 says in
-  // writing that anything aggregating `granted` must branch on `purpose`.
+  // and the shipped query did not. 0002_analytics.sql:75-80 says in writing that
+  // anything aggregating `granted` must branch on `purpose`.
+  //
+  // ⚫ THE PURPOSES PRODUCTION ACTUALLY HOLDS, measured 2026-09-04:
+  // **`analytics`, `terms`, `marketing-email`.** This line used to read
+  // "'analytics' | 'sync_backup' | 'promo'", copied from the ILLUSTRATIVE union
+  // in the schema's type comment — and neither `sync_backup` nor `promo` has
+  // ever been written by anything. Quote the data for the live set; the schema
+  // comment lists what the column MAY hold, which is a different question.
   purpose = 'analytics',
 ) =>
   db.db
@@ -392,22 +398,37 @@ describe('the portfolio row carries the independent consent signal', () => {
     expect(tokens(portfolio(db).detail)).toMatchObject({ consents: '0', consented_apps: '0' });
   });
 
-  it('🔴 A GRANTED `promo` CONSENT IS NOT ANALYTICS REACH — the live false alarm of 2026-09-04', async () => {
+  it('🔴 A GRANTED `terms` CONSENT IS NOT ANALYTICS REACH — the live false alarm of 2026-09-04', async () => {
     // ops-watch went RED at 06:00 with `events=0, consents=2` and the sentence
     // "reach is PROVEN and arrivals are ZERO". Reach was NOT proven. The query
-    // filtered `granted = 1` across EVERY purpose, so two granted `promo` rows —
-    // a legitimate-interest artifact under GDPR Art 21 — were read as evidence
-    // that ANALYTICS sessions should be emitting events.
+    // filtered `granted = 1` across EVERY purpose, so two granted **`terms`**
+    // rows — clickwrap acceptances — were read as evidence that ANALYTICS
+    // sessions should be emitting events. A signed clickwrap says nothing about
+    // analytics at all.
+    //
+    // ⚫ THE FIRST VERSION OF THIS TEST SAID `promo` AND USED IT AS THE FIXTURE.
+    // Queried against production afterwards: the live purposes are `analytics`,
+    // `terms` and `marketing-email` — there is no `promo` row in that database
+    // and never has been. The word came from the ILLUSTRATIVE union in
+    // 0002_analytics.sql's type comment, not from the data. The test passed
+    // either way, which is exactly why it was worth correcting: a green test
+    // reproducing an event that never happened is not a reproduction.
+    //
+    // 🔬 SO THE TWO FIXTURES NOW DO DIFFERENT JOBS. `terms` is the REAL cause,
+    // measured — this is the live incident. `sync_backup` is a purpose the
+    // schema names and production has never once written, so the pair also
+    // proves the filter is GENERAL and not a `terms`-shaped special case.
     //
     // 0002_analytics.sql:75-80 had already forbidden this in writing: "Anything
     // aggregating this column must branch on `purpose`". Nothing tested it,
     // because every fixture in this file hardcoded purpose='analytics' — a suite
     // that cannot express the wrong value cannot catch it.
     //
-    // Where the rows came from: the E2E walk DECLINES analytics ("No thanks")
-    // and TICKS the marketing box, so zero events was the CORRECT behaviour.
+    // Where the rows came from: the E2E walk DECLINES analytics ("No thanks"),
+    // which the same window records as `analytics granted=0`, and accepts the
+    // clickwrap. Zero events was the CORRECT behaviour.
     const db = realPlatformDb();
-    insertConsent(db, 'subly', hours(1), 'p1', 1, 'promo');
+    insertConsent(db, 'subly', hours(1), 'p1', 1, 'terms');
     insertConsent(db, 'subly', hours(2), 'p2', 1, 'sync_backup');
 
     await analyticsLiveness(envWith(db));
@@ -428,8 +449,10 @@ describe('the portfolio row carries the independent consent signal', () => {
 
   it('an analytics grant in the same window still counts — the filter narrows, it does not silence', async () => {
     // The other direction, so the fix cannot be "return zero always".
+    // `terms` for the same reason as the case above: it is the purpose that
+    // really sat beside the analytics rows on the day.
     const db = realPlatformDb();
-    insertConsent(db, 'subly', hours(1), 'p1', 1, 'promo');
+    insertConsent(db, 'subly', hours(1), 'p1', 1, 'terms');
     insertConsent(db, 'subly', hours(2), 'a1');
 
     await analyticsLiveness(envWith(db));
