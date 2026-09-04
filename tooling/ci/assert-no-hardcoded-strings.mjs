@@ -127,6 +127,34 @@ const ENFORCED_ROOTS = [
     why: "the factory's first app, and the tree the retrofit just emptied — adopted at 5 remaining literals, because the cost of adopting this rule only ever goes up",
     remedy: "Add the key to apps/subly/lib/l10n/app_en.arb (and app_ta.arb — l10n_parity_test.dart asserts parity in BOTH directions), run `flutter gen-l10n`, and read it through AppLocalizations.",
   },
+  {
+    // 🔴 THE SHARED SHELF, ADDED 2026-09-04 AFTER IT SHIPPED AN ENGLISH SCREEN
+    // TO EVERY APP. [ADR 065] moved the generic chassis into `packages/` and this
+    // guard's domain did not follow, so a user-visible English literal there was
+    // outside the reach of the only check that hunts for one. `ForceUpdateGate`
+    // is the measured consequence: an untranslatable force-update wall in every
+    // stamped app, in every locale, for as long as it existed.
+    //
+    // ⚠️ THE PACKAGE HAS NO l10n AND MUST NOT GROW ONE. Its own pubspec note and
+    // `system_screens.dart`'s header both record the rule: design_system takes
+    // its copy as CONSTRUCTOR PARAMETERS precisely so it never gains an l10n
+    // dependency and never has to know what an app calls things. So the remedy
+    // here is NOT "add a key to this package" — it is to make the parameter
+    // `required` and let the caller supply it. That is how the wall was fixed.
+    //
+    // ⛔ SCOPED TO design_system, NOT `packages/*`, and the narrowing is
+    // deliberate. It is the package this ADR moves UI into and the only one that
+    // renders anything; widening to every package would enforce a UI rule over
+    // pure-Dart libraries whose strings are protocol values, and the next thing
+    // that would need is an exemption list. Widen it when a second package
+    // renders, and record the reason here when you do.
+    root: 'packages/design_system/lib',
+    noArbBecause:
+      'design_system takes its copy as constructor parameters so it never gains an l10n dependency — its pubspec note and system_screens.dart both record that rule. There are no keys here for the reverse direction to find unrendered, and the day there are, this field is the thing to delete.',
+    why: 'the shared chassis every app renders through — a literal here reaches every app at once, and until 2026-09-04 no guard looked at it',
+    remedy:
+      'Do NOT add an arb to this package. Make the parameter `required` and let the caller pass the string from its own l10n — the callers live in apps/ and in the brick, both already enforced above.',
+  },
 ];
 
 /**
@@ -146,6 +174,26 @@ const ALLOWED = [
     file: 'apps/subly/lib/features/auth/login_screen.dart',
     literal: 'debug: $detail',
     why: 'guarded by `if (kDebugMode && detail != null)`. kDebugMode is a const, so the tree-shaker removes this whole branch from every release artifact — it is E2E diagnostic output (E2EKeys.accountDeletionNoticeDetail), read by `flutter drive`, never by a user. [ADR 027]',
+  },
+  {
+    // 🔴 FOUND BY ADDING THE `packages/` ROOT, ON ITS FIRST RUN — which is the
+    // best argument for the root that could exist. [ADR 065] chassis step 2
+    // moved the deletion-outcome notice into the shared chassis and carried this
+    // line with it, so the identical literal now lives in TWO trees and only one
+    // of them was being looked at.
+    //
+    // Same reasoning as the entry above, re-verified here rather than assumed:
+    // `destructive_outcome_notice.dart:116` is `if (kDebugMode && detail != null)`,
+    // `kDebugMode` is a const, and the tree-shaker removes the whole branch from
+    // every release artifact. No user in any locale can reach this string.
+    //
+    // ⚠️ IT IS A SECOND ENTRY, NOT A WIDENED FIRST ONE. The waiver is keyed to an
+    // exact literal at an exact path precisely so that the copy in the shared
+    // package had to be looked at on its own merits — a waiver by literal alone
+    // would have exempted this the moment it was pasted, with nobody reading it.
+    file: 'packages/design_system/lib/src/widgets/destructive_outcome_notice.dart',
+    literal: 'debug: $detail',
+    why: 'guarded by `if (kDebugMode && detail != null)` at :116. kDebugMode is a const, so the tree-shaker removes this whole branch from every release artifact — it is diagnostic output for whoever is debugging a failed deletion, never a user-visible sentence. [ADR 027]',
   },
 ];
 
@@ -172,6 +220,30 @@ const FIXTURE_FAMILIES = `${FIXTURE}/expected-families.txt`;
 const SHOWN_TO_A_PERSON = [
   { re: /\bText\(\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/g, what: 'Text(…)' },
   { re: /\b(?:label|title|subtitle|tooltip|hintText|labelText|helperText|semanticsLabel|semanticLabel|applicationLegalese)\s*:\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/g, what: 'a labelling parameter' },
+  // 🔴 THE THIRD FAMILY, ADDED 2026-09-04 BECAUSE THE FIRST TWO COULD NOT SEE
+  // THE DEFECT THAT MOTIVATED THEM. A widget constructor that DEFAULTS a copy
+  // parameter — `this.title = 'Update required'` — never appears inside a
+  // `Text(` call and is not a `label:` argument, so both matchers above walk
+  // straight past it. `ForceUpdateGate` carried three such defaults; BOTH
+  // production call sites passed no copy at all, so those defaults were the only
+  // words any stamped app ever shipped, in every locale, on the one screen that
+  // replaces the whole app and cannot be dismissed. No arb key for them had ever
+  // existed, in either tree, in either language.
+  //
+  // It is the SAME rule as the two above — a sentence a user reads comes from
+  // the arb — reaching a place the syntax hid. And it is why the `packages/`
+  // root below is worth having: the defect lived in the shared package, which
+  // this guard did not scan, in a shape this guard could not match. Fixing one
+  // without the other would have left it invisible.
+  //
+  // ⚠️ IT NEEDS NO WAIVERS TODAY, AND THAT IS MEASURED RATHER THAN HOPED. Across
+  // the three enforced trees this family matches SIX literals and
+  // `NOT_USER_FACING` already excludes every one: three empty strings in
+  // apps/subly's `subscription.dart`, the two `assets/…` paths in
+  // `brand_lockup.dart`, and one `'{}'`. So it lands green and stands as a
+  // tripwire for the NEXT default — which is the shape a new rule should have,
+  // rather than a green bought with an exemption list.
+  { re: /\bthis\.[A-Za-z_$][\w$]*\s*=\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1/g, what: 'a defaulted copy parameter' },
 ];
 
 // Not user-facing, even inside those positions. Each entry is a real category
@@ -714,8 +786,32 @@ const ALREADY_PRINTED_ELSEWHERE = [
   const declaredIn = new Map(); // key -> [root, …]
   const englishValue = new Map(); // key -> the template value, for the literal-echo check
   let arbsRead = 0;
-  for (const { root } of ENFORCED_ROOTS) {
+  for (const { root, noArbBecause } of ENFORCED_ROOTS) {
     const abs = join(ROOT, root, ...TEMPLATE_ARB.split('/'));
+    // 🔴 A ROOT MAY DECLARE THAT IT HAS NO ARB, AND MUST SAY WHY. The reverse
+    // direction asks "which declared keys does nothing render?" — a question
+    // with no meaning for a tree that declares none. `packages/design_system` is
+    // exactly that tree BY DESIGN: it takes its copy as constructor parameters
+    // so it never gains an l10n dependency, and the forward direction above is
+    // the whole of what this guard can ask of it.
+    //
+    // ⚠️ DECLARED PER ROOT, NEVER INFERRED FROM THE FILE BEING ABSENT — which is
+    // the difference between a stated property and the exact silence the
+    // COVERAGE LOST below exists to refuse. A tree that SHOULD have an arb and
+    // has lost it still fails here, loudly, because it carries no such field.
+    // And the skip PRINTS on every run, so it cannot become a quiet hole.
+    if (noArbBecause !== undefined) {
+      if (existsSync(abs)) {
+        problems.push(
+          `${root} declares \`noArbBecause\` and ${TEMPLATE_ARB} EXISTS. The declaration is stale — either the tree grew an arb and the reverse direction should now read it, or the file is a leftover. A root cannot be both.`,
+        );
+      } else {
+        notes.push(
+          `⬜ ${root} declares no arb, and the reverse direction skipped it: ${noArbBecause}`,
+        );
+      }
+      continue;
+    }
     if (!existsSync(abs)) {
       problems.push(
         `COVERAGE LOST — ${root}/${TEMPLATE_ARB} does not exist, so the reverse direction read no keys for this tree. "No unrendered keys" and "the file the keys live in has moved" are the same silence from a scanner and completely different facts.`,
@@ -808,6 +904,9 @@ const ALREADY_PRINTED_ELSEWHERE = [
   // Before that date the first four had none — a hand-written `node_modules`
   // could have grown to `node_modules|docs` and no test would have moved.
   const consumerFiles = [];
+  /** Every non-test file in the repo, enforced trees INCLUDED — the echo search
+   *  domain. See the split at the walk below for why it is not consumerFiles. */
+  const echoFiles = [];
   {
     // `rel` is always a FILE path here, so the `rel === root` half this carried
     // until 2026-08-21 could never be true — a condition with no reachable input,
@@ -824,7 +923,30 @@ const ALREADY_PRINTED_ELSEWHERE = [
         if (!CONSUMER_EXTS.some((x) => entry.name.endsWith(x))) continue;
         if (/app_localizations/.test(entry.name)) continue;
         const rel = relative(ROOT, join(d, entry.name)).replace(/\\/g, '/');
-        if (inEnforced(rel) || IS_TEST_PATH.test(rel)) continue;
+        if (IS_TEST_PATH.test(rel)) continue;
+        // 🔴 TWO DOMAINS, NOT ONE, AND THE SPLIT WAS FORCED BY A LIE THIS GUARD
+        // TOLD ON 2026-09-04. Both questions used to be asked of the same
+        // `inEnforced`-filtered list, which was safe only while an enforced tree
+        // could not contain a user-visible literal. Adding
+        // `packages/design_system/lib` broke that: `system_screens.dart`'s
+        // `fallbackTitle`/`fallbackMessage` are `static const` strings, so no
+        // matcher family catches them — and with the file newly inside an
+        // enforced tree it also dropped out of the echo search. The guard then
+        // reported `errorTitle` as "its English copy appears nowhere else in the
+        // tree either. Nothing shows this string." That was FALSE, and it was
+        // false in the worst direction: it retracted a true, actionable pointer.
+        //
+        //   · WHO ELSE READS THIS KEY — enforced trees are excluded, and must
+        //     be. An accessor inside one is the RENDER direction, already
+        //     measured above; counting it here would report every rendered key
+        //     as "something else reads it".
+        //   · WHERE DOES THIS ENGLISH LIVE — nothing is excluded. The question
+        //     is about the whole repository, and a file being enforced does not
+        //     make the string it ships invisible. Naming a file that is ALSO a
+        //     forward-limb failure costs nothing: it is already failing, and the
+        //     owner is pointed at the same evidence twice rather than none.
+        echoFiles.push(rel);
+        if (inEnforced(rel)) continue;
         consumerFiles.push(rel);
       }
     };
@@ -869,7 +991,7 @@ const ALREADY_PRINTED_ELSEWHERE = [
       const echoes = new Map(printable.map((k) => [k, []]));
       if (printable.length > 0) {
         const anyKey = new RegExp(`\\b(${printable.join('|')})\\b`);
-        for (const rel of consumerFiles) {
+        for (const rel of echoFiles) {
           const raw = readFileSync(join(ROOT, rel), 'utf8');
           // ⚠️ A SPEED SKIP, NOT A TRIPWIRE, AND CLAIMED AS NOTHING. A file that
           // mentions neither a key nor a value cannot contribute either way, so

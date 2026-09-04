@@ -335,6 +335,21 @@ let seq = 0;
 
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 const SUBLY = 'apps/subly/lib';
+// The third enforced root, added 2026-09-04. [ADR 065] moved the chassis into
+// packages/ and this guard's domain followed it there - so every synthetic tree
+// below has to carry it, or the guard reports that domain as GONE, which is a
+// different input from the one each case below means to test.
+const SHELF = 'packages/design_system/lib';
+// Clean by construction: the shelf takes its copy as REQUIRED parameters and
+// renders what it is handed, which is the whole rule that root exists to keep.
+const CLEAN_SHELF = `
+class ForceUpdateGate extends StatelessWidget {
+  const ForceUpdateGate({required this.title, required this.child});
+  final String title;
+  final Widget child;
+  Widget build(BuildContext c) => Column(children: [Text(title), child]);
+}
+`;
 const FIXTURE = 'tooling/ci/test/fixtures/dirty-strings';
 
 // A clean brick: every visible string comes from l10n.
@@ -367,11 +382,19 @@ class HomeScreen extends StatelessWidget {
  * margin and prints "matchers verified". A tree dirty in only one way would
  * encode exactly that blind spot; `labelled` is the second family's evidence.
  */
-function dirtyTree(n = 25, labelled = 4) {
+function dirtyTree(n = 25, labelled = 4, defaulted = 3) {
   let s = 'class S extends StatelessWidget {\n  Widget build(BuildContext c) {\n    return Column(children: [\n';
   for (let i = 0; i < n; i++) s += `      Text('Legacy label number ${i}'),\n`;
   for (let i = 0; i < labelled; i++) s += `      AppTile(label: 'Legacy tile number ${i}'),\n`;
-  return `${s}    ]);\n  }\n}\n`;
+  s += '    ]);\n  }\n}\n';
+  // The THIRD family's evidence - a constructor that DEFAULTS its copy. Added
+  // 2026-09-04 with the matcher: `ForceUpdateGate` shipped English to every
+  // locale in this exact shape, and neither of the other two families can see
+  // it, because a default is not inside a `Text(` and is not a `label:`.
+  s += 'class D extends StatelessWidget {\n  const D({\n';
+  for (let i = 0; i < defaulted; i++) s += `    this.copy${i} = 'Defaulted sentence number ${i}',\n`;
+  s += '  });\n}\n';
+  return s;
 }
 
 /**
@@ -398,7 +421,8 @@ class Q extends StatelessWidget {
 `;
 
 /** The declaration the guard holds its own matcher list against. */
-const FAMILIES = '# comments and blanks are ignored\n\nText(…)\na labelling parameter\n';
+const FAMILIES =
+  '# comments and blanks are ignored\n\nText(…)\na labelling parameter\na defaulted copy parameter\n';
 
 // ⚠️ THE `subly` PARAMETER IS BACK, and it means the OPPOSITE of what it meant
 // before 2026-08-08. It used to plant a DIRTY `apps/subly/lib` because the guard
@@ -422,6 +446,16 @@ class SublyHome extends StatelessWidget {
  *  failure — so it is planted by default and removed deliberately. */
 const ALLOWLISTED_FILE = `${SUBLY}/features/auth/login_screen.dart`;
 const ALLOWLISTED = "const probe = Text('debug: $detail');\n";
+
+// ── 2026-09-04 · THE SECOND WAIVER NEEDS ITS FILE HERE TOO ─────────────────
+// [ADR 065] chassis step 2 carried the debug-detail line into the shared
+// chassis, so the identical literal now lives in two trees and the guard
+// carries a waiver for each. An unused waiver is a FAILURE by that guard's own
+// rule - a waiver nobody can see the input for is dead weight that makes the
+// enforced domain look narrower than it is - so a fixture tree that omitted
+// this file would go red for a reason no case here means to test.
+const SHELF_ALLOWLISTED_FILE = `${SHELF}/src/widgets/destructive_outcome_notice.dart`;
+const SHELF_ALLOWLISTED = "const probe = Text('debug: $detail');\n";
 
 // ── 2026-08-21 · THE REVERSE DIRECTION NEEDS AN .arb IN EVERY FIXTURE TREE ───
 // The guard now also asks which DECLARED keys reach no screen, so a fixture with
@@ -460,6 +494,8 @@ function tree({
   brickArb = BRICK_ARB,
   sublyArb = SUBLY_ARB,
   consumers = CONSUMERS,
+  shelf = CLEAN_SHELF,
+  shelfAllowlisted = SHELF_ALLOWLISTED,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = {};
@@ -468,6 +504,11 @@ function tree({
     if (brickArb !== null) files[`${BRICK}/l10n/app_en.arb`] = arb(brickArb);
   }
   if (subly !== null) files[`${SUBLY}/features/home/home_screen.dart`] = subly;
+  // No arb is planted for the shelf, deliberately - the real root declares
+  // `noArbBecause`, and a fixture that gave it one would be exercising a tree
+  // the guard is not configured for.
+  if (shelf !== null) files[`${SHELF}/src/widgets/force_update_gate.dart`] = shelf;
+  if (shelfAllowlisted !== null) files[SHELF_ALLOWLISTED_FILE] = shelfAllowlisted;
   if (allowlisted !== null) files[ALLOWLISTED_FILE] = allowlisted;
   // The arb belongs to the ROOT, so it is planted whenever the root will exist
   // at all — otherwise "the enforced tree is gone" and "its arb is gone" become
@@ -632,7 +673,7 @@ describe('assert-no-hardcoded-strings', () => {
     test('the waived literal is silent, and the guard says how many waivers are live', () => {
       const { code, out } = run(tree());
       assert.equal(code, 0, out);
-      assert.match(out, /1 named allowlist entr\(y\/ies\), every one still matching/);
+      assert.match(out, /2 named allowlist entr\(y\/ies\), every one still matching/);
     });
 
     // 🔴 THE FAILURE A PATH-KEYED WAIVER COULD NOT HAVE. The waived file gains a
@@ -876,7 +917,7 @@ const b = Text('Hardcoded right after a URL');
     test('passes on a dirty tree well below the measured total but above the floor', () => {
       const { code, out } = run(tree({ fixture: dirtyTree(18, 3) }));
       assert.equal(code, 0, out);
-      assert.match(out, /known-dirty tree: 21 literal/);
+      assert.match(out, /known-dirty tree: 24 literal/);
     });
   });
 
@@ -997,7 +1038,7 @@ const b = Text('Hardcoded right after a URL');
       // A bare "no unread keys" is worth nothing; the domain is what makes it a
       // measurement. Both halves of the sweep have to be in the sentence.
       assert.match(out, /\d+ message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\)/);
-      assert.match(out, /\d+ non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+      assert.match(out, /\d+ non-test \.dart file\(s\) in 3 enforced tree\(s\)/);
       assert.match(out, /\d+ non-test [^ ]+ file\(s\) elsewhere searched for any other reader/);
       assert.doesNotMatch(out, /👤 OWNER/);
     });
@@ -1007,7 +1048,7 @@ const b = Text('Hardcoded right after a URL');
       assert.equal(code, 0, `an owner judgement reddened the build:\n${out}`);
       assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
       assert.match(out, /NOTHING IN THE TREE NAMES THE KEY AT ALL \(1\)/);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
       assert.match(out, /appears nowhere else in the tree either/);
       // 🔴 THE DOMAIN SENTENCE, WITH ITS NUMBERS, ON THE PATH THAT ACTUALLY
       // PRINTS A GAP. Until 2026-08-21 it was asserted only on the `ok …` path,
@@ -1019,7 +1060,7 @@ const b = Text('Hardcoded right after a URL');
       // 1 consumer file outside the enforced trees.
       assert.match(
         out,
-        /DOMAIN, so the number above is a measurement and not a blind spot: 5 message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\) · 3 non-test \.dart file\(s\) in 2 enforced tree\(s\) searched for a `\.<key>` accessor · 1 non-test \.mjs\/\.js\/\.ts\/\.tsx\/\.dart file\(s\) elsewhere searched for any other reader\./,
+        /DOMAIN, so the number above is a measurement and not a blind spot: 5 message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\) · 5 non-test \.dart file\(s\) in 3 enforced tree\(s\) searched for a `\.<key>` accessor · 1 non-test \.mjs\/\.js\/\.ts\/\.tsx\/\.dart file\(s\) elsewhere searched for any other reader\./,
       );
       // …and the sentence that says WHY the generated accessors are out of both
       // halves. Without it the exclusion looks like a scan that missed them.
@@ -1045,10 +1086,10 @@ const b = Text('Hardcoded right after a URL');
       }));
       assert.equal(code, 0, out);
       assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
       // …and the printed domain stays at 3, so the file was EXCLUDED rather than
       // scanned-and-missed. A count of 4 here would mean the word is still a label.
-      assert.match(out, /3 non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+      assert.match(out, /5 non-test \.dart file\(s\) in 3 enforced tree\(s\)/);
     });
 
     // 🔴 THE NEGATIVE HALF, AND THE ONLY ONE THAT PROVES THE LIMB IS DERIVED
@@ -1071,7 +1112,7 @@ const b = Text('Hardcoded right after a URL');
       }));
       assert.equal(code, 0, out);
       assert.match(out, /NOT RENDERED, BUT SOMETHING ELSE READS THE KEY — do not delete before reading the consumer \(1\)/);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\] — read at tooling\/ci\/assert-something\.mjs:1/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\] — read at tooling\/ci\/assert-something\.mjs:1/);
       assert.doesNotMatch(out, /NOTHING IN THE TREE NAMES THE KEY AT ALL/);
     });
 
@@ -1082,10 +1123,10 @@ const b = Text('Hardcoded right after a URL');
     test('names the file where an unrendered key’s copy already ships as a literal', () => {
       const { code, out } = run(tree({
         sublyArb: GHOST,
-        consumers: { ...CONSUMERS, 'packages/design_system/lib/fallback.dart': "const t = 'Ghost copy';\n" },
+        consumers: { ...CONSUMERS, 'packages/notifications/lib/fallback.dart': "const t = 'Ghost copy';\n" },
       }));
       assert.equal(code, 0, out);
-      assert.match(out, /ships as a hardcoded LITERAL at packages\/design_system\/lib\/fallback\.dart:1/);
+      assert.match(out, /ships as a hardcoded LITERAL at packages\/notifications\/lib\/fallback\.dart:1/);
       assert.match(out, /different owner answers/);
     });
 
@@ -1146,7 +1187,7 @@ const b = Text('Hardcoded right after a URL');
       assert.doesNotMatch(out, /consentReadPolicy/);
       // …and the print is still live for the key that really is unrendered, so
       // this is not passing because the owner block vanished.
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
     });
 
     // 🔴 …AND CONDITIONAL ON THE CREDITING GUARD NAMING IT IN *CODE*, WHICH IS
@@ -1169,7 +1210,7 @@ const b = Text('Hardcoded right after a URL');
         consumers: { [CONSENT_GUARD]: "// the limb that printed 'consentReadPolicy' was deleted; this note is dated\nconst UNRELATED = 1;\n" },
       }));
       assert.equal(code, 0, out);
-      assert.match(out, /consentReadPolicy \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /consentReadPolicy \[declared in 1 of 3 enforced tree\(s\)\]/);
       assert.doesNotMatch(out, /deliberately NOT listed above/);
     });
 
@@ -1189,7 +1230,7 @@ const b = Text('Hardcoded right after a URL');
         consumers: { [CONSENT_GUARD]: "const POLICY_LINK_KEY = 'consentReadPolicyV2';\n" },
       }));
       assert.equal(code, 0, out);
-      assert.match(out, /consentReadPolicy \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /consentReadPolicy \[declared in 1 of 3 enforced tree\(s\)\]/);
       assert.doesNotMatch(out, /deliberately NOT listed above/);
     });
 
@@ -1235,10 +1276,10 @@ const b = Text('Hardcoded right after a URL');
         },
       }));
       assert.equal(code, 0, out);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
       // …and the printed domain stays at 3, so the file was EXCLUDED rather than
       // scanned-and-missed.
-      assert.match(out, /3 non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+      assert.match(out, /5 non-test \.dart file\(s\) in 3 enforced tree\(s\)/);
     });
 
     // 🔴 THE THIRD RENDER-DOMAIN NARROWING, AND THE ONE NO SWEEP HAD REACHED:
@@ -1270,10 +1311,10 @@ const b = Text('Hardcoded right after a URL');
       }));
       assert.equal(code, 0, out);
       assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
       // …and the printed domain stays at 3. A 4 here would mean the file was
       // scanned and merely happened not to match, which is a different guard.
-      assert.match(out, /3 non-test \.dart file\(s\) in 2 enforced tree\(s\)/);
+      assert.match(out, /5 non-test \.dart file\(s\) in 3 enforced tree\(s\)/);
     });
 
     // 🔴 THE ACCESSOR MATCHER'S TRAILING `\b`, IN THE WIDENING DIRECTION. The
@@ -1288,7 +1329,7 @@ const b = Text('Hardcoded right after a URL');
       const { code, out } = run(tree({ sublyArb: GHOST, subly: nearMiss }));
       assert.equal(code, 0, out);
       assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
     });
 
     // ── 2026-08-24 · THE OTHER HALF OF ACCESSOR_OF, WHICH NO ROW HAD SPLIT ───
@@ -1306,7 +1347,7 @@ const b = Text('Hardcoded right after a URL');
       const { code, out } = run(tree({ sublyArb: GHOST, subly: named }));
       assert.equal(code, 0, out);
       assert.match(out, /👤 OWNER l10n render direction — 1 translated, reviewed key\(s\) of 5 reach NO surface/);
-      assert.match(out, /ghostKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+      assert.match(out, /ghostKey \[declared in 1 of 3 enforced tree\(s\)\]/);
     });
 
     // ── 2026-08-24 · THE CONSUMER MATCH HAS THE SAME TWO WORD BOUNDARIES, AND ─
@@ -1352,7 +1393,7 @@ const b = Text('Hardcoded right after a URL');
       assert.equal(code, 0, out);
       assert.match(
         out,
-        /blankKey \[declared in 1 of 2 enforced tree\(s\)\] — and its English copy appears nowhere else in the tree either/,
+        /blankKey \[declared in 1 of 3 enforced tree\(s\)\] — and its English copy appears nowhere else in the tree either/,
       );
       assert.doesNotMatch(out, /ships as a hardcoded LITERAL/);
     });
@@ -1487,7 +1528,7 @@ const b = Text('Hardcoded right after a URL');
       test('the same key IS reported when neither tree renders it', () => {
         const { code, out } = run(tree({ brickArb: SHARED_BRICK }));
         assert.equal(code, 0, out);
-        assert.match(out, /sharedChassisKey \[declared in 1 of 2 enforced tree\(s\)\]/);
+        assert.match(out, /sharedChassisKey \[declared in 1 of 3 enforced tree\(s\)\]/);
       });
     });
 
@@ -1598,11 +1639,18 @@ const b = Text('Hardcoded right after a URL');
         // …and it was CHECKED rather than merely not-rejected: it is inside the
         // domain count and it drew its own owner line.
         assert.match(out, /5 message key\(s\) from 2 tracked l10n\/app_en\.arb file\(s\)/);
-        assert.match(out, /Legacy_\$Key \[declared in 1 of 2 enforced tree\(s\)\]/);
+        assert.match(out, /Legacy_\$Key \[declared in 1 of 3 enforced tree\(s\)\]/);
       });
 
       test('FAILS when there is no .dart to look for accessors in', () => {
-        const { code, out } = run(tree({ brick: null, subly: null, allowlisted: null }));
+        // The shelf is nulled too, from 2026-09-04. It is the third enforced
+        // root, and leaving its two default files planted would mean this case
+        // no longer builds the tree it names — "no .dart at all" would quietly
+        // become "two .dart files", which is a different input and would stop
+        // exercising the refusal this case exists for.
+        const { code, out } = run(
+          tree({ brick: null, subly: null, allowlisted: null, shelf: null, shelfAllowlisted: null }),
+        );
         assert.equal(code, 1, 'every key would read as unrendered, which is a broken scan');
         assert.match(out, /ZERO non-test \.dart file\(s\) to look for accessors in/);
       });
@@ -1628,13 +1676,13 @@ const b = Text('Hardcoded right after a URL');
         assert.equal(code, 0, out);
         assert.match(out, /👤 OWNER l10n render direction/);
         for (const key of ['errorTitle', 'errorMessage', 'notificationActionOpen']) {
-          assert.match(out, new RegExp(`${key} \\[declared in \\d of 2 enforced tree\\(s\\)\\]`), key);
+          assert.match(out, new RegExp(`${key} \\[declared in \\d of 3 enforced tree\\(s\\)\\]`), key);
         }
         // appTitle has a LIVE JavaScript reader — assert-stamp-text-fidelity.mjs
         // fails the brick lane when it disagrees with the stamped display name.
         // Filing it beside errorTitle would invite a delete that reddens CI, so
         // the bucket it lands in is asserted, not just its presence.
-        assert.match(out, /appTitle \[declared in 2 of 2 enforced tree\(s\)\] — read at tooling\/ci\/assert-stamp-text-fidelity\.mjs:\d+/);
+        assert.match(out, /appTitle \[declared in 2 of 3 enforced tree\(s\)\] — read at tooling\/ci\/assert-stamp-text-fidelity\.mjs:\d+/);
         assert.match(out, /ships as a hardcoded LITERAL at packages\/design_system\/lib\/src\/widgets\/system_screens\.dart:\d+/);
         assert.doesNotMatch(out, /COVERAGE LOST/);
 
@@ -1655,10 +1703,20 @@ const b = Text('Hardcoded right after a URL');
         const head = out.match(/👤 OWNER l10n render direction — (\d+) translated, reviewed key\(s\) of (\d+) reach NO surface/);
         assert.ok(head, 'the owner header is missing');
         assert.equal(Number(head[2]), keys, 'the header and the domain disagree about how many keys were read');
-        // One arb and one enforced tree per root, and both halves non-empty —
-        // the three ways this sentence could be true of nothing.
-        assert.equal(arbs, trees, 'an enforced tree contributed no arb');
-        assert.equal(trees, 2, 'ENFORCED_ROOTS changed; re-read this assertion');
+        // ⚠️ ONE ARB PER ROOT WAS THE INVARIANT UNTIL 2026-09-04, AND IT IS NOW
+        // DELIBERATELY FALSE. `packages/design_system/lib` became the third
+        // enforced root and declares `noArbBecause`: it takes its copy as
+        // constructor parameters so it never gains an l10n dependency, so there
+        // is no arb for the reverse direction to read there and none should
+        // appear. `arbs === trees` would now fail on a correct tree.
+        //
+        // The two failures the old equality really guarded are kept, spelled
+        // out rather than collapsed into one number: an arb that VANISHES from a
+        // root that should have one, and a domain that has quietly emptied.
+        assert.equal(arbs, 2, 'a tracked arb vanished — the brick and apps/subly each carry one');
+        assert.ok(arbs > 0, 'no arb was read at all, so every key below is a statement about nothing');
+        assert.equal(trees, 3, 'ENFORCED_ROOTS changed; re-read this assertion');
+        assert.ok(arbs <= trees, 'more arbs than enforced trees — the domain sentence is malformed');
         assert.ok(dartFiles > 0 && elsewhere > 0, `an empty half: ${dartFiles} render, ${elsewhere} elsewhere`);
         // The printed key lines must account for exactly the header's count, so
         // the header cannot drift from the buckets underneath it.
@@ -1684,7 +1742,7 @@ const b = Text('Hardcoded right after a URL');
       test('starts printing consentReadPolicy when the crediting guard is gone', () => {
         const { code, out } = run(REPO, guardCopy(orphanTheSuppression));
         assert.equal(code, 0, out);
-        assert.match(out, /consentReadPolicy \[declared in 1 of 2 enforced tree\(s\)\]/);
+        assert.match(out, /consentReadPolicy \[declared in 1 of 3 enforced tree\(s\)\]/);
         assert.doesNotMatch(out, /deliberately NOT listed above/);
       });
 
