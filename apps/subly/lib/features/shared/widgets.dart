@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show FocusableTap, TapRole;
+    show BrandFooter, BrandFooterLink, BrandWordmark;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
@@ -751,8 +751,14 @@ Future<void> openExternalUrl(String url) async {
   }
 }
 
-/// The Nikatru full lockup (icon + wordmark) as a bundled PNG. Defaults to the
-/// light-background asset; pass [onDark] for the dark-background variant.
+/// The Nikatru full lockup — now [BrandWordmark]'s, with this app's company
+/// name.
+///
+/// 📌 MOVED 2026-09-04 [backlog P-3]. The widget itself is
+/// `packages/design_system/lib/src/widgets/brand_lockup.dart`; what is left
+/// here is the ADAPTER that supplies the one thing the package may not know —
+/// the accessible name, which is copy. The doc on [PoweredByNikatru] below
+/// carries the measurement that justified the move.
 class NikatruWordmark extends StatelessWidget {
   const NikatruWordmark({super.key, this.height = 22, this.onDark = false});
 
@@ -761,20 +767,53 @@ class NikatruWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      onDark
-          ? 'assets/brand/nikatru-logo-dark-bg.png'
-          : 'assets/brand/nikatru-logo.png',
+    return BrandWordmark(
       height: height,
-      filterQuality: FilterQuality.medium,
+      onDark: onDark,
       semanticLabel: AppConfig.companyName,
     );
   }
 }
 
-/// Publisher co-branding: the Nikatru wordmark, "<app> by Nikatru", and
-/// (optionally) tappable Privacy · Terms · Refund links to the live site.
-/// Company name + URLs come from [AppConfig] so every portfolio app inherits.
+/// Publisher co-branding — now [BrandFooter]'s, with this app's strings.
+///
+/// 📌 MOVED 2026-09-04 [backlog P-3], AND THE OLD DOC HERE WAS WRONG. It read
+/// *"Company name + URLs come from [AppConfig] so every portfolio app
+/// inherits"*. Measured on the day of the move:
+/// `grep -rn "PoweredByNikatru" tooling/bricks/` returned NOTHING. No stamped
+/// app inherited any of it, because the inheritance ran through THIS file,
+/// which is `apps/subly`'s and which no other app can see. Reading `AppConfig`
+/// made the widget parameterised, not shared.
+///
+/// Two measured fixes were trapped in here with it — the dark-ground contrast
+/// branch (the old `onDark: false` arm painted the light literal
+/// [AppColors.muted] at 3.74:1 on the dark scaffold) and the keyboard fix that
+/// turned three dead `Semantics(link:)` spans into `FocusableTap`s. A stamped
+/// app got neither. Both now live in `packages/design_system`; the reasoning
+/// for each moved with them, in `brand_lockup.dart`.
+///
+/// WHAT STAYED, AND WHY IT HAD TO
+/// · The COPY. Every user-visible string is a REQUIRED parameter on the package
+///   widget with no English default — `tooling/ci/assert-no-hardcoded-strings
+///   .mjs` scans the brick and `apps/subly/lib` (:119-131) and NOT `packages/`,
+///   so a default sentence over there is a shipped literal that escaped the
+///   guard by moving house. Same rule the `AuthField` move set (4e4b1a50).
+/// · [openExternalUrl]. `packages/design_system` has no `url_launcher`
+///   dependency and must not grow one, so [BrandFooterLink] takes a callback
+///   and this file supplies it.
+///
+/// 🔴 `poweredByLine` IS RESOLVED HERE, NOT PASSED AS TWO NAMES. It is a
+/// placeholder key rather than a concatenation because the Tamil value reads
+/// "{company} வழங்கும் {app}" — the two names swap places. Handing the package
+/// `appName` and `companyName` to join with the word "by" would have produced
+/// word salad in every language whose order differs from English, and would
+/// have put that English word in the package the string guard does not scan.
+///
+/// ⚠️ `showLinks: false` NOW MEANS "PASS NO LINKS". The package renders the
+/// legal row only when the list is non-empty, so there is no way to ask it for
+/// a row with nothing in it. The rendered output for both arms is unchanged;
+/// `test/brand_footer_parity_test.dart` pins the whole tree, in both
+/// brightnesses, against a digest captured BEFORE the move.
 class PoweredByNikatru extends StatelessWidget {
   const PoweredByNikatru({
     super.key,
@@ -787,120 +826,34 @@ class PoweredByNikatru extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🔴 `poweredByLine` IS A PLACEHOLDER KEY, NOT A CONCATENATION, and the
-    // Tamil value is why: it reads "{company} வழங்கும் {app}" — the two names
-    // swap places. Interpolating `'$appName by $companyName'` and translating
-    // only the word "by" would have produced word salad in every language whose
-    // order differs from English. The names themselves stay untranslated; they
-    // come from [AppConfig] so every portfolio app inherits the line.
     final AppLocalizations l10n = AppLocalizations.of(context);
-    // 🔴 `onDark` IS NOT "THE APP IS IN DARK MODE". It means "this footer is
-    // sitting on a dark HERO/gradient", and it is passed explicitly by the
-    // caller. So the `false` arm ran on the DARK SCAFFOLD too, painting the
-    // light literal [AppColors.muted] (#6F6F7B) at 3.74:1 on #131318 — under SC
-    // 1.4.3's 4.5:1 for these 12px w700 links. That is what kept `every string
-    // on settings … DARK` red after the screen's own tokens were fixed: the
-    // defect was one level down, in a SHARED widget the screen merely hosts.
-    // The `false` arm now resolves through the ambient brightness; `onDark`
-    // keeps its own meaning and its own colour.
-    final Color faint = onDark
-        ? const Color.fromRGBO(255, 255, 255, 0.6)
-        : (AppText.of(context).muted.color ?? AppColors.muted);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        NikatruWordmark(onDark: onDark),
-        const SizedBox(height: 8),
-        Text(
-          l10n.poweredByLine(AppConfig.appName, AppConfig.companyName),
-          style: AppText.muted.copyWith(fontSize: 12, color: faint),
-        ),
-        if (showLinks) ...<Widget>[
-          const SizedBox(height: 8),
-          // Wrap, not Row (P2.6b route-walk finding): three links and two dots
-          // have no flex, and at narrow widths — or under the wide test font —
-          // a Row overflows where a Wrap folds to a second centred line.
-          Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: <Widget>[
-              // The SHORT forms, deliberately not the chassis `privacyPolicy` /
-              // `termsOfService` keys: three of these plus two dots share one
-              // line, so the values differ from the long-form ones by design.
-              _LegalLink(l10n.linkPrivacyShort, AppConfig.privacyUrl, faint),
-              _LegalDot(faint),
-              _LegalLink(l10n.linkTermsShort, AppConfig.termsUrl, faint),
-              _LegalDot(faint),
-              _LegalLink(l10n.linkRefundShort, AppConfig.refundUrl, faint),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _LegalDot extends StatelessWidget {
-  const _LegalDot(this.color);
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Text('·', style: TextStyle(color: color, fontSize: 12)),
-    );
-  }
-}
-
-class _LegalLink extends StatelessWidget {
-  const _LegalLink(this.label, this.url, this.color);
-  final String label;
-  final String url;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    // `link: true`, NOT `button: true`. This leaves the app: `openExternalUrl`
-    // hands the URL to the platform browser. Screen readers announce the two
-    // differently on purpose, and the difference is exactly the one a user
-    // wants before activating something on a phone — "link" warns you that you
-    // are about to be taken out of the app. A bare `GestureDetector` around a
-    // `Text` carries neither today; it is prose you can happen to tap.
-    //
-    // 🔴 AND `FocusableTap`, NOT A BARE `GestureDetector` — THESE THREE
-    // WERE KEYBOARD-DEAD ON TWO SCREENS AT ONCE. `test/keyboard_traversal_test
-    // .dart` found them among login's four unreachable controls AND among
-    // settings' eighteen, because this widget is rendered on both: one shared
-    // defect counted twice, which is exactly the argument for fixing it in a
-    // shared primitive. `Semantics(link: true)` announced the role and created
-    // no `FocusNode`, so Tab passed straight over all three.
-    //
-    // `deferToChild`, NOT the primitive's `opaque` default: the underlined
-    // words ARE the target here, and these three sit in a `Wrap` beside two
-    // separator dots — an opaque box round each would claim the gaps and make
-    // the dots tappable-adjacent for no reason. The pointer behaviour is
-    // therefore byte-identical to what it replaced.
-    return FocusableTap(
-      onTap: () => openExternalUrl(url),
-      role: TapRole.link,
-      behavior: HitTestBehavior.deferToChild,
-      borderRadius: BorderRadius.circular(4),
-      // No `focusColor`: the ring takes the theme's primary rather than
-      // [color]. [color] is the deliberately quiet link ink (`AppText.muted`,
-      // or 60% white on a hero) and a ring painted in it would be a focus
-      // indicator the sighted keyboard user has to hunt for — which is the
-      // failure the ring exists to prevent.
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: 'Manrope',
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-          color: color,
-          decoration: TextDecoration.underline,
-        ),
+    return BrandFooter(
+      onDark: onDark,
+      wordmarkSemanticLabel: AppConfig.companyName,
+      poweredByLine: l10n.poweredByLine(
+        AppConfig.appName,
+        AppConfig.companyName,
       ),
+      links: showLinks
+          ? <BrandFooterLink>[
+              // The SHORT forms, deliberately not the chassis `privacyPolicy` /
+              // `termsOfService` keys: three of these plus two separators share
+              // one line, so the values differ from the long-form ones by
+              // design.
+              BrandFooterLink(
+                label: l10n.linkPrivacyShort,
+                onTap: () => openExternalUrl(AppConfig.privacyUrl),
+              ),
+              BrandFooterLink(
+                label: l10n.linkTermsShort,
+                onTap: () => openExternalUrl(AppConfig.termsUrl),
+              ),
+              BrandFooterLink(
+                label: l10n.linkRefundShort,
+                onTap: () => openExternalUrl(AppConfig.refundUrl),
+              ),
+            ]
+          : const <BrandFooterLink>[],
     );
   }
 }

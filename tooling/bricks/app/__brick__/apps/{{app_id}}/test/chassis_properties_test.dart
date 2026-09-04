@@ -5098,6 +5098,118 @@ void main() {
       );
     }
 
+    // 🔴 THE CLICKWRAP ITSELF, ON THE TREE WHERE IT WAS BROKEN. Everything else
+    // in this group is about where a registration GOES; this is about whether
+    // the control that legally blocks it can be used at all.
+    //
+    // Measured on the brick 2026-09-04, before [ADR 065] chassis step 2 fixed
+    // it: the `Checkbox` had no `semanticLabel`, so the blocking control
+    // announced as "not checked, checkbox" and nothing else; the legal links
+    // were `Semantics` + `GestureDetector` with no focus node, so a
+    // keyboard-only user could not open the terms they were being asked to
+    // accept; and the links sat INSIDE the toggling detector, so a tap in the
+    // gutter beside "Privacy" TICKED CONSENT. A legal acceptance recorded by a
+    // mis-tap is the worst of the three.
+    //
+    // ⚠️ IT LIVES HERE, IN THE STAMPED SUITE, AND NOT ONLY IN
+    // `apps/subly/test/consent_clickwrap_a11y_test.dart`. Subly had already
+    // fixed all three; the defects existed ONLY in the brick, so a test that
+    // runs against Subly proves nothing about the tree that was wrong. This one
+    // runs against whatever the factory just stamped.
+    testWidgets('the clickwrap can be used — named, reachable, and not '
+        'toggled from the gutter', (WidgetTester tester) async {
+      // ⛔ NO `ensureSemantics()` HERE, deliberately. Nothing below reads the
+      // semantics TREE: (1) reads `semanticLabel` off the `Checkbox` widget,
+      // (2) finds the primitive by type, (3) dispatches a pointer. Turning the
+      // tree on would add a handle this test would then have to dispose — and
+      // an `addTearDown(handle.dispose)` runs AFTER the framework's own
+      // end-of-test check, which fails with `A SemanticsHandle was active at
+      // the end of the test`. Measured here, once.
+      final ProviderContainer c = _container(_onboardedStore());
+      addTearDown(c.dispose);
+      await openSignUp(tester, c);
+
+      // (1) THE BLOCKING CONTROL HAS A NAME. Read off the widget rather than
+      // the semantics tree so the failure names the missing property rather
+      // than reporting a node that is merely unnamed.
+      final Checkbox box = tester.widget<Checkbox>(
+        find.byKey(LegalConsentFields.termsCheckbox),
+      );
+      expect(
+        box.semanticLabel,
+        isNotNull,
+        reason:
+            'the control that legally blocks registration announced as '
+            '"not checked, checkbox" and nothing else',
+      );
+      expect(box.semanticLabel, isNotEmpty);
+
+      // (2) THE LEGAL LINKS ARE KEYBOARD-REACHABLE. `FocusableTap` is the
+      // portfolio primitive that creates a real FocusNode; `Semantics(link:)`
+      // over a `GestureDetector` gives a screen reader a role and gives a
+      // keyboard NOTHING. Asserted by TYPE because the primitive is the fix —
+      // a rewrite that drops it should go red here even if it happens to
+      // remain tappable by pointer.
+      expect(
+        find.descendant(
+          of: find.byType(LegalConsentFields),
+          matching: find.byType(FocusableTap),
+        ),
+        findsWidgets,
+        reason:
+            'grep -rc "FocusableTap" over the brick answered 0 while its own '
+            'pubspec already depended on the package that exports it',
+      );
+
+      // (3) 🔴 THE ONE THAT RECORDS A CONSENT NOBODY GAVE. Tap the gutter to
+      // the right of the LINKS row — inside the widget, outside every word —
+      // and the box must not move.
+      //
+      // ⚠️ THE LINKS ROW, NOT THE LABEL ROW, AND THE FIRST VERSION OF THIS GOT
+      // IT WRONG. Aimed beside the LABEL it went red against the FIXED tree,
+      // because the label is a legitimate second hit target for the box: its
+      // detector is `HitTestBehavior.opaque` and the sentence wraps to the full
+      // column width, so "the gutter beside the label" is the label. Tapping
+      // there SHOULD tick the box. The defect lives one row down.
+      //
+      // ⚠️ AND THE GUTTER, NOT THE LINK ITSELF: with the links back inside the
+      // toggling detector, a tap directly ON a link still leaves the box alone,
+      // because the link's own recogniser wins the gesture arena. The gutter is
+      // the only place the defect is observable — and it is exactly where a
+      // thumb lands when it misses a 12px word.
+      expect(box.value, isFalse, reason: 'the premise: it starts unticked');
+      final Rect fields = tester.getRect(find.byType(LegalConsentFields));
+      final Rect link = tester.getRect(
+        find
+            .descendant(
+              of: find.byType(LegalConsentFields),
+              matching: find.byType(FocusableTap),
+            )
+            .first,
+      );
+      expect(
+        fields.right - link.right,
+        greaterThan(8),
+        reason:
+            'the premise for the tap below: there has to BE a gutter right of '
+            'the links, or this taps the link and measures the gesture arena',
+      );
+      // `tapAt`, which takes no `warnIfMissed` — it dispatches at a POINT and
+      // has no finder to miss. That is also why it is the right tool here: the
+      // whole assertion is about a coordinate that belongs to no control.
+      await tester.tapAt(Offset(fields.right - 4, link.center.dy));
+      await _turns(tester);
+      expect(
+        tester
+            .widget<Checkbox>(find.byKey(LegalConsentFields.termsCheckbox))
+            .value,
+        isFalse,
+        reason:
+            'a tap in the gutter beside the legal links ticked the clickwrap — '
+            'a legal acceptance recorded by a mis-tap',
+      );
+    });
+
     testWidgets('no session ⇒ /check-inbox, naming the address', (
       WidgetTester tester,
     ) async {

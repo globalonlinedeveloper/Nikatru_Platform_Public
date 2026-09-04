@@ -10,6 +10,7 @@ export 'src/theme/app_theme_x.dart';
 export 'src/theme/build_app_theme.dart';
 export 'src/theme/form_tones.dart';
 export 'src/widgets/app_scaffold.dart';
+export 'src/widgets/brand_lockup.dart';
 export 'src/widgets/auth_field.dart';
 export 'src/widgets/content_pane.dart';
 export 'src/widgets/destructive_confirm_dialog.dart';
