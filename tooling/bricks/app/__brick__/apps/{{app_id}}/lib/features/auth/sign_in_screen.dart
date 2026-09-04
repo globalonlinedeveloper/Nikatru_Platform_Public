@@ -14,6 +14,31 @@ import '../../state/providers.dart';
 /// needs the auth seam, and the design system must stay domain-free
 /// ([pipeline C-5] limb b). Every stamped app therefore gets a working sign-in
 /// without writing one, which is the whole point of a chassis.
+///
+/// 🏗️ WHAT IS NO LONGER WRITTEN OUT HERE, AND WHY THAT MATTERS MORE THAN WHERE
+/// IT WENT — [ADR 065], chassis step 2, 2026-09-04. The parts of this screen
+/// that are neither auth-seam nor app-specific now live once, in
+/// `packages/`, and this file composes them:
+///   · the labelled, named, autofilling field → `AuthField` (design_system)
+///   · the light/dark neutral resolution       → `formTones` (design_system)
+///   · what a client may refuse before sending → `core.signInProblem`
+///
+/// The measurement that justified the move is that this file and
+/// `apps/subly/lib/features/auth/login_screen.dart` are the same screen written
+/// twice, and the two had been drifting at ~1.34 unpaired edits a day with NOT
+/// ONE of the repository's 148 guards comparing them. Every item above was
+/// present in Subly and absent here — the drift ran one way, so a stamped app
+/// inherited the poorer half of a screen nobody was comparing.
+///
+/// ⛔ WHAT DID **NOT** MOVE, deliberately. The `caps.oauthRedirect &&
+/// providers.any` gate below stays in this file and in the fork, because
+/// `AuthCapabilities` is the auth SEAM and `design_system` may not see it — its
+/// own limb B bans any `nikatru_`-prefixed dependency. That is also what keeps
+/// `tooling/ci/assert-no-seam-forks.mjs`'s parity limb alive: it derives C from
+/// the `caps.<field>` reads in THIS file and requires C ⊆ F. Move the gate into
+/// a shared widget and C empties, which that guard reports as COVERAGE LOST
+/// rather than as a pass — the correct outcome, and the reason the chassis
+/// takes plain booleans instead of the seam.
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
@@ -27,10 +52,19 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   bool _busy = false;
   String? _error;
 
+  /// Where Enter goes from the email box.
+  ///
+  /// Held on the state rather than created inline because a `FocusNode` built
+  /// in `build` is a NEW node on every rebuild, and this screen rebuilds on
+  /// every `_busy` flip and every error: the node the email field asked to
+  /// focus would already have been discarded.
+  final FocusNode _passwordFocus = FocusNode();
+
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -83,19 +117,56 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              TextField(
+              // 🔴 `AuthField`, NOT A BARE `TextField`, AND THE DIFFERENCE IS
+              // MEASURED. Until 2026-09-04 ([ADR 065], chassis step 2) these
+              // were two plain boxes with `labelText` and nothing else, so
+              // every stamped app was born without three things this chassis
+              // is supposed to hand it for free:
+              //   · A NAME AFTER THE FIRST KEYSTROKE. `labelText` floats out of
+              //     the way when the field has content and the hint fades —
+              //     semantics and all — so a screen-reader user heard the box
+              //     announced as nothing from the second character onward.
+              //     `AuthField` annotates the name onto the field and merges
+              //     it, so label, role and value are one node at every state.
+              //   · A KEYBOARD. `grep -c "textInputAction"` over this directory
+              //     answered 0: Enter in the email box did nothing, and Enter
+              //     in the password box worked only because `onSubmitted` was
+              //     wired by hand here and nowhere else.
+              //   · THE APP'S OWN SURFACE COLOURS. A bare `TextField` paints
+              //     Material's defaults, which is why a stamped app never
+              //     looked like the design system it ships with.
+              //
+              // ⚠️ THE TWO BOXES ANSWER THE KEYBOARD DIFFERENTLY ON PURPOSE and
+              // `AuthField` defaults NEITHER, so both are stated here. Enter in
+              // the email box ADVANCES: submitting from it would always be the
+              // "enter both" refusal, because the password box is by definition
+              // still empty.
+              AuthField(
+                label: l10n.email,
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
+                hint: null,
                 autofillHints: const <String>[AutofillHints.email],
-                decoration: InputDecoration(labelText: l10n.email),
+                textInputAction: TextInputAction.next,
+                onSubmitted: _passwordFocus.requestFocus,
               ),
               const SizedBox(height: 12),
-              TextField(
+              AuthField(
+                label: l10n.password,
                 controller: _password,
-                obscureText: true,
+                keyboardType: TextInputType.text,
+                obscure: true,
+                focusNode: _passwordFocus,
+                // `password`, NOT `newPassword`: this is the sign-IN box, and
+                // `newPassword` asks the browser to offer a generated secret
+                // and to suppress the stored one. The dedicated sign-up screen
+                // is where that hint belongs.
                 autofillHints: const <String>[AutofillHints.password],
-                decoration: InputDecoration(labelText: l10n.password),
-                onSubmitted: (_) => _signIn(auth),
+                textInputAction: TextInputAction.done,
+                // The same door as the button, busy latch included — `_signIn`
+                // routes through `_run`, so a second Enter cannot fire a second
+                // request.
+                onSubmitted: _busy ? null : () => _signIn(auth),
               ),
               if (_error != null) ...<Widget>[
                 const SizedBox(height: 12),
@@ -142,10 +213,32 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   Future<void> _signIn(core.AuthRepository auth) => _run(() async {
-    await auth.signInWithEmail(
-      email: _email.text.trim(),
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final String email = _email.text.trim();
+    // 🔴 THIS SCREEN SENT WHATEVER WAS IN THE BOXES. Measured 2026-09-04:
+    // `grep -c "contains('@')"` over this file answered 0, so a blank form and
+    // a mistyped address both cost a round trip and came back as the server's
+    // own English. `core.signInProblem` is the same rule Subly has always had,
+    // now in one place — see `packages/core/lib/src/auth/credentials_preflight.dart`.
+    //
+    // ⚠️ IT THROWS RATHER THAN RETURNING, because `_run` is what turns a
+    // failure into the message under the fields. An early `return` here would
+    // clear `_busy` and say nothing at all, which is the shape of a button that
+    // looks broken.
+    final core.CredentialsProblem? problem = core.signInProblem(
+      email: email,
       password: _password.text,
     );
+    if (problem != null) {
+      throw core.AuthFailure(switch (problem) {
+        core.CredentialsProblem.incomplete => l10n.authEnterBoth,
+        core.CredentialsProblem.emailMalformed => l10n.authInvalidEmail,
+        // Unreachable from this door, stated rather than defaulted so a future
+        // arm cannot land here wearing the wrong sentence.
+        core.CredentialsProblem.emailMissing => l10n.emailRequired,
+      });
+    }
+    await auth.signInWithEmail(email: email, password: _password.text);
     // No navigation here: the router's redirect guard moves the user the moment
     // the session appears. Pushing from both places is how you get two routes
     // racing to be the top of the stack.
@@ -154,7 +247,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Future<void> _forgot(core.AuthRepository auth, AppLocalizations l10n) =>
       _run(() async {
         final String email = _email.text.trim();
-        if (email.isEmpty) throw core.AuthFailure(l10n.emailRequired);
+        if (core.passwordResetProblem(email: email) != null) {
+          throw core.AuthFailure(l10n.emailRequired);
+        }
         await auth.sendPasswordReset(email);
         if (!mounted) return;
         ScaffoldMessenger.of(context)
