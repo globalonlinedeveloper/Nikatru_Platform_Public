@@ -23,7 +23,8 @@ import '../features/settings/settings_screen.dart';
 /// `packages/core/lib/src/routing/gate_destination.dart`. It was duplicated
 /// byte-for-byte in this file and in the other tree until 2026-09-04, which
 /// meant a security fix to one was invisible to the other.
-String? _pendingAddress(GoRouterState state) => core.pendingAddress(state.extra);
+String? _pendingAddress(GoRouterState state) =>
+    core.pendingAddress(state.extra);
 
 /// Locations that must never be banked as a gate's `?next=` destination.
 ///
@@ -57,22 +58,19 @@ const Set<String> _neverADestination = <String>{
 /// byte-for-byte in this file and in the other tree until 2026-09-04, which
 /// meant a security fix to one was invisible to the other.
 String _gateWithNext(String gate, GoRouterState state) => core.gateWithNext(
-      gate,
-      matchedLocation: state.matchedLocation,
-      uri: state.uri,
-      neverADestination: _neverADestination,
-    );
+  gate,
+  matchedLocation: state.matchedLocation,
+  uri: state.uri,
+  neverADestination: _neverADestination,
+);
 
 /// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
 /// and the measured incidents behind each rule, live in
 /// `packages/core/lib/src/routing/gate_destination.dart`. It was duplicated
 /// byte-for-byte in this file and in the other tree until 2026-09-04, which
 /// meant a security fix to one was invisible to the other.
-String _nextOr(GoRouterState state, String fallback) => core.nextOr(
-      state.uri,
-      fallback,
-      neverADestination: _neverADestination,
-    );
+String _nextOr(GoRouterState state, String fallback) =>
+    core.nextOr(state.uri, fallback, neverADestination: _neverADestination);
 
 /// The app router. A [Provider] so screens and tests can override it.
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
