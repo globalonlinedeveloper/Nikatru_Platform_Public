@@ -7,6 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'turnstile_gate.dart';
+import 'auth_error_text.dart';
 
 /// "Check your inbox" — the only screen an UNVERIFIED session can reach.
 ///
@@ -63,7 +64,11 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       final String? message = await action();
       if (mounted) setState(() => _notice = message);
     } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _notice = e.message);
+      // Was `_notice = e.message`. `resendVerificationEmail` hits `resend`, which
+      // Box A gates, so this is one of the two screens the captcha actually reaches.
+      if (mounted) {
+        setState(() => _notice = authErrorText(AppLocalizations.of(context), e));
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _notice = AppLocalizations.of(context).authUnknownError);

@@ -18,6 +18,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
 import 'legal_consent_fields.dart';
+import 'auth_error_text.dart';
 
 /// The six neutral colours this screen paints with, resolved for the current
 /// brightness.
@@ -273,48 +274,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ).showSnackBar(SnackBar(content: Text(_friendlyMessage(l10n, e))));
   }
 
-  /// Maps raw auth/network errors onto short, human messages so users never see
-  /// a stack-tracey exception (e.g. Supabase's invalid_credentials).
-  ///
-  /// The `raw` it matches on is the SERVER's English — Supabase's error codes
-  /// are not localized and must not be, or the matching stops working. Only the
-  /// message handed back to the user comes from the arb.
-  String _friendlyMessage(AppLocalizations l10n, Object e) {
-    if (e is String) return e;
-    final String raw = e.toString().toLowerCase();
-    if (raw.contains('invalid_credentials') || raw.contains('invalid login')) {
-      return l10n.authIncorrect;
-    }
-    if (raw.contains('already registered') ||
-        raw.contains('already been registered') ||
-        raw.contains('user_already_exists')) {
-      return l10n.authAlreadyRegistered;
-    }
-    if (raw.contains('weak_password') || raw.contains('password should be')) {
-      // 🔴 THE COPY CHANGED HERE, ON PURPOSE (WORKORDER §8 decision 3). This
-      // said "Password must be at least 6 characters." — the 6 was GoTrue's
-      // server default leaking into our words, while `signUpTitle`'s own screen
-      // enforces 8 client-side and says so via `passwordTooShort` ("Use at
-      // least 8 characters."). Two numbers for one rule is a bug in the copy,
-      // and the shipped one was the wrong number.
-      // 👤 Flagged for the polish list: THIS screen's sign-up toggle has no
-      // client-side 8-check at all, so it can still reach the server with 6.
-      return l10n.passwordTooShort;
-    }
-    if (raw.contains('email_not_confirmed') || raw.contains('not confirmed')) {
-      return l10n.authConfirmEmail;
-    }
-    if (raw.contains('rate limit') || raw.contains('over_email_send')) {
-      return l10n.authRateLimited;
-    }
-    if (raw.contains('socketexception') ||
-        raw.contains('failed host lookup') ||
-        raw.contains('connection') ||
-        raw.contains('network')) {
-      return l10n.authNetworkError;
-    }
-    return l10n.authUnknownError;
-  }
+  /// Delegates to the shared mapper. This WAS the only implementation, private
+  /// to this screen — which is why the other three auth screens showed the
+  /// server's raw English instead. Moved to `auth_error_text.dart` 2026-09-04
+  /// so one change fixes every screen; kept as a thin method because `_snack`
+  /// and the tests both call it by name.
+  String _friendlyMessage(AppLocalizations l10n, Object e) => authErrorText(l10n, e);
 
   @override
   Widget build(BuildContext context) {

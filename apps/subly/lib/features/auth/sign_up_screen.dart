@@ -8,6 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'legal_consent_fields.dart';
 import 'turnstile_gate.dart';
+import 'auth_error_text.dart';
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
 ///
@@ -120,7 +121,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         context.go('/check-inbox', extra: _email.text.trim());
       }
     } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // Was `_error = e.message` — the SERVER's English, shown verbatim. At the
+      // cutover that becomes "captcha protection: request disallowed".
+      if (mounted) {
+        setState(() => _error = authErrorText(AppLocalizations.of(context), e));
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
