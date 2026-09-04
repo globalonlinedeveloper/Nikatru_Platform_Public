@@ -228,6 +228,18 @@
   },
   {
     "claims": [
+      "C-6"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-captcha-gated-call-sites.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "F-10"
     ],
     "invokedBy": [
