@@ -2268,6 +2268,73 @@ async function probeCloudflareHeartbeat(q, root) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE TIMER TARGET IS A STRING TWO FILES HAVE TO AGREE ON, AND NOTHING MADE
+// THEM. This guard exists because the first Phase 2 row shipped BROKEN: the
+// Worker writes `${repo}/${workflow}` — "Nikatru_Platform_Public/e2e.yml" — and
+// the register declared the bare "e2e.yml", which `probeCloudflareHeartbeat`
+// binds as an EXACT equality. Zero rows matched, MAX() returned one NULL row,
+// and the duty landed in the bootstrap branch, where `firstDue` masked it
+// completely. It would have gone red the instant that date passed, freezing the
+// merge queue — the precise failure the whole increment was built to end.
+//
+// ⚠️ AND THE TEST DID NOT CATCH IT, BECAUSE THE TEST ASSERTED THE SAME WRONG
+// STRING. A hand-written expectation checked against a hand-written register is
+// two copies of one belief, not a verification: nothing tied either to the
+// PRODUCER. So this reads the target strings out of the Worker source and holds
+// the register against them — the bijection, not a spot check.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The `job` the dispatcher records under. Kept as a literal on purpose: the
+ *  Worker exports the same constant, and the check below fails if that export
+ *  stops existing, rather than silently ranging over nothing. */
+const DISPATCH_JOB = 'github_dispatch';
+const DISPATCHER_SRC_REL = 'services/platform/src/scheduled.ts';
+
+/** Pure. Given the Worker's source, returns the exact `target` strings it will
+ *  write, or a reason it could not be read. Never guesses: an unreadable source
+ *  is COVERAGE LOST, because a check that ranges over an empty set passes. */
+export function dispatchTargetsFromSource(src) {
+  const clean = stripSourceComments(src, '.ts');
+  // The template the writer uses. If this shape moves, every target string
+  // moves with it, so it is read rather than assumed.
+  const tpl = clean.match(/const\s+target\s*=\s*`([^`]*)`/);
+  if (!tpl) return { error: 'no `const target = \\`…\\`` template found — the dispatcher no longer builds its heartbeat target the way this guard reads it' };
+  const shape = tpl[1].trim();
+  if (shape !== '${t.repo}/${t.workflow}') {
+    return { error: `the dispatcher builds its target as \`${shape}\`, which this guard does not know how to reproduce. Teach it the new shape, or the register's declared targets are unverified.` };
+  }
+  const block = clean.match(/GITHUB_DISPATCH_TARGETS[^=]*=\s*\[([\s\S]*?)\n\];/);
+  if (!block) return { error: 'GITHUB_DISPATCH_TARGETS array not found in the dispatcher source' };
+  const targets = [...block[1].matchAll(/repo:\s*'([^']+)'[\s\S]*?workflow:\s*'([^']+)'/g)].map((m) => `${m[1]}/${m[2]}`);
+  if (targets.length === 0) return { error: 'GITHUB_DISPATCH_TARGETS parsed to ZERO entries, so every comparison below would be vacuous' };
+  return { targets };
+}
+
+/** Holds every `github_dispatch` timer limb against what the Worker really
+ *  writes. Returns problem strings; empty means agreement. */
+export function checkTimerTargetsAgainstDispatcher(reg, src) {
+  const { targets, error } = dispatchTargetsFromSource(src);
+  const rows = (reg.rows ?? []).filter((r) => r?.mechanism?.recordQuery?.timer?.job === DISPATCH_JOB);
+  if (rows.length === 0) return [];
+  if (error) return [`${DISPATCHER_SRC_REL} — ${error} ${rows.length} register row(s) declare a \`${DISPATCH_JOB}\` timer whose target cannot therefore be verified.`];
+  const known = new Set(targets);
+  const problems = [];
+  for (const r of rows) {
+    const t = r.mechanism.recordQuery.timer.target;
+    if (t === undefined) continue; // the narrowing rule already covers this
+    if (!known.has(t)) {
+      problems.push(
+        `${r.id} — \`recordQuery.timer.target: ${JSON.stringify(t)}\` is not a target the dispatcher writes. ` +
+          `It writes: ${targets.map((x) => `\`${x}\``).join(', ')}. The probe binds this as an EXACT equality, so a ` +
+          'near-miss matches ZERO rows and the duty reads as "never recorded" rather than as a mismatch — which ' +
+          '`firstDue` then hides until it expires.',
+      );
+    }
+  }
+  return problems;
+}
+
 /** Names the narrowing in the same words the register used, so a failing line
  *  says which claim went stale rather than just naming the table. */
 export function describeNarrowing(q) {
@@ -2844,6 +2911,20 @@ async function main() {
   }
 
   // ── [14]O-3 · QUERY EVERY REACHABLE RUN RECORD ────────────────────────────
+  // 🔴 STRUCTURAL, so it runs BEFORE the network limb: a timer target that no
+  // dispatcher writes makes the D1 probe below range over zero rows, and the
+  // answer it returns then reads as "never recorded" rather than "misconfigured".
+  // Cheap, offline, and it is the check whose absence shipped a broken row.
+  const dispatcherSrcPath = join(ROOT, DISPATCHER_SRC_REL);
+  if (existsSync(dispatcherSrcPath)) {
+    errors.push(...checkTimerTargetsAgainstDispatcher(reg, readFileSync(dispatcherSrcPath, 'utf8')));
+  } else if ((reg.rows ?? []).some((r) => r?.mechanism?.recordQuery?.timer?.job === DISPATCH_JOB)) {
+    coverageLost([
+      `${DISPATCHER_SRC_REL} does not exist under ${ROOT}, and rows declare a \`${DISPATCH_JOB}\` timer.`,
+      'Their target strings would go unverified, which is how the first one shipped pointing at nothing.',
+    ]);
+  }
+
   // Last, because it is the only limb that leaves this machine, and everything
   // structural should already have decided by the time a socket is opened.
   const recordProbes = await probeRunRecords(reg, ROOT);
