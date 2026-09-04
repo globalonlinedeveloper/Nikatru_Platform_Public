@@ -1170,6 +1170,10 @@
   "@authNetworkError": {
     "description": "Consumed by auth/login_screen.dart:111."
   },
+  "authCaptchaFailed": "Verification expired. Please try again.",
+  "@authCaptchaFailed": {
+    "description": "Consumed by features/auth/auth_error_text.dart. Shown when GoTrue refuses a request with captcha_failed. It deliberately does NOT say 'incorrect password': on a gated endpoint the captcha is checked BEFORE the credentials, and Turnstile tokens are single-use with a ~5 minute life, so an EXPIRED token is the dominant cause and the user's password is usually fine."
+  },
   "authUnknownError": "Something went wrong. Please try again.",
   "@authUnknownError": {
     "description": "Consumed by auth/login_screen.dart:113. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."

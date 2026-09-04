@@ -42,6 +42,7 @@ import 'package:subly/features/auth/sign_up_screen.dart';
 import 'package:subly/features/auth/verify_email_screen.dart';
 import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/state/providers.dart';
+import 'package:subly/l10n/app_localizations_en.dart';
 
 /// An in-memory `KeyValueStore`, so nothing here touches SharedPreferences.
 class _MemStore implements core.KeyValueStore {
@@ -475,8 +476,15 @@ void main() {
       // The domain, asserted first: the sign-up really was attempted and
       // really did fail. Without this the two checks below would pass against
       // a form whose button never fired.
+      // ⚫ WAS `find.text('that address is already registered')` — the SERVER's
+      // raw English, which this screen used to print verbatim. Since 2026-09-04
+      // sign-up runs that string through the shared `authErrorText` mapper, so
+      // the refusal now reaches the screen as OUR words. The assertion's intent
+      // is unchanged and is the reason below: prove the button actually fired.
+      // Reading the expected text from the arb rather than retyping it keeps
+      // this pinned to the mapper's real output.
       expect(
-        find.text('that address is already registered'),
+        find.text(AppLocalizationsEn().authAlreadyRegistered),
         findsOneWidget,
         reason:
             'the refusal must have reached the screen, or this test is '

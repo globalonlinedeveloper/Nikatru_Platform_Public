@@ -7,6 +7,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import 'auth_error_text.dart';
 
 /// Where a password-reset link lands — the half of the feature that did not
 /// exist.
@@ -124,7 +125,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       await auth.updatePassword(newPassword: _password.text);
       if (mounted) setState(() => _done = true);
     } on core.AuthFailure catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // NOT captcha-gated — `updatePassword` is not one of the six gated routes —
+      // but it leaked the server's raw English exactly like the two that are.
+      if (mounted) {
+        setState(() => _error = authErrorText(AppLocalizations.of(context), e));
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
