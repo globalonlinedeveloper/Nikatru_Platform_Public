@@ -18,6 +18,7 @@ export 'src/widgets/destructive_outcome_notice.dart';
 export 'src/widgets/system_screens.dart';
 export 'src/widgets/two_pane.dart';
 export 'src/widgets/focusable_tap.dart';
+export 'src/widgets/nav_shell.dart';
 export 'src/widgets/force_update_gate.dart';
 export 'src/widgets/paywall_gate.dart';
 export 'src/widgets/promo_card.dart';
