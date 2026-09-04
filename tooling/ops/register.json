@@ -338,7 +338,8 @@
       "unreadableOn": "any run with no token"
     },
     "cloudflare-d1-heartbeat": {
-      "queries": "POST /accounts/{acct}/d1/database/{db}/query — MAX(created_at) over cron_heartbeat WHERE ok = 1. A row with ok = 0 is NOT a successful run, which is the whole point of reading the table rather than counting rows in it.",
+      "queries": "POST /accounts/{acct}/d1/database/{db}/query — MAX(ran_at) over cron_heartbeat WHERE ok = 1. A row with ok = 0 is NOT a successful run, which is the whole point of reading the table rather than counting rows in it. A row may NARROW the read with `job` and/or `target`, both BOUND as SQL parameters rather than interpolated (they are values, not the identifier `table` is): unnarrowed it answers \"is this cron alive at all\" by taking the STALEST job, which is right for duty.platform-cron and wrong for a workflow duty, where a healthy retention sweep would otherwise vouch for a dispatcher that has not fired the workflow in a week. A narrowed MAX() with no GROUP BY returns ONE row whose ran_at is NULL when nothing matches, so \"no rows\" and \"one null row\" are the same answer and both reach the bootstrap branch rather than reporting a parse failure as a dead duty.",
+      "alsoServesAsTimerLimb": "Since Worker cron Phase 2 (2026-09-04) this reader is also reachable as `recordQuery.timer` on a `github-run-history` row — see duty.workflow.e2e.yml. `event: schedule` was carrying two claims at once (the timer fired, the run passed) and moving the trigger to Cloudflare breaks the fusion: a dispatched run is indistinguishable from a hand-press. So the timer claim goes to a record only a timer can write, and the run history keeps the OUTCOME with a now-mandatory `headBranch`. assert-ops-register.mjs REFUSES an event-less run-history read that declares no timer, and refuses a timer limb narrowed by neither job nor target, so neither half can be done without the other.",
       "needs": "CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID, and the database_id resolved from the anchored wrangler config",
       "unreadableOn": "any run without both variables"
     },
@@ -779,8 +780,44 @@
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "e2e.yml",
-          "event": "schedule",
-          "headBranch": "main"
+          "headBranch": "main",
+          "timer": {
+            "reader": "cloudflare-d1-heartbeat",
+            "table": "cron_heartbeat",
+            "wrangler": "services/platform/wrangler.jsonc",
+            "job": "github_dispatch",
+            "target": "e2e.yml"
+          },
+          "firstDue": "2026-09-05T00:00:00Z",
+          "_why": [
+            "WORKER CRON PHASE 2, FIRST ROW — 2026-09-04. This row used to read `event: schedule`, and that ONE",
+            "filter was carrying two different claims at once: that the TIMER fired, and that the RUN passed.",
+            "GitHub's scheduler delivers this repository's crons 10.1% on time, so the timer half froze the merge",
+            "queue three times (~18h 2026-08-10, ~46h 2026-09-02, and again 2026-09-03 into 09-04) while the",
+            "workflow itself was healthy — a workflow_dispatch on the SAME COMMIT went green 44 minutes after the",
+            "2026-09-03T08:04 scheduled run failed.",
+            "",
+            "🔴 THE FIX IS NOT TO ACCEPT `workflow_dispatch` HERE. A dispatched run is indistinguishable from a",
+            "hand-press, so that would make freshness green on somebody being awake — the exact defect",
+            "assert-platform-proof-fresh.mjs was built to prevent. The claims are SPLIT onto two records instead:",
+            "  · `timer`     — the cron_heartbeat row the dispatching Worker writes. Only a timer writes it.",
+            "  · the outcome — the run history, event filter dropped, `headBranch` now MANDATORY. The branch",
+            "    guarantee used to ride on the event filter (GitHub fires schedules only on the default branch),",
+            "    so dropping one without naming the other would have widened this to 'a green run on any branch'.",
+            "The duty is only as fresh as its STALER limb, and assert-ops-register.mjs refuses an event-less",
+            "run-history read that carries no `timer`, so this cannot be half-done by a later editor.",
+            "",
+            "⚠️ `firstDue` IS THE BOOTSTRAP, AND IT EXPIRES BY ARITHMETIC. The dispatcher cannot have written a",
+            "`target: e2e.yml` row before this change deploys, so the timer limb is legitimately empty until the",
+            "first Cloudflare firing. Dated one cadence window out; the schema refuses anything further ahead.",
+            "",
+            "⚠️ e2e.yml KEEPS ITS `schedule:` SLOT. It costs a duplicate run on the ~40% of nights GitHub delivers,",
+            "and it is the rollback: revert this row and the old evidence is still being written.",
+            "🔴 AND THIS ROW IS NOT THE ONLY READER OF THIS FACT. tooling/ci/assert-e2e-proof-fresh.mjs still",
+            "requires `event=schedule` against MAX_AGE_DAYS = 3, a constant under a standing owner lock. It is not",
+            "blocking today (72h ceiling vs this row's 36h) and it is deliberately NOT moved in the same change —",
+            "but it stays a 72h dependency on a 10.1%-on-time scheduler, so PHASE 2 IS NOT FINISHED UNTIL IT MOVES."
+          ]
         }
       },
       "absenceWatcher": {

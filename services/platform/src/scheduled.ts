@@ -1545,6 +1545,25 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // read its freshness against a 36h window. Firing it every 6h costs a cheap
   // read-only check and buys 30h of margin.
   { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main' },
+  // ── PHASE 2, SECOND WORKFLOW, ADDED 2026-09-04 ───────────────────────────
+  // 🔴 AND THIS ONE MOVES ITS EVIDENCE TOO, WHICH ops-watch.yml ABOVE DOES NOT.
+  // `duty.workflow.e2e.yml` now reads a TWO-LIMB record: the cadence claim comes
+  // from the `cron_heartbeat` row this dispatcher writes under `target:
+  // 'e2e.yml'`, and the run history is reduced to the OUTCOME with an explicit
+  // `head_branch === main`. So this entry is not a redundant extra trigger — it
+  // is the only thing that will write that duty's timer record, and deleting it
+  // makes the row go stale within 36h no matter how healthy the workflow is.
+  //
+  // ⏱️ `everyHours: 20` — ONE REAL RUN A DAY, WHICH IS WHAT THE OLD CRON BOUGHT.
+  // Unlike ops-watch's cheap read-only check, a firing here is a full Flutter
+  // build driving headless Chrome against production, so "fire on every
+  // dispatcher run" would quadruple the cost for no extra evidence. 20h against
+  // a 36h window leaves a whole spare firing of margin if one is missed.
+  //
+  // ⚠️ e2e.yml KEEPS ITS `schedule:` SLOT. It is the rollback path, and
+  // assert-e2e-proof-fresh.mjs — a SEPARATE reader, MAX_AGE_DAYS = 3 under an
+  // owner lock — still requires `event=schedule` and is NOT part of this change.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 20 },
 ];
 
 /** The row target under which the DISPATCHER records its own liveness, as

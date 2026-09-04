@@ -618,6 +618,50 @@ export function evaluateRunRecords(reg, probes, nowMs) {
           'would apply it, so it would read as a guarantee this row does not actually make.',
       );
     }
+    // ── Worker cron Phase 2 · the three rules that keep the split honest ─────
+    // 🔴 1. THE EVENT FILTER MAY ONLY BE DROPPED ONTO A TIMER LIMB. `event` is
+    // optional in the probe (it always was), so before this rule a row could
+    // lose it silently and go on reporting freshness from a hand-pressed run —
+    // the one-line "fix" scheduled.ts names as re-creating the 46-hour freeze.
+    // Dropping it is legitimate EXACTLY when the cadence claim has moved to a
+    // record only a timer can write, so that is what this demands.
+    if (q.reader === 'github-run-history' && !nonEmpty(q.event) && !q.timer) {
+      errors.push(
+        `${r.id} — \`recordQuery\` reads run history with no \`event\` and no \`timer\` limb. Without the event ` +
+          'filter this row calls a workflow fresh on ANY successful run, and a `workflow_dispatch` run is ' +
+          'indistinguishable from somebody pressing a button. Either name the event, or move the cadence claim ' +
+          'to a record only a timer can write (`timer: { reader: "cloudflare-d1-heartbeat", … }`).',
+      );
+    }
+    // 🔴 2. AND IT MAY NEVER BE WIDENED IN PLACE. Naming `workflow_dispatch` here
+    // is the same weakening wearing the other hat: it would satisfy rule 1 while
+    // making a hand-press the evidence.
+    if (q.event !== undefined && String(q.event).includes('workflow_dispatch')) {
+      errors.push(
+        `${r.id} — \`recordQuery.event: ${JSON.stringify(q.event)}\`. A dispatched run proves somebody, or ` +
+          'something, pressed a button; it is not a cadence claim. The timer\'s own record is `timer`.',
+      );
+    }
+    // 🔴 3. A TIMER LIMB IS A SECOND RECORD, SO ITS SHAPE IS CHECKED, NOT TRUSTED.
+    // An unnarrowed one would let ANY healthy job in cron_heartbeat vouch for this
+    // workflow — the retention sweep standing in for a dispatcher that has not
+    // fired in a week — which is precisely the fusion this split exists to undo.
+    if (q.timer !== undefined) {
+      const t = q.timer;
+      if (q.reader !== 'github-run-history') {
+        errors.push(`${r.id} — \`recordQuery.timer\` on reader \`${q.reader}\`. The split exists to separate a run OUTCOME from a cadence claim; a row that reads no run history has nothing to split.`);
+      } else if (!t || typeof t !== 'object' || t.reader !== 'cloudflare-d1-heartbeat') {
+        errors.push(`${r.id} — \`recordQuery.timer.reader\` must be \`"cloudflare-d1-heartbeat"\`; it is the only record in this portfolio a human hand cannot write.`);
+      } else if (!nonEmpty(t.table) || !nonEmpty(t.wrangler)) {
+        errors.push(`${r.id} — \`recordQuery.timer\` needs both \`table\` and \`wrangler\`; without them the heartbeat database cannot be resolved and the limb would go permanently unreadable.`);
+      } else if (!nonEmpty(t.job) && !nonEmpty(t.target)) {
+        errors.push(
+          `${r.id} — \`recordQuery.timer\` narrows by neither \`job\` nor \`target\`, so it would read the STALEST ` +
+            'row of the whole table. Any healthy unrelated job would then vouch for this workflow\'s timer.',
+        );
+      }
+      used.set(t.reader, (used.get(t.reader) ?? 0) + 1);
+    }
     if (q.firstDue !== undefined) {
       const dueMs = typeof q.firstDue === 'string' ? Date.parse(q.firstDue) : NaN;
       const days = cadenceDays(r.cadence);
@@ -2177,24 +2221,119 @@ async function probeCloudflareHeartbeat(q, root) {
   if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(String(q.table ?? ''))) {
     return { unreadable: true, why: `\`recordQuery.table\` is not a plain identifier: ${JSON.stringify(q.table)}` };
   }
+  // 🔴 `job` AND `target` NARROW THIS READ TO ONE CLAIM, AND THEY ARE BOUND, NOT
+  // INTERPOLATED. The table above is an identifier, which SQL cannot parameterise
+  // — these are VALUES, which it can, so the register text never reaches the SQL
+  // string at all. A narrowed read is what Phase 2 needs: `duty.platform-cron`
+  // asks "is the cron alive at all", and the stalest-of-all-jobs answer is right
+  // for it, but a workflow duty asks "did the TIMER fire THIS workflow", and the
+  // whole-table answer would let a healthy retention sweep vouch for a dispatcher
+  // that has not fired e2e.yml in a week.
+  const where = ['ok = 1'];
+  const params = [];
+  if (q.job !== undefined) { where.push('job = ?'); params.push(String(q.job)); }
+  if (q.target !== undefined) { where.push('target = ?'); params.push(String(q.target)); }
+  const narrowed = params.length > 0;
+  const sql = narrowed
+    ? `SELECT job, target, MAX(ran_at) AS ran_at FROM ${q.table} WHERE ${where.join(' AND ')}`
+    : `SELECT job, MAX(ran_at) AS ran_at FROM ${q.table} WHERE ok = 1 GROUP BY job`;
   const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${dbId}/query`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ sql: `SELECT job, MAX(ran_at) AS ran_at FROM ${q.table} WHERE ok = 1 GROUP BY job` }),
+    body: JSON.stringify({ sql, params }),
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`the D1 API returned ${res.status}`);
   const body = await res.json();
   if (body?.success !== true) throw new Error(`the D1 API reported failure: ${JSON.stringify(body?.errors ?? body).slice(0, 200)}`);
   const rows = body?.result?.[0]?.results ?? [];
-  if (rows.length === 0) return { lastSuccessMs: NaN, detail: `${q.table} holds no row with ok = 1 for any job.` };
+  const label = narrowed ? `${q.table} for ${describeNarrowing(q)}` : q.table;
+  // ⚠️ A BARE `MAX()` WITH NO GROUP BY RETURNS ONE ROW WHOSE `ran_at` IS NULL when
+  // nothing matches — so "no rows" and "one row of nulls" are the SAME answer and
+  // both must reach the bootstrap branch. Checking `rows.length` alone would read
+  // that null as a parse failure further down and report the duty FAILING rather
+  // than never-yet-recorded, which is the difference between "your cron is dead"
+  // and "your cron has not had its first slot".
+  const matched = rows.filter((r) => typeof r?.ran_at === 'string' && r.ran_at !== '');
+  if (matched.length === 0) return { lastSuccessMs: NaN, detail: `${label} holds no row with ok = 1.` };
   // The OLDEST of the per-job newest successes: one silent job inside a cron
   // that runs several is exactly the [4]B-11 finding (half the cron invisible),
   // so the duty is only as fresh as its stalest watched job.
-  const stalest = rows.reduce((a, b) => (Date.parse(a.ran_at) <= Date.parse(b.ran_at) ? a : b));
+  const stalest = matched.reduce((a, b) => (Date.parse(a.ran_at) <= Date.parse(b.ran_at) ? a : b));
   return {
     lastSuccessMs: Date.parse(stalest.ran_at),
-    detail: `${rows.length} job(s) with an ok = 1 row; the STALEST is \`${stalest.job}\` at ${stalest.ran_at}.`,
+    detail: narrowed
+      ? `${label} last succeeded at ${stalest.ran_at}.`
+      : `${matched.length} job(s) with an ok = 1 row; the STALEST is \`${stalest.job}\` at ${stalest.ran_at}.`,
+  };
+}
+
+/** Names the narrowing in the same words the register used, so a failing line
+ *  says which claim went stale rather than just naming the table. */
+export function describeNarrowing(q) {
+  const bits = [];
+  if (q.job !== undefined) bits.push(`job \`${q.job}\``);
+  if (q.target !== undefined) bits.push(`target \`${q.target}\``);
+  return bits.join(' + ');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE TWO-LIMB READ — WORKER CRON PHASE 2, AND IT IS NOT A FILTER SWAP.
+//
+// A duty on a clock makes TWO claims, and until now one query answered both by
+// accident. `event=schedule&status=success` said "the timer fired" AND "the run
+// passed", fused, because only GitHub's scheduler could produce that event.
+//
+// Moving the trigger to a Cloudflare cron breaks the fusion: a dispatched run
+// arrives as `event=workflow_dispatch`, which is INDISTINGUISHABLE FROM A HAND
+// PRESS. Widening the event filter to accept it is the tempting one-line fix and
+// it is the wrong one — freshness would then be green on somebody being awake,
+// the exact defect assert-platform-proof-fresh.mjs was built to prevent
+// ("counting manual runs is what let a never-firing cron look healthy").
+//
+// So the claims are read SEPARATELY, from two records with different authors:
+//   · TIMER   — the `cron_heartbeat` row the dispatching Worker writes. A record
+//               only the timer can write; no human hand produces one.
+//   · OUTCOME — the run history, event filter DROPPED, `head_branch` REQUIRED.
+//               It no longer has to prove the timer, so accepting any event is
+//               safe — but the branch guarantee was riding on the event filter
+//               (GitHub fires schedules only on the default branch), so dropping
+//               one without naming the other would silently widen this to "a
+//               green run on any branch". That is why `headBranch` is mandatory.
+//
+// The duty is only as fresh as its STALER limb, and both must sit inside the
+// window. A dispatcher that fires into a workflow that then fails is not fresh;
+// a workflow that passes on a hand-press while the timer is dead is not either.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Pure. Merges the timer and outcome probes into the single probe shape
+ *  `classifyRunRecord` already understands, so the verdict logic gains no new
+ *  branches and every one of these cases is reachable with no network. */
+export function combineLimbProbes(outcome, timer) {
+  // Order matters: unreadable BEFORE missing before bootstrap, and each names
+  // WHICH limb, because "the duty is stale" and "the D1 token is absent on this
+  // runner" are different facts and the second must never print as the first.
+  for (const [limb, p] of [['timer', timer], ['outcome', outcome]]) {
+    if (!p) return { unreadable: true, why: `its ${limb} limb produced no result at all` };
+    if (p.unreadable) return { unreadable: true, why: `its ${limb} limb could not be read: ${p.why}` };
+  }
+  for (const [limb, p] of [['timer', timer], ['outcome', outcome]]) {
+    if (p.missing) return { missing: true, why: `its ${limb} limb: ${p.why}` };
+  }
+  const bad = (p) => typeof p.lastSuccessMs !== 'number' || Number.isNaN(p.lastSuccessMs);
+  // Bootstrap propagates: a row repointed onto a dispatcher that has not fired
+  // yet has an empty timer record for a reason that is not the duty being
+  // broken, and `firstDue` is what bounds that wait. Reporting the OUTCOME's
+  // healthy timestamp while the timer record is empty would hide exactly the
+  // gap this limb was added to expose.
+  if (bad(timer)) return { lastSuccessMs: NaN, detail: `TIMER: ${timer.detail ?? 'no record.'} OUTCOME: ${outcome.detail ?? '—'}` };
+  if (bad(outcome)) return { lastSuccessMs: NaN, detail: `OUTCOME: ${outcome.detail ?? 'no record.'} TIMER: ${timer.detail}` };
+  const stalerIsTimer = timer.lastSuccessMs <= outcome.lastSuccessMs;
+  return {
+    lastSuccessMs: Math.min(timer.lastSuccessMs, outcome.lastSuccessMs),
+    detail:
+      `the STALER limb is ${stalerIsTimer ? 'the TIMER' : 'the OUTCOME'}. ` +
+      `TIMER: ${timer.detail} OUTCOME: ${outcome.detail}`,
   };
 }
 
@@ -2342,7 +2481,11 @@ async function probeRunRecords(reg, root) {
           probes.set(r.id, { unreadable: true, why: 'neither GITHUB_TOKEN nor GH_TOKEN is in the environment, so the run history cannot be read' });
           continue;
         }
-        probes.set(r.id, q.reader === 'github-run-history' ? await probeGithubRun(q, repo) : await probeGithubIssue(q, repo));
+        const outcome = q.reader === 'github-run-history' ? await probeGithubRun(q, repo) : await probeGithubIssue(q, repo);
+        // A `timer` limb makes this a TWO-RECORD read: the run history above is
+        // now the OUTCOME only, and the cadence claim comes from the heartbeat
+        // row the dispatching Worker writes. See combineLimbProbes.
+        probes.set(r.id, q.timer ? combineLimbProbes(outcome, await probeCloudflareHeartbeat(q.timer, root)) : outcome);
       } else if (q.reader === 'cloudflare-d1-heartbeat') {
         probes.set(r.id, await probeCloudflareHeartbeat(q, root));
       } else if (q.reader === 'glitchtip-heartbeat') {
