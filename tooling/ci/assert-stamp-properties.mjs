@@ -1499,7 +1499,13 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // 2026-08-11: 56 → 57 with `authProvidersProvider`. Raised IN THE SAME COMMIT
 // as the provider, which is the only way this floor stays a floor — the note
 // above records what it costs to defer it.
-const MIN_DOMAIN = 57;
+// 2026-09-04: 57 → 59 with `lastAccountDeletionOutcomeProvider` and
+// `lastAccountDeletionDetailProvider` ([ADR 027] / [ADR 065] chassis step 2 —
+// the deletion outcome, parked above the screen the sign-out tears down). Both
+// are in COVERED_BY under `account-deletion-works`, so the domain and the
+// classification move together, and both moved in the SAME COMMIT as the
+// providers — the rule the 2026-08-11 note above exists to enforce.
+const MIN_DOMAIN = 59;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.

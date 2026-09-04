@@ -4039,6 +4039,16 @@ final FutureProvider<core.ConsentController> consentControllerProvider = X();
 final Provider<core.PrivacySignal> privacySignalProvider = X();
 final Provider<bool> promoObjectedProvider = X();
 final Provider<bool> promoObjectionKnownProvider = X();
+// [ADR 027] / [ADR 065] chassis step 2, 2026-09-04 — the deletion outcome, parked
+// above the screen because the screen that asked for it is torn down by the
+// sign-out before it can report. Present here for exactly the reason the
+// privacySignalProvider comment above gives: assert-stamp-properties checks its
+// classification map in BOTH directions, so a provider the real chassis carries
+// and this fixture does not is reported as a STALE CLASSIFICATION — which makes
+// the fixture, not the tree, the thing being tested. Measured: adding the two to
+// COVERED_BY without adding them here failed eleven of this file's own cases.
+final StateProvider<core.AccountDeletionOutcome?> lastAccountDeletionOutcomeProvider = X();
+final StateProvider<String?> lastAccountDeletionDetailProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -6561,7 +6571,12 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // provider's button ship on every platform. Classified under
       // `auth-seam-wired`, so the domain and the classification move together here
       // too, and MIN_DOMAIN went 56 → 57 in the same commit.
-      assert.match(out, /tracked domain: 57 chassis behaviour\(s\)/);
+      // 59 since 2026-09-04: [ADR 065] chassis step 2 added
+      // `lastAccountDeletionOutcomeProvider` and `lastAccountDeletionDetailProvider`
+      // — the deletion outcome, parked above the screen the sign-out tears down.
+      // Both are CLASSIFIED (under `account-deletion-works`, DRIVEN through the
+      // real router), so the domain moves by two and the gap count below does not.
+      assert.match(out, /tracked domain: 59 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -6637,7 +6652,15 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // negative test passes BY LOSING THE THING IT TESTS, exactly as the note
       // on MIN_DOMAIN describes. It was caught here by the suite, not by a
       // human reading it.
-      assert.match(out, /COVERAGE LOST — the domain parse found 56/);
+      // 2026-09-04: 56 → 58, the same three-file act one more time. [ADR 065]
+      // chassis step 2 added `lastAccountDeletionOutcomeProvider` and
+      // `lastAccountDeletionDetailProvider` to the real tree AND to
+      // `goodProviders` above, and MIN_DOMAIN went 57 → 59 in the same commit.
+      // The fixture now carries 59; this case deletes one, so the parse finds 58
+      // and the floor of 59 trips. Left at 56 the assertion would simply not
+      // match and the case would fail loudly — which is the good outcome, and is
+      // how it was caught this time too.
+      assert.match(out, /COVERAGE LOST — the domain parse found 58/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten
