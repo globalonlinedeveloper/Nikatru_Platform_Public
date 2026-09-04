@@ -18,15 +18,13 @@ import '../l10n/app_localizations.dart';
 import '../state/providers.dart';
 import '../features/settings/settings_screen.dart';
 
-/// The address a confirmation mail was just sent to, as carried by
-/// `context.go('/check-inbox', extra: …)`.
-///
-/// An empty string is treated as absent: a sign-up cannot have mailed nowhere,
-/// so the honest answer for one is the same as for a missing address.
-String? _pendingAddress(GoRouterState state) {
-  final Object? extra = state.extra;
-  return extra is String && extra.isNotEmpty ? extra : null;
-}
+/// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
+/// and the measured incidents behind each rule, live in
+/// `packages/core/lib/src/routing/gate_destination.dart`. It was duplicated
+/// byte-for-byte in this file and in the other tree until 2026-09-04, which
+/// meant a security fix to one was invisible to the other.
+String? _pendingAddress(GoRouterState state) =>
+    core.pendingAddress(state.extra);
 
 /// Locations that must never be banked as a gate's `?next=` destination.
 ///
@@ -44,7 +42,7 @@ String? _pendingAddress(GoRouterState state) {
 /// such a location must still be reachable after a gate. Deriving this from
 /// "everything the signed-out rule tolerates" makes the capture a no-op for the
 /// one journey it exists to protect.
-const List<String> _neverADestination = <String>[
+const Set<String> _neverADestination = <String>{
   '/onboarding',
   '/sign-in',
   '/sign-up',
@@ -52,58 +50,27 @@ const List<String> _neverADestination = <String>[
   '/verify-email',
   '/reaccept-terms',
   '/reset-password',
-];
+};
 
-/// `<gate>?next=<where they were going>`, or a bare `<gate>` when the current
-/// location is not somewhere anybody can be sent back to.
-///
-/// The WHOLE uri is carried rather than `matchedLocation`, so a deep link's own
-/// query survives the detour. `toString()` never decodes, so a query this app
-/// cannot read still travels.
-String _gateWithNext(String gate, GoRouterState state) {
-  if (_neverADestination.contains(state.matchedLocation)) return gate;
-  return '$gate?next=${Uri.encodeComponent(state.uri.toString())}';
-}
+/// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
+/// and the measured incidents behind each rule, live in
+/// `packages/core/lib/src/routing/gate_destination.dart`. It was duplicated
+/// byte-for-byte in this file and in the other tree until 2026-09-04, which
+/// meant a security fix to one was invisible to the other.
+String _gateWithNext(String gate, GoRouterState state) => core.gateWithNext(
+  gate,
+  matchedLocation: state.matchedLocation,
+  uri: state.uri,
+  neverADestination: _neverADestination,
+);
 
-/// The banked `?next=`, or null when the query cannot be decoded at all.
-///
-/// 🔴 `Uri.queryParameters` THROWS, AND A REDIRECT THAT THROWS TAKES THE WHOLE
-/// APP DOWN. MEASURED against the real SDK, not reasoned: escapes that are
-/// well-formed HEX but not well-formed UTF-8 pass through `Uri.parse` untouched
-/// and blow up only on decode — `?next=%FF` raises `FormatException: Invalid
-/// UTF-8 byte`, `?next=%E0%A4%A` raises `Missing extension byte`. Worse, this
-/// getter decodes the WHOLE query, so `?a=%ED%A0%80&next=%2F` throws on a key
-/// nothing here reads. `/reaccept-terms` and `/verify-email` are public URLs
-/// and the read below runs for every user who does NOT owe the gate — the
-/// common case — so without this catch one typed link is an app-wide crash.
-/// (`Uri.parse` itself does not throw: it rewrites a non-hex `%zz` to `%25zz`.)
-String? _bankedNext(Uri uri) {
-  try {
-    return uri.queryParameters['next'];
-  } on FormatException {
-    return null;
-  }
-}
-
-/// Where a satisfied gate hands the user: the destination it took, or
-/// [fallback] when it never took one.
-///
-/// 🔴 VALIDATED, NEVER TRUSTED. `next` rides in a URL, so on web anybody can
-/// type one. Only a single-slash absolute path is honoured: `//evil.test` is a
-/// protocol-relative URL a browser resolves OFF-ORIGIN, and anything carrying a
-/// scheme is an open redirect. A `next` naming another gate is refused too — it
-/// would re-open the screen just cleared, and a nested one walks go_router's
-/// redirect limit down to the errorBuilder. The query and fragment are split
-/// off before that comparison so `?next=%2Fverify-email%3Fx%3D1` cannot smuggle
-/// a gate past a whole-string match.
-String _nextOr(GoRouterState state, String fallback) {
-  final String? next = _bankedNext(state.uri);
-  if (next == null || !next.startsWith('/') || next.startsWith('//')) {
-    return fallback;
-  }
-  final String path = next.split('?').first.split('#').first;
-  return _neverADestination.contains(path) ? fallback : next;
-}
+/// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
+/// and the measured incidents behind each rule, live in
+/// `packages/core/lib/src/routing/gate_destination.dart`. It was duplicated
+/// byte-for-byte in this file and in the other tree until 2026-09-04, which
+/// meant a security fix to one was invisible to the other.
+String _nextOr(GoRouterState state, String fallback) =>
+    core.nextOr(state.uri, fallback, neverADestination: _neverADestination);
 
 /// The app router. A [Provider] so screens and tests can override it.
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
