@@ -122,7 +122,8 @@
       "mutation": {
         "symbol": "lib/app.dart:AnalyticsGate",
         "observedRed": "the app root asks for consent, and Allow opens the rail",
-        "date": "2026-08-10"
+        "date": "2026-09-04",
+        "note": "Replacing `AnalyticsGate` at the app root with a pass-through wrapper leaves the app running and nothing ever asking: 164 -> 154 passing, and among the ten reds is the named test, `property: analytics-on-switch-mounted the app root asks for consent, and Allow opens the rail`. The blast radius is wide ON PURPOSE and is itself the finding - the consent gate is upstream of the analytics lifecycle and of the notification-tap observation, so removing it silences three properties at once rather than one. `flutter analyze` reported \"No issues found!\" UNDER the mutation, so every red is an assertion and not a compile error. Re-run 2026-09-04 on a freshly stamped probe, because [ADR 065] chassis step 3 wired ForceUpdateGate's copy in `lib/app.dart` - the force-update wall had been shipping hardcoded English to every locale in every stamped app - and an edit to the PROBED FILE expires this row exactly as a behavioural one does. That is the guard behaving correctly, not a false positive. TOOLCHAIN: Flutter 3.47.2 / Dart 3.13.2, the version ci.yml pins, NOT the host default 3.44.9. The file was restored from a pre-mutation copy and the suite re-observed green (164)."
       }
     },
     {
@@ -133,7 +134,8 @@
       "mutation": {
         "symbol": "lib/app.dart:brightness: Brightness.dark",
         "observedRed": "light and dark are genuinely different schemes",
-        "date": "2026-08-10"
+        "date": "2026-09-04",
+        "note": "Flipping `brightness: Brightness.dark` to `Brightness.light` in the dark theme leaves a perfectly valid app that has two IDENTICAL schemes: 164 -> 163 passing, and the ONE red is the named test, `property: theme-triplet-supplied light and dark are genuinely different schemes`. A single, precise red is what makes this row a different claim from feature[4]'s - the same file, two independent properties. `flutter analyze` reported \"No issues found!\" UNDER the mutation, so the red is an assertion and not a compile error. Re-run 2026-09-04 on a freshly stamped probe, because [ADR 065] chassis step 3 wired ForceUpdateGate's copy in `lib/app.dart` - the force-update wall had been shipping hardcoded English to every locale in every stamped app - and an edit to the PROBED FILE expires this row exactly as a behavioural one does. That is the guard behaving correctly, not a false positive. TOOLCHAIN: Flutter 3.47.2 / Dart 3.13.2, the version ci.yml pins, NOT the host default 3.44.9. The file was restored from a pre-mutation copy and the suite re-observed green (164)."
       }
     }
   ],
