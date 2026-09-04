@@ -12,83 +12,147 @@ import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 
-/// Home shell for {{{display_name}}}, built on the design-system [AppScaffold]
-/// (adaptive NavigationBar -> Rail -> Drawer) and brand tokens.
-class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+/// The PERSISTENT navigation shell for {{{display_name}}} — the design-system
+/// [NavShell] over [AppScaffold]'s adaptive chrome (NavigationBar -> Rail ->
+/// Drawer), mounted by the `ShellRoute` in `core/router.dart` so that it
+/// survives navigation instead of being rebuilt by whatever screen happens to
+/// be on top.
+///
+/// 🔴 THIS CLASS IS THE FIX, AND WHAT IT REPLACED LOOKED CORRECT. The nav bar
+/// used to be built INSIDE [HomeScreen] (this file, before this change), so it
+/// existed only while the home route was the top of the stack. `context.go`
+/// replaces that stack — which meant the one control that navigated,
+/// `/settings`, DESTROYED the bar that offered it, and every route the chassis
+/// declares was a dead end with no way back except the system Back gesture
+/// (which web and desktop do not reliably have). The Settings tab was
+/// simultaneously the only working destination and the only way to lose the
+/// navigation.
+///
+/// ⚠️ IT LIVES IN `features/home/` BECAUSE THE NAV CHROME ALREADY DID, NOT
+/// BECAUSE IT BELONGS TO HOME. `apps/subly` keeps its equivalent in
+/// `features/shell/app_shell.dart`, which is the right address; moving this one
+/// there is a file the change that introduced it was not allowed to create, and
+/// it is the next tidy-up rather than a decision.
+class AppShell extends StatelessWidget {
+  const AppShell({super.key, required this.location, required this.child});
 
-  @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
-}
+  /// The location currently displayed, handed down by the `ShellRoute` builder.
+  ///
+  /// 🔴 PASSED IN, NEVER LOOKED UP, AND THAT IS NOT A STYLE PREFERENCE.
+  /// `GoRouterState.of(context)` here registers this element as a DEPENDENT of
+  /// `InheritedGoRouter`, and go_router disposes that element across a route
+  /// change while the shell is still mounted. MEASURED on a stamped probe
+  /// 2026-09-04: `'_dependents.isEmpty': is not true`, **73 throws in one run
+  /// and 37 property tests red**, every one of them a screen that had nothing
+  /// to do with navigation. The `ShellRoute` builder is handed `state` already,
+  /// so the lookup buys nothing and costs that.
+  ///
+  /// ⚠️ go_router's own `example/lib/shell_route.dart:155` does use
+  /// `GoRouterState.of(context)` inside the shell widget — which is where the
+  /// first version of this came from. The sample's shell is the ROOT of its
+  /// app and never sits under routes that come and go; this one does.
+  final String location;
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _index = 0;
-
-  // NOT static const: labels are localised, so they need a BuildContext.
-  // [pipeline C-12] A const list cannot read l10n, and an unlocalised nav bar is
-  // the most visible untranslated surface in the app.
-  List<AppDestination> _destinations(AppLocalizations l10n) => <AppDestination>[
-    AppDestination(
-      icon: Icons.home_outlined,
-      selectedIcon: Icons.home,
-      label: l10n.navHome,
-    ),
-    AppDestination(
-      icon: Icons.explore_outlined,
-      selectedIcon: Icons.explore,
-      label: l10n.navExplore,
-    ),
-    AppDestination(
-      icon: Icons.settings_outlined,
-      selectedIcon: Icons.settings,
-      label: l10n.navSettings,
-    ),
-  ];
+  /// The routed screen. In a `ShellRoute` this is the builder's `child`.
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final AppThemeX tokens = Theme.of(context).extension<AppThemeX>()!;
+    // NOT static const: labels are localised, so they need a BuildContext.
+    // [pipeline C-12] A const list cannot read l10n, and an unlocalised nav bar
+    // is the most visible untranslated surface in the app.
     final AppLocalizations l10n = AppLocalizations.of(context);
-    // 🔴 [pipeline 5]M-5 — THE GATE, AND ITS FIRST REAL CONSUMER.
-    //
-    // `PaywallGate` shipped in the design system and was referenced by exactly
-    // one widget test and one comment: a fail-closed seam with no proven open
-    // path, which is the [pipeline C-6] shape in its purest form. This line is
-    // the open path. `paywallLockedProvider` resolves from the SERVER's
-    // entitlement read (via the cache, with the M-8 staleness ceiling applied),
-    // so what unlocks this surface is a row somebody paid for and nothing else.
-    //
-    // A stamped app with `paywall.enabled: false` — which is the default —
-    // locks nothing, so being born with the gate costs a fresh app nothing.
-    final bool locked = ref.watch(paywallLockedProvider);
-    return AppScaffold(
-      title: const Text(AppConfig.appName),
-      destinations: _destinations(l10n),
-      selectedIndex: _index,
-      // 🔴 THE SETTINGS DESTINATION NOW NAVIGATES, AND IT DID NOT BEFORE.
-      // `onDestinationSelected` only ever set `_index`, and the body does not
-      // switch on it — so the Settings tab was decorative: every screen the
-      // settings register row claims (profile, appearance, language, reminders,
-      // legal, sign-out, delete account) sat behind a `/settings` route that NO
-      // control in the chassis navigated to. `assert-screen-set.mjs` passed
-      // throughout, because its `reachable` check asks whether the ROUTE exists.
+    return NavShell(
+      // The ROUTER is the single source of truth for which tab is lit. The
+      // predecessor kept an `int _index` in this widget's State, so the URL and
+      // the highlight were two facts that could disagree — and did: tapping
+      // Settings both navigated AND set the index, on a body that never
+      // switched on it.
       //
-      // Found 2026-08-01 while deriving the ROSCA step counts for [pipeline
-      // 5]M-9: "cancelling is one tap from Settings" is worth nothing if nothing
-      // is a tap from Settings. `assert-purchase-path.mjs` now requires
-      // `/settings` to be reachable from `/` through the router graph, so this
-      // cannot silently regress.
-      onDestinationSelected: (int i) {
-        if (i == 2) {
-          context.go('/settings');
-          return;
-        }
-        setState(() => _index = i);
-      },
-      // The EXPLORE tab is the chassis's premium surface. Gating tab 1 rather
-      // than the whole app is deliberate: a paywall a user meets before they
-      // have seen anything is a wall, and it is also the shape that makes the
-      // activation number meaningless.
+      // `state.uri.path` and not `matchedLocation`: `.path` drops the query, so
+      // a gate's `?next=…` cannot change which tab is lit. It arrives as a
+      // parameter rather than being read here — see [location] for the
+      // measurement that forced that.
+      currentLocation: location,
+      tabs: <NavTab>[
+        NavTab(
+          destination: AppDestination(
+            icon: Icons.home_outlined,
+            selectedIcon: Icons.home,
+            label: l10n.navHome,
+          ),
+          location: '/',
+          onSelected: () => context.go('/'),
+        ),
+        NavTab(
+          destination: AppDestination(
+            icon: Icons.explore_outlined,
+            selectedIcon: Icons.explore,
+            label: l10n.navExplore,
+          ),
+          location: '/explore',
+          onSelected: () => context.go('/explore'),
+        ),
+        // 🔴 THE SETTINGS DESTINATION NAVIGATES, AND NOW IT SURVIVES DOING SO.
+        // Before 2026-08-01 `onDestinationSelected` only ever set an index, so
+        // the Settings tab was decorative: every screen the settings register
+        // row claims (profile, appearance, language, reminders, legal,
+        // sign-out, delete account) sat behind a `/settings` route that NO
+        // control in the chassis navigated to. `assert-screen-set.mjs` passed
+        // throughout, because its `reachable` check asks whether the ROUTE
+        // exists.
+        //
+        // That fix made the tab work and made it a trapdoor — `context.go` from
+        // a bar that lived inside the home route tore the bar down on arrival.
+        // The bar is now above the routes rather than inside one, so the same
+        // call keeps it.
+        //
+        // ⚠️ THE `context.go('/settings')` LITERAL IS LOAD-BEARING TO A GUARD.
+        // `assert-purchase-path.mjs:369-378` builds the navigation graph — and
+        // from it the ROSCA subscribe/cancel step counts — out of
+        // `context.go('…')` calls found in the file each route builds. Spelling
+        // the destination per tab rather than indexing a locations table keeps
+        // "Settings is one tap from Home" a MEASURED fact rather than a
+        // description of one.
+        NavTab(
+          destination: AppDestination(
+            icon: Icons.settings_outlined,
+            selectedIcon: Icons.settings,
+            label: l10n.navSettings,
+          ),
+          location: '/settings',
+          // `/manage-plan` is Settings' screen, not a tab of its own: it is
+          // reached from the settings register row and it is where cancelling
+          // happens. Declaring the ownership is what keeps the Settings tab lit
+          // while the user is on it — see `NavTab.alsoOwns`.
+          alsoOwns: const <String>['/manage-plan'],
+          onSelected: () => context.go('/settings'),
+        ),
+      ],
+      child: child,
+    );
+  }
+}
+
+/// The home destination: the chassis's own surface, plus the two things that
+/// sit above it.
+///
+/// ⚠️ THE BANNER AND THE PROMO CARD ARE HOME'S NOW, AND THEY USED TO BE THE
+/// SHELL'S. They were stacked in the [AppScaffold] body, so they rendered on
+/// the Explore tab too. The shell now spans Settings and the CANCELLATION
+/// screen as well, and an upgrade promotion above "cancel my plan" is the one
+/// placement this repo would have to answer for. They follow the surface they
+/// belong to rather than the chrome they happened to live in.
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // The app bar is the SCREEN's, not the shell's: `AppScaffold` renders one
+    // of its own when given a `title`, and a shell title over a screen title is
+    // two stacked bars at every width. Same division apps/subly settled on.
+    return Scaffold(
+      appBar: AppBar(title: const Text(AppConfig.appName)),
       body: Column(
         children: <Widget>[
           // [pipeline T-8] The OTHER half of the reminder promise. Above the
@@ -102,37 +166,91 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // a fresh stamp — so being born with it costs an app that runs no
           // campaign exactly one collapsed `SizedBox.shrink()`.
           const UpgradePromoCard(),
-          Expanded(
-            child: PaywallGate(
-              locked: _index == 1 && locked,
-              onUpgrade: () => context.go('/paywall'),
-              title: l10n.paywallHeadline,
-              message: l10n.paywallGateMessage,
-              upgradeLabel: l10n.paywallUpgrade,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        gradient: tokens.brandGradient,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    Text(
-                      l10n.welcomeTo(AppConfig.appName),
-                      style: AppText.title,
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(l10n.homeTagline, style: AppText.muted),
-                  ],
-                ),
-              ),
+          const Expanded(child: WelcomePanel()),
+        ],
+      ),
+    );
+  }
+}
+
+/// The EXPLORE destination — the chassis's premium surface.
+///
+/// Gating one destination rather than the whole app is deliberate: a paywall a
+/// user meets before they have seen anything is a wall, and it is also the
+/// shape that makes the activation number meaningless.
+///
+/// 🔴 [pipeline 5]M-5 — THE GATE, AND ITS FIRST REAL CONSUMER.
+///
+/// `PaywallGate` shipped in the design system and was referenced by exactly one
+/// widget test and one comment: a fail-closed seam with no proven open path,
+/// which is the [pipeline C-6] shape in its purest form. This screen is the
+/// open path. `paywallLockedProvider` resolves from the SERVER's entitlement
+/// read (via the cache, with the M-8 staleness ceiling applied), so what
+/// unlocks this surface is a row somebody paid for and nothing else.
+///
+/// A stamped app with `paywall.enabled: false` — which is the default — locks
+/// nothing, so being born with the gate costs a fresh app nothing.
+///
+/// ⚠️ THE LOCK USED TO READ `_index == 1 && locked`, i.e. the gate was decided
+/// by a TAB INDEX held in the home screen's State. It is now decided by the
+/// route being on screen at all, which is the same rule with nothing to
+/// disagree with it. `apps/subly` reached the identical shape from the other
+/// direction (`_GatedInsights`, `lib/core/router/shell.dart:78`).
+///
+/// It shows [WelcomePanel] because the chassis ships exactly one content
+/// surface — which is what the tab showed before this change too. A stamped app
+/// replaces this body with its own; the gate around it is the part the chassis
+/// is giving it.
+class ExploreScreen extends ConsumerWidget {
+  const ExploreScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.navExplore)),
+      body: PaywallGate(
+        locked: ref.watch(paywallLockedProvider),
+        onUpgrade: () => context.go('/paywall'),
+        title: l10n.paywallHeadline,
+        message: l10n.paywallGateMessage,
+        upgradeLabel: l10n.paywallUpgrade,
+        child: const WelcomePanel(),
+      ),
+    );
+  }
+}
+
+/// The chassis's one content surface: the brand mark and the two lines a fresh
+/// stamp greets its first user with.
+///
+/// Public, and shared by [HomeScreen] and [ExploreScreen], because it is
+/// exactly what both showed before the shell split them apart — the tab index
+/// changed the GATE, never the body. Keeping one widget keeps that true rather
+/// than leaving two copies to drift.
+class WelcomePanel extends StatelessWidget {
+  const WelcomePanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppThemeX tokens = Theme.of(context).extension<AppThemeX>()!;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              gradient: tokens.brandGradient,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
           ),
+          const SizedBox(height: AppSpacing.lg),
+          Text(l10n.welcomeTo(AppConfig.appName), style: AppText.title),
+          const SizedBox(height: AppSpacing.xs),
+          Text(l10n.homeTagline, style: AppText.muted),
         ],
       ),
     );

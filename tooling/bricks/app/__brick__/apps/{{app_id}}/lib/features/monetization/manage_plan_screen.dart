@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
@@ -135,7 +136,37 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     final bool isPro = ent.valueOrNull?.isProAt(DateTime.now()) ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.managePlanTitle)),
+      appBar: AppBar(
+        // 🔴 AN EXPLICIT BACK CONTROL, BECAUSE THE AUTOMATIC ONE NEVER APPEARED.
+        // `AppBar` inserts a back button only when its `Navigator` can pop, and
+        // this screen is reached with `context.go` from the settings register
+        // row and from the promo card — `go` REPLACES the stack, so there was
+        // nothing to pop and no leading control was ever built. The result was a
+        // cancellation screen with no way out of it except the system Back
+        // gesture, which web and desktop do not reliably give: on the one screen
+        // whose whole job is "cancelling must be no harder than subscribing".
+        //
+        // ⚠️ THE COMMENT IN `_cancel` ABOVE ALREADY ASSUMED THIS CONTROL
+        // EXISTED — "the app bar's back control stays live throughout" is the
+        // measured reason the provider container is hoisted before the first
+        // await. That hazard is real again now, and the hoist is what makes
+        // leaving mid-cancellation safe rather than a `StateError`.
+        //
+        // `BackButton` rather than a hand-rolled `IconButton`: it carries the
+        // platform's own glyph and the tooltip/semantics label from
+        // `MaterialLocalizations`, so this adds no copy to the arb and is
+        // translated in every locale the app declares.
+        leading: BackButton(
+          // Pop when there IS somewhere to pop to (a future `push` from a
+          // deeper surface), otherwise return to the register row this screen
+          // hangs off. `/settings` and not `/` deliberately: it is where the
+          // user was, and it is the origin `assert-purchase-path.mjs` measures
+          // the ROSCA cancel distance from.
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/settings'),
+        ),
+        title: Text(l10n.managePlanTitle),
+      ),
       // Bare `Scaffold` + `ListView` before this, the same shape as settings —
       // and this is the WORSE of the two to leave unconstrained. The screen
       // whose only job is "cancel must be no harder than subscribe" was, on a

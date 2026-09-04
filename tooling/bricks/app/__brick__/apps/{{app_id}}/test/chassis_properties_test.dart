@@ -1647,6 +1647,27 @@ void main() {
         findsWidgets,
         reason: 'a signed-out app must open on the sign-in screen',
       );
+      // 🔴 AND NO NAVIGATION UNDER THE GATE. The shell is mounted for EVERY
+      // location — it has to be, because a shell that leaves the page stack and
+      // comes back makes go_router claim one `GlobalObjectKey` twice
+      // (`Duplicate GlobalKey`, measured on this very journey 2026-09-04) — so
+      // what keeps a bar off the sign-in screen is no longer WHERE the route was
+      // declared. It is that no `NavTab` owns `/sign-in`, and `NavShell` renders
+      // an unowned location bare. That is a one-line invariant with a one-tap
+      // consequence: a bar here is a way around the gate.
+      //
+      // ⚠️ `AppScaffold`, NOT `NavigationBar`, AND THE DIFFERENCE IS THE WHOLE
+      // ASSERTION. A widget test's default surface is 800x600, which is the
+      // MEDIUM window class — the chrome there is a `NavigationRail`, and a
+      // bar is never built at that width whatever the shell decides. Measured:
+      // with `find.byType(NavigationBar)` this expectation passed even against
+      // a `NavShell` mutated to put chrome on EVERY location, i.e. it asserted
+      // nothing at all. `AppScaffold` is the chrome itself, at every width.
+      expect(
+        find.byType(AppScaffold),
+        findsNothing,
+        reason: 'navigation under the sign-in gate is a way around it',
+      );
 
       await tester.enterText(find.byType(TextField).at(0), 'a@b.com');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
@@ -3735,12 +3756,23 @@ void main() {
 
       // Tab 0 is not gated: a paywall a user meets before they have seen
       // anything is a wall, not a paywall.
-      expect(find.byType(PaywallGate), findsOneWidget);
+      //
+      // 🔴 `findsNothing`, AND IT USED TO BE `findsOneWidget`. The gate is no
+      // longer wrapped around the home body with its `locked` argument turned
+      // off by a tab index — it moved onto the `/explore` ROUTE with the
+      // premium surface itself (`ExploreScreen`), so "home is ungated" is now
+      // "there is no gate on this screen" rather than "there is a gate and it
+      // happens to be open". The assertion that the gate EXISTS did not go
+      // away; it moved four lines down, onto the screen that has it.
+      expect(find.byType(PaywallGate), findsNothing);
       expect(find.text('Unlock the full experience'), findsNothing);
 
-      // Tab 1 IS. Explore is the chassis's premium surface.
+      // Tab 1 IS. Explore is the chassis's premium surface — and reaching it
+      // through the nav bar is also the proof the bar SURVIVES navigation,
+      // which is the whole point of the shell.
       await tester.tap(find.text('Explore'));
       await _turnsAndSettleRoute(tester);
+      expect(find.byType(PaywallGate), findsOneWidget);
       expect(find.text('Unlock the full experience'), findsOneWidget);
     });
   });

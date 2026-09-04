@@ -21,7 +21,16 @@ void main() {
           // requires it now: the old default was Subly's colour, so a bare
           // call silently rendered another product's brand.
           theme: buildAppTheme(seed: const Color(0xFF{{{seed_hex}}})),
-          home: const HomeScreen(),
+          // 🔴 THE CHROME IS THE SHELL'S, NOT THE SCREEN'S, AND THAT IS THE
+          // CHANGE THIS LINE RECORDS. `HomeScreen` used to build the
+          // `AppScaffold` itself, which is exactly why every stamped app's
+          // Settings and Manage-plan were dead ends: the nav bar lived inside
+          // the home route, so navigating away destroyed it. It now lives in
+          // `AppShell`, mounted once by the `ShellRoute` above every route, and
+          // this test pumps the same pairing by hand — shell wrapping screen —
+          // so it still asserts that a stamped app's home surface arrives with
+          // the design-system chrome around it rather than none.
+          home: const AppShell(location: '/', child: HomeScreen()),
         ),
       ),
     );

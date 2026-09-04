@@ -72,6 +72,42 @@ String _gateWithNext(String gate, GoRouterState state) => core.gateWithNext(
 String _nextOr(GoRouterState state, String fallback) =>
     core.nextOr(state.uri, fallback, neverADestination: _neverADestination);
 
+/// The ROOT Navigator's key — named, so the one Navigator above the shell has
+/// an identity that dialogs, and any future above-shell route, can address.
+///
+/// 🔴 IT IS NO LONGER ON ANY ROUTE, AND THAT IS A MEASUREMENT, NOT A TIDY-UP.
+/// The first version of this shell put the auth gates ABOVE the shell as
+/// top-level siblings, each with `parentNavigatorKey: rootNavigatorKey`, so a
+/// gate's page covered the navigation bar. It stamped and it crashed. Two
+/// findings, both from a probe run on 2026-09-04:
+///
+///   1. A route that sits above the shell makes the shell LEAVE the page stack
+///      and RE-ENTER it. go_router keys the shell's Navigator with
+///      `GlobalObjectKey(navigatorKey.hashCode)` — one key per `ShellRoute`
+///      instance (`go_router-14.8.1/lib/src/builder.dart:287`) — so the moment
+///      an outgoing shell page and an incoming one are alive in the same frame
+///      they claim the same GlobalKey: `Duplicate GlobalKey detected in widget
+///      tree`, thrown from `BuildOwner.finalizeTree`, on the ordinary sign-in
+///      journey. It is not a test artefact — the window is real in a shipped
+///      app, it is just short (one page transition).
+///   2. The obvious repair — keep the gates as CHILDREN of the shell so the
+///      shell never leaves, but let them escape upward with
+///      `parentNavigatorKey: rootNavigatorKey` — is FORBIDDEN by go_router:
+///      `route.dart:481` asserts *"sub-route's parent navigator key must either
+///      be null or has the same navigator key as parent's key"*. Measured: 47
+///      failing tests, every one of them that assertion.
+///
+/// So the gates keep their chrome-free full screen a different way — see the
+/// shell's own comment below and `NavShell.build`: a location no tab owns
+/// renders bare. The invariant "no navigation bar under a gate" moved from
+/// WHERE A ROUTE IS DECLARED to a widget that can be tested, which is the
+/// stronger place for it.
+///
+/// ⚠️ ADDING A ROUTE OUTSIDE THE SHELL REOPENS FINDING 1. If one ever has to
+/// live up here, it must be a route the app never leaves the shell FOR and
+/// comes back from — and the probe's chassis property run is what will say so.
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 /// The app router. A [Provider] so screens and tests can override it.
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   // [pipeline C-13] THE REDIRECT GUARD. Screens do not navigate after a
@@ -85,6 +121,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final core.AuthRepository auth = ref.watch(authRepositoryProvider);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/',
     // 🔴 WITHOUT THIS THE GUARD BELOW NEVER RE-RUNS. `redirect` fires on
     // navigation, not on a session appearing, so a user who signed in stayed on
@@ -293,93 +330,223 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       attemptedLocation: state.uri.toString(),
       onGoHome: () => context.go('/'),
     ),
+    // ═══════════════════════════════════════════════════════════════════════
+    // THE ROUTE TABLE — ONE shell, and every route inside it.
+    //
+    // 🔴 WHY THE SHELL EXISTS. Every route used to be flat, so the navigation
+    // bar could only live INSIDE a screen — it was built by `HomeScreen`, and
+    // `context.go('/settings')` replaced the screen that owned it. Settings and
+    // Manage-plan were therefore dead ends in every app the factory stamps: no
+    // bar, no back control, and on web and desktop no reliable system Back
+    // either. Manage-plan is the CANCELLATION screen, so that was an app-store
+    // review risk, not only a papercut.
+    //
+    // 🔴 WHY EVERY ROUTE IS INSIDE IT, INCLUDING THE ONES THAT SHOW NO BAR.
+    // The shape you would write first — gates ABOVE the shell, tabs inside —
+    // was written first, stamped, and it CRASHED. A route above the shell makes
+    // the shell leave the page stack and come back, and go_router gives the
+    // shell's Navigator one process-wide `GlobalObjectKey` per `ShellRoute`
+    // (`go_router-14.8.1/lib/src/builder.dart:287`), so an outgoing shell page
+    // and an incoming one claim the same key in one frame: `Duplicate GlobalKey
+    // detected in widget tree`, on the ordinary sign-in journey. The repair
+    // that keeps both properties — gates as shell CHILDREN that escape upward
+    // with `parentNavigatorKey` — is forbidden outright by `route.dart:481`
+    // (*"sub-route's parent navigator key must either be null or has the same
+    // navigator key as parent's key"*): 47 tests, all that one assertion.
+    //
+    // So the shell is mounted for EVERY location and never leaves, and what
+    // decides whether a screen shows navigation is `NavShell`: a location no
+    // tab owns renders bare. Each entry below says which it is and why. The
+    // ordering is unchanged — go_router matches in declaration order.
+    // ═══════════════════════════════════════════════════════════════════════
     routes: <RouteBase>[
-      GoRoute(
-        path: '/',
-        builder: (BuildContext context, GoRouterState state) =>
-            const HomeScreen(),
-      ),
-      GoRoute(
-        path: '/sign-in',
-        builder: (BuildContext context, GoRouterState state) =>
-            const SignInScreen(),
-      ),
-      GoRoute(
-        path: '/sign-up',
-        builder: (BuildContext context, GoRouterState state) =>
-            const SignUpScreen(),
-      ),
-      GoRoute(
-        path: '/onboarding',
-        builder: (BuildContext context, GoRouterState state) =>
-            const OnboardingScreen(),
-      ),
-      // ── THE TWO GATE SCREENS ────────────────────────────────────────────
-      // Routed rather than dialog-shaped: both appear BECAUSE of a redirect, so
-      // a dialog here would be a pageless route on a page being replaced as it
-      // opens — the shape [ADR 027]'s deletion notice had to be rebuilt out of.
-      GoRoute(
-        path: '/verify-email',
-        builder: (BuildContext context, GoRouterState state) =>
-            const VerifyEmailScreen(),
-      ),
-      GoRoute(
-        path: '/reaccept-terms',
-        builder: (BuildContext context, GoRouterState state) =>
-            const ReacceptTermsScreen(),
-      ),
-      // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ────────────────────────
-      // Reached from the sign-up screen when `signUp` returns a user but no
-      // session. `/verify-email` cannot serve this person: its gate is
-      // `sessionIsUnverified`, which answers FALSE for a null user by design.
+      // ── THE SHELL ───────────────────────────────────────────────────────
+      // ONE `ShellRoute` over the whole table, mounted for the app's entire
+      // life. Its `builder` runs for every location; `AppShell` decides, per
+      // location, whether that means chrome or a bare screen.
       //
-      // 🔴 THE ADDRESS TRAVELS AS ROUTE STATE, NEVER IN THE PATH OR A QUERY.
-      // An email address in a URL is a real address in browser history, in a
-      // referrer and in every log the page's assets touch. `extra` is carried
-      // by the navigation and by nothing else.
-      //
-      // The redirect is what makes the builder's `!` total: no address, no
-      // screen. It also answers the person who types this URL having signed up
-      // for nothing — they are sent to the form rather than shown "we sent a
-      // link to " with a blank where the address should be.
-      GoRoute(
-        path: '/check-inbox',
-        redirect: (BuildContext context, GoRouterState state) =>
-            _pendingAddress(state) == null ? '/sign-in' : null,
-        builder: (BuildContext context, GoRouterState state) =>
-            CheckInboxScreen(email: _pendingAddress(state)!),
-      ),
-      // Where a password-reset link lands. Reachable by a SIGNED-OUT visitor on
-      // purpose — see `signedOutMayStay` above — because a link that could not
-      // complete its exchange leaves exactly that state, and it is the state
-      // this screen exists to explain.
-      GoRoute(
-        path: '/reset-password',
-        builder: (BuildContext context, GoRouterState state) =>
-            const ResetPasswordScreen(),
-      ),
-      GoRoute(
-        path: '/settings',
-        builder: (BuildContext context, GoRouterState state) =>
-            const SettingsScreen(),
-      ),
-      // ── THE MONEY RAIL'S TWO SCREENS ([pipeline 5]M-6, M-9) ──────────────
-      //
-      // 🔴 BOTH ROUTES ARE THE STEP-COUNT SOURCE. `assert-purchase-path.mjs`
-      // derives the purchase step count and the cancel step count from THIS
-      // file, from the same navigation graph, so ROSCA's "cancelling is no
-      // harder than buying" is checked against the router rather than against
-      // somebody's description of it. Renaming a path here changes both counts
-      // together, which is the point.
-      GoRoute(
-        path: '/paywall',
-        builder: (BuildContext context, GoRouterState state) =>
-            const PaywallScreen(),
-      ),
-      GoRoute(
-        path: '/manage-plan',
-        builder: (BuildContext context, GoRouterState state) =>
-            const ManagePlanScreen(),
+      // A `ShellRoute` rather than a `StatefulShellRoute`, deliberately, and the
+      // difference is one Navigator versus one per branch:
+      //   · Each destination is a SINGLE screen with nothing pushed on top of
+      //     it, so there is no per-branch stack to preserve — which is the
+      //     entire thing `StatefulShellRoute` buys.
+      //   · It keeps ONE navigation verb in the chassis. `context.go(location)`
+      //     is what every screen, the promo card and the settings register row
+      //     already speak, and it is what `assert-purchase-path.mjs:369-378`
+      //     reads to derive the ROSCA step counts. `goBranch(i)` is invisible to
+      //     that guard, so a branch shell would make the measured navigation
+      //     graph a subset of the real one.
+      //   · `StatefulShellBranch` mints a `GlobalKey` per branch, which is why
+      //     apps/subly's route list has to be a function rather than a shared
+      //     value (`lib/core/router/routes.dart:6-11`) — a cost worth paying for
+      //     five stateful tabs and not for three leaves.
+      // The day a stamped app grows a stack inside a tab, `StatefulShellRoute`
+      // is the upgrade — and the guard has to learn `goBranch` first.
+      ShellRoute(
+        // 🔴 `state.uri.path` IS PASSED DOWN, NOT RE-READ WITH
+        // `GoRouterState.of(context)` INSIDE THE SHELL. Measured 2026-09-04 on a
+        // stamped probe: the `.of(context)` version threw
+        // `InheritedGoRouter … '_dependents.isEmpty': is not true` — 73 times in
+        // one run, taking 37 property tests with it. A shell that reads the
+        // router through an inherited lookup registers a DEPENDENCY on an
+        // element go_router disposes while the shell is still mounted across a
+        // route change; the builder already HANDS the state, so the lookup buys
+        // nothing and costs that. `NavShell` takes a plain `String` for exactly
+        // this reason — see its `currentLocation` doc.
+        builder: (BuildContext context, GoRouterState state, Widget child) =>
+            AppShell(location: state.uri.path, child: child),
+        routes: <RouteBase>[
+          // ── NO CHROME: THE AUTH GATES ──────────────────────────────────
+          // All five are reached BY A REDIRECT from `redirect:` above, and each
+          // one exists to stop a user going somewhere. A nav bar under any of
+          // them is a one-tap way past the thing the gate is for — so none of
+          // these locations appears in any `NavTab` (`home_screen.dart`), and
+          // `NavShell` therefore renders them with no bar, rail or drawer at
+          // all. THAT is the enforcement; it is checked by
+          // `packages/design_system/test/nav_shell_test.dart` rather than
+          // inferred from where these lines sit in this file.
+          //
+          // `/sign-in` and `/sign-up`: there is no session yet, so there is
+          // nothing for the tabs to show — every destination is a gated
+          // surface.
+          GoRoute(
+            path: '/sign-in',
+            builder: (BuildContext context, GoRouterState state) =>
+                const SignInScreen(),
+          ),
+          GoRoute(
+            path: '/sign-up',
+            builder: (BuildContext context, GoRouterState state) =>
+                const SignUpScreen(),
+          ),
+          // Onboarding is what EXPLAINS the app, before there is an account.
+          // A user who could tab away from it has not been onboarded, and the
+          // redirect above would only put them straight back — a loop the tabs
+          // would appear to cause. Owned by no tab, so there are none.
+          GoRoute(
+            path: '/onboarding',
+            builder: (BuildContext context, GoRouterState state) =>
+                const OnboardingScreen(),
+          ),
+          // ── THE TWO GATE SCREENS ────────────────────────────────────────────
+          // Routed rather than dialog-shaped: both appear BECAUSE of a redirect, so
+          // a dialog here would be a pageless route on a page being replaced as it
+          // opens — the shape [ADR 027]'s deletion notice had to be rebuilt out of.
+          //
+          // Chrome-free for the sharper version of the same reason: these two
+          // are the gates the redirect enforces on a user who DOES have a
+          // session, so a bar under them would be one tap away from an
+          // unverified account or from terms nobody accepted.
+          GoRoute(
+            path: '/verify-email',
+            builder: (BuildContext context, GoRouterState state) =>
+                const VerifyEmailScreen(),
+          ),
+          GoRoute(
+            path: '/reaccept-terms',
+            builder: (BuildContext context, GoRouterState state) =>
+                const ReacceptTermsScreen(),
+          ),
+          // ── THE NO-SESSION HALF OF EMAIL CONFIRMATION ────────────────────────
+          // Reached from the sign-up screen when `signUp` returns a user but no
+          // session. `/verify-email` cannot serve this person: its gate is
+          // `sessionIsUnverified`, which answers FALSE for a null user by design.
+          //
+          // 🔴 THE ADDRESS TRAVELS AS ROUTE STATE, NEVER IN THE PATH OR A QUERY.
+          // An email address in a URL is a real address in browser history, in a
+          // referrer and in every log the page's assets touch. `extra` is carried
+          // by the navigation and by nothing else.
+          //
+          // The redirect is what makes the builder's `!` total: no address, no
+          // screen. It also answers the person who types this URL having signed up
+          // for nothing — they are sent to the form rather than shown "we sent a
+          // link to " with a blank where the address should be.
+          //
+          // Chrome-free: its whole audience is SIGNED OUT (sign-up returned a
+          // user and no session), so tabs here would lead nowhere but back to
+          // `/sign-in`.
+          GoRoute(
+            path: '/check-inbox',
+            redirect: (BuildContext context, GoRouterState state) =>
+                _pendingAddress(state) == null ? '/sign-in' : null,
+            builder: (BuildContext context, GoRouterState state) =>
+                CheckInboxScreen(email: _pendingAddress(state)!),
+          ),
+          // Where a password-reset link lands. Reachable by a SIGNED-OUT visitor on
+          // purpose — see `signedOutMayStay` above — because a link that could not
+          // complete its exchange leaves exactly that state, and it is the state
+          // this screen exists to explain.
+          //
+          // Chrome-free for the gate reason AND a second one this route does
+          // not share with the others: the person here cannot get into their
+          // account at all, so every tab would be a locked door.
+          GoRoute(
+            path: '/reset-password',
+            builder: (BuildContext context, GoRouterState state) =>
+                const ResetPasswordScreen(),
+          ),
+          // ── NO CHROME: THE CHECKOUT ([pipeline 5]M-6) ──────────────────
+          //
+          // NOT a gate — the only chrome-free route that is not. A purchase flow
+          // with a navigation bar underneath it is a way out of a funnel
+          // mid-transaction, which is apps/subly's reading too
+          // (`lib/core/router/routes.dart:154`). It is not a dead end: the
+          // screen carries its own way back (`paywall_screen.dart:251`).
+          //
+          // 🔴 THIS ROUTE AND `/manage-plan` ARE THE STEP-COUNT SOURCE.
+          // `assert-purchase-path.mjs` derives the purchase step count and the
+          // cancel step count from THIS file, from the same navigation graph, so
+          // ROSCA's "cancelling is no harder than buying" is checked against the
+          // router rather than against somebody's description of it. Renaming a
+          // path here changes both counts together, which is the point.
+          GoRoute(
+            path: '/paywall',
+            builder: (BuildContext context, GoRouterState state) =>
+                const PaywallScreen(),
+          ),
+          // ── THE TABS ────────────────────────────────────────────────────
+          // The three destinations a signed-in user moves BETWEEN, and the one
+          // screen that hangs off one of them. These are the locations a
+          // `NavTab` OWNS (`home_screen.dart`), which is what makes the shell
+          // draw its chrome around them.
+          GoRoute(
+            path: '/',
+            builder: (BuildContext context, GoRouterState state) =>
+                const HomeScreen(),
+          ),
+          // The premium destination. It was a TAB INDEX inside the home screen
+          // and never a location, so nothing could link to it, `/explore` 404ed,
+          // and the paywall gate was decided by a `setState` — see
+          // `ExploreScreen`.
+          GoRoute(
+            path: '/explore',
+            builder: (BuildContext context, GoRouterState state) =>
+                const ExploreScreen(),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (BuildContext context, GoRouterState state) =>
+                const SettingsScreen(),
+          ),
+          // ── THE CANCELLATION SCREEN ([pipeline 5]M-9) ──────────────────
+          // KEEPS THE CHROME, unlike the checkout above it, and the asymmetry
+          // is the argument: the reason to keep a nav bar out of a purchase
+          // funnel is that it is a way out of the funnel, and a way out is
+          // exactly what this screen owes its user. It is where cancelling
+          // happens, so a user who cannot leave it is the review risk.
+          //
+          // It is not a tab of its own; the Settings destination OWNS it
+          // (`home_screen.dart`, `NavTab.alsoOwns`), because that is the
+          // register row it hangs off — and that declaration is the only reason
+          // the bar is here at all. The screen also carries its own back
+          // control to `/settings` — the bar answers "somewhere else", the back
+          // control answers "back".
+          GoRoute(
+            path: '/manage-plan',
+            builder: (BuildContext context, GoRouterState state) =>
+                const ManagePlanScreen(),
+          ),
+        ],
       ),
     ],
   );
