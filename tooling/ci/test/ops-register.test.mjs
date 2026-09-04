@@ -134,6 +134,8 @@ import {
   formatTaskResult,
   classifyGlitchtipChecks,
   classifyRunHistoryAnswer,
+  combineLimbProbes,
+  describeNarrowing,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -2862,6 +2864,144 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
       const rows = reg.rows.filter((r) => r?.mechanism?.recordQuery?.reader === 'github-run-history');
       assert.ok(rows.length >= 5, `expected the five workflow rows and Renovate; found ${rows.length}`);
       for (const r of rows) assert.equal(r.mechanism.recordQuery.headBranch, 'main', r.id);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // WORKER CRON PHASE 2 — the two-limb read.
+  //
+  // The thing being defended is narrow and worth stating: `event: schedule` was
+  // carrying TWO claims (the timer fired, the run passed) and Phase 2 separates
+  // them. Every test below is a way that separation could be done WRONGLY and
+  // still look finished — an event filter dropped with nothing put in its place,
+  // a dispatch accepted as a cadence claim, a timer limb so wide that any
+  // healthy job vouches for any workflow. Each has a recorded failing case.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('assert-ops-register — the TIMER/OUTCOME split, and the ways it could be faked', () => {
+    const registerCopy = () => JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
+    const e2eRow = (reg) => reg.rows.find((r) => r.id === 'duty.workflow.e2e.yml');
+    const errsOf = (reg) => evaluateRunRecords(reg, new Map(), Date.now()).errors ?? [];
+
+    // ── the SCHEMA half: neither limb can be moved without the other ─────────
+    test('🔴 dropping the event filter with NO timer limb is REFUSED — this is the whole ratchet', () => {
+      const reg = registerCopy();
+      const row = reg.rows.find((r) => r?.mechanism?.recordQuery?.event);
+      assert.ok(row, 'no committed row still filters on an event, so this ratchet would be vacuous');
+      delete row.mechanism.recordQuery.event;
+      const errs = errsOf(reg);
+      assert.ok(errs.some((e) => /no `event` and no `timer` limb/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('🔴 naming workflow_dispatch as the event is REFUSED — a hand-press is not a cadence claim', () => {
+      const reg = registerCopy();
+      const row = e2eRow(reg);
+      row.mechanism.recordQuery.event = 'workflow_dispatch';
+      const errs = errsOf(reg);
+      assert.ok(errs.some((e) => /pressed a button; it is not a cadence claim/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('🔴 a timer limb narrowed by NEITHER job NOR target is REFUSED — any healthy job would vouch', () => {
+      const reg = registerCopy();
+      const q = e2eRow(reg).mechanism.recordQuery;
+      delete q.timer.job;
+      delete q.timer.target;
+      const errs = errsOf(reg);
+      assert.ok(errs.some((e) => /narrows by neither `job` nor `target`/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('a timer limb reading anything but the D1 heartbeat is refused — only a timer writes that table', () => {
+      const reg = registerCopy();
+      e2eRow(reg).mechanism.recordQuery.timer.reader = 'github-run-history';
+      const errs = errsOf(reg);
+      assert.ok(errs.some((e) => /timer\.reader` must be/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('a timer limb that loses its wrangler anchor is refused — it would go permanently unreadable', () => {
+      const reg = registerCopy();
+      delete e2eRow(reg).mechanism.recordQuery.timer.wrangler;
+      const errs = errsOf(reg);
+      assert.ok(errs.some((e) => /needs both `table` and `wrangler`/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('a timer limb on a row that reads no run history is refused — there is nothing to split', () => {
+      const reg = registerCopy();
+      const row = reg.rows.find((r) => r?.mechanism?.recordQuery?.reader === 'cloudflare-d1-heartbeat');
+      assert.ok(row, 'no committed row reads the heartbeat directly');
+      row.mechanism.recordQuery.timer = { reader: 'cloudflare-d1-heartbeat', table: 'cron_heartbeat', wrangler: 'x', job: 'j' };
+      const errs = errsOf(reg);
+      assert.ok(errs.some((e) => /has nothing to split/.test(e)), 'got: ' + errs.join(' | '));
+    });
+
+    test('the committed e2e row IS on the split, narrowed to the dispatcher and to its own workflow', () => {
+      const q = e2eRow(registerCopy()).mechanism.recordQuery;
+      assert.equal(q.event, undefined, 'the event filter must be gone, or the timer limb is decoration');
+      assert.equal(q.headBranch, 'main', 'the branch guarantee rode on the event filter and must now be explicit');
+      assert.equal(q.timer.reader, 'cloudflare-d1-heartbeat');
+      assert.equal(q.timer.job, 'github_dispatch');
+      assert.equal(q.timer.target, 'e2e.yml', 'a timer row for ANOTHER workflow would prove nothing about this one');
+    });
+
+    // ── the VERDICT half: pure, so every branch is reachable with no network ──
+    const ok = (ms, detail = 'd') => ({ lastSuccessMs: ms, detail });
+    const T0 = Date.parse('2026-09-04T00:00:00Z');
+
+    test('the duty is only as fresh as its STALER limb, and the answer says which', () => {
+      const staleTimer = combineLimbProbes(ok(T0), ok(T0 - 40 * 3_600_000));
+      assert.equal(staleTimer.lastSuccessMs, T0 - 40 * 3_600_000);
+      assert.match(staleTimer.detail, /STALER limb is the TIMER/);
+      const staleOutcome = combineLimbProbes(ok(T0 - 40 * 3_600_000), ok(T0));
+      assert.equal(staleOutcome.lastSuccessMs, T0 - 40 * 3_600_000);
+      assert.match(staleOutcome.detail, /STALER limb is the OUTCOME/);
+    });
+
+    test('🔴 A HEALTHY OUTCOME CANNOT CARRY A DEAD TIMER — the failure this split exists to catch', () => {
+      // Before Phase 2 this state was unrepresentable: one query answered both.
+      // A workflow going green on hand-presses while its cron is dead is exactly
+      // what "counting manual runs let a never-firing cron look healthy" means.
+      const r = combineLimbProbes(ok(T0), ok(T0 - 200 * 3_600_000));
+      assert.equal(r.lastSuccessMs, T0 - 200 * 3_600_000, 'the dead timer must win, not be averaged away');
+    });
+
+    test('an unreadable limb is UNREADABLE, names which one, and never reads as fresh', () => {
+      const t = combineLimbProbes(ok(T0), { unreadable: true, why: 'no CF token' });
+      assert.ok(t.unreadable);
+      assert.match(t.why, /timer limb/);
+      assert.match(t.why, /no CF token/);
+      const o = combineLimbProbes({ unreadable: true, why: 'no GH token' }, ok(T0));
+      assert.ok(o.unreadable);
+      assert.match(o.why, /outcome limb/);
+      assert.equal(t.lastSuccessMs, undefined, 'an unreadable answer must carry no timestamp at all');
+    });
+
+    test('a missing mechanism outranks a fresh sibling — a query that answered "it is gone" is not a pass', () => {
+      const r = combineLimbProbes(ok(T0), { missing: true, why: 'the table is gone' });
+      assert.ok(r.missing);
+      assert.match(r.why, /timer limb/);
+    });
+
+    test('unreadable outranks missing — "I could not tell" must never be reported as "it is gone"', () => {
+      const r = combineLimbProbes({ missing: true, why: 'gone' }, { unreadable: true, why: 'no token' });
+      assert.ok(r.unreadable, 'a dark reader beside a missing one must not be reported as a definite absence');
+    });
+
+    test('🔴 AN EMPTY TIMER RECORD PROPAGATES AS BOOTSTRAP, not as the outcome\'s healthy timestamp', () => {
+      // This is the case on the very first run after the row is repointed: the
+      // workflow has years of green runs and the dispatcher has written nothing
+      // yet. Reporting the OUTCOME's timestamp would hide the gap completely.
+      const r = combineLimbProbes(ok(T0), { lastSuccessMs: NaN, detail: 'no row.' });
+      assert.ok(Number.isNaN(r.lastSuccessMs));
+      assert.match(r.detail, /TIMER/);
+      assert.match(r.detail, /OUTCOME/, 'both limbs must be named, or a reader cannot tell which one is empty');
+    });
+
+    test('a limb that produced no result at all is unreadable, not a silent pass', () => {
+      assert.ok(combineLimbProbes(ok(T0), undefined).unreadable);
+      assert.ok(combineLimbProbes(undefined, ok(T0)).unreadable);
+    });
+
+    test('describeNarrowing names both halves, so a stale line says WHICH claim went stale', () => {
+      assert.equal(describeNarrowing({ job: 'github_dispatch', target: 'e2e.yml' }), 'job `github_dispatch` + target `e2e.yml`');
+      assert.equal(describeNarrowing({ job: 'j' }), 'job `j`');
     });
   });
 
