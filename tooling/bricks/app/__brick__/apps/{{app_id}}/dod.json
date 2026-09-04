@@ -34,14 +34,38 @@
   "app": "{{app_id}}",
   "status": "stamped",
   "items": {
-    "A": { "claim": "held", "note": "the chassis ships the screen set; assert-screen-set.mjs holds the 22-screen register with anchors" },
-    "B": { "claim": "pending", "note": "human — the four-states verdict per data screen, recorded in humanReview" },
-    "C": { "claim": "held", "note": "property ui-invariants-inherited pins the five Material window classes at 600/840/1200/1600 on the pure resolver AND pumps AppScaffold across the 600 boundary (rail at 768, bar at 375); responsive_width_test.dart measures the three ContentPane-capped screens at 375/768/1280(/1920)" },
-    "D": { "claim": "held", "note": "properties theme-triplet-supplied + theme-mode-persisted, both limbs anchored (write AND read-back)" },
-    "E": { "claim": "held", "note": "assert-no-hardcoded-strings.mjs; the chassis ships a second locale so the seam is really exercised" },
-    "F": { "claim": "held", "note": "the mechanical WCAG limbs — text-scale clamp, 48px targets, non-empty icon labels" },
-    "G": { "claim": "held", "note": "the stamp generates this app's OWN icons; assert-stamp-brand-assets.mjs compares against the live SDK's stock assets" },
-    "H": { "claim": "held", "note": "the app_brick lane resolves, analyzes and tests this app on every push; the feature rows below carry the effect anchors" }
+    "A": {
+      "claim": "held",
+      "note": "the chassis ships the screen set; assert-screen-set.mjs holds the 22-screen register with anchors"
+    },
+    "B": {
+      "claim": "pending",
+      "note": "human — the four-states verdict per data screen, recorded in humanReview"
+    },
+    "C": {
+      "claim": "held",
+      "note": "property ui-invariants-inherited pins the five Material window classes at 600/840/1200/1600 on the pure resolver AND pumps AppScaffold across the 600 boundary (rail at 768, bar at 375); responsive_width_test.dart measures the three ContentPane-capped screens at 375/768/1280(/1920)"
+    },
+    "D": {
+      "claim": "held",
+      "note": "properties theme-triplet-supplied + theme-mode-persisted, both limbs anchored (write AND read-back)"
+    },
+    "E": {
+      "claim": "held",
+      "note": "assert-no-hardcoded-strings.mjs; the chassis ships a second locale so the seam is really exercised"
+    },
+    "F": {
+      "claim": "held",
+      "note": "the mechanical WCAG limbs — text-scale clamp, 48px targets, non-empty icon labels"
+    },
+    "G": {
+      "claim": "held",
+      "note": "the stamp generates this app's OWN icons; assert-stamp-brand-assets.mjs compares against the live SDK's stock assets"
+    },
+    "H": {
+      "claim": "held",
+      "note": "the app_brick lane resolves, analyzes and tests this app on every push; the feature rows below carry the effect anchors"
+    }
   },
   "features": [
     {
@@ -64,7 +88,7 @@
       "mutation": {
         "symbol": "lib/core/router.dart:refreshListenable",
         "observedRed": "signing out puts the user back on the form",
-        "date": "2026-08-11"
+        "date": "2026-09-04"
       }
     },
     {
