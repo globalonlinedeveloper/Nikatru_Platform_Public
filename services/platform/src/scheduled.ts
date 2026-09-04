@@ -318,6 +318,23 @@ export async function analyticsLiveness(env: Env): Promise<void> {
     // would let a user turning analytics OFF look like evidence that events
     // should be arriving.
     //
+    // 🔴 AND `purpose = 'analytics'` ONLY, ADDED 2026-09-04 AFTER A LIVE FALSE
+    // ALARM. This query filtered `granted = 1` portfolio-wide across EVERY
+    // purpose, which is the exact thing 0002_analytics.sql:75-80 forbids in
+    // writing: "Anything aggregating this column must branch on `purpose`;
+    // summing it portfolio-wide counts refusals and objections as the same
+    // event, which they are not." A granted `promo` row is a legitimate-interest
+    // artifact under GDPR Art 21 — it says nothing whatever about whether an
+    // ANALYTICS session should be emitting events.
+    //
+    // What it cost: ops-watch went RED at 2026-09-04T06:00 with
+    // `events=0, consents=2` and the sentence "reach is PROVEN and arrivals are
+    // ZERO". Reach was not proven. The E2E walk DECLINES analytics ("No thanks",
+    // app_test.dart's answerConsentIfPrompted) and TICKS the marketing box, so
+    // the two artifacts were `promo` grants and zero events was the correct
+    // behaviour, not a broken rail. A false alarm in the alarm chain is worse
+    // than no alarm: it is the thing that teaches people to skip the page.
+    //
     // ⚠️ NO PER-APP ROW IS WRITTEN FOR THIS. The portfolio row carries the
     // aggregate and the reader judges the aggregate; adding per-app consent rows
     // would change this job's row cardinality, and check-heartbeats.mjs picks
@@ -325,7 +342,7 @@ export async function analyticsLiveness(env: Env): Promise<void> {
     // one run shares a `ran_at`, so a new target class would change which row
     // that reduction lands on for reasons unrelated to health.
     const consentRes = await env.PLATFORM_DB.prepare(
-      'SELECT app_id, COUNT(*) AS n FROM consent_artifacts WHERE server_ts >= ? AND granted = 1 GROUP BY app_id',
+      "SELECT app_id, COUNT(*) AS n FROM consent_artifacts WHERE server_ts >= ? AND granted = 1 AND purpose = 'analytics' GROUP BY app_id",
     )
       .bind(since)
       .all<{ app_id: string; n: number }>();
