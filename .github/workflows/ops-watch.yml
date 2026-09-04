@@ -96,9 +96,33 @@ concurrency:
 
 jobs:
   heartbeats:
-    name: Every declared cron duty is fresh and reporting success
+    # ⚠️ RENAMED 2026-09-04, AND THE OLD NAME WAS A PROMISE THIS JOB DID NOT KEEP.
+    # It read "Every declared cron duty is fresh and reporting success" while
+    # running only the HEARTBEAT readers — the Cloudflare Worker crons that write
+    # platform_db.cron_heartbeat. The two duties that are GitHub SCHEDULES,
+    # duty.workflow.e2e.yml and duty.workflow.build-platforms.yml, were never
+    # examined here at all; they were enforced only in ci.yml's `platform` lane.
+    #
+    # 🔴 THE FAILURE THAT SHOWED IT: on 2026-09-04 this job reported GREEN at
+    # 00:17 while ci.yml reported duty.workflow.e2e.yml RED at 42.6h against its
+    # own 36h window. Both were correct, because they were not the same check —
+    # and the one whose NAME claimed to cover every cron duty was the one that
+    # did not. A green run here read as "every cron duty is fresh" to anybody who
+    # trusted the name.
+    #
+    # Fixed in both directions: the register reader is now a step below, so the
+    # schedule-backed duties ARE examined here, and the name says what runs.
+    name: Every declared duty is fresh — the heartbeat rail AND the register
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # assert-ops-register reads GitHub run history for the workflow duties and
+    # the Renovate dashboard issue for duty.renovate's record. Without these two
+    # it does not fail — it reports `unreadable`, which is worse, because the
+    # ceiling absorbs a few and the job stays green while checking less.
+    permissions:
+      contents: read
+      actions: read
+      issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -107,6 +131,33 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+
+      # ── THE REGISTER ITSELF, ADDED 2026-09-04 ──────────────────────────────
+      #
+      # 🔴 WHY IT BELONGS HERE AND NOT ONLY IN ci.yml. The register is the one
+      # document that enumerates EVERY duty, and two of them are GitHub
+      # schedules — duty.workflow.e2e.yml and duty.workflow.build-platforms.yml.
+      # Until today those were checked only on a PUSH, by ci.yml's `platform`
+      # lane. A schedule that stops firing produces no push, so the surface most
+      # likely to notice was the one surface not looking, and the watcher built
+      # for exactly that question ran three heartbeat readers and called it
+      # "every declared cron duty".
+      #
+      # ⚠️ `if: ${{ !cancelled() }}` for the same reason every sibling step
+      # carries it: a failing heartbeat read must not silence the check that
+      # would have told you something else. Its own exit code still fails the job.
+      #
+      # ⚠️ EXPECT THIS TO GO RED BEFORE ci.yml DOES, and that is the point. It
+      # runs on a clock; ci.yml runs on a push. When a schedule dies, this is now
+      # the one that says so first.
+      - name: The whole ops register — every duty, not just the heartbeat-backed ones
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tooling/ci/assert-ops-register.mjs
 
       - name: Read the heartbeat table from OUTSIDE Cloudflare
         env:
