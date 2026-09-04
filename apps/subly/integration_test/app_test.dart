@@ -795,6 +795,37 @@ void main() {
 /// The keystrokes are still covered by the empty-field and wrong-password legs
 /// above; what is not covered post-cutover is a SUCCESSFUL form submit, which no
 /// headless driver can do against a live captcha.
+///
+/// 🔴 AND IT NAVIGATES TO `/scan` ITSELF — THE NAVIGATION IS PART OF SIGNING IN
+/// ON THIS PATH, NOT SOMETHING THE CALLER REMEMBERS TO ADD. `/scan` has exactly
+/// one entry point in the app: `LoginScreen._submit`'s `context.go('/scan')`.
+/// Every other occurrence in the tree is a comment ABOUT it. So a sign-in that
+/// skips the form skips the navigation too, and the caller lands on the home
+/// shell instead.
+///
+/// ⚠️ WHY IT LIVES HERE RATHER THAN AT THE CALL SITE, AND THE COST OF LEARNING
+/// THAT THE OTHER WAY. It was written at the call site first, in the full-walk
+/// test only. The full walk went green — 17 screenshots, /scan reached — and
+/// run 33844142953 still failed, because the DELETE-ACCOUNT test signs in the
+/// same way with its own token and never got the two lines. Its screen text was
+/// `Home | Calendar | Insights | Budget | More | Good morning` — the home shell,
+/// exactly the symptom the full walk had just stopped showing. Two call sites,
+/// one of them patched, and the diff looked complete. A helper that leaves out
+/// the step its own doc comment says is mandatory is a trap for the next caller
+/// as well as this one.
+///
+/// ⚠️ A `Scaffold` IS THE CONTEXT, NOT `AppShell`. By this point the router has
+/// already put an authenticated user with no clickwrap record on the
+/// `/reaccept-terms` interstitial, where no `AppShell` exists.
+///
+/// 🔴 BEFORE THE CLICKWRAP, NOT AFTER — the gate does not BLOCK the destination,
+/// it BANKS it. `_gateWithNext` stores `/scan` as `?next=` and the gate's exit
+/// hands it back via `_nextOr(state, '/home')`. Navigate after the interstitial
+/// is cleared and there is no gate left to bank anything, which is what run
+/// 33843443550 measured. Pinned locally, on the real router, by
+/// `test/scan_survives_the_gate_test.dart` — both halves: that asking for
+/// `/scan` while the gate is CLOSED banks `?next=%2Fscan`, and that clearing it
+/// the way a user clears it lands on `/scan`.
 Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
   if (tokenHash.isEmpty) return false;
   await sb.Supabase.instance.client.auth.verifyOTP(
@@ -803,6 +834,9 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
   );
   // The same settle the form path takes: GoTrue round trip + route change.
   await pumpFor(tester, const Duration(seconds: 10));
+  // Stand in for `LoginScreen._submit`'s `context.go('/scan')`. See above.
+  GoRouter.of(tester.firstElement(find.byType(Scaffold))).go('/scan');
+  await pumpFor(tester, const Duration(seconds: 2));
   return true;
 }
 
@@ -981,32 +1015,13 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     await shot('02-login');
     // Token first; the form is the fallback for a run with no token supplied
     // (a hosted target, or a hand-run drive).
-    final bool signedInWithToken = await signInWithMagicToken(tester, tokenHash);
-    if (signedInWithToken) {
-      // 🔴 STAND IN FOR `LoginScreen._submit`'s `context.go('/scan')`, AND DO IT
-      // HERE — BEFORE the clickwrap, not after.
-      //
-      // /scan has exactly one entry point in this app: that call. Every other
-      // occurrence in the tree is a comment ABOUT it. Signing in outside the
-      // form means nobody makes it, so the walk never reaches step 03.
-      //
-      // ⚠️ THE ORDER IS THE WHOLE THING, and getting it wrong looks identical.
-      // router.dart:385 records this as a past regression with THIS symptom:
-      // "A user signing in runs context.go('/scan'), the gate intercepts, and
-      // this line then handed them '/home' … ScanScreen is the ONLY renderer of
-      // l10n.goToDashboard, so find.text('Go to dashboard') found nothing."
-      // The gate does not block the destination, it BANKS it — `_gateWithNext`
-      // stores /scan as `?next=`, and after the interstitial
-      // `_nextOr(state, '/home')` hands it back. Navigate AFTER the clickwrap is
-      // cleared and there is no gate left to bank anything, which is exactly
-      // what run 33843443550 measured: home shell on screen, scan never reached.
-      //
-      // A Scaffold is the context, not AppShell: at this moment the router has
-      // already put an authenticated user on the /reaccept-terms interstitial,
-      // where no AppShell exists.
-      GoRouter.of(tester.firstElement(find.byType(Scaffold))).go('/scan');
-      await pumpFor(tester, const Duration(seconds: 2));
-    } else {
+    //
+    // 🔴 NO `/scan` NAVIGATION HERE ANY MORE, AND ITS ABSENCE IS THE FIX. It
+    // stood in this block until 2026-09-04, which made the walk green and left
+    // the delete-account test — the only other caller — on the home shell. The
+    // navigation is now inside `signInWithMagicToken`, where no caller can be
+    // written without it. The form branch below needs none: `_submit` navigates.
+    if (!await signInWithMagicToken(tester, tokenHash)) {
       await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
       await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
       await pumpFor(tester, const Duration(milliseconds: 500));
