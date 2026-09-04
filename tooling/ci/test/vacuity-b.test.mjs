@@ -58,6 +58,40 @@
 //     brick → 1 tracked .dart   → exit 1, floor 10
 //     rm apps/subly/integration_test → exit 0. THE CONTROL.
 //
+// ── RE-MEASURED 2026-09-05 (ADR 065 chassis step 3) ─────────────────────────
+// 🔴 TWO THINGS WERE WRONG WITH THE ROW ABOVE, AND ONLY ONE OF THEM WAS A GUARD
+// DEFECT. First, the numbers had ROTTED: run on main 4ab17a24 the guard printed
+// 174 tracked [apps=148, brick=26], not 140 [apps=114, brick=26]. The ledger was
+// three weeks stale, and a ledger nobody re-runs is the same failure mode as a
+// floor nobody re-measures. Every figure below was re-run rather than copied.
+//
+// Second, and worse: a THIRD root had appeared underneath the guard. Chassis
+// step 2 moved the generic chassis into `packages/`, which the guard did not
+// read at all — `git ls-files -- packages` returned 181 tracked .dart and the
+// guard's own passing line said "174 tracked Dart file(s)" without mentioning
+// that the shared, shipped half of the product was not in the number. That is
+// the same defect this file is named after, in a new tree: `apps/` and the brick
+// were the constants keeping the total healthy while `packages/` contributed
+// zero, and no floor could tell.
+//
+//   assert-no-gate-weakening     baseline 354 tracked [apps=148 in 1 root,
+//                                packages=180 in 9 roots, brick=26], exit 0
+//     rm -rf apps (unstaged)    → exit 1, "NOT ONE real app under apps/"
+//     rm -rf apps (committed)   → exit 1, same reason, index or no index
+//     apps → 1 tracked .dart    → exit 1, floor 40
+//     rm -rf packages (unstaged) → BEFORE (main 4ab17a24): exit 0, and the note
+//                                 it printed did not mention packages/ at all
+//                                 because packages/ was never in the domain.
+//                                 AFTER: exit 1, "NOT ONE package under
+//                                 packages/".
+//     packages → 1 tracked .dart → exit 1, floor 60
+//     brick → 1 tracked .dart   → exit 1, floor 10
+//     rm apps/subly/integration_test → exit 0. THE APPS CONTROL.
+//     rm -rf packages/design_system  → exit 0, packages=140/floor 60.
+//                                 THE PACKAGES CONTROL: retiring a whole package
+//                                 is an honest shrink, and a floor that fired on
+//                                 it would be switched off within a week.
+//
 //   assert-no-clone-tells        baseline 132 shared [packages=103,
 //                                tooling/bricks=29], exit 0
 //     rm -rf packages           → BEFORE: exit 0, "ok no clone tells — 29 shared
@@ -108,6 +142,26 @@
 // reporting one verdict; the format assertion was moved to the passing-line case
 // where it belongs. Recorded because the fix came from running the negative test,
 // which is the entire argument for running it.
+//
+// ── AND THE NEGATIVE TEST OF THE 2026-09-05 CASES, run before they were kept ─
+// The three new `assert-no-gate-weakening` cases need the same proof as the ones
+// above, and they get a sharper version of it: the "broken" guard is not a
+// commit from three weeks ago, it is MAIN — 4ab17a24, the version these cases
+// were written against.
+//
+//   cp tooling/ci/assert-no-gate-weakening.mjs /tmp/new.mjs
+//   git checkout -- tooling/ci/assert-no-gate-weakening.mjs
+//   node --test tooling/ci/test/vacuity-b.test.mjs        # must go RED
+//   cp /tmp/new.mjs tooling/ci/assert-no-gate-weakening.mjs
+//
+// MEASURED: 22 cases, 19 green and 3 RED, and WHICH three is the result that
+// matters — the passing-line split, "packages/ deleted while apps/ and the brick
+// stand", and "packages/ thinned to one file". BOTH controls stayed GREEN, the
+// new one included: `rm -rf packages/design_system` is green under main and green
+// under the change, so the packages floor is proven not to fire on an honest
+// shrink rather than merely asserted to. The other two guards' 12 cases were
+// untouched by the revert, which is the check that the revert hit only what it
+// was supposed to.
 //
 // Run:  node --test "tooling/ci/test/vacuity-b.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
@@ -329,10 +383,15 @@ describe('assert-no-tls-pinning refuses a subject that emptied under it', () => 
 describe('assert-no-gate-weakening refuses a subject that emptied under it', () => {
   const G = 'assert-no-gate-weakening.mjs';
 
-  test('the passing line splits the real apps from the brick', () => {
+  test('the passing line splits the real apps, the packages and the brick', () => {
     const { code, out } = run(G);
     assert.equal(code, 0, out);
     assert.match(out, /apps=\d+\/floor \d+ in \d+ real root\(s\)/, out);
+    // Added 2026-09-05. Without this term the line read "174 tracked Dart
+    // file(s) [apps=…; brick=…]" while 181 tracked .dart under packages/ were
+    // outside the scan entirely — the sentence was true and the reader was not
+    // told which trees it was true OF.
+    assert.match(out, /packages=\d+\/floor \d+ in \d+ package root\(s\)/, out);
     assert.match(out, /brick=\d+\/floor \d+/, out);
   });
 
@@ -364,8 +423,40 @@ describe('assert-no-gate-weakening refuses a subject that emptied under it', () 
     ]);
   });
 
+  // ── packages/, the third root, added 2026-09-05 (ADR 065 chassis step 3) ──
+  //
+  // 🔴 THE DEFECT THIS FILE IS NAMED AFTER, IN A NEW TREE. Chassis step 2 moved
+  // the generic chassis into `packages/` and this guard's domain stayed `apps`
+  // plus the brick, so `packages/` contributed ZERO to every count it printed —
+  // which is worse than a union floor, because there was no term to be satisfied
+  // in the first place. `apps=148` and `brick=26` were the constants standing in
+  // for a tree the guard had never opened.
+  //
+  // These two mutations LEAVE apps/ AND THE BRICK STANDING, for the same reason
+  // every case above leaves the brick standing: a mutation that empties every
+  // tree at once is caught by a check that has nothing to do with this one.
+  test('THE DEFECT: packages/ deleted while apps/ and the brick stand', () => {
+    provesRefusal(G, () => rm('packages'), [/NOT ONE package under packages\//]);
+  });
+
+  test('packages/ thinned to one file — the roots still exist, so only the floor sees it', () => {
+    provesRefusal(G, () => thinDart('packages', 1), [
+      /only \d+ tracked Dart file\(s\) were scanned across packages\/ \(floor \d+\)/,
+    ]);
+  });
+
   test('THE CONTROL: dropping apps/subly/integration_test clears the floor and stays green', () => {
     staysGreen(G, () => rm('apps/subly/integration_test'));
+  });
+
+  // The other half for the new floor. Retiring a whole package is a real,
+  // legitimate shrink — design_system is 40 of the 180 tracked Dart files under
+  // packages/ — and a floor that fired on it is a floor somebody deletes. Asserts
+  // the exit code and NOTHING about the wording: folding a format assertion into
+  // a control makes it go red for a reason that has nothing to do with crying
+  // wolf, which is exactly what happened to the tls control in the 2026-08-17 run.
+  test('THE PACKAGES CONTROL: dropping packages/design_system clears the floor and stays green', () => {
+    staysGreen(G, () => rm('packages/design_system'));
   });
 });
 

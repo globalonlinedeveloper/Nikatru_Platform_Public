@@ -2,9 +2,32 @@
 // no-gate-weakening.test.mjs — assert-no-gate-weakening.mjs must be able to FAIL.
 //
 // [pipeline N-4] C-12 makes the inherited rule set REACH every app; this guard
-// makes sure no app hollows it out locally. Both can be true of the tree while
-// one app is exempt in practice — a fail-shape no other guard reports, because
-// they all check that the checks exist rather than that an app opted out.
+// makes sure no SHIPPED DART TREE — apps/*, packages/* or the brick — hollows it
+// out locally. Both can be true of the tree while one app, or one package every
+// app links, is exempt in practice — a fail-shape no other guard reports, because
+// they all check that the checks exist rather than that a tree opted out.
+//
+// ── 2026-09-05, ADR 065 chassis step 3: packages/ JOINED THE DOMAIN ──────────
+// Chassis step 2 moved the generic chassis into `packages/`, whose Dart compiles
+// into every installed app — and this guard's domain was `apps` plus the brick,
+// so `git ls-files -- packages` returned 181 tracked .dart files that no clause
+// here had ever read. Five real `// ignore:` suppressions and two `@TestOn(`
+// annotations were already sitting in them, allowlisted by nothing.
+//
+// THE NEGATIVE TEST OF THE NEW CASES, run before they were kept: revert the
+// guard to its main version (4ab17a24), leave this file as it is, and run.
+//
+//   cp tooling/ci/assert-no-gate-weakening.mjs /tmp/new.mjs
+//   git checkout -- tooling/ci/assert-no-gate-weakening.mjs
+//   node --test tooling/ci/test/no-gate-weakening.test.mjs   # must go RED
+//   cp /tmp/new.mjs tooling/ci/assert-no-gate-weakening.mjs  # restore
+//
+// MEASURED: 26 cases, 22 green and 4 RED, and WHICH four is the result that
+// matters — "DOES range over packages/", "every clause reaches packages/",
+// "COVERAGE LOST when no package root is reached", and the passing-line split.
+// The bounding control — "still does not range over services/, nor over a package
+// tool/ tree" — stayed GREEN under BOTH versions, so this suite is not merely
+// allergic to old code, and its no-crying-wolf half holds either way.
 //
 // 🔴 THE REAL TREE WAS MUTATED FIRST. Eleven mutations against a short-path clone
 // of this repository (with a genuine mason-stamped `apps/probe` in it), all
@@ -73,6 +96,16 @@ const CLEAN_DART = "import 'package:flutter/material.dart';\n\nclass HomeScreen 
 const CLEAN_TEST = "void main() {\n  testWidgets('renders', (t) async {\n    expect(1, 1);\n  });\n}\n";
 const CLEAN_OPTIONS = 'include: package:nikatru_lints/analysis_options.yaml\n';
 
+/**
+ * THREE ROOT KINDS, because the guard now anchors on all three: the brick, at
+ * least one real app, and at least one package. A fixture missing any of them is
+ * COVERAGE LOST before a single clause runs — which is the point of the anchors,
+ * and is itself asserted below.
+ *
+ * `packages/core` joined this base on 2026-09-05 (ADR 065 chassis step 3). Before
+ * that the guard's domain was `apps` plus the brick, and `git ls-files --
+ * packages` returned 181 tracked .dart files that no clause here ever read.
+ */
 const base = (over = {}, opts = {}) => fixture({
   [`${BRICK}/lib/main.dart`]: CLEAN_DART,
   [`${BRICK}/lib/app.dart`]: CLEAN_DART,
@@ -80,6 +113,8 @@ const base = (over = {}, opts = {}) => fixture({
   [`${BRICK}/analysis_options.yaml`]: CLEAN_OPTIONS,
   'apps/subly/lib/main.dart': CLEAN_DART,
   'apps/subly/analysis_options.yaml': CLEAN_OPTIONS,
+  'packages/core/lib/nikatru_core.dart': CLEAN_DART,
+  'packages/core/analysis_options.yaml': CLEAN_OPTIONS,
   ...over,
 }, opts);
 
@@ -228,12 +263,72 @@ describe('assert-no-gate-weakening', () => {
     }
   });
 
-  // Nothing outside an app's own trees is this guard's business — the shared
-  // packages are C-12's subject, and claiming them here would be scope creep
-  // that shows up as somebody else's red build.
-  test('does not range over packages/ or services/', () => {
-    const { code } = run(base({ 'packages/core/lib/x.dart': `// ignore: avoid_print\n${CLEAN_DART}` }));
-    assert.equal(code, 0);
+  // ── packages/, which this guard walked past for its first five weeks ──────
+  //
+  // 🔴 THIS TEST USED TO ASSERT THE OPPOSITE. It read "does not range over
+  // packages/ or services/" and justified it with "the shared packages are
+  // C-12's subject". That was wrong on the facts: C-12
+  // (`assert-lint-inheritance.mjs`) checks the include REACHES each package; it
+  // has no opinion about a package hollowing the rules out underneath one. A
+  // grep of `tooling/ci/*.mjs` for `ignore_for_file` on 2026-09-05 returned
+  // `assert-no-gate-weakening.mjs` and nothing else, so the fail-shape under
+  // `packages/` was owned by NOBODY while a green test asserted it was somebody
+  // else's. Measured on main 4ab17a24: five real suppressions and two `@TestOn(`
+  // annotations were already sitting there unallowlisted.
+  test('DOES range over packages/ — the chassis ships in every installed app', () => {
+    const { code, out } = run(base({ 'packages/core/lib/x.dart': `// ignore: avoid_print\n${CLEAN_DART}` }));
+    assert.equal(code, 1, 'a suppression in a shared package exempts more shipped code than one in any app');
+    assert.match(out, /packages\/core\/lib\/x\.dart:1 suppresses `avoid_print`/, out);
+    // The message has to say WHY a package is worse, or the reader learns nothing.
+    assert.match(out, /SHARED package/, out);
+  });
+
+  test('every clause reaches packages/, not only the suppression one', () => {
+    const cases = [
+      ['packages/core/analysis_options.yaml', `${CLEAN_OPTIONS}analyzer:\n  errors:\n    avoid_print: ignore\n`, /downgrades `avoid_print` to `ignore`/],
+      ['packages/core/analysis_options.yaml', `${CLEAN_OPTIONS}analyzer:\n  exclude:\n    - lib/generated/**\n`, /An excluded path is not analyzed at all/],
+      ['packages/core/test/x_test.dart', "void main() {\n  test('x', () {}, skip: true);\n}\n", /carries `skip:`/],
+      ['packages/core/test/y_test.dart', `@TestOn('vm')\n${CLEAN_TEST}`, /carries `@TestOn\(`/],
+      ['packages/core/dart_test.yaml', 'tags:\n  browser:\n    skip: true\n', /can narrow which tests run/],
+    ];
+    for (const [rel, body, expected] of cases) {
+      const { code, out } = run(base({ [rel]: body }));
+      assert.equal(code, 1, `${rel}\n${out}`);
+      assert.match(out, expected, out);
+    }
+  });
+
+  // …and the scope is still BOUNDED. A guard that grew until it owned every
+  // file in the repo would be red on somebody else's branch every week, and the
+  // widening above is justified by "this Dart SHIPS" — which these two are not.
+  test('still does not range over services/, nor over a package tool/ tree', () => {
+    for (const rel of ['services/api/lib/x.dart', 'packages/core/tool/gen_keys.dart']) {
+      const { code, out } = run(base({ [rel]: `// ignore: avoid_print\n${CLEAN_DART}` }));
+      assert.equal(code, 0, `${rel} is not shipped Dart and must not fail this guard:\n${out}`);
+    }
+  });
+
+  test('COVERAGE LOST when no package root is reached — the brick and the apps cannot vouch for it', () => {
+    const { code, out } = run(fixture({
+      [`${BRICK}/lib/main.dart`]: CLEAN_DART,
+      [`${BRICK}/analysis_options.yaml`]: CLEAN_OPTIONS,
+      'apps/subly/lib/main.dart': CLEAN_DART,
+      'apps/subly/analysis_options.yaml': CLEAN_OPTIONS,
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/, out);
+    assert.match(out, /NOT ONE package under packages\//, out);
+  });
+
+  test('the passing line reports packages/ as its OWN term, not folded into a union', () => {
+    const { code, out } = run(base());
+    assert.equal(code, 0, out);
+    // The old line said "174 tracked Dart file(s) [apps=…; brick=…]" while 181
+    // tracked .dart under packages/ were not in the scan at all, and nothing in
+    // the sentence said so. A per-kind split cannot say that.
+    assert.match(out, /apps=\d+ in \d+ real root\(s\)/, out);
+    assert.match(out, /packages=\d+ in \d+ package root\(s\)/, out);
+    assert.match(out, /brick=\d+/, out);
   });
 
   // ── the allowlist's own two directions ────────────────────────────────────
@@ -253,7 +348,10 @@ describe('assert-no-gate-weakening', () => {
   test('…and does NOT fire while the suppression it excuses is still there', () => {
     const { code, out } = run(base({ [ALLOWLISTED]: `${CLEAN_DART}\n// ignore: avoid_print\nvoid log(String s) { print(s); }\n` }));
     assert.equal(code, 0, out);
-    assert.match(out, /1\/1 allowlist entr\(ies\) still describe something real/);
+    // Count-agnostic on purpose: the denominator moves whenever a real
+    // suppression is recorded or closed, and a test that pins it turns every
+    // honest allowlist edit into an unrelated red.
+    assert.match(out, /1\/\d+ allowlist entr\(ies\) still describe something real/, out);
   });
 
   test('a tree the allowlist is not about PRINTS that the stale check was skipped', () => {
