@@ -55,6 +55,64 @@
 // and that is exactly what "every suite" means in this file. A suite written
 // somewhere else is outside this guard, and the DOES NOT CLAIM list says so.
 //
+// ── 2026-09-05 · THE SHARED CHASSIS JOINED THE DOMAIN [ADR 065 step 3] ──────
+// Chassis step 2 moved the generic widgets — the modals included — out of the
+// app and into `packages/design_system`. `DestructiveConfirmDialog` and
+// `DestructiveOutcomeNotice` are modals; they live at
+// `packages/design_system/lib/src/widgets/` and their suites at
+// `packages/design_system/test/`. Until today this guard could not see one line
+// of it. The roots were the brick plus the `apps/*` workspace members, so a
+// whole tree of WIDGET suites sat outside a rule whose own header, six
+// paragraphs up, claims a reach of "every suite it can reach, including the ones
+// written next year". A guard whose subject MOVES and whose root list does not
+// is the scoped correction of #236 again, wearing a guard's name.
+//
+// 📏 MEASURED 2026-09-05 BEFORE ANY OF THIS WAS WRITTEN, and one figure in the
+// brief that asked for it was wrong:
+//   · 17 .dart suites under `packages/design_system/test/`, not 18. Counted
+//     twice, by `ls` and by `find -name '*.dart'`. The count that is true is
+//     the one the passing line below prints, never the one in a plan.
+//   · 63 `find.byType(` sites across `packages/**/test/`, and ALL 63 of them
+//     are in design_system: api_client, auth_supabase, core, notifications,
+//     platform_storage, purchases and telemetry each scored ZERO.
+//   · NOT ONE of the 63 is a detector or a dismissal — every one is an
+//     `expect`, a `tester.getSize`/`getTopLeft`, a `tester.widget<T>` or a
+//     `tester.element`. So this change buys REACH, not a bug fix; the reach is
+//     what stops the 64th site being written blind.
+//   · The domain goes from 349 sites / 79 files / 2 roots to 412 / 118 / 8.
+//
+// 🔬 AND THE ROOT LIST WAS ALREADY LEAKING BEFORE `packages/` EXISTED. Same
+// scratch copy, same day: delete the single line `  - apps/subly` from the root
+// `pubspec.yaml` and nothing else, and this guard printed
+//     ok   modal detection — 80 `find.byType(` site(s) in 7 suite file(s) …
+// and exited 0. 269 sites and 72 files — 77% of the corpus — left the scan in
+// silence, past the emptyRoots limb, because a root that is never DERIVED is
+// never empty. That is the BRICK_MANIFEST failure with the app's name on it, and
+// REQUIRED_COVERAGE below is what closes it: the roots stay DERIVED, so a new
+// app or package is scanned on the day it joins the workspace, and the ones this
+// tree has today are also DECLARED, so one leaving is COVERAGE LOST.
+//
+// 🔬 THE MUTATION TABLE. Every row was RUN against a scratch copy carrying the
+// same suites as the checkout — reading a guard under-reports what it covers,
+// and each of these read as covered before it was executed.
+//     mutation (2026-09-05)                                  before → after
+//     nothing (the unmutated tree)                                0 → 0
+//     the 2026-08-26 stale detector planted in
+//       packages/design_system/test/destructive_confirm_dialog_test.dart
+//                                                                 0 → 1
+//     packages/design_system/test/ emptied, directory kept        0 → 1
+//     packages/design_system deleted outright                     0 → 1
+//     `  - packages/design_system` cut from the workspace list    0 → 1
+//     `flutter_test:` cut from design_system's pubspec            0 → 1
+//     9 of design_system's 17 suites deleted (8 left, floor 10)   0 → 1
+//     `  - apps/subly` cut from the workspace list                0 → 1
+//     the brick's app directory renamed away                      1 → 1
+//     the whole tree, unmutated, read as a PARTIAL checkout       0 → 0
+// The last row is the one that keeps the harness alive: a scratch tree that is
+// not a checkout of this repository still gets every structural limb, and the
+// numeric floors are skipped and SAID to be skipped rather than silently
+// dropped. Which branch was taken is printed on every single run.
+//
 // ── WHAT IS ACTUALLY FORBIDDEN, AND WHY IT IS NOT `find.byType` ─────────────
 // 🔴 `find.byType(Dialog)` IS NOT WRONG. A naive guard that says so would redden
 // honest code and get switched off inside a week — and it would redden, first of
@@ -158,6 +216,16 @@
 //     classify) cannot see a signature it never reads, and a suite calling that
 //     helper is classified `inspection` and passes. Measured, not assumed —
 //     that is the shape limb A was blind to in ALL files before 2026-08-26.
+//   · A `packages/` member is a root only if its OWN pubspec declares a
+//     `flutter_test` dev-dependency. `find.byType` is a flutter_test symbol, so
+//     a package without it structurally cannot carry this defect — and the day
+//     one adds the dependency it becomes a root, with no list here to edit.
+//     What that boundary excludes TODAY, measured: `packages/analysis`, which
+//     is a lints-only package with no dev_dependencies and no suite directory
+//     at all (deriving it would make it a permanently empty root and this guard
+//     permanently red), and `packages/core` + `packages/api_client`, which test
+//     with the pure-Dart `test:` package and therefore have no `find` at all.
+//     `packages/tokens` is not a workspace member and is not read.
 //   · The poller union is a union of NAMES, not an import graph. A file calling
 //     something that merely SHARES a poll helper's name is judged as though it
 //     called the poller. The type must still be a gate for that to matter.
@@ -227,6 +295,71 @@ const BRICK_MANIFEST = 'tooling/bricks/app/brick.yaml';
  *  guard's name on it. `test/first_run_destination_test.dart` — the widget test
  *  that reproduces the outage without a device — lives in the other one. */
 const SUITE_DIRS = ['test', 'integration_test'];
+
+/** What makes a `packages/` workspace member a root of this scan: its own
+ *  pubspec declaring the dependency that `find.byType` COMES FROM. It is the
+ *  same move as BRICK_MANIFEST — the tree's own declaration rather than an
+ *  opportunistic `existsSync` on a `test/` directory, which would let a package
+ *  whose suites were deleted leave without a word. See the DOES NOT CLAIM list
+ *  for what this excludes today and why each exclusion is structural. */
+const SUITE_RUNNER_RE = /^\s+flutter_test:\s*$/m;
+
+/**
+ * 🔴 THE ROOTS ARE DERIVED, AND THE ONES THIS TREE HAS TODAY ARE ALSO DECLARED.
+ * Neither half is sufficient and the file has a measurement for each.
+ *
+ * Derivation alone loses a root the moment it stops being derived: cutting
+ * `  - apps/subly` from the root pubspec took the scan from 349 sites / 79 files
+ * to 80 / 7 with an "ok" on the end (2026-09-05, header). A root that is never
+ * derived is never empty, so no emptyRoots limb can see it go.
+ *
+ * A hand list alone freezes the domain: an app or a package that joins the
+ * workspace next year would be outside a guard whose header promises to reach
+ * "the ones written next year", which is the hand-ratcheted-floor shape
+ * assert-guard-coverage.mjs deleted.
+ *
+ * So: roots are derived from the workspace, and every entry below must appear
+ * among them AND clear its own floor. A root that is derived but not declared
+ * here is scanned and still gets the ≥1 emptyRoots limb — new members are
+ * covered on arrival, they simply do not yet have a measured floor.
+ *
+ * 🔴 ONE FLOOR PER ROOT, NEVER A UNION FLOOR. assert-no-tls-pinning.mjs records
+ * a union floor that stayed satisfied by the brick alone while apps/ and
+ * packages/ went to zero, and assert-workspace-coverage.mjs:130-136 records the
+ * same shape over an emptied apps/. Each floor below is roughly half of what the
+ * root carries today — headroom for ordinary churn, and nowhere near enough to
+ * survive a tree going missing.
+ */
+const REQUIRED_COVERAGE = [
+  { dir: BRICK, floor: 4, label: 'the template every stamped app inherits (7 suite file(s) today)' },
+  { dir: 'apps/subly', floor: 40, label: 'the app all three recorded outages happened in (72 suite file(s) today)' },
+  {
+    dir: 'packages/design_system',
+    floor: 10,
+    label:
+      'the shared chassis [ADR 065 step 2] — where DestructiveConfirmDialog and DestructiveOutcomeNotice ' +
+      'now live, and the only package carrying a `find.byType(` at all (17 suite file(s), 63 site(s) today)',
+  },
+  { dir: 'packages/auth_supabase', floor: 3, label: 'the sign-in widgets (5 suite file(s) today)' },
+  { dir: 'packages/purchases', floor: 3, label: 'the paywall surfaces (6 suite file(s) today)' },
+  { dir: 'packages/notifications', floor: 2, label: 'the permission prompts (3 suite file(s) today)' },
+  { dir: 'packages/platform_storage', floor: 2, label: 'the storage adapters (4 suite file(s) today)' },
+  { dir: 'packages/telemetry', floor: 2, label: 'the consent-adjacent telemetry (4 suite file(s) today)' },
+];
+
+/**
+ * The floors above are measurements of THIS repository and mean nothing over a
+ * synthetic root: this guard's own unit tests legitimately build partial trees
+ * with one or two roots in them, and must go on being able to. So the declared
+ * table is applied only when ROOT is a full checkout, detected by this guard's
+ * OWN file being present under it — a sentinel that sits outside every subject
+ * tree (`apps/`, `packages/`, `tooling/bricks/`) and therefore survives any
+ * mutation OF a subject, which a sentinel inside one of them would not.
+ *
+ * ⚠️ Which branch was taken is PRINTED on every run. A floor that is skipped in
+ * silence is indistinguishable from a floor that passed.
+ */
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-modal-detection.mjs'));
 
 const problems = [];
 const notes = [];
@@ -367,8 +500,29 @@ const MODAL_CHASSIS = new Set([
  * MEASURED 2026-08-26 against the whole suite corpus: it flags nothing that
  * MODAL_CHASSIS did not already flag, so it is coverage bought at zero cost
  * today, purchased for the day an app-owned gate comes back.
+ *
+ * 🔬 `Dialog` AND `Sheet` WERE ADDED 2026-09-05, AND THE DAY BEFORE THEY WOULD
+ * HAVE BOUGHT NOTHING. MODAL_CHASSIS holds the EXACT token `Dialog`, so
+ * `DestructiveConfirmDialog` — a real modal, in the shared chassis this guard
+ * had just been widened to read — was not a gate type to it. A future
+ * `if (find.byType(DestructiveConfirmDialog).evaluate().isNotEmpty)` in
+ * packages/design_system/test would have classified as `state`, the verdict that
+ * means "asked which screen I am on", and exited 0. Bringing the chassis suites
+ * into the domain while the chassis's own modal names read as non-gates is a
+ * widening in name only. That is the same class of miss as 2026-08-08, when the
+ * prompt stopped being a `Dialog` and the detector stopped matching.
+ *
+ * 📏 AND THE COST WAS MEASURED, NOT ARGUED. The whole corpus, 412 sites over 8
+ * roots, classified with and without those two words on 2026-09-05:
+ *     200 assertion, 197 inspection, 1 screen-state, 14 bare, 0 detector,
+ *     0 dismissal — IDENTICAL, byte for byte, both ways.
+ * Not one honest site changes verdict, including the seventeen `BottomSheet`
+ * geometry reads in width_cancel_sheet_test.dart and the six
+ * `find.byType(DestructiveConfirmDialog)` assertions and `tester.element`
+ * inspections that motivated the change: an `expect` is not a branch and a
+ * `getSize` is not a tap, in both directions.
  */
-const GATE_SHAPED = /(?:Consent|Gate|Prompt|Interstitial|Paywall|Modal|Scrim|Barrier|Overlay)/;
+const GATE_SHAPED = /(?:Dialog|Sheet|Consent|Gate|Prompt|Interstitial|Paywall|Modal|Scrim|Barrier|Overlay)/;
 const isGateType = (t) => MODAL_CHASSIS.has(t) || (GATE_SHAPED.test(t) && !/(?:Screen|Shell)$/.test(t));
 
 /** The exemption marker, written in the suite ON or ABOVE the site it excuses.
@@ -435,6 +589,16 @@ else if (existsSync(join(ROOT, BRICK_MANIFEST))) {
   ]);
 }
 let workspaceRead = false;
+/** A `packages/` member that declares the flutter_test dev-dependency — see
+ *  SUITE_RUNNER_RE. Unreadable pubspec ⇒ not a root, which is a real hole on a
+ *  partial tree and is closed on a checkout by REQUIRED_COVERAGE below. */
+const declaresSuiteRunner = (rel) => {
+  try {
+    return SUITE_RUNNER_RE.test(readFileSync(join(ROOT, rel, 'pubspec.yaml'), 'utf8').replace(/^\s*#.*$/gm, ''));
+  } catch {
+    return false;
+  }
+};
 try {
   const lines = readFileSync(join(ROOT, 'pubspec.yaml'), 'utf8').replace(/^\s*#.*$/gm, '').split('\n');
   const at = lines.findIndex((l) => /^workspace:\s*$/.test(l));
@@ -443,7 +607,13 @@ try {
     for (const line of lines.slice(at + 1)) {
       if (/^\S/.test(line)) break;
       const m = line.match(/^\s*-\s*(\S+)\s*$/);
-      if (m && m[1].startsWith('apps/')) roots.push(m[1]);
+      if (!m) continue;
+      /* `apps/` unconditionally — an app that ships a screen has widget suites,
+       * and the three recorded outages are all in one. `packages/` on the
+       * member's own declaration, because the workspace also carries a
+       * lints-only package with no suite runner and no test directory at all. */
+      if (m[1].startsWith('apps/')) roots.push(m[1]);
+      else if (m[1].startsWith('packages/') && declaresSuiteRunner(m[1])) roots.push(m[1]);
     }
   }
 } catch {
@@ -451,14 +621,15 @@ try {
 }
 if (!workspaceRead) {
   coverageLost([
-    'the root pubspec.yaml has no readable `workspace:` block, so the app roots could not be derived.',
-    'The domain would then be the brick alone — and the brick has no integration suite at all, which is',
-    'the one shape of this scan that would find nothing and still print ok.',
+    'the root pubspec.yaml has no readable `workspace:` block, so the app AND package roots could not be',
+    'derived. The domain would then be the brick alone — and the brick has no integration suite at all,',
+    'which is the one shape of this scan that would find nothing and still print ok.',
   ]);
 }
 if (!roots.length) {
   coverageLost([
-    'no app root was derived: the brick is absent and the workspace lists no `apps/` member.',
+    'no root was derived: the brick is absent, the workspace lists no `apps/` member, and no',
+    '`packages/` member declares a `flutter_test` dev-dependency.',
     'There is nothing to scan, so a pass here would be a claim about an empty set.',
   ]);
 }
@@ -502,6 +673,45 @@ if (emptyRoots.length) {
     ...emptyRoots,
     `The other root(s) still yielded ${files.length} file(s), so every count below would read healthy`,
     'while the root(s) named above went entirely unscanned.',
+  ]);
+}
+
+/* ── THE DECLARED ROOTS, ONE FLOOR EACH ─────────────────────────────────────
+ * The limb above catches a derived root that went empty. This one catches the
+ * step before it: a root that stopped being DERIVED. Cutting one line from the
+ * workspace list took this guard from 349 sites to 80 with an "ok" on the end
+ * (measured 2026-09-05), and nothing above could see it, because a root that is
+ * never derived is never empty.
+ *
+ * Reported TOGETHER, never first-only: a tree can lose two roots for two
+ * different reasons and naming one sends the reader to fix half of it. */
+const rootFiles = new Map(perRoot);
+const lostRoots = [];
+if (IS_FULL_CHECKOUT) {
+  for (const r of REQUIRED_COVERAGE) {
+    if (!rootFiles.has(r.dir)) {
+      lostRoots.push(
+        `\`${r.dir}\` is DECLARED here but is not among the ${roots.length} root(s) this run derived — ${r.label}.`,
+      );
+    } else if (rootFiles.get(r.dir).length < r.floor) {
+      lostRoots.push(
+        `\`${r.dir}\` yielded only ${rootFiles.get(r.dir).length} suite file(s), below its floor of ` +
+          `${r.floor} — ${r.label}.`,
+      );
+    }
+  }
+}
+if (lostRoots.length) {
+  coverageLost([
+    `${lostRoots.length} of the ${REQUIRED_COVERAGE.length} declared root(s) did not deliver a subject to scan:`,
+    ...lostRoots.map((l) => `· ${l}`),
+    '',
+    `The scan still read ${files.length} file(s) from the root(s) that remain, so every count below would`,
+    'print healthy and the "ok" line would be literally true of a collapsed tree. Each root carries its OWN',
+    'floor deliberately: a single floor over the union is satisfied by whichever root happens to be biggest,',
+    'which is how assert-no-tls-pinning.mjs once passed over a deleted apps/ AND packages/ (its header, and',
+    'assert-workspace-coverage.mjs:130-136 for the same shape again). Restore the root, or — if it really',
+    'has left the tree for good — delete its entry here in the same commit, so the domain shrinks on purpose.',
   ]);
 }
 
@@ -906,11 +1116,12 @@ for (const rel of files) {
 if (!occurrences) {
   coverageLost([
     `${files.length} suite file(s) were read and NOT ONE \`find.byType(\` was found in any of them.`,
-    'Measured 2026-08-26 over both roots: the corpus carried 329. Either every suite stopped using it',
-    'on the same day, or the matcher — or the comment/literal reduction it runs on — has stopped',
-    'matching. (283 stood here and matched nothing on record: not the 329 this scan counts, not the 273',
-    'a first grep over apps/subly alone produced, not the 330 the double-counting alias limb printed',
-    'before 2026-08-26. A number in an operator-facing line is checked or it is deleted.)',
+    'Measured 2026-09-05 over all eight roots: the corpus carried 412 (329 over the two roots this scan',
+    'had before [ADR 065 step 3] added the shared chassis). Either every suite stopped using it on the same',
+    'day, or the matcher — or the comment/literal reduction it runs on — has stopped matching. (283 stood',
+    'here and matched nothing on record: not the 412 this scan counts, not the 329 it counted over two',
+    'roots, not the 273 a first grep over apps/subly alone produced, not the 330 the double-counting alias',
+    'limb printed before 2026-08-26. A number in an operator-facing line is checked or it is deleted.)',
   ]);
 }
 if (!tally.assertion && !tally.inspection) {
@@ -933,6 +1144,25 @@ console.log(
     `${tally.state} screen-state, ${tally.bare} bare, ${tally.detector} detector, ${tally.dismissal} dismissal. ` +
     `${pollerFiles} file(s) declare a poll helper this scan derived from its signature.`,
 );
+/* 🔴 THE SPLIT, NOT ONLY THE TOTAL. A total is still literally true of a tree
+ * that lost a root — "80 site(s) in 7 suite file(s)" was printed over a corpus
+ * of 349 on 2026-09-05 — and a reader cannot tell the two apart from one number.
+ * A per-root breakdown cannot be true of a collapsed tree. */
+const split = perRoot
+  .map(([dir, f]) => {
+    const decl = REQUIRED_COVERAGE.find((r) => r.dir === dir);
+    return `${dir}=${f.length}${decl && IS_FULL_CHECKOUT ? `/floor ${decl.floor}` : ''}`;
+  })
+  .join(', ');
+console.log(`note per root: ${split}`);
+console.log(
+  IS_FULL_CHECKOUT
+    ? `note this root IS a checkout of this repository, so all ${REQUIRED_COVERAGE.length} declared per-root ` +
+        'floors were applied.'
+    : 'note this root is NOT a checkout of this repository (tooling/ci/assert-modal-detection.mjs is absent ' +
+        'under it), so the declared per-root floors were NOT applied. The structural limbs still ran: every ' +
+        'derived root must exist and carry at least one .dart suite file.',
+);
 if (exemptions.length) {
   console.log(`note ${exemptions.length} site(s) carry a written modal-detection exemption:`);
   for (const e of exemptions) console.log(`       ${e}`);
@@ -951,6 +1181,10 @@ if (problems.length) {
   lines.push('  helpers in apps/subly/integration_test/app_test.dart (`answerConsentIfPrompted`) and the');
   lines.push('  device-free reproduction in apps/subly/test/first_run_destination_test.dart.');
   lines.push('');
+  lines.push('  If the file above surprised you: this scan covers the brick template, every `apps/` workspace');
+  lines.push('  member, and every `packages/` member whose pubspec declares a flutter_test dev-dependency —');
+  lines.push('  the shared chassis included, since [ADR 065 step 3] moved the modals into packages/design_system.');
+  lines.push('');
   lines.push('  ONLY the sites listed above can be exempted, and they are the only ones this guard ever');
   lines.push('  flags: a gate type DETECTED at a poll or a branch, or TAPPED. An assertion');
   lines.push('  (`expect(find.byType(Dialog), findsNothing)`) and an inspection (`tester.widget<T>(…)`,');
@@ -967,7 +1201,8 @@ if (problems.length) {
 }
 
 console.log(
-  `\nok   modal detection — ${occurrences} \`find.byType(\` site(s) in ${files.length} suite file(s) and none of ` +
-    'them is the detector of a first-run gate or the target of a dismissal tap',
+  `\nok   modal detection — ${occurrences} \`find.byType(\` site(s) in ${files.length} suite file(s) across ` +
+    `${roots.length} root(s) [${split}] and none of them is the detector of a first-run gate or the target ` +
+    'of a dismissal tap',
 );
 console.log(`${NAME}: ok`);

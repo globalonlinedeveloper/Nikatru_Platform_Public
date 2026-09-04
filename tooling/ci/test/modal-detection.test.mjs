@@ -52,6 +52,11 @@ const ANCHOR_ARG = '\n      consentDecline,\n';
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const BRICK_MANIFEST = 'tooling/bricks/app/brick.yaml';
 
+/** The shared chassis [ADR 065 step 2] — the package the modals moved INTO, and
+ *  the reason this harness learned to build package roots at all. */
+const DS = 'packages/design_system';
+const DS_DIALOG = `${DS}/test/destructive_confirm_dialog_test.dart`;
+
 /** A real-tree copy carrying exactly what the guard reads: the workspace list
  *  and both of Subly's suite directories, plus — by default — the brick and its
  *  manifest, so the tree under test has the SAME TWO ROOTS the repository has.
@@ -63,8 +68,17 @@ const BRICK_MANIFEST = 'tooling/bricks/app/brick.yaml';
  *  here could have seen it, because no case here had two roots to lose one of.
  *  `{ brick: false }` still builds the one-root tree, and one case below uses it
  *  deliberately: a partial tree with NO brick package at all is legitimate, and
- *  must stay legitimate, or this harness could not exist. */
-function realTree({ brick = true, brickManifest = true } = {}) {
+ *  must stay legitimate, or this harness could not exist.
+ *
+ *  🔴 AND IT OMITTED `packages/` FOR THE SAME REASON, until [ADR 065 step 3]
+ *  made the shared chassis a root. `{ full: true }` copies every package's
+ *  pubspec (INCLUDING packages/analysis, which declares no suite runner and must
+ *  therefore NOT become a root) and every package suite directory, plus the
+ *  guard's own file at tooling/ci/ — the sentinel the guard reads to decide
+ *  whether this root is a checkout of the repository and the declared per-root
+ *  floors apply. Without that file the tree is a PARTIAL one and the floors are
+ *  skipped, which is what keeps every case above running unchanged. */
+function realTree({ brick = true, brickManifest = true, full = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-modal-'));
   cpSync(join(REPO, 'pubspec.yaml'), join(root, 'pubspec.yaml'));
   for (const d of ['test', 'integration_test']) {
@@ -74,6 +88,21 @@ function realTree({ brick = true, brickManifest = true } = {}) {
   if (brickManifest) {
     mkdirSync(join(root, 'tooling', 'bricks', 'app'), { recursive: true });
     cpSync(join(REPO, BRICK_MANIFEST), join(root, BRICK_MANIFEST));
+  }
+  if (full) {
+    for (const name of readdirSync(join(REPO, 'packages'), { withFileTypes: true })) {
+      if (!name.isDirectory()) continue;
+      const rel = `packages/${name.name}`;
+      mkdirSync(join(root, rel), { recursive: true });
+      if (existsSync(join(REPO, rel, 'pubspec.yaml'))) {
+        cpSync(join(REPO, rel, 'pubspec.yaml'), join(root, rel, 'pubspec.yaml'));
+      }
+      for (const d of ['test', 'integration_test']) {
+        if (existsSync(join(REPO, rel, d))) cpSync(join(REPO, rel, d), join(root, rel, d), { recursive: true });
+      }
+    }
+    mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+    cpSync(GUARD, join(root, 'tooling', 'ci', 'assert-modal-detection.mjs'));
   }
   return root;
 }
@@ -108,7 +137,13 @@ function rawByTypeCount(root) {
       }
     }
   };
-  for (const rootRel of [SUBLY, BRICK]) {
+  const rootRels = [SUBLY, BRICK];
+  if (existsSync(join(root, 'packages'))) {
+    for (const e of readdirSync(join(root, 'packages'), { withFileTypes: true })) {
+      if (e.isDirectory()) rootRels.push(`packages/${e.name}`);
+    }
+  }
+  for (const rootRel of rootRels) {
     for (const d of ['test', 'integration_test']) {
       const abs = join(root, rootRel, d);
       if (existsSync(abs)) walk(abs);
@@ -701,5 +736,210 @@ describe('assert-modal-detection · the exemption marker on a CRLF checkout', ()
         assert.match(r.out, /pins the retired route dialog on purpose/);
       },
     );
+  });
+});
+
+describe('assert-modal-detection · the shared chassis is inside the domain [ADR 065 step 3]', () => {
+  // 🔴 EVERY CASE HERE RUNS ON `{ full: true }`, which is a tree the guard reads
+  // as a checkout of this repository. That is what turns the declared per-root
+  // floors on. A case written against the partial tree would exercise the walk
+  // and NOT the floors, and would go on passing after the floors were deleted.
+
+  /** The 2026-08-26 line, in the shape it was written in that day, appended to a
+   *  suite that lives in the shared chassis rather than in the app. */
+  const PLANTED = (type) =>
+    '\nvoid plantedMain() {\n' +
+    "  testWidgets('planted', (WidgetTester tester) async {\n" +
+    `    if (find.byType(${type}).evaluate().isNotEmpty) {\n` +
+    "      await tester.tap(find.text('No thanks'));\n" +
+    '    }\n  });\n}\n';
+
+  const append = (root, rel, text) => {
+    const p = join(root, rel);
+    writeFileSync(p, readFileSync(p, 'utf8') + text);
+  };
+
+  /** Cut one line out of a YAML file, ASSERTING it was there. Same doctrine as
+   *  `edit`: a mutation that matches nothing turns the case into a test that the
+   *  unmutated tree is clean. */
+  const cutLine = (root, rel, needle) => {
+    const p = join(root, rel);
+    const before = readFileSync(p, 'utf8').split('\n');
+    const kept = before.filter((l) => l.trim() !== needle);
+    assert.notEqual(kept.length, before.length, `\`${needle}\` is no longer a line in ${rel}`);
+    writeFileSync(p, kept.join('\n'));
+  };
+
+  test('the full checkout passes, reads all eight roots, and prints the per-root split', () => {
+    withTree(
+      () => {},
+      (r, root) => {
+        assert.equal(r.status, 0, r.out);
+        assert.match(r.out, /assert-modal-detection: ok/);
+        assert.match(r.out, /in 8 root\(s\)/, 'the six chassis package roots are not being derived');
+        // The split, not only the total: a total is still true of a tree that
+        // lost a root, which is exactly how `- apps/subly` left in silence.
+        assert.match(r.out, /packages\/design_system=\d+\/floor 10/);
+        assert.match(r.out, /apps\/subly=\d+\/floor 40/);
+        assert.match(r.out, /declared per-root floors were applied/);
+        const m = r.out.match(/note (\d+) `find\.byType\(` site\(s\) across (\d+) suite file\(s\)/);
+        assert.ok(m, `the passing line no longer reports its counts:\n${r.out}`);
+        assert.ok(Number(m[1]) > 400, `only ${m[1]} sites — the chassis suites are not being classified`);
+        assert.ok(Number(m[1]) <= rawByTypeCount(root), `${m[1]} sites over a tree holding fewer occurrences`);
+      },
+      { full: true },
+    );
+  });
+
+  test('the 2026-08-26 detector, planted in a chassis suite, is caught there', () => {
+    // Walking a tree and CLASSIFYING it are different claims. This is the one
+    // that says the packages roots are actually read.
+    withTree((root) => append(root, DS_DIALOG, PLANTED('Dialog')), (r) => {
+      assert.equal(r.status, 1, r.out);
+      assert.match(
+        r.out,
+        /destructive_confirm_dialog_test\.dart:\d+ — `find\.byType\(Dialog\)` is the DETECTOR of a `if`/,
+      );
+    }, { full: true });
+  });
+
+  test("a poll on the chassis modal's OWN class name is caught — the widening is not nominal", () => {
+    // 🔴 THE DAY BEFORE, THIS EXITED 0. MODAL_CHASSIS holds the exact token
+    // `Dialog`, so `DestructiveConfirmDialog` was not a gate type and this
+    // classified as `state` — "asked which screen I am on". Bringing the chassis
+    // suites into the domain while the chassis's own modal names read as
+    // non-gates would have been a widening in name only.
+    withTree((root) => append(root, DS_DIALOG, PLANTED('DestructiveConfirmDialog')), (r) => {
+      assert.equal(r.status, 1, r.out);
+      assert.match(r.out, /`find\.byType\(DestructiveConfirmDialog\)` is the DETECTOR of a `if`/);
+    }, { full: true });
+  });
+
+  test('the six honest DestructiveConfirmDialog sites already in that file stay legal', () => {
+    // The other half of the widening, and the half a guard fails on: the same
+    // type, asserted and inspected rather than branched on, is what the shipped
+    // suite does six times. If adding `Dialog` to GATE_SHAPED ever reddens
+    // `expect(find.byType(DestructiveConfirmDialog), findsNothing)` or
+    // `tester.element(find.byType(DestructiveConfirmDialog))`, the widening was
+    // wrong — this is the case that says so before anybody's pull request does.
+    withTree(
+      (root) => {
+        const src = readFileSync(join(root, DS_DIALOG), 'utf8');
+        const n = src.split('find.byType(DestructiveConfirmDialog)').length - 1;
+        assert.equal(n, 6, `the shipped chassis suite no longer carries the six sites this case is about (${n})`);
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.out);
+        assert.doesNotMatch(r.out, /destructive_confirm_dialog_test\.dart:\d+ —/);
+      },
+      { full: true },
+    );
+  });
+
+  test('the chassis suite directory emptied is COVERAGE LOST, not a smaller job', () => {
+    withTree(
+      (root) => {
+        for (const f of readdirSync(join(root, DS, 'test'))) rmSync(join(root, DS, 'test', f), { force: true });
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.out);
+        assert.match(r.out, /COVERAGE LOST/);
+        assert.match(r.out, /carry NO \.dart file/);
+        assert.match(r.out, /packages\/design_system/);
+        assert.doesNotMatch(r.out, /assert-modal-detection: ok/);
+      },
+      { full: true },
+    );
+  });
+
+  test('the chassis cut from the workspace list is COVERAGE LOST — a root that is never derived is never empty', () => {
+    // 🔬 THE HOLE THIS LIMB EXISTS FOR. Every coverage limb before it asks a
+    // question about a DERIVED root, so deleting one line from the workspace
+    // list slipped past all of them: measured 2026-09-05 on the guard as it
+    // stood, cutting `- apps/subly` took the scan from 349 sites to 80 and
+    // printed "ok".
+    withTree((root) => cutLine(root, 'pubspec.yaml', '- packages/design_system'), (r) => {
+      assert.equal(r.status, 1, r.out);
+      assert.match(r.out, /COVERAGE LOST/);
+      assert.match(r.out, /`packages\/design_system` is DECLARED here but is not among/);
+      assert.doesNotMatch(r.out, /assert-modal-detection: ok/);
+    }, { full: true });
+  });
+
+  test('the chassis dropping its flutter_test dev-dependency is COVERAGE LOST too', () => {
+    // The other way a package stops being derived: the declaration this guard
+    // anchors on, removed. It must not read as "this package has no widget
+    // suites", because 17 of them are still sitting there.
+    withTree((root) => cutLine(root, `${DS}/pubspec.yaml`, 'flutter_test:'), (r) => {
+      assert.equal(r.status, 1, r.out);
+      assert.match(r.out, /COVERAGE LOST/);
+      assert.match(r.out, /`packages\/design_system` is DECLARED here but is not among/);
+    }, { full: true });
+  });
+
+  test('the chassis gutted below its floor fails while every neighbour is healthy — this is not a union floor', () => {
+    // 🔴 THE MEASUREMENT THAT MOTIVATES ONE FLOOR PER ROOT. Eight of seventeen
+    // suites left is a non-empty root, so the emptyRoots limb is satisfied; the
+    // other roots still deliver ~100 files, so every total prints healthy. Only
+    // a floor that belongs to THIS root can see it.
+    withTree(
+      (root) => {
+        const files = readdirSync(join(root, DS, 'test')).filter((f) => f.endsWith('.dart')).sort();
+        assert.ok(files.length > 10, `only ${files.length} chassis suites — this case has nothing to gut`);
+        for (const f of files.slice(0, files.length - 8)) rmSync(join(root, DS, 'test', f), { force: true });
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.out);
+        assert.match(r.out, /COVERAGE LOST/);
+        assert.match(r.out, /`packages\/design_system` yielded only 8 suite file\(s\), below its floor of 10/);
+      },
+      { full: true },
+    );
+  });
+
+  test('the app cut from the workspace list is COVERAGE LOST — 77% of the corpus used to leave in silence', () => {
+    // MEASURED 2026-09-05 against the guard as it stood: 349 sites / 79 files /
+    // 2 roots became 80 / 7 / 1, exit 0, "ok". 269 sites and 72 files gone,
+    // past four COVERAGE LOST limbs, because none of them asks about a root the
+    // derivation never produced.
+    withTree((root) => cutLine(root, 'pubspec.yaml', '- apps/subly'), (r) => {
+      assert.equal(r.status, 1, r.out);
+      assert.match(r.out, /COVERAGE LOST/);
+      assert.match(r.out, /`apps\/subly` is DECLARED here but is not among/);
+      assert.doesNotMatch(r.out, /assert-modal-detection: ok/);
+    }, { full: true });
+  });
+
+  test('packages/analysis declares no suite runner and must NOT become a phantom empty root', () => {
+    // The other direction, and it is load-bearing: `packages/analysis` is a
+    // lints-only workspace member with no dev_dependencies and no test
+    // directory at all. Derive every `packages/` member unconditionally and it
+    // becomes a permanently empty root — this guard permanently red, for a
+    // package that structurally cannot carry the defect. The tree is unmutated
+    // here on purpose: the mutation is the one already in the repository.
+    withTree(
+      (root) => {
+        assert.ok(existsSync(join(root, 'packages/analysis/pubspec.yaml')), 'the harness did not copy it');
+        assert.ok(!existsSync(join(root, 'packages/analysis/test')), 'packages/analysis grew a test directory');
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.out);
+        assert.doesNotMatch(r.out, /packages\/analysis/);
+      },
+      { full: true },
+    );
+  });
+
+  test('a partial tree does NOT apply the floors, and says which branch it took', () => {
+    // 🔴 A FLOOR THAT IS SKIPPED IN SILENCE IS INDISTINGUISHABLE FROM A FLOOR
+    // THAT PASSED. Every other case in this file builds a partial tree — no
+    // packages, no sentinel — and they are the reason the floors are gated at
+    // all, so the gate has to announce itself.
+    withTree(() => {}, (r) => {
+      assert.equal(r.status, 0, r.out);
+      assert.match(r.out, /declared per-root floors were NOT applied/);
+      assert.match(r.out, /every derived root must exist and carry at least one \.dart suite file/);
+      assert.match(r.out, /in 2 root\(s\)/);
+    });
   });
 });
