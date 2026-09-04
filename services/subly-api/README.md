@@ -67,7 +67,7 @@ HAS NO CALLER.** The live path is `entitlementsProvider`
 (same file, `:44`) → `DioEntitlementTransport`
 (`packages/api_client/lib/src/dio_entitlement_transport.dart:40`), which issues
 `GET {PLATFORM_BASE_URL}/v1/entitlements?app_id=<id>`. `kPlatformBaseUrl` defaults
-to `https://platform.nikatru.com` (`apps/subly/lib/state/providers.dart:476`), so
+to `https://platform.nikatru.com` (`apps/subly/lib/state/providers/analytics_envelope.dart:64`), so
 that read lands on **`services/platform`** — `platform/src/index.ts:105-106` — and
 never on `api.nikatru.com`. `PaywallGate`, `manage_plan_screen.dart:90` and
 `refreshEntitlements()` all watch THAT provider. The two Workers expose the same

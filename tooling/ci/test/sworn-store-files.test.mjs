@@ -143,8 +143,16 @@ function realTree() {
   // so the derived set above genuinely cannot reach them. Leaving them out made
   // every case in this file fail with "only 1 of 4 line citation(s) were
   // evaluated" — the guard reporting, correctly, that the harness had starved it.
+  // 🔴 THE FIRST TWO MOVED 2026-09-04 and the paths are LOAD-BEARING here, not
+  // decorative. `apps/subly`'s spine was split behind a barrel, so the two
+  // anchors limb 8 checks — `InMemoryAuthRepository()` and `SeedApiClient()` —
+  // now live in capability files under `lib/state/providers/`. Seeding the
+  // barrel alone reproduces the starved-harness failure this comment already
+  // records, in its OTHER shape: "…/providers/auth.dart does not exist, so the
+  // citation checks nothing" on every case in this file.
   for (const rel of [
-    'apps/subly/lib/state/providers.dart',
+    'apps/subly/lib/state/providers/auth.dart',
+    'apps/subly/lib/state/providers/subscriptions.dart',
     'apps/subly/lib/state/analytics_providers.dart',
     'apps/subly/lib/app.dart',
   ]) {

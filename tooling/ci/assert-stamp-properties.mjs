@@ -2179,6 +2179,42 @@ if (!existsSync(join(repo, BRICK, PROP_TEST))) {
  *  read under the root currently being audited. */
 const resolveSource = (root, file) => (SHARED_PREFIX.test(file) ? file : `${root}/${file}`);
 
+/**
+ * The file(s) ONE source anchor may be satisfied by — normally exactly the file
+ * it names, and for a providers spine, the spine.
+ *
+ * 🔴 ADDED 2026-09-04, AND IT IS THE DIFFERENCE BETWEEN "THE PROPERTY IS GONE"
+ * AND "THE FILE IS BIGGER THAN ONE FILE". `apps/subly`'s spine was split behind
+ * a barrel: `lib/state/providers.dart` now re-exports `lib/state/providers/*.dart`,
+ * one file per capability, with every declaration and every doc comment carried
+ * verbatim. Read as a single file, NINE properties this app really does
+ * implement — theme-mode-persisted, locale-actually-switches,
+ * onboarding-shown-once, reminder-intent-persisted, reminders-resync-on-start,
+ * review-prompt-gated, auth-seam-wired, auth-redirect-follows-session,
+ * account-deletion-works, analytics-lifecycle-complete — read as ABSENT, and the
+ * only other repair available was raising the EXEMPT_APPS floor from 10 to 19.
+ * That is precisely the slack the ratchet's own [RED] note forbids: a floor
+ * above the real number is room a later regression reappears inside.
+ *
+ * The domain WIDENS to the spine and to nothing else. Every anchor still has to
+ * match real, comment-stripped code in the app's own provider wiring; what it no
+ * longer has to do is care which capability file that wiring sits in. A stamped
+ * app that has not split keeps a one-element domain and is read exactly as
+ * before — `money_providers.dart` included, since the suffix test requires a
+ * path separator immediately before `providers.dart`.
+ */
+const anchorDomain = (path) => {
+  if (!path.endsWith('/providers.dart')) return [path];
+  const dir = path.slice(0, -'.dart'.length);
+  let entries;
+  try {
+    entries = listDir(join(repo, dir));
+  } catch {
+    return [path]; // no sibling directory: an unsplit spine
+  }
+  return [path, ...entries.filter((e) => e.endsWith('.dart')).sort().map((e) => `${dir}/${e}`)];
+};
+
 const MIN_BLOCKS = 12;
 let rootsAudited = 0;
 
@@ -2226,6 +2262,7 @@ function auditPropertyRoot(root, sink) {
     for (const s of sources) {
       const path = resolveSource(root, s.file);
       let src = '';
+      let domain = [path];
       try {
         // 🔴 2026-08-21 · THIS WAS THE ONE RAW READ IN THIS FILE. Every other
         // read here goes through `stripDartComments` — 7 sites — and this one
@@ -2264,14 +2301,17 @@ function auditPropertyRoot(root, sink) {
         // sibling read of the property test itself (grep `test =
         // stripDartComments`, never a line number — this file gets edited) is
         // off for exactly the same reason: `group('property: …')` is a string.
-        src = stripAnchorComments(path, readFileSync(join(repo, path), 'utf8'));
+        domain = anchorDomain(path);
+        src = domain
+          .map((f) => stripAnchorComments(f, readFileSync(join(repo, f), 'utf8')))
+          .join('\n');
       } catch {
         sink.fail(`${root}: property '${p.key}': ${path} could not be read`);
         anchored = false;
         break;
       }
       if (!s.re.test(src)) {
-        sink.fail(`${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}`);
+        sink.fail(`${root}: property '${p.key}' is asserted but its IMPLEMENTATION is gone in ${path} — ${s.what}${domain.length > 1 ? ` (searched the whole spine: ${domain.length} file(s))` : ''}`);
         anchored = false;
         break;
       }

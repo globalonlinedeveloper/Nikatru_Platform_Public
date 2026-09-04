@@ -24,7 +24,13 @@ const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const SUBLY = 'apps/subly';
 const BRICK_SETTINGS = `${BRICK}/lib/features/settings/settings_screen.dart`;
 const SUBLY_SETTINGS = `${SUBLY}/lib/features/settings/settings_screen.dart`;
-const SUBLY_PROVIDERS = `${SUBLY}/lib/state/providers.dart`;
+// The file that DECLARES the erasure hook, not the barrel that re-exports it.
+// `${SUBLY}/lib/state/providers.dart` until 2026-09-04, when the spine was split
+// into per-capability files behind that barrel. Pointed at the barrel, the
+// mutation below matches nothing and this test's own "a test that mutates
+// nothing proves nothing" self-check is what fails — which is the design
+// working, and the reason this line is a constant rather than a literal.
+const SUBLY_AUTH_PROVIDERS = `${SUBLY}/lib/state/providers/auth.dart`;
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
@@ -197,7 +203,7 @@ describe('the server hook must not be nulled out from under it', () => {
     // C-15]. Every visible limb passes and the user is signed out, never deleted.
     withTree(
       (root) =>
-        edit(root, SUBLY_PROVIDERS, (s) => {
+        edit(root, SUBLY_AUTH_PROVIDERS, (s) => {
           const out = s.replace(
             /requestServerDeletion: \(\) =>[\s\S]*?\),\n/,
             'requestServerDeletion: null,\n',

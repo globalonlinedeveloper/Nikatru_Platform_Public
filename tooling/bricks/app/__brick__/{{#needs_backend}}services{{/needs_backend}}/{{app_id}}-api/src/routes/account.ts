@@ -22,6 +22,31 @@ import type { AppEnv } from '../types';
 const account = new Hono<AppEnv>();
 
 account.delete('/', async (c) => {
+  // ── LIMB 0 · THE PROOF IS ASYMMETRIC, OR THERE IS NO ERASURE ──────────────
+  // `supabaseAuth` — the middleware every other route uses — may verify with the
+  // shared `SUPABASE_JWT_SECRET` when the JWKS path fails. A symmetric secret is
+  // a string, and whoever learns it can mint a token for any user. Behind a read
+  // that is a data leak; behind THIS route it is an unauthenticated remote wipe
+  // of anybody's account. So `index.ts` mounts this route behind `erasureAuth`,
+  // which has no secret in scope at all.
+  //
+  // 🔴 THIS CHECK IS THE SECOND LIMB AND IT IS NOT REDUNDANT WITH THE MOUNTING.
+  // The mounting is one line in another file; a tidy-up that moved this route
+  // under the permissive group would silently put account deletion behind the
+  // shared secret and every existing test would still pass. Re-checking here
+  // turns that edit into a loud, logged 403.
+  //
+  // ⚠️ FAIL-CLOSED ON `undefined`. A route reached with NO auth middleware reads
+  // undefined, which is not 'asymmetric', which is a refusal. The dangerous
+  // spelling would have been `!== 'symmetric'`.
+  const assurance = c.get('tokenAssurance');
+  if (assurance !== 'asymmetric') {
+    console.error(
+      `[account] rid=${c.get('requestId') ?? '-'} app=${c.env.APP_ID} REFUSING ERASURE: admitted with tokenAssurance=${assurance ?? 'none'}, and account deletion requires an ES256/JWKS-verified token. A shared HS256 secret is one leaked environment variable away from letting anyone erase any account, so it is not an acceptable proof for an irreversible route. Mount DELETE /v1/account behind erasureAuth.`,
+    );
+    return c.json({ error: 'erasure_requires_asymmetric_auth' }, 403);
+  }
+
   const userId = c.get('userId');
 
   // PRECONDITION, checked BEFORE anything is destroyed. Discovering halfway
