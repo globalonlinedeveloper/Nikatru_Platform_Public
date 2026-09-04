@@ -599,8 +599,9 @@ void main() {
   /// 🔴 CONDITIONAL SINCE 2026-08-08, AND THE THING THAT CHANGED IS THE APP, NOT
   /// THIS SUITE'S TASTE. Three tests each call `app.main()` and every one of
   /// them used to land on the carousel, so all three tapped Skip unconditionally
-  /// and `router.dart:60` still records that assumption in a comment. That
-  /// worked for one reason only: **onboarding-seen was not persisted anywhere.**
+  /// and `router/router_provider.dart:26` still records that assumption in a
+  /// comment. That worked for one reason only: **onboarding-seen was not
+  /// persisted anywhere.**
   /// Measured against the last green nightly (`efabfb54`, 2026-08-08 04:30 UTC):
   /// `providers.dart` contained no `nikatru.onboarding_seen` key and no
   /// `OnboardingSeenController` at all, so a second `app.main()` in the same

@@ -27,12 +27,17 @@ class _Bump extends ChangeNotifier {
 /// first version listened only to auth, so the onboarding flag could resolve and
 /// the router would never look again.
 ///
-/// This IS what the live router listens to: `lib/core/router.dart` passes it to
-/// `refreshListenable` (anchored verbatim by
+/// This IS what the live router listens to: `lib/core/router/router_provider.dart`
+/// passes it to `refreshListenable` (anchored verbatim by
 /// `tooling/ci/assert-stamp-properties.mjs`). The old `core/router/app_router.dart`
 /// and its private `GoRouterRefreshStream` bridge are gone — P2.5 de-duplicated
 /// the two routers onto the STAMPED `lib/core/router.dart` path, and the bridge
 /// class was retired once this provider provably covered the auth-change case.
+///
+/// ⚠️ `lib/core/router/` EXISTS AGAIN AS OF P1b AND IS NOT THE THING P2.5
+/// DELETED. What went was a RIVAL `GoRouter` in `router/app_router.dart`; what is
+/// there now is the one router's own working, split by capability behind the
+/// `lib/core/router.dart` barrel. There is still exactly one `GoRouter` here.
 final Provider<Listenable> routerRefreshProvider = Provider<Listenable>((ref) {
   final _Bump onboarding = _Bump();
   // 🔄 `(bool? _, bool? _)` — TWO wildcards, not `_`/`__`. The brick template

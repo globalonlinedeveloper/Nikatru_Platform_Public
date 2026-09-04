@@ -73,6 +73,7 @@ import {
   cpSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
   renameSync,
@@ -89,13 +90,26 @@ const GUARD = join(CI_DIR, 'assert-a11y-coverage.mjs');
 
 const APP = 'apps/subly';
 const ROUTER = `${APP}/lib/core/router.dart`;
+// 🔴 THE ROUTER IS A SPINE, NOT A FILE (2026-09-04, P1b). `router.dart` is a
+// BARREL over `lib/core/router/` — the gate chain, the route table, the shell
+// wiring, the navigator key and the `GoRouter` those assemble into — and every
+// `GoRoute(`, every `builder:` and every feature import this guard's domain is
+// built from lives in that directory. Copying only the barrel gives every
+// fixture below a router with NO ROUTES IN IT, which is not a copy of the real
+// tree: the reachable set parses empty and the mutations under it assert against
+// a subject that is not there. The two files those mutations edit are named
+// separately, for the same reason `edit()` throws on a missing anchor — a
+// mutation whose target moved must break this suite, not silently apply nothing.
+const ROUTER_DIR = `${APP}/lib/core/router`;
+const ROUTER_ROUTES = `${ROUTER_DIR}/routes.dart`;
+const ROUTER_SHELL = `${ROUTER_DIR}/shell.dart`;
 const FEATURES = `${APP}/lib/features`;
 const SUITE = `${APP}/test/a11y_semantics_test.dart`;
 
-// The three things the guard reads. Copied whole; nothing else is needed, and
+// The four things the guard reads. Copied whole; nothing else is needed, and
 // copying only what is read keeps a fixture from accidentally depending on a
 // part of the repo this guard never opens.
-const SUBJECT = [ROUTER, FEATURES, SUITE];
+const SUBJECT = [ROUTER, ROUTER_DIR, FEATURES, SUITE];
 
 // MEASURED by running the guard against the working tree of 2026-08-13. Named
 // individually rather than counted: a count with no names is the "unmet clause
@@ -490,7 +504,15 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
 describe('an empty scan is COVERAGE LOST, never a pass', () => {
   test('M3 · an EMPTY surface list — no routes and no sheets', () => {
     const root = tree();
+    // THE BARREL AND THE SPINE. Stubbing only the barrel leaves `router/*.dart`
+    // in the fixture, and the guard reads the spine — so every route would still
+    // be there and this mutation would assert nothing.
     writeIn(root, ROUTER, 'const int routerStub = 0;\n');
+    for (const f of readdirSync(join(root, ROUTER_DIR))) {
+      if (f.endsWith('.dart')) {
+        writeIn(root, `${ROUTER_DIR}/${f}`, 'const int routerStub = 0;\n');
+      }
+    }
     for (const sheet of ['add/add_subscription_sheet.dart', 'cancel/cancel_sheet.dart']) {
       writeIn(root, `${FEATURES}/${sheet}`, 'const int stub = 0;\n');
     }
@@ -566,12 +588,12 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     const root = tree();
     edit(
       root,
-      ROUTER,
-      '      GoRoute(\n' +
-        "        path: '/notifications',\n" +
-        '        parentNavigatorKey: rootNavigatorKey,\n' +
-        '        builder: (_, __) => const NotificationsScreen(),\n' +
-        '      ),\n',
+      ROUTER_ROUTES,
+      '  GoRoute(\n' +
+        "    path: '/notifications',\n" +
+        '    parentNavigatorKey: rootNavigatorKey,\n' +
+        '    builder: (_, __) => const NotificationsScreen(),\n' +
+        '  ),\n',
       '',
     );
     const { code, out } = run(root);
@@ -683,7 +705,12 @@ describe('a sweep must point at something a user can reach', () => {
 
   test('M9 · a NOT_A_PANE entry no route builds is judgement over nothing', () => {
     const root = tree();
-    edit(root, ROUTER, 'AppShell(navigationShell: navShell)', 'AppShellChrome(navigationShell: navShell)');
+    edit(
+      root,
+      ROUTER_SHELL,
+      'AppShell(navigationShell: navShell)',
+      'AppShellChrome(navigationShell: navShell)',
+    );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /FAIL `AppShell` is excluded in NOT_A_PANE but no route in .* builds it/);

@@ -192,6 +192,39 @@ function sliceBalanced(text, open, openCh, closeCh) {
 }
 const sliceCall = (text, open) => sliceBalanced(text, open, '(', ')');
 
+// ── THE ROUTER IS A SPINE, NOT A FILE (2026-09-04, P1b) ────────────────────
+// `apps/subly/lib/core/router.dart` is a BARREL over `lib/core/router/` — the
+// ordered gate chain, the route table, the shell wiring, the navigator key and
+// the `GoRouter` those assemble into. Every `GoRoute`, every `builder:` and
+// every `import '../../features/…'` this guard's domain is built from now lives
+// in that directory.
+//
+// 🔴 READ AS ONE FILE AFTER THAT SPLIT THIS GUARD RANGES OVER A ROUTER WITH NO
+// ROUTES IN IT, which is indistinguishable from a router that LOST them: the
+// reachable set empties, every sweep is reported as dead coverage, and the two
+// argued non-panes fail as "no route builds it". The domain widens to the
+// barrel PLUS `router/*.dart`, in that order, and to nothing else — same
+// vocabulary, same regexes, same refusals. A tree whose router is still one
+// file has no sibling directory and is read exactly as it was before.
+//
+// Concatenated rather than scanned per file on purpose: `_GatedInsights` is
+// declared in one file and routed from another, and the wrapper resolution
+// below has to see both to resolve it to a feature surface.
+const routerSpine = () => {
+  const dir = ROUTER_REL.slice(0, -'.dart'.length);
+  let entries = [];
+  try {
+    entries = listDir(join(ROOT, dir));
+  } catch {
+    entries = []; // no sibling directory: an unsplit router
+  }
+  const files = [
+    ROUTER_REL,
+    ...entries.filter((e) => e.endsWith('.dart')).sort().map((e) => `${dir}/${e}`),
+  ];
+  return { files, src: files.map(read).join('\n') };
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // (A) THE ROUTED SET
 // ═══════════════════════════════════════════════════════════════════════════
@@ -207,7 +240,8 @@ const excluded = []; // { what, why }
 const routerTargets = new Set();
 
 if (problems.length === 0) {
-  const router = read(ROUTER_REL);
+  const spine = routerSpine();
+  const router = spine.src;
 
   // Which feature file each symbol the router imports comes from. Relative
   // imports, because that is how the router spells them (`../features/…`).
@@ -324,7 +358,10 @@ if (problems.length === 0) {
   }
 
   if (goRoutes > 0) {
-    ok(`${goRoutes} GoRoute(s) parsed — ${goRoutes - redirectOnly} with a builder, ${redirectOnly} redirect-only`);
+    ok(
+      `${goRoutes} GoRoute(s) parsed — ${goRoutes - redirectOnly} with a builder, ${redirectOnly} redirect-only` +
+        ` (router spine: ${spine.files.length} file(s) — ${spine.files.join(', ')})`,
+    );
   }
 }
 

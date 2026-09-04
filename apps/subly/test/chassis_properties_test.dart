@@ -770,7 +770,31 @@ _DeclaredRoutes _declaredRoutes() {
       'would range over an empty list',
     );
   }
-  final String src = _stripDartComments(f.readAsStringSync());
+  // 🔴 THE ROUTER IS A SPINE, NOT A FILE (2026-09-04, P1b). `lib/core/router.dart`
+  // is now a BARREL over `lib/core/router/` — the ordered gate chain, the route
+  // table, the shell wiring, the navigator key and the `GoRouter` they assemble
+  // into — and every `GoRoute(` moved into that directory. Read as ONE FILE this
+  // helper returns ZERO routes, which is not "the router lost its routes"
+  // reported loudly; it is every UI-invariant limb below silently ranging over an
+  // empty list, the exact defect the header above says this derivation exists to
+  // prevent. The barrel first, then `router/*.dart` in path order, which
+  // reproduces the declaration order the single file had: the table, then the
+  // shell branches. A tree whose router is still one file has no such directory
+  // and is read exactly as it was before.
+  final List<File> spine = <File>[f];
+  final Directory spineDir = Directory('lib/core/router');
+  if (spineDir.existsSync()) {
+    final List<File> parts = spineDir
+        .listSync()
+        .whereType<File>()
+        .where((File e) => e.path.endsWith('.dart'))
+        .toList();
+    parts.sort((File a, File b) => a.path.compareTo(b.path));
+    spine.addAll(parts);
+  }
+  final String src = spine
+      .map((File e) => _stripDartComments(e.readAsStringSync()))
+      .join('\n');
   final List<String> paths = <String>[];
   // Anchored on the DECLARATION, not on the word `path`: `GoRoute(` followed by
   // this route's own `path:`. A `path:` belonging to something else cannot be
@@ -790,9 +814,11 @@ _DeclaredRoutes _declaredRoutes() {
     paths.length,
     goRouteCount,
     reason:
-        'router.dart declares $goRouteCount GoRoute(...) but only '
-        '${paths.length} paths could be parsed — a screen would drop out of '
-        'every UI-invariant limb below without any of them going red',
+        'the router spine (${spine.length} file(s): '
+        '${spine.map((File e) => e.path).join(', ')}) declares $goRouteCount '
+        'GoRoute(...) but only ${paths.length} paths could be parsed — a screen '
+        'would drop out of every UI-invariant limb below without any of them '
+        'going red',
   );
   return _DeclaredRoutes(
     paths: paths,
