@@ -23,11 +23,35 @@ export interface Env {
   SUPABASE_SERVICE_ROLE_KEY?: string;
 }
 
+/**
+ * HOW STRONGLY THIS REQUEST'S TOKEN WAS PROVED, and it is not a diagnostic.
+ *
+ * `asymmetric` — ES256, verified against Supabase's PUBLIC JWKS. The private
+ * half never leaves Supabase, so a token that verifies was minted by Supabase.
+ * `symmetric` — HS256 against the shared `SUPABASE_JWT_SECRET`, used only when
+ * the asymmetric path fails and that secret is set. **Anyone who learns that one
+ * environment variable can mint a token for any user.** Behind a read that is a
+ * data leak; behind an irreversible route it is a remote wipe of any account.
+ *
+ * 🔴 `src/routes/account.ts` refuses anything that is not `'asymmetric'`, and
+ * that check is the second of two independent limbs — the first being that
+ * `index.ts` mounts the erasure route behind [erasureAuth], which has no secret
+ * in scope at all.
+ */
+export type TokenAssurance = 'asymmetric' | 'symmetric';
+
 // Per-request variables set by middleware.
 export interface Variables {
   requestId: string;
   userId: string;
   userEmail?: string;
+  /**
+   * ⚠️ OPTIONAL, AND ITS ABSENCE MUST READ AS A REFUSAL. A route reached with no
+   * auth middleware at all sees `undefined`, which is not `'asymmetric'` — so
+   * the erasure check fails closed. Spelling that check `!== 'symmetric'` would
+   * invert exactly that property.
+   */
+  tokenAssurance?: TokenAssurance;
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };
