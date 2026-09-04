@@ -63,6 +63,7 @@ import '../../state/analytics_providers.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
+import '../auth/turnstile_gate.dart';
 import '../shared/widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -1153,6 +1154,27 @@ class SettingsScreen extends ConsumerWidget {
     AppLocalizations l10n,
   ) {
     final TextEditingController password = TextEditingController();
+    // 🔴 THE CAPTCHA ANSWER, OWNED OUT HERE FOR THE SAME REASON THE PASSWORD IS.
+    // The reauth below is `signInWithEmail`, which on Box A is
+    // `token?grant_type=password` — one of the six endpoints Turnstile gates
+    // (auth-cutover.md §4.7). Until 2026-09-04 this dialog sent no token at all,
+    // so after the cutover the reauth would have been refused with
+    // `captcha_failed` BEFORE the password was read — and because the delete
+    // runs strictly below the reauth, in-app account deletion would have stopped
+    // working entirely. That is the DPDP/GDPR erasure path, and it was invisible
+    // because the affected screens had been counted by PROVIDER METHOD: this is
+    // a FIFTH surface reusing the FIRST method, so no list of methods had a row
+    // for it to be missing from. `assert-captcha-gated-call-sites.mjs` now counts
+    // CALL SITES, which is the only shape the defect is expressible in.
+    //
+    // ⚠️ A `ValueNotifier` HELD BY THE CALLER, NOT STATE INSIDE THE DIALOG,
+    // because `onConfirm` must stay the ZERO-ARGUMENT closure
+    // `assert-stamp-properties.mjs` anchors on (`/onConfirm:\s*\(\)\s*=>\s*_deleteAccount\(/`).
+    // Threading the token through the callback's signature would disarm that
+    // anchor — the one that exists because this button once called
+    // `Navigator.pop` and nothing else. Disposed by the dialog, the last reader,
+    // exactly as the controller is.
+    final ValueNotifier<String?> captchaToken = ValueNotifier<String?>(null);
     showDialog<void>(
       context: context,
       // 🔴 NOT DISMISSIBLE, and the dialog also refuses a system back/Escape
@@ -1165,7 +1187,8 @@ class SettingsScreen extends ConsumerWidget {
       builder: (BuildContext dialogContext) => _DeleteAccountDialog(
         l10n: l10n,
         password: password,
-        onConfirm: () => _deleteAccount(ref, password.text),
+        captchaToken: captchaToken,
+        onConfirm: () => _deleteAccount(ref, password.text, captchaToken.value),
       ),
     );
   }
@@ -1184,6 +1207,7 @@ class SettingsScreen extends ConsumerWidget {
   Future<core.AccountDeletionOutcome> _deleteAccount(
     WidgetRef ref,
     String password,
+    String? captchaToken,
   ) async {
     final AuthRepository auth = ref.read(authRepositoryProvider);
     final AuthUser? user = auth.currentUser;
@@ -1210,7 +1234,11 @@ class SettingsScreen extends ConsumerWidget {
       if (user == null) throw core.AuthFailure('Not signed in');
       // Re-authenticate through the SAME seam sign-in uses, so it works against
       // whatever identity provider is wired.
-      await auth.signInWithEmail(email: user.email, password: password);
+      await auth.signInWithEmail(
+        email: user.email,
+        password: password,
+        captchaToken: captchaToken,
+      );
       try {
         await auth.deleteAccount();
         outcome = core.AccountDeletionOutcome.deleted;
@@ -1458,6 +1486,7 @@ class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
     required this.password,
+    required this.captchaToken,
     required this.onConfirm,
   });
 
@@ -1466,6 +1495,11 @@ class _DeleteAccountDialog extends StatefulWidget {
   /// Owned by the caller so `onConfirm` can be the zero-argument closure the
   /// stamp-properties anchor names; disposed here, the last reader.
   final TextEditingController password;
+
+  /// The captcha answer, owned by the caller for exactly the same reason as
+  /// [password] — see the note at `_confirmDelete`. Written by the
+  /// [TurnstileGate] below, read by the caller's closure at confirm time.
+  final ValueNotifier<String?> captchaToken;
 
   /// Runs the real deletion and reports what happened.
   final Future<core.AccountDeletionOutcome> Function() onConfirm;
@@ -1481,6 +1515,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   @override
   void dispose() {
     widget.password.dispose();
+    widget.captchaToken.dispose();
     super.dispose();
   }
 
@@ -1571,6 +1606,21 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             // destructive action cannot be reached by a stray tap.
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(labelText: l10n.deleteAccountPassword),
+          ),
+          const SizedBox(height: 12),
+          // Directly above the destructive action, the same placement and the
+          // same reason as `login_screen.dart`: the user meets the challenge at
+          // the moment they are about to submit, not earlier where a token can
+          // go stale while they are still typing.
+          //
+          // Renders NOTHING when no site key is compiled in, which is every
+          // build today — so this is a no-op until the cutover and correct after
+          // it. `_run` is deliberately NOT gated on a token being present: the
+          // password field alone still guards the destructive action, and
+          // refusing to enable the button when `TurnstileGate.isConfigured` is
+          // false would disable deletion in every build that ships now.
+          TurnstileGate(
+            onToken: (String? t) => widget.captchaToken.value = t,
           ),
         ],
       ),

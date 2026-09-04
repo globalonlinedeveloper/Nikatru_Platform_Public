@@ -1382,6 +1382,20 @@ jobs:
       - name: Analytics consent can be WITHDRAWN, not only given
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-consent-withdrawal-surface.mjs
+      # …and every call to a CAPTCHA-GATED auth endpoint must carry a token.
+      # Measured 2026-09-04: settings_screen.dart re-authenticated before account
+      # deletion with `signInWithEmail(email:, password:)` and NO captchaToken,
+      # so after the Box A cutover the reauth is refused with `captcha_failed`
+      # before the password is read — and the delete runs strictly below it, so
+      # in-app account deletion (the DPDP/GDPR erasure path) stops entirely.
+      # Invisible until now because the affected screens were counted BY PROVIDER
+      # METHOD, and this is a fifth surface reusing the first method: no list of
+      # methods has a row for it to be missing from. This step counts CALL SITES.
+      # The brick has five such sites and no Turnstile at all; that PRINTS rather
+      # than failing, and arms itself the day the widget lands there.
+      - name: Every captcha-gated auth call carries a token
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-captcha-gated-call-sites.mjs
       # Change `bool _acceptedTerms = false;` to `= true` and EVERYTHING STILL
       # WORKS: the screen renders, the button is live, sign-up succeeds, an
       # acceptance artifact is written, every test passes -- and the app is
