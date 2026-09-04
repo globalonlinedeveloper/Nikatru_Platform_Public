@@ -138,6 +138,7 @@ import {
   describeNarrowing,
   dispatchTargetsFromSource,
   checkTimerTargetsAgainstDispatcher,
+  deriveUnreadableCeiling,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -2962,6 +2963,69 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
       assert.equal(probs.length, 1, 'exactly the e2e row should fail; got: ' + probs.join(' | '));
       assert.match(probs[0], /is not a target the dispatcher writes/);
       assert.match(probs[0], /EXACT equality/, 'the message must say WHY a near-miss is silent, or the next reader repeats it');
+    });
+
+    test('the committed build-platforms row is on the split too, with its own qualified target', () => {
+      const reg = registerCopy();
+      const q = reg.rows.find((r) => r.id === 'duty.workflow.build-platforms.yml').mechanism.recordQuery;
+      assert.equal(q.event, undefined);
+      assert.equal(q.headBranch, 'main');
+      assert.equal(q.timer.job, 'github_dispatch');
+      const src = readFileSync(resolve(CI_DIR, '..', '..', 'services', 'platform', 'src', 'scheduled.ts'), 'utf8');
+      assert.ok(dispatchTargetsFromSource(src).targets.includes(q.timer.target));
+    });
+
+    // ── the ceiling that went stale the day after it was written ────────────
+    describe('_maxUnreadable is DERIVED, and the derivation is enforced', () => {
+      test('the committed ceiling equals the derivation', () => {
+        const reg = registerCopy();
+        assert.equal(reg._recordReaders._maxUnreadable, deriveUnreadableCeiling(reg).ceiling);
+      });
+
+      test('🔴 a ceiling ABOVE the derivation FAILS — that is the weakening direction', () => {
+        const reg = registerCopy();
+        reg._recordReaders._maxUnreadable = deriveUnreadableCeiling(reg).ceiling + 1;
+        const errs = evaluateRunRecords(reg, new Map(), Date.now()).errors ?? [];
+        assert.ok(errs.some((e) => /ABOVE the register/.test(e)), 'got: ' + errs.join(' | '));
+      });
+
+      test('a ceiling BELOW it PRINTS and does not block — stricter is legal, silent staleness is not', () => {
+        const reg = registerCopy();
+        reg._recordReaders._maxUnreadable = 0;
+        const out = evaluateRunRecords(reg, new Map(), Date.now());
+        assert.ok(!(out.errors ?? []).some((e) => /_maxUnreadable/.test(e)), 'stricter must not fail the build');
+        assert.ok((out.prints ?? []).some((p) => /NO LONGER HOLDS/.test(p)), 'but it must SAY so');
+      });
+
+      test('🔴 a timer limb counts against BOTH providers — under-counting is what staled it', () => {
+        const reg = registerCopy();
+        const before = deriveUnreadableCeiling(reg);
+        const cf = before.perProvider.find(([p]) => p === 'cloudflare')[1];
+        // Strip the timer limbs and Cloudflare must lose exactly those rows.
+        for (const r of reg.rows) {
+          const q = r?.mechanism?.recordQuery;
+          if (q?.timer) delete q.timer;
+        }
+        const after = deriveUnreadableCeiling(reg);
+        const cfAfter = (after.perProvider.find(([p]) => p === 'cloudflare') ?? ['cloudflare', 0])[1];
+        assert.ok(cfAfter < cf, `timer limbs must contribute to the cloudflare count; ${cf} -> ${cfAfter}`);
+      });
+
+      test('GitHub is excluded on purpose — its rows are MEANT to break the ceiling together', () => {
+        const reg = registerCopy();
+        assert.ok(
+          !deriveUnreadableCeiling(reg).perProvider.some(([p]) => p === 'github'),
+          'counting GitHub would let a lost GITHUB_TOKEN raise the ceiling instead of failing the build',
+        );
+      });
+
+      test('adding a Cloudflare-backed row RAISES the derivation — the coupling is real', () => {
+        const reg = registerCopy();
+        const before = deriveUnreadableCeiling(reg).ceiling;
+        const row = reg.rows.find((r) => r.id === 'duty.workflow.e2e.yml');
+        reg.rows.push(JSON.parse(JSON.stringify({ ...row, id: 'duty.workflow.invented.yml' })));
+        assert.equal(deriveUnreadableCeiling(reg).ceiling, before + 1);
+      });
     });
 
     test('the committed register AGREES with the dispatcher — the bijection, not a spot check', () => {
