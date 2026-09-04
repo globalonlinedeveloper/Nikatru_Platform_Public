@@ -108,6 +108,52 @@ void main() {
     });
   });
 
+  // ── THE BLOCKING SCREENS, WHERE AN UNTRANSLATED VALUE IS UNRECOVERABLE ─────
+  //
+  // 🔴 PARITY CANNOT SEE THIS ONE. A Tamil entry that is the English sentence
+  // pasted across has the key, so limbs 1 and 2 both pass and the diagnostic
+  // file stays empty — and a Tamil reader gets English anyway. The general rule
+  // "ta must differ from en" would be WRONG (`OK`, a brand name and a bare `…`
+  // legitimately match), so this is scoped to the screens where being stuck on
+  // English has no way out.
+  //
+  // The force-update wall is the sharpest case in the app: when it fires it
+  // REPLACES EVERYTHING and offers exactly one control. Until 2026-09-04 it had
+  // no arb keys at all in either tree — `ForceUpdateGate`'s English parameter
+  // defaults were the only copy any app ever shipped, and no check could see it
+  // because `assert-no-hardcoded-strings.mjs` does not scan `packages/`.
+  group('a screen with no way out is really translated', () {
+    const List<String> unrecoverable = <String>[
+      'updateRequiredTitle',
+      'updateRequiredMessage',
+      'updateRequiredAction',
+    ];
+
+    test('the force-update wall carries Tamil, not English pasted across', () {
+      for (final String key in unrecoverable) {
+        expect(
+          enKeys,
+          contains(key),
+          reason: 'COVERAGE LOST — $key is gone from app_en.arb, so the '
+              'comparison below has nothing to compare.',
+        );
+        expect(
+          ta[key],
+          isNot(en[key]),
+          reason:
+              '$key is byte-identical in both locales. On a screen that replaces '
+              'the whole app and cannot be dismissed, that is a Tamil reader '
+              'locked out in a language they may not read.',
+        );
+        expect(
+          (ta[key] as String).trim(),
+          isNotEmpty,
+          reason: '$key is blank in Tamil — the wall would render nothing at all',
+        );
+      }
+    });
+  });
+
   group('en and ta hold exactly the same keys', () {
     test('every English key has a Tamil value', () {
       final List<String> missing = (enKeys.difference(taKeys).toList()..sort());

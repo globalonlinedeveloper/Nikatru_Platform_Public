@@ -8,16 +8,38 @@ import 'app_scaffold.dart' show AppBreakpoints;
 /// free of a domain dependency. Wrap the app's home:
 /// `ForceUpdateGate(mustUpdate: core.mustForceUpdate(v, cfg.minSupportedVersion),
 /// onUpdate: ..., child: HomeScreen())`.
+///
+/// 🔴 THE COPY IS REQUIRED, AND UNTIL 2026-09-04 IT WAS DEFAULTED TO ENGLISH —
+/// WHICH IS WHAT EVERY APP SHIPPED. Measured on that date: both call sites in
+/// the portfolio — `apps/subly/lib/app.dart` and the brick's `app.dart` — passed
+/// `mustUpdate`, `onUpdate` and `child` and NOTHING ELSE, so all three sentences
+/// came from the defaults that used to sit here. And no key for them had ever
+/// existed in any arb, in either tree, in either locale: `grep` for
+/// `updateRequired` over all four files answered 0.
+///
+/// So a Tamil user of a Tamil app, on the one screen that REPLACES THE WHOLE APP
+/// and cannot be dismissed, met an English wall with an English button. The
+/// three sibling widgets on this shelf — [PaywallGate], `PromoObjectionControl`
+/// and `PromoSurface` — were all passed their copy properly at every call site;
+/// this one never was, and nothing noticed for as long as the defaults were here
+/// to be silently used.
+///
+/// ⚠️ AND NO CHECK COULD HAVE NOTICED. `tooling/ci/assert-no-hardcoded-strings.mjs`
+/// scans exactly two roots — the brick and `apps/subly/lib` (`:119-131`) — and
+/// not `packages/`. A user-visible English literal living here is outside the
+/// only guard that hunts for one. Making the copy REQUIRED is what puts the
+/// string back inside a scanned tree: the caller must supply it, and the caller
+/// is in `apps/` or in the brick. A missing translation is now a COMPILE ERROR
+/// at the call site rather than English on a user's screen.
 class ForceUpdateGate extends StatelessWidget {
   const ForceUpdateGate({
     super.key,
     required this.mustUpdate,
     required this.child,
+    required this.title,
+    required this.message,
+    required this.buttonLabel,
     this.onUpdate,
-    this.title = 'Update required',
-    this.message =
-        'This version is no longer supported. Please update to keep using the app.',
-    this.buttonLabel = 'Update now',
   });
 
   /// Whether the running version is below the supported floor.

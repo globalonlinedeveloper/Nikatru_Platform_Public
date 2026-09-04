@@ -37,6 +37,19 @@ import 'promo_objection_control.dart';
 ///
 /// It also holds no decision. [show] is the answer `PromoObjection.decide`
 /// already gave; this widget never consults a gate, a config or a clock.
+/// 🔴 THE COPY IS REQUIRED, NOT DEFAULTED. An English default here is a
+/// user-visible literal living in `packages/`, and
+/// `tooling/ci/assert-no-hardcoded-strings.mjs` scans exactly two roots — the
+/// brick and `apps/subly/lib` (`:119-131`) — not this one. So a default is a
+/// shipped string that has left the domain of the only guard that hunts for
+/// one. Requiring it puts the string back in a scanned tree, because the
+/// caller lives in `apps/` or in the brick.
+///
+/// ⚠️ EVERY CALL SITE ALREADY PASSED ITS COPY when this changed on 2026-09-04,
+/// so nothing about what a user sees moved. The defaults were a SECOND source
+/// of truth beside the arb, waiting for a caller that forgot — which is exactly
+/// what had happened to [ForceUpdateGate], whose defaults were the only copy
+/// any app ever shipped.
 class PromoSurface extends StatelessWidget {
   const PromoSurface({
     super.key,
@@ -44,10 +57,10 @@ class PromoSurface extends StatelessWidget {
     required this.objected,
     required this.onObjectionChanged,
     required this.child,
-    this.promotionalLabel = 'Promotion',
-    this.stopLabel = 'Stop showing offers',
-    this.resumeLabel = 'Show offers again',
-    this.objectedNotice = 'Offers are off.',
+    required this.promotionalLabel,
+    required this.stopLabel,
+    required this.resumeLabel,
+    required this.objectedNotice,
   });
 
   /// The gate's verdict, resolved by the caller.

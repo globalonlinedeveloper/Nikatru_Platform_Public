@@ -8,15 +8,28 @@ import 'app_scaffold.dart' show AppBreakpoints;
 /// The lock DECISION lives with the caller — e.g.
 /// `PaywallGate(locked: cfg.paywall.enabled && !entitlements.isProAt(now), …)` —
 /// so `design_system` stays free of a domain dependency (mirrors ForceUpdateGate).
+/// 🔴 THE COPY IS REQUIRED, NOT DEFAULTED. An English default here is a
+/// user-visible literal living in `packages/`, and
+/// `tooling/ci/assert-no-hardcoded-strings.mjs` scans exactly two roots — the
+/// brick and `apps/subly/lib` (`:119-131`) — not this one. So a default is a
+/// shipped string that has left the domain of the only guard that hunts for
+/// one. Requiring it puts the string back in a scanned tree, because the
+/// caller lives in `apps/` or in the brick.
+///
+/// ⚠️ EVERY CALL SITE ALREADY PASSED ITS COPY when this changed on 2026-09-04,
+/// so nothing about what a user sees moved. The defaults were a SECOND source
+/// of truth beside the arb, waiting for a caller that forgot — which is exactly
+/// what had happened to [ForceUpdateGate], whose defaults were the only copy
+/// any app ever shipped.
 class PaywallGate extends StatelessWidget {
   const PaywallGate({
     super.key,
     required this.locked,
     required this.child,
+    required this.title,
+    required this.message,
+    required this.upgradeLabel,
     this.onUpgrade,
-    this.title = 'Unlock the full experience',
-    this.message = 'Upgrade to unlock this feature.',
-    this.upgradeLabel = 'Upgrade',
   });
 
   /// Whether the premium surface is locked for this user.
