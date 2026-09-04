@@ -10,6 +10,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+/// The copy is passed in by every case, and it used not to be — until 2026-09-04
+/// these widgets defaulted their words to English and the suites relied on those
+/// defaults, so a caller supplying nothing looked identical to one supplying the
+/// right words. The sibling `ForceUpdateGate` was such a caller, in both trees,
+/// and shipped English to every locale for years. Requiring the copy makes the
+/// two cases different — and these constants are what this file expects to read.
+const String _promoLabel = 'Promotion';
+const String _stop = 'Stop showing offers';
+const String _resume = 'Show offers again';
+const String _off = 'Offers are off.';
+
 const String _creative = 'promotional creative';
 
 Widget _host({
@@ -23,6 +34,10 @@ Widget _host({
           show: show,
           objected: objected,
           onObjectionChanged: onChanged ?? (_) {},
+          promotionalLabel: _promoLabel,
+          stopLabel: _stop,
+          resumeLabel: _resume,
+          objectedNotice: _off,
           child: const Text(_creative),
         ),
       ),
@@ -143,18 +158,21 @@ void main() {
             body: PromoObjectionControl(
               objected: true,
               onChanged: raised.add,
+              stopLabel: _stop,
+              resumeLabel: _resume,
+              objectedNotice: _off,
             ),
           ),
         ),
       );
       expect(
-        find.text('Offers are off.'),
+        find.text(_off),
         findsOneWidget,
         reason: 'a control whose state the user cannot see is a button that '
             'appears to do nothing — the same limb assert-consent-withdrawal-'
             'surface.mjs enforces for the analytics row',
       );
-      expect(find.text('Stop showing offers'), findsNothing);
+      expect(find.text(_stop), findsNothing);
 
       await tester.tap(find.byKey(PromoObjectionControl.actionKey));
       expect(
@@ -185,13 +203,16 @@ void main() {
               objected: true,
               known: false,
               onChanged: raised.add,
+              stopLabel: _stop,
+              resumeLabel: _resume,
+              objectedNotice: _off,
             ),
           ),
         ),
       );
-      expect(find.text('Offers are off.'), findsNothing);
-      expect(find.text('Show offers again'), findsNothing);
-      expect(find.text('Stop showing offers'), findsNothing);
+      expect(find.text(_off), findsNothing);
+      expect(find.text(_resume), findsNothing);
+      expect(find.text(_stop), findsNothing);
       expect(
         find.byKey(PromoObjectionControl.actionKey),
         findsNothing,
@@ -217,6 +238,9 @@ void main() {
               body: PromoObjectionControl(
                 objected: objected,
                 onChanged: (_) {},
+                stopLabel: _stop,
+                resumeLabel: _resume,
+                objectedNotice: _off,
               ),
             ),
           ),

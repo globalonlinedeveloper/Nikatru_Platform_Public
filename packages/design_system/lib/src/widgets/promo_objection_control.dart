@@ -30,15 +30,28 @@ import 'package:flutter/material.dart';
 /// never "No thanks, I don't want to save money". Nothing here can enforce a
 /// string a caller passes in — this paragraph is the enforcement, and the l10n
 /// values in both trees are written to it.
+/// 🔴 THE COPY IS REQUIRED, NOT DEFAULTED. An English default here is a
+/// user-visible literal living in `packages/`, and
+/// `tooling/ci/assert-no-hardcoded-strings.mjs` scans exactly two roots — the
+/// brick and `apps/subly/lib` (`:119-131`) — not this one. So a default is a
+/// shipped string that has left the domain of the only guard that hunts for
+/// one. Requiring it puts the string back in a scanned tree, because the
+/// caller lives in `apps/` or in the brick.
+///
+/// ⚠️ EVERY CALL SITE ALREADY PASSED ITS COPY when this changed on 2026-09-04,
+/// so nothing about what a user sees moved. The defaults were a SECOND source
+/// of truth beside the arb, waiting for a caller that forgot — which is exactly
+/// what had happened to [ForceUpdateGate], whose defaults were the only copy
+/// any app ever shipped.
 class PromoObjectionControl extends StatelessWidget {
   const PromoObjectionControl({
     super.key,
     required this.objected,
     required this.onChanged,
+    required this.stopLabel,
+    required this.resumeLabel,
+    required this.objectedNotice,
     this.known = true,
-    this.stopLabel = 'Stop showing offers',
-    this.resumeLabel = 'Show offers again',
-    this.objectedNotice = 'Offers are off.',
   });
 
   /// Whether this person has objected to promotional processing.

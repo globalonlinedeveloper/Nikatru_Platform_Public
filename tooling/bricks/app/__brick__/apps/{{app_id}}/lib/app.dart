@@ -71,9 +71,22 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
           MediaQuery.withClampedTextScaling(
             minScaleFactor: 1.0,
             maxScaleFactor: 2.0,
+            // 🔴 THE COPY IS PASSED, AND UNTIL 2026-09-04 IT WAS NOT — in
+            // EVERY app this template has ever stamped. `ForceUpdateGate`
+            // carried English parameter defaults and this call site supplied
+            // none, so the one screen that REPLACES THE WHOLE APP and cannot be
+            // dismissed shipped English to every locale. No key for it had ever
+            // existed in any arb, in either tree.
+            //
+            // ⚠️ `AppLocalizations.of(context)` IS AVAILABLE HERE: this is
+            // `MaterialApp.router`'s `builder`, which runs BELOW the
+            // `Localizations` widget the MaterialApp installs.
             child: ForceUpdateGate(
               mustUpdate: mustUpdate,
               onUpdate: () => _openUpdate(updateUrl),
+              title: AppLocalizations.of(context).updateRequiredTitle,
+              message: AppLocalizations.of(context).updateRequiredMessage,
+              buttonLabel: AppLocalizations.of(context).updateRequiredAction,
               child: AnalyticsGate(
                 child: _NotificationTapGate(
                   child: _OfflineBanner(

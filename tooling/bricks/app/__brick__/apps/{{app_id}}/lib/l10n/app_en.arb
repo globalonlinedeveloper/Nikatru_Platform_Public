@@ -378,6 +378,18 @@
   "@paywallTitle": {
     "description": "App-bar title of the paywall screen."
   },
+  "updateRequiredTitle": "Update required",
+  "@updateRequiredTitle": {
+    "description": "Heading on the force-update wall. THE WALL REPLACES THE WHOLE APP when the running version falls below the supported floor, so this is the only text on screen and there is no way past it. Until 2026-09-04 no key existed and ForceUpdateGate's English parameter default shipped to every locale."
+  },
+  "updateRequiredMessage": "This version is no longer supported. Please update to keep using the app.",
+  "@updateRequiredMessage": {
+    "description": "Body of the force-update wall. Says WHY the app stopped and WHAT to do, because the user cannot reach anything else to find out. Names no version number: the floor is served from config and a number baked into a translation would go stale silently."
+  },
+  "updateRequiredAction": "Update now",
+  "@updateRequiredAction": {
+    "description": "The only control on the force-update wall. Opens the store listing. Hidden when the app has no update URL to send the user to, so the wall still blocks rather than offering a dead button."
+  },
   "paywallHeadline": "Unlock the full experience",
   "@paywallHeadline": {
     "description": "Paywall heading, also used as the in-place PaywallGate title. CHASSIS DEFAULT — a freshly stamped app that has overridden nothing shows this, so it must not promise a feature the chassis does not have."

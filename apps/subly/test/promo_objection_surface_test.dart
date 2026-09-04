@@ -42,6 +42,17 @@ import 'package:subly/features/settings/settings_screen.dart';
 import 'package:subly/l10n/app_localizations.dart';
 import 'package:subly/state/providers.dart';
 
+/// The copy is passed in by every case, and it used not to be — until 2026-09-04
+/// these widgets defaulted their words to English and the suites relied on those
+/// defaults, so a caller supplying nothing looked identical to one supplying the
+/// right words. The sibling `ForceUpdateGate` was such a caller, in both trees,
+/// and shipped English to every locale for years. Requiring the copy makes the
+/// two cases different — and these constants are what this file expects to read.
+const String _promoLabel = 'Promotion';
+const String _stop = 'Stop showing offers';
+const String _resume = 'Show offers again';
+const String _off = 'Offers are off.';
+
 class _MemStore implements core.KeyValueStore {
   final Map<String, String> data = <String, String>{};
   @override
@@ -104,6 +115,10 @@ class _PromoHost extends ConsumerWidget {
       objected: ref.watch(promoObjectedProvider),
       onObjectionChanged: (bool objected) =>
           recordPromoObjection(ref, objected: objected),
+      promotionalLabel: _promoLabel,
+      stopLabel: _stop,
+      resumeLabel: _resume,
+      objectedNotice: _off,
       child: const Text(_creative),
     );
   }
@@ -196,7 +211,7 @@ void main() {
             'only on the promotional surface disappears the moment it is used, '
             'and the person can never change their mind',
       );
-      expect(find.text('Stop showing offers'), findsOneWidget);
+      expect(find.text(_stop), findsOneWidget);
       await tester.tap(_objectionAction);
       await tester.pumpAndSettle();
 
@@ -230,7 +245,7 @@ void main() {
             'a control whose state the user cannot see is a button that '
             'appears to do nothing',
       );
-      expect(find.text('Show offers again'), findsOneWidget);
+      expect(find.text(_resume), findsOneWidget);
 
       // ── ZERO promo renders ───────────────────────────────────────────────
       await _pumpPromo(tester, c);
@@ -296,7 +311,7 @@ void main() {
               'a claim about what this person chose, made before anything '
               'about them has been read',
         );
-        expect(find.text('Show offers again'), findsNothing);
+        expect(find.text(_resume), findsNothing);
         expect(
           _objectionAction,
           findsNothing,
@@ -416,7 +431,7 @@ void main() {
       expect(_card, findsNothing, reason: 'precondition: objected');
 
       await _pumpSettings(tester, c);
-      expect(find.text('Show offers again'), findsOneWidget);
+      expect(find.text(_resume), findsOneWidget);
       await tester.tap(_objectionAction);
       await tester.pumpAndSettle();
 
