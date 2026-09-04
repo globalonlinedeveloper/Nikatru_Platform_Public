@@ -16,7 +16,7 @@ import {
   READING_TTL_MS,
 } from './lib/health';
 import { corsMiddleware } from './middleware/cors';
-import { supabaseAuth } from './middleware/auth';
+import { supabaseAuth, erasureAuth } from './middleware/auth';
 import account from './routes/account';
 
 const app = new Hono<AppEnv>();
@@ -103,10 +103,32 @@ app.get('/v1/health', async (c) => {
   });
 });
 
+// ── 🔴 ERASURE IS MOUNTED FIRST, ON A STRICTER BOUNDARY ──────────────────────
+// `supabaseAuth` may fall back to an HS256 MAC using the shared
+// `SUPABASE_JWT_SECRET`. `erasureAuth` does only the asymmetric half, with that
+// secret out of scope entirely — because whoever learns it can mint a token for
+// any user, and behind an irreversible route that is a remote wipe of anybody's
+// account.
+//
+// ⚠️ REGISTRATION ORDER IS LOAD-BEARING, AND IT IS SUBTLE. Hono composes every
+// handler whose path matches, in REGISTRATION order, and the group below
+// registers `supabaseAuth` at `/v1/*` — which matches `/v1/account` too.
+// Registering the erasure route FIRST means its handler runs and returns before
+// the permissive middleware is ever reached. `routes/account.ts` re-checks
+// `tokenAssurance` as a second, independent limb, so moving this line produces a
+// loud 403 rather than a silent downgrade.
+// ⚠️ PATH-SCOPED `use`, NOT `use('*', …)` ON A SUB-APP. Two reasons, and both
+// are load-bearing: Hono needs the erasure handler registered before the
+// permissive group so it returns first, and `assert-erasure-reach.mjs` limb 3
+// DERIVES which middleware guards erasure from `use('…account…', X)` — a
+// wildcard on a sub-app is invisible to it, so the same code would pass the
+// guard by not being seen rather than by being safe.
+app.use('/v1/account', erasureAuth);
+app.route('/v1/account', account);
+
 // Protected: everything else under /v1 requires a valid Supabase JWT.
 const api = new Hono<AppEnv>();
 api.use('*', supabaseAuth);
-api.route('/account', account);
 app.route('/v1', api);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
