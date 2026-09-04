@@ -8,7 +8,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show AuthCapabilities, AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane, FocusableTap;
+    show AuthField, ContentPane, FocusableTap, FormTones, formTones;
 
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
@@ -20,71 +20,13 @@ import '../shared/widgets.dart';
 import 'legal_consent_fields.dart';
 import 'auth_error_text.dart';
 
-/// The six neutral colours this screen paints with, resolved for the current
-/// brightness.
-///
-/// 🔴 LIGHT IS THE LITERAL TOKEN, NOT `scheme.<slot>`, AND THAT IS THE WHOLE
-/// SHAPE OF THIS FUNCTION — the same rule `cardDecoration` and `RowCard` are
-/// written to (read `features/shared/widgets.dart:19-57` first). `apps/subly` is
-/// the frozen legacy rail-prover the owner eyeballs, so light must come out
-/// byte-identical to the twelve `AppColors.*` references this replaces; a
-/// "tidy-up" to `scheme.surface` in the light arm would repaint the login screen
-/// while every assertion comparing scheme-to-scheme kept passing.
-///
-/// 🔴 AND THE DARK ARM IS NOT COSMETIC. `app.dart` supplies a `darkTheme`, so
-/// every user on a dark-mode OS lands here — and with the tokens hardcoded that
-/// meant `AppColors.bg` (#F4F4F8, near-white) behind `AppColors.ink` (#141420,
-/// near-black) inside dark chassis chrome. Not "slightly off": a white sheet in
-/// a dark app, and, had only the surfaces been fixed, near-black headings on a
-/// near-black scaffold. Both halves move together or neither is worth doing,
-/// which is why [ink] and [muted] are in here beside the surfaces rather than
-/// left to `AppText`'s const styles.
-///
-/// [AppText.title], [AppText.body], [AppText.muted] and [AppText.label] each
-/// bake `AppColors.ink` / `AppColors.muted` into a `const TextStyle` in
-/// `packages/design_system`, so the only place a screen can correct them is at
-/// the call site, with `copyWith`. In LIGHT the value copied in is the value
-/// that was already there.
-typedef _Tones = ({
-  Color bg,
-  Color surface,
-  Color line,
-  Color ink,
-  Color muted,
-  Color accent,
-  Color danger,
-});
-
-_Tones _tones(BuildContext context) {
-  final ThemeData theme = Theme.of(context);
-  if (theme.brightness == Brightness.light) {
-    return (
-      bg: AppColors.bg,
-      surface: AppColors.surface,
-      line: AppColors.line,
-      ink: AppColors.ink,
-      muted: AppColors.muted,
-      accent: AppColors.accent,
-      danger: AppColors.danger,
-    );
-  }
-  final ColorScheme scheme = theme.colorScheme;
-  return (
-    // The scaffold is `scheme.surface` because that is exactly what
-    // `buildAppTheme` sets `scaffoldBackgroundColor` to — the screen agreeing
-    // with the theme rather than inventing a second answer.
-    bg: scheme.surface,
-    // `surfaceContainerHighest` is the slot `cardDecoration` and `RowCard`
-    // already chose: the lightest container step, so a field or a card lifts off
-    // the scaffold by the widest margin the scheme offers.
-    surface: scheme.surfaceContainerHighest,
-    line: scheme.outlineVariant,
-    ink: scheme.onSurface,
-    muted: scheme.onSurfaceVariant,
-    accent: scheme.primary,
-    danger: scheme.error,
-  );
-}
+// 🏗️ `_Tones` / `_tones()` LEFT THIS FILE ON 2026-09-04 ([ADR 065], chassis
+// step 2) and are now `FormTones` / `formTones()` in
+// `packages/design_system/lib/src/theme/form_tones.dart`. Nothing about the
+// resolution changed — the two long notes that explain WHY light is the literal
+// token and why the dark arm is not cosmetic moved with the code, because they
+// are properties of the resolution and not of this screen. The app brick had no
+// copy of any of it, which is the reason the move was worth making.
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -114,7 +56,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _acceptedTerms = false;
   bool _marketingEmail = false;
 
-  /// Where Enter goes from the email box — see the keyboard note on [_field].
+  /// Where Enter goes from the email box — see the keyboard note on
+  /// `AuthField`, in `packages/design_system`.
   ///
   /// Held on the state rather than created inline because a `FocusNode` built
   /// in `build` is a NEW node on every rebuild, and this screen rebuilds on
@@ -141,12 +84,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String email = _email.text.trim();
-    if (email.isEmpty || _password.text.isEmpty) {
-      _snack(l10n.authEnterBoth);
-      return;
-    }
-    if (!email.contains('@') || !email.contains('.')) {
-      _snack(l10n.authInvalidEmail);
+    // 🏗️ THE TWO CHECKS THAT WERE WRITTEN OUT HERE ARE NOW `core.signInProblem`
+    // ([ADR 065], chassis step 2). Same rules, same order, same two sentences —
+    // the reason they moved is that the app brick had NEITHER, so every stamped
+    // app posted whatever was in the boxes. The mapping from arm to arb key is
+    // exhaustive and the analyzer enforces that: adding an arm to
+    // `CredentialsProblem` without a case here is a compile error, which is the
+    // property a chain of `if`s could not offer.
+    final core.CredentialsProblem? problem =
+        core.signInProblem(email: email, password: _password.text);
+    if (problem != null) {
+      _snack(switch (problem) {
+        core.CredentialsProblem.incomplete => l10n.authEnterBoth,
+        core.CredentialsProblem.emailMalformed => l10n.authInvalidEmail,
+        // Unreachable from this door — `signInProblem` cannot return it — but
+        // stated rather than defaulted, so a future arm cannot land here
+        // wearing the wrong sentence.
+        core.CredentialsProblem.emailMissing => l10n.emailRequired,
+      });
       return;
     }
     // The clickwrap's second half — the button is disabled, and this holds when
@@ -163,7 +118,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // told the same thing. Sign-IN is exempt: an existing account may predate
     // any rule we impose now, and refusing to even attempt the sign-in would
     // lock its owner out on a client-side opinion.
-    if (_signUp && _password.text.length < 8) {
+    if (_signUp && _password.text.length < core.kMinPasswordLength) {
       _snack(l10n.passwordTooShort);
       return;
     }
@@ -244,7 +199,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _forgot() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String email = _email.text.trim();
-    if (email.isEmpty) {
+    if (core.passwordResetProblem(email: email) != null) {
       _snack(l10n.emailRequired);
       return;
     }
@@ -284,7 +239,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final _Tones t = _tones(context);
+    final FormTones t = formTones(context);
     // What identity can actually do HERE — declared, not assumed
     // ([pipeline C-7]). Offering an OAuth button on a platform that cannot
     // complete the redirect is promising something the app cannot deliver.
@@ -378,10 +333,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // routed to. And with no `textInputAction`/`onSubmitted`, Enter
                 // in the password box did nothing at all: the only way in was
                 // to leave the keyboard and hit the button.
-                _field(
-                  l10n.email,
-                  _email,
-                  TextInputType.emailAddress,
+                AuthField(
+                  label: l10n.email,
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
                   fieldKey: E2EKeys.loginEmail,
                   hint: l10n.emailHint,
                   autofillHints: const <String>[AutofillHints.email],
@@ -392,10 +347,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   onSubmitted: _passwordFocus.requestFocus,
                 ),
                 const SizedBox(height: 14),
-                _field(
-                  l10n.password,
-                  _password,
-                  TextInputType.text,
+                AuthField(
+                  label: l10n.password,
+                  controller: _password,
+                  keyboardType: TextInputType.text,
                   obscure: true,
                   fieldKey: E2EKeys.loginPassword,
                   hint: l10n.passwordHint,
@@ -612,115 +567,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
   }
-
-  /// One labelled field — and the label reaches a SCREEN READER, which it did
-  /// not.
-  ///
-  /// 🔴 THE FIELDS ON THIS SCREEN HAD NO NAME AS SOON AS SOMEBODY TYPED IN
-  /// THEM, and the empty form is exactly the state that hides it. The name is
-  /// painted as a separate `Text` ABOVE the box rather than through
-  /// `InputDecoration.labelText`, so nothing tied the two together: the only
-  /// string in the field's own semantics was `hintText`, and Flutter fades the
-  /// hint out — semantics and all, `AnimatedOpacity` excludes a fully
-  /// transparent child — the moment the field has content. So a reader heard
-  /// "you@email.com, text field" on arrival and, one character later, a text
-  /// field announced as NOTHING. Both boxes, on the first screen every
-  /// signed-out user sees, and the password box is the one where "which box am
-  /// I in" cannot be answered by listening to the value.
-  ///
-  /// Measured by `a11y_semantics_test.dart`'s naked-controls sweep, which
-  /// reported two «» NO NAME nodes once the case typed into them — and passed
-  /// on the pristine form, which is why the typed-in case exists.
-  ///
-  /// ⚠️ FIXED WITH `MergeSemantics`, NOT WITH `labelText`. Moving the name into
-  /// the decoration would repaint the box with a floating Material label, and
-  /// apps/subly is the frozen legacy rail-prover the owner eyeballs. This
-  /// changes no pixels: the visible capitals are excluded from the tree (a
-  /// layout compromise has no business in the audio channel — the same rule the
-  /// calendar's narrow weekday letters are held to) and the sentence-case word
-  /// is annotated onto the field, where the merge makes label, role, value and
-  /// tap action ONE node instead of a caption a reader meets on a separate
-  /// swipe and can just as easily meet afterwards.
-  ///
-  /// ⚠️ THE KEYBOARD PARAMETERS ARE PASSED IN, NOT DEFAULTED HERE. `_field`
-  /// paints both boxes, and the two want opposite answers — the email box
-  /// advances, the password box submits — so a default on this helper would be
-  /// right for one caller and silently wrong for the other. They are also
-  /// exactly what `login_chassis_parity_test.dart` reads off the `TextField`,
-  /// so dropping one at a call site goes red rather than merely un-autofilling
-  /// the live form, which is how they were missing in the first place.
-  Widget _field(
-    String label,
-    TextEditingController c,
-    TextInputType type, {
-    bool obscure = false,
-    Key? fieldKey,
-    String? hint,
-    FocusNode? focusNode,
-    List<String>? autofillHints,
-    TextInputAction? textInputAction,
-    VoidCallback? onSubmitted,
-  }) {
-    final _Tones t = _tones(context);
-    return MergeSemantics(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          ExcludeSemantics(
-            child: Text(
-              label.toUpperCase(),
-              style: AppText.label.copyWith(color: t.muted),
-            ),
-          ),
-          const SizedBox(height: 7),
-          Semantics(
-            label: label,
-            child: TextField(
-              key: fieldKey,
-              controller: c,
-              focusNode: focusNode,
-              obscureText: obscure,
-              keyboardType: type,
-              autofillHints: autofillHints,
-              textInputAction: textInputAction,
-              // `ValueChanged<String>` at the framework, `VoidCallback` at the
-              // call site: the submitted text is already in `c`, and taking it
-              // as an argument would invite a second, staler source of truth
-              // for what `_submit` reads.
-              onSubmitted: onSubmitted == null
-                  ? null
-                  : (String _) => onSubmitted(),
-              style: AppText.body.copyWith(
-                fontWeight: FontWeight.w600,
-                color: t.ink,
-              ),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: AppText.muted.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: t.muted,
-                ),
-                filled: true,
-                fillColor: t.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 15,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: t.line),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: t.accent, width: 1.5),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// The deletion outcome, rendered where the sign-out redirect cannot reach it.
@@ -735,7 +581,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final _Tones t = _tones(context);
+    final FormTones t = formTones(context);
     final core.AccountDeletionOutcome? outcome = ref.watch(
       lastAccountDeletionOutcomeProvider,
     );

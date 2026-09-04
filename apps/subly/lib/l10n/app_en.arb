@@ -1144,11 +1144,11 @@
   },
   "authEnterBoth": "Enter your email and password.",
   "@authEnterBoth": {
-    "description": "Consumed by auth/login_screen.dart:36."
+    "description": "The `CredentialsProblem.incomplete` arm. Raised by `core.signInProblem` and rendered by auth/login_screen.dart. A LINE NUMBER WAS HERE AND WENT STALE the first time the screen was edited — name the symbol, not the line."
   },
   "authInvalidEmail": "Enter a valid email address.",
   "@authInvalidEmail": {
-    "description": "Consumed by auth/login_screen.dart:41."
+    "description": "The `CredentialsProblem.emailMalformed` arm. Raised by `core.signInProblem` and rendered by auth/login_screen.dart."
   },
   "authIncorrect": "Incorrect email or password.",
   "@authIncorrect": {

@@ -7,6 +7,7 @@ export 'src/auth/account_deletion.dart';
 export 'src/auth/auth_event.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
+export 'src/auth/credentials_preflight.dart';
 export 'src/auth/identity_assurance.dart';
 export 'src/auth/password_policy.dart';
 export 'src/legal/legal_acceptance.dart';

@@ -464,6 +464,40 @@ void main() {
 
         expect(find.text(l10n.authEnterBoth), findsOneWidget);
       });
+
+      // 🔴 THE SECOND ARM, AND IT WAS UNCOVERED UNTIL 2026-09-04. Measured by
+      // mutation on the day the rule moved into `core.signInProblem`: DELETING
+      // the malformed-address check outright left all 815 of this app's tests
+      // green. `authEnterBoth` was pinned in three places and `authInvalidEmail`
+      // in none, so the screen could have shown any sentence — or none — for a
+      // mistyped address and nothing would have said so.
+      //
+      // ⚠️ IT IS A DIFFERENT ASSERTION FROM THE CORE TEST, not a duplicate.
+      // `packages/core/test/credentials_preflight_test.dart` pins the RULE
+      // (which arm, and in what order). This pins the MAPPING — that this screen
+      // renders THAT arm as THIS key — which lives in the screen's `switch` and
+      // is exactly what a copy-paste between arms would get wrong. Both boxes
+      // are filled here on purpose: a blank one returns `incomplete` first, so a
+      // half-filled form would test the arm above all over again.
+      testWidgets('[$code] a malformed address gets its OWN sentence', (
+        WidgetTester tester,
+      ) async {
+        final AppLocalizations l10n = await _load(code);
+        await _pump(tester, Locale(code), const LoginScreen());
+
+        await tester.enterText(find.byKey(E2EKeys.loginEmail), 'not-an-address');
+        await tester.enterText(find.byKey(E2EKeys.loginPassword), 'hunter2!!');
+        await tester.tap(find.byKey(E2EKeys.loginSubmit));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(find.text(l10n.authInvalidEmail), findsOneWidget);
+        expect(
+          find.text(l10n.authEnterBoth),
+          findsNothing,
+          reason: 'the two arms must not collapse into one sentence',
+        );
+      });
     }
 
     testWidgets('[ta] the pre-l10n English literals are GONE', (

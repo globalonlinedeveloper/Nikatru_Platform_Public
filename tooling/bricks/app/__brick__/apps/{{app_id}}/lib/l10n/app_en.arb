@@ -194,6 +194,14 @@
   "@resetSent": {
     "description": "Deliberately does NOT confirm whether the account exists — that would let anyone test which emails are registered."
   },
+  "authEnterBoth": "Enter your email and password.",
+  "@authEnterBoth": {
+    "description": "The `CredentialsProblem.incomplete` arm. Raised by `core.signInProblem` on the sign-in surface when either box is blank."
+  },
+  "authInvalidEmail": "Enter a valid email address.",
+  "@authInvalidEmail": {
+    "description": "The `CredentialsProblem.emailMalformed` arm. Raised by `core.signInProblem` when the address has no @ or no dot."
+  },
   "emailRequired": "Enter your email address first.",
   "@emailRequired": {
     "description": "Shown when a password reset is requested with an empty email field."
