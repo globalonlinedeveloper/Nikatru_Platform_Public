@@ -936,7 +936,8 @@
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#platform",
-      ".github/workflows/ops-watch.yml#digest"
+      ".github/workflows/ops-watch.yml#digest",
+      ".github/workflows/ops-watch.yml#heartbeats"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-ops-register.mjs",
