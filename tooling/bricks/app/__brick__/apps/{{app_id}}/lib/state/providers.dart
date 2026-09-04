@@ -1395,6 +1395,60 @@ final Provider<AuthRefreshNotifier> authRefreshProvider =
       return notifier;
     });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACCOUNT-DELETION OUTCOME — WHERE THE ANSWER LIVES ONCE THE SCREEN IS GONE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// WHAT HAPPENED TO THE ACCOUNT, parked above the screen that asked.
+///
+/// 🔴 IT IS HERE BECAUSE THE SCREEN CANNOT HOLD IT. `deleteAccount()` signs the
+/// user out whichever way the request went; [authRefreshProvider] fires, and the
+/// router's redirect replaces the page stack with `/sign-in`. A `SnackBar` — or
+/// a dialog, which is a PAGELESS ROUTE on the page being removed — goes with it.
+///
+/// **Measured, not assumed.** Until 2026-09-04 the stamped settings screen
+/// posted the result to the `ScaffoldMessenger` of the very screen the sign-out
+/// was tearing down (`features/settings/settings_screen.dart:650-657`), so the
+/// message could be destroyed before it was read. `apps/subly` hit the same wall
+/// from the other side and recorded the measurement in
+/// `apps/subly/lib/state/providers/auth.dart:568-574`: its first version
+/// rendered the result inside the dialog, and the router-driven test found ZERO
+/// widgets carrying the result key once the redirect settled — so *the message
+/// that matters most (502: your data is gone and your login still works) was the
+/// one message the user never saw*.
+///
+/// The outcome therefore outlives the screen here. The surface the redirect
+/// LANDS on renders it and clears it on dismissal, so it cannot resurface at
+/// some later sign-out attached to an action the user did not take. [ADR 027]
+///
+/// ⚠️ TODAY NOTHING READS IT YET, and that is stated rather than left to be
+/// discovered: `features/auth/sign_in_screen.dart` is the surface that owes the
+/// render, and it was outside the change that added this. The sink is written
+/// on every path that reaches the server (see `_deleteAccount`), so the read is
+/// one composition away and no data is being dropped in the meantime.
+final StateProvider<core.AccountDeletionOutcome?>
+lastAccountDeletionOutcomeProvider =
+    StateProvider<core.AccountDeletionOutcome?>((ref) => null);
+
+/// WHY that outcome, for a developer — parked next to it and never shown in a
+/// release build.
+///
+/// 🔴 IT EXISTS BECAUSE `unknown` IS A BUCKET WITH NO LABEL, AND THE LABEL COST
+/// FOUR DAYS. The live delete leg reported "we cannot tell how much of it was
+/// removed" on 2026-08-09; the cause was a Riverpod `CircularDependencyError`
+/// thrown before a request was ever formed, and three sessions went looking for
+/// an HTTP status that had never existed — one of them reading zone analytics to
+/// prove the request had never been sent. The code had the exception in its hand
+/// and threw it away.
+///
+/// It holds `error.toString()`, which for a [core.AccountDeletionFailure]
+/// carries the status or the underlying throw in square brackets. A renderer
+/// must gate it on `kDebugMode` — `DestructiveOutcomeNotice` does that
+/// internally rather than trusting a call site — so the E2E can name the cause
+/// in one run and a user never sees it. [ADR 027]
+final StateProvider<String?> lastAccountDeletionDetailProvider =
+    StateProvider<String?>((ref) => null);
+
 const String _remindersKey = 'nikatru.reminders_enabled';
 
 /// The id of the one daily reminder the chassis schedules.

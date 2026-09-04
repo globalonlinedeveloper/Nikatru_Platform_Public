@@ -577,85 +577,157 @@ class SettingsScreen extends ConsumerWidget {
     WidgetRef ref,
     AppLocalizations l10n,
   ) {
+    // 🔴 OWNED HERE, NOT BY THE DIALOG, and disposed by [_DeleteAccountDialog]
+    // as the last reader. `tooling/ci/assert-stamp-properties.mjs:1042` pins the
+    // confirm wiring as the literal zero-argument closure
+    // `onConfirm: () => _deleteAccount(`, so the typed password has to be
+    // readable from OUT HERE for that closure to have anything to pass — a
+    // controller created inside the dialog could not be.
     final TextEditingController password = TextEditingController();
     showDialog<void>(
       context: context,
-      builder: (BuildContext dialogContext) => _DeleteAccountDialog(
+      // 🔴 WAS THE DEFAULT, WHICH IS `true`. A tap on the barrier closed the
+      // most destructive dialog in the app — and, once the request was in
+      // flight, closed it while the deletion carried on, which to the person
+      // doing it is indistinguishable from having cancelled it. The dialog also
+      // carries a `PopScope` for the routes a barrier flag cannot reach (a back
+      // gesture, an Escape key); neither covers the other.
+      barrierDismissible: false,
+      // 🔴 NO `dialogContext` IS CAPTURED ANY MORE, and that is the point rather
+      // than tidiness: this closure used to hand the dialog's context to
+      // `_deleteAccount` so it could `Navigator.pop` and post a `SnackBar` on
+      // the way out — on a route the sign-out was already removing.
+      builder: (BuildContext _) => _DeleteAccountDialog(
         l10n: l10n,
         password: password,
-        onConfirm: () =>
-            _deleteAccount(dialogContext, ref, l10n, password.text),
+        onConfirm: () => _deleteAccount(ref, password.text),
       ),
     );
   }
 
-  Future<void> _deleteAccount(
-    BuildContext dialogContext,
+  /// Runs the real path and returns WHAT ACTUALLY HAPPENED.
+  ///
+  /// 🔴 IT RETURNS AN OUTCOME RATHER THAN POPPING AND POSTING A MESSAGE, AND
+  /// THAT IS THE WHOLE CHANGE. Until 2026-09-04 this method ended in
+  /// `nav.pop()` + `messenger.showSnackBar(...)`, and three separate falsehoods
+  /// came out of that shape:
+  ///
+  ///   1. A REFUSED RE-AUTHENTICATION READ AS A HALF-FINISHED DELETION. The
+  ///      single `catch (e)` fed every throw — including the one
+  ///      `signInWithEmail` raises for a wrong password, BEFORE any request is
+  ///      formed — to `accountDeletionOutcomeOf`, which resolves anything that
+  ///      is not an [core.AccountDeletionFailure] to `unknown`. `unknown`'s
+  ///      sentence is "we cannot tell how much of it was removed". A mistyped
+  ///      password produced it, and nothing had been sent at all.
+  ///      `core.AccountDeletionOutcome.reauthFailed` already existed and said
+  ///      exactly the true thing; NO CODE PATH REACHED IT. It does now — the
+  ///      `on core.AuthFailure` arm below is the whole of the fix, and it must
+  ///      stay ABOVE the general `catch`.
+  ///   2. SUCCESS SAID NOTHING AT ALL. The success branch was a bare `nav.pop()`,
+  ///      so the most irreversible action in the app confirmed itself by closing
+  ///      a dialog.
+  ///   3. THE MESSAGE WAS POSTED TO A MESSENGER BEING TORN DOWN. `deleteAccount`
+  ///      signs out whichever way the request went, the router replaces the page
+  ///      stack, and a `SnackBar` on the outgoing page's `ScaffoldMessenger`
+  ///      goes with it. See [lastAccountDeletionOutcomeProvider] for the
+  ///      measurement.
+  ///
+  /// So the outcome is PARKED above the screen for the surface the redirect
+  /// lands on, and RETURNED to the dialog for the outcomes where nothing
+  /// navigates. The two halves cover disjoint cases and neither replaces the
+  /// other. [ADR 027]
+  ///
+  /// ⚠️ IT DOES NOT THROW. An error escaping here would leave the dialog stuck
+  /// busy, which `PopScope` then refuses to close — a screen the user cannot
+  /// leave, over an account they cannot see the state of.
+  Future<core.AccountDeletionOutcome> _deleteAccount(
     WidgetRef ref,
-    AppLocalizations l10n,
     String password,
   ) async {
-    final NavigatorState nav = Navigator.of(dialogContext);
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(
-      dialogContext,
-    );
     final core.AuthRepository auth = ref.read(authRepositoryProvider);
     final String? email = auth.currentUser?.email;
-    // 🔴 RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason [userStateDrops]
-    // records: `deleteAccount()` signs out, the router tears this shell down,
-    // and a `ref.read` on the far side of that await throws `StateError` — into
-    // the deliberately empty `catch` below, where nothing can ever observe it.
-    // The forget would have silently done nothing on the one path where the
-    // account it belongs to no longer exists.
+    // 🔴 ALL THREE RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason
+    // [userStateDrops] records: `deleteAccount()` signs out, the router tears
+    // this shell down, and a `ref.read` on the far side of that await throws
+    // `StateError`. The drops read sits INSIDE the try, where that throw dies in
+    // the empty `catch` below and the forget silently does nothing on the one
+    // path where the account it belongs to no longer exists. The two sinks are
+    // read BEFORE it for a sharper reason: a `StateError` from THEM would escape
+    // past `return outcome`, and the dialog — which does not catch — would stay
+    // busy for ever while the sign-in surface was handed no outcome at all.
+    // `apps/subly/lib/features/settings/settings_screen.dart:1214-1223` records
+    // that exact shape as a live E2E flake.
+    final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
+      lastAccountDeletionOutcomeProvider.notifier,
+    );
+    final StateController<String?> detailSink = ref.read(
+      lastAccountDeletionDetailProvider.notifier,
+    );
     final List<UserStateDrop> drops = userStateDrops(ref);
+    core.AccountDeletionOutcome outcome;
+    String? detail;
     try {
       if (email == null) throw core.AuthFailure('Not signed in');
-      // Re-authenticate through the SAME seam sign-in uses.
+      // Re-authenticate through the SAME seam sign-in uses, so it works against
+      // whatever identity provider is wired.
       await auth.signInWithEmail(email: email, password: password);
       try {
         await auth.deleteAccount();
-      } finally {
-        // BOTH BRANCHES, because `deleteAccount` signs out whether or not the
-        // server deleted anything — so the session is gone either way and the
-        // state scoped to it must go too. It matters MORE on the failing branch:
-        // those reminders belong to an account whose rows may already be
-        // destroyed. Placed after the reauth on purpose — a wrong password
-        // deletes nothing and leaves the user signed in, so there is nothing to
-        // forget.
-        try {
-          await forgetSignedInUser(drops);
-        } catch (_) {
-          // 🔴 A FAILED LOCAL CLEAR MUST NOT BECOME THE DELETION'S VERDICT.
-          // Letting it out of this `finally` would replace a 502 —
-          // `signInSurvives`, the one outcome a user can never discover for
-          // themselves — with a generic "we cannot tell", and would report a
-          // deletion that really happened as one that may not have. What the
-          // server did to the account outranks what this device managed to
-          // tidy up.
-        }
+        outcome = core.AccountDeletionOutcome.deleted;
+      } catch (e) {
+        // Deliberately NOT one message for every failure. `deleteAccount` signs
+        // out regardless and then throws, so the user may be signed out WITHOUT
+        // being deleted — and 501 (nothing was touched) and 502 (the rows are
+        // gone and the login still works) mean opposite things to the person who
+        // asked. `accountDeletionOutcomeOf` resolves an unrecognised error to
+        // `unknown` rather than to a refusal shape this screen invented, because
+        // an error nobody modelled is exactly the case where how far the
+        // deletion got is unknown. [ADR 027]
+        outcome = core.accountDeletionOutcomeOf(e);
+        // 🔴 KEEP THE ERROR ITSELF. `unknown` is a bucket, and a bucket with no
+        // label costs a session every time something lands in it. Parked, never
+        // rendered in release: see [lastAccountDeletionDetailProvider].
+        detail = '$e';
       }
-      nav.pop();
-    } catch (e) {
-      // Deliberately NOT "deleted" on failure. AuthRepository.deleteAccount
-      // signs out regardless and then throws, so the user may be signed out
-      // WITHOUT being deleted — saying otherwise would be the one lie they can
-      // never detect and never recover from.
+      // BOTH BRANCHES ABOVE, because `deleteAccount` signs out whether or not
+      // the server deleted anything — so the session is gone either way and the
+      // state scoped to it must go too. It matters MORE on the failing branch:
+      // those reminders belong to an account whose rows may already be
+      // destroyed. Below the reauth on purpose — a wrong password deletes
+      // nothing and leaves the user signed in, so there is nothing to forget.
+      try {
+        await forgetSignedInUser(drops);
+      } catch (_) {
+        // 🔴 A FAILED LOCAL CLEAR MUST NOT BECOME THE DELETION'S VERDICT. Let
+        // out, it would reach the outer `catch` below and return `couldNotReach`
+        // over a `deleted` — or over `signInSurvives`, the one outcome a user
+        // can never discover for themselves. What the server did to the account
+        // outranks what this device managed to tidy up.
+      }
+    } on core.AuthFailure {
+      // 🔴 THE DEAD TABLE ENTRY, NOW REACHABLE. The provider REFUSED the
+      // credentials, so nothing was sent and nothing was deleted — and, unlike
+      // every server-side refusal, the session is untouched. That is why this is
+      // not `nothingDeleted`, whose sentence says the user has been signed out.
       //
-      // 🔴 AND NOT ONE MESSAGE FOR EVERY FAILURE EITHER. This used to be
-      // `catch (_)` printing `l10n.deleteAccountFailed` — "Your account has NOT
-      // been deleted" — for every refusal the route can give. That sentence is
-      // FALSE on a 502, where the rows are gone and only the identity survived:
-      // the user is told nothing happened while their data is already destroyed
-      // and their login still works. [ADR 027].
-      nav.pop();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            deleteAccountFailureMessage(l10n, core.accountDeletionOutcomeOf(e)),
-          ),
-        ),
-      );
+      // NOT PARKED IN THE SINKS EITHER, and that is deliberate: no sign-out
+      // happened, so no redirect is coming and the dialog itself is still on
+      // screen to say it. Parking it would leave a stale notice waiting to
+      // ambush the next unrelated sign-out.
+      return core.AccountDeletionOutcome.reauthFailed;
+    } catch (_) {
+      // 🔴 NOT reauthFailed. Anything that is not the provider saying no — no
+      // network, a rate-limit, a plugin error — is NOT a wrong password, and
+      // telling somebody on a train that their password did not match sends them
+      // round a loop retyping a correct one.
+      return core.AccountDeletionOutcome.couldNotReach;
     }
+    // 🔴 PARK IT ABOVE THE SCREEN. The deletion signed the user out, so the
+    // router is already replacing this page — taking the dialog with it. The
+    // surface the redirect lands on renders whatever is left here.
+    outcomeSink.state = outcome;
+    detailSink.state = detail;
+    return outcome;
   }
 }
 
@@ -664,6 +736,25 @@ class SettingsScreen extends ConsumerWidget {
 /// TOP-LEVEL AND PUBLIC so `test/chassis_properties_test.dart` can assert on it
 /// directly: a mapping only reachable through a dialog is one nobody tests, and
 /// the whole defect this replaces was invisible for exactly that reason.
+///
+/// 🔴 THE DIALOG NO LONGER RENDERS THIS, AND SAYING SO HERE IS THE POINT — the
+/// next person to read this file would otherwise "tidy" one of the two away.
+/// `_DeleteAccountDialogState._report` renders
+/// `core.AccountDeletionOutcome.plainMessage` instead, because THIS TABLE CANNOT
+/// SAY TWO OF THE THINGS THAT HAVE TO BE SAID: there is no `.arb` key for a
+/// SUCCESS (the `deleted` arm below returns "Could not delete your account",
+/// which is a lie if it is ever reached), and `reauthFailed` shares
+/// `deleteAccountFailed` with `nothingDeleted` — a sentence that omits the two
+/// facts that matter after a refused password, that nothing was sent and that
+/// the user is still signed in.
+///
+/// It stays because it is the localised half and the tested half. Collapsing the
+/// two is one `.arb` change and no code change: add `deleteAccountDeleted` and
+/// `deleteAccountReauthFailed` with values byte-identical to `plainMessage`,
+/// give them their own arms below, and `_report` calls this instead. Until then
+/// the result sentence is honest and English, which is the right way round —
+/// `apps/subly` made the same trade on the same surface, and records it at
+/// `apps/subly/lib/features/settings/settings_screen.dart:1465-1475`.
 ///
 /// ⚠️ NO TURNAROUND TIME, RETENTION PERIOD OR LEGAL STATEMENT appears in any of
 /// these strings, because `sites/nikatru/delete-account.html` publishes none —
@@ -738,7 +829,28 @@ class _EditProfileDialog extends StatelessWidget {
 /// Split out so the confirm action can be driven directly in a test — a dialog
 /// only reachable through a tap on a tile is one nobody writes a test for, which
 /// is how the dead button survived in the first place.
-class _DeleteAccountDialog extends StatelessWidget {
+///
+/// 🔴 IT IS A `StatefulWidget` FOR ONE REASON: SOMETHING HAS TO DISPOSE THE
+/// CONTROLLER. As a `StatelessWidget` it could not, and nothing else did — the
+/// `TextEditingController` built in `_confirmDelete` was leaked on every open of
+/// the dialog, in every app the factory stamps. It cannot be created inside the
+/// dialog instead: `assert-stamp-properties.mjs:1042` pins the confirm wiring as
+/// the literal zero-argument closure `onConfirm: () => _deleteAccount(`, whose
+/// only way to see the typed password is a controller the CALLER holds. So the
+/// caller creates it, this widget is the last reader, and this widget disposes
+/// it.
+///
+/// 🏗️ THE FORM, THE BUSY LOCK, THE `PopScope` AND THE RESULT PHASE ALL LIVE IN
+/// [DestructiveConfirmDialog] NOW ([ADR 065], chassis step 2). None of it is
+/// app-specific — it is "an irreversible action, behind a secret, that says what
+/// it did" — and the brick's own Dart cannot be analyzed or unit-tested where it
+/// lives, so behaviour left in this file is behaviour nothing can prove. Moved
+/// into `packages/design_system` it is measured directly by
+/// `packages/design_system/test/destructive_confirm_dialog_test.dart`. Every
+/// user-visible string is still handed in from HERE, inside the tree
+/// `assert-no-hardcoded-strings.mjs` scans, so nothing left that guard's domain
+/// by moving house.
+class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
     required this.password,
@@ -746,35 +858,71 @@ class _DeleteAccountDialog extends StatelessWidget {
   });
 
   final AppLocalizations l10n;
+
+  /// Owned by the caller so [onConfirm] can be the zero-argument closure the
+  /// stamp-properties anchor names; disposed here, the last reader.
   final TextEditingController password;
-  final VoidCallback onConfirm;
+
+  /// Runs the real deletion and reports what happened.
+  final Future<core.AccountDeletionOutcome> Function() onConfirm;
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  @override
+  void dispose() {
+    widget.password.dispose();
+    super.dispose();
+  }
+
+  /// The outcome, in words the person who asked can act on.
+  ///
+  /// 🔴 THE SENTENCE COMES FROM `packages/core`, NOT FROM THE `.arb`, and the
+  /// reason is that the `.arb` cannot say two of the things that have to be
+  /// said. It has no key for a SUCCESS at all — [deleteAccountFailureMessage]
+  /// maps `deleted` to "Could not delete your account", which is only ever
+  /// reached when the mapping is asked something it was not built for — and its
+  /// `reauthFailed` arm shares `deleteAccountFailed` with `nothingDeleted`,
+  /// whose sentence does not say the two facts that matter after a refused
+  /// password: nothing was sent, and you are still signed in.
+  /// `core.AccountDeletionOutcome.plainMessage` says both, for every value, and
+  /// no app can invent a kinder one. `apps/subly` renders the same source on the
+  /// same surface for the same reason.
+  ///
+  /// ⚠️ THE COST IS STATED RATHER THAN HIDDEN: `plainMessage` is English only,
+  /// so this dialog's result sentence is not translated today while the form
+  /// above it is. Closing that is one `.arb` change and no code change — add
+  /// `deleteAccountDeleted` and `deleteAccountReauthFailed` with values
+  /// byte-identical to `plainMessage`, extend [deleteAccountFailureMessage] to
+  /// cover them, and call it from here instead.
+  DestructiveActionReport _report(core.AccountDeletionOutcome outcome) =>
+      DestructiveActionReport(
+        message: outcome.plainMessage,
+        succeeded: outcome.accountIsGone,
+        // No heading and no support route: both would need `.arb` keys that do
+        // not exist, and an English literal here would ship untranslated in
+        // every stamped app. Null renders neither rather than inventing one.
+      );
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(l10n.deleteAccountConfirmTitle),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(l10n.deleteAccountConfirmBody),
-          const SizedBox(height: 16),
-          Text(l10n.deleteAccountReauthHint),
-          const SizedBox(height: 8),
-          TextField(
-            controller: password,
-            obscureText: true,
-            decoration: InputDecoration(labelText: l10n.deleteAccountPassword),
-          ),
-        ],
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.cancel),
-        ),
-        FilledButton(onPressed: onConfirm, child: Text(l10n.delete)),
-      ],
+    final AppLocalizations l10n = widget.l10n;
+    return DestructiveConfirmDialog(
+      title: l10n.deleteAccountConfirmTitle,
+      body: l10n.deleteAccountConfirmBody,
+      secretHint: l10n.deleteAccountReauthHint,
+      secretLabel: l10n.deleteAccountPassword,
+      secret: widget.password,
+      cancelLabel: l10n.cancel,
+      confirmLabel: l10n.delete,
+      // ⚠️ BORROWED KEY, NAMED SO IT IS NOT MISTAKEN FOR A CHOICE. "Got it" is
+      // the right word for acknowledging a result, but the key belongs to the
+      // catch-up notification and its `@description` says so. There is no
+      // `close` key in this brick's catalogue; adding one is the fix.
+      acknowledgeLabel: l10n.catchUpDismiss,
+      onConfirm: () async => _report(await widget.onConfirm()),
     );
   }
 }

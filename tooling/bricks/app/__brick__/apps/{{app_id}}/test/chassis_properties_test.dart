@@ -2105,6 +2105,113 @@ void main() {
       // …and the 501 message must not claim anything WAS removed.
       expect(nothing.toLowerCase(), contains('nothing'));
     });
+
+    // 🔴 AND THE USER HAS TO ACTUALLY READ IT. Everything above is about the
+    // seam and the words; this limb is about whether the words SURVIVE. The
+    // deletion signs the user out, the router replaces the page stack, and the
+    // screen that asked — dialog, SnackBar and all — is gone before the
+    // sentence can be read. `apps/subly` measured exactly that: its first
+    // version rendered the result in the dialog and the router-driven test
+    // found ZERO result widgets once the redirect settled, so *the message
+    // that mattered most (502: your data is gone and your login still works)
+    // was the one message the user never saw*. [ADR 027]
+    //
+    // ⚠️ DRIVEN THROUGH THE REAL APP AND THE REAL ROUTER, not by constructing
+    // the notice. A widget test that pumps `DestructiveOutcomeNotice` directly
+    // proves the widget renders and says nothing about the only thing in
+    // doubt — that the surface the redirect LANDS on is the one reading the
+    // parked outcome. That is the difference between `reachable` and `proven`.
+    testWidgets(
+      'the outcome survives the sign-out and is read on the surface the '
+      'redirect lands on',
+      (WidgetTester tester) async {
+        final ProviderContainer c = _container(_onboardedStore());
+        addTearDown(c.dispose);
+
+        // The worst outcome, on purpose: the rows are gone and the login still
+        // works. It is the one a user can never discover for themselves, and
+        // the one the old shape destroyed.
+        const core.AccountDeletionOutcome outcome =
+            core.AccountDeletionOutcome.signInSurvives;
+        c.read(lastAccountDeletionOutcomeProvider.notifier).state = outcome;
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+        );
+        await _turnsAndSettleRoute(tester);
+
+        // The domain first: without the sign-in surface on screen the check
+        // below would pass by having nothing to look at.
+        expect(
+          find.byType(TextField),
+          findsWidgets,
+          reason: 'a signed-out app must land on the sign-in screen',
+        );
+        expect(
+          find.text(outcome.plainMessage),
+          findsOneWidget,
+          reason:
+              'the outcome was parked and the surface the redirect landed on '
+              'did not render it — which is the defect this pair exists for: '
+              'the account is gone, the login still works, and nobody was told',
+        );
+
+        // …and it answers ONE act. Left standing, it would ambush the next
+        // unrelated sign-out with a stale sentence about an old deletion.
+        //
+        // ⚠️ SCOPED TO THE NOTICE, and the loose version of this line is why:
+        // `find.byType(TextButton).last` picked up the sign-in screen's own
+        // "Need an account?" control, so the tap left the outcome exactly where
+        // it was and the assertion below failed against a working dismiss. The
+        // sign-in surface carries three TextButtons; only one of them is this
+        // widget's.
+        await tester.tap(
+          find.descendant(
+            of: find.byType(DestructiveOutcomeNotice),
+            matching: find.byType(TextButton),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(c.read(lastAccountDeletionOutcomeProvider), isNull);
+        expect(find.text(outcome.plainMessage), findsNothing);
+      },
+    );
+
+    // The other half of the same property, and it is the common case: an
+    // ordinary arrival at the sign-in screen must say NOTHING about deletion.
+    // Without this the limb above is satisfied by a notice that is always on.
+    testWidgets('a normal arrival renders no deletion notice', (
+      WidgetTester tester,
+    ) async {
+      final ProviderContainer c = _container(_onboardedStore());
+      addTearDown(c.dispose);
+      expect(c.read(lastAccountDeletionOutcomeProvider), isNull);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+
+      expect(find.byType(TextField), findsWidgets);
+      // MOUNTED UNCONDITIONALLY, so the branch that decides is the widget's and
+      // not a call-site `if` the next screen would forget to copy.
+      expect(find.byType(DestructiveOutcomeNotice), findsOneWidget);
+
+      // 🔴 ASSERTED ON THE PAINTED HEIGHT, NOT ON THE ABSENCE OF STRINGS, and
+      // the weaker version is why. `findsNothing` over the outcome sentences
+      // was the first shape of this limb, and MUTATION-TESTING KILLED IT: a
+      // notice forced to render a card carrying any OTHER string satisfied it,
+      // so the limb passed against exactly the always-on notice it exists to
+      // forbid. Zero height cannot be faked by changing the words.
+      expect(
+        tester.getSize(find.byType(DestructiveOutcomeNotice)).height,
+        0,
+        reason:
+            'nothing was deleted, so this must take no space at all — an '
+            'always-on notice would satisfy a text check and still push the '
+            'whole sign-in form down the screen on every ordinary visit',
+      );
+    });
   });
 
   // ── PROPERTY: profile-edit-works ──────────────────────────────────────────

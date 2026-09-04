@@ -1717,6 +1717,29 @@ const COVERED_BY = {
   // it false, and "a GDPR Art 21 objection outranks a live campaign" needs it to
   // be able to say true.
   promoObjectedProvider: 'promo-card-fails-closed',
+  // ── [ADR 027] / [ADR 065] chassis step 2. The deletion outcome, and it is
+  //    DRIVEN THROUGH THE REAL ROUTER rather than constructed — which is the
+  //    whole reason it counts as coverage here.
+  //
+  // The pair exists because the screen that asks for the deletion cannot report
+  // it: `deleteAccount()` signs the user out either way, the router replaces the
+  // page stack, and the dialog and any SnackBar go with it. So a widget test
+  // that pumps the notice directly would prove the notice renders and would say
+  // nothing at all about the only thing in doubt — whether the surface the
+  // redirect LANDS on is the one reading these. `account-deletion-works` parks
+  // an outcome, pumps the whole app, lets the redirect settle, and asserts the
+  // sentence is on the sign-in screen; its second new limb asserts an ORDINARY
+  // arrival paints nothing, without which the first is satisfied by a notice
+  // that is always on.
+  //
+  // ⚠️ NOT AN `UNASSERTED` ENTRY, and the distinction is this file's own rule:
+  // an admitted gap must name what a stamped app cannot DEMONSTRATE, never what
+  // it appears unable to DO. Before the sign-in surface read them, these two
+  // were written and never read — a half-wired feature, not an unprovable one,
+  // and writing it down as a gap would have been the mistake this map's own
+  // note about `legalAcceptanceProvider` records.
+  lastAccountDeletionOutcomeProvider: 'account-deletion-works',
+  lastAccountDeletionDetailProvider: 'account-deletion-works',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what

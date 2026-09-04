@@ -12,6 +12,8 @@ export 'src/theme/form_tones.dart';
 export 'src/widgets/app_scaffold.dart';
 export 'src/widgets/auth_field.dart';
 export 'src/widgets/content_pane.dart';
+export 'src/widgets/destructive_confirm_dialog.dart';
+export 'src/widgets/destructive_outcome_notice.dart';
 export 'src/widgets/system_screens.dart';
 export 'src/widgets/two_pane.dart';
 export 'src/widgets/focusable_tap.dart';

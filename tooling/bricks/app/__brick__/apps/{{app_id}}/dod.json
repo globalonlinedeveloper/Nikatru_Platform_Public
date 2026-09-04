@@ -110,8 +110,8 @@
       "mutation": {
         "symbol": "lib/features/settings/settings_screen.dart:updateProfile",
         "observedRed": "editing it in the REAL app updates what the user sees",
-        "note": "Re-run 2026-08-11 on a freshly stamped probe, because the awaited-sign-out change touched this same file and expired the row. Deleting the `await ref.read(authRepositoryProvider).updateProfile(displayName: displayName.trim())` call leaves the save button wired to nothing and the named test fails through its own expect at chassis_properties_test.dart:2079 — Expected: exactly one matching candidate / Actual: Found 0 widgets with text \"Ada Lovelace\", reason: 'the name was typed and saved and the screen still shows the old value — which is what a save button wired to nothing looks like'. `flutter analyze` reported \"No issues found!\" both before and under the mutation, so the red is an assertion and not a compile error; the file was restored byte-identical and the test re-observed green.",
-        "date": "2026-08-11"
+        "note": "Re-run 2026-09-04 on a freshly stamped probe, because [ADR 065] chassis step 2 rewrote the account-deletion half of this same file and expired the row - the guard treating an unrelated edit to the probed FILE as expiry is it behaving correctly, not a false positive. Deleting the `await ref.read(authRepositoryProvider).updateProfile(displayName: displayName.trim())` call leaves the save button wired to nothing: 161 -> 160 passing, and the ONE failure was the named test, `property: profile-edit-works editing it in the REAL app updates what the user sees`. `flutter analyze` reported \"No issues found!\" BOTH before and UNDER the mutation, so the red is an assertion and not a compile error. The file was restored from a pre-mutation copy, MD5-verified byte-identical (CC5D2C95128AE3A70DECC8C1EE072F8A both sides), and the suite re-observed green (`All tests passed!`, 161). TOOLCHAIN: Flutter 3.47.2 / Dart 3.13.2 - the version ci.yml pins - NOT the host default 3.44.9.",
+        "date": "2026-09-04"
       }
     },
     {
