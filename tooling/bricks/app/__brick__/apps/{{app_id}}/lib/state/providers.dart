@@ -769,27 +769,58 @@ Future<void> recordAnalyticsConsent(
   WidgetRef ref, {
   required bool granted,
 }) async {
-  final core.ConsentController controller = await ref.read(
+  // 🔴 THE CONTAINER IS HOISTED BEFORE THE FIRST AWAIT, AND EVERY LOOKUP BELOW
+  // GOES THROUGH IT INSTEAD OF `ref`. This is the same move
+  // `manage_plan_screen.dart`'s cancel flow makes, for the same reason.
+  //
+  // `WidgetRef.invalidate` is `_assertNotDisposed()` plus
+  // `container.invalidate`, and `WidgetRef.read` is `_assertNotDisposed()` plus
+  // the identical `ProviderScope.containerOf(context, listen: false).read`.
+  // That assert throws a real `StateError` — 'Cannot use "ref" after the widget
+  // was disposed.' — in RELEASE builds, not only in debug. This is the DPDP
+  // §6(3) withdrawal path: the settings toggle that calls it rebuilds and can
+  // pop while the artifact is still being uploaded, so the widget is routinely
+  // gone by the time these continuations resume. A slow or failing consent
+  // upload is enough on its own; the caller does not await this future, so in
+  // production the throw is an uncaught error in a fire-and-forget path rather
+  // than a red test.
+  //
+  // ⚠️ WHAT THIS DOES *NOT* DO IS SKIP THE INVALIDATE WHEN THE WIDGET IS GONE.
+  // That is the tempting one-line version and it reintroduces the exact defect
+  // the doc comment above warns about: `record` mutates the controller's own
+  // cache, so a container that is never invalidated keeps serving the stale
+  // decision for the rest of the SESSION — and the container outlives the
+  // widget, so "the widget is gone" is not "nobody is watching".
+  //
+  // The reads keep their original ORDER and their original timing. Moving them
+  // earlier would be a second change: `analyticsProvider` is read late on
+  // purpose (see below), and hoisting that read would turn a resolved recorder
+  // into a null one on most launches.
+  final ProviderContainer container = ProviderScope.containerOf(
+    ref.context,
+    listen: false,
+  );
+  final core.ConsentController controller = await container.read(
     consentControllerProvider.future,
   );
   await applyConsentDecision(
     controller: controller,
-    transport: ref.read(consentTransportProvider),
+    transport: container.read(consentTransportProvider),
     appId: AppConfig.appId,
     // 🔒 THE SAME id feature flags bucket on. Minting a second one here would
     // make the rollout bucket and the analytics cohort impossible to join, which
     // silently renders every experiment unmeasurable — and it cannot be repaired
     // across installs already in the field.
-    anonId: await ref.read(installIdProvider.future),
+    anonId: await container.read(installIdProvider.future),
     granted: granted,
     // The LIVE recorder, read before the invalidate below disposes it. A
     // `valueOrNull` miss (analytics still resolving) is survivable and not a
     // hole: the rebuilt recorder's `hydrate` refuses to restore a queue under a
     // denied decision and deletes the persisted copy, so the disk half dies
     // either way.
-    analytics: ref.read(analyticsProvider).valueOrNull,
+    analytics: container.read(analyticsProvider).valueOrNull,
   );
-  ref.invalidate(consentControllerProvider);
+  container.invalidate(consentControllerProvider);
 }
 
 /// Record the GDPR **Art 21 objection** to promotional processing, upload the
@@ -812,21 +843,37 @@ Future<void> recordPromoObjection(
   WidgetRef ref, {
   required bool objected,
 }) async {
-  final core.ConsentController controller = await ref.read(
+  // 🔴 THE CONTAINER IS HOISTED BEFORE THE FIRST AWAIT, exactly as in
+  // [recordAnalyticsConsent] and for the identical reason: both `read` and
+  // `invalidate` on a [WidgetRef] begin with an assert that throws a real
+  // `StateError` in RELEASE once the owning widget is disposed, and every
+  // lookup after the first `await` here runs in a continuation that can resume
+  // after the settings row has gone. The container outlives the widget, so it
+  // is what the tail of this function holds.
+  //
+  // ⚠️ NOT "skip the invalidate if the widget is gone". The invalidate is what
+  // publishes the objection; dropping it leaves every promo surface rendering
+  // against a decision the person has already made, for the rest of the
+  // session.
+  final ProviderContainer container = ProviderScope.containerOf(
+    ref.context,
+    listen: false,
+  );
+  final core.ConsentController controller = await container.read(
     consentControllerProvider.future,
   );
   await applyConsentDecision(
     controller: controller,
-    transport: ref.read(consentTransportProvider),
+    transport: container.read(consentTransportProvider),
     appId: AppConfig.appId,
     // 🔒 The same install id every other artifact and event carries.
-    anonId: await ref.read(installIdProvider.future),
+    anonId: await container.read(installIdProvider.future),
     purpose: core.ConsentPurpose.promo,
     granted: core.PromoObjection.grantedForObjection(objected: objected),
     // No `analytics:` — see the purge note in [applyConsentDecision]. A promo
     // objection has no outbox of its own and must not empty anyone else's.
   );
-  ref.invalidate(consentControllerProvider);
+  container.invalidate(consentControllerProvider);
 }
 
 /// The analytics facade the app programs against.
