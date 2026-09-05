@@ -17,8 +17,8 @@
   "totals": {
     "files": 96,
     "lines": 18205,
-    "unclassified": 28,
-    "unclassifiedLines": 15560
+    "unclassified": 0,
+    "unclassifiedLines": 0
   },
   "verdicts": {
     "STAYS": "This file is per-app by construction, or a guard requires it to remain here. It is not step 4 work.",
@@ -66,8 +66,8 @@
     {
       "path": "lib/app.dart",
       "lines": 561,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable, 6 new reds. assert-vendor-portability:480 matches `valueOrNull?.updateUrl ??` here; dod.json:121,123 (AnalyticsGate) and :133,135 (darkTheme); assert-consent-withdrawal-surface:201,527; seven screen-register rows; 14 stamp-properties APP_ROOT anchors."
     },
     {
       "path": "lib/core/app_config.dart",
@@ -78,80 +78,80 @@
     {
       "path": "lib/core/router.dart",
       "lines": 553,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable, 7 new reds. assert-purchase-path:96 requires >=5 declared routes; assert-a11y-coverage and assert-responsive-coverage parse their ROUTED set FROM this file, so deleting it makes both judge an empty set; six screen-register rows; dod.json:87,89 names `router.dart:refreshListenable`; 9 stamp-properties ROUTER anchors. Routes are per-app by construction."
     },
     {
       "path": "lib/features/auth/check_inbox_screen.dart",
       "lines": 80,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: deleting it reddens assert-a11y-coverage, assert-responsive-coverage (surface floor 12) and assert-no-seam-forks (:627 existsSync on its WATCHED_PAIRS entry). Its BODY is pinned by nothing — a 13-line stub kept the whole sweep green. Step 4 empties it; it cannot be removed."
     },
     {
       "path": "lib/features/auth/legal_consent_fields.dart",
       "lines": 253,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: deleting it reddens assert-no-seam-forks (:627) and assert-signup-consent-shape. Its BODY is pinned by nothing beyond its two Key constants — a 27-line stub kept the sweep green."
     },
     {
       "path": "lib/features/auth/reaccept_terms_screen.dart",
       "lines": 175,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: deleting it reddens a11y, responsive, no-seam-forks and signup-consent-shape. Nearly stubbable: it must keep `bool _accepted` used BOTH in an early-return guard AND to disable its button."
     },
     {
       "path": "lib/features/auth/reset_password_screen.dart",
       "lines": 306,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: deleting it reddens a11y, responsive, no-seam-forks and assert-screen-set (a class-symbol row). Its BODY is pinned by nothing — 306 lines behind one class name and seven Key constants, a 25-line stub kept the sweep green. The largest free reduction of the twelve."
     },
     {
       "path": "lib/features/auth/sign_in_screen.dart",
       "lines": 299,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable (a11y, responsive, no-seam-forks, screen-set, app-dod) and NOT fully stubbable — assert-no-seam-forks:610-616 fails when a PARITY chassis file yields zero `caps.<field>` reads, and assert-app-dod needs `signInWithEmail(`. Roughly 270 of 299 lines are unpinned."
     },
     {
       "path": "lib/features/auth/sign_up_screen.dart",
       "lines": 192,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable; must retain the two consent flags with guard-and-disable (assert-signup-consent-shape) and the check-inbox navigation (assert-stamp-properties SIGN_UP, :100)."
     },
     {
       "path": "lib/features/auth/verify_email_screen.dart",
       "lines": 155,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: deleting it reddens a11y, responsive and no-seam-forks. Its BODY is pinned by nothing — a 20-line stub kept the sweep green."
     },
     {
       "path": "lib/features/firstrun/onboarding_screen.dart",
       "lines": 195,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable (a11y, responsive, no-seam-forks, screen-set, app-dod, stamp-properties); must retain `onboardingSeenProvider` and the l10n-fallback anchor behind the onboarding-shown-once property."
     },
     {
       "path": "lib/features/home/home_screen.dart",
       "lines": 593,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: the second most pinned file here — deleting it reddens ten guards including assert-ads-declarations and assert-sworn-store-files, because apps/subly/store/android-play/ads-declaration.json cites it by path. Must keep the PaywallGate wiring, `const UpgradePromoCard()`, the promo gate decision and impression, the nudge mount, a `caps.<field>` read and a `context.go` to /settings. About half is reachable."
     },
     {
       "path": "lib/features/monetization/manage_plan_screen.dart",
       "lines": 239,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable (a11y, responsive, no-seam-forks, screen-set, purchase-path); must retain `_restore` calling `refreshEntitlements` and `.requestCancellation()`."
     },
     {
       "path": "lib/features/monetization/paywall_screen.dart",
       "lines": 298,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable; must retain `_PaywallPhase`, `.formattedPrice`, `PurchaseRail.startCheckout` and the four `funnel.on*` money-funnel emissions (assert-seams-wired, assert-no-price-literals, stamp-properties PAYWALL :300)."
     },
     {
       "path": "lib/features/settings/settings_screen.dart",
       "lines": 967,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: the most pinned file in the template — eleven guards on deletion, nine on a stub. Sixteen tooling/screen-register.json rows, the whole assert-deletion-control flow, AboutListTile, `recordAnalyticsConsent(`, both upgrade/manage entry points and a `caps.canSchedule` read all live here. The route out is DELEGATION, not deletion: assert-deletion-control states that constructing `DestructiveConfirmDialog(` from packages/design_system discharges three of its seven limbs, and calls that how [ADR 065] step 4 is meant to land."
     },
     {
       "path": "lib/l10n/app_en.arb",
@@ -168,26 +168,26 @@
     {
       "path": "lib/main.dart",
       "lines": 160,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable, 4 new reds — screen-register.json:56 (system.error-boundary), 3 stamp-properties MAIN anchors, assert-stamp-wiring. NOTE: assert-app-dod does NOT parse main()'s boot path — deleting main.dart leaves that guard green. That belief was refuted by measurement."
     },
     {
       "path": "lib/state/money_providers.dart",
       "lines": 189,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable and not stubbable (4 guards each) — 4 stamp-properties anchors (:833-835), and it is the only non-test caller of `EntitlementTransport.fetch`."
     },
     {
       "path": "lib/state/notification_tap_observer.dart",
       "lines": 88,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable, 2 new reds — the thinnest pin of the spine. Two stamp-properties TAP_OBSERVER anchors only."
     },
     {
       "path": "lib/state/providers.dart",
       "lines": 2579,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9)."
     },
     {
       "path": "pubspec.yaml",
@@ -528,62 +528,62 @@
     {
       "path": "test/asset_licences_surface_test.dart",
       "lines": 208,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value, and it is the case that justifies keeping ALL of these: registerVendoredAssetLicences() was implemented, exported and unit-tested in packages/design_system while the brick never CALLED it, so every stamped app shipped a CC BY breach the package suite could not see. A package test cannot prove the app wired it."
     },
     {
       "path": "test/backend_liveness_test.dart",
       "lines": 246,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: it is the proof for B-8, that isBackendLive must not read the API host."
     },
     {
       "path": "test/chassis_properties_test.dart",
       "lines": 5424,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable — assert-stamp-properties:2197 exits 1 with COVERAGE LOST, and all SIX feature rows in the brick dod.json resolve to declarations that exist ONLY in this file. 26 property groups, 123 cases, 3,595 code lines. Its bulk is WIRING proof, not duplication: 42 cases boot the real stamped app root and none unit-tests a package class. Reducible only per-property, which the file itself sanctions. One genuine candidate: the content-pack group (117 lines) tests a rail 0 of 600 shipped Dart files read."
     },
     {
       "path": "test/config_contract_test.dart",
       "lines": 157,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable — assert-analytics-contract:263 requires the inherited CLIENT half of the config wire contract to live in the brick's test tree, and refuses it anywhere else."
     },
     {
       "path": "test/consent_prompt_real_surface_test.dart",
       "lines": 382,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: it proves the DECLINE half of the consent prompt, the half a happy-path test never reaches."
     },
     {
       "path": "test/consent_withdrawal_disposal_test.dart",
       "lines": 319,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: it is the proof for B-6, that withdrawal completes after its widget is disposed mid-upload — a real release-mode StateError."
     },
     {
       "path": "test/promo_objection_surface_test.dart",
       "lines": 492,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger — against 488cf1d^ it deleted in silence. It stays on VALUE, not compulsion: it proves a GDPR Art 21 objection yields zero promo renders, including under GPC."
     },
     {
       "path": "test/providers_test.dart",
       "lines": 137,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: provider graph acyclic, and the erasure closure resolves its REST client."
     },
     {
       "path": "test/responsive_width_test.dart",
       "lines": 273,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: undeletable — assert-responsive-coverage:600 parses this corpus and floors it (:492)."
     },
     {
       "path": "test/smoke_test.dart",
       "lines": 40,
-      "verdict": "UNCLASSIFIED",
-      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+      "verdict": "STAYS",
+      "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: home renders inside the design-system AppShell/AppScaffold."
     },
     {
       "path": "web/_headers",
@@ -603,5 +603,6 @@
       "verdict": "STAYS",
       "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
     }
-  ]
+  ],
+  "_classified": "All 28 measured 2026-09-05 by deleting each file, running the full assert-*.mjs sweep, and diffing against a per-worktree baseline. NOT ONE of the 28 is deletable on its own: every source file is held by a named guard, and the three that only this ledger holds are tests kept on value. So chassis step 4 does not DELETE files. It shrinks the ones that stay, and delegates behaviour into packages where the call site measurably shrinks. AND THE HEADROOM IS SMALLER THAN IT LOOKS: 6,608 of these 15,560 lines (42%) are comment or blank. Stripping them from the six spine files alone removes 2,463 lines against a green sweep — but those comments are this corpus's recorded measurements and the reason several defects were ever found. Removing them would be measurable progress against a number and a real loss. Step 4 shrinks CODE."
 }

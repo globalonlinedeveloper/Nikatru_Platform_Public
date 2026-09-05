@@ -262,10 +262,15 @@ if (t.unclassified !== unclassified) {
 }
 
 // ── 5 · the ratchet ─────────────────────────────────────────────────────────
-/** Measured 2026-09-05 at 28. It may only ever be LOWERED, and lowering it is
- *  the act of giving a file a measured verdict. A rise means somebody parked a
- *  new undecided file in the template. */
-const UNCLASSIFIED_CEILING = 28;
+/** Was 28 when this guard landed; measured to ZERO the same day, once all 28
+ *  were classified by deleting each file and diffing the full guard sweep
+ *  against a per-worktree baseline.
+ *
+ *  At zero this stops being a ratchet and becomes a wall: every file in the
+ *  template now has a measured verdict, so a NEW file must arrive with one too.
+ *  It may never be raised — if a file genuinely cannot be classified yet, that
+ *  is a reason to measure it, not a reason to widen this. */
+const UNCLASSIFIED_CEILING = 0;
 if (unclassified > UNCLASSIFIED_CEILING) {
   problems.push(
     `${unclassified} file(s) are UNCLASSIFIED, above the ceiling of ${UNCLASSIFIED_CEILING}. This ratchet ` +
