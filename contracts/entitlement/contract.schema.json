@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nikatru.com/contracts/entitlement/contract.schema.json",
+  "title": "NIKATRU entitlement contract",
+  "description": "The vocabulary three runtimes have to agree about: which money world a row belongs to, and why access was taken away. Authored in contracts/entitlement/contract.js; this file grades the machine-readable copy that Dart code generation reads. A schema is what makes the JSON copy checkable by something other than a reader.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["moneyEnvironments", "revocationReasons"],
+  "properties": {
+    "moneyEnvironments": {
+      "description": "The two money worlds. [5]M-12 is that they never mix; the environment comes from the Worker's configuration, never from a notification payload.",
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": { "enum": ["live", "sandbox"] }
+    },
+    "revocationReasons": {
+      "description": "The revocation-lifecycle reason set. Must equal the rows seeded by services/platform/migrations/0004_money_rail.sql section E.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "restores"],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "The stored value. snake_case, because it is written into a database column and read back by three runtimes."
+          },
+          "restores": {
+            "type": "boolean",
+            "description": "Whether this reason GIVES ACCESS BACK. Exactly one member is true today (chargeback_reversed). A copy of this set that drops the field, or flips it, locks out a customer who raised a dispute in error and lost it — and nothing else in this rail restores access to a row that was taken away."
+          }
+        }
+      }
+    }
+  },
+  "$comment": "There is deliberately no minItems on revocationReasons beyond 1 and no enumeration of the member names here. A schema that restated the set would be a fifth copy of it, which is the failure this directory exists to remove. Equality with the SQL seed and with contract.js is a GUARD's job (tooling/ci/assert-entitlement-contract.mjs), not a schema's."
+}

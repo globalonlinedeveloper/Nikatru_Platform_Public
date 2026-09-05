@@ -3,7 +3,7 @@
 // assert-extensions-build-free.mjs — nothing under extensions/ is built.
 //
 // Pipeline requirement: [ADR 067] decision 1 — "a sovereign, build-free
-// extensions/ subtree". Evidence: research/revamp-2026-09-05/16 §0.2, §10.5
+// extensions/ subtree". Evidence: the 2026-09-05 monorepo research, report 16 §0.2, §10.5
 // Risk 1, §11.1, §11.2.
 //
 // ── WHAT THIS PROTECTS, AND WHY IT IS WORTH A GUARD OF ITS OWN ───────────────
