@@ -130,9 +130,10 @@ function dartFiles(absDir, rel, out) {
 //     `tooling/bricks/` removed           EXIT 1 arrive-limb  EXIT 1 COVERAGE LOST
 //     apps/ shipped code removed, the     EXIT 1 stale-waiver EXIT 1 COVERAGE LOST
 //       12 chassis/fork pair files kept
-//     packages/design_system folded away  EXIT 0  ok         EXIT 0  ok
-//     five Subly feature areas dropped    EXIT 0  ok         EXIT 0  ok
-//     the brick's test/ folder moved      EXIT 0  ok         EXIT 0  ok
+//     packages/design_system folded away  EXIT 0  ok         EXIT 0  ok  (−40)
+//     five Subly feature areas dropped    EXIT 0  ok         EXIT 0  ok  (−5)
+//     the brick's test/ folder moved      EXIT 0  ok         EXIT 0  ok  (−0)
+//     apps/subly/test moved out entirely  EXIT 0  ok         EXIT 0  ok  (−0)
 //
 //   THE SECOND ROW IS THE WHOLE REASON THIS CHANGED. Delete the entire shared
 //   chassis — every package, the home of every seam implementation — and the old
@@ -146,10 +147,16 @@ function dartFiles(absDir, rel, out) {
 //   its own → FORK" — cannot fire at all, and the sentence it prints while it
 //   cannot fire begins with the word `ok`.
 //
-//   The last three rows are the other half of the discipline: a floor that fires
+//   The last four rows are the other half of the discipline: a floor that fires
 //   on honest work is switched off inside a week. Each is a real, legitimate
-//   shrink (a package folded into another, features dropped from the app, a test
-//   folder reorganised) and each must stay GREEN. They do.
+//   shrink — a package folded into another, features dropped from the app, a
+//   test folder reorganised — and each must stay GREEN. They do, and the
+//   bracketed figure is how far the floor's subject actually moved. The last two
+//   moved it NOT AT ALL while deleting 10 and 69 .dart files respectively: those
+//   files are test doubles, which this guard never classifies. On a floor over
+//   the raw count set at the same ratio (74 of 148) the final row — Subly's test
+//   suite, 47% of `apps/` — would have gone RED on an honest change. That is the
+//   whole argument for counting the subject, and it is measured, not reasoned.
 //
 // ⚠️ A CORRECTION TO THE STANDING WRITE-UP OF THIS DEFECT, since reading a plan
 //   is not measuring a tree. It has been described as "apps/ and the brick could
@@ -174,6 +181,19 @@ function dartFiles(absDir, rel, out) {
 //   2026-09-05. For `packages/` the guard applies no such exemption (every file
 //   there feeds the shared set, doubles included), so subject == files read, and
 //   that asymmetry is stated here rather than left to be discovered.
+//
+// ⚠️ ONE PRECEDENCE COST, MEASURED AND ACCEPTED RATHER THAN LEFT TO BE FOUND.
+//   This check has to run before anything classifies the files it counts, so it
+//   speaks first — and on THIS tree it now pre-empts the arrive limb on one
+//   input. Empty the brick's `lib/features` root and `tooling/bricks` drops to
+//   10 non-exempt of 22, ONE under its floor, so the reader gets "`tooling/bricks`
+//   below its floor" instead of the arrive limb's sharper "the brick features
+//   root produced NO .dart file(s)". Measured 2026-09-05: same verdict, same
+//   word, less address. Duplicating the features-root check up here was the
+//   obvious repair and is the wrong one — it would make the arrive limb's own
+//   check unreachable, and an assertion that cannot fail is what this file
+//   deletes rather than keeps. So the failure text points at the sharper limb
+//   instead, and this paragraph is the honest statement of the cost.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Derived from THIS tree on 2026-09-05, by the walk below and nothing else:
@@ -182,8 +202,9 @@ function dartFiles(absDir, rel, out) {
  *  assert-no-tls-pinning.mjs uses, chosen over assert-no-gate-weakening's
  *  one-third because this subject is ONE app and ten packages, with no fleet for
  *  the count to swing with. Half means a root must lose more of itself than it
- *  keeps before this speaks, and the three legitimate shrinks in the table above
- *  (−40 packages, −5 app features, −10 brick test files) all clear it. */
+ *  keeps before this speaks, and the four legitimate shrinks in the table above
+ *  clear it with room: the largest of them, packages/design_system folded away,
+ *  takes packages/ to 141 against a floor of 90. */
 const REQUIRED_COVERAGE = [
   {
     dir: 'apps',
@@ -280,6 +301,12 @@ if (coverageLost.length) {
     '  printed. Each root carries its OWN floor deliberately. One floor over the three combined was',
     '  satisfied by apps/ and the brick alone, so packages/ could vanish entirely while this guard printed',
     '  `ok … 180 file(s) scanned; 0 shared implementation(s)`. Measured 2026-09-05, not feared.',
+    '',
+    '  ⚠ A root named here may ALSO have a sharper problem that a later limb would have named — the',
+    '  commonest is `tooling/bricks` falling under its floor because the brick FEATURES root emptied,',
+    '  which the arrive limb reports by path. This check runs first because everything after it',
+    '  classifies the files it just counted. Restore the coverage and run again; the sharper limb speaks',
+    '  the moment this one is satisfied.',
   ]);
 }
 

@@ -25,7 +25,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -108,6 +108,16 @@ function tree({ extra = {}, violations = null } = {}) {
     files[join(root, `${BRICK_F}/${c}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
     files[join(root, `${SUBLY_F}/${f}`)] = 'class Screen {\n  Widget build() => const Empty();\n}\n';
   }
+
+  // The brick holds .dart OUTSIDE `lib/features` too — `lib/`, `lib/state/`,
+  // `lib/core/`, `hooks/` and `test/` on the real tree. Modelled here because a
+  // brick made of nothing but features is a shape that does not exist, and a
+  // fixture that assumed it made emptying the features root indistinguishable
+  // from emptying the whole root — which sent the ARRIVE limb's own case to the
+  // per-root coverage floor instead (2026-09-05).
+  files[join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart')] =
+    'class App {\n  Widget build() => const Empty();\n}\n';
+  files[join(root, 'tooling/bricks/app/hooks/pre_gen.dart')] = '// hook\n';
 
   const CONTRACTS = ['NotificationService', 'KeyValueStore', 'Analytics', 'PackVerifier', 'AuthRepository'];
   files[join(root, 'packages/core/lib/seams.dart')] =
@@ -304,6 +314,192 @@ describe('the guard knows when it is not looking', () => {
     const { code, out } = run(root);
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST — no capability register/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE FLOOR PER ROOT — the union floor that stood here until 2026-09-05
+//
+// The guard used to floor `sharedFiles.length + suspectFiles.length` at 10: one
+// number over `packages/`, `apps/` and `tooling/bricks/`, which any ONE of them
+// can satisfy alone. Measured on the real tree that day, `packages/` moved aside
+// and moved back: the old guard printed
+//     ok  no seam forks — 17 contract(s), 180 file(s) scanned; 0 shared
+//     implementation(s), …
+// and exited 0. That is not a scan that saw less — with nothing homed, EVERY
+// fork in an app or in the brick template is reclassified "homeless" and printed
+// as a ⚠ instead of failing the build.
+//
+// These fixtures are the SECOND line of evidence; the real-tree mutation table
+// is in the guard's own header. The case that matters most below is
+// `apps/ alone falls below its floor while the UNION is enormous` — it is the
+// exact shape a single pooled floor cannot see, and it is red only because the
+// floors are now per root.
+//
+// ⚠️ NOT COVERED HERE, said out loud rather than left to be assumed: a fixture
+// cannot push `tooling/bricks` below its floor of 11. The brick contributes 12
+// files to every fixture tree — 3 parity chassis + 9 watched chassis — and
+// removing any of them trips the parity or watch limb first, which is the right
+// ordering (a precise diagnosis beats a count). That floor's evidence is the
+// real-tree `tooling/bricks removed` mutation, not this file.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Every `.dart` this guard could CLASSIFY under `dir` — for a suspect root that
+ *  is the non-exempt subset, which is what the floor counts. */
+function classifiable(root, dir, suspect) {
+  const out = [];
+  const walk = (rel) => {
+    let entries;
+    try {
+      entries = readdirSync(join(root, dir, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(r);
+      else if (e.name.endsWith('.dart')) out.push(`${dir}/${r}`);
+    }
+  };
+  walk('');
+  return suspect ? out.filter((f) => !/(^|\/)(test|integration_test|live_probe)(\/|$)/.test(f)) : out;
+}
+
+/** Make a fixture look like a FULL CHECKOUT and pad each root to an exact
+ *  classifiable count. The sentinel the guard looks for is its own file, which
+ *  sits outside all three subject roots — so it survives any mutation OF a
+ *  subject, which is the whole reason it is not `apps/pubspec.yaml` or similar. */
+function checkout(root, { apps = 40, packages = 95, bricks = 14 } = {}) {
+  const sentinel = join(root, 'tooling/ci/assert-no-seam-forks.mjs');
+  mkdirSync(dirname(sentinel), { recursive: true });
+  writeFileSync(sentinel, '// sentinel: this root is a checkout of the repository\n');
+  for (const [dir, want, suspect] of [
+    ['apps', apps, true],
+    ['packages', packages, false],
+    ['tooling/bricks', bricks, true],
+  ]) {
+    const have = classifiable(root, dir, suspect).length;
+    for (let i = 0; i < want - have; i++) {
+      const p = join(root, dir, `padcov/lib/p${i}.dart`);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, '// pad\n');
+    }
+  }
+  return root;
+}
+
+describe('coverage is per ROOT — a pooled floor is satisfied by one root alone', () => {
+  test('a full checkout above every floor passes, and PRINTS the split with each floor', () => {
+    const { code, out } = run(checkout(tree()));
+    assert.equal(code, 0, out);
+    assert.match(out, /apps=40\/floor 37/);
+    assert.match(out, /packages=95\/floor 90/);
+    assert.match(out, /tooling\/bricks=14\/floor 11/);
+  });
+
+  test('🔴 apps/ alone below its floor fails, though the UNION is twenty times the old one', () => {
+    // apps = 12 (the chassis/fork pair files only), union = 12 + 300 + 14 = 326.
+    // The old `< 10` floor was satisfied three hundred times over. This is the
+    // defect, and it is red only because the floor is now per root.
+    const { code, out } = run(checkout(tree(), { apps: 0, packages: 300, bricks: 14 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — 1 of the 3 declared root\(s\)/);
+    assert.match(out, /`apps` yielded only 12 file\(s\) to classify, below its floor of 37/);
+  });
+
+  test('🔴 packages/ below its floor fails — with nothing homed, no fork can be a fork', () => {
+    const { code, out } = run(checkout(tree(), { packages: 89 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`packages` yielded only 89 file\(s\) to classify, below its floor of 90/);
+    assert.match(out, /every fork is reclassified "homeless"/);
+  });
+
+  test('the floor is exact: 37 passes, 36 does not', () => {
+    const green = run(checkout(tree(), { apps: 37 }));
+    assert.equal(green.code, 0, green.out);
+    assert.match(green.out, /apps=37\/floor 37/);
+    const red = run(checkout(tree(), { apps: 36 }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /below its floor of 37/);
+  });
+
+  test('two roots lost are reported TOGETHER, not one at a time', () => {
+    // Naming only the first sends the reader to fix half of it.
+    const { code, out } = run(checkout(tree(), { apps: 20, packages: 50 }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — 2 of the 3 declared root\(s\)/);
+    assert.match(out, /`apps` yielded only 20/);
+    assert.match(out, /`packages` yielded only 50/);
+  });
+
+  test('THE CONTROL — a legitimate shrink stays GREEN. A floor that fires on honest work gets switched off', () => {
+    // A package folded into another (−40 of 135) and app features dropped
+    // (−3 of 43): the real shape of both is in the guard's mutation table.
+    const { code, out } = run(checkout(tree(), { apps: 43, packages: 135 }));
+    assert.equal(code, 0, out);
+    const shrunk = run(checkout(tree(), { apps: 40, packages: 95 }));
+    assert.equal(shrunk.code, 0, shrunk.out);
+  });
+
+  test('the floor counts the SUBJECT — test doubles never reach a verdict, so they cannot prop one up', () => {
+    // 200 files under apps/**/test/ do not lift `apps` over its floor of 37,
+    // and on the real tree the mirror of this is what keeps the floor off
+    // honest work: Subly's 69 test files are 47% of apps/ and moving them
+    // must not redden a guard that never classified them.
+    const root = checkout(tree(), { apps: 0, packages: 95, bricks: 14 });
+    for (let i = 0; i < 200; i++) {
+      const p = join(root, `apps/padapp/test/t${i}.dart`);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, '// double\n');
+    }
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /`apps` yielded only 12 file\(s\) to classify/);
+  });
+});
+
+describe('a declared root that delivers NOTHING is COVERAGE LOST, checkout or not', () => {
+  for (const dir of ['apps', 'packages', 'tooling/bricks']) {
+    test(`${dir} absent → named, and named FIRST`, () => {
+      const root = tree();
+      rmSync(join(root, dir), { recursive: true, force: true });
+      const { code, out } = run(root);
+      assert.equal(code, 1, out);
+      assert.match(out, new RegExp(`\`${dir.replace('/', '\\/')}\` is not a directory under this root`));
+    });
+  }
+
+  test('a suspect root whose every file is a test double is empty of subject, not clean', () => {
+    const root = tree();
+    rmSync(join(root, 'apps'), { recursive: true, force: true });
+    for (let i = 0; i < 5; i++) {
+      const p = join(root, `apps/a/test/t${i}.dart`);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, '// double\n');
+    }
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /all 5 \.dart file\(s\) under `apps` sit in a test\/, integration_test\/ or live_probe\//);
+  });
+});
+
+describe('the floors are measurements of ONE tree and say so when they are not applied', () => {
+  test('a synthetic root skips the floors and PRINTS that it did', () => {
+    // The fixture trees are far below every floor and must still pass, or none
+    // of the cases above could exist. A run that skipped the floors silently
+    // would be indistinguishable from one that met them.
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /this root is not a checkout of this repository, so the per-root floors were NOT applied/);
+    assert.doesNotMatch(out, /\/floor \d/);
+  });
+
+  test('the structural check still runs over a synthetic root — an absent root is not excused', () => {
+    const root = tree();
+    rmSync(join(root, 'packages'), { recursive: true, force: true });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /`packages` is not a directory under this root/);
   });
 });
 
