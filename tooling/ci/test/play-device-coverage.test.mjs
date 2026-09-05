@@ -66,12 +66,18 @@
 //    test asserts that instead. The M1/M2 relationship itself stays fixture-
 //    proved (R6/R7); only its subject moved.
 //
+// 🔬 2026-09-05 — A SECOND ROOT. Everything above grades REGISTERED apps, and
+//    `catalog/apps.json` holds one, hand-fixed. The BRICK had no
+//    `screenshots-tablet/` at all, so every stamped app was born unpublishable
+//    and this guard printed ok. The B-cases at the bottom of this file are the
+//    factory's; their mutation table is written out beside them.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -130,7 +136,7 @@ function png(width, height) {
 // that needs a set with no directory says so by name.
 function tree(
   mutate = () => {},
-  { shots = ['01-home.png', '02-calendar.png'], phonePng = png(1080, 1920), extra = {}, omitSetDirs = [] } = {},
+  { shots = ['01-home.png', '02-calendar.png'], phonePng = png(1080, 1920), extra = {}, omitSetDirs = [], brick = null } = {},
 ) {
   const dir = join(TMP, `r${seq++}`);
   const store = join(dir, 'apps', 'subly', 'store', 'android-play');
@@ -154,6 +160,41 @@ function tree(
   for (const [rel, bytes] of Object.entries(extra)) {
     mkdirSync(join(store, dirname(rel)), { recursive: true });
     writeFileSync(join(store, rel), bytes);
+  }
+
+  // ── ROOT 2, THE FACTORY, built only when a test asks for it ───────────────
+  // The guard applies its brick limb only to a REAL checkout, detected by its
+  // OWN file being present under the root — a sentinel outside both subject
+  // roots, so it survives any mutation OF a subject. A fixture that wants the
+  // limb plants that sentinel; every test written before 2026-09-05 does not,
+  // and gets the registered-app root alone, unchanged.
+  //
+  // The brick's path is DERIVED from the same `storeMetadataDir` the guard
+  // derives it from, never spelled out here: a fixture that writes its own copy
+  // of "where the brick keeps this channel" is a second declaration, and the
+  // first to drift.
+  if (brick) {
+    const { omitTree = false, omitDirs = [], omitReadmes = [], pngIn = {} } = brick;
+    mkdirSync(join(dir, 'tooling', 'ci'), { recursive: true });
+    writeFileSync(
+      join(dir, 'tooling', 'ci', 'assert-play-device-coverage.mjs'),
+      '// sentinel only: its PRESENCE is what tells the guard this root is a checkout.\n',
+    );
+    const template = playRow(reg)?.storeMetadataDir ?? 'apps/{app}/store/android-play';
+    const bstore = join(dir, 'tooling', 'bricks', 'app', '__brick__', ...template.replace('{app}', '{{app_id}}').split('/'));
+    if (!omitTree) {
+      mkdirSync(bstore, { recursive: true });
+      for (const [type, def] of Object.entries(cov(reg)?.sets ?? {})) {
+        if (omitDirs.includes(type) || !def || typeof def.dir !== 'string' || def.dir.trim() === '') continue;
+        mkdirSync(join(bstore, def.dir), { recursive: true });
+        // The README is the whole content of a correct brick set: git cannot
+        // commit an empty directory, so this file IS the directory.
+        if (!omitReadmes.includes(type)) {
+          writeFileSync(join(bstore, def.dir, 'README.md'), `# ${type} — stamped EMPTY on purpose. Capture into the stamped app.\n`);
+        }
+        if (pngIn[type]) writeFileSync(join(bstore, def.dir, 'placeholder.png'), pngIn[type]);
+      }
+    }
   }
   return dir;
 }
@@ -637,5 +678,146 @@ describe('assert-play-device-coverage', () => {
     assert.match(both, new RegExp(`${Object.keys(sets).length} declared device-type set\\(s\\) measured`));
     const graded = Number((both.match(/(\d+) screenshot\(s\) graded/) ?? [])[1]);
     assert.ok(graded >= sets.tablet.minCount, `${graded} frame(s) graded; the tablet row declares minCount ${sets.tablet.minCount}\n${both}`);
+  });
+
+  // ══ ROOT 2 — THE FACTORY (2026-09-05) ═════════════════════════════════════
+  //
+  // 🔴 EVERY TEST ABOVE GRADES ONE HAND-FIXED APP. Measured on `main` @ a9b04696:
+  // `catalog/apps.json` holds exactly one entry, `subly`, whose tablet frames a
+  // human captured on 2026-08-27 — and
+  // `tooling/bricks/app/__brick__/apps/{{app_id}}/store/android-play/` carried
+  // `screenshots/` AND NO `screenshots-tablet/`. So every app stamped after the
+  // register grew its tablet row on 2026-08-21 was born one device type short,
+  // structurally unpublishable, and this guard printed `ok` — correctly, on the
+  // domain it had. The domain was the bug.
+  //
+  // 🔬 MUTATIONS, PREDICTIONS WRITTEN FIRST, ALL CONFIRMED against the real tree
+  //    before these fixtures were written:
+  //   G0 the fixed tree                          -> exit 0, ROOT 2 line printed
+  //   G1 brick `screenshots-tablet/` deleted     -> exit 1 (this IS main's state)
+  //   G2 only its README.md deleted              -> exit 1
+  //   G3 a real 1800x3200 PNG dropped in it      -> exit 1
+  //   G4 the brick's whole android-play tree gone-> COVERAGE LOST
+  //   G6 the REGISTERED app's tablet set deleted -> root 1 still fires; root 2
+  //      stays green. Neither root can carry the other.
+  //
+  // The brick's expectation is the OPPOSITE of a registered app's: the directory
+  // must EXIST and must be EMPTY. B4 is the one that matters most — the PNG it
+  // plants is a perfectly valid 1800x3200 frame that satisfies every rule root 1
+  // has, and it is refused anyway, because in a TEMPLATE a valid-looking frame
+  // is a placeholder by construction and would let a fake pass for a captured
+  // one on fifty apps at once.
+  test('B1 a correct brick is green and the ok line SAYS the factory was graded', () => {
+    const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: {} }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ROOT 2 \(the factory\): 1 brick store tree\(s\)/);
+    assert.match(out, /2 of 2 declared set\(s\) examined, 2 present, empty of pixels and carrying their README\.md/);
+  });
+
+  test('B2 🔴 THE DEFECT — a fully covered registered app CANNOT hide a brick with no tablet set', () => {
+    const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: { omitDirs: ['tablet'] } }));
+    assert.equal(code, 1, `the factory being unable to emit a declared device type must be fatal:\n${out}`);
+    assert.match(out, /THE BRICK EMITS NO "tablet" SET/);
+    assert.match(out, /tooling\/bricks\/app\/__brick__/);
+    assert.match(out, /born covering fewer than the 2 device type\(s\)/);
+    // The registered app is PERFECT here. If root 1 had anything to say, this
+    // test would be proving the old limb over again instead of the new one.
+    assert.doesNotMatch(out, /DEVICE-TYPE SHORTFALL/);
+  });
+
+  test('B3 the README IS the directory — removing it fails, because git cannot commit an empty one', () => {
+    const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: { omitReadmes: ['tablet'] } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /screenshots-tablet\/README\.md is missing/);
+    assert.match(out, /git cannot commit an empty directory/);
+  });
+
+  test('B4 a VALID frame committed into the template is refused — a placeholder must never pass for a captured one', () => {
+    // 1800x3200: exactly what the tablet capture produces, inside every bound
+    // the register declares, 9:16. Root 1 would grade it green. Root 2 refuses
+    // it precisely because it cannot be a real capture: at stamp time there is
+    // no build to photograph.
+    const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: { pngIn: { tablet: png(1800, 3200) } } }));
+    assert.equal(code, 1, `a template that ships pixels must be fatal, however well-formed the pixels are:\n${out}`);
+    assert.match(out, /holds 1 PNG\(s\) \(placeholder\.png\), and it is the TEMPLATE/);
+    assert.match(out, /placeholder by construction/);
+    assert.doesNotMatch(out, /SET RULE SHORTFALL/, 'the objection is that it exists at all, not that it is the wrong size');
+  });
+
+  test('B5 a brick with no store tree for the channel is COVERAGE LOST, never "nothing to check"', () => {
+    const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: { omitTree: true } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /checked on registered apps ONLY/);
+    assert.match(out, /A root that is never DERIVED must not read/);
+  });
+
+  test('B6 on a root that is not a checkout the factory limb is skipped and SAYS SO rather than going quiet', () => {
+    const { code, out } = run(tree(() => {}, { extra: tabletSet() }));
+    assert.equal(code, 0, out);
+    assert.match(out, /ROOT 2 \(the factory\): NOT APPLIED/);
+    assert.match(out, /not a checkout of this repository/);
+    // The branch is printed. A limb that went quiet must never be
+    // indistinguishable from a limb that found nothing.
+    assert.doesNotMatch(out, /1 brick store tree\(s\)/);
+  });
+
+  test('B7 a green factory does not excuse an uncovered registered app — the two roots are independent', () => {
+    const dir = tree(() => {}, { brick: {} }); // brick perfect, subly has NO tablet pixels
+    const plain = run(dir);
+    assert.equal(plain.code, 0, plain.out);
+    assert.match(plain.out, /DEVICE-TYPE SHORTFALL/);
+    assert.match(plain.out, /ROOT 2 \(the factory\): 1 brick store tree\(s\)/);
+    const submitting = run(dir, ['--for-submission']);
+    assert.equal(submitting.code, 1, 'root 2 being green must not make the submit lane accept an uncovered listing');
+  });
+
+  test('B8 the factory limb is fatal on the PLAIN, unserved lane — `served` is a fact about one listing, not the factory', () => {
+    const { code, out } = run(tree(() => {}, { extra: tabletSet(), brick: { omitDirs: ['tablet'] } }));
+    assert.equal(code, 1, 'android-play is served:false and this is the shared lane; the factory gap must still be fatal');
+    // stdout (the printed notes) is concatenated before stderr (the problems),
+    // so a finding that appears AFTER the problems banner was routed as a
+    // problem and not dressed up as a note.
+    const banner = out.indexOf('✗ play device coverage');
+    assert.ok(banner >= 0, out);
+    assert.ok(out.indexOf('THE BRICK EMITS NO') > banner, 'the factory gap must be a problem, not a print');
+    assert.doesNotMatch(out, /THE BRICK EMITS NO[\s\S]*FATAL on the submission lane/);
+  });
+
+  test('B9 ROOT 2 FLOOR — a declared set row the brick walk skipped is COVERAGE LOST', () => {
+    // A row naming no `dir` is the way a declared device type falls out of the
+    // walk. The floor is counted by the row validator and the walk counts
+    // itself, so a walk that quietly skips a row cannot also lower its own bar.
+    const { code, out } = run(tree((reg) => { cov(reg).sets.tablet.dir = ''; }, { brick: {} }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /declares 2 device-type set row\(s\) and the brick limb examined 1/);
+  });
+
+  test('B10 that floor is ROOT 2\'s — the same register on a non-checkout root gives root 1\'s verdict instead', () => {
+    // Without this, B9 could be passing on any failure at all rather than on the
+    // floor it names.
+    const { code, out } = run(tree((reg) => { cov(reg).sets.tablet.dir = ''; }));
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /brick limb examined/);
+    assert.match(out, /declares no `dir`/);
+  });
+
+  test('B11 the REAL brick emits a directory for every declared set, each empty of pixels and carrying its README', () => {
+    // Asserted DIRECTLY, not through the guard. The guard grades whatever the
+    // brick holds, so a directory deleted tomorrow reads to it as a template
+    // that never had one — the same anti-vacuity argument as M8.
+    const reg = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+    const template = playRow(reg).storeMetadataDir.replace('{app}', '{{app_id}}');
+    const bstore = join(REPO, 'tooling', 'bricks', 'app', '__brick__', ...template.split('/'));
+    const sets = Object.entries(cov(reg).sets);
+    assert.ok(sets.length >= cov(reg).minDistinctTypes, 'fewer set rows than Play requires device types');
+    for (const [type, def] of sets) {
+      const d = join(bstore, def.dir);
+      assert.ok(existsSync(d), `the brick emits no "${type}" set at ${template}/${def.dir} — every stamped app is born short a device type`);
+      assert.ok(existsSync(join(d, 'README.md')), `${template}/${def.dir} has no README.md, so it does not survive a clone`);
+      const pngs = readdirSync(d).filter((n) => n.toLowerCase().endsWith('.png'));
+      assert.deepEqual(pngs, [], `${template}/${def.dir} ships ${pngs.length} placeholder frame(s) in the TEMPLATE`);
+    }
   });
 });
