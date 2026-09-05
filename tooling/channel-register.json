@@ -984,6 +984,64 @@
       }
     ]
   },
+  "surfaces": {
+    "_why": [
+      "🔴 THE SURFACE IS WHAT THE CHANNEL DELIVERS, AND IT IS A DIFFERENT AXIS FROM `kind`. `kind`",
+      "says HOW distribution happens — a web deploy, a store submission, a direct download. `surface`",
+      "says WHAT is being distributed: a Flutter application, or a browser extension. The Chrome Web",
+      "Store is a store by `kind` and an extension channel by `surface`, and collapsing the two into",
+      "one enum would make every reader that means 'app store' also mean 'add-on store'.",
+      "",
+      "WHY IT LANDED, MEASURED. `extensions/` became a subtree of this repository on 2026-09-05",
+      "(ADR 067 decision 1) and its release lane refused at `release-manifest.mjs",
+      "--emit-environments` because no row here claimed `chrome-webstore`, `edge-addons` or `amo`.",
+      "Adding those rows with no surface field would have widened SEVEN app-shaped checks over them",
+      "at once — [10]D-5's metadata product, the listing-graphics and Play device-coverage guards,",
+      "the store build-config guard, and `PurchaseChannel`'s enum equality — each of which asks a",
+      "question about a Flutter app and would have answered it about a ZIP of JavaScript. Every one",
+      "of those readers now names the surface it grades, so the domain is a DECLARATION rather than",
+      "an accident of which rows happened to exist.",
+      "",
+      "⚠️ THE FIELD IS REQUIRED ON EVERY ROW AND HAS NO DEFAULT, for the reason `storefrontKey` has",
+      "none: treating a missing key as `app` would let an extension channel join this register and",
+      "silently be graded as an application, with every limb still reporting clean.",
+      "",
+      "`platforms` HERE IS THE VOCABULARY A ROW'S OWN `platforms` ARRAY IS VALIDATED AGAINST, and it",
+      "lives in this file rather than in assert-channel-register.mjs for the same reason `keyKinds`",
+      "and `purchaseRails.rails` do — a second copy inside a guard is the first to drift",
+      "[pipeline F-2]. The app list is Flutter's own target names, which is the vocabulary",
+      "catalog/apps.json speaks. The extension list is the browser names, which is NOT the same as",
+      "the store id: `amo` is a storefront, `firefox` is the browser it reaches.",
+      "",
+      "`storeMetadataGradedBy` NAMES THE GUARD THAT OWNS THIS SURFACE'S LISTING TREES, and",
+      "assert-store-metadata.mjs reads it rather than carrying the other guard's name as a string.",
+      "A surface whose trees nothing grades would be a listing corpus with no reader, which is the",
+      "state [10]D-5 exists to abolish."
+    ],
+    "app": {
+      "what": "A Flutter application this repository builds and delivers to a device or a browser tab. Its listing trees live under apps/{app}/store/<channel>.",
+      "platforms": [
+        "android",
+        "ios",
+        "linux",
+        "macos",
+        "web",
+        "windows"
+      ],
+      "platformsSource": "Flutter's own target names — the vocabulary catalog/apps.json `platforms` speaks, and the set every apps.json claim is resolved against.",
+      "storeMetadataGradedBy": "tooling/ci/assert-store-metadata.mjs"
+    },
+    "extension": {
+      "what": "A browser extension shipped from extensions/ — build-free source (ADR 067 decision 1), packed by extensions/scripts/pack.mjs, submitted to a browser add-on store. Its listing trees live under extensions/Extension/<tool>/store/<store>.",
+      "platforms": [
+        "chrome",
+        "edge",
+        "firefox"
+      ],
+      "platformsSource": "the browser vocabulary extensions/scripts/schema/tool.schema.json declares under properties.listings.properties, which extensions/scripts/check-catalog.mjs and extensions/scripts/check-store-metadata.mjs already treat as authoritative. Named here so this register does not become a fourth list of the same names.",
+      "storeMetadataGradedBy": "extensions/scripts/check-store-metadata.mjs"
+    }
+  },
   "channels": [
     {
       "id": "web",
@@ -992,6 +1050,7 @@
         "web"
       ],
       "kind": "web",
+      "surface": "app",
       "storefrontKey": "web",
       "served": true,
       "submittable": false,
@@ -1070,6 +1129,7 @@
         "android"
       ],
       "kind": "store",
+      "surface": "app",
       "storefrontKey": "play",
       "served": false,
       "submittable": true,
@@ -1385,6 +1445,7 @@
         "ios"
       ],
       "kind": "store",
+      "surface": "app",
       "storefrontKey": "appstore",
       "served": false,
       "submittable": true,
@@ -1551,6 +1612,7 @@
         "macos"
       ],
       "kind": "store",
+      "surface": "app",
       "storefrontKey": "mac",
       "served": false,
       "submittable": true,
@@ -1681,6 +1743,7 @@
         "windows"
       ],
       "kind": "store",
+      "surface": "app",
       "storefrontKey": "microsoft",
       "served": false,
       "submittable": true,
@@ -1811,6 +1874,7 @@
         "windows"
       ],
       "kind": "direct",
+      "surface": "app",
       "storefrontKey": null,
       "served": false,
       "submittable": false,
@@ -1953,6 +2017,7 @@
         "linux"
       ],
       "kind": "store",
+      "surface": "app",
       "storefrontKey": "linux",
       "served": false,
       "submittable": true,
@@ -2124,6 +2189,7 @@
         "linux"
       ],
       "kind": "direct",
+      "surface": "app",
       "storefrontKey": null,
       "served": false,
       "submittable": false,
@@ -2236,6 +2302,260 @@
         "🔒 [ADR 015] §5: the in-app update check is the LOCKED update mechanism for every non-store",
         "channel — min_supported_version -> mustForceUpdate -> ForceUpdateGate -> AppConfig.updateUrl.",
         "linuxdeploy traces and bundles libmpv.so into the image. No store, no discovery, no silent update."
+      ]
+    },
+    {
+      "id": "chrome-webstore",
+      "name": "Chrome Web Store",
+      "surface": "extension",
+      "platforms": [
+        "chrome"
+      ],
+      "kind": "store",
+      "storefrontKey": null,
+      "served": false,
+      "submittable": false,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "THE STORE CANNOT TAKE THE MONEY — this is a capability fact, not a preference. Chrome Web Store Payments was deprecated 2020-09-21, free trials were disabled 2020-12-01, and from 2021-02-01 'Your existing items and in-app purchases can no longer charge money with Chrome Web Store payments'; the licensing API stopped reporting licence status on the same date (Simeon Vincent, chromium-extensions, 2020-09-22 — quoted verbatim in Private/extensions/DISTRIBUTION.md section 3.4, which the merge brought into this corpus). Google's revenue share on a Paddle sale is therefore 0%, and selling from our own site is expressly contemplated by 'Accepting Payment From Users' (last updated 2022-11-01) with NO anti-steering clause anywhere in the consolidated program policies. What is bought is an account-checked entitlement against the shared Nikatru identity, not a file — extensions ADR 013 (LOCKED 2026-09-01) replaced the offline signed key with an entitlement keyed on user_id — so the checkout is the same hosted apex checkout the web channel uses and the extension only READS the answer.",
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
+        "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists inside a browser extension, so shipping one here would be a paywall that cannot complete a sale. Listed anyway because `forbids` is what a checker reads to catch a SHIPMENT rather than an omission. ⚠️ TWO CONDITIONS RIDE WITH THE `paddle` ANSWER and are listing obligations rather than code: the listing must clearly identify that we, not Google, are the seller, and must say plainly in the description if basic functionality requires payment.",
+        "source": "[ADR 069] D1; extensions ADR 013"
+      },
+      "artifactFormats": [
+        ".zip"
+      ],
+      "signing": {
+        "keyKind": "none",
+        "identity": null,
+        "custody": "n/a — the Chrome Web Store re-signs the uploaded package and owns the extension id and the private key that goes with it. Nothing of ours signs this artifact, which is why losing a key cannot cost this channel.",
+        "restoreDrill": {
+          "date": null,
+          "required": false,
+          "note": "No identity of ours exists to restore. The unrecoverable asset on this channel is the STORE ITEM ID, which Google holds and which cannot be re-issued — that is an account fact recorded in `accountStatus`, not a key custody one."
+        },
+        "seam": {
+          "_why": "Same pair every kind:\"store\" row carries: `prepare` arranges a credential and `verify` reads the result back out of the artifact. Both are null here and the reason is a property of the channel rather than unfinished work.",
+          "prepare": null,
+          "verify": null,
+          "artifactGlob": "extensions/dist/*.zip",
+          "why": "🔴 THERE IS NOTHING TO PREPARE AND NOTHING OF OURS TO VERIFY. The submitted artifact is an unsigned ZIP of build-free source (ADR 067 decision 1); Chrome signs it after review. A `verify` step here could only re-read our own zip, which is what `release-manifest.mjs --verify` already does over SHA256SUMS in the same job."
+        }
+      },
+      "minimumToolchain": [
+        "node"
+      ],
+      "lane": {
+        "workflow": ".github/workflows/extensions.yml",
+        "job": "release",
+        "_why": [
+          "The job that EMITS the format this row accepts: `release` runs scripts/pack.mjs for both",
+          "targets and writes dist/<tool>-chromium.zip and dist/<tool>-firefox.zip. The chromium zip is",
+          "the artifact BOTH this row and `edge-addons` accept, byte-identical — which is why two rows",
+          "naming one lane is a declaration here and not a duplication.",
+          "⚠️ `served` is false and stays false: a lane that BUILDS the artifact is not a channel that",
+          "SHIPS it. Serving needs a first submission, and no store API allows a first submission on",
+          "this channel (ADR 067 decision 8)."
+        ]
+      },
+      "crashSink": {
+        "layers": [],
+        "native": false,
+        "note": "NO CRASH SINK, AND THAT IS THE DECLARATION. The extensions ship no error-reporting rail at all: extensions/PRINCIPLES.md holds the free tier to zero network calls, and extensions ADR 013 makes the Pro entitlement check the ONE call the product makes. A sink would be a second one. So 'a crash in FullShot reaches GlitchTip' is false on every extension channel, and this field says so rather than leaving a reader to infer it from an absent key."
+      },
+      "deploymentEnvironment": "{app}-chrome-webstore",
+      "storeMetadataDir": "extensions/Extension/{tool}/store/chrome",
+      "extensionStoreKey": "chrome",
+      "ownerQueue": null,
+      "accountStatus": {
+        "status": "live",
+        "asOf": "2026-08-12",
+        "note": "Chrome Web Store publisher account LIVE since 2026-08-12, TRADER status verified (platform-state/manifest.json stores[].id chrome-web-store). ⚠️ THE $5 ONE-TIME DEVELOPER FEE IS PAID AND THE ACCOUNT EXISTS, so there is no OWNER_QUEUE row to name and `ownerQueue` is null rather than pointing at an id nobody opened — [10]D-4 asks whether a publisher account EXISTS, and on this row the answer is yes, with a date. What is still owed is the first MANUAL submission and the listing screenshots (open.json O-STORE-SCREENSHOTS), neither of which is an account."
+      },
+      "deferral": {
+        "reason": "NO EXTENSION HAS EVER BEEN SUBMITTED ANYWHERE. ADR 067 decision 8: every new product carries ONE MANUAL FIRST PUBLISH per store, and no store API allows a first submission except Firefox — so `served` here cannot flip on a decision alone.",
+        "alsoBlockedBy": "open.json O-STORE-SCREENSHOTS — listing screenshots are the real publish blocker on every channel of the portfolio and no credential shortens it. The Chrome listing also needs the store icon at 128x128, which is a store/_shared asset the extension gate grades."
+      },
+      "notes": [
+        "🔴 THE ROW EXISTS SO THE RELEASE LANE CAN RECORD WHAT IT SHIPPED. Before it,",
+        "`release-manifest.mjs --emit-environments` refused with 'publishing while recording nothing is",
+        "[10]D-9's unrecorded deploy wearing a release badge', which stopped `extensions.yml`'s release",
+        "job BEFORE `gh release create` — deliberately, and it is the refusal this row answers.",
+        "⬜ NOT SERVED. FullShot has never been submitted anywhere. The listing tree is graded by",
+        "extensions/scripts/check-store-metadata.mjs, which is where the per-store field limits and their",
+        "sources live; this register does not carry a second copy of them.",
+        "⚠️ `storefrontKey` IS NULL AND THAT IS AN ANSWER. [ADR 055]'s `listings` block keys the APP",
+        "catalogue, and catalog/apps.json holds apps, not extensions — an extension has no row there to",
+        "carry a `listings.chrome` key, and giving this row a key would demand one on every app for a",
+        "store no app ships to. The extension's own listing URLs live in its tool.json `listings` block",
+        "and are graded by extensions/scripts/check-catalog.mjs."
+      ]
+    },
+    {
+      "id": "edge-addons",
+      "name": "Microsoft Edge Add-ons",
+      "surface": "extension",
+      "platforms": [
+        "edge"
+      ],
+      "kind": "store",
+      "storefrontKey": null,
+      "served": false,
+      "submittable": false,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "PERMISSION AND ABSENCE, and both point the same way. Edge Add-ons has no billing of its own — Microsoft's own developer policies describe listing metadata and purchase DISCLOSURE, never a store payment rail — and policy 1.8.1 is a positive requirement in our favour: 'You must use a secure third-party purchase API', which the Paddle hosted checkout is (verified verbatim 2026-08-12, Private/extensions/DISTRIBUTION.md section 3.7). Registration is free, so the only cut on this channel is Paddle's. As on Chrome, what is sold is the account-checked Pro entitlement of extensions ADR 013, not a file.",
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
+        "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists inside a browser extension. ⚠️ ONE CONDITION RIDES WITH THE `paddle` ANSWER and it is stricter here than on Chrome — policy 1.8.2, verbatim: 'Your extension and associated metadata must clearly provide information about the types of in-product purchases offered and the range of prices', and 'your extension must make it clear to users that they are initiating a purchase option in your extension'. So the PRICE RANGE belongs in the listing and the Upgrade button's own label is in scope, not just the store copy.",
+        "source": "[ADR 069] D1; extensions ADR 013"
+      },
+      "artifactFormats": [
+        ".zip"
+      ],
+      "signing": {
+        "keyKind": "none",
+        "identity": null,
+        "custody": "n/a — Partner Center re-signs the uploaded package and issues the product id. Nothing of ours signs this artifact.",
+        "restoreDrill": {
+          "date": null,
+          "required": false,
+          "note": "No identity of ours exists to restore. As on Chrome, the unrecoverable asset is the store-issued product id, which is an account fact."
+        },
+        "seam": {
+          "_why": "Same pair every kind:\"store\" row carries. Both null, for the same reason as the Chrome row.",
+          "prepare": null,
+          "verify": null,
+          "artifactGlob": "extensions/dist/*.zip",
+          "why": "🔴 THE SUBMITTED PACKAGE IS THE CHROMIUM ZIP, BYTE-IDENTICAL. tool.json records `manifestPatch: null` with the measurement behind it — FullShot's manifest carries no `update_url` and its name is `__MSG_appName__`, so neither of Microsoft's two documented Chrome-to-Edge edits applies today. Nothing is prepared, and nothing of ours is in the artifact to verify."
+        }
+      },
+      "minimumToolchain": [
+        "node"
+      ],
+      "lane": {
+        "workflow": ".github/workflows/extensions.yml",
+        "job": "release",
+        "_why": [
+          "The SAME job and the SAME artifact as `chrome-webstore`: one chromium zip, two listings.",
+          "tool.json's `storeMetadata.stores.chrome.target` and `.edge.target` both read `chromium`,",
+          "which is what makes the sharing a declaration rather than an accident."
+        ]
+      },
+      "crashSink": {
+        "layers": [],
+        "native": false,
+        "note": "NO CRASH SINK — see the chrome-webstore row. The extensions ship no error-reporting rail."
+      },
+      "deploymentEnvironment": "{app}-edge-addons",
+      "storeMetadataDir": "extensions/Extension/{tool}/store/edge",
+      "extensionStoreKey": "edge",
+      "ownerQueue": null,
+      "accountStatus": {
+        "status": "live",
+        "asOf": "2026-08-28",
+        "note": "The Microsoft partner account that publishes Edge Add-ons is the SAME company account the Microsoft Store row uses — Company, LIVE and AUTHORIZED 2026-08-28, seller 95860710 (platform-state/manifest.json stores[].id microsoft, whose `channel` reads 'windows + edge add-ons'). ⚠️ THE OTHER SELLER ID, 95661860, IS THE OLD ONE and differs by three digits; do not touch it. Registration for the Edge program carries no fee, so there is no OWNER_QUEUE row to name here — the account question is already answered, with a date. `windows-store` keeps its own A-2 id because that row's queue item is the STORE listing work, not the account."
+      },
+      "deferral": {
+        "reason": "NO EXTENSION HAS EVER BEEN SUBMITTED ANYWHERE. ADR 067 decision 8: every new product carries ONE MANUAL FIRST PUBLISH per store, and no store API allows a first submission except Firefox — so `served` here cannot flip on a decision alone.",
+        "alsoBlockedBy": "DISTRIBUTION.md section 3.7's own verdict — 'YES, but after Chrome is stable'. Until then an Edge user installs the Chrome Web Store build after one 'Allow extensions from other stores' click, which costs nothing and is why this row is second in line rather than blocked."
+      },
+      "notes": [
+        "⬜ NOT SERVED, and the ordering is deliberate: DISTRIBUTION.md section 3.7's verdict is 'YES —",
+        "but after Chrome is stable'. Until an Edge listing exists, an Edge user can install the Chrome",
+        "Web Store build after one 'Allow extensions from other stores' click, which costs nothing.",
+        "⚠️ POLICY 1.2.4 BINDS ONLY WHAT WE SUBMIT: 'your extension must be updated only through Partner",
+        "Center and the Microsoft Edge Add-ons store'. It does not reach an extension never submitted",
+        "here — but it does mean listing on Edge and self-updating are mutually exclusive, which is a",
+        "decision this row records rather than one it makes."
+      ]
+    },
+    {
+      "id": "amo",
+      "name": "Firefox Add-ons (addons.mozilla.org)",
+      "surface": "extension",
+      "platforms": [
+        "firefox"
+      ],
+      "kind": "store",
+      "storefrontKey": null,
+      "served": false,
+      "submittable": false,
+      "purchaseRail": {
+        "rail": "paddle",
+        "why": "AMO IS A STOREFRONT AND A SIGNING SERVICE, NEVER A CHECKOUT. Mozilla operates no payment rail for add-ons: the channel matrix in Private/extensions/DISTRIBUTION.md section 2 scores AMO 'Delivery yes' in the 'can it carry a sale' column, exactly as it scores Chrome and Edge, and Mozilla's own publishing documentation describes listing, signing and blocking — not selling. So the sale happens on our own site whichever way the file is delivered, and the rail is the same hosted apex checkout the web channel uses. What is bought is the account-checked Pro entitlement of extensions ADR 013.",
+        "forbids": [
+          "play-billing",
+          "apple-iap"
+        ],
+        "forbidsWhy": "MECHANICAL, not policy: neither store's billing SDK exists inside a browser extension. ⚠️ ONE OBLIGATION RIDES WITH THIS CHANNEL AND IT IS NOT A COMMERCE RULE: since 2025-11-03 every new Firefox extension must declare whether it collects or transmits personal data, and one that collects nothing must say so explicitly with the `none` data-collection permission or it is 'prevented from being submitted to addons.mozilla.org for signing'. The Pro entitlement check of extensions ADR 013 is a network call the FREE tier does not make, so the two tiers must be declared separately rather than averaged.",
+        "source": "[ADR 069] D1; extensions ADR 013"
+      },
+      "artifactFormats": [
+        ".zip"
+      ],
+      "signing": {
+        "keyKind": "none",
+        "identity": null,
+        "custody": "n/a — MOZILLA holds the signing key and signs the submitted package into the .xpi users install. We upload a .zip; we never hold a signing identity for this channel. The add-on ID (`fullshot@nikatru.com`) is ours and is declared in the package, not held as a key.",
+        "restoreDrill": {
+          "date": null,
+          "required": false,
+          "note": "No identity of ours exists to restore. ⚠️ WHAT MOZILLA HOLDS IS A REVOCABLE LICENCE TO DELIVER, not a key we could lose: the Firefox Add-on Distribution Agreement reserves the right to 'remove or revoke access to any Listed or Self-distributed Add-ons', and a block is absolute — 'users are not able to override the block'. That is a channel risk to record, and no drill can rehearse it."
+        },
+        "seam": {
+          "_why": "Same pair every kind:\"store\" row carries. Both null.",
+          "prepare": null,
+          "verify": null,
+          "artifactGlob": "extensions/dist/*.zip",
+          "why": "🔴 THE ONE CHANNEL WHOSE API COULD MAKE A FIRST SUBMISSION, AND STILL NOTHING OF OURS SIGNS. ADR 067 decision 8 records that Firefox is the sole exception to the manual-first-publish rule; the artifact we upload is nevertheless an unsigned zip, and the signature that matters is applied by Mozilla afterwards. A `verify` step here would be reading our own bytes back."
+        }
+      },
+      "minimumToolchain": [
+        "node"
+      ],
+      "lane": {
+        "workflow": ".github/workflows/extensions.yml",
+        "job": "release",
+        "_why": [
+          "The `release` job packs the firefox target as well as the chromium one — two builds, three",
+          "stores. This row accepts dist/<tool>-firefox.zip, which is a DIFFERENT artifact from the one",
+          "the two chromium rows accept, and tool.json's `targets` is where that split is declared."
+        ]
+      },
+      "crashSink": {
+        "layers": [],
+        "native": false,
+        "note": "NO CRASH SINK — see the chrome-webstore row. The extensions ship no error-reporting rail."
+      },
+      "deploymentEnvironment": "{app}-amo",
+      "storeMetadataDir": "extensions/Extension/{tool}/store/firefox",
+      "extensionStoreKey": "firefox",
+      "ownerQueue": null,
+      "accountStatus": {
+        "status": "live",
+        "asOf": "2026-08-12",
+        "note": "AMO account LIVE since 2026-08-12 (platform-state/manifest.json stores[].id mozilla-amo). The signup asked for no D-U-N-S, no trader declaration and no fee — recorded as what the form asked, not as what Mozilla requires. There is therefore no OWNER_QUEUE row to name and `ownerQueue` is null: the publisher account exists, with a date."
+      },
+      "deferral": {
+        "reason": "NO EXTENSION HAS EVER BEEN SUBMITTED ANYWHERE. ADR 067 decision 8: every new product carries ONE MANUAL FIRST PUBLISH per store, and no store API allows a first submission except Firefox — so `served` here cannot flip on a decision alone.",
+        "alsoBlockedBy": "THIS ROW IS THE EXCEPTION TO ITS OWN REASON and the deferral is ours, not Mozilla's: AMO is the one store whose API can make a first submission, so what defers this channel is that this factory has written no submission script for it and the listing screenshots are still owed (open.json O-STORE-SCREENSHOTS)."
+      },
+      "notes": [
+        "⬜ NOT SERVED. ⚠️ THIS IS THE ONE CHANNEL IN THE WHOLE REGISTER WHOSE API CAN MAKE A FIRST",
+        "SUBMISSION (ADR 067 decision 8, research 09 section 1) — so `submittable` staying false here is",
+        "a statement about THIS FACTORY, which has no submission script for it, and not about Mozilla.",
+        "The day a `submission` block lands, this row is the cheapest of the three to make real.",
+        "🔴 THE ROW ID IS `amo`, NOT `firefox`, BECAUSE THE STORE AND THE BROWSER ARE DIFFERENT THINGS.",
+        "`platforms: [\"firefox\"]` is the browser this channel reaches; `amo` is the storefront. The",
+        "self-distributed signed XPI is a SECOND Firefox channel with the same rail and no row here yet —",
+        "DISTRIBUTION.md section 3.6 calls it 'the one real self-distribution channel', and it would need",
+        "its own row rather than a comment on this one, exactly as `android-sideload` does."
       ]
     }
   ],
@@ -2373,6 +2693,11 @@
       "without this block would have deleted the only written record of it."
     ],
     "formats": {
+      ".zip": {
+        "surface": "extension",
+        "packVerb": "node extensions/scripts/pack.mjs <tool> --target chromium|firefox --out dist --release — the build-free packer ADR 067 decision 1 locks. THERE IS NO FLUTTER TARGET AND THAT IS THE POINT: the submitted artifact is the source tree zipped, so `flutterTarget` would have to carry a word that names nothing. One chromium zip serves chrome-webstore and edge-addons byte-identical; the firefox zip is a second build.",
+        "packagedBy": null
+      },
       "static-bundle": {
         "flutterTarget": "web",
         "packagedBy": null

@@ -154,6 +154,59 @@ const LAUNCH_MECHANISM = new Map([
       since: '2026-08-03',
     },
   ],
+  // ── the extension surface, 2026-09-05 ─────────────────────────────────────
+  // 🔴 CLASSIFIED RATHER THAN EXCLUDED, AND THE DIFFERENCE IS THE WHOLE POINT OF
+  // THIS MAP. The register acquired `chrome-webstore`, `edge-addons` and `amo`
+  // when extensions/ became a subtree (ADR 067 decision 1), and their platforms
+  // are BROWSERS. The tempting repair was to scope this guard to the app surface
+  // and let three platforms leave its domain — which is precisely the failure
+  // the comment above the `unclassified` check names: "in neither the
+  // build-failing half nor the printed half". So they are entered here with a
+  // dated, disagreeable claim instead, and they print on every run.
+  //
+  // ⚠️ WHAT IS AND IS NOT ALREADY PROVEN, so `script: null` is not read as
+  // "nothing checks the artifact". extensions.yml's `package` job already runs
+  // web-ext lint on the firefox build, a reference-integrity pass and a leak
+  // check INSIDE the zip, and a byte-reproducibility check. None of those is a
+  // LAUNCH: R-13 asks whether the shipped artifact starts, and for an extension
+  // that means loading the unpacked build into a real browser profile and
+  // waiting for a ready signal the extension emits. No such signal is defined.
+  [
+    'chrome',
+    {
+      script: null,
+      why:
+        'LOADING one is available — headless Chrome takes `--load-extension` in Chrome for Testing — but there ' +
+        'is no DEFINED READY SIGNAL a FullShot service worker emits that this repo can assert, and "the browser ' +
+        'did not crash" is the zero-exit check R-13 explicitly rejects. Also note the artifact the store takes ' +
+        'is an unsigned zip that Chrome re-signs, so a launch would smoke the unpacked tree and not the item ' +
+        'users install. Row is `served: false`: no extension has ever been submitted anywhere.',
+      since: '2026-09-05',
+    },
+  ],
+  [
+    'edge',
+    {
+      script: null,
+      why:
+        'the same missing ready signal as chrome, over the SAME artifact — tool.json declares one chromium ' +
+        'target serving both stores byte-identical — plus no Edge binary on any GitHub-hosted runner image ' +
+        'this factory uses. Row is `served: false`.',
+      since: '2026-09-05',
+    },
+  ],
+  [
+    'firefox',
+    {
+      script: null,
+      why:
+        'closest of the three to buildable: `web-ext run` starts a profile with the add-on loaded and the lane ' +
+        'already runs `web-ext lint` on this artifact. Still missing the same half — a ready signal the add-on ' +
+        'emits that CI can wait for — and the shipped file is the XPI MOZILLA signs, not the zip we upload, so ' +
+        'a launch here smokes an input rather than the artifact. Row is `served: false`.',
+      since: '2026-09-05',
+    },
+  ],
 ]);
 
 // ── the register ────────────────────────────────────────────────────────────

@@ -133,10 +133,29 @@ function coverageLost(lines) {
  *  second declaration [pipeline F-2] exists to forbid. Assigned after the parse. */
 let KEY_KINDS;
 const KINDS = new Set(['web', 'store', 'direct']);
-/** Flutter's platform names — the vocabulary apps.json `platforms` speaks. A
- *  register row claiming a value outside this set can never be resolved against
- *  an app, so it would sit here forever looking like coverage. */
-const PLATFORMS = new Set(['android', 'ios', 'linux', 'macos', 'web', 'windows']);
+/**
+ * 🔴 THE SURFACE VOCABULARY AND ITS PLATFORM NAMES ARE THE REGISTER'S, NOT THIS
+ * GUARD'S — the third vocabulary to move out of this file, after `keyKinds` and
+ * `purchaseRails.rails`, and for the identical [pipeline F-2] reason: a second
+ * copy beside its source is the copy that drifts.
+ *
+ * This used to read `new Set(['android','ios','linux','macos','web','windows'])`
+ * with the comment "Flutter's platform names — the vocabulary apps.json
+ * `platforms` speaks". That was true of every row that existed and stopped being
+ * true on 2026-09-05, when `extensions/` became a subtree of this repository
+ * (ADR 067 decision 1) and its release lane needed rows for the three browser
+ * add-on stores. A Chrome extension's platform is a BROWSER, and forcing it into
+ * Flutter's target names would have made `chrome` an error and `web` a lie.
+ *
+ * `SURFACES` is the declared set; `platformsFor(surface)` is the vocabulary a
+ * row of that surface is validated against; `PLATFORMS` is the union, and is
+ * what section 3b's emit classifier tests a parsed platform against. Assigned
+ * after the parse, exactly as KEY_KINDS is.
+ */
+let SURFACES;
+let SURFACE_PLATFORMS;   // surface -> Set(platform)
+let PLATFORMS;           // the union of all of them
+const platformsFor = (surface) => SURFACE_PLATFORMS.get(surface) ?? new Set();
 
 // ── 1. COVERAGE ──────────────────────────────────────────────────────────────
 const registerRaw = read(REGISTER);
@@ -202,6 +221,82 @@ if (
   ]);
 }
 KEY_KINDS = new Set(Object.keys(keyKindDefs));
+
+// 🔴 THE SURFACE VOCABULARY, DERIVED — COVERAGE LOST WHEN IT IS NOT THERE.
+// Without it every `surface` check below ranges over an empty set: it would
+// reject every row for the wrong reason, and a permissive rewrite would accept
+// every typo. The platform lists are the same declaration, so an emptied
+// `platforms` array is the same defect as a missing block and is caught here
+// rather than by each row failing separately for a reason that names the row.
+const surfaceDefs = register.surfaces;
+if (surfaceDefs === null || typeof surfaceDefs !== 'object' || Array.isArray(surfaceDefs)) {
+  coverageLost([
+    `${REGISTER} declares no \`surfaces\` vocabulary.`,
+    'Every row declares which surface it serves and is validated against that surface\'s platform names.',
+    'With the dictionary gone the question ranges over an empty set, and the readers that scope',
+    'themselves by surface — [10]D-5\'s metadata product, the purchase-capability matrix, the launch-smoke',
+    'mechanism table — would each silently take the whole register into a domain they cannot grade.',
+  ]);
+}
+SURFACE_PLATFORMS = new Map();
+for (const [name, def] of Object.entries(surfaceDefs)) {
+  if (name.startsWith('_')) continue; // `_why` is prose, as everywhere else in this file
+  if (def === null || typeof def !== 'object' || Array.isArray(def)) {
+    problems.push(`${REGISTER} surfaces."${name}" is not an object {what, platforms, platformsSource, storeMetadataGradedBy}.`);
+    continue;
+  }
+  if (typeof def.what !== 'string' || def.what.trim() === '') {
+    problems.push(
+      `${REGISTER} surfaces."${name}" has no \`what\` text. An emptied definition still satisfies every \`SURFACES.has(...)\` check while telling a reader nothing — and the difference between the surfaces IS what each reader may grade, which is the only reason the field exists.`,
+    );
+  }
+  if (typeof def.storeMetadataGradedBy !== 'string' || def.storeMetadataGradedBy.trim() === '') {
+    problems.push(
+      `${REGISTER} surfaces."${name}" names no \`storeMetadataGradedBy\`. [10]D-5's guard reads that field to decide which rows are ITS domain; a surface naming no grader is a set of listing trees with no reader, which is the state D-5 exists to abolish.`,
+    );
+  } else if (!existsSync(join(ROOT, def.storeMetadataGradedBy))) {
+    problems.push(
+      `${REGISTER} surfaces."${name}" names storeMetadataGradedBy "${def.storeMetadataGradedBy}", which does not exist. A surface pointing at a deleted grader is worse than one pointing at none: it reads as covered.`,
+    );
+  }
+  const ps = Array.isArray(def.platforms) ? def.platforms.filter((p) => typeof p === 'string' && p.trim() !== '') : [];
+  if (ps.length === 0) {
+    // COVERAGE LOST rather than a finding, and the distinction is not cosmetic:
+    // an emptied vocabulary makes the per-row platform check range over nothing,
+    // which accepts every typo — and it ALSO empties `PLATFORMS`, which section
+    // 3b's emit classifier tests against, so the whole lane-vs-format comparison
+    // would go quiet at the same moment. Two checks stop being evidence, so this
+    // has to be the loud exit rather than a line in a list.
+    coverageLost([
+      `${REGISTER} surfaces."${name}" declares no non-empty \`platforms\` array.`,
+      'Every row of that surface would be validated against an empty set, and section 3b\'s emit',
+      'classifier tests a parsed platform against the union of these lists — so the format comparison',
+      'goes silent in the same edit.',
+    ]);
+  }
+  SURFACE_PLATFORMS.set(name, new Set(ps));
+}
+SURFACES = new Set(SURFACE_PLATFORMS.keys());
+if (SURFACES.size === 0) {
+  coverageLost([
+    `${REGISTER} declares a \`surfaces\` block with ZERO surfaces in it.`,
+    'Same failure as an absent block, and it must not report differently.',
+  ]);
+}
+PLATFORMS = new Set([...SURFACE_PLATFORMS.values()].flatMap((s) => [...s]));
+{
+  // A platform name claimed by TWO surfaces would make `platformsFor` and
+  // `PLATFORMS` disagree about which row a parsed lane emit belongs to, and
+  // section 3b resolves an emit by platform alone.
+  const seen = new Map();
+  for (const [s, ps] of SURFACE_PLATFORMS) for (const p of ps) seen.set(p, [...(seen.get(p) ?? []), s]);
+  const shared = [...seen.entries()].filter(([, ss]) => ss.length > 1);
+  if (shared.length) {
+    problems.push(
+      `${REGISTER} platform name(s) ${shared.map(([p, ss]) => `"${p}" (${ss.join(', ')})`).join('; ')} are claimed by more than one surface. Section 3b resolves a lane's emitted format to a channel BY PLATFORM, so a shared name makes one surface's build read as the other's.`,
+    );
+  }
+}
 for (const [k, v] of Object.entries(keyKindDefs)) {
   if (typeof v !== 'string' || v.trim() === '') {
     problems.push(
@@ -324,6 +419,130 @@ function workflowsInvoking(scriptRel) {
   return hits;
 }
 
+// ── the extension surface's listing trees, on disk ───────────────────────────
+// 🔴 THE EXTENSION COUNTERPART OF `storeMetadataDir` IS CHECKED AGAINST THE
+// FILESYSTEM, NOT AGAINST THE SHAPE OF A STRING. An app row's clause asks only
+// whether the template contains `{app}`; there is no app-side equivalent of this
+// because apps/{app}/store/<channel> is assert-store-metadata.mjs's whole
+// subject. The extension trees are graded by extensions/scripts/
+// check-store-metadata.mjs, which knows nothing about this register — so the
+// tie between the two corpora has to be made HERE or nowhere, and a row naming a
+// store the extensions corpus has never heard of would otherwise sit in this
+// file looking like coverage.
+const EXT_TOOL_ROOT = 'extensions/Extension';
+/** Every tool directory under extensions/Extension, or null when the subtree is
+ *  absent — the two are different answers and only the second is a refusal. */
+function extensionToolDirs() {
+  const abs_ = abs(EXT_TOOL_ROOT);
+  if (!existsSync(abs_)) return null;
+  return listDir(abs_).filter((d) => existsSync(join(abs_, d, 'tool.json')));
+}
+const EXT_TOOLS = extensionToolDirs();
+let extensionStoreRows = 0;
+/** Extension store rows that NAME A LANE — the only ones §3b can compare. */
+let extensionLaneRows = 0;
+
+/** The `kind: "store"` obligations, asked of an extension channel. Every clause
+ *  is the app-side clause's counterpart and none is dropped:
+ *    · `storeMetadataDir` — a `{tool}` template that RESOLVES, for every tool.
+ *    · `extensionStoreKey` — the store's name in the extensions corpus, held to
+ *      tool.json's own `storeMetadata.stores` so the two cannot drift apart.
+ *    · `submittable` — [10]D-10 still quantifies over it, and the flag is tied
+ *      to the `submission` block so it cannot be set false to dodge the duty.
+ *    · `ownerQueue` — [10]D-4 asks whether a publisher account EXISTS. A queue id
+ *      is the app-side proxy for "somebody is accountable for opening one"; a
+ *      dated `accountStatus` saying it is already open answers the question
+ *      itself, and one of the two is required. */
+function checkExtensionStoreRow(c, where, req) {
+  const tpl = c.storeMetadataDir;
+  const tplOk = req(
+    typeof tpl === 'string' && tpl.includes('{tool}'),
+    'is an extension store channel with no `storeMetadataDir` template containing {tool}. [10]D-5 requires one listing directory per declared channel per PRODUCT, and on this surface the product is a tool under extensions/Extension.',
+  );
+  const key = c.extensionStoreKey;
+  const keyOk = req(
+    typeof key === 'string' && key.trim() !== '',
+    'is an extension store channel with no `extensionStoreKey`. That is the store\'s name in the extensions corpus (tool.json `storeMetadata.stores`), and without it this row cannot be tied to the listing tree it claims.',
+  );
+  if (tplOk && keyOk) {
+    req(
+      tpl.split('/').pop() === key,
+      `names extensionStoreKey "${key}" and a storeMetadataDir ending "${tpl.split('/').pop()}". Two spellings of one store id is how a listing tree ends up graded under a name no store row claims.`,
+    );
+  }
+
+  // 🔴 `submittable` IS STILL [10]D-10's QUANTIFIER AND IS TIED TO THE BLOCK.
+  // `false` here is a statement about THIS FACTORY — no submission script exists
+  // for the channel — and never about the store. Tying the two directions is what
+  // stops the flag being flipped to false to make the D-10 duty disappear.
+  const hasSubmission = c.submission !== null && c.submission !== undefined;
+  req(
+    typeof c.submittable === 'boolean' && c.submittable === hasSubmission,
+    hasSubmission
+      ? 'declares a `submission` block and is not `submittable`. A scripted submission path this register says cannot be used is a path nothing exercises.'
+      : 'is `submittable: true` with no `submission` block. On the extension surface the flag means "this factory has a repeatable path", and there is none — set it false, or land the block.',
+  );
+
+  const st = c.accountStatus;
+  const accountOpen =
+    st !== null && typeof st === 'object' && (st.status === 'live' || st.status === 'verified') && /^\d{4}-\d{2}-\d{2}$/.test(String(st.asOf ?? ''));
+  req(
+    (typeof c.ownerQueue === 'string' && c.ownerQueue.trim() !== '') || accountOpen,
+    'is a store channel with neither an `ownerQueue` id nor a dated `accountStatus` showing the publisher account already exists. [10]D-4 asks whether a publisher account exists; on this surface the answer may be "yes, since <date>" instead of "somebody is accountable for opening one" — but it may not be silence.',
+  );
+
+  // The tie to the extensions corpus. Both directions of the resolution, once
+  // per tool: the directory the template names must be there, and the tool's own
+  // tool.json must declare the same store pointing at the same place.
+  if (!tplOk || !keyOk) return;
+  if (EXT_TOOLS === null) {
+    coverageLost([
+      `${where} is an extension store channel and ${EXT_TOOL_ROOT}/ does not exist.`,
+      'The listing-tree resolution below would range over nothing and this row would pass by having',
+      'nothing to check — while naming a directory template that resolves for no product at all.',
+    ]);
+  }
+  if (EXT_TOOLS.length === 0) {
+    coverageLost([
+      `${where} is an extension store channel and ${EXT_TOOL_ROOT}/ holds no tool (no directory with a tool.json).`,
+      'Same empty right-hand side, same silent pass.',
+    ]);
+  }
+  for (const tool of EXT_TOOLS) {
+    const rel = tpl.replace('{tool}', tool);
+    if (!existsSync(abs(rel))) {
+      problems.push(`${where} names storeMetadataDir "${tpl}", which resolves to "${rel}" for tool "${tool}" — and that directory does not exist.`);
+      continue;
+    }
+    const toolJsonRel = `${EXT_TOOL_ROOT}/${tool}/tool.json`;
+    let toolJson = null;
+    try {
+      toolJson = JSON.parse(read(toolJsonRel) ?? 'null');
+    } catch {
+      problems.push(`${toolJsonRel} is not valid JSON, so ${where}'s store key could not be held to it.`);
+      continue;
+    }
+    const stores = toolJson?.storeMetadata?.stores;
+    if (stores === null || typeof stores !== 'object') {
+      problems.push(`${toolJsonRel} declares no \`storeMetadata.stores\`, so ${where} names a store key nothing on the other side can confirm.`);
+      continue;
+    }
+    if (!Object.hasOwn(stores, key)) {
+      problems.push(
+        `${where} names extensionStoreKey "${key}" and ${toolJsonRel} declares stores [${Object.keys(stores).join(', ')}]. A store this register claims and the tool has never heard of is a listing nobody writes.`,
+      );
+      continue;
+    }
+    const dir = stores[key]?.dir;
+    const wantSuffix = rel.slice(`${EXT_TOOL_ROOT}/${tool}/`.length);
+    if (dir !== wantSuffix) {
+      problems.push(
+        `${where} resolves to "${rel}" and ${toolJsonRel} puts store "${key}" at "${dir}". Two declarations of one listing directory is [pipeline F-2]'s second copy, and it is the copy that drifts.`,
+      );
+    }
+  }
+}
+
 for (const c of channels) {
   const id = typeof c.id === 'string' ? c.id : '(unnamed)';
   const where = `channel "${id}"`;
@@ -336,13 +555,26 @@ for (const c of channels) {
   if (seenIds.has(id)) problems.push(`${where} — duplicate id. Two rows for one channel means one of them is never consulted.`);
   seenIds.add(id);
 
+  // ── the surface, and the platform vocabulary it decides ──────────────────
+  // 🔴 REQUIRED, WITH NO DEFAULT, for the reason `storefrontKey` has none:
+  // reading a missing key as "app" would let a browser add-on store join this
+  // register and be graded as a Flutter application, with every limb below still
+  // reporting clean. Seven readers scope themselves by this field.
+  const surfaceOk = req(
+    typeof c.surface === 'string' && SURFACES.has(c.surface),
+    `has surface ${JSON.stringify(c.surface ?? null)}; expected one of ${[...SURFACES].join(', ')}. The surface decides which platform names this row may claim and which guards grade its listing trees — absent, it would be graded by all of them.`,
+  );
   const platformsOk = req(
     Array.isArray(c.platforms) && c.platforms.length > 0,
     'declares no `platforms`. A row nothing can resolve to is coverage that does not exist.',
   );
-  if (platformsOk) {
+  if (platformsOk && surfaceOk) {
+    const vocab = platformsFor(c.surface);
     for (const p of c.platforms) {
-      req(PLATFORMS.has(p), `names platform "${p}", which is not one of ${[...PLATFORMS].join(', ')} — no apps.json claim can ever resolve to it.`);
+      req(
+        vocab.has(p),
+        `is surface "${c.surface}" and names platform "${p}", which is not one of ${[...vocab].join(', ')} — the vocabulary ${REGISTER} declares at surfaces."${c.surface}".platforms. Nothing can ever resolve to it.`,
+      );
     }
   }
   req(KINDS.has(c.kind), `has kind "${c.kind}"; expected one of ${[...KINDS].join(', ')}.`);
@@ -394,7 +626,21 @@ for (const c of channels) {
     c.storeMetadataDir === null || typeof c.storeMetadataDir === 'string',
     '`storeMetadataDir` must be a path template or null ([10]D-5 reads it).',
   );
-  if (c.kind === 'store') {
+  // 🔴 A `kind: "store"` ROW'S OBLIGATIONS ARE REPLACED PER SURFACE, NEVER
+  // DROPPED. Chrome Web Store, Edge Add-ons and AMO are stores by `kind` — they
+  // review, they host, they issue an id — and every app-shaped clause below asks
+  // its question about a Flutter app: a `{app}` template resolved against
+  // catalog/apps.json (which holds no extensions), a `submittable` flag [10]D-10
+  // quantifies over, and an OWNER_QUEUE row for an account that would still need
+  // opening. Each has an extension-surface counterpart that asks the SAME
+  // question of the thing that actually exists, and the counterpart is checked
+  // against DISK rather than against the shape of a string — which makes it
+  // strictly the stronger of the two.
+  if (c.kind === 'store' && c.surface === 'extension') {
+    extensionStoreRows++;
+    if (c.lane && typeof c.lane.workflow === 'string' && typeof c.lane.job === 'string') extensionLaneRows++;
+    checkExtensionStoreRow(c, where, req);
+  } else if (c.kind === 'store') {
     req(
       typeof c.storeMetadataDir === 'string' && c.storeMetadataDir.includes('{app}'),
       'is a store channel with no `storeMetadataDir` template. [10]D-5 requires one metadata directory per declared channel, per app.',
@@ -685,6 +931,29 @@ if (packagingResolved > 0) {
 // Linux rows are packaged from it by design ([ADR 015] §3: snap "ingests the
 // prebuilt CI artifact via `plugin: dump`"), so claiming a gap there would be
 // crying wolf — it contributes no format and therefore no comparison.
+/**
+ * 🔴 THE EXTENSION SURFACE'S BUILD VERB, AND WITHOUT IT THIS SECTION WOULD HAVE
+ * GONE QUIET ON THREE ROWS. `flutter build <target>` is the only verb the
+ * classifier below knew, so the extensions release lane — which runs
+ * `node scripts/pack.mjs <tool> --target chromium|firefox` and emits a .zip —
+ * would have contributed no format at all: every extension row would have
+ * matched the `seen.size === 0` branch and been recorded as "nothing in the tree
+ * builds this platform yet", which is exactly the shape of a gap that prints as
+ * a pass. The register's own `artifactBuild.formats[".zip"]` names the same verb,
+ * and §10 limb (iii) compares the two.
+ *
+ * ONE VERB, TWO PLATFORMS ON THE CHROMIUM SIDE — that is the fact tool.json
+ * calls "two builds, three stores": the chromium zip goes to Chrome Web Store
+ * AND Edge Add-ons byte-identical, so the target maps to both browsers rather
+ * than one, and the register's `chrome-webstore` and `edge-addons` rows name one
+ * lane job between them.
+ */
+const PACK_TARGETS = new Map([
+  ['chromium', { platforms: ['chrome', 'edge'], formats: ['.zip'] }],
+  ['firefox', { platforms: ['firefox'], formats: ['.zip'] }],
+]);
+const unknownPackTargets = new Set();
+
 const BUILD_TARGETS = new Map([
   ['web', { platform: 'web', formats: ['static-bundle'] }],
   ['apk', { platform: 'android', formats: ['.apk'] }],
@@ -743,6 +1012,20 @@ function jobEmits(lines, label) {
       continue;
     }
     for (const f of t.formats) add(t.platform, f);
+  }
+  // The extension surface's verb. Matched on `pack.mjs … --target <name>` rather
+  // than on the upload path, for the reason the Flutter half is matched on
+  // `flutter build`: the upload glob `extensions/dist/*.zip` names ONE file
+  // shape and cannot say which of the three browsers it is for, while the target
+  // can and does.
+  for (const m of lines.join('\n').matchAll(/pack\.mjs[^\n]*?--target\s+(?:\$\{\{[^}]*\}\}|([a-z]+))/g)) {
+    if (m[1] === undefined) continue; // a matrix expression — the platform is not readable here
+    const t = PACK_TARGETS.get(m[1]);
+    if (!t) {
+      unknownPackTargets.add(m[1]);
+      continue;
+    }
+    for (const p of t.platforms) for (const f of t.formats) add(p, f);
   }
   for (const p of uploadPaths(lines)) {
     const ext = p.match(/(\.[A-Za-z][A-Za-z0-9]*)$/);
@@ -839,6 +1122,31 @@ if (unknownTargets.size) {
   prints.push(
     `UNMAPPED BUILD TARGET(S): ${fmtList(unknownTargets)} — a \`flutter build\` target this guard has no artifact mapping for, so any channel accepting its output is compared against nothing. Add it to BUILD_TARGETS.`,
   );
+}
+if (unknownPackTargets.size) {
+  prints.push(
+    `UNMAPPED PACK TARGET(S): ${fmtList(unknownPackTargets)} — a \`pack.mjs --target\` this guard has no artifact mapping for, so any extension channel accepting its output is compared against nothing. Add it to PACK_TARGETS.`,
+  );
+}
+// The extension surface's own emptiness check. A register that declares
+// extension store rows while the classifier resolves no extension platform at
+// all is the same "compared nothing, found nothing wrong" this file refuses
+// everywhere else — and it is the likely shape of the next break, because the
+// lane's build verb lives in a workflow this guard does not own.
+// Only rows that NAME A LANE can be compared: a deferred extension row with no
+// lane has nothing to emit its format, exactly as a deferred app row does not.
+// Counting all of them would have made this limb fire on a register that is
+// correct — the mirror of the emptiness it exists to catch.
+if (extensionLaneRows > 0) {
+  const extPlatforms = [...platformsFor('extension')];
+  const anyEmit = extPlatforms.some((p) => (allEmits.get(p)?.formats.size ?? 0) > 0);
+  if (!anyEmit) {
+    coverageLost([
+      `${extensionLaneRows} extension store row(s) name a lane and the lane scan resolved NO emitted format for any of ${fmtList(extPlatforms)}.`,
+      'The `pack.mjs --target` extraction has stopped reaching the extensions lane, so those rows were',
+      'compared against an empty set and passed by having nothing to compare.',
+    ]);
+  }
 }
 
 // ── 4. direction A: every claim resolves to a SERVED row ─────────────────────
@@ -1063,7 +1371,24 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 //     no agent can unblock — the standing posture, and the reason
 //     assert-seams-wired.mjs prints rather than fails.
 {
-  const STATUSES = new Set(['none', 'applied', 'verified']);
+  // 🔴 `live` JOINED THE VOCABULARY ON 2026-09-05 AND IT IS NOT A SYNONYM FOR
+  // `verified`. Two of the three browser add-on stores asked for a verification
+  // step and one did not: AMO's signup asked for no D-U-N-S, no trader
+  // declaration and no fee, so the account is open and able to publish while
+  // NOTHING was ever verified. Writing `verified` there would assert a step that
+  // did not happen, and `applied` would say the account is still pending when it
+  // is not — the two existing words could only be used by overstating or
+  // understating. `live` means: THE ACCOUNT EXISTS AND CAN PUBLISH, and the
+  // store required no verification.
+  // ⚠️ IT IS NOT A WEAKER `verified`. Both satisfy the served-channel gate below
+  // because both assert an account that can publish, which is the property that
+  // gate exists to hold; and both are held to the same staleness horizon, so the
+  // one status whose age matters is not the one that stops being printed.
+  const STATUSES = new Set(['none', 'applied', 'verified', 'live']);
+  /** The statuses that assert a publishable account. The served gate reads this
+   *  rather than the literal `verified`, so adding a status cannot silently
+   *  widen it — a new word is outside the set until somebody puts it in. */
+  const ACCOUNT_EXISTS = new Set(['verified', 'live']);
   // 90 days. Chosen to be longer than any enrolment flow here has taken (the
   // Play account went pending → verified in about a day, Microsoft quotes five
   // business days), so a row inside the horizon is genuinely fresh rather than
@@ -1102,7 +1427,7 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
       );
       continue;
     }
-    if (c.served === true && st.status !== 'verified') {
+    if (c.served === true && !ACCOUNT_EXISTS.has(st.status)) {
       problems.push(
         `channel "${c.id}" is SERVED and its accountStatus is "${st.status}" (as of ${st.asOf}). A served channel is one this factory publishes through; publishing needs the account. One of the two fields is wrong and the register cannot say which.`,
       );
@@ -1132,13 +1457,13 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
     // row re-confirmed and re-dated with the same value is the correct outcome.
     const ageDays = Math.floor((Date.now() - Date.parse(`${st.asOf}T00:00:00Z`)) / 86_400_000);
     const stale = ageDays > ACCOUNT_STATUS_STALE_DAYS;
-    if (st.status !== 'verified') {
+    if (!ACCOUNT_EXISTS.has(st.status)) {
       prints.push(
         `ACCOUNT ${st.status.toUpperCase()}: ${c.id} — OWNER_QUEUE ${c.ownerQueue ?? '(none)'}, asserted ${ageDays}d ago (${st.asOf})${stale ? ' ⚠️ RE-ASSERT — older than the staleness horizon; confirm it is still true rather than re-reading it' : ''}${st.note ? ` · ${st.note}` : ''}`,
       );
     } else if (stale) {
       prints.push(
-        `ACCOUNT VERIFIED but ASSERTED ${ageDays}d AGO: ${c.id} (${st.asOf}) ⚠️ RE-ASSERT — a verified enrolment can lapse, and this row is the only machine-readable answer to "does an account exist for this channel?"`,
+        `ACCOUNT ${st.status.toUpperCase()} but ASSERTED ${ageDays}d AGO: ${c.id} (${st.asOf}) ⚠️ RE-ASSERT — a verified enrolment can lapse, and this row is the only machine-readable answer to "does an account exist for this channel?"`,
       );
     }
   }
@@ -1952,8 +2277,29 @@ if (gradleFilesCrossChecked > 0) {
           `format "${f}" is declared by a channel's \`artifactFormats\` and has no \`artifactBuild.formats\` entry, ` +
             'so nothing records which build verb produces it.',
         );
-      } else if (typeof ab.formats[f].flutterTarget !== 'string' || !ab.formats[f].flutterTarget) {
-        problems.push(`artifactBuild.formats["${f}"] carries no \`flutterTarget\`, which is the whole content of the entry.`);
+      } else {
+        // 🔴 ONE BUILD VERB PER ENTRY, AND WHICH FIELD NAMES IT IS THE SURFACE'S
+        // ANSWER. `flutterTarget` was "the whole content of the entry" while
+        // every format came out of `flutter build`. The extension surface has no
+        // Flutter target at all — its artifact is the source tree zipped by
+        // extensions/scripts/pack.mjs — so an entry for `.zip` could only have
+        // satisfied that clause by writing a word that names nothing, which is
+        // the invented-value failure this register refuses everywhere else.
+        // BOTH is refused as firmly as NEITHER: two build verbs for one format
+        // is two answers to "where does this artifact come from", and the second
+        // is the one that goes stale.
+        const e = ab.formats[f];
+        const hasFlutter = typeof e.flutterTarget === 'string' && e.flutterTarget.trim() !== '';
+        const hasPack = typeof e.packVerb === 'string' && e.packVerb.trim() !== '';
+        if (!hasFlutter && !hasPack) {
+          problems.push(
+            `artifactBuild.formats["${f}"] names no build verb — neither a \`flutterTarget\` nor a \`packVerb\`, one of which is the whole content of the entry.`,
+          );
+        } else if (hasFlutter && hasPack) {
+          problems.push(
+            `artifactBuild.formats["${f}"] names BOTH a \`flutterTarget\` and a \`packVerb\`. One format, one build verb: the second is a duplicate answer to "where does this artifact come from" and it is the one that drifts.`,
+          );
+        }
       }
     }
     for (const f of built) {

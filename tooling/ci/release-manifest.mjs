@@ -551,8 +551,10 @@ const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
  * actually carries. DERIVED from the register on all three axes so nothing here
  * is a list somebody maintains:
  *
- *   · `kind: "direct"` rows only. A GitHub Release is a download origin, never a
- *     store submission — [ADR 015] §4 is explicit that Releases is "the artifact
+ *   · `kind: "direct"` rows, PLUS every row on the `extension` surface — see the
+ *     comment on the loop below for why the second half is the same rule rather
+ *     than an exception to it. A GitHub Release is a download origin, never an
+ *     APP store submission — [ADR 015] §4 is explicit that Releases is "the artifact
  *     origin, not the download button". Recording a Play or App Store channel
  *     here would write a submission that never happened into [10]D-9's ledger,
  *     which record-deployment.mjs's own header calls worse than recording nothing
@@ -639,7 +641,39 @@ export function originEnvironments(register, app, assetNames) {
   // `continue`d on a nullish `c`, nothing downstream can observe them, so no test
   // could be written and they only made the loop look guarded twice over.
   for (const c of register?.channels ?? []) {
-    if (c?.kind !== 'direct') continue;
+    // 🔴 `kind: "direct"` OR THE EXTENSION SURFACE, AND THE SECOND HALF IS NOT A
+    // RELAXATION OF THE FIRST — it is the same rule read on a surface where a
+    // GitHub Release genuinely IS the origin.
+    //
+    // The `direct` rule exists because "a GitHub Release is a download origin,
+    // never a store submission": recording a Play or App Store channel from a
+    // release would write a submission that never happened. On the extension
+    // surface the artifact this release publishes IS the artifact the store
+    // takes — extensions/dist/<tool>-<target>.zip, the same bytes, built once by
+    // extensions.yml's `release` job and uploaded by `gh release create` in that
+    // same job. There is no second build and no second file. Without these rows
+    // that job refused at this very command, BEFORE `gh release create`, with
+    // "publishing while recording nothing is [10]D-9's unrecorded deploy wearing
+    // a release badge" — which is the refusal this branch answers.
+    //
+    // ⚠️ WHAT THE [10]D-9 ROW THEN MEANS, STATED SO NOBODY READS MORE INTO IT.
+    // It records that this release is the ORIGIN of the artifact destined for
+    // that channel. It does NOT record a store submission, and it must not be
+    // read as one: no extension row is `served`, every one carries a `deferral`,
+    // and ADR 067 decision 8 puts a MANUAL first publish in front of all three.
+    // The store-submission record is `record-deployment.mjs`'s `--state` +
+    // `--listing-url` pair, which a release job cannot honestly supply because
+    // the store decides hours-to-weeks after the run has ended.
+    // 🔴 AND THAT PAIR IS THE OPEN EDGE OF THIS CHANGE: record-deployment.mjs
+    // refuses a `kind: "store"` environment with neither flag, so the extensions
+    // release job's record loop — which passes only a URL — would fail AFTER the
+    // publish on the first real tag. `git tag` is 0 and no extension has ever
+    // been released, so nothing is broken today and the fix is one flag pair in
+    // a workflow this change does not own. It is recorded in
+    // research/revamp-2026-09-05/phase2-ext-purchase-rail.md rather than left to
+    // be discovered by the first release.
+    const isExtension = c?.surface === 'extension';
+    if (c?.kind !== 'direct' && !isExtension) continue;
     const tpl = c.deploymentEnvironment;
     if (typeof tpl !== 'string' || !tpl.includes('{app}')) continue;
     const formats = (c.artifactFormats ?? []).filter((f) => typeof f === 'string' && f.startsWith('.'));
@@ -1050,7 +1084,7 @@ function main() {
     }
     if (environments.length === 0 && omitted.length === 0) {
       die(
-        `no \`kind: "direct"\` channel in ${REGISTER_REL} declares a format this release carries.`,
+        `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
         `The release holds: ${names.join(', ') || '(nothing)'}.`,
         'Publishing while recording nothing is [10]D-9\'s unrecorded deploy wearing a release badge —',
         'the artifacts would exist and nothing could say what shipped.',

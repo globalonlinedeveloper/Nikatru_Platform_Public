@@ -1114,3 +1114,48 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     assert.match(r.out, /ASSIGNS APK SIDELOAD TO `paddle`, AND NO LIVE CHANNEL ROW CARRIES IT/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE EXTENSION SURFACE — added 2026-09-05 with the chrome-webstore /
+// edge-addons / amo rows.
+//
+// 🔴 THESE CASES EXIST BECAUSE THE FIRST SPELLING OF THAT CHANGE SILENCED §G.
+// §A's enum equality is Dart-shaped — `PurchaseChannel` lives in
+// packages/purchases and §G(d) resolves it through `case TargetPlatform.X`, and
+// a browser extension has neither — so extension rows are outside it. The first
+// edit narrowed the shared `registerChannels` variable to do that, which took
+// §G's rail-block grading with it: deleting `purchaseRail` from an extension row
+// then exited 0. Measured, on the real register, with the green control first.
+// The narrowing is now §A's alone, and these two cases hold that line.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-purchase-path — an extension row is outside §A and INSIDE §G', () => {
+  const extensionRow = () => ({
+    id: 'chrome-webstore',
+    platforms: ['chrome'],
+    kind: 'store',
+    surface: 'extension',
+    purchaseRail: railBlock('paddle', ['play-billing', 'apple-iap']),
+  });
+
+  test('§A does not demand a PurchaseChannel member for it, and says so', () => {
+    const r = run({ channels: registerDoc({ channels: [...channelRows(), extensionRow()] }) });
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /PurchaseChannel does not cover chrome-webstore/);
+    assert.match(r.out, /§A domain: 1 `surface: "extension"` channel\(s\) \(chrome-webstore\)/);
+  });
+
+  test('§G STILL grades its rail block — a row with no purchaseRail is COVERAGE LOST', () => {
+    const row = extensionRow();
+    delete row.purchaseRail;
+    const r = run({ channels: registerDoc({ channels: [...channelRows(), row] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /channel `chrome-webstore` declares no `purchaseRail`/);
+  });
+
+  test('§G still catches a rail outside the register\'s own vocabulary on an extension row', () => {
+    const row = extensionRow();
+    row.purchaseRail.rail = 'stripe-direct';
+    const r = run({ channels: registerDoc({ channels: [...channelRows(), row] }) });
+    assert.equal(r.code, 1, r.out);
+  });
+});

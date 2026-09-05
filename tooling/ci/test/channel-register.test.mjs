@@ -47,6 +47,10 @@ let seq = 0;
 
 const LANE_WORKFLOW = '.github/workflows/deploy-web.yml';
 const BUILD_WORKFLOW = '.github/workflows/build-platforms.yml';
+const EXT_WORKFLOW = '.github/workflows/extensions.yml';
+/** A newline as a value — writing the escape into a generated string literal is
+ *  how this repository has twice produced a file that would not parse. */
+const NL = String.fromCharCode(10);
 
 /** A lane workflow with one job, plus a decoy COMMENT naming a job that does not
  *  exist — so a guard that grepped prose instead of parsing jobs would resolve a
@@ -137,6 +141,7 @@ function buildWorkflow({
 const servedWeb = () => ({
   id: 'web',
   name: 'Web',
+  surface: 'app',
   platforms: ['web'],
   kind: 'web',
   served: true,
@@ -159,6 +164,7 @@ const servedWeb = () => ({
 const deferredWindowsStore = () => ({
   id: 'windows-store',
   name: 'Microsoft Store',
+  surface: 'app',
   platforms: ['windows'],
   kind: 'store',
   served: false,
@@ -243,9 +249,43 @@ const ANDROID_ID = 'android-play';
 const ANDROID_SECRETS = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'];
 const GRADLE_TEMPLATE = 'apps/{app}/android/app/build.gradle.kts';
 
+const extensionStore = () => ({
+  id: 'chrome-webstore',
+  name: 'Chrome Web Store',
+  surface: 'extension',
+  platforms: ['chrome'],
+  kind: 'store',
+  storefrontKey: null,
+  served: false,
+  submittable: false,
+  purchaseRail: {
+    rail: 'paddle',
+    why: 'the store cannot take the money',
+    forbids: ['play-billing', 'apple-iap'],
+    forbidsWhy: 'no billing SDK exists in a browser extension',
+    source: '[ADR 069] D1',
+  },
+  artifactFormats: ['.zip'],
+  signing: {
+    keyKind: 'none',
+    identity: null,
+    custody: 'the store re-signs',
+    restoreDrill: { date: null, required: false, note: 'nothing of ours to restore' },
+    seam: { prepare: null, verify: null, artifactGlob: 'extensions/dist/*.zip', why: 'nothing of ours signs this artifact' },
+  },
+  minimumToolchain: ['flutter'],
+  deploymentEnvironment: '{app}-chrome-webstore',
+  storeMetadataDir: 'extensions/Extension/{tool}/store/chrome',
+  extensionStoreKey: 'chrome',
+  ownerQueue: null,
+  accountStatus: { status: 'live', asOf: '2026-08-12', note: 'publisher account open' },
+  deferral: { reason: 'never submitted', alsoBlockedBy: null },
+});
+
 const androidPlay = () => ({
   id: ANDROID_ID,
   name: 'Google Play',
+  surface: 'app',
   platforms: ['android'],
   kind: 'store',
   served: false,
@@ -416,6 +456,20 @@ function tree({
   withRecipeScript = false,
   recipeScriptOnDisk = true,
   recipeScriptInvoked = true,
+  // ── the extension surface (2026-09-05) ─────────────────────────────────────
+  // `withExtension` adds ONE `surface: "extension"` store row AND the extensions
+  // subtree its `storeMetadataDir` template must resolve into. Both off by
+  // default so every existing case keeps its exact output.
+  withExtension = false,
+  extensionToolDirs = ['Full_Screen_Shot'],
+  omitExtensionStoreDir = false,
+  toolJsonStores = null,       // null = derive from the row's extensionStoreKey
+  // `extensionLane` gives the row a lane in a workflow this fixture writes.
+  // `extensionLaneBuilds:false` strips the `pack.mjs --target` step, so section
+  // 3b resolves NO emitted format for any browser — which must be COVERAGE LOST
+  // rather than a quiet pass, exactly as `laneBuilds:false` is on the app side.
+  extensionLane = false,
+  extensionLaneBuilds = true,
   // §10 limb (iii): per-format override of `artifactBuild.formats[f].packagedBy`.
   // `{ '.msix': null }` is a real case — the limb holds null to the same sentinel
   // as prose — so membership, not truthiness, decides whether the default applies.
@@ -436,6 +490,18 @@ function tree({
     // ⚠️ REQUIRED IN THE FIXTURE. The guard derives its signing-key vocabulary
     // from here rather than carrying a second copy ([pipeline F-2]), so a
     // fixture without `keyKinds` is COVERAGE LOST — which is the point.
+    // ⚠️ REQUIRED IN THE FIXTURE FOR THE SAME REASON `keyKinds` IS. The guard
+    // derives the surface vocabulary AND each surface's platform names from the
+    // register ([pipeline F-2]), so a fixture without this block is COVERAGE
+    // LOST — which several cases below assert deliberately.
+    surfaces: {
+      app: {
+        what: 'a Flutter application delivered to a device',
+        platforms: ['android', 'ios', 'linux', 'macos', 'web', 'windows'],
+        platformsSource: "Flutter's own target names",
+        storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+      },
+    },
     keyKinds: {
       none: 'the channel signs for us — nothing of ours can be lost',
       'upload-key': 'we sign the upload; the store holds the real app signing key',
@@ -470,6 +536,17 @@ function tree({
   // Pushed BEFORE `mutate` so the existing knob can break section 9's row the
   // same way it breaks every other one — one mutation, one attributable failure.
   if (withAndroid) register.channels.push(androidPlay());
+  if (withExtension) {
+    register.surfaces.extension = {
+      what: 'a browser extension shipped from extensions/',
+      platforms: ['chrome', 'edge', 'firefox'],
+      platformsSource: 'the browser names',
+      storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+    };
+    const extRow = extensionStore();
+    if (extensionLane) extRow.lane = { workflow: EXT_WORKFLOW, job: 'release' };
+    register.channels.push(extRow);
+  }
   if (mutate) mutate(register);
   // §10 — DERIVED FROM THE CHANNELS AFTER `mutate`, NEVER TYPED.
   // It must be derived AFTER, because several tests mutate a channel's
@@ -501,6 +578,40 @@ function tree({
 
   write('catalog/apps.json', JSON.stringify([{ slug: 'subly', platforms, status: 'live' }]));
   write('tooling/versions.json', JSON.stringify({ flutter: '3.44.8', wrangler: '4.114.0', java: '17' }));
+  if (withExtension) {
+    // The subtree the extension row's `storeMetadataDir` template must resolve
+    // into, for EVERY tool — the guard walks extensions/Extension and checks each
+    // one, so a second tool directory is how the per-tool loop is exercised.
+    const row = register.channels.find((c) => c.surface === 'extension');
+    const key = row?.extensionStoreKey ?? 'chrome';
+    for (const tool of extensionToolDirs) {
+      const stores = toolJsonStores ?? { [key]: { target: 'chromium', dir: `store/${key}`, served: false } };
+      write(`extensions/Extension/${tool}/tool.json`, JSON.stringify({ id: tool.toLowerCase(), surface: 'extension', storeMetadata: { stores } }, null, 2));
+      if (!omitExtensionStoreDir) write(`extensions/Extension/${tool}/store/${key}/README.md`, 'listing');
+    }
+    if (extensionLane) {
+      write(
+        EXT_WORKFLOW,
+        [
+          'name: extensions',
+          'on:',
+          '  push:',
+          '    tags: [subly-v1]',
+          'jobs:',
+          '  release:',
+          '    runs-on: ubuntu-24.04',
+          '    steps:',
+          '      - name: Build package',
+          extensionLaneBuilds ? '        run: node scripts/pack.mjs fullshot --target chromium --out dist' : '        run: echo nothing',
+          '',
+        ].join(NL),
+      );
+    }
+  }
+  // The surface vocabulary names the guard that grades each surface's listing
+  // trees, and the register guard checks that guard EXISTS — a surface pointing
+  // at a deleted grader reads as covered. A stub is enough: nothing here runs it.
+  write('tooling/ci/assert-store-metadata.mjs', '// fixture stub — presence is the only property asserted');
   write(LANE_WORKFLOW, laneWorkflow({ laneBuilds, releaseChannel, laneSecrets: [...laneSecrets, ...androidNames] }));
   if (withAndroid && !omitGradleFile) write(GRADLE_TEMPLATE.split('{app}').join('subly'), gradleFile(gradle));
   write(BUILD_WORKFLOW, buildWorkflow({ needs, verdicts, verdictStyle, exitOne, extraJob, windowsRun }));
@@ -865,10 +976,84 @@ describe('assert-channel-register — schema, stores and disqualified channels',
     assert.match(out, /no `storeMetadataDir` template/);
   });
 
-  test('FAILS when a channel names a platform outside Flutter\'s vocabulary', () => {
+  test('FAILS when a channel names a platform outside its surface\'s vocabulary', () => {
     const { code, out } = run(tree({ mutate: (r) => { r.channels[1].platforms = ['tizen']; } }));
     assert.equal(code, 1, out);
-    assert.match(out, /no apps\.json claim can ever resolve to it/);
+    assert.match(out, /names platform "tizen", which is not one of/);
+  });
+
+  // ── the surface vocabulary, 2026-09-05 ────────────────────────────────────
+  // The platform names moved OUT of this guard and into the register when the
+  // extension surface landed, so the three properties that used to be implicit
+  // in a literal `Set` are asserted here instead: the block is required, a row
+  // must name a surface it declares, and a name legal on one surface is illegal
+  // on another. The last is the one that matters — without it `surface` would be
+  // a label rather than a domain.
+  test('FAILS COVERAGE LOST when the register declares no surfaces block', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.surfaces; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no `surfaces` vocabulary/);
+  });
+
+  test('FAILS COVERAGE LOST when the surfaces block is emptied', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.surfaces = {}; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ZERO surfaces in it/);
+  });
+
+  test('FAILS when a row declares a surface the register does not', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.channels[1].surface = 'gadget'; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /has surface "gadget"; expected one of/);
+  });
+
+  test('FAILS when a row carries NO surface at all — absent is not a default', () => {
+    const { code, out } = run(tree({ mutate: (r) => { delete r.channels[1].surface; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /has surface null; expected one of/);
+  });
+
+  test("FAILS when a row claims a platform legal on ANOTHER surface but not its own", () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.surfaces.extension = {
+          what: 'a browser extension',
+          platforms: ['chrome', 'edge', 'firefox'],
+          platformsSource: 'the browser names',
+          storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+        };
+        r.channels[1].platforms = ['chrome'];   // still surface "app"
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is surface "app" and names platform "chrome"/);
+  });
+
+  test('FAILS when a surface names a storeMetadataGradedBy that does not exist', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.surfaces.app.storeMetadataGradedBy = 'tooling/ci/assert-nothing.mjs'; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /which does not exist. A surface pointing at a deleted grader/);
+  });
+
+  test('FAILS when a surface declares an EMPTY platform vocabulary — it would accept every typo', () => {
+    const { code, out } = run(tree({ mutate: (r) => { r.surfaces.app.platforms = []; } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no non-empty `platforms` array/);
+  });
+
+  test('FAILS when two surfaces claim one platform name — section 3b resolves an emit by platform', () => {
+    const { code, out } = run(tree({
+      mutate: (r) => {
+        r.surfaces.extension = {
+          what: 'a browser extension',
+          platforms: ['chrome', 'web'],
+          platformsSource: 'the browser names',
+          storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+        };
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /are claimed by more than one surface/);
   });
 
   test('FAILS when two channels share an id', () => {
@@ -2187,12 +2372,37 @@ describe('assert-channel-register — §10 artifactBuild and the signing seams',
     assert.match(out, /describes a build verb for a format NO channel declares/);
   });
 
-  test('an entry with no flutterTarget is caught — the whole content of the entry', () => {
+  test('an entry with NO build verb is caught — one of the two is the whole content of the entry', () => {
     const { code, out } = run(tree({
       breakArtifactBuild: (r) => { r.artifactBuild.formats['static-bundle'] = { packagedBy: null }; },
     }));
     assert.equal(code, 1, out);
-    assert.match(out, /carries no `flutterTarget`/);
+    assert.match(out, /names no build verb — neither a `flutterTarget` nor a `packVerb`/);
+  });
+
+  // 🔴 THE OTHER HALF OF THE SAME CLAUSE, ADDED 2026-09-05 WITH `packVerb`.
+  // The extension surface has no Flutter target — its artifact is the source
+  // tree zipped by extensions/scripts/pack.mjs — so an entry names ONE verb and
+  // which field it uses is the surface's answer. BOTH is refused as firmly as
+  // NEITHER: two build verbs for one format is two answers to "where does this
+  // artifact come from", and the second is the one that goes stale.
+  test('a packVerb ALONE satisfies the build-verb clause — the extension surface has no flutterTarget', () => {
+    const { code, out } = run(tree({
+      breakArtifactBuild: (r) => {
+        r.artifactBuild.formats['static-bundle'] = { packVerb: 'node extensions/scripts/pack.mjs <tool>', packagedBy: null };
+      },
+    }));
+    assert.equal(code, 0, out);
+  });
+
+  test('an entry naming BOTH a flutterTarget and a packVerb is caught', () => {
+    const { code, out } = run(tree({
+      breakArtifactBuild: (r) => {
+        r.artifactBuild.formats['static-bundle'] = { flutterTarget: 'web', packVerb: 'node scripts/pack.mjs', packagedBy: null };
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names BOTH a `flutterTarget` and a `packVerb`/);
   });
 
   test('M5 a kind:"store" channel with no signing.seam is caught', () => {
@@ -2319,5 +2529,182 @@ describe('assert-channel-register — §10 artifactBuild and the signing seams',
     assert.equal(code, 0, out);
     assert.match(out, /artifactBuild — \d+ format\(s\), every one declared by a channel/);
     assert.match(out, /signing seams — \d+ channel\(s\) carry one/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE EXTENSION SURFACE — every kind:"store" obligation, asked of a channel
+// whose product is a browser extension rather than a Flutter app. Added
+// 2026-09-05 with the chrome-webstore / edge-addons / amo rows.
+//
+// 🔴 THE POINT OF THESE CASES IS THAT NOTHING WAS DROPPED. Each one mutates the
+// extension-surface counterpart of an app-side clause and asserts the guard
+// still bites: the listing-tree template, the store key, the submittable flag
+// and the publisher-account question. Two of them are STRONGER than the app-side
+// clause they replace, because they are checked against disk rather than against
+// the shape of a string — and both of those are proved by deleting a real
+// directory, not by editing a field.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-channel-register — the extension surface carries the store obligations', () => {
+  test('GREEN CONTROL — an extension store row with its subtree present passes', () => {
+    const { code, out } = run(tree({ withExtension: true }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the storeMetadataDir template has no {tool}', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).storeMetadataDir = 'extensions/Extension/Full_Screen_Shot/store/chrome'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `storeMetadataDir` template containing \{tool\}/);
+  });
+
+  test('FAILS when the listing directory the template names is NOT on disk', () => {
+    const { code, out } = run(tree({ withExtension: true, omitExtensionStoreDir: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /and that directory does not exist/);
+  });
+
+  test('FAILS for a SECOND tool whose listing directory is missing — the loop is per-tool', () => {
+    const { code, out } = run(tree({ withExtension: true, extensionToolDirs: ['Full_Screen_Shot', 'Context_Guard'] }));
+    // Both trees are written, so this is the green control for the case below.
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the tool.json does not declare the store the row names', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      toolJsonStores: { firefox: { target: 'firefox', dir: 'store/firefox', served: false } },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /A store this register claims and the tool has never heard of/);
+  });
+
+  test('FAILS when tool.json puts the store somewhere else — two declarations of one directory', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      toolJsonStores: { chrome: { target: 'chromium', dir: 'store/chrome-web-store', served: false } },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Two declarations of one listing directory/);
+  });
+
+  test('FAILS when extensionStoreKey disagrees with the template it is supposed to name', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).extensionStoreKey = 'edge'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Two spellings of one store id/);
+  });
+
+  test('FAILS when the row carries no extensionStoreKey at all', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { delete r.channels.at(-1).extensionStoreKey; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no `extensionStoreKey`/);
+  });
+
+  test('FAILS when submittable:true carries no submission block — the flag cannot be a free claim', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).submittable = true; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is `submittable: true` with no `submission` block/);
+  });
+
+  test('FAILS when a submission block is declared and submittable stays false', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => {
+        r.channels.at(-1).submission = { script: 'tooling/release/submit-chrome.mjs', workflow: '.github/workflows/x.yml', job: 'dry-run' };
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares a `submission` block and is not `submittable`/);
+  });
+
+  test('FAILS when neither an ownerQueue id nor a dated open account answers [10]D-4', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).accountStatus = { status: 'none', asOf: '2026-08-12', note: 'no account' }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /neither an `ownerQueue` id nor a dated `accountStatus`/);
+  });
+
+  test('an undated open account is NOT an answer — the date is what makes it ageable', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => { r.channels.at(-1).accountStatus = { status: 'live', asOf: null, note: 'no date' }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /neither an `ownerQueue` id nor a dated `accountStatus`/);
+  });
+
+  test('an ownerQueue id alone still satisfies [10]D-4, exactly as on an app row', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => {
+        const row = r.channels.at(-1);
+        row.ownerQueue = 'A-99';
+        row.accountStatus = { status: 'none', asOf: '2026-08-12', note: 'no account yet' };
+      },
+    }));
+    assert.equal(code, 0, out);
+  });
+});
+
+describe('assert-channel-register — the extension lane is COMPARED, not assumed', () => {
+  test('GREEN CONTROL — a lane running `pack.mjs --target chromium` resolves the row\'s .zip', () => {
+    const { code, out } = run(tree({ withExtension: true, extensionLane: true }));
+    assert.equal(code, 0, out);
+  });
+
+  test('COVERAGE LOST when the lane runs no pack verb — the comparison would range over nothing', () => {
+    const { code, out } = run(tree({ withExtension: true, extensionLane: true, extensionLaneBuilds: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /name a lane and the lane scan resolved NO emitted format/);
+  });
+
+  test('an UNMAPPED pack target is PRINTED — a verb this guard has no artifact mapping for', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      extraFiles: {
+        '.github/workflows/extensions.yml': [
+          'name: extensions',
+          'on:',
+          '  push:',
+          '    tags: [subly-v1]',
+          'jobs:',
+          '  release:',
+          '    runs-on: ubuntu-24.04',
+          '    steps:',
+          '      - name: Build package',
+          '        run: node scripts/pack.mjs fullshot --target chromium --out dist',
+          '      - name: Build the future',
+          '        run: node scripts/pack.mjs fullshot --target safari --out dist',
+          '',
+        ].join(NL),
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /UNMAPPED PACK TARGET\(S\): "safari"/);
+  });
+
+  test('a FORMAT GAP is printed when the lane emits nothing the row accepts', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      mutate: (r) => { r.channels.at(-1).artifactFormats = ['.crx']; },
+      breakArtifactBuild: (r) => { r.artifactBuild.formats['.crx'] = { packVerb: 'node scripts/pack.mjs', packagedBy: 'NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY' }; },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /FORMAT GAP \(deferred\): channel "chrome-webstore" accepts "\.crx"/);
   });
 });

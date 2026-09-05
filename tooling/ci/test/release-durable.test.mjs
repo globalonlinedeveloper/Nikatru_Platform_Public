@@ -1305,7 +1305,7 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     // No direct row matched at all — the pre-existing fail-closed path, which
     // this increment must not have swallowed into the new exit-0 branch.
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /no `kind: "direct"` channel/);
+    assert.match(r.out, /no `kind: "direct"` and no `surface: "extension"` channel/);
     assert.doesNotMatch(r.out, /omitted {2}/, 'a row that never matched is not a row that was withheld');
     // The die names what the release DID hold, so the reader can see it was a
     // .txt and not an empty stage.
@@ -1533,7 +1533,14 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
   // can answer it, instead of a silent pass over a release missing a platform.
   test('the REAL register resolves to every format a lane in this factory emits', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
-    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.apk', '.msix', '.snap']);
+    // ⚠️ `.zip` JOINED THIS SET ON 2026-09-05, and it is the reason `--for-workflow`
+    // exists rather than a reason to widen the narrowing. The register acquired
+    // three extension store rows whose lane is extensions.yml's `release` job,
+    // and that job emits dist/<tool>-<target>.zip — so a release staged from
+    // build-platforms.yml legitimately does not carry it, exactly as it does not
+    // carry the `.snap` submit-snap.yml emits. The narrowed cases below are what
+    // a real lane asks.
+    assert.deepEqual([...expectedReleaseFormats(real)].sort(), ['.aab', '.apk', '.msix', '.snap', '.zip']);
   });
 
   // ⚠️ THE QUESTION THE NOTE ABOVE PARKED WAS ANSWERED 2026-08-27, AND ONLY HALF
@@ -1632,11 +1639,18 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
   // test. These cases drive the CLI against the real register, so "complete" here
   // means every format a lane emits, which is not the same as every format
   // build-platforms.yml's release job stages. That divergence is recorded there.
+  // NOTE 2026-09-05: `.zip` joined the UNNARROWED expectation when the register
+  // acquired the three extension store rows, whose lane is extensions.yml#release
+  // and which emits dist/<tool>-<target>.zip. These cases exercise the unnarrowed
+  // form on purpose, so the fixture carries one — exactly as it carries the .snap
+  // no build-platforms dist holds either. The narrowed cases below are what a
+  // real lane asks.
   const COMPLETE = [
     'subly-v1-app-release.apk',
     'subly-v1-app-release.aab',
     'subly-v1-subly.msix',
     'subly-v1-subly.snap',
+    'fullshot-v1-chromium.zip',
   ];
 
   test('THE RECORDED FAILING CASE — a release with no .msix verifies clean and IS NOT COMPLETE', () => {
@@ -1653,7 +1667,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 4 expected format\(s\) present: \.aab, \.apk, \.msix, \.snap/);
+    assert.match(r.out, /all 5 expected format\(s\) present: \.aab, \.apk, \.msix, \.snap, \.zip/);
   });
 
   test('DEFAULT BEHAVIOUR IS UNCHANGED — without the flag nothing new can go red', () => {
@@ -1753,7 +1767,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(BUILD_PLATFORMS);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /missing 1 expected release format\(s\): \.snap/);
+    assert.match(r.out, /missing 2 expected release format\(s\): \.snap, \.zip/);
   });
 
   test('--for-workflow WITHOUT --expect-formats refuses — a silent no-op would print ok', () => {
@@ -1797,7 +1811,7 @@ describe('release-manifest.mjs — `--verify --expect-formats` (the G3 half)', (
     const d = staged(COMPLETE);
     const r = cli(['--verify', d, '--expect-formats']);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /all 4 expected format\(s\) present: \.aab, \.apk, \.msix, \.snap/);
+    assert.match(r.out, /all 5 expected format\(s\) present: \.aab, \.apk, \.msix, \.snap, \.zip/);
   });
 });
 
@@ -1899,7 +1913,7 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     writeFileSync(join(d, 'notes.txt'), 'x');
     const r = cli(['--emit-environments', d, '--app', 'subly']);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /no `kind: "direct"` channel/);
+    assert.match(r.out, /no `kind: "direct"` and no `surface: "extension"` channel/);
   });
 
   test('--emit-environments resolves the real register to a real environment NAME', () => {
@@ -1968,5 +1982,130 @@ describe('the real tree still satisfies the mechanism it declares', () => {
     const needs = wf.match(/needs:\s*\[([^\]]+)\]/)[1];
     assert.match(needs, /\brelease\b/);
     assert.match(needs, /\ball_platforms\b|\bgate\b/, 'the aggregator is the job this matched');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE EXTENSION SURFACE — added 2026-09-05 with the chrome-webstore /
+// edge-addons / amo rows. Two independent changes are held here:
+//
+//   · `originEnvironments` emits a `surface: "extension"` row as well as a
+//     `kind: "direct"` one, because on that surface the GitHub Release IS the
+//     origin of the very bytes the store takes.
+//   · limb 1's "is this a release lane?" moved from the WORKFLOW to the JOB,
+//     because one file now holds three lanes and the job that uploads the zip
+//     cannot run on a tag at all.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('release-manifest.mjs — the extension surface is an origin too', () => {
+  const EXT_ROW = {
+    id: 'chrome-webstore',
+    kind: 'store',
+    surface: 'extension',
+    served: false,
+    artifactFormats: ['.zip'],
+    deploymentEnvironment: '{app}-chrome-webstore',
+    signing: { keyKind: 'none', identity: null },
+  };
+
+  test('a surface:"extension" store row IS an origin — the store takes the bytes this release published', () => {
+    const r = originEnvironments({ channels: [EXT_ROW] }, 'fullshot', ['fullshot-chromium.zip']);
+    assert.deepEqual(r.environments, ['fullshot-chrome-webstore']);
+    assert.deepEqual(r.omitted, []);
+  });
+
+  test('a kind:"store" row on the APP surface is still withheld — the rule did not widen', () => {
+    const appStore = { ...EXT_ROW, id: 'android-play', surface: 'app', artifactFormats: ['.aab'], deploymentEnvironment: '{app}-android-play' };
+    const r = originEnvironments({ channels: [appStore] }, 'subly', ['subly-v1-app-release.aab']);
+    assert.deepEqual(r.environments, [], 'recording an app-store submission from a release would write a submission that never happened');
+    assert.deepEqual(r.omitted, []);
+  });
+
+  test('an extension row whose format this release does NOT carry is not emitted', () => {
+    const r = originEnvironments({ channels: [EXT_ROW] }, 'fullshot', ['subly-v1-app-release.aab']);
+    assert.deepEqual(r.environments, []);
+  });
+
+  test('an extension row with an UNDECLARED signing posture is withheld, exactly as a direct row is', () => {
+    const noSigning = { ...EXT_ROW, signing: { keyKind: 'mystery' } };
+    const r = originEnvironments({ channels: [noSigning] }, 'fullshot', ['fullshot-chromium.zip']);
+    assert.deepEqual(r.environments, []);
+    assert.equal(r.omitted.length, 1);
+    assert.equal(r.omitted[0].state, 'undeclared');
+  });
+});
+
+describe('assert-release-durable.mjs — a job that cannot run on a tag is a build proof', () => {
+  const TAGGED = [
+    'name: three lanes in one file',
+    'on:',
+    '  push:',
+    '    tags:',
+    "      - '*-v*'",
+    'jobs:',
+    '  package:',
+    '    IFLINE',
+    '    runs-on: ubuntu-24.04',
+    '    steps:',
+    '      - uses: actions/upload-artifact@v7',
+    '        with:',
+    '          path: extensions/dist/*.zip',
+    '          retention-days: 14',
+    '',
+  ].join(String.fromCharCode(10));
+
+  const withIf = (line) => TAGGED.replace('    IFLINE', line);
+  // `.zip` must be in the register or it is not an INSTALLABLE extension and the
+  // classifier finds no upload at all — the guard's own coverage floor fires
+  // first and the case would prove nothing.
+  const EXT_REGISTER = {
+    channels: [
+      ...REGISTER.channels,
+      {
+        id: 'chrome-webstore',
+        kind: 'store',
+        surface: 'extension',
+        served: false,
+        artifactFormats: ['.zip'],
+        deploymentEnvironment: '{app}-chrome-webstore',
+        lane: { workflow: '.github/workflows/extensions.yml', job: 'package' },
+        signing: { keyKind: 'none', identity: null },
+      },
+    ],
+  };
+
+  test('GREEN CONTROL — the package job carries the tag exclusion and is PRINTED, not failed', () => {
+    const root = fixture({
+      register: EXT_REGISTER,
+      workflows: { 'extensions.yml': withIf("    if: github.event_name != 'schedule' && !startsWith(github.ref, 'refs/tags/')") },
+    });
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /its own `if:` carries/);
+  });
+
+  test('THE MUTATION — delete the tag exclusion and the same job fails again, by name', () => {
+    const root = fixture({
+      register: EXT_REGISTER,
+      workflows: { 'extensions.yml': withIf("    if: github.event_name != 'schedule'") },
+    });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "package" uploads an installable artifact/);
+  });
+
+  test('a job with NO `if:` at all is graded — the narrowing is one condition, not a mood', () => {
+    const root = fixture({ register: EXT_REGISTER, workflows: { 'extensions.yml': TAGGED.replace('    IFLINE' + String.fromCharCode(10), '') } });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job "package" uploads an installable artifact/);
+  });
+
+  test('a STEP-level tag exclusion does not excuse the JOB — the shallowest `if:` is the job\'s', () => {
+    const stepLevel = TAGGED
+      .replace('    IFLINE' + String.fromCharCode(10), '')
+      .replace('      - uses: actions/upload-artifact@v7', "      - if: \"!startsWith(github.ref, 'refs/tags/')\"" + String.fromCharCode(10) + '        uses: actions/upload-artifact@v7');
+    const root = fixture({ register: EXT_REGISTER, workflows: { 'extensions.yml': stepLevel } });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
   });
 });

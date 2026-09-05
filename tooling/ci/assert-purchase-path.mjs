@@ -132,8 +132,43 @@ let registerChannels = []; // the register's channel rows, whole
     capsCode = caps;
     let registered = [];
     try {
+      // 🔴 THE MATRIX IS A DART FILE, SO ITS DOMAIN IS THE DART SURFACE.
+      // `PurchaseChannel` lives in packages/purchases and is read by Flutter
+      // apps; §G resolves it through `case TargetPlatform.X`, which no browser
+      // extension has. On 2026-09-05 the register acquired three rows on the
+      // `extension` surface — chrome-webstore, edge-addons, amo — and §A's
+      // equality would have demanded an enum member, a `forChannel` case and a
+      // `hosted_checkout_rail_test.dart` mention for a channel served by a ZIP
+      // of JavaScript that never links this package. The answer would have been
+      // written in Dart nothing on that channel executes.
+      //
+      // ⚠️ THIS IS A DOMAIN DECLARATION, NOT A SHRINK, AND THE RAIL IS STILL
+      // ANSWERED: each extension row carries its own `purchaseRail` with a
+      // sourced `why` and a `forbids` list, held by assert-channel-register.mjs
+      // exactly as every app row's is. What is NOT asked of them is the Dart
+      // matrix, because there is no Dart. The surface is read from the register's
+      // own `surfaces` vocabulary rather than from a channel id, so a fourth
+      // extension store joins this exclusion by declaring its surface and not by
+      // anybody editing this list.
+      // 🔴 `registerChannels` STAYS THE WHOLE SET. §G reads it to grade every
+      // row's `purchaseRail` block — rail, why, source, forbids, the
+      // contradiction check — and those questions are about the REGISTER, not
+      // about Dart. Narrowing this variable (the first spelling of this change
+      // did) silences §G on the extension rows, measured: deleting
+      // `purchaseRail` from the chrome-webstore row then exited 0. It is ONLY
+      // §A's enum equality below that is Dart-shaped, so only §A narrows.
       registerChannels = (JSON.parse(chRaw).channels ?? []).filter((c) => c && typeof c.id === 'string');
-      registered = registerChannels.map((c) => c.id).filter(Boolean);
+      const dartChannels = registerChannels.filter((c) => c.surface !== 'extension');
+      const notDart = registerChannels.filter((c) => c.surface === 'extension').map((c) => c.id);
+      if (notDart.length) {
+        console.log(
+          `note §A domain: ${notDart.length} \`surface: "extension"\` channel(s) (${notDart.join(', ')}) are OUTSIDE the PurchaseChannel matrix — ` +
+            'they ship no Dart and resolve through no `TargetPlatform`. Their `purchaseRail` blocks are ' +
+            'still graded by §G below — rail, why, source, forbids and the contradiction check — because ' +
+            'those are questions about the REGISTER. Only this enum equality is Dart-shaped.',
+        );
+      }
+      registered = dartChannels.map((c) => c.id).filter(Boolean);
     } catch (e) {
       problems.push(`COVERAGE LOST — ${CHANNELS} did not parse (${e.message}).`);
     }

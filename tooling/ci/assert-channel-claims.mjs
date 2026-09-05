@@ -228,7 +228,30 @@ const NON_FILE_FORMATS = new Set(['static-bundle']);
 function artifactAffordances(register) {
   const out = [];
   const uncovered = [];
+  const offSurface = [];
   for (const c of register.channels ?? []) {
+    // 🔴 THE HONESTY TEST HERE IS "IS THIS PLATFORM CLAIMED IN catalog/apps.json",
+    // SO THE DOMAIN IS THE SURFACE apps.json DESCRIBES. On 2026-09-05 the
+    // register acquired three `surface: "extension"` rows accepting `.zip` on
+    // platforms named chrome / edge / firefox. apps.json holds APPS and claims
+    // Flutter platforms, so `claimedPlatforms` can never contain a browser —
+    // and every one of those affordances would have been permanently unclaimed.
+    // The consequence is not a missing check, it is a FALSE ONE: the word `.zip`
+    // appearing anywhere in site copy would have failed this guard saying the
+    // page "offers a .zip artifact for platform chrome, which no app claims",
+    // about an extension the site is entitled to advertise.
+    //
+    // ⚠️ WHAT IS NOT COVERED, STATED RATHER THAN IMPLIED. Nothing else grades an
+    // extension artifact link on a public surface today. The extensions corpus
+    // has its own catalogue guard (extensions/scripts/check-catalog.mjs) over
+    // its own listings, and it does not read sites/. That gap is real, it is
+    // PRINTED on every run by the caller below, and it is smaller than the false
+    // failure it replaces — a guard that fires on correct input is worse than a
+    // stated gap, which is this file's own rule about invented limits.
+    if (c.surface === 'extension') {
+      for (const fmt of c.artifactFormats ?? []) offSurface.push(`${c.id}: ${typeof fmt === 'string' ? fmt : JSON.stringify(fmt)}`);
+      continue;
+    }
     for (const fmt of c.artifactFormats ?? []) {
       // A non-string element is a SCHEMA fault and assert-channel-register.mjs
       // owns that complaint — but it must not CRASH this guard on the way past.
@@ -252,7 +275,7 @@ function artifactAffordances(register) {
       });
     }
   }
-  return { patterns: out, uncovered };
+  return { patterns: out, uncovered, offSurface };
 }
 
 /** Prose that claims a platform COUNT. Printed, never failed — see the header. */
@@ -325,6 +348,14 @@ if (derived.uncovered.length) {
     'Every downloadable format the register declares must be scannable here, or a public surface can',
     'advertise exactly the artifact the register knows about and this guard cannot see it.',
   ]);
+}
+if (derived.offSurface.length) {
+  console.log(
+    `note  ${derived.offSurface.length} artifactFormat(s) on the \`extension\` surface are OUTSIDE this scan: ` +
+      `${derived.offSurface.join(', ')}. [D-1] limb (ii) asks whether an advertised platform is CLAIMED in ` +
+      `${APPS_JSON}, which holds apps and Flutter platform names — a browser is not one, so grading them here ` +
+      `could only ever produce a false failure. No guard reads sites/ for an extension artifact link today.`,
+  );
 }
 if (derived.patterns.length === 0) {
   coverageLost([
