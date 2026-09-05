@@ -144,15 +144,41 @@ for (const row of families) {
 // A tripwire turns it into an assertion: the guard fails the moment the thing
 // arrives while the row is still uncleared.
 const pubspecs = [];
-const collectPubspecs = (dir, depth) => {
-  if (depth > 4 || !existsSync(dir)) return;
+// 🔴 NO DEPTH CAP, AND REMOVING IT — NOT RAISING IT — IS THE REPAIR.
+// Until 2026-09-05 this walk opened `if (depth > 4 || !existsSync(dir)) return;`
+// and that number was a SILENT COVERAGE LIMIT. The brick's app pubspec lives at
+// `tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml` — SIX directory
+// levels below `tooling/` — so the walk turned back one level short of it and
+// the template EVERY future app is born from was never in the domain at all.
+//
+// MEASURED ON THIS TREE 2026-09-05, before the repair: append
+// `awesome_notifications_fcm: ^0.10.0` to that brick pubspec — the exact
+// dependency the one armed tripwire exists to catch — and the guard printed
+//
+//   tripwire "awesome_notifications_fcm" armed and not tripped — appears in
+//   none of the 12 pubspec(s) scanned (apps=1, packages=9, tooling=1, root=1)
+//
+// and exited 0. `tooling=1` was the hooks pubspec alone. The token was in the
+// file, the file was on disk, and the file was not in the scan. One unlicensed
+// dependency added to the template is fifty apps born carrying it.
+//
+// Raising the cap to 6 was refused: a bigger magic number fails identically the
+// day the brick nests one level deeper, and nothing would say so. So the cap is
+// GONE; the prune that remains is semantic (generated output and dot-directories
+// are not source, and `listDir` already refuses nested checkouts); and what the
+// walk must REACH is declared by name in REQUIRED_PUBSPECS below, so a walk that
+// stops reaching it fails instead of shrinking in silence.
+const PRUNED_DIRS = new Set(['node_modules', 'build']);
+const collectPubspecs = (dir) => {
+  if (!existsSync(dir)) return;
   for (const e of listDir(dir, { withFileTypes: true })) {
-    if (e.name === 'node_modules' || e.name === 'build' || e.name.startsWith('.')) continue;
+    if (PRUNED_DIRS.has(e.name) || e.name.startsWith('.')) continue;
     const abs = join(dir, e.name);
-    if (e.isDirectory()) collectPubspecs(abs, depth + 1);
+    if (e.isDirectory()) collectPubspecs(abs);
     else if (e.name === 'pubspec.yaml') pubspecs.push(abs);
   }
 };
+
 // 🔴 ONE FLOOR PER SCOPE ROOT, NEVER ONE FLOOR OVER THE UNION.
 // `tooling` holds the brick template, and the brick is a CONSTANT: it ships a
 // pubspec.yaml no matter what happens to the product tree. A single
@@ -163,23 +189,147 @@ const collectPubspecs = (dir, depth) => {
 // limb below still printed `appears in none of the 2 pubspec(s) scanned` and
 // exited 0. A tripwire that reads the brick and pronounces the product tree
 // clean is exactly the vacuous pass this corpus keeps paying for.
-const PRODUCT_ROOTS = ['apps', 'packages'];
-const SCAN_ROOTS = [...PRODUCT_ROOTS, 'tooling'];
+// ⏱ APPENDED 2026-09-05 — the paragraph above is left exactly as written; this
+// corpus appends dated corrections rather than rewriting them. That measurement
+// was taken against the depth-capped walk, so its "2" was the union of the
+// brick's HOOKS pubspec and the repo-root one. With the cap gone the same
+// mutation leaves 3, because the brick's app pubspec is finally in the scan.
+// Nothing about the conclusion changes: a union floor of 1 is satisfied by
+// either number while every app and package is gone.
+//
+// Each root therefore states its OWN requirement, and the two fields answer
+// different questions:
+//   · `structuralFloor` is asserted over ANY tree this guard is pointed at,
+//     including the deliberately partial fixtures in tooling/ci/test. 0 means
+//     the root is legitimately absent from such a tree, so nothing structural
+//     can be said about it and the full-checkout limbs speak for it instead.
+//   · `floor` is a MEASUREMENT OF THIS REPOSITORY and is applied only over a
+//     full checkout (see IS_FULL_CHECKOUT). `floor: 0` means this root's
+//     requirement is not a count at all — see the note on `tooling` below.
+//
+// ⚠️ `tooling` CARRIES NO NUMBER, AND THAT IS THE STRONGER CHOICE, NOT THE
+// WEAKER ONE. A floor of 2 was written here first — 2 being today's count and 1
+// being what the depth cap used to yield — and then removed, because it CANNOT
+// FAIL: every pubspec under `tooling/` is one of the two landmarks named in
+// REQUIRED_PUBSPECS below, so any state that would drop the count under 2 is
+// already refused, by name and with the reason, one limb earlier. An assertion
+// that cannot fail reads as coverage and is not coverage; this corpus deletes
+// them. `tooling`'s requirement is the landmark list, which says WHICH file
+// went missing where a count can only say how many.
+const REQUIRED_COVERAGE = [
+  { dir: 'apps', structuralFloor: 1, floor: 1, label: 'the shipped apps — what an end user installs (1 pubspec today)' },
+  { dir: 'packages', structuralFloor: 1, floor: 5, label: 'the shared chassis every app links (9 pubspecs today)' },
+  {
+    dir: 'tooling',
+    structuralFloor: 0,
+    floor: 0,
+    label:
+      'the brick template every future app is born from — the app pubspec under `__brick__` plus the mason hooks '
+      + '(2 pubspecs today), required BY NAME in REQUIRED_PUBSPECS rather than by count. Structural floor 0 because '
+      + 'tooling/ci/test builds partial trees that copy tooling/ci, tooling/legal and tooling/content_pipeline '
+      + 'without tooling/bricks, and those trees hold no brick to read.',
+  },
+];
+const SCAN_ROOTS = REQUIRED_COVERAGE.map((r) => r.dir);
+
+// The measured floors above mean nothing over a partial tree, so they are
+// applied only when `repoRoot` is a full checkout of THIS repository — detected
+// by `mason.yaml`, the brick registry, which sits at the repo root and therefore
+// OUTSIDE apps/, packages/ and tooling/. That matters: a sentinel inside a
+// subject tree is destroyed by a mutation OF that subject, which switches the
+// floors off at exactly the moment they are meant to fire.
+// ⚠️ This guard's OWN FILE would be the obvious sentinel — it is what
+// assert-no-tls-pinning.mjs uses — and it is WRONG HERE, measured rather than
+// assumed: tooling/ci/test/content-pipeline.test.mjs copies the whole of
+// tooling/ci into its fixture, so `assert-content-licences.mjs` is present in a
+// tree that deliberately has no tooling/bricks. Keyed on that file, every case
+// in that suite would fail COVERAGE LOST for a root it never meant to supply.
+// WHICH BRANCH WAS TAKEN IS PRINTED ON EVERY RUN, at the bottom of this file.
+const MASON_REL = 'mason.yaml';
+const IS_FULL_CHECKOUT = existsSync(join(repoRoot, MASON_REL));
+
+// 🔴 A COUNT CANNOT NAME WHICH FILE WENT MISSING, SO THE LANDMARKS ARE NAMED.
+// These are the pubspecs whose ABSENCE FROM THE SCAN is the G-2 defect itself.
+// Two limbs, deliberately separate because they catch opposite failures:
+//   L1 — the file is ON DISK and the walk did not collect it. That is a walk
+//        that narrowed (a re-added depth cap, a new prune, a rename of a parent
+//        directory into something skipped), and it is checked over EVERY tree,
+//        full checkout or not, because it compares the walk against disk rather
+//        than against an expectation.
+//   L2 — the file is not on disk at all. Over a full checkout that is a landmark
+//        that was deleted or moved without this list being updated. Over a
+//        partial fixture it is simply a subject that tree never had, so L2 is
+//        gated on IS_FULL_CHECKOUT and L1 is not.
+const REQUIRED_PUBSPECS = [
+  {
+    rel: 'tooling/bricks/app/__brick__/apps/{{app_id}}/pubspec.yaml',
+    why:
+      'the app brick\'s own pubspec. Every app this factory will ever stamp inherits its dependency list verbatim, '
+      + 'so a content or asset dependency added here is added to fifty apps at once — and it is the file the depth '
+      + 'cap removed from this guard\'s domain (G-2).',
+  },
+  {
+    rel: 'tooling/bricks/app/hooks/pubspec.yaml',
+    why:
+      'the mason generation hooks. It is the ONLY pubspec the old depth-capped walk did reach under tooling/, so if '
+      + 'it too stops being collected the walk did not narrow — it collapsed.',
+  },
+];
+
 const perRoot = new Map();
 for (const top of SCAN_ROOTS) {
   const before = pubspecs.length;
-  collectPubspecs(join(repoRoot, top), 0);
+  collectPubspecs(join(repoRoot, top));
   perRoot.set(top, pubspecs.length - before);
 }
 if (existsSync(join(repoRoot, 'pubspec.yaml'))) pubspecs.push(join(repoRoot, 'pubspec.yaml'));
 const perRootSummary = SCAN_ROOTS.map((r) => `${r}=${perRoot.get(r)}`).join(', ');
-for (const top of PRODUCT_ROOTS) {
-  if (perRoot.get(top) === 0) {
+for (const r of REQUIRED_COVERAGE) {
+  if (r.structuralFloor > 0 && perRoot.get(r.dir) === 0) {
     coverageLost(
-      `found 0 pubspec.yaml under ${top}/, so every tripwire below judged the product tree without reading it.`,
+      `found 0 pubspec.yaml under ${r.dir}/, so every tripwire below judged the product tree without reading it.`,
       `Per-root counts: ${perRootSummary}.`,
       'The floor is PER ROOT and deliberately 1, not today\'s count: a floor pinned to the current number is a',
       'floor somebody lowers, while a floor of 1 per root can only fire when a whole root stopped being scanned.',
+    );
+  }
+}
+const collected = new Set(pubspecs.map((p) => relative(repoRoot, p).split('\\').join('/')));
+const landmarksOnDisk = REQUIRED_PUBSPECS.filter((r) => existsSync(join(repoRoot, r.rel)));
+const landmarksReached = landmarksOnDisk.filter((r) => collected.has(r.rel)).length;
+const unreached = landmarksOnDisk.filter((r) => !collected.has(r.rel));
+if (unreached.length) {
+  coverageLost(
+    `${unreached.length} pubspec(s) this guard must read are ON DISK and were NOT collected by the walk.`,
+    ...unreached.flatMap((r) => [`· ${r.rel}`, `  ${r.why}`]),
+    `Per-root counts: ${perRootSummary}; ${pubspecs.length} pubspec(s) collected in total.`,
+    'This is G-2 recurring. The walk has stopped reaching a file that is sitting right there — a depth cap, a new',
+    'prune, or a parent directory renamed into something skipped. Every tripwire below would then report the',
+    'template clean without reading one line of it, which is what it did until 2026-09-05.',
+  );
+}
+if (IS_FULL_CHECKOUT) {
+  const missing = REQUIRED_PUBSPECS.filter((r) => !existsSync(join(repoRoot, r.rel)));
+  if (missing.length) {
+    coverageLost(
+      `${missing.length} declared landmark pubspec(s) are not on disk under this full checkout.`,
+      ...missing.flatMap((r) => [`· ${r.rel}`, `  ${r.why}`]),
+      'Either the brick moved and REQUIRED_PUBSPECS above was not updated with it, or the brick is gone. Both are',
+      'answers a human gives; neither is a scan quietly getting smaller.',
+    );
+  }
+}
+if (IS_FULL_CHECKOUT) {
+  const floored = REQUIRED_COVERAGE.filter((r) => r.floor > 0);
+  const belowFloor = floored.filter((r) => perRoot.get(r.dir) < r.floor);
+  if (belowFloor.length) {
+    coverageLost(
+      `${belowFloor.length} of the ${floored.length} numerically floored root(s) fell below their own measured floor.`,
+      ...belowFloor.map((r) => `· ${r.dir}/ yielded ${perRoot.get(r.dir)} pubspec(s), floor ${r.floor} — ${r.label}`),
+      `Per-root counts: ${perRootSummary}. ${MASON_REL} is present, so this root is a full checkout of this`,
+      'repository and the measured floors apply. They are measurements of THIS tree, never a target: each one can',
+      'only fire when a root that had a subject stopped delivering it. (`tooling` is not among them — its',
+      'requirement is the named landmark list one limb above, which is stronger than any count.)',
     );
   }
 }
@@ -293,8 +443,23 @@ if (prints.length) {
   console.log('⬜ printed, not hidden:');
   for (const p of prints) console.log(`    ${p}`);
 }
+// 🔴 THE PASSING LINE STATES WHAT IT READ AND UNDER WHICH BRANCH. Until
+// 2026-09-05 it named no pubspec at all, so the day the walk fell from 12 files
+// to 11 — the brick's app pubspec dropping out behind a depth cap — every word
+// of it stayed true. A per-root split and a named branch cannot be true of a
+// scan that quietly narrowed.
+const coverageMode = IS_FULL_CHECKOUT
+  ? `FULL CHECKOUT (${MASON_REL} present), so the measured per-root floors [` +
+    `${REQUIRED_COVERAGE.filter((r) => r.floor > 0).map((r) => `${r.dir} floor ${r.floor}`).join(', ')}; tooling ` +
+    `by named landmark, not by count] and the "every landmark is on disk" check both ran`
+  : `PARTIAL TREE (no ${MASON_REL} at ${repoRoot}), so the measured per-root floors and the "every landmark is on ` +
+    'disk" check were NOT applied — only the structural per-root floors and "the walk reached every landmark that ' +
+    'IS on disk" ran';
 console.log(
   `ok  content licences — ${families.length} family row(s), ${requiredCoverage.length} required and all present, ` +
-    `${verdictFields.length} verdict field(s) complete on every row; ${tripwires} tripwire(s) armed; ` +
+    `${verdictFields.length} verdict field(s) complete on every row; ${tripwires} tripwire(s) armed over ` +
+    `${pubspecs.length} pubspec(s) [${perRootSummary}, root=${existsSync(join(repoRoot, 'pubspec.yaml')) ? 1 : 0}] ` +
+    `of which ${landmarksReached} of the ${REQUIRED_PUBSPECS.length} declared landmark(s) were on disk and every ` +
+    `one of those was reached; coverage mode: ${coverageMode}; ` +
     `${declaredFamilies} family declaration(s) across ${recipes.length} recipe(s), every one cleared; ${uncleared.length} row(s) not cleared and printed`,
 );
