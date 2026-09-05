@@ -544,6 +544,38 @@ const UI_ANCHORS = [
 //
 // Adding a row here should feel like adding a UI_ANCHOR: it is a claim that a
 // specific sentence in a sworn record depends on a specific line of code.
+//
+// 🔴 2026-09-05 — THE LIMB PASSED OVER TWO WRONG CITATIONS, AND THE REASON WAS
+// ITS SUBJECT SET, NOT ITS LOGIC. Both files swore, of the SAME sentence, that
+// "Never a device ad-ID" is stated at analytics_providers.dart:56. Line 56 is
+// the middle of the `kInstallIdKey` paragraph; the sentence is at :79. This
+// limb exited 0 on both, for three separate reasons, and only the third is a
+// bug in the check itself:
+//
+//   1. IT CHECKS ONLY WHAT IS DECLARED HERE. `analytics_providers.dart` had one
+//      row — `core.NoOpAnalytics()` — so the ad-ID sentence, a second claim
+//      about the same file, was never a subject. An undeclared claim is not
+//      "weakly checked", it is invisible, exactly as PATH_RE's alternation is.
+//   2. `content-rating.json` HAD NO ROW AT ALL. Every row named data-safety, so
+//      the Play content-rating answer about advertising IDs — a different form,
+//      a different question — rested on an unchecked pointer. The `doc` field
+//      now carries content-rating too, and a row may name either.
+//   3. THE CITE SET WAS THE WHOLE DOCUMENT. `cites` collected every
+//      `basename:N` anywhere in the file and passed if ANY of them hit, so one
+//      correct `analytics_providers.dart:534` would have excused a wrong `:56`
+//      in the same document had the row existed. `claimContains` closes that
+//      per row: declare the sworn words, and only the string values that make
+//      THAT claim are searched for a number.
+//
+// ⚠️ `claimContains` IS OPT-IN, AND THE THREE ORIGINAL ROWS DELIBERATELY DO NOT
+// USE IT. Making it mandatory was measured first and rejected on evidence: this
+// document narrates its own repair history, so `app.dart:396` appears in
+// data-safety.json as a HISTORICAL reference ("app.dart:396 was already right
+// and was briefly corrected to :342") beside the live `app.dart:470`. Any rule
+// that requires every citation of a file to land on an anchor reddens that
+// sentence, which is not wrong — it is history. A stricter rule that reddens a
+// correct citation is worse than the hole it closes; scoping the row to its own
+// claim gets the precision without touching the prose.
 // ─────────────────────────────────────────────────────────────────────────────
 const LINE_ANCHORS = [
   {
@@ -573,6 +605,27 @@ const LINE_ANCHORS = [
     file: 'apps/{app}/lib/app.dart',
     anchor: 'const _ConsentPrompt()',
     why: 'the consent prompt that gates every analytics answer on this form',
+  },
+  {
+    doc: 'android-play/data-safety.json',
+    cite: 'analytics_providers.dart',
+    file: 'apps/{app}/lib/state/analytics_providers.dart',
+    anchor: 'Never a device ad-ID',
+    claimContains: 'Never a device ad-ID',
+    why:
+      'the sentence the Device-or-other-IDs answer rests on: `anon_id` is a minted install id and NOT an ' +
+      'advertising ID. The code comment IS the claim — quote it wrong and the sworn record cites a ' +
+      'paragraph about flag-bucket joins',
+  },
+  {
+    doc: 'android-play/content-rating.json',
+    cite: 'analytics_providers.dart',
+    file: 'apps/{app}/lib/state/analytics_providers.dart',
+    anchor: 'Never a device ad-ID',
+    claimContains: 'Never a device ad-ID',
+    why:
+      'the stated basis for the Play content-rating answer about ADVERTISING IDs — a different form and a ' +
+      'different question from data safety, resting on the same line of code',
   },
 ];
 
@@ -1042,9 +1095,8 @@ for (const app of apps) {
     }
 
     // ── limb 8 · line citations still point at what they describe ───────────
-    const docText = strings(j)
-      .map(([, v]) => v)
-      .join('\n');
+    const docStrings = strings(j).map(([, v]) => v);
+    const docText = docStrings.join('\n');
     for (const la of LINE_ANCHORS) {
       if (la.doc !== key) continue;
       const laFile = la.file.replace('{app}', appId);
@@ -1060,16 +1112,37 @@ for (const app of apps) {
         );
         continue;
       }
+      // WHERE the number is read from. Unscoped (the default) that is the whole
+      // document; with `claimContains` it is only the string values that make
+      // this row's claim, so a correct citation of the same file elsewhere in
+      // the document cannot excuse a wrong one here. See the header: mandatory
+      // scoping was measured and rejected, because this document also NARRATES
+      // old citations that are history rather than claims.
+      let scope = docText;
+      if (la.claimContains) {
+        const claiming = docStrings.filter((s) => s.includes(la.claimContains));
+        if (!claiming.length) {
+          fail(
+            `🔴 STALE LINE ANCHOR — no sentence in ${rel} contains ${JSON.stringify(la.claimContains)} any more, ` +
+              `so the citation this row checks cannot be located and the anchor for ${JSON.stringify(la.anchor)} ` +
+              'would pass forever. The sworn wording changed: re-read the answer, then re-point this row.',
+          );
+          continue;
+        }
+        scope = claiming.join('\n');
+      }
       // The number is read out of the sworn document — its own claim is what is
       // under test. `basename:N` or `basename:N-M`, whichever the prose uses.
       const base = laFile.split('/').pop();
       const cites = [
-        ...docText.matchAll(new RegExp(`${base.replace(/[.]/g, '\\.')}:(\\d+)(?:-(\\d+))?`, 'g')),
+        ...scope.matchAll(new RegExp(`${base.replace(/[.]/g, '\\.')}:(\\d+)(?:-(\\d+))?`, 'g')),
       ];
       if (!cites.length) {
         fail(
-          `🔴 STALE LINE ANCHOR — ${rel} no longer cites ${base}:<line> at all, so the anchor for ` +
-            `${JSON.stringify(la.anchor)} is aimed at a sentence that is gone and would pass forever.`,
+          `🔴 STALE LINE ANCHOR — ${rel} no longer cites ${base}:<line> ` +
+            `${la.claimContains ? `in the sentence that says ${JSON.stringify(la.claimContains)}` : 'at all'}, ` +
+            `so the anchor for ${JSON.stringify(la.anchor)} is aimed at a sentence that is gone and would ` +
+            'pass forever.',
         );
         continue;
       }
