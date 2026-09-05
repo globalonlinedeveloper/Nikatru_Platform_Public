@@ -1,0 +1,607 @@
+{
+  "_what": "Every tracked file in the app brick template, with its measured size and what chassis step 4 does with it.",
+  "_why": [
+    "ADR 065 set step 4 a target of ~205 lines. ADR 066 measured that as unsourced and unreachable and put the floor at ~2,900-3,550.",
+    "BOTH figures counted lib/ and the translations only. Measured 2026-09-05 the template is 18,205 lines across 96 files, and the",
+    "inherited test suite alone is 7,678 of them - 42% - which appears in no plan. That is three wrong numbers for one step, each",
+    "written once and never re-derived.",
+    "So the number stops living in prose. Every file gets a row; assert-chassis-ledger.mjs keeps the rows and the tree in bijection,",
+    "recomputes every count, and refuses a MOVE whose call site does not shrink. Nothing here is trusted - it is all re-measured.",
+    "MEASURED, not assumed: an undeclared file added to the brick reddened ZERO of the 127 assert-*.mjs guards on 2026-09-05",
+    "(17 were red both before and after, all of them needing build artifacts, credentials or CLI args). This ledger is the first",
+    "thing that makes the template a declared set."
+  ],
+  "measuredOn": "2026-09-05",
+  "measuredAtCommit": "271b7d3",
+  "root": "tooling/bricks/app/__brick__/apps/{{app_id}}",
+  "totals": {
+    "files": 96,
+    "lines": 18205,
+    "unclassified": 28,
+    "unclassifiedLines": 15560
+  },
+  "verdicts": {
+    "STAYS": "This file is per-app by construction, or a guard requires it to remain here. It is not step 4 work.",
+    "MOVES": "Its content belongs in a shared package. REQUIRES a measured callSiteDelta, and that delta MUST be negative - ADR 066: a screen moves only when the calling code measurably shrinks.",
+    "GOES": "Deleted outright because nothing points at it any more. REQUIRES a measured callSiteDelta of 0 or less.",
+    "UNCLASSIFIED": "No verdict has been measured yet. This count is a ratchet: it may fall, never rise."
+  },
+  "files": [
+    {
+      "path": "analysis_options.yaml",
+      "lines": 9,
+      "verdict": "STAYS",
+      "why": "Per-app manifest or generated-code config."
+    },
+    {
+      "path": "assets/icon/README.md",
+      "lines": 38,
+      "verdict": "STAYS",
+      "why": "Per-app brand assets."
+    },
+    {
+      "path": "config/defaults.example.json",
+      "lines": 6,
+      "verdict": "STAYS",
+      "why": "Per-app runtime config defaults; read by assert-store-build-config."
+    },
+    {
+      "path": "config/defaults.json",
+      "lines": 6,
+      "verdict": "STAYS",
+      "why": "Per-app runtime config defaults; read by assert-store-build-config."
+    },
+    {
+      "path": "dod.json",
+      "lines": 189,
+      "verdict": "STAYS",
+      "why": "The per-app done-record. assert-app-dod.mjs reads it per root and its mutation rows are dated against the files they probe."
+    },
+    {
+      "path": "l10n.yaml",
+      "lines": 6,
+      "verdict": "STAYS",
+      "why": "Per-app manifest or generated-code config."
+    },
+    {
+      "path": "lib/app.dart",
+      "lines": 561,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/core/app_config.dart",
+      "lines": 207,
+      "verdict": "STAYS",
+      "why": "Per-app configuration by definition. assert-repo-posture is correctly scoped to each app owning this file; assert-clone-contract.mjs:349 and assert-stamp-text-fidelity.mjs:344 both read its _phApiBase literal."
+    },
+    {
+      "path": "lib/core/router.dart",
+      "lines": 553,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/check_inbox_screen.dart",
+      "lines": 80,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/legal_consent_fields.dart",
+      "lines": 253,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/reaccept_terms_screen.dart",
+      "lines": 175,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/reset_password_screen.dart",
+      "lines": 306,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/sign_in_screen.dart",
+      "lines": 299,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/sign_up_screen.dart",
+      "lines": 192,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/auth/verify_email_screen.dart",
+      "lines": 155,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/firstrun/onboarding_screen.dart",
+      "lines": 195,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/home/home_screen.dart",
+      "lines": 593,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/monetization/manage_plan_screen.dart",
+      "lines": 239,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/monetization/paywall_screen.dart",
+      "lines": 298,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/features/settings/settings_screen.dart",
+      "lines": 967,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/l10n/app_en.arb",
+      "lines": 692,
+      "verdict": "STAYS",
+      "why": "ADR 065:68 — there is no .arb anywhere in packages/, and chassis step 3 decided to rehome NONE. Copy is a required constructor parameter the caller supplies from its own arb, so this GROWS as widgets move."
+    },
+    {
+      "path": "lib/l10n/app_ta.arb",
+      "lines": 164,
+      "verdict": "STAYS",
+      "why": "ADR 065:68 — there is no .arb anywhere in packages/, and chassis step 3 decided to rehome NONE. Copy is a required constructor parameter the caller supplies from its own arb, so this GROWS as widgets move."
+    },
+    {
+      "path": "lib/main.dart",
+      "lines": 160,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/state/money_providers.dart",
+      "lines": 189,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/state/notification_tap_observer.dart",
+      "lines": 88,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "lib/state/providers.dart",
+      "lines": 2579,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "pubspec.yaml",
+      "lines": 180,
+      "verdict": "STAYS",
+      "why": "Per-app manifest; its dependency list is swept by assert-play-declarations as of PR #474."
+    },
+    {
+      "path": "README.md",
+      "lines": 24,
+      "verdict": "STAYS",
+      "why": "Per-app manifest or generated-code config."
+    },
+    {
+      "path": "store/android-play/ads-declaration.json",
+      "lines": 64,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/category.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/content-rating.json",
+      "lines": 53,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/data-safety.json",
+      "lines": 59,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/long-description.txt",
+      "lines": 18,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/privacy-policy-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/README.md",
+      "lines": 80,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/screenshots-tablet/README.md",
+      "lines": 86,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/screenshots/README.md",
+      "lines": 43,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/short-description.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/support-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/android-play/title.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/category.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/keywords.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/long-description.txt",
+      "lines": 18,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/privacy-manifest.json",
+      "lines": 112,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/privacy-policy-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/promotional-text.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/README.md",
+      "lines": 50,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/screenshots/README.md",
+      "lines": 29,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/short-description.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/subtitle.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/support-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/ios-appstore/title.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/category.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/license.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/long-description.txt",
+      "lines": 18,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/privacy-policy-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/README.md",
+      "lines": 42,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/screenshots/README.md",
+      "lines": 27,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/short-description.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/snap-name.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/support-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/linux-snap/title.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/category.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/keywords.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/long-description.txt",
+      "lines": 18,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/privacy-policy-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/promotional-text.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/README.md",
+      "lines": 50,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/screenshots/README.md",
+      "lines": 29,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/short-description.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/subtitle.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/support-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/macos-appstore/title.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/category.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/long-description.txt",
+      "lines": 18,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/privacy-policy-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/README.md",
+      "lines": 48,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/screenshots/README.md",
+      "lines": 28,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/search-terms.txt",
+      "lines": 3,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/short-description.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/support-url.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "store/windows-store/title.txt",
+      "lines": 1,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
+      "path": "test/asset_licences_surface_test.dart",
+      "lines": 208,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/backend_liveness_test.dart",
+      "lines": 246,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/chassis_properties_test.dart",
+      "lines": 5424,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/config_contract_test.dart",
+      "lines": 157,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/consent_prompt_real_surface_test.dart",
+      "lines": 382,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/consent_withdrawal_disposal_test.dart",
+      "lines": 319,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/promo_objection_surface_test.dart",
+      "lines": 492,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/providers_test.dart",
+      "lines": 137,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/responsive_width_test.dart",
+      "lines": 273,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "test/smoke_test.dart",
+      "lines": 40,
+      "verdict": "UNCLASSIFIED",
+      "why": "Not yet measured against the ADR 066 rule. Chassis step 4 must give this file a verdict and, if it MOVES, a measured negative callSiteDelta."
+    },
+    {
+      "path": "web/_headers",
+      "lines": 103,
+      "verdict": "STAYS",
+      "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
+    },
+    {
+      "path": "web/index.html",
+      "lines": 60,
+      "verdict": "STAYS",
+      "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
+    },
+    {
+      "path": "web/manifest.json",
+      "lines": 35,
+      "verdict": "STAYS",
+      "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
+    }
+  ]
+}

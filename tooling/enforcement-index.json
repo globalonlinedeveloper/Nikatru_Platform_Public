@@ -325,6 +325,19 @@
   },
   {
     "claims": [
+      "ADR 065",
+      "ADR 066"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-chassis-ledger.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "ADR 020",
       "ADR 057"
     ],
