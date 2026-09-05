@@ -49,10 +49,10 @@ import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs'
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
 
-/** Floors. Below these the scan broke rather than the tree being clean — a fork
- *  checker that finds no contracts, or no source to search, reports perfection. */
+/** Floor. Below this the scan broke rather than the tree being clean — a fork
+ *  checker that finds no contracts reports perfection. The FILE floors are one
+ *  per root, at REQUIRED_COVERAGE below, beside the measurement that set them. */
 const MIN_CONTRACTS = 5;
-const MIN_SCANNED_FILES = 10;
 
 /** Directories whose implementations are legitimate by construction. Test doubles
  *  and probes MUST implement contracts — that is what they are for. Verified
@@ -105,20 +105,208 @@ function dartFiles(absDir, rel, out) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── COVERAGE: ONE FLOOR PER ROOT, NEVER ONE FLOOR OVER THE UNION ─────────────
+//
+// 🔴 WHAT STOOD HERE UNTIL 2026-09-05 WAS A SINGLE FLOOR OVER THE SUM:
+//       if (sharedFiles.length + suspectFiles.length < 10) …
+//   Three roots pooled into one number, and a pooled number can be carried
+//   entirely by ONE of them. That is the defect assert-no-tls-pinning.mjs was
+//   repaired for, and this file held it in a worse form: there, three roots are
+//   three samples of one subject. Here they are not. `packages/` supplies the
+//   SHARED implementations; `apps/` and `tooling/bricks/` supply the SUSPECTS.
+//   Lose one side and the comparison at the heart of this guard has no other
+//   side left to make — it does not scan less, it stops being able to conclude.
+//
+// 🔬 MEASURED BY MUTATION AGAINST THIS TREE, 2026-09-05. Each root was moved
+//   aside with `mv`, the guard run, the directory moved back, and `git status`
+//   confirmed clean before the next one. Not argued, and not from fixtures:
+//
+//     mutation                            old guard          this guard
+//     ───────────────────────────────────────────────────────────────────────
+//     none — THE GREEN CONTROL            EXIT 0  ok         EXIT 0  ok
+//     `packages/` removed                 EXIT 0  ok   ⚠️    EXIT 1  COVERAGE LOST
+//     `apps/` removed                     EXIT 1 stale-waiver EXIT 1 COVERAGE LOST
+//     `tooling/bricks/` removed           EXIT 1 arrive-limb  EXIT 1 COVERAGE LOST
+//     apps/ shipped code removed, the     EXIT 1 stale-waiver EXIT 1 COVERAGE LOST
+//       12 chassis/fork pair files kept
+//     packages/design_system folded away  EXIT 0  ok         EXIT 0  ok  (−40)
+//     five Subly feature areas dropped    EXIT 0  ok         EXIT 0  ok  (−5)
+//     the brick's test/ folder moved      EXIT 0  ok         EXIT 0  ok  (−0)
+//     apps/subly/test moved out entirely  EXIT 0  ok         EXIT 0  ok  (−0)
+//
+//   THE SECOND ROW IS THE WHOLE REASON THIS CHANGED. Delete the entire shared
+//   chassis — every package, the home of every seam implementation — and the old
+//   guard printed
+//       ok  no seam forks — 17 contract(s), 180 file(s) scanned; 0 shared
+//       implementation(s), 0 homeless, 1 declared, 3 accepted fork(s) at parity
+//   and exited 0. 181 of 361 files gone, and not merely unscanned: with `shared`
+//   empty, `homed` is empty, so every fork in an app or in the TEMPLATE is
+//   reclassified HOMELESS and printed as a friendly ⚠ instead of failing the
+//   build. The rule this guard exists for — "packages/ homes it AND the app has
+//   its own → FORK" — cannot fire at all, and the sentence it prints while it
+//   cannot fire begins with the word `ok`.
+//
+//   The last four rows are the other half of the discipline: a floor that fires
+//   on honest work is switched off inside a week. Each is a real, legitimate
+//   shrink — a package folded into another, features dropped from the app, a
+//   test folder reorganised — and each must stay GREEN. They do, and the
+//   bracketed figure is how far the floor's subject actually moved. The last two
+//   moved it NOT AT ALL while deleting 10 and 69 .dart files respectively: those
+//   files are test doubles, which this guard never classifies. On a floor over
+//   the raw count set at the same ratio (74 of 148) the final row — Subly's test
+//   suite, 47% of `apps/` — would have gone RED on an honest change. That is the
+//   whole argument for counting the subject, and it is measured, not reasoned.
+//
+// ⚠️ A CORRECTION TO THE STANDING WRITE-UP OF THIS DEFECT, since reading a plan
+//   is not measuring a tree. It has been described as "apps/ and the brick could
+//   BOTH empty and the floor would still be satisfied — it would print ok over a
+//   tree that had lost the entire shipped product and the template". The FLOOR
+//   is indeed satisfied, but the guard does NOT print ok: removing apps/ trips
+//   the stale-waiver limb (two register violations point into it) and removing
+//   tooling/bricks trips the arrive limb's empty-universe check. Both EXIT 1,
+//   measured above. Those limbs are load-bearing by accident, not by design —
+//   they fire on the register and on the brick features root, not on coverage —
+//   and the direction nobody had looked at is the one that really does reach
+//   `ok`: packages/. The union floor is exactly as broken as claimed; the
+//   example given for it was wrong, and the true example is worse.
+//
+// ⚠️ THE FLOOR COUNTS THE SUBJECT, NOT THE FILES. For the two suspect roots the
+//   subject is the NON-EXEMPT files: an `apps/` that has become nothing but
+//   `test/` directories still holds 148 .dart files while EXEMPT_DIR skips every
+//   one of them before it can be classified, so a floor on the raw count would
+//   call that covered. The same choice keeps the floor off honest work in the
+//   other direction — Subly's 69 test files are 47% of `apps/`, and reorganising
+//   them must not redden a guard that never looked at them. Both measured
+//   2026-09-05. For `packages/` the guard applies no such exemption (every file
+//   there feeds the shared set, doubles included), so subject == files read, and
+//   that asymmetry is stated here rather than left to be discovered.
+//
+// ⚠️ ONE PRECEDENCE COST, MEASURED AND ACCEPTED RATHER THAN LEFT TO BE FOUND.
+//   This check has to run before anything classifies the files it counts, so it
+//   speaks first — and on THIS tree it now pre-empts the arrive limb on one
+//   input. Empty the brick's `lib/features` root and `tooling/bricks` drops to
+//   10 non-exempt of 22, ONE under its floor, so the reader gets "`tooling/bricks`
+//   below its floor" instead of the arrive limb's sharper "the brick features
+//   root produced NO .dart file(s)". Measured 2026-09-05: same verdict, same
+//   word, less address. Duplicating the features-root check up here was the
+//   obvious repair and is the wrong one — it would make the arrive limb's own
+//   check unreachable, and an assertion that cannot fail is what this file
+//   deletes rather than keeps. So the failure text points at the sharper limb
+//   instead, and this paragraph is the honest statement of the cost.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Derived from THIS tree on 2026-09-05, by the walk below and nothing else:
+ *  `apps` 75 non-exempt of 148 .dart, `packages` 181 of 181, `tooling/bricks` 22
+ *  of 32. Each floor is HALF its measured subject, rounded down — the ratio
+ *  assert-no-tls-pinning.mjs uses, chosen over assert-no-gate-weakening's
+ *  one-third because this subject is ONE app and ten packages, with no fleet for
+ *  the count to swing with. Half means a root must lose more of itself than it
+ *  keeps before this speaks, and the four legitimate shrinks in the table above
+ *  clear it with room: the largest of them, packages/design_system folded away,
+ *  takes packages/ to 141 against a floor of 90. */
+const REQUIRED_COVERAGE = [
+  {
+    dir: 'apps',
+    role: 'suspect',
+    floor: 37,
+    label: 'the shipped app — a fork here reaches the users who installed it (75 non-exempt .dart today)',
+  },
+  {
+    dir: 'packages',
+    role: 'shared',
+    floor: 90,
+    label:
+      'the shared chassis — the ONLY place an implementation is "homed", so with this root thin nothing ' +
+      'is a fork and every fork reads as homeless (181 .dart today)',
+  },
+  {
+    dir: 'tooling/bricks',
+    role: 'suspect',
+    floor: 11,
+    label:
+      'the template every future app is stamped from — a fork here is not one bad app, it is every app ' +
+      'the factory will ever make, born wrong (22 non-exempt .dart today)',
+  },
+];
+
+/** The floors are measurements of THIS repository and mean nothing over a
+ *  synthetic root — the fixtures in tooling/ci/test model one tree at a time with
+ *  a handful of files in it. So they are applied only when ROOT is a full
+ *  checkout, detected by this guard's OWN file being present under it: a sentinel
+ *  that sits OUTSIDE all three subject roots and therefore survives any mutation
+ *  OF a subject, which a sentinel inside apps/ or packages/ would not. Which
+ *  branch was taken is PRINTED on every run rather than implied. */
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-no-seam-forks.mjs'));
+
+const perRoot = new Map();
+for (const r of REQUIRED_COVERAGE) {
+  const abs = join(ROOT, ...r.dir.split('/'));
+  const found = [];
+  dartFiles(abs, r.dir, found);
+  perRoot.set(r.dir, {
+    present: existsSync(abs),
+    found,
+    // What this guard can actually classify. Suspect roots lose their test
+    // doubles and probes to EXEMPT_DIR before any decision is made about them.
+    subject: r.role === 'suspect' ? found.filter((f) => !EXEMPT_DIR.test(f)) : found,
+  });
+}
+
 /** Where a shared implementation legitimately lives. */
-const sharedFiles = [];
-dartFiles(join(ROOT, 'packages'), 'packages', sharedFiles);
+const sharedFiles = REQUIRED_COVERAGE.filter((r) => r.role === 'shared').flatMap(
+  (r) => perRoot.get(r.dir).found,
+);
 
 /** Where a fork would live: shipped app code, and shipped TEMPLATE code. The
- *  template half is [2]C-9 and is why this guard cannot only scan apps/. */
-const suspectFiles = [];
-dartFiles(join(ROOT, 'apps'), 'apps', suspectFiles);
-dartFiles(join(ROOT, 'tooling', 'bricks'), 'tooling/bricks', suspectFiles);
+ *  template half is [2]C-9 and is why this guard cannot only scan apps/.
+ *  ⚠️ ALL files, exempt ones included — the exemption is applied per suspect at
+ *  classification time, and the stale-waiver limb below needs to see a waived
+ *  path even when it lives under test/. Only the FLOOR reads `subject`. */
+const suspectFiles = REQUIRED_COVERAGE.filter((r) => r.role === 'suspect').flatMap(
+  (r) => perRoot.get(r.dir).found,
+);
 
-if (sharedFiles.length + suspectFiles.length < MIN_SCANNED_FILES) {
+// Every root reports its own verdict and they are reported TOGETHER: a tree can
+// lose two roots for two different reasons, and naming only the first sends the
+// reader to fix half of it.
+const coverageLost = [];
+for (const r of REQUIRED_COVERAGE) {
+  const t = perRoot.get(r.dir);
+  if (!t.present) {
+    coverageLost.push(`\`${r.dir}\` is not a directory under this root — ${r.label}.`);
+  } else if (t.found.length === 0) {
+    coverageLost.push(`\`${r.dir}\` exists but holds no .dart file at all — ${r.label}.`);
+  } else if (t.subject.length === 0) {
+    // Reachable only for a suspect root; `packages/` has subject === found.
+    coverageLost.push(
+      `all ${t.found.length} .dart file(s) under \`${r.dir}\` sit in a test/, integration_test/ or ` +
+        `live_probe/ directory, so EXEMPT_DIR skips every one and nothing is left to classify — ${r.label}.`,
+    );
+  } else if (IS_FULL_CHECKOUT && t.subject.length < r.floor) {
+    coverageLost.push(
+      `\`${r.dir}\` yielded only ${t.subject.length} file(s) to classify, below its floor of ${r.floor} — ${r.label}.`,
+    );
+  }
+}
+if (coverageLost.length) {
   fail([
-    `✗ COVERAGE LOST — scanned only ${sharedFiles.length + suspectFiles.length} dart file(s).`,
-    `  repo root used: ${ROOT}. The scan is broken, not the tree.`,
+    `✗ COVERAGE LOST — ${coverageLost.length} of the ${REQUIRED_COVERAGE.length} declared root(s) did not deliver a subject:`,
+    ...coverageLost.map((l) => `    · ${l}`),
+    '',
+    `  repo root used: ${ROOT}.`,
+    '  This guard concludes by COMPARING two sides — what packages/ homes, and what apps/ and the brick',
+    '  template hold. Lose either side and there is nothing to compare, which is not the same as a clean',
+    '  tree: with packages/ thin, nothing is homed, so every fork is reclassified "homeless" and merely',
+    '  printed. Each root carries its OWN floor deliberately. One floor over the three combined was',
+    '  satisfied by apps/ and the brick alone, so packages/ could vanish entirely while this guard printed',
+    '  `ok … 180 file(s) scanned; 0 shared implementation(s)`. Measured 2026-09-05, not feared.',
+    '',
+    '  ⚠ A root named here may ALSO have a sharper problem that a later limb would have named — the',
+    '  commonest is `tooling/bricks` falling under its floor because the brick FEATURES root emptied,',
+    '  which the arrive limb reports by path. This check runs first because everything after it',
+    '  classifies the files it just counted. Restore the coverage and run again; the sharper limb speaks',
+    '  the moment this one is satisfied.',
   ]);
 }
 
@@ -743,8 +931,25 @@ if (unpairedByPath.length) {
   );
 }
 
+// 🔴 THE PASSING LINE PRINTS THE SPLIT, NOT THE POOLED TOTAL. It used to read
+// "361 file(s) scanned" — one number over three roots, and that sentence stayed
+// literally true at 180 with the whole of `packages/` deleted, which is how a
+// reader confirms coverage from a line that no longer carries any. A per-root
+// breakdown cannot be true of a collapsed tree. Which coverage branch ran is
+// printed too: over a synthetic root the floors do not apply, and a run that
+// silently skipped them would be indistinguishable from one that met them.
+const split = REQUIRED_COVERAGE.map((r) => {
+  const t = perRoot.get(r.dir);
+  return `${r.dir}=${t.subject.length}${IS_FULL_CHECKOUT ? `/floor ${r.floor}` : ''}`;
+}).join(', ');
+
 console.log(
-  `ok  no seam forks — ${contracts.size} contract(s), ${sharedFiles.length + suspectFiles.length} file(s) scanned; ` +
+  `ok  no seam forks — ${contracts.size} contract(s), ${sharedFiles.length + suspectFiles.length} .dart file(s) read, ` +
+    `classifiable per root [${split}]; ` +
     `${shared.length} shared implementation(s), ${homeless.length} homeless, ${waived.length} declared, ` +
-    `${parityOk.length} accepted fork(s) at parity, ${WATCHED_PAIRS.length} watched`,
+    `${parityOk.length} accepted fork(s) at parity, ${WATCHED_PAIRS.length} watched` +
+    (IS_FULL_CHECKOUT
+      ? ''
+      : '. NOTE: this root is not a checkout of this repository, so the per-root floors were NOT applied — ' +
+        'only the structural "every declared root delivered something to classify" check ran.'),
 );
