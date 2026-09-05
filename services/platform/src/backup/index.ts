@@ -160,7 +160,15 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
       queriesSpent += dump.queries;
       const blob = await gzipAndDigest(dump.jsonl);
       await bucket.put(key, blob.body, {
-        httpMetadata: { contentType: 'application/x-ndjson', contentEncoding: 'gzip' },
+        // 🔴 NO `contentEncoding: 'gzip'` HERE, AND THE DRILL IS WHY. It was set on the
+        // first run and R2 then served the object DECODED: `wrangler r2 object get`
+        // returned 129,297 bytes of plain JSON where the manifest recorded 15,453 of
+        // gzip, `gunzip` answered "not in gzip format", and the SHA-256 could never
+        // have matched on any client that honours the header - which is every one.
+        // The digest chain Box B verifies would have failed on EVERY object, every
+        // night, from the first night. The key says .gz and the bytes are gzip; the
+        // transport must not be told to undo that.
+        httpMetadata: { contentType: 'application/gzip' },
         customMetadata: { sha256: blob.sha256, rows: String(dump.rows), truncated: String(dump.truncated) },
       });
       manifest.push({
@@ -199,7 +207,7 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
       const dump = await dumpKvNamespace(ns, name, MAX_KV_KEYS_PER_NS, nowIso);
       const blob = await gzipAndDigest(dump.json);
       await bucket.put(key, blob.body, {
-        httpMetadata: { contentType: 'application/json', contentEncoding: 'gzip' },
+        httpMetadata: { contentType: 'application/gzip' },
         customMetadata: { sha256: blob.sha256, keys: String(dump.keys), truncated: String(dump.truncated) },
       });
       manifest.push({ key, bytes: blob.bytes, sha256: blob.sha256, keys: dump.keys, truncated: dump.truncated });

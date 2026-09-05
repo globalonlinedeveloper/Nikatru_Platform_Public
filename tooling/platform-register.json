@@ -461,6 +461,7 @@
       "binding": "BACKUPS_R2",
       "kind": "r2_buckets",
       "scope": "shared",
+      "role": "backup",
       "purpose": "The ONE portfolio backup bucket, `nikatru-backups`, written by the 02:30 cron only and addressed by key prefix (`d1/`, `kv/`, `manifests/`). 🔴 It closes `06 §4.2` — D1, KV and R2 in NO backup, `recovery.worker-d1-export` NEVER drilled — for the entitlements database that serves the whole portfolio. ⚠️ It is deliberately ONE bucket: the per-app `<app>-exports` buckets removed from the brick on 2026-07-25 are the precedent, and `subly-exports` is still sitting in the account, empty and unbound, as the reminder.",
       "readers": [
         "services/platform/src/backup/index.ts"
