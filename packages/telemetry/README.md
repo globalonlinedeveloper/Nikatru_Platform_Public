@@ -5,9 +5,16 @@ app-factory platform hardening; additive, no live impact).
 
 ## What it is
 
-- `TelemetryClient` - the only interface app code talks to
-  (`captureException`, `captureMessage`, `addBreadcrumb`, `setUser`,
-  `close`).
+- `TelemetryConfig` + `TelemetryBootstrap` - the ONLY two symbols app code
+  names. An app builds one config and hands it to `init`; that is the whole
+  surface. Measured 2026-09-05: `TelemetryClient` appears ZERO times in
+  `apps/` and zero times in `tooling/bricks/`.
+- `TelemetryClient` - the INTERNAL seam (`captureException`,
+  `captureMessage`, `addBreadcrumb`, `setUser`, `close`). This line used to
+  call it "the only interface app code talks to", which was false in both
+  trees. It is what `NoOpTelemetryClient` and `SentryTelemetryClient`
+  implement and what `init` returns, and it is exported so a caller CAN hold
+  one - not because one does.
 - `TelemetryBootstrap.init(config, appRunner: ...)` - one-shot wiring.
   Empty DSN returns a `NoOpTelemetryClient` (telemetry fully off; the
   `appRunner` still runs).
@@ -35,7 +42,8 @@ durations, build numbers - are unaffected and pinned by tests.
 ## Isolation rule
 
 `sentry_flutter` is a dependency of THIS package only. No other package or
-app may import it - everything goes through `TelemetryClient`. That keeps
+app may import it - everything goes through this package, behind the
+`TelemetryClient` seam. That keeps
 the vendor SDK swappable (GlitchTip today, anything Sentry-compatible
 tomorrow) and enforces the PII policy in exactly one place.
 
