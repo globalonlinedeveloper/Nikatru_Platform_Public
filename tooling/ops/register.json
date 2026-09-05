@@ -848,7 +848,6 @@
             "job": "github_dispatch",
             "target": "Nikatru_Platform_Public/e2e.yml"
           },
-          "firstDue": "2026-09-05T00:00:00Z",
           "_why": [
             "WORKER CRON PHASE 2, FIRST ROW — 2026-09-04. This row used to read `event: schedule`, and that ONE",
             "filter was carrying two different claims at once: that the TIMER fired, and that the RUN passed.",
@@ -870,6 +869,14 @@
             "⚠️ `firstDue` IS THE BOOTSTRAP, AND IT EXPIRES BY ARITHMETIC. The dispatcher cannot have written a",
             "`target: e2e.yml` row before this change deploys, so the timer limb is legitimately empty until the",
             "first Cloudflare firing. Dated one cadence window out; the schema refuses anything further ahead.",
+            "✅ SPENT AND DELETED 2026-09-05, and the wording above is left standing because it is the dated record",
+            "of why the field existed. BOTH limbs now hold a real record, measured by this guard's own live probe:",
+            "TIMER — cron_heartbeat, job `github_dispatch`, target `Nikatru_Platform_Public/e2e.yml`, newest ok = 1",
+            "at 2026-09-05T06:01:20.783Z, so the Cloudflare dispatcher HAS fired this workflow and the limb the",
+            "bootstrap was waiting for is no longer empty; OUTCOME — run 33953246945 on `main` at",
+            "2026-09-05T07:48:36Z. `firstDue` gated ONLY the `no successful run at all` branch, which is now",
+            "unreachable for this row, so keeping it would have turned a wait into a waiver — the guard says so in",
+            "its own words: `firstDue (…) has PASSED, so it gates nothing: delete the field`.",
             "",
             "⚠️ e2e.yml KEEPS ITS `schedule:` SLOT. It costs a duplicate run on the ~40% of nights GitHub delivers,",
             "and it is the rollback: revert this row and the old evidence is still being written.",
@@ -1165,9 +1172,7 @@
           "workflow": "renovate.yml",
           "event": "schedule",
           "headBranch": "main",
-      "firstDue": "2026-09-05T12:00:00Z",
-      "firstDueWhy": "🔴 THE BOOTSTRAP DATE, AND IT EXPIRES BY ARITHMETIC. This row was declared 2026-09-03; the workflow it names cannot appear in GitHub's run history until it is on the DEFAULT BRANCH, and this guard holds `watched workflows === .github/workflows/*.yml` in BOTH directions, so the row cannot wait for the run either. Without this field the merge that lands the workflow reddens every CI run until a scheduled slot is delivered — the deadlock is structural and every future workflow row hits it exactly once. The value is the second daily 03:00Z slot plus nine hours of delivery slack, NOT a round number: two chances to exist on a scheduler measured at 10.1% on-time. ⚠️ It gates ONLY the \"no successful run at all\" branch — a STALE success and a MISSING workflow both still block — it still PRINTS the word FAILING, and assert-ops-register.mjs refuses any value more than one cadence window ahead of now, which is what stops it becoming a waiver. DELETE IT once the first scheduled run has landed.",
-          "why": "🔴 `event: schedule` DELIBERATELY, EVEN THOUGH THE PRIMARY TRIGGER IS A DISPATCH. The Cloudflare Worker cron fires this workflow through `workflow_dispatch`, because GitHub delivers only ~10.1% of scheduled runs on time and that unreliability froze this repository's merge queue twice. But a reader CANNOT DISTINGUISH a Worker's dispatch from a human pressing the button, and 'somebody pressed a button' is the opposite of a cadence claim — the rule every other workflow row here obeys. So the weekly `schedule:` backstop is what EVIDENCES the cadence, and the Worker is what makes the updates timely. The two triggers do different jobs and only one of them is proof."
+          "why": "🔴 `event: schedule` DELIBERATELY, EVEN THOUGH THE PRIMARY TRIGGER IS A DISPATCH. The Cloudflare Worker cron fires this workflow through `workflow_dispatch`, because GitHub delivers only ~10.1% of scheduled runs on time and that unreliability froze this repository's merge queue twice. But a reader CANNOT DISTINGUISH a Worker's dispatch from a human pressing the button, and 'somebody pressed a button' is the opposite of a cadence claim — the rule every other workflow row here obeys. So the weekly `schedule:` backstop is what EVIDENCES the cadence, and the Worker is what makes the updates timely. The two triggers do different jobs and only one of them is proof. ✅ AND THE BOOTSTRAP IS SPENT, 2026-09-05. This recordQuery carried a `firstDue` of 2026-09-05T12:00:00Z with a `firstDueWhy` that named its own exit condition — DELETE IT once the first scheduled run has landed. It has landed: run 33952024441, `event: schedule` on `main`, succeeded 2026-09-05T07:15:46Z, and 2026-09-04T07:34:14Z was a scheduled success too — two inside a [7d x 1.5 = 252h] window. So the `no successful run at all` branch that field gated is unreachable for this row, and both fields are DELETED here rather than left to age into a waiver. The removal is recorded and not silent, because a bootstrap that vanishes without a trace is one the next editor re-derives from scratch."
         }
       },
       "absenceWatcher": {
@@ -1273,7 +1278,7 @@
       },
       "absenceWatcher": {
         "substrate": "glitchtip-heartbeat",
-        "what": "GlitchTip heartbeat monitor 6 'Laptop daily backup', project `ops`, on the Oracle box. The script POSTs on success; the monitor alarms on the POST NOT ARRIVING.",
+        "what": "GlitchTip heartbeat monitor 6 'Laptop daily backup', project `ops`, on the Oracle box. The script POSTs on success; the monitor alarms on the POST NOT ARRIVING. ⏱ CORRECTED 2026-09-05: the GlitchTip instance holding this monitor is ON BOX B (Hostinger) and has been since the 2026-09-02 move — `_substrateHosts.glitchtip-heartbeat` in this same file already resolves to `hostinger`, so this sentence was contradicting the mapping the [14]O-4 comparison actually uses. The original wording is kept because it is what the row said when the down-transition drill below was performed, and that drill is dated evidence about the instance as it then ran.",
         "signal": "No heartbeat inside the monitor's interval -> Down transition -> the project's uptime alert rule -> email to support@nikatru.com. The laptop being off, unbootable, or the task silently disabled all produce the same POST-shaped silence, which is the point.",
         "margin": "Monitor interval 43200s (12h) against an 8h duty cadence = 1.5x, the same ratio check-heartbeats.mjs uses and for the same reason: an interval EQUAL to the cadence leaves zero margin and one late run reports Down. Private/runbooks/backup-liveness.md is where that rule is written down.",
         "downTransitionDrill": {
@@ -1329,7 +1334,7 @@
         "readBy": "/opt/glitchtip/backup-liveness.py on the box",
         "recordQuery": {
           "reader": "unreachable",
-          "why": "The record is the mtime and size of /opt/glitchtip/backups/gt-*.sql.gz ON THE ORACLE BOX. No CI runner and no laptop can stat that path; the only reader is backup-liveness.py, which runs on the same box and is itself [pipeline E-9b]."
+          "why": "The record is the mtime and size of /opt/glitchtip/backups/gt-*.sql.gz ON THE ORACLE BOX. No CI runner and no laptop can stat that path; the only reader is backup-liveness.py, which runs on the same box and is itself [pipeline E-9b]. ⏱ CORRECTED 2026-09-05 — READ `ON BOX B (Hostinger)`. This row's own `mechanism.substrate` is `glitchtip-box-cron`, which `_substrateHosts` resolves to `hostinger`, and the 2026-09-03 measurement recorded in `_substrateHosts._portabilityWhy` matched all four `/opt/glitchtip/*` crons against the LIVE crontab on Box B. So the path is right and the host was stale. It is corrected here rather than left because this string is PRINTED by [14]O-3 on every run of the guard, and a line that names the wrong machine on every CI run is the failure this file already recorded once: a register that answers confidently about a box it is not describing. The rest of the sentence is unchanged and still true — no CI runner and no laptop can stat that path, and the only reader is backup-liveness.py on the same box."
         }
       },
       "absenceWatcher": {
@@ -1711,20 +1716,20 @@
       "response": "Private/runbooks/operations.md §C.5.",
       "cadence": "180d",
       "lastDrill": "2026-08-05",
-      "drillEvidence": "FIRST EVER RESTORE PERFORMED 2026-08-05, and it found two defects a successful dump can never reveal. (1) The dump was plain SQL piped to gzip while §C.5 documents `pg_restore -j4` and §C.4 gates uploads on `pg_restore --list` — both FAILED: 'input file appears to be a text format dump. Please use psql.' Fixed to `pg_dump -Fc`; the gate now returns exit 0 over 6963 archive entries. (2) `pg_restore -j4` DEADLOCKS on this partitioned schema (ALTER INDEX ... ATTACH PARTITION, and the issueevent release_id FK), INTERMITTENTLY — 2 ignored errors on one pass, 4 on the next — and pg_restore IGNORES them, so it finishes looking successful with objects missing. Serial restore is clean in one pass. Verified by row counts against live: issues 13=13, projects 2=2, users 1=1, releases 6=6, orgs 1=1; uptime_monitorcheck 114527 vs 114513 = ~2 min of continuous checks written after the snapshot, not loss. Restored into scratch databases; the live database was never touched.",
+      "drillEvidence": "FIRST EVER RESTORE PERFORMED 2026-08-05, and it found two defects a successful dump can never reveal. (1) The dump was plain SQL piped to gzip while §C.5 documents `pg_restore -j4` and §C.4 gates uploads on `pg_restore --list` — both FAILED: 'input file appears to be a text format dump. Please use psql.' Fixed to `pg_dump -Fc`; the gate now returns exit 0 over 6963 archive entries. (2) `pg_restore -j4` DEADLOCKS on this partitioned schema (ALTER INDEX ... ATTACH PARTITION, and the issueevent release_id FK), INTERMITTENTLY — 2 ignored errors on one pass, 4 on the next — and pg_restore IGNORES them, so it finishes looking successful with objects missing. Serial restore is clean in one pass. Verified by row counts against live: issues 13=13, projects 2=2, users 1=1, releases 6=6, orgs 1=1; uptime_monitorcheck 114527 vs 114513 = ~2 min of continuous checks written after the snapshot, not loss. Restored into scratch databases; the live database was never touched. 🔴 DE-VERIFIED 2026-09-05, AND THE DRILL IS NOT DELETED BECAUSE IT HAPPENED — WHAT CHANGED IS THE MACHINE. This drill was performed on 2026-08-05 against the GlitchTip Postgres AS IT THEN RAN ON THE ORACLE BOX. GlitchTip and its whole backup chain MOVED TO BOX B (Hostinger KVM 8) ON 2026-09-02 — the move that `_substrateHosts._portabilityWhy` in this file records, measured 2026-09-03 against the live crontab: all four `/opt/glitchtip/*` crons run on Box B and GlitchTip itself serves from Box B. So every line above is evidence about a host that NO LONGER RUNS THIS SERVICE. What it still proves is FORMAT and PROCEDURE, which travel with the dump: `pg_dump -Fc` is required (a text dump fails `pg_restore --list`), and `pg_restore -j4` DEADLOCKS on this partitioned schema while IGNORING the errors, so a parallel restore finishes looking successful with objects missing — serial restore only. What it NO LONGER proves is that a restore succeeds ON THE HOST THAT HOLDS THE DATABASE: Box B is a different vendor, a different architecture (x86_64, against the Oracle box’s ARM64) and a different Ubuntu, and the pg image, the disk and the container runtime were never exercised there. ⚠️ THAT IS A DE-VERIFICATION, NOT A DRILL DUE DATE. Carrying 2026-08-05 forward as though it still covered this row would be the same defect this file already caught once in the other direction, when the row read ‘Never drilled’ after a real drill: a register that answers confidently about a machine it is not describing. ➡️ NEXT DRILL IS DUE ON BOX B, and it is due on the MOVE rather than on the 180d clock — see `ownerGap`.",
       "mechanism": {
-        "substrate": "oci-docker",
+        "substrate": "glitchtip-box-docker",
         "anchor": "Private/runbooks/operations.md",
-        "record": "the dump files and their timestamps on the Oracle box",
+        "record": "the dump files and their timestamps in /opt/glitchtip/backups on the GlitchTip box — the same host the four `glitchtip-box-cron` duty rows name, which `_substrateHosts` resolves to `hostinger`",
         "failingValue": "no dated restore drill",
         "readBy": "nothing yet"
       },
       "accessProviders": [
-        "oci",
+        "hostinger",
         "google"
       ],
       "ownerGated": true,
-      "ownerGap": "DRILLED 2026-08-05 (first time) — see drillEvidence; next due 2027-02-01 per the 180d cadence. ⚠️ Residual risk recorded rather than hidden: the Postgres dumps still have exactly ONE offsite copy. 🔴 And the drill's own lesson: this row read 'Never drilled' for a full session AFTER a real drill had been performed and verified, because the drill was done and not recorded — a guard that announces a false state on every CI run is worse than one that says nothing. Record the drill in the same increment that performs it.",
+      "ownerGap": "DRILLED 2026-08-05 (first time) — see drillEvidence; next due 2027-02-01 per the 180d cadence. ⚠️ Residual risk recorded rather than hidden: the Postgres dumps still have exactly ONE offsite copy. 🔴 And the drill's own lesson: this row read 'Never drilled' for a full session AFTER a real drill had been performed and verified, because the drill was done and not recorded — a guard that announces a false state on every CI run is worse than one that says nothing. Record the drill in the same increment that performs it. 🔴 AND THE CADENCE IS NOT THE BINDING CONSTRAINT ON THIS ROW EITHER, CORRECTED 2026-09-05. The sentence above says ‘next due 2027-02-01 per the 180d cadence’; that was written when the service ran on the Oracle box. GlitchTip moved to Box B on 2026-09-02, so the 2026-08-05 drill is now evidence about a host that does not run the database (see `drillEvidence`), and THE MOVE is what makes the next drill meaningful, not February. Re-drill on Box B: `pg_dump -Fc` from the live container, a SERIAL `pg_restore` into a throwaway database on that box, and row counts against live — the same shape as the 2026-08-05 run, on the machine that now holds the data. Until that is dated here, THIS PORTFOLIO HAS NO PROVEN RESTORE PATH FOR GLITCHTIP ON ITS CURRENT HOST, and that is recorded rather than hidden behind a date that is still in the future.",
       "source": "verified"
     },
     {
