@@ -56,9 +56,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const WORKFLOW = 'e2e.yml';
+/* 🔴 THE WORKFLOW THIS GATE READS ITS CEILING OUT OF IS NO LONGER IN THIS TREE.
+   Until 2026-09-05 this repository was its own, and `.github/workflows/e2e.yml`
+   sat beside these scripts. It is now a subtree of Nikatru_Platform_Public
+   ([ADR 067] decision 1), GitHub reads only the repository ROOT's
+   `.github/workflows/`, and the three lanes there are one file. So the name is a
+   CANDIDATE LIST resolved against whichever workflow directory really exists —
+   the subtree's own, if this tree is ever split back out with
+   `git subtree split --prefix=extensions`, and the repository root's otherwise.
+
+   ⚠️ FOUND BY CI ON THE MERGE'S FIRST GREEN PARSE, not by reading. This gate
+   exited 2 — `could not read …/extensions/.github/workflows/e2e.yml (there is no
+   workflows in …/extensions/.github)` — which is the CANNOT RUN path working
+   exactly as designed: a gate that cannot find its subject says so instead of
+   reporting freshness it never measured. */
+const WORKFLOW_CANDIDATES = ['extensions.yml', 'e2e.yml'];
 const BRANCH = 'main';
 /* Derived from the cron, and re-derived by the self-check below, which reddens
    if the cadence stops being weekly. */
@@ -116,21 +131,54 @@ const dirent = (p, name) => {
   return es.find(d => d.name === name) || es.find(d => d.name.toLowerCase() === name.toLowerCase()) || null;
 };
 
+/* Where GitHub actually reads workflows from. This tree's own directory first —
+   that is the standalone-repository case and the case after a subtree split — and
+   the enclosing repository's root second, which is where they live today.
+   `git rev-parse --show-toplevel` is asked rather than assumed, so a fixture tree
+   that is not a work tree simply yields no second candidate. */
+function workflowRoots(root) {
+  const roots = [root];
+  try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8' }).trim();
+    if (top && path.resolve(top) !== path.resolve(root)) roots.push(path.resolve(top));
+  } catch (_) { /* not a work tree: one candidate is all there is */ }
+  return roots;
+}
+
 /* ── SELF-CHECK: THE CEILING IS DERIVED, SO THE CRON IS LOAD-BEARING ────────
    Full-line comments are dropped first. */
-const wfPath = path.join(ROOT, '.github', 'workflows', WORKFLOW);
+let wfPath = '';
 let raw = '';
-try {
-  let p = ROOT;
-  for (const seg of ['.github', 'workflows', WORKFLOW]) {
-    const d = dirent(p, seg);
-    if (!d) throw new Error(`there is no ${seg} in ${p}`);
-    if (d.name !== seg) throw new Error(`${seg} is on disk as ${d.name}, a case a Linux runner does not open`);
-    p = path.join(p, seg);
+/* Set from whichever candidate resolved, so every message below and the run-history
+   query all name the file this gate really read. */
+let WORKFLOW = '';
+{
+  const tried = [];
+  for (const base of workflowRoots(ROOT)) {
+    for (const name of WORKFLOW_CANDIDATES) {
+      const attempt = path.join(base, '.github', 'workflows', name);
+      try {
+        let p = base;
+        for (const seg of ['.github', 'workflows', name]) {
+          const d = dirent(p, seg);
+          if (!d) throw new Error(`there is no ${seg} in ${p}`);
+          if (d.name !== seg) throw new Error(`${seg} is on disk as ${d.name}, a case a Linux runner does not open`);
+          p = path.join(p, seg);
+        }
+        raw = fs.readFileSync(p, 'utf8');
+        wfPath = p;
+        WORKFLOW = name;
+        break;
+      } catch (e) { tried.push(`${attempt} (${e.message})`); }
+    }
+    if (wfPath) break;
   }
-  raw = fs.readFileSync(p, 'utf8');
+  if (!wfPath) {
+    cannotRun(`could not read the workflow that carries the e2e cron. Tried, in order:\n  ` +
+      tried.join('\n  ') +
+      `\nThe ceiling is derived from that file's cron, so with no such file there is nothing to derive it from.`);
+  }
 }
-catch (e) { cannotRun(`could not read ${wfPath} (${e.message}). The ceiling is derived from that file's cron, so with the file unreadable there is nothing to derive it from.`); }
 const yaml = raw.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
 
 const crons = [...yaml.matchAll(/cron:\s*['"]([^'"]+)/g)].map(m => m[1].trim());

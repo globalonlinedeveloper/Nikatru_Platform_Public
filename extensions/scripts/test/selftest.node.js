@@ -2158,13 +2158,58 @@ const stripAll = text => text.split(/\r?\n/).map(stripComments).join('\n');
 
 const repoRel = abs => path.relative(REPO, abs).split(path.sep).join('/');
 
+/* Resolve the directory GitHub reads workflows from, for THIS checkout. */
+function workflowDir() {
+  const own = path.join(REPO, '.github', 'workflows');
+  try { fs.readdirSync(own); return own; } catch (_) { /* fall through */ }
+  try {
+    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: REPO, encoding: 'utf8' });
+    if (top.status === 0) {
+      const at = path.join(path.resolve(top.stdout.trim()), '.github', 'workflows');
+      fs.readdirSync(at);
+      return at;
+    }
+  } catch (_) { /* not a work tree, or no workflows above it */ }
+  return null;
+}
+
 /* gate path -> Set of workflow files that call it. `null` means the workflow
    directory could not be read at all, which is COVERAGE LOST, not zero gaps. */
 function gatesInvokedByWorkflows() {
-  const dir = path.join(REPO, '.github', 'workflows');
+  /* WHERE GITHUB ACTUALLY READS WORKFLOWS FROM. This tree's own directory is
+     tried first — the standalone-repository case, and the case again after a
+     `git subtree split --prefix=extensions` — and the enclosing repository's
+     root second, which is where they live since 2026-09-05 ([ADR 067]
+     decision 1). git is ASKED rather than assumed, so a fixture tree that is
+     not a work tree simply yields the one candidate it has. */
+  const dir = workflowDir();
+  if (dir === null) return null;
   let files;
   try { files = fs.readdirSync(dir).filter(f => /\.ya?ml$/i.test(f)); }
   catch (_) { return null; }
+
+  /* 🔴 WHEN THE WORKFLOWS ARE ABOVE THIS TREE, ONLY THIS TREE'S LANE COUNTS —
+     and the first spelling of this function did not say so, which produced a
+     real false red on the day of the merge: it read the platform's ci.yml,
+     matched `scripts/check-selection-record.mjs` and `scripts/provision-backend.mjs`
+     (which are tooling/scripts/ files belonging to a different tree entirely),
+     and demanded a red/green case here for gates this repository does not own.
+
+     The predicate is the same one tooling/ci/assert-lane-coverage.mjs uses to
+     recognise the extension lane: a workflow whose defaults set
+     `working-directory: extensions`. That is what makes a bare `scripts/x.mjs`
+     in its body mean THIS tree's scripts/. A workflow without it is talking
+     about some other tree, and its gates are not this file's business.
+
+     ⚠️ It applies ONLY when the directory is not this tree's own. In a
+     standalone checkout — which is what `git subtree split --prefix=extensions`
+     produces — every workflow is this tree's and no filter is wanted. */
+  const own = path.join(REPO, '.github', 'workflows');
+  if (path.resolve(dir) !== path.resolve(own)) {
+    files = files.filter((f) => /^[ \t]*working-directory:[ \t]*extensions[ \t]*$/m
+      .test(fs.readFileSync(path.join(dir, f), 'utf8')));
+  }
+
   const found = new Map();
   for (const f of files) {
     for (const hit of gateHits(stripAll(fs.readFileSync(path.join(dir, f), 'utf8')))) {
@@ -2275,7 +2320,8 @@ const COVERED = gatesWithACaseInThisFile();
 
 if (INVOKED === null) {
   bad('the set of gates the workflows invoke can be read',
-    'COVERAGE LOST — ' + path.join(REPO, '.github', 'workflows') + ' could not be read.\n' +
+    'COVERAGE LOST — no workflow directory could be read: neither this tree\'s (' +
+      path.join(REPO, '.github', 'workflows') + ') nor the repository above it.\n' +
     'An unreadable workflow directory produces an empty invoked set, and an empty invoked set has no gaps in it. ' +
     'That is not a clean bill of health, so it is a failure here rather than a silent pass.');
 } else if (INVOKED.size === 0) {
