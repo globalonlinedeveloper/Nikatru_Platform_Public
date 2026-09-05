@@ -12,6 +12,11 @@ import {
   paddleVerifier,
 } from '../src/lib/mor/paddle';
 import { REVOCATION_REASONS } from '../src/lib/mor/contract';
+// The SAME symbol, reached through the shared contract rather than through the
+// Worker's re-export. Importing both is what lets the case below assert they are
+// the same OBJECT — see "the Worker does not hold its own copy" at the end of
+// the revocation-reason group.
+import { REVOCATION_REASONS as REVOCATION_REASONS_FROM_CONTRACT } from '../../../contracts/entitlement/contract.js';
 import { realPlatformDb, type RealDb } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -463,6 +468,17 @@ describe('[5]M-3 · the entitlement record is complete', () => {
     // Exactly one member restores access, and it is the chargeback reversal —
     // nothing else in this rail gives access back.
     expect(inCode.filter((r) => r.restores).map((r) => r.reason)).toEqual(['chargeback_reversed']);
+  });
+
+  it('the Worker does not hold its own copy — it re-exports the shared contract', () => {
+    // 🔴 IDENTITY, NOT EQUALITY, AND THAT IS THE WHOLE CASE. `toEqual` would
+    // pass against two separate arrays that happen to agree today, which is
+    // exactly the state this rail was in before 2026-09-05: the set and the SQL
+    // seed were written minutes apart and were already out of step by one
+    // member. `toBe` can only pass if `src/lib/mor/contract.ts` is re-exporting
+    // the array declared in contracts/entitlement/contract.js — one object, one
+    // definition, and no way to edit one without the other.
+    expect(REVOCATION_REASONS).toBe(REVOCATION_REASONS_FROM_CONTRACT);
   });
 });
 

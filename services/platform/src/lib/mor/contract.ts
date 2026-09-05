@@ -36,9 +36,43 @@
 // a reader that spelled "no value" as "no limit".
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE VOCABULARY IS NOT DECLARED HERE ANY MORE. IT IS IMPORTED.
+//
+// `contracts/entitlement/contract.js` is the ONE authored copy of the money
+// environments and the revocation-reason set. Three runtimes have to agree about
+// them — this TypeScript Worker, the vanilla-JS extensions, and Dart via a
+// generated table — and until 2026-09-05 this file RESTATED the set instead of
+// reading it. That is the failure `tooling/ci/assert-entitlement-contract.mjs`
+// limb 4 was written for: the set and the SQL seed "were written minutes apart
+// and were already out of step by one member".
+//
+// A restatement here is now a guard failure, not a style note: limb 4 refuses a
+// `REVOCATION_REASONS … = [` literal in this file and requires this import.
+//
+// The relative path leaves the service directory on purpose, and it is not the
+// first: `src/config.ts` already imports `../../../catalog/apps.json`. esbuild
+// (wrangler) inlines both at bundle time — a Worker has no filesystem — and
+// `wrangler deploy --dry-run` is what proves the bundle resolves it.
+//
+// The `.js` specifier resolves to the hand-written `contract.d.ts` beside it for
+// types and to `contract.js` for runtime, which is exactly the arrangement that
+// keeps the extensions build-free ([ADR 067] decision 1).
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  MONEY_ENVIRONMENTS,
+  REVOCATION_REASONS,
+  isMoneyEnvironment,
+  isRevocationReason,
+  type MoneyEnvironment,
+  type RevocationReason,
+} from '../../../../../contracts/entitlement/contract.js';
+
 /**
  * Which money world a credential, a notification and an entitlement row belong
- * to. [5]M-12.
+ * to. [5]M-12. Declared in `contracts/entitlement/contract.js`; re-exported here
+ * so every existing import site (`../lib/mor/contract`) keeps working and this
+ * file stays the money rail's single TypeScript surface.
  *
  * ⚠️ IT COMES FROM CONFIGURATION, NEVER FROM THE PAYLOAD, and that is a decision
  * rather than an omission. No primary source establishes that a Paddle
@@ -48,45 +82,25 @@
  * world its configured destination secret belongs to; a notification inherits
  * that declaration, and the row records it.
  */
-export type MoneyEnvironment = 'live' | 'sandbox';
-
-export const MONEY_ENVIRONMENTS: readonly MoneyEnvironment[] = ['live', 'sandbox'];
-
-export function isMoneyEnvironment(v: unknown): v is MoneyEnvironment {
-  return typeof v === 'string' && (MONEY_ENVIRONMENTS as readonly string[]).includes(v);
-}
+export type { MoneyEnvironment };
 
 /**
- * The revocation-lifecycle reason set. MUST EQUAL the rows seeded by
- * `migrations/0004_money_rail.sql` section E — asserted by
- * `tooling/ci/assert-entitlement-contract.mjs`, because a set that lives in two
- * places drifts in one of them and the drift is invisible until a refund lands.
+ * The revocation-lifecycle reason set, and the two predicates over it. All four
+ * come from `contracts/entitlement/contract.js` and are re-exported unchanged.
+ *
+ * The set MUST EQUAL the rows seeded by `migrations/0004_money_rail.sql`
+ * section E — asserted by `tooling/ci/assert-entitlement-contract.mjs` limb 4,
+ * which now compares FIVE copies: the SQL seed, that contract file, its
+ * generated `contract.json`, the byte-identical copy the extensions vendor at
+ * `extensions/core/entitlement-contract.js`, and the generated Dart table at
+ * `packages/purchases/lib/src/generated/entitlement_contract.g.dart`.
  *
  * `restores` marks the one member that GIVES ACCESS BACK. Without it a customer
  * who raised a dispute in error, and lost it, stays locked out forever — nothing
  * else in this rail restores access to a row that was taken away.
  */
-export interface RevocationReason {
-  readonly reason: string;
-  readonly restores: boolean;
-}
-
-export const REVOCATION_REASONS: readonly RevocationReason[] = [
-  { reason: 'refund_approved', restores: false },
-  { reason: 'chargeback', restores: false },
-  { reason: 'chargeback_reversed', restores: true },
-  { reason: 'subscription_expired', restores: false },
-  { reason: 'trial_expired', restores: false },
-  { reason: 'payment_failed_final', restores: false },
-  { reason: 'cancelled_at_period_end', restores: false },
-  { reason: 'subscription_paused', restores: false },
-];
-
-const REASON_SET = new Set(REVOCATION_REASONS.map((r) => r.reason));
-
-export function isRevocationReason(v: unknown): boolean {
-  return typeof v === 'string' && REASON_SET.has(v);
-}
+export type { RevocationReason };
+export { MONEY_ENVIRONMENTS, REVOCATION_REASONS, isMoneyEnvironment, isRevocationReason };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE NORMALISED NOTIFICATION — what an adapter produces and the store consumes.

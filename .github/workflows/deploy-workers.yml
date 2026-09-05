@@ -17,6 +17,25 @@ on:
     paths:
       - 'services/subly-api/**'
       - 'services/platform/**'
+      # ── THE SHARED CONTRACT IS A BUILD INPUT OF THE platform WORKER ─────────
+      # `services/platform/src/lib/mor/contract.ts` IMPORTS
+      # `contracts/entitlement/contract.js` (ADR 067 decision 1), and esbuild
+      # inlines it into the bundle — proven with `wrangler deploy --dry-run
+      # --outdir`, whose sourcemap names the file. So editing the revocation
+      # reason set changes what the live Worker runs while nothing under
+      # services/ has moved. Without these two lines that edit deploys nothing
+      # and NOTHING GOES RED, which is the exact shape assert-deploy-triggers
+      # exists for.
+      #
+      # ⚠️ SCOPED TO *.js / *.json, NOT `contracts/entitlement/**`, AND THE
+      # DIFFERENCE IS A RECORDED INCIDENT. The `services/subly-api/**` filter
+      # above once matched a README and redeployed a production Worker on a
+      # docs-only change. `contracts/entitlement/` holds README.md, a
+      # contract.schema.json, a hand-written contract.d.ts and two generator
+      # scripts; only the ES module and the generated table are bundled. A `.md`
+      # edit here must not touch production.
+      - 'contracts/entitlement/*.js'
+      - 'contracts/entitlement/*.json'
       - '.github/workflows/deploy-workers.yml'
   workflow_dispatch:
 
@@ -108,6 +127,20 @@ jobs:
               - '.github/workflows/deploy-workers.yml'
             platform:
               - 'services/platform/**'
+              # The shared entitlement contract — see the note on the trigger
+              # list at the top of this file. Both halves must name it, or the
+              # push starts a run whose `detect` job answers false and skips
+              # every deploy while reporting success. That is the #155 shape and
+              # `tooling/ci/assert-deploy-triggers-deploy.mjs` fails the build on
+              # any trigger path no filter claims.
+              #
+              # subly-api deliberately does NOT claim it: that Worker restates
+              # its own two-value money environment in
+              # `src/lib/money.ts` and imports nothing from contracts/.
+              # Claiming a path it does not build from would redeploy it for a
+              # change that cannot affect it.
+              - 'contracts/entitlement/*.js'
+              - 'contracts/entitlement/*.json'
               - '.github/workflows/deploy-workers.yml'
       - id: decide
         # Manual dispatch has no diff to filter on → deploy both. Push → per-path.
