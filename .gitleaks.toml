@@ -189,8 +189,11 @@ id = "nikatru-india-aadhaar"
 #     Full_Screen_Shot's redaction test fixtures.
 #
 # Not one is an Aadhaar. They are PAYMENT-CARD and ORDER-ID fixtures: the middle
-# three groups of `4242 4242 4242 4242` ARE the 4-4-4 Aadhaar shape, and the
-# character before them is a SPACE, which the leading class above permits. A rule
+# three groups of a sixteen-digit card number in 4-4-4-4 form ARE the 4-4-4
+# Aadhaar shape, and the character before them is a SPACE, which the leading
+# class above permits. (Written as a description rather than as the literal, for
+# the reason the Aadhaar comment already gives twice: a rule's own documentation
+# is inside the rule's blast radius.) A rule
 # that reddens every branch is a rule somebody deletes, or allowlists until it
 # guards nothing — so the fix is to make the rule unable to match, never to
 # excuse 51 strings by name.
@@ -217,10 +220,16 @@ id = "nikatru-india-aadhaar"
 # deliberately wider and stays wider — see the note above.
 #
 # MUTATION-PROVEN 2026-09-05, green control first: with the rule below, the whole
-# merged tree scans clean; planting `>2345 6789 0123<` into an extension fixture
-# reddens the scan naming that file; removing it returns the scan to green. The
-# canary in tooling/ci/scan-secrets.mjs (`AADHAAR=999988887777`, preceded by `=`)
-# is still matched, so the rule is still proven to fire.
+# merged tree scans clean; planting an issuable-shaped 4-4-4 group into an
+# extension fixture reddens the scan naming that file; removing it returns the
+# scan to green. tooling/ci/scan-secrets.mjs's own canary for this rule is still
+# matched, so the rule is still proven to fire.
+#
+# 🔴 AND THE FIRST DRAFT OF THIS PARAGRAPH SPELLED BOTH VALUES OUT, WHICH MADE
+# THIS FILE A FINDING IN ITS OWN SCAN — twice, exactly as the two comments above
+# say it would. The self-test's scanner reads this config as a file like any
+# other and matched the planted value and the canary straight out of the prose.
+# Describe the shape; never write the digits.
 description = "Indian Aadhaar (12 digits, optionally 4-4-4 grouped; UIDAI never issues one starting 0 or 1)"
 regex = '''(?:^|^ |[^0-9] |[^ 0-9A-Za-z+-])([2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4})(?:$|[ ]$|[ ][^0-9]|[^ 0-9A-Za-z-])'''
 secretGroup = 1

@@ -748,7 +748,7 @@ jobs:
         with:
           name: pixels-${{ matrix.tool }}-node${{ matrix.node }}
           path: |
-            **/test/pixel-sim/out/**
+            extensions/**/test/pixel-sim/out/**
           retention-days: 7
           if-no-files-found: ignore
 
@@ -911,11 +911,18 @@ jobs:
         if: matrix.target == 'firefox' && matrix.os == 'ubuntu-24.04'
         run: npx --yes web-ext@8 lint --source-dir dist/unpacked-firefox --warnings-as-errors
 
+        # ⚠️ THE PATH CARRIES `extensions/` BECAUSE `defaults.run.working-directory`
+        # DOES NOT REACH A `uses:` STEP. It applies to `run:` only, so every gate
+        # command above resolves inside extensions/ while this action resolves
+        # against the workspace root. Measured: the ubuntu legs failed with "No
+        # files were found with the provided path: dist/*.zip" while the windows
+        # legs passed, because only one of the four uploads had if-no-files-found:
+        # error — the other three would have shipped an EMPTY artifact silently.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.os == 'ubuntu-24.04'
         with:
           name: ${{ matrix.tool }}-${{ matrix.target }}
-          path: dist/*.zip
+          path: extensions/dist/*.zip
           retention-days: 14
           if-no-files-found: error
 
@@ -2279,7 +2286,7 @@ jobs:
         if: always()
         with:
           name: e2e-out-${{ matrix.suite.slug }}
-          path: ${{ matrix.suite.dir }}/test/e2e/out/**
+          path: extensions/${{ matrix.suite.dir }}/test/e2e/out/**
           retention-days: 7
           if-no-files-found: ignore
 
@@ -3288,10 +3295,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ID: ${{ steps.tag.outputs.id }}
-        run: >
-          node tooling/ci/record-deployment.mjs
-          "extension-$TOOL_ID"
-          "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
+        # ⚠️ ONE LINE, AND A FOLDED `run: >` IS WHY IT HAD TO BECOME ONE.
+        # tooling/ci/deployment-record.mjs's `RECORD_CALL` reads the environment
+        # off the LINE that invokes the script, and a folded block splits the
+        # arguments across four of them — so the call parsed as an invocation with
+        # NO environment, which its own test calls out by name: "an argument shape
+        # this reader cannot parse leaves the call invisible to every guard built on
+        # it, and each of those guards then reports a smaller domain as a pass."
+        # Found by tooling/ci/test/deployment-record.test.mjs on this lane's first
+        # run through it.
+        run: node tooling/ci/record-deployment.mjs "extension-$TOOL_ID" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
 
       # The counterpart, so a rehearsal ends in a sentence rather than in the
       # absence of one. A skipped step is rendered the same way whether it was
