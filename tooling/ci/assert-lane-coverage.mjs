@@ -21,9 +21,11 @@
 //   worker         → named in some file under .github/workflows/
 //   node package   → named in some file under .github/workflows/
 //   site           → named in some file under .github/workflows/
-//   extension      → is a row in extensions/catalog/extensions.json AND some
-//                    workflow invokes extensions/scripts/discover.mjs
-//                    (check-catalog.mjs then guards that list — see below)
+//   extension      → is a row in extensions/catalog/extensions.json AND one
+//                    workflow both invokes scripts/discover.mjs and sets
+//                    `working-directory: extensions` (check-catalog.mjs then
+//                    guards that list, the way assert-workspace-coverage guards
+//                    the pubspec one)
 //
 // Pipeline requirement: Private/requirements/ → F-9.
 // (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
@@ -139,12 +141,35 @@ function claimableText(raw) {
 }
 
 const wfDir = join(repoRoot, '.github', 'workflows');
-const workflowText = existsSync(wfDir)
+const workflowTexts = existsSync(wfDir)
   ? listDir(wfDir)
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => claimableText(readFileSync(join(wfDir, f), 'utf8')))
-      .join('\n')
-  : '';
+  : [];
+const workflowText = workflowTexts.join('\n');
+
+// 🔴 THE EXTENSION LANE IS CLAIMED BY A PAIR OF FACTS IN ONE FILE, NOT BY A
+// SUBSTRING IN THE CONCATENATION. The extension jobs run with
+// `working-directory: extensions`, so the command they invoke reads
+// `node scripts/discover.mjs` — the tree-relative form, which is what keeps
+// `git subtree split --prefix=extensions` producing a repository whose commands
+// still resolve. Searched over the joined text, `scripts/discover.mjs` would be
+// satisfied by any workflow in the tree happening to mention it, which is the
+// "a unit named only in a comment counted as covered" mistake this file already
+// records once. So the two halves must appear in the SAME workflow file: the
+// discoverer, and the working directory that makes it point at extensions/.
+// ⚠️ ANCHORED TO A WHOLE LINE, AND THE LOOSE FORM WAS TRIED FIRST AND FAILED ITS
+// OWN MUTATION TEST. `/working-directory:\s*extensions\b/` also matches
+// `working-directory: extensions/Extension/<Tool>/test/e2e`, a STEP-level
+// override three jobs further down — so re-pointing the workflow's DEFAULT at
+// another directory left this guard green, because a Playwright step still
+// mentioned the word. Measured 2026-09-05: with the loose form the mutation
+// printed "all claimed"; with the anchored form it names the extension as
+// unclaimed. The claim has to be the default that every gate command inherits,
+// not any appearance of the directory's name.
+const hasExtensionLane = workflowTexts.some(
+  (t) => t.includes('scripts/discover.mjs') && /^[ \t]*working-directory:[ \t]*extensions[ \t]*$/m.test(t),
+);
 
 let workspaceMembers = new Set();
 const rootPubspec = join(repoRoot, 'pubspec.yaml');
@@ -194,12 +219,13 @@ function isClaimed(unit) {
   // the workflow matrix is keyed on the id precisely so that a matrix never has
   // to translate a path anywhere. So the covering mechanism is the pair: the id
   // is published in the catalogue (which check-catalog.mjs holds equal to the
-  // tools on disk), and a workflow really invokes the discoverer that turns the
-  // catalogue's world into jobs. Delete the discover step and every extension
-  // unit goes unclaimed here — which is the failure the step's absence IS.
+  // tools on disk), and one workflow really invokes the discoverer AGAINST THIS
+  // SUBTREE — see hasExtensionLane above. Delete the discover step, or point the
+  // lane at some other directory, and every extension unit goes unclaimed here,
+  // which is the failure that absence IS.
   if (unit.type === 'extension') {
     const id = toolId(unit.path);
-    return id !== null && catalogSlugs.has(id) && workflowText.includes('extensions/scripts/discover.mjs');
+    return id !== null && catalogSlugs.has(id) && hasExtensionLane;
   }
   return workflowText.includes(unit.path);
 }
@@ -276,7 +302,7 @@ if (unclaimed.length) {
       u.type === 'dart'
         ? 'add it to the root pubspec.yaml `workspace:` list'
         : u.type === 'extension'
-          ? 'publish its id in extensions/catalog/extensions.json, and keep a job that runs extensions/scripts/discover.mjs'
+          ? 'publish its id in extensions/catalog/extensions.json, and keep a workflow whose defaults set `working-directory: extensions` and which runs scripts/discover.mjs'
           : 'name it in a job under .github/workflows/';
     console.error(`    ${u.path}  (${u.type}) — ${how}`);
   }

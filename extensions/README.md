@@ -1,5 +1,38 @@
 # NIKATRU — browser extensions
 
+> ### 🔴 THIS DIRECTORY WAS A REPOSITORY UNTIL 2026-09-05.
+>
+> It is now a **subtree of `Nikatru_Platform_Public`**, at `extensions/`, under
+> [ADR 067] decision 1 — *"a sovereign, build-free `extensions/` subtree"*. The old
+> repository, `globalonlinedeveloper/Nikatru_Extensions_Public`, is **archived, not
+> deleted**: all 61 of its commits came across with `git subtree add` and are in this
+> repository's history, and the archived original stays addressable.
+>
+> **What did not change, and is the reason the word "sovereign" is in that sentence:**
+> there is still no package manager, no bundler and no transpiler under this
+> directory, every gate is still one `node scripts/<name>.mjs`, and every workflow
+> command still runs with `working-directory: extensions` so it is byte-identical to
+> the one that ran when this was its own repository.
+>
+> **What changed:** the three workflows are now one, at
+> `.github/workflows/extensions.yml` in the repository root, with job-level change
+> detection driven by this tree's own `scripts/discover.mjs`. And two checks exist
+> that could not exist before, because they read files on both sides of what used to
+> be a repository boundary — `tooling/ci/assert-extensions-build-free.mjs`, which
+> makes the no-build property an invariant rather than a habit, and
+> `tooling/ci/assert-lane-coverage.mjs`, which now counts every extension as a
+> deployable unit and refuses a tree where one is claimed by no lane.
+>
+> **The exit is one command, and it is worth knowing before you need it:**
+>
+> ```
+> git subtree split --prefix=extensions -b extensions-only
+> ```
+>
+> That reconstructs a standalone repository with full, correct history at any future
+> date. Nothing about the merge is expensive to reverse — which is why it was the
+> cheaper decision to be wrong about.
+
 Cross-browser extensions for Chrome, Firefox and Edge. Built by
 [NIKATRU](https://nikatru.com), a sole proprietorship registered in India.
 
