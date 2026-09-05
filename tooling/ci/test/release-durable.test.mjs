@@ -30,7 +30,9 @@ import {
   laneIsWorkflow,
   expectedReleaseFormats,
   missingReleaseFormats,
-  originEnvironments,
+  originEnvironments as originEnvironmentsRaw,
+  channelIsOnSurface,
+  productSurfaces,
   signingPosture,
   renderManifest,
   parseManifest,
@@ -115,14 +117,36 @@ function registerWith(mutate) {
   return r;
 }
 
+/**
+ * `originEnvironments` takes the release's SURFACE as a required fourth argument
+ * (added 2026-09-05 — without it `--app subly` emitted three browser-store
+ * environments). Every case in this file that does not name one is an APP-surface
+ * release, so this wrapper supplies `'app'` and the extension cases pass
+ * `'extension'` explicitly. The REQUIREMENT itself — that the raw function
+ * refuses a missing surface — is asserted directly against `originEnvironmentsRaw`
+ * in "the surface is REQUIRED" below, so the default here cannot hide it.
+ */
+const originEnvironments = (register, app, assets, surface = 'app') => originEnvironmentsRaw(register, app, assets, surface);
+
 /** Every fixture root carries the real release-manifest.mjs, because the guard
  *  reads MANIFEST_NAME and the extension derivation OUT of it — that single
  *  declaration is one of the guard's REQUIRED_COVERAGE identities, so a fixture
  *  without it is testing a different guard. */
-function fixture({ workflows = {}, register = REGISTER, withManifestScript = true } = {}) {
+function fixture({ workflows = {}, register = REGISTER, withManifestScript = true, apps = ['subly'], tools = [] } = {}) {
   const root = join(TMP, `f${seq++}`);
   mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
   mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+  // 🔴 THE FIXTURE CARRIES THE PRODUCTS ITS CLI CASES NAME. `--app <id>` is
+  // resolved to a surface against the TREE (apps/<id>/ or a tool.json declaring
+  // that id), and a root holding neither is refused — correctly, and that
+  // refusal would otherwise be what every `--emit-environments` case below
+  // measured instead of the behaviour it names.
+  for (const a of apps) mkdirSync(join(root, 'apps', a), { recursive: true });
+  for (const t of tools) {
+    const dir = join(root, 'extensions', 'Extension', t.dir ?? t.id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'tool.json'), JSON.stringify({ id: t.id, surface: t.surface ?? 'extension' }, null, 2));
+  }
   if (register !== null) writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(register, null, 2));
   if (withManifestScript) copyFileSync(MANIFEST_SCRIPT, join(root, 'tooling', 'ci', 'release-manifest.mjs'));
   if (withManifestScript) copyFileSync(TREE_WALK, join(root, 'tooling', 'ci', 'tree-walk.mjs'));
@@ -532,7 +556,8 @@ describe('release-manifest.mjs — the derivations', () => {
     assert.ok(exts.has('.msix'));
     assert.ok(exts.has('.apk'), 'the only sideloadable Android artifact must be covered');
     assert.ok(!exts.has('static-bundle'), 'a shape name is not a file extension');
-    assert.ok(EXTRA_INSTALLABLE.get('.apk').length > 60, 'an extra without a reason is a hole with a comment');
+    assert.ok(EXTRA_INSTALLABLE.get('.apk').why.length > 60, 'an extra without a reason is a hole with a comment');
+    assert.equal(EXTRA_INSTALLABLE.get('.apk').surface, 'app', 'an extra with no surface is an extra offered to every surface');
   });
 
   test('originEnvironments takes DIRECT channels only, and only when the release carries their format', () => {
@@ -648,7 +673,7 @@ describe('release-manifest.mjs — the derivations', () => {
 //        is NOT loose-able: `/all 2 matching direct channel\(s\)/` relaxed to
 //        `all \d matching` unpins `all ${omitted.length}` in release-manifest.mjs
 //        — measured, that pair goes GREEN. The digit is the assertion.
-//      · the `\.` escapes in `/The release holds: README\.md, notes\.txt\./`.
+//      · the `\.` escapes in `/The release holds: README\.md, notes\.txt, …/`.
 //        Unescaped, `.` matches the same characters here and nothing else.
 //
 // C. ASSERTIONS THAT ARE REDUNDANT WITH A STRONGER ONE BESIDE THEM — kept
@@ -1309,7 +1334,7 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     assert.doesNotMatch(r.out, /omitted {2}/, 'a row that never matched is not a row that was withheld');
     // The die names what the release DID hold, so the reader can see it was a
     // .txt and not an empty stage.
-    assert.match(r.out, /The release holds: notes\.txt\./);
+    assert.match(r.out, /The release holds: notes\.txt, and `--app subly` is on the "app" surface/);
 
     // ...and an EMPTY release directory reaches the same die by a different road.
     // `${names.join(', ') || '(nothing)'}` — the `|| '(nothing)'` fallback is
@@ -1322,7 +1347,7 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     mkdirSync(empty, { recursive: true });
     const e = cli(['--emit-environments', empty, '--app', 'subly', '--repo-root', root]);
     assert.equal(e.code, 1, e.out);
-    assert.match(e.out, /The release holds: \(nothing\)\./);
+    assert.match(e.out, /The release holds: \(nothing\), and `--app subly` is on the "app" surface/);
     assert.equal(e.stdout.trim(), '');
 
     // ...and the join RANGES OVER EVERY STAGED FILE. `names.join(', ')` sliced to
@@ -1340,7 +1365,7 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     writeFileSync(join(two, 'README.md'), 'x');
     const t = cli(['--emit-environments', two, '--app', 'subly', '--repo-root', root]);
     assert.equal(t.code, 1, t.out);
-    assert.match(t.out, /The release holds: README\.md, notes\.txt\./, t.out);
+    assert.match(t.out, /The release holds: README\.md, notes\.txt, and `--app subly` is on the "app" surface/, t.out);
   });
 
   // 🔴 THE NAME BELOW SAID "both direct rows sit on their sentinels today" until
@@ -2008,7 +2033,7 @@ describe('release-manifest.mjs — the extension surface is an origin too', () =
   };
 
   test('a surface:"extension" store row IS an origin — the store takes the bytes this release published', () => {
-    const r = originEnvironments({ channels: [EXT_ROW] }, 'fullshot', ['fullshot-chromium.zip']);
+    const r = originEnvironments({ channels: [EXT_ROW] }, 'fullshot', ['fullshot-chromium.zip'], 'extension');
     assert.deepEqual(r.environments, ['fullshot-chrome-webstore']);
     assert.deepEqual(r.omitted, []);
   });
@@ -2021,16 +2046,161 @@ describe('release-manifest.mjs — the extension surface is an origin too', () =
   });
 
   test('an extension row whose format this release does NOT carry is not emitted', () => {
-    const r = originEnvironments({ channels: [EXT_ROW] }, 'fullshot', ['subly-v1-app-release.aab']);
+    const r = originEnvironments({ channels: [EXT_ROW] }, 'fullshot', ['subly-v1-app-release.aab'], 'extension');
     assert.deepEqual(r.environments, []);
   });
 
   test('an extension row with an UNDECLARED signing posture is withheld, exactly as a direct row is', () => {
     const noSigning = { ...EXT_ROW, signing: { keyKind: 'mystery' } };
-    const r = originEnvironments({ channels: [noSigning] }, 'fullshot', ['fullshot-chromium.zip']);
+    const r = originEnvironments({ channels: [noSigning] }, 'fullshot', ['fullshot-chromium.zip'], 'extension');
     assert.deepEqual(r.environments, []);
     assert.equal(r.omitted.length, 1);
     assert.equal(r.omitted[0].state, 'undeclared');
+  });
+});
+
+describe('release-manifest.mjs — the SURFACE of the release, not just of the row', () => {
+  // 🔴 WHY THIS SUITE EXISTS. The commit that added the three extension rows made
+  // `.zip` a format of THE REGISTER, and both readers of the register ranged over
+  // every row with no surface question. Two defects, both measured on the real
+  // tree on 2026-09-05 against main:
+  //   · `--stage <dl> --out <out> --app subly --tag v1.0.0` over a directory
+  //     holding subly-1.0.0.zip: main exited 1, "no installable artifact found";
+  //     the branch exited 0 and staged the .zip as an APP installable.
+  //   · `--emit-environments <dir> --app subly` over a dist holding a .zip: main
+  //     exited 1, "no `kind: "direct"` channel … declares a format this release
+  //     carries"; the branch exited 0 printing subly-amo, subly-chrome-webstore
+  //     and subly-edge-addons — three [10]D-9 records of browser-store origins
+  //     for a Flutter app that ships to no browser store.
+  // An honest refusal became three false environments, so every case below is
+  // written from the app side as well as the extension side.
+  const EXT_ROWS = [
+    {
+      id: 'chrome-webstore',
+      kind: 'store',
+      surface: 'extension',
+      served: false,
+      artifactFormats: ['.zip'],
+      deploymentEnvironment: '{app}-chrome-webstore',
+      signing: { keyKind: 'none', identity: null },
+    },
+    {
+      id: 'amo',
+      kind: 'store',
+      surface: 'extension',
+      served: false,
+      artifactFormats: ['.zip'],
+      deploymentEnvironment: '{app}-amo',
+      signing: { keyKind: 'none', identity: null },
+    },
+  ];
+  const BOTH_SURFACES = { channels: [...REGISTER.channels.map((c) => ({ ...c, surface: 'app' })), ...EXT_ROWS] };
+
+  test('channelIsOnSurface is an equality on the EXTENSION side and a pass-through on the other', () => {
+    assert.equal(channelIsOnSurface({ surface: 'extension' }, 'extension'), true);
+    assert.equal(channelIsOnSurface({ surface: 'extension' }, 'app'), false);
+    assert.equal(channelIsOnSurface({ surface: 'app' }, 'app'), true);
+    assert.equal(channelIsOnSurface({ surface: 'app' }, 'extension'), false);
+    // A row with NO surface keeps exactly the behaviour it had before the gate:
+    // the register's schema requires the field and assert-channel-register.mjs
+    // fails without it, so a surface-less row is a tree that is already red and
+    // this script must not hold a second opinion about it.
+    assert.equal(channelIsOnSurface({}, 'app'), true);
+    assert.equal(channelIsOnSurface({}, 'extension'), false);
+    assert.equal(channelIsOnSurface(null, 'app'), true);
+  });
+
+  test('installableExtensions narrows to one surface, and UNNARROWED is still the whole register', () => {
+    const all = installableExtensions(BOTH_SURFACES);
+    assert.ok(all.has('.zip') && all.has('.aab') && all.has('.apk'), 'the guards ask the whole-tree question and must keep getting it');
+    const app = installableExtensions(BOTH_SURFACES, 'app');
+    assert.ok(!app.has('.zip'), 'a .zip is an extension channel format and nothing else — an app release must not stage one');
+    assert.ok(app.has('.aab') && app.has('.msix'));
+    assert.ok(app.has('.apk'), 'the declared extra is on the app surface and stays there');
+    const ext = installableExtensions(BOTH_SURFACES, 'extension');
+    assert.deepEqual([...ext].sort(), ['.zip'], 'an extension release carries the packer output and nothing a Flutter build makes');
+    assert.ok(!ext.has('.apk'), 'the .apk extra must not be offered to a lane that can never build one');
+  });
+
+  test('the surface is REQUIRED — originEnvironments throws rather than defaulting to every surface', () => {
+    // A default would be the defect itself: the caller that forgets the argument
+    // gets the widened answer and every log line still reads correct.
+    assert.throws(() => originEnvironmentsRaw(BOTH_SURFACES, 'subly', ['subly-v1.zip']), /needs the SURFACE/);
+    assert.throws(() => originEnvironmentsRaw(BOTH_SURFACES, 'subly', ['subly-v1.zip'], ''), /needs the SURFACE/);
+    assert.throws(() => originEnvironmentsRaw(BOTH_SURFACES, 'subly', ['subly-v1.zip'], null), /needs the SURFACE/);
+  });
+
+  test('an APP release carrying a .zip emits NO extension environment — the 2026-09-05 defect, pinned', () => {
+    const r = originEnvironmentsRaw(BOTH_SURFACES, 'subly', ['subly-1.0.0.zip'], 'app');
+    assert.deepEqual(r.environments, [], 'subly-amo / subly-chrome-webstore / subly-edge-addons are submissions that cannot exist');
+    assert.deepEqual(r.omitted, [], 'a row on another surface never matched, so it was never withheld either');
+  });
+
+  test('an EXTENSION release emits its store rows and no direct row', () => {
+    const r = originEnvironmentsRaw(BOTH_SURFACES, 'fullshot', ['fullshot-chromium.zip'], 'extension');
+    assert.deepEqual(r.environments, ['fullshot-amo', 'fullshot-chrome-webstore']);
+    // windows-direct is a `kind: "direct"` row on the app surface. An extension
+    // release has no direct-download channel, and emitting one would record a
+    // download origin for a file this lane never built.
+    const withMsix = originEnvironmentsRaw(BOTH_SURFACES, 'fullshot', ['fullshot-chromium.zip', 'fullshot-v1.msix'], 'extension');
+    assert.deepEqual(withMsix.environments, ['fullshot-amo', 'fullshot-chrome-webstore']);
+  });
+
+  test('productSurfaces reads the tool.json DECLARATION, not the directory it sits in', () => {
+    const root = fixture({ apps: ['subly'], tools: [{ dir: 'Full_Screen_Shot', id: 'fullshot' }] });
+    assert.deepEqual(productSurfaces(root, 'fullshot').map((f) => f.surface), ['extension']);
+    assert.deepEqual(productSurfaces(root, 'subly').map((f) => f.surface), ['app']);
+    assert.deepEqual(productSurfaces(root, 'nothing-here'), [], 'an id the tree does not hold resolves to nothing, and the CLI refuses on it');
+    // The id comes from tool.json's `id`, never from the directory name.
+    assert.deepEqual(productSurfaces(root, 'Full_Screen_Shot'), []);
+  });
+
+  test('CLI --emit-environments refuses an APP id over a .zip, and names the surface it used', () => {
+    const root = fixture({ register: BOTH_SURFACES, apps: ['subly'], tools: [{ dir: 'Full_Screen_Shot', id: 'fullshot' }] });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subly-1.0.0.zip'), 'z');
+    const r = cli(['--emit-environments', d, '--app', 'subly', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no `kind: "direct"` and no `surface: "extension"` channel/);
+    assert.match(r.out, /is on the "app" surface/);
+    assert.equal(r.stdout.trim(), '', 'a refusal must put no environment name on stdout — the lane reads stdout as a word list');
+    // ...and the same directory under the extension id records the two rows.
+    const e = cli(['--emit-environments', d, '--app', 'fullshot', '--repo-root', root]);
+    assert.equal(e.code, 0, e.out);
+    assert.deepEqual(e.stdout.trim().split(String.fromCharCode(10)).sort(), ['fullshot-amo', 'fullshot-chrome-webstore']);
+  });
+
+  test('CLI refuses an --app id no product in the tree claims, rather than ranging over every surface', () => {
+    const root = fixture({ register: BOTH_SURFACES, apps: ['subly'] });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subly-1.0.0.zip'), 'z');
+    const r = cli(['--emit-environments', d, '--app', 'nosuchthing', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /this tree holds no such product/);
+  });
+
+  test('CLI --stage over a stray .zip finds no APP installable again, and says which surface it looked on', () => {
+    const root = fixture({ register: BOTH_SURFACES, apps: ['subly'], tools: [{ dir: 'Full_Screen_Shot', id: 'fullshot' }] });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(from, { recursive: true });
+    writeFileSync(join(from, 'subly-1.0.0.zip'), 'z');
+    const out = join(TMP, `o${seq++}`);
+    const r = cli(['--stage', from, '--out', out, '--app', 'subly', '--tag', 'subly-v1.0.0', '--repo-root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no installable artifact found/);
+    assert.match(r.out, /surface "app"/);
+    assert.doesNotMatch(r.out, /Looked for:[^\n]*\.zip/, 'the .zip must not appear in the app surface expectation at all');
+    // The same file under the extension id IS its installable.
+    const from2 = join(TMP, `s${seq++}`);
+    mkdirSync(from2, { recursive: true });
+    writeFileSync(join(from2, 'fullshot-chromium.zip'), 'z');
+    const out2 = join(TMP, `o${seq++}`);
+    const e = cli(['--stage', from2, '--out', out2, '--app', 'fullshot', '--tag', 'fullshot-v1.0.0', '--repo-root', root]);
+    assert.equal(e.code, 0, e.out);
+    assert.deepEqual(assetFiles(out2).names, ['fullshot-v1.0.0-fullshot-chromium.zip']);
   });
 });
 
@@ -2100,12 +2270,42 @@ describe('assert-release-durable.mjs — a job that cannot run on a tag is a bui
     assert.match(r.out, /job "package" uploads an installable artifact/);
   });
 
-  test('a STEP-level tag exclusion does not excuse the JOB — the shallowest `if:` is the job\'s', () => {
+  // 🔴 THESE TWO CASES REPLACE ONE THAT COULD NOT FAIL, AND THE REPLACEMENT IS THE
+  // POINT. The case here until 2026-09-05 wrote the step condition on the step's
+  // BULLET line — `      - if: "..."` — which the guard's own `/^(\\s*)if:/` matcher
+  // can never see, so it passed for the same reason "a job with NO `if:` at all"
+  // above passes and exercised nothing. The ordinary spelling is an `if:` on its
+  // own line inside the step, which is what `.github/workflows/extensions.yml`
+  // itself writes, and it is the spelling that bypassed the guard: reproduced on
+  // the real tree, the guard went from EXIT 1 to EXIT 0 and PRINTED that the job's
+  // own `if:` carried a clause the job did not have.
+  const STEP_IF =
+    String.fromCharCode(10) +
+    '        if: ' + String.fromCharCode(34) + '!startsWith(github.ref, ' + String.fromCharCode(39) + 'refs/tags/' + String.fromCharCode(39) + ')' + String.fromCharCode(34);
+
+  test('a STEP-level tag exclusion does not excuse a job with NO `if:` — the spelling extensions.yml uses', () => {
     const stepLevel = TAGGED
       .replace('    IFLINE' + String.fromCharCode(10), '')
-      .replace('      - uses: actions/upload-artifact@v7', "      - if: \"!startsWith(github.ref, 'refs/tags/')\"" + String.fromCharCode(10) + '        uses: actions/upload-artifact@v7');
+      .replace('      - uses: actions/upload-artifact@v7', '      - uses: actions/upload-artifact@v7' + STEP_IF);
+    assert.match(stepLevel, /^ {8}if: /m, 'the fixture must carry the condition on its OWN line, or it tests the matcher and not the rule');
     const root = fixture({ register: EXT_REGISTER, workflows: { 'extensions.yml': stepLevel } });
     const r = run(root);
     assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job \"package\" uploads an installable artifact/);
+    assert.doesNotMatch(r.out, /its own `if:` carries/, 'the job carries no `if:` of its own and the guard must not say it does');
+  });
+
+  // ⚠️ THIS SECOND CASE IS A REGRESSION GUARD, NOT A REPRODUCTION, and the two are
+  // recorded apart so nobody reads it as the proof. Measured 2026-09-05 with the OLD
+  // (bypassable) body put back: the case above FAILS and this one still PASSES,
+  // because with a job-level `if:` present the shallowest `if:` in the body IS the
+  // job's and the old reading happened to be right. Only the case above bites.
+  test('a STEP-level tag exclusion does not top up a job `if:` that lacks one', () => {
+    const both = withIf("    if: github.event_name != 'schedule'")
+      .replace('      - uses: actions/upload-artifact@v7', '      - uses: actions/upload-artifact@v7' + STEP_IF);
+    const root = fixture({ register: EXT_REGISTER, workflows: { 'extensions.yml': both } });
+    const r = run(root);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /job \"package\" uploads an installable artifact/);
   });
 });

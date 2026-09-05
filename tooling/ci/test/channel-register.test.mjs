@@ -464,6 +464,12 @@ function tree({
   extensionToolDirs = ['Full_Screen_Shot'],
   omitExtensionStoreDir = false,
   toolJsonStores = null,       // null = derive from the row's extensionStoreKey
+  // tool.json declares which stores a pack target reaches TWICE — forward as
+  // `targets.<t>.stores` and backwards as `storeMetadata.stores.<k>.target` —
+  // and assert-channel-register derives its pack-target map from them, so it
+  // holds the two equal. `null` writes the agreeing pair; a value here replaces
+  // the forward half and is how the disagreement is exercised.
+  toolJsonTargets = null,
   // `extensionLane` gives the row a lane in a workflow this fixture writes.
   // `extensionLaneBuilds:false` strips the `pack.mjs --target` step, so section
   // 3b resolves NO emitted format for any browser — which must be COVERAGE LOST
@@ -555,14 +561,34 @@ function tree({
   // that types this table cannot survive both directions of the guard's check.
   // `breakArtifactBuild` is the deliberate escape hatch, so §10 can still be
   // negative-tested without any test having to hand-write the whole table.
+  // A format declared ONLY by extension rows is built by the packer, not by
+  // Flutter, and the real register writes it that way: `surface: "extension"`
+  // plus a `packVerb`, never a `flutterTarget`. It has to be written that way
+  // here too, because assert-channel-register derives the extension surface's
+  // format set from exactly these entries — a fixture that omits the surface
+  // makes the pack-target map carry no formats and the extension half of §3b
+  // then reports COVERAGE LOST for the fixture's own shape.
+  const extOnlyFormats = new Set(
+    register.channels.filter((c) => c.surface === 'extension').flatMap((c) => c.artifactFormats ?? []),
+  );
+  for (const c of register.channels) {
+    if (c.surface === 'extension') continue;
+    for (const f of c.artifactFormats ?? []) extOnlyFormats.delete(f);
+  }
   register.artifactBuild = {
     formats: Object.fromEntries(
       [...new Set(register.channels.flatMap((c) => c.artifactFormats ?? []))].map((f) => [
         f,
-        {
-          flutterTarget: FIXTURE_BUILD_VERB[f] ?? 'web',
-          packagedBy: Object.prototype.hasOwnProperty.call(packagedBy, f) ? packagedBy[f] : FIXTURE_UNPACKAGED,
-        },
+        extOnlyFormats.has(f)
+          ? {
+              surface: 'extension',
+              packVerb: 'node extensions/scripts/pack.mjs fullshot --target chromium --out dist',
+              packagedBy: Object.prototype.hasOwnProperty.call(packagedBy, f) ? packagedBy[f] : FIXTURE_UNPACKAGED,
+            }
+          : {
+              flutterTarget: FIXTURE_BUILD_VERB[f] ?? 'web',
+              packagedBy: Object.prototype.hasOwnProperty.call(packagedBy, f) ? packagedBy[f] : FIXTURE_UNPACKAGED,
+            },
       ]),
     ),
   };
@@ -586,7 +612,18 @@ function tree({
     const key = row?.extensionStoreKey ?? 'chrome';
     for (const tool of extensionToolDirs) {
       const stores = toolJsonStores ?? { [key]: { target: 'chromium', dir: `store/${key}`, served: false } };
-      write(`extensions/Extension/${tool}/tool.json`, JSON.stringify({ id: tool.toLowerCase(), surface: 'extension', storeMetadata: { stores } }, null, 2));
+      // The forward declaration, derived from the reverse one so the pair agrees
+      // unless a case deliberately breaks it.
+      const derivedTargets = {};
+      for (const [k, v] of Object.entries(stores)) {
+        const t = v?.target ?? 'chromium';
+        derivedTargets[t] = { stores: [...(derivedTargets[t]?.stores ?? []), k] };
+      }
+      const targets = toolJsonTargets ?? derivedTargets;
+      write(
+        `extensions/Extension/${tool}/tool.json`,
+        JSON.stringify({ id: tool.toLowerCase(), surface: 'extension', targets, storeMetadata: { stores } }, null, 2),
+      );
       if (!omitExtensionStoreDir) write(`extensions/Extension/${tool}/store/${key}/README.md`, 'listing');
     }
     if (extensionLane) {
@@ -2697,14 +2734,107 @@ describe('assert-channel-register — the extension lane is COMPARED, not assume
     assert.match(out, /UNMAPPED PACK TARGET\(S\): "safari"/);
   });
 
-  test('a FORMAT GAP is printed when the lane emits nothing the row accepts', () => {
+  // 🔴 THIS CASE USED TO ASSERT A PRINT AND EXIT 0, AND THE CHANGE IS RECORDED
+  // RATHER THAN QUIETLY MADE. It read: the row accepts `.crx`, the lane emits
+  // `.zip`, so PRINT a format gap. That comparison only existed because the pack
+  // target's formats were HARD-CODED to `['.zip']` in the guard — a second copy
+  // of the register's `artifactBuild` block, and the copy that could not drift
+  // loudly. Now that the format set is derived from `artifactBuild.formats`
+  // (every entry declaring `surface: "extension"`), a register whose only
+  // extension format is NOT declared as pack-built resolves NO emitted format at
+  // all, and that is COVERAGE LOST — exit 1, not a print. The outcome got
+  // STRONGER, not weaker: the same tree that used to print a note now fails the
+  // build, and the note it used to print was derived from a list nobody
+  // maintained.
+  test('a register whose extension format is not declared pack-built is COVERAGE LOST, not a quiet pass', () => {
     const { code, out } = run(tree({
       withExtension: true,
       extensionLane: true,
       mutate: (r) => { r.channels.at(-1).artifactFormats = ['.crx']; },
-      breakArtifactBuild: (r) => { r.artifactBuild.formats['.crx'] = { packVerb: 'node scripts/pack.mjs', packagedBy: 'NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY' }; },
+      breakArtifactBuild: (r) => { r.artifactBuild.formats['.crx'] = { flutterTarget: 'web', packagedBy: 'NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY' }; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /extension store row\(s\) name a lane and the lane scan resolved NO emitted format/);
+  });
+
+  // 🔴 THE PACK-TARGET MAP IS DERIVED FROM tool.json, AND THESE CASES ARE WHAT
+  // MAKE THAT A CLAIM RATHER THAN A COMMENT. Until 2026-09-05 the guard carried
+  // the literal `['chromium', { platforms: ['chrome', 'edge'] }]`, a second copy
+  // of tool.json's own `targets.chromium.stores` — and it was mutation-proven
+  // BLIND to it on the real tree: renaming the mapping inside
+  // extensions/Extension/Full_Screen_Shot/tool.json (`targets.chromium.stores`
+  // to ["chrome"] with `storeMetadata.stores.edge.target` to "firefox") left
+  // `node tooling/ci/assert-channel-register.mjs` at EXIT 0. Nothing anywhere in
+  // either corpus compared the two declarations — measured, not assumed:
+  // extensions/scripts/check-store-metadata.mjs holds every store's `target` to
+  // the `targets` KEYS (:404) and every target to at least one store (:407), and
+  // neither of those reads `targets.<t>.stores` at all.
+  test('FAILS when tool.json`s two declarations of which stores a target reaches disagree — the forward half is wrong', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      toolJsonTargets: { chromium: { stores: ['chrome', 'edge'] } },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares `targets\.chromium\.stores` = \[chrome, edge\]/);
+    assert.match(out, /the second copy is the one that drifts/);
+  });
+
+  test('FAILS when the REVERSE half is the one that moved — both directions, one message', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      toolJsonStores: {
+        chrome: { target: 'chromium', dir: 'store/chrome', served: false },
+        edge: { target: 'chromium', dir: 'store/edge', served: false },
+      },
+      toolJsonTargets: { chromium: { stores: ['chrome'] } },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names \[chrome, edge\] as the rows built by target "chromium"/);
+  });
+
+  test('a target with NO forward `stores` key is not a finding — one target, one store, carried by the reverse declaration', () => {
+    // `targets.firefox` in the real tool.json declares an `overlay` and no
+    // `stores` array. Demanding the forward key everywhere would fail a tree that
+    // is correct, so the comparison runs only where both halves are written.
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      toolJsonTargets: { chromium: { overlay: 'publish/manifest.chromium.json' } },
     }));
     assert.equal(code, 0, out);
-    assert.match(out, /FORMAT GAP \(deferred\): channel "chrome-webstore" accepts "\.crx"/);
+  });
+
+  test('the pack-target map is EMPTY when tool.json declares no targets — refused, never assumed', () => {
+    // 🔴 THE DIRECT PROOF THAT NOTHING IS HARD-CODED. Delete `targets` from
+    // tool.json and the guard has no mapping for `pack.mjs --target chromium` at
+    // all, so the extension lane resolves no format and the run is COVERAGE LOST.
+    // The old literal map could not produce this outcome on any input: it always
+    // held chromium -> [chrome, edge] whatever tool.json said, which is exactly
+    // the blindness this derivation removes.
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      toolJsonTargets: {},
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /extension store row\(s\) name a lane and the lane scan resolved NO emitted format/);
+  });
+
+  test('...and the SAME row is green once artifactBuild declares that format pack-built on the extension surface', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      mutate: (r) => { r.channels.at(-1).artifactFormats = ['.crx']; },
+      breakArtifactBuild: (r) => {
+        r.artifactBuild.formats['.crx'] = {
+          surface: 'extension',
+          packVerb: 'node extensions/scripts/pack.mjs fullshot --target chromium --out dist',
+          packagedBy: 'NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY',
+        };
+      },
+    }));
+    assert.equal(code, 0, out);
   });
 });

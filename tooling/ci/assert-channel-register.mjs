@@ -948,10 +948,104 @@ if (packagingResolved > 0) {
  * than one, and the register's `chrome-webstore` and `edge-addons` rows name one
  * lane job between them.
  */
-const PACK_TARGETS = new Map([
-  ['chromium', { platforms: ['chrome', 'edge'], formats: ['.zip'] }],
-  ['firefox', { platforms: ['firefox'], formats: ['.zip'] }],
-]);
+/**
+ * 🔴 DERIVED FROM tool.json AND FROM THE REGISTER, NOT TYPED HERE — CORRECTED
+ * 2026-09-05 AFTER REVIEW. The first version of this map was the literal
+ * `['chromium', { platforms: ['chrome', 'edge'] }]`, which is a SECOND copy of
+ * `extensions/Extension/<tool>/tool.json`'s own `targets.chromium.stores` and
+ * `storeMetadata.stores.*.target` — and it was the copy that could not drift
+ * loudly, because nothing compared them. Measured before the fix: renaming the
+ * mapping inside tool.json (`targets.chromium.stores = ["chrome"]` with
+ * `storeMetadata.stores.edge.target = "firefox"`) left this guard at EXIT 0. That
+ * is [pipeline F-2] committed inside the very file whose comment quotes it.
+ *
+ * The chain, every link already maintained by somebody else:
+ *   · the TARGET names come from tool.json `targets` — the pack verbs that exist.
+ *   · the STORES a target reaches come from tool.json, read on BOTH of its own
+ *     declarations and held equal by `checkToolTargetStores` below: the forward
+ *     `targets.<T>.stores` and the reverse `storeMetadata.stores.<K>.target`.
+ *   · the BROWSER a store reaches comes from the REGISTER row whose
+ *     `extensionStoreKey` is that store — the row's own `platforms`, which
+ *     §2 has already validated against `surfaces.extension.platforms`.
+ *   · the FORMATS come from the register's `artifactBuild.formats`, taking every
+ *     entry that declares `surface: "extension"`.
+ * So no browser name, no store name and no format is spelled in this file.
+ */
+const EXT_SURFACE = 'extension';
+/** store key -> the browsers the register says that store reaches. */
+const storeKeyPlatforms = new Map();
+for (const c of channels) {
+  if (c?.surface !== EXT_SURFACE) continue;
+  const k = c.extensionStoreKey;
+  if (typeof k !== 'string' || k.trim() === '') continue;
+  const set = storeKeyPlatforms.get(k) ?? new Set();
+  for (const p of c.platforms ?? []) if (typeof p === 'string') set.add(p);
+  storeKeyPlatforms.set(k, set);
+}
+/** The extension surface's artifact formats, from the register's own build map. */
+const EXT_FORMATS = Object.entries(register.artifactBuild?.formats ?? {})
+  .filter(([, v]) => v?.surface === EXT_SURFACE)
+  .map(([f]) => f);
+
+/**
+ * tool.json declares which stores a target reaches TWICE, and both spellings are
+ * live: `publish-catalog.mjs:291` reads `targets.chromium.stores` while
+ * `check-store-metadata.mjs:404` reads `storeMetadata.stores.<K>.target`. Neither
+ * of them — nor anything else in either corpus, measured 2026-09-05 — compares
+ * the two. This does, in both directions, because the map below is derived from
+ * them and a guard must refuse to derive from two sources that disagree.
+ *
+ * ⚠️ ONLY WHERE THE FORWARD FORM IS WRITTEN. `targets.firefox` declares an
+ * `overlay` and no `stores` key at all, and that is not an omission — it is one
+ * target reaching one store, with the reverse declaration carrying it. Demanding
+ * the forward key everywhere would fail a tool.json that is correct.
+ */
+function checkToolTargetStores(toolDir, toolJson) {
+  const targets = toolJson?.targets;
+  const stores = toolJson?.storeMetadata?.stores;
+  if (targets === null || typeof targets !== 'object') return;
+  if (stores === null || typeof stores !== 'object') return;
+  const rel = `${EXT_TOOL_ROOT}/${toolDir}/tool.json`;
+  for (const [t, body] of Object.entries(targets)) {
+    const forward = body?.stores;
+    if (!Array.isArray(forward)) continue;
+    const reverse = Object.entries(stores).filter(([, x]) => x?.target === t).map(([k]) => k);
+    const a = [...new Set(forward)].sort().join(', ');
+    const b = [...new Set(reverse)].sort().join(', ');
+    if (a !== b) {
+      problems.push(
+        `${rel} declares \`targets.${t}.stores\` = [${a}] and its \`storeMetadata.stores\` names [${b}] as the rows built by target "${t}". ` +
+          'One target, two declarations of which stores it reaches, and they disagree — so the pack-target map this guard derives from them ' +
+          'has no single answer. [pipeline F-2]: the second copy is the one that drifts.',
+      );
+    }
+  }
+}
+
+const PACK_TARGETS = new Map();
+if (EXT_TOOLS !== null) {
+  for (const toolDir of EXT_TOOLS) {
+    let toolJson = null;
+    try {
+      toolJson = JSON.parse(read(`${EXT_TOOL_ROOT}/${toolDir}/tool.json`) ?? 'null');
+    } catch {
+      continue; // already reported by checkExtensionStoreRow
+    }
+    checkToolTargetStores(toolDir, toolJson);
+    const stores = toolJson?.storeMetadata?.stores;
+    if (stores === null || typeof stores !== 'object') continue;
+    for (const t of Object.keys(toolJson?.targets ?? {})) {
+      const forward = Array.isArray(toolJson.targets[t]?.stores) ? toolJson.targets[t].stores : null;
+      const keys = forward ?? Object.entries(stores).filter(([, x]) => x?.target === t).map(([k]) => k);
+      const platforms = new Set();
+      for (const k of keys) for (const p of storeKeyPlatforms.get(k) ?? []) platforms.add(p);
+      const entry = PACK_TARGETS.get(t) ?? { platforms: new Set(), formats: new Set() };
+      for (const p of platforms) entry.platforms.add(p);
+      for (const f of EXT_FORMATS) entry.formats.add(f);
+      PACK_TARGETS.set(t, entry);
+    }
+  }
+}
 const unknownPackTargets = new Set();
 
 const BUILD_TARGETS = new Map([
@@ -1125,7 +1219,7 @@ if (unknownTargets.size) {
 }
 if (unknownPackTargets.size) {
   prints.push(
-    `UNMAPPED PACK TARGET(S): ${fmtList(unknownPackTargets)} — a \`pack.mjs --target\` this guard has no artifact mapping for, so any extension channel accepting its output is compared against nothing. Add it to PACK_TARGETS.`,
+    `UNMAPPED PACK TARGET(S): ${fmtList(unknownPackTargets)} — a \`pack.mjs --target\` this guard has no artifact mapping for, so any extension channel accepting its output is compared against nothing. The map is DERIVED from tool.json's \`targets\` and \`storeMetadata.stores\` — declare the target there, not here.`,
   );
 }
 // The extension surface's own emptiness check. A register that declares

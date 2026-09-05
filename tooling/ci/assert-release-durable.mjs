@@ -382,18 +382,26 @@ export function stepPaths(step) {
  */
 export const TAG_EXCLUDING_TOKENS = conditionTokens("!startsWith(github.ref, 'refs/tags/')");
 export function jobExcludesTags(job) {
-  // The job's OWN keys sit one indent inside its name; a step's `if:` is deeper
-  // and belongs to the step. Anchoring on the shallowest `if:` in the job body
-  // is what keeps a step condition from being read as the job's.
-  let shallowest = null;
-  for (const l of job.lines) {
-    const m = l.text.match(/^(\s*)if:\s*(\S.*?)\s*$/);
-    if (!m) continue;
-    const indent = m[1].length;
-    if (shallowest === null || indent < shallowest.indent) shallowest = { indent, cond: m[2] };
-  }
-  if (shallowest === null) return false;
-  return conditionTokens(shallowest.cond).includes(TAG_EXCLUDING_TOKENS);
+  // 🔴 `job.jobIf`, NOT THE SHALLOWEST `if:` IN THE JOB BODY. This function was
+  // written the second way and it was a BYPASS, found by review and reproduced on
+  // the real tree 2026-09-05: `job.lines` holds the job's steps as well as its own
+  // keys (parseSteps slices them back out of it), so a job with NO job-level `if:`
+  // has a STEP's `if:` as the shallowest one — and this excused the whole job from
+  // [9]R-4 while PRINTING that "its own `if:` carries" a clause the job did not
+  // have. Measured: delete `package`'s own `if:` from extensions.yml and append
+  // `&& !startsWith(github.ref, 'refs/tags/')` to its first step-level `if:`, and
+  // the guard went from EXIT 1 (the correct finding) to EXIT 0.
+  //
+  // `workflow-scan.mjs` already parses the job-level condition, anchored at
+  // exactly four spaces — `jobs:` at 0, the job name at 2, the job's own keys at
+  // 4, a step's keys at 8 — and its own comment says that anchor is what keeps a
+  // step's `if:` from being mistaken for a job condition. Reading it from there
+  // rather than re-deriving it here is also the single-declaration rule this file
+  // applies to MANIFEST_NAME: a second reading of one fact is the reading that
+  // drifts, and this one drifted before it was ever written down.
+  const cond = job?.jobIf?.cond;
+  if (typeof cond !== 'string' || cond.trim() === '') return false;
+  return conditionTokens(cond).includes(TAG_EXCLUDING_TOKENS);
 }
 
 /** Step-level `if:` — one indent deeper than the step's own bullet. */
