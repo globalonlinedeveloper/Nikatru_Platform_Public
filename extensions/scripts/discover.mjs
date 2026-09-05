@@ -63,6 +63,16 @@ const WIDENS_TO_ALL = [
   '.gitattributes', '.gitignore', '.githooks/'
 ];
 
+/* 🔴 THE SAME LIST FOR THE WORLD ABOVE THIS TREE, ADDED 2026-09-05 WITH THE MOVE
+   INTO Nikatru_Platform_Public ([ADR 067] decision 1). These paths are OUTSIDE
+   the extensions subtree and still change what every tool is graded by: the
+   workflow that runs the gates, the shared contract the extensions import
+   verbatim, and the root attribute/ignore files that decide what a checkout and
+   therefore a package even contains. Repo-relative, never prefixed. */
+const OUTSIDE_WIDENS_TO_ALL = [
+  '.github/workflows/', 'contracts/', '.gitattributes', '.gitignore', '.githooks/'
+];
+
 const { tools, errors, warnings } = loadAllTools(root);
 
 if (errors.length) {
@@ -82,6 +92,35 @@ function git(cmdArgs) {
 
 function isGitRepo() {
   try { git(['rev-parse', '--git-dir']); return true; } catch (_) { return false; }
+}
+
+/* 🔴 WHERE THIS TREE SITS INSIDE ITS REPOSITORY, AND WHY ASKING IS NOT OPTIONAL.
+   `git diff --name-only` prints paths relative to the REPOSITORY ROOT, not to
+   the directory git was run in. While this repo was its own repository the two
+   were the same and nothing here had to know the difference. Since 2026-09-05 it
+   is a subtree of Nikatru_Platform_Public, so git prints
+   `extensions/Extension/Full_Screen_Shot/manifest.json` while `t.rel` is
+   `Extension/Full_Screen_Shot` — and every `f.startsWith(t.rel + '/')` below is
+   FALSE for a file that is plainly inside a tool.
+
+   MEASURED BEFORE IT WAS FIXED, on the merge commit itself: the path match found
+   nothing, the commit-subject fallback happened to find a `fullshot:` subject
+   among the 61 imported commits, and the answer came out right BY LUCK. A pull
+   request that edits a tool and says "Fix the popup" would have selected NONE,
+   count=0, every per-tool job skipped, and the run green over 542 files. That is
+   exactly the failure report 16 §10.5 names as Risk 2, arriving through the one
+   script the same report calls the best-designed part of this repo.
+
+   `git rev-parse --show-prefix` answers it: `extensions/` here, `` when this
+   tree is its own repository again after a `git subtree split`. A NULL answer —
+   git could not say — widens to ALL, in line with every other ambiguity on this
+   page: a path comparison that cannot be anchored silently matches nothing, and
+   matching nothing is the expensive direction. */
+function repoPrefix() {
+  try {
+    const p = git(['rev-parse', '--show-prefix']).trim().replace(/\\/g, '/');
+    return p === '' || p.endsWith('/') ? p : p + '/';
+  } catch (_) { return null; }
 }
 
 /* Returns {files, reason} — files===null means "could not diff, widen to all". */
@@ -150,17 +189,31 @@ if (args.bool('all') || tools.length === 0) {
   const rawBase = args.get('base', process.env.GITHUB_BASE_SHA || '');
   const base = typeof rawBase === 'string' ? rawBase.trim() : '';
   const { files, reason } = changedFiles(base);
+  const prefix = files === null ? '' : repoPrefix();
   if (files === null) {
     selected = allIds;
     why = 'widened to ALL tools: ' + reason;
+  } else if (prefix === null) {
+    selected = allIds;
+    why = 'widened to ALL tools: git rev-parse --show-prefix failed, so this tree could not be located ' +
+      'inside its repository — and an unanchored path comparison silently matches nothing';
   } else {
-    const widener = files.find(f => WIDENS_TO_ALL.some(p => (p.endsWith('/') ? f.startsWith(p) : f === p)));
+    /* Split the diff at the subtree boundary. Inside becomes tree-relative, which
+       is what every path rule on this page is written against; outside is graded
+       by OUTSIDE_WIDENS_TO_ALL and is otherwise none of this script's business.
+       With prefix === '' both lists behave exactly as they did before the move. */
+    const inside = prefix ? files.filter(f => f.startsWith(prefix)).map(f => f.slice(prefix.length)) : files;
+    const outside = prefix ? files.filter(f => !f.startsWith(prefix)) : [];
+    const outsideWidener = outside.find(f => OUTSIDE_WIDENS_TO_ALL.some(p => (p.endsWith('/') ? f.startsWith(p) : f === p)));
+    const widener = inside.find(f => WIDENS_TO_ALL.some(p => (p.endsWith('/') ? f.startsWith(p) : f === p)))
+      ?? outsideWidener;
     if (widener) {
       selected = allIds;
-      why = 'widened to ALL tools: ' + widener + ' changed, and that changes what every tool is graded by';
+      why = 'widened to ALL tools: ' + (widener === outsideWidener ? prefix.replace(/\/$/, '') + '/.. → ' : '') +
+        widener + ' changed, and that changes what every tool is graded by';
     } else {
       const hit = new Set();
-      for (const t of tools) for (const f of files) if (f.startsWith(t.rel + '/')) hit.add(t.id);
+      for (const t of tools) for (const f of inside) if (f.startsWith(t.rel + '/')) hit.add(t.id);
       if (hit.size === 0) {
         const { ids: fromSubjects, error: logError } = idsFromCommitSubjects(base);
         if (logError) {
@@ -173,8 +226,9 @@ if (args.bool('all') || tools.length === 0) {
             ' (CONTRIBUTING §7)';
         } else {
           selected = [];
-          why = files.length + ' file(s) changed and none of them are inside a tool directory, ' +
-            'and every commit subject was read and none carried a tool-id prefix';
+          why = files.length + ' file(s) changed (' + inside.length + ' inside ' +
+            (prefix || './') + ', ' + outside.length + ' above it) and none of them are inside a tool ' +
+            'directory, and every commit subject was read and none carried a tool-id prefix';
         }
       } else {
         selected = [...hit].sort();

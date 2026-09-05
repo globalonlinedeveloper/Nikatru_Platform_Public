@@ -21,6 +21,9 @@
 //   worker         → named in some file under .github/workflows/
 //   node package   → named in some file under .github/workflows/
 //   site           → named in some file under .github/workflows/
+//   extension      → is a row in extensions/catalog/extensions.json AND some
+//                    workflow invokes extensions/scripts/discover.mjs
+//                    (check-catalog.mjs then guards that list — see below)
 //
 // Pipeline requirement: Private/requirements/ → F-9.
 // (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
@@ -81,6 +84,25 @@ for (const d of dirs('tooling')) {
   if (has(d, 'package.json') && !has(d, 'pubspec.yaml')) units.push({ path: d, type: 'node' });
 }
 
+// 🔴 extensions/ IS A SCAN ROOT (2026-09-05, [ADR 067] decision 1). It arrived as
+// a `git subtree add` of 542 files, and report 16 §8.2 measured what happens if
+// this block is omitted: THIS GUARD PRINTS "17 deployable unit(s), all claimed"
+// over a tree in which 542 files are covered by nothing. That is not a
+// hypothetical — the five whole-tree guards were run against the merged tree
+// before the merge and all five returned exit 0. A green run over an unguarded
+// subtree is the exact "a scanner that silently stopped scanning" shape this
+// file's own line 153 warns about, so the root and the claims land together.
+//
+// The unit is the TOOL, not the subtree: an extension is a directory under
+// extensions/Extension/ carrying a tool.json, which is the same predicate
+// extensions/scripts/discover.mjs uses to build the CI matrix. `core/`,
+// `templates/` and `scripts/` are shared machinery, not deployable units — they
+// are graded by the extension lanes rather than being lanes themselves, exactly
+// as sites/_shared is.
+for (const d of dirs('extensions/Extension')) {
+  if (has(d, 'tool.json')) units.push({ path: d, type: 'extension' });
+}
+
 // ── what covers each type ────────────────────────────────────────────────────
 // 🔴 COMMENTS AND EXCLUSIONS ARE NOT CLAIMS (2026-08-01 full-corpus review).
 // isClaimed() was a raw substring match over the concatenated workflow text, so
@@ -138,8 +160,47 @@ if (existsSync(rootPubspec)) {
   }
 }
 
+// ── the extension catalogue, read the same way pubspec's workspace list is ───
+// extensions/catalog/extensions.json is an independently maintained registry —
+// extensions/scripts/check-catalog.mjs §1 asserts "published slugs == extension-
+// surface tool ids on disk", so it is a real second list rather than a copy of
+// the walk above. That is what makes it usable both as a CLAIM (below) and as
+// the scan-root cross-check (further below).
+const catalogSlugs = new Set();
+const extCatalog = join(repoRoot, 'extensions', 'catalog', 'extensions.json');
+if (existsSync(extCatalog)) {
+  try {
+    for (const row of JSON.parse(readFileSync(extCatalog, 'utf8'))) {
+      if (row && typeof row.slug === 'string') catalogSlugs.add(row.slug);
+    }
+  } catch {
+    console.error(`✗ COVERAGE LOST — ${'extensions/catalog/extensions.json'} did not parse.`);
+    console.error('  Every extension unit would then read as unclaimed for the wrong reason, or — worse — the');
+    console.error('  cross-check below would pass over an empty set. Fix the JSON before reading this guard.');
+    process.exit(1);
+  }
+}
+
+/** The tool id, which is what discover.mjs emits and the catalogue keys on. */
+function toolId(unitPath) {
+  const f = join(repoRoot, unitPath, 'tool.json');
+  try { return JSON.parse(readFileSync(f, 'utf8')).id; } catch { return null; }
+}
+
 function isClaimed(unit) {
   if (unit.type === 'dart') return workspaceMembers.has(unit.path);
+  // 🔴 AN EXTENSION IS NEVER NAMED BY PATH IN A WORKFLOW, AND A GUARD THAT
+  // DEMANDED IT WOULD BE PERMANENTLY RED. discover.mjs emits IDS, not paths, and
+  // the workflow matrix is keyed on the id precisely so that a matrix never has
+  // to translate a path anywhere. So the covering mechanism is the pair: the id
+  // is published in the catalogue (which check-catalog.mjs holds equal to the
+  // tools on disk), and a workflow really invokes the discoverer that turns the
+  // catalogue's world into jobs. Delete the discover step and every extension
+  // unit goes unclaimed here — which is the failure the step's absence IS.
+  if (unit.type === 'extension') {
+    const id = toolId(unit.path);
+    return id !== null && catalogSlugs.has(id) && workflowText.includes('extensions/scripts/discover.mjs');
+  }
   return workflowText.includes(unit.path);
 }
 
@@ -185,6 +246,28 @@ if (existsSync(pnpmWorkspace)) {
   }
 }
 
+// The same cross-check, for the extensions scan root. extensions/catalog/
+// extensions.json is maintained by a different script in a different tree, so
+// dropping `extensions/Extension` from the walk above now fails NAMING THE SLUG
+// IT LOST rather than quietly reporting a smaller world. Mutation-proven
+// 2026-09-05: with the root removed this printed "COVERAGE LOST — extensions/
+// catalog/extensions.json declares 1 published extension(s) this scan never
+// enumerated: fullshot"; with it restored, exit 0.
+if (catalogSlugs.size) {
+  const seenIds = new Set(units.filter((u) => u.type === 'extension').map((u) => toolId(u.path)));
+  const unseen = [...catalogSlugs].filter((s) => !seenIds.has(s));
+  if (unseen.length) {
+    console.error(
+      `✗ COVERAGE LOST — extensions/catalog/extensions.json declares ${unseen.length} published extension(s) this scan never enumerated:`,
+    );
+    for (const s of unseen) console.error(`    ${s}`);
+    console.error('  An extension that is not a UNIT here cannot be reported unclaimed, so removing the');
+    console.error('  extensions scan root looks exactly like a smaller tree. Add the scan root back, or');
+    console.error('  remove the catalogue row in the same change.');
+    process.exit(1);
+  }
+}
+
 const unclaimed = units.filter((u) => !isClaimed(u));
 if (unclaimed.length) {
   console.error(`✗ ${unclaimed.length} deployable unit(s) are claimed by no CI lane:`);
@@ -192,7 +275,9 @@ if (unclaimed.length) {
     const how =
       u.type === 'dart'
         ? 'add it to the root pubspec.yaml `workspace:` list'
-        : 'name it in a job under .github/workflows/';
+        : u.type === 'extension'
+          ? 'publish its id in extensions/catalog/extensions.json, and keep a job that runs extensions/scripts/discover.mjs'
+          : 'name it in a job under .github/workflows/';
     console.error(`    ${u.path}  (${u.type}) — ${how}`);
   }
   console.error('  An unclaimed unit is checked by nothing, and CI still reports green.');
