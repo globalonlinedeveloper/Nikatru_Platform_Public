@@ -149,15 +149,45 @@ class AppConfig {
 
   // Whether this build has a real IDENTITY to talk to the backend with. Absent
   // in demo builds and in `flutter test`, which take no --dart-defines.
-{{#needs_backend}}  // Also requires the per-app API host to have been pointed somewhere real,
-  // since the stamped default is a placeholder that will never resolve.
+  //
+  // 🔴 IDENTITY ONLY. DO NOT ADD AN API-HOST CLAUSE HERE.
+  //
+  // The needs_backend branch used to also require `apiBaseUrl != _phApiBase`,
+  // described as "the stamped default is a placeholder that will never
+  // resolve". That description stopped being true when `hooks/pre_gen.dart`
+  // gained the derive-a-blank-host contract: it now resolves `api_base_url` to
+  // `https://api-<app_id>.nikatru.com` for a backend app, which is the SAME
+  // hostname that app's own Worker binds as a custom domain (the `routes` block
+  // of its stamped `wrangler.jsonc`) and the SAME value the stamped README
+  // tells the owner to pass as `--dart-define=API_BASE_URL`. So the default and
+  // the documented override were both equal to the sentinel, the inequality was
+  // FALSE for exactly the builds that were configured correctly, and the app
+  // reported demo mode while deployed: `main.dart` skipped `initNikatruAuth`,
+  // `providers.dart` handed out `InMemoryAuthRepository`, and
+  // [remoteConfigEnabled] stayed off. A total identity failure on the happy
+  // path, with nothing to see anywhere — no error, no log, no failing gate.
+  //
+  // AND THERE IS NO COMPARISON THAT REPAIRS IT, because there is nothing left to
+  // compare against: for a stamped app the compiled-in default IS the
+  // production host. Nor can [_phApiBase] be turned into the self-describing
+  // fake that `apps/subly` uses — subly is hand-maintained and its sentinel
+  // (`https://subly-api.YOUR_SUBDOMAIN.workers.dev`) is a string no build ever
+  // passes, whereas here `assert-clone-contract.mjs` and
+  // `assert-stamp-text-fidelity.mjs` both require the stamped literal to be
+  // exactly the derived host, and `config/defaults.json` carries the same value
+  // because the app really does call it. Subly's own note on `_phApiBase` names
+  // this stamp's `https://api-subly.nikatru.com` as the thing that "reads
+  // exactly like a host" and must not be put there; the brick had done it.
+  //
+  // The API host is therefore evidence of nothing and is not consulted. Demo
+  // mode is decided by IDENTITY, which is what this getter is named after and
+  // all it reads — and with the clause gone the two needs_backend branches were
+  // character-for-character identical, so the fork went with it.
+  // `test/backend_liveness_test.dart` walks this getter and fails if it ever
+  // reaches `apiBaseUrl` or `_phApiBase` again.
   static bool get isBackendLive =>
-      supabaseUrl.isNotEmpty &&
-      supabaseAnonKey.isNotEmpty &&
-      apiBaseUrl != _phApiBase;
-{{/needs_backend}}{{^needs_backend}}  static bool get isBackendLive =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
-{{/needs_backend}}
+
   // Whether the launch-time CFG-1 fetch may run. DELIBERATELY SEPARATE from
   // [isBackendLive]: the config service is not the identity service, and
   // overloading one flag for both is how a test run acquires a network call.
