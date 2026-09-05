@@ -25,7 +25,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -847,5 +847,114 @@ describe('the watch — the nine pairs this guard does NOT cover, and says so', 
     assert.equal(code, 0, out);
     assert.match(out, /9 chassis\/fork screen pair\(s\) are WATCHED, NOT COVERED/);
     assert.match(out, /They fail this guard the day that stops being true/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A CAPS GATE FOLLOWS THE SCREEN INTO THE CHASSIS (ADR 067 dec. 2)
+//
+// [ADR 066] named this guard's zero-caps limb as one of the THREE HARD
+// CONSTRAINTS on chassis step 4, and it was right to: emptying
+// `sign_in_screen.dart` into `package:nikatru_chassis_screens` takes the
+// `if (caps.oauthRedirect …)` gate with it, C goes to zero at the adapter, and
+// C ⊆ F becomes a test that cannot fail. The guard says COVERAGE LOST — about
+// the file it read, and about a tree where the gate is one import away.
+//
+// So C and F are taken over the adapter PLUS what it delegates to. WHAT THE
+// TESTS BELOW PIN, in this order:
+//   D1  the union is real            — parity holds with the gate in the package
+//   D2  the fork must still match    — the adapter dropping its read still FAILS
+//   D3  the zero-caps rule SURVIVES  — an empty UNION still fails, still naming
+//                                      the adapter, which is the limb [ADR 066]
+//                                      measured and the one thing that must not
+//                                      be softened to make step 4 land
+//   D4  a delegation that resolves to nothing is COVERAGE LOST
+//   D5  two chassis imports in one adapter is refused, not guessed
+//
+// D1 is the green control for all four reds. Without it every one of them is
+// consistent with a resolver that refuses every delegation.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a caps gate that moved into the chassis is still compared', () => {
+  const CHASSIS_BODY = 'packages/chassis_screens/lib/sign_in_body.dart';
+
+  /** The chassis side emptied into the package, adapter left behind. */
+  const delegating = ({ gateInPackage = true, packageOnDisk = true, forkReads = true, secondImport = false } = {}) => {
+    const extra = {};
+    extra[CHASSIS] =
+      "import 'package:flutter/material.dart';\n" +
+      "import 'package:nikatru_chassis_screens/sign_in_body.dart';\n" +
+      (secondImport ? "import 'package:nikatru_chassis_screens/other_body.dart';\n" : '') +
+      '\nclass SignInScreen {\n  Widget build(BuildContext context) => const SignInBody();\n}\n';
+    if (packageOnDisk) {
+      extra[CHASSIS_BODY] =
+        'class SignInBody {\n  Widget build(BuildContext context) {\n' +
+        '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
+        (gateInPackage
+          ? '    if (caps.oauthRedirect) return const AppleButton();\n'
+          : '    if (providers.any) return const AppleButton();\n') +
+        '    return const Empty();\n  }\n}\n';
+    }
+    if (secondImport) {
+      extra['packages/chassis_screens/lib/other_body.dart'] =
+        'class OtherBody {\n  Widget build(BuildContext context) => const Empty();\n}\n';
+    }
+    if (!forkReads) {
+      extra[FORK] =
+        'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
+        '    if (providers.any) return const AppleButton();\n    return const Empty();\n  }\n}\n';
+    }
+    return tree({ extra });
+  };
+
+  // GREEN CONTROL.
+  test('D1 · the gate is in the package and parity still holds', () => {
+    const { code, out } = run(delegating());
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}no seam forks/);
+  });
+
+  // THE MUTATION THE PARITY LIMB EXISTS FOR, through a delegation.
+  test('D2 · the FORK drops the read the chassis package still gates on', () => {
+    const { code, out } = run(delegating({ forkReads: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT read `caps.oauthRedirect`/);
+    assert.match(out, /chassis reads \{oauthRedirect\}/);
+  });
+
+  // [ADR 066]'s limb, UNSOFTENED. The union is empty, so the subset test is
+  // vacuous — and the finding still names the ADAPTER, not the package.
+  test('D3 · an EMPTY union still fails, and still names the adapter', () => {
+    const { code, out } = run(delegating({ gateInPackage: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sign_in_screen\.dart — 0 `caps\.<field>` read\(s\) found, in it OR in the chassis file it delegates to/);
+    assert.match(out, /the subset test cannot fail and is therefore worse than none/);
+  });
+
+  test('D4 · COVERAGE LOST when the delegation resolves to nothing on disk', () => {
+    const { code, out } = run(delegating({ packageOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /delegates to `package:nikatru_chassis_screens\/sign_in_body\.dart`/);
+    assert.match(out, /that file is not on disk/);
+  });
+
+  test('D5 · two chassis imports in one adapter is refused, not guessed', () => {
+    const { code, out } = run(delegating({ secondImport: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /imports 2 different `package:nikatru_chassis_screens` paths/);
+    assert.match(out, /will not guess between two of them/);
+  });
+
+  // The floors [ADR 066] named are UNTOUCHED by the widening — asserted, not
+  // asserted-about. A delegating screen is still a screen that must EXIST at its
+  // declared path, and the pair count is still 12.
+  test('D6 · MIN_ACCOUNTED_PAIRS and the per-file existsSync are unchanged', () => {
+    const guard = readFileSync(GUARD, 'utf8');
+    assert.match(guard, /const MIN_ACCOUNTED_PAIRS = 12;/);
+    // The adapter is a FILE. Deleting it is still loud, delegation or not.
+    const root = delegating();
+    rmSync(join(root, CHASSIS));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /the file is not there/);
   });
 });

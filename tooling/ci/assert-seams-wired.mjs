@@ -134,6 +134,88 @@ function stripDart(src) {
 const bodies = new Map(files.map((f) => [f, stripDart(readFileSync(f, 'utf8'))]));
 const rel = (f) => f.replace(repo + sep, '').replaceAll('\\', '/');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A UI CALLER FOLLOWS ITS SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// SCAN_ROOTS deliberately excludes `packages/`, and that exclusion is
+// load-bearing: it is what stops a seam's own DECLARATION from counting as a
+// caller. But [ADR 066] step 4 moves screen BODIES into
+// `package:nikatru_chassis_screens`, and the UI caller — the
+// `recordAnalyticsConsent(` in settings, the `requestReview()` on the home
+// screen — goes with the body. Read without this, the seam reads DEAD: the
+// caller has not been deleted, it has left the scan, and this guard cannot tell
+// those two apart.
+//
+// So the chassis files that a scanned file DELEGATES TO are added to the scan —
+// and only those. A chassis file nothing imports is still outside SCAN_ROOTS,
+// so `packages/` as a whole is still not a place a caller can hide, and the
+// `declares` filter still excludes a file that turns out to declare the seam
+// rather than call it.
+//
+// 🔴 AND THE `scope` FILTER FOLLOWS THE DELEGATION TOO, WHICH IS THE HALF THAT
+// MATTERS. `scope: BRICK_APP` exists so a seam the CHASSIS must drive cannot be
+// kept green by an unrelated caller in apps/. A chassis file's own path starts
+// with `packages/`, so a plain prefix test would drop every delegated caller and
+// re-open exactly the hole the widening is meant to close. A delegated file is
+// therefore in a scope when SOMETHING IN THAT SCOPE DELEGATES TO IT — the brick
+// still has to be the tree that reaches the caller.
+// ─────────────────────────────────────────────────────────────────────────────
+const CHASSIS_PKG = 'nikatru_chassis_screens';
+const CHASSIS_DIR = 'packages/chassis_screens';
+const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+
+/** relative chassis file -> the relative files that delegate to it. */
+const delegatedFrom = new Map();
+{
+  const lost = [];
+  for (const [f, src] of [...bodies]) {
+    CHASSIS_IMPORT.lastIndex = 0;
+    const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
+    if (paths.length === 0) continue;
+    if (paths.length > 1) {
+      lost.push(`${rel(f)} imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')})`);
+      continue;
+    }
+    const targetRel = `${CHASSIS_DIR}/lib/${paths[0]}`;
+    const targetAbs = join(repo, targetRel);
+    if (!existsSync(targetAbs)) {
+      lost.push(`${rel(f)} delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${targetRel} and that file is not on disk`);
+      continue;
+    }
+    const targets = [targetRel];
+    for (const m of readFileSync(targetAbs, 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
+      const t = `${CHASSIS_DIR}/lib/${m[1]}`;
+      if (existsSync(join(repo, t))) targets.push(t);
+    }
+    for (const t of targets) {
+      if (!bodies.has(join(repo, t))) bodies.set(join(repo, t), stripDart(readFileSync(join(repo, t), 'utf8')));
+      if (!delegatedFrom.has(t)) delegatedFrom.set(t, new Set());
+      delegatedFrom.get(t).add(rel(f));
+    }
+  }
+  for (const why of lost) {
+    fail(
+      `COVERAGE LOST — a chassis delegation could not be followed: ${why}. Every seam below is answered ` +
+        'by WHICH FILES this scan reads, so a delegation it cannot follow is a caller it cannot see — and ' +
+        'a seam with no visible caller reads exactly like a dead one.',
+    );
+  }
+  if (delegatedFrom.size) {
+    ok(
+      `scan follows ${delegatedFrom.size} chassis delegation target(s): ` +
+        `${[...delegatedFrom.keys()].sort().join(', ')}`,
+    );
+  }
+}
+
+/** In `scope` either by its own path, or because something in that scope
+ *  delegates to it. */
+const inScope = (r, scope) =>
+  !scope ||
+  r.startsWith(scope) ||
+  [...(delegatedFrom.get(r) ?? [])].some((d) => d.startsWith(scope));
+
 // `declares` is not optional sugar. Searching for `foo(` finds the DECLARATION of
 // foo as readily as a call to it, so a "does anything call this?" check that
 // ignores declarations passes even when every real caller is deleted. That bug
@@ -148,7 +230,7 @@ const hits = (re, declares, scope) =>
   [...bodies]
     .filter(([f, src]) => re.test(src) && !(declares && declares.test(src)))
     .map(([f]) => rel(f))
-    .filter((r) => !scope || r.startsWith(scope));
+    .filter((r) => inScope(r, scope));
 
 // The template every stamped app is born from — the scope for anything the
 // CHASSIS must carry, as opposed to anything some app happens to do.

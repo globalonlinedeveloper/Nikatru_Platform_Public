@@ -704,6 +704,81 @@ function resolveImport(R, path) {
   return out.length ? out : [rel];
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// DELEGATION — A WIDTH DECISION FOLLOWS THE SCREEN INTO THE CHASSIS
+// (ADR 067 decision 2, the same resolver assert-a11y-coverage.mjs carries)
+//
+// [ADR 066] step 4 leaves an ADAPTER behind at each moved screen: same path,
+// same route, same `SettingsScreen` name, and NO LayoutBuilder, no ConstrainedBox
+// and no max-width — those went into `package:nikatru_chassis_screens` with the
+// body. The width test went with them too, into the chassis package's own suite.
+//
+// 🔴 READ WITHOUT THIS RESOLVER, THAT MOVE IS INDISTINGUISHABLE FROM DELETING
+// THE WIDTH TEST. This root's covered set drops by one, `coveredSurfaces` falls
+// under its floor and the set-equality limb reports the screen as UNCOVERED —
+// all three correctly describing a tree where the measurement is right there,
+// green, in a file this scan judges under a different root. The honest answer is
+// not to lower the floor: it is to follow the import.
+//
+// ⚠️ THE ADAPTER STAYS IN THE ROUTED SET, exactly as in the a11y guard. The
+// domain WIDENS: a surface is measured when its own root measures it OR when
+// the chassis root measures the file it delegates to. Nothing here moves a
+// surface OUT of a domain.
+//
+// ⚠️ ONE LEVEL, ONE IMPORT, AND EVERY REFUSAL IS COVERAGE LOST. Two chassis
+// imports in one adapter is ambiguous and refused; a target not on disk, a
+// target that declares no widget, and a chassis that is not a DERIVED ROOT of
+// this scan are all reported rather than passed over — each of them means the
+// width decision is now measured NOWHERE.
+// ════════════════════════════════════════════════════════════════════════════
+const CHASSIS_PKG = 'nikatru_chassis_screens';
+const CHASSIS_DIR = 'packages/chassis_screens';
+const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${escapeRe(CHASSIS_PKG)}/([^']+\\.dart)'`, 'g');
+
+/** Where `rel` delegates to, resolved one level. `null` = does not delegate;
+ *  `{ lost }` = it does and the target could not be resolved, which the caller
+ *  must report as COVERAGE LOST; `{ files }` = the package file(s) that now own
+ *  this surface's width decision. The three answers are kept apart on purpose:
+ *  collapsing `null` and `{ lost }` is how a resolver that stopped reaching its
+ *  target starts reporting "nothing to do". */
+function delegationOf(rel) {
+  if (!existsSync(join(ROOT, rel))) return null;
+  CHASSIS_IMPORT.lastIndex = 0;
+  const paths = [...new Set([...read(rel).matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
+  if (paths.length === 0) return null;
+  if (paths.length > 1) {
+    return {
+      lost:
+        `\`${rel}\` imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths ` +
+        `(${paths.join(', ')}), so the file that now owns this surface's width decision cannot be ` +
+        'identified. This guard keys coverage by FILE and will not guess between two of them.',
+    };
+  }
+  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
+  if (!existsSync(join(ROOT, target))) {
+    return {
+      lost:
+        `\`${rel}\` delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` — ` +
+        'and that file is not on disk. The screen has been emptied into a package that does not carry it, ' +
+        'so no width is asserted for it anywhere.',
+    };
+  }
+  if (surfacesIn(target, 'package').length > 0) return { files: [target] };
+  const out = [];
+  for (const m of read(target).matchAll(/export\s+'([^':]+\.dart)'/g)) {
+    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
+    if (existsSync(join(ROOT, t)) && surfacesIn(t, 'package').length > 0) out.push(t);
+  }
+  if (out.length === 0) {
+    return {
+      lost:
+        `\`${rel}\` delegates to \`${target}\`, which declares no public widget and re-exports none that ` +
+        'does. One level of barrel expansion is all this resolver does, and it found nothing to measure.',
+    };
+  }
+  return { files: out };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ONE ROOT, ANALYSED. Everything below used to be top-level code over
 // `const APP = 'apps/subly'`; it is the same accounting, once per derived root.
@@ -1003,10 +1078,30 @@ function analyseRoot(R) {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // WHICH ROUTED SURFACES DELEGATE INTO THE CHASSIS — see the resolver above.
+  // Asked over the routed set, not over the disk: the question is only ever
+  // about a surface a user can open. The chassis root does not ask it of
+  // itself — a widget importing its own package is not a delegation.
+  // ══════════════════════════════════════════════════════════════════════
+  const delegatesTo = new Map(); // routed key → [package file, …]
+  if (R.dir !== CHASSIS_DIR) {
+    for (const [key, entry] of routed) {
+      const d = delegationOf(entry.file);
+      if (d === null) continue;
+      if (d.lost) {
+        rootProblems.push(`COVERAGE LOST — ${d.lost}`);
+        continue;
+      }
+      delegatesTo.set(key, d.files);
+    }
+  }
+
   return {
     R,
     routed,
     covered,
+    delegatesTo,
     excluded,
     routerTargets,
     declaringFiles,
@@ -1040,7 +1135,37 @@ ok(
 );
 
 const byDir = new Map(analyses.map((a) => [a.R.dir, a]));
-const totals = { routed: 0, covered: 0, uncovered: 0, files: 0, excluded: 0 };
+const totals = { routed: 0, covered: 0, delegated: 0, uncovered: 0, files: 0, excluded: 0 };
+
+/** The chassis measurements that discharge a delegating surface's obligation.
+ *  `null` = does not delegate; `{ lost }` = it does and the chassis is not in
+ *  the domain, so nothing measures it; `{ via }` = the package file(s) whose
+ *  width tests cover it (empty when the chassis carries the widget but no test).
+ *
+ *  🔴 KEYED BY FILE, NOT BY SYMBOL. The adapter is still `SettingsScreen`;
+ *  the widget it delegates to is called whatever the chassis calls it, and
+ *  requiring the two names to match would make every delegation read as
+ *  uncovered for a reason that has nothing to do with width. */
+function delegatedCoverage(a, key) {
+  const targets = a.delegatesTo.get(key);
+  if (!targets) return null;
+  const owner = byDir.get(CHASSIS_DIR);
+  if (!owner) {
+    return {
+      lost:
+        `\`${key.split('#')[1]}\` (${key.split('#')[0]}) delegates its surface to ${targets.join(', ')}, and ` +
+        `\`${CHASSIS_DIR}\` is NOT among the ${analyses.length} root(s) this scan derived. The screen's width ` +
+        'decision is therefore measured by nothing at all: it left this root by moving house and never ' +
+        'arrived anywhere this guard looks. Put the chassis package on the workspace list with a ' +
+        '`flutter_test` dev-dependency and a public widget, or stop delegating to it.',
+    };
+  }
+  const via = targets.filter((f) => [...owner.covered.keys()].some((k) => k.startsWith(`${f}#`)));
+  return { via };
+}
+
+/** Measured in its own root, or measured where it now lives. */
+const isCovered = (a, key) => a.covered.has(key) || (delegatedCoverage(a, key)?.via?.length ?? 0) > 0;
 
 for (const a of analyses) {
   const { R } = a;
@@ -1088,9 +1213,24 @@ for (const a of analyses) {
   // (E) SET EQUALITY, BOTH DIRECTIONS
   // ═══════════════════════════════════════════════════════════════════════
   const uncovered = parsedCleanly
-    ? [...a.routed.keys()].filter((k) => !a.covered.has(k)).sort()
+    ? [...a.routed.keys()].filter((k) => !isCovered(a, k)).sort()
+    : [];
+  // Measured WHERE THEY NOW LIVE — counted apart from this root's own tests so
+  // no line ever implies this suite did work the chassis's suite did.
+  const delegated = parsedCleanly
+    ? [...a.routed.keys()].filter((k) => !a.covered.has(k) && isCovered(a, k)).sort()
     : [];
   a.uncovered = uncovered;
+  a.delegated = delegated;
+
+  // A DELEGATION WITH NOWHERE TO LAND. The refusal that makes the widening
+  // safe: `isCovered` is allowed to answer "measured, in the chassis", and if
+  // the chassis is not in the domain that answer is not available at all.
+  for (const key of [...a.delegatesTo.keys()].sort()) {
+    const d = delegatedCoverage(a, key);
+    if (d?.lost) a.problems.push(`COVERAGE LOST — ${d.lost}`);
+  }
+
   if (parsedCleanly) {
     for (const key of uncovered) {
       const { file, symbol, via, kind } = a.routed.get(key);
@@ -1228,9 +1368,15 @@ for (const a of analyses) {
     // keeps the strength where it was earned — subly's is 19, so ANY loss there
     // fires — and a report-mode root's floor is its measured coverage, which is
     // what stops "printed, not failed" from meaning "not checked".
-    if (a.covered.size < floor.coveredSurfaces) {
+    // 🔴 THE FLOOR COUNTS DELEGATED COVERAGE, AND IT HAS TO. A screen moving
+    // into the chassis takes its width test with it; counting only this root's
+    // own tests would make [ADR 066] step 4 fail this floor on every unit,
+    // which trains the next reader to lower it — and a floor that is lowered
+    // to make a move land is a floor that has stopped holding anything.
+    const measured = a.covered.size + (a.delegated?.length ?? 0);
+    if (measured < floor.coveredSurfaces) {
       a.problems.push(
-        `COVERAGE LOST — \`${label}\` has ${a.covered.size} measured surface(s) and its measured floor is ` +
+        `COVERAGE LOST — \`${label}\` has ${measured} measured surface(s) and its measured floor is ` +
           `${floor.coveredSurfaces} (${floor.label}). Coverage that WAS there is gone. That may be a ` +
           'legitimate move; it may not be a QUIET one. Restore it, or lower the floor in the same change ' +
           'with the reason beside it.',
@@ -1279,6 +1425,7 @@ for (const a of analyses) {
 
   totals.routed += a.routed.size;
   totals.covered += a.covered.size;
+  totals.delegated += delegated.length;
   totals.uncovered += uncovered.length;
   totals.files += a.testFiles.length;
   totals.excluded += a.excluded.length;
@@ -1360,6 +1507,7 @@ if (problems.length) {
 console.log(
   `\nassert-responsive-coverage: ok — ${roots.length} derived root(s) ` +
     `(${roots.map((r) => r.dir).join(', ')}); ${totals.routed} reachable surface(s), ${totals.covered} ` +
-    `measured by ${totals.files} test file(s); ${totals.uncovered} PRINTED as unmeasured in report-mode ` +
+    `measured by ${totals.files} test file(s); ${totals.delegated} measured where they delegate to; ` +
+    `${totals.uncovered} PRINTED as unmeasured in report-mode ` +
     `root(s); ${totals.excluded} exclusion(s) printed`,
 );

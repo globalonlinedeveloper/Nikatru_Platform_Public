@@ -100,7 +100,7 @@
 // that do not exist, which is why the reduction is mandatory and not tidy.
 // ─────────────────────────────────────────────────────────────────────────────
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -208,6 +208,54 @@ if (GATED.size === 0) {
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A GATED CALL SITE FOLLOWS ITS SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// Every root here is a DIRECTORY, and that is the whole exposure. [ADR 066]
+// step 4 empties a brick screen into `package:nikatru_chassis_screens`; the
+// `signInWithEmail(` call and the `TurnstileGate` mount go with the body, and
+// `packages/chassis_screens` is not one of the roots below. The call site does
+// not fail this guard — it LEAVES it, which is worse, because the root then
+// looks compliant for having nothing in it.
+//
+// So each root's file set gains the chassis files that root delegates to. The
+// file label stays the real package path, so a finding sends the reader where
+// the code is. This only ever ADDS files to a scan.
+//
+// ONE LEVEL, ONE IMPORT, EVERY REFUSAL LOUD — an ambiguous or unresolvable
+// delegation is COVERAGE LOST, never a quiet fall-back to the adapter alone.
+// ─────────────────────────────────────────────────────────────────────────────
+const CHASSIS_PKG = 'nikatru_chassis_screens';
+const CHASSIS_DIR = 'packages/chassis_screens';
+const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level.
+ *  `null` = none · `{ lost }` = could not be followed · `{ files }`. */
+function delegationOf(rel) {
+  const abs = join(REPO, rel);
+  if (!existsSync(abs)) return null;
+  CHASSIS_IMPORT.lastIndex = 0;
+  const paths = [
+    ...new Set([...readFileSync(abs, 'utf8').matchAll(CHASSIS_IMPORT)].map((m) => m[1])),
+  ];
+  if (paths.length === 0) return null;
+  if (paths.length > 1) {
+    return { lost: `${rel} imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')})` };
+  }
+  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
+  if (!existsSync(join(REPO, target))) {
+    return { lost: `${rel} delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${target} and that file is not on disk` };
+  }
+  const out = [target];
+  for (const m of readFileSync(join(REPO, target), 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
+    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
+    if (existsSync(join(REPO, t))) out.push(t);
+  }
+  return { files: out };
+}
+
 // ── the roots ───────────────────────────────────────────────────────────────
 const tracked = git('ls-files', '--', '*.dart').split('\n').filter(Boolean);
 
@@ -237,6 +285,32 @@ for (const root of roots) {
   const files = tracked.filter((p) => p.startsWith(`${root}/`));
   const read = new Map();
   for (const f of files) read.set(f, reduce(readFileSync(join(REPO, f), 'utf8')));
+
+  // The chassis files this root delegates to are scanned WITH it — see the
+  // resolver above. Keyed by their real package path so every line printed
+  // below sends the reader to the file the call is actually in.
+  const delegatedHere = [];
+  for (const f of files) {
+    const dg = delegationOf(f);
+    if (dg && dg.lost) {
+      coverageLost(
+        `a chassis delegation could not be followed: ${dg.lost}`,
+        'The gated call sites move into the package with the screen body, so a delegation this scan',
+        'cannot follow is a call site it cannot see — and a root with nothing in it reads as compliant.',
+      );
+    }
+    for (const t of (dg && dg.files) || []) {
+      if (read.has(t)) continue;
+      read.set(t, reduce(readFileSync(join(REPO, t), 'utf8')));
+      delegatedHere.push(t);
+    }
+  }
+  if (delegatedHere.length) {
+    console.log(
+      `⬜ ${root} — also scanned ${delegatedHere.length} chassis file(s) it delegates to: ` +
+        `${delegatedHere.sort().join(', ')}`,
+    );
+  }
 
   // A root is GOVERNED once it mounts the widget anywhere. Nothing here is an
   // allowlist: this is measured, and it arms itself the day the widget lands.

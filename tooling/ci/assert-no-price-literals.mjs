@@ -304,6 +304,79 @@ for (const a of ALLOW) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — THE RAIL-DERIVED PRICE FOLLOWS THE SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// [ADR 066] step 4 empties a brick screen into `package:nikatru_chassis_screens`
+// and leaves an ADAPTER at the same path: same file, same route, same class
+// name, and none of the body. `.formattedPrice` is read where the price is PAINTED, so it moves into the package with the paywall body — and read at the adapter alone the positive limb below reports that the paywall shows no rail-derived price at all, which is the one conclusion it exists to make loud and the one thing that would not be true.
+//
+// So the scan below reads the adapter AND the chassis file it delegates to.
+// This only ever ADDS text: a call site that was found is still found, and one
+// that is genuinely absent is still absent. Nothing is removed from any domain
+// and no floor is lowered.
+//
+// ONE LEVEL, ONE IMPORT, EVERY REFUSAL LOUD. Two different chassis imports in
+// one adapter is ambiguous and refused; a target that is not on disk is
+// COVERAGE LOST. A delegation this resolver cannot follow must never read as
+// "no delegation" — that is the silent-pass shape.
+// ─────────────────────────────────────────────────────────────────────────────
+const CHASSIS_PKG = 'nikatru_chassis_screens';
+const CHASSIS_DIR = 'packages/chassis_screens';
+const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+
+/** The chassis file(s) an absolute path delegates to, resolved ONE level, as
+ *  paths relative to the REPOSITORY root.
+ *  `null` = no delegation · `{ lost }` = a delegation that could not be followed
+ *  · `{ files }`. `null` and `{ lost }` stay different answers on purpose. */
+function delegationOf(absFile, repoRoot) {
+  if (!existsSync(absFile)) return null;
+  CHASSIS_IMPORT.lastIndex = 0;
+  const src = readFileSync(absFile, 'utf8');
+  const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
+  if (paths.length === 0) return null;
+  if (paths.length > 1) {
+    return {
+      lost: `imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')}), so the file that now carries the behaviour cannot be identified`,
+    };
+  }
+  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
+  if (!existsSync(join(repoRoot, target))) {
+    return { lost: `delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` and that file is not on disk` };
+  }
+  const out = [target];
+  for (const m of readFileSync(join(repoRoot, target), 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
+    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
+    if (existsSync(join(repoRoot, t))) out.push(t);
+  }
+  return { files: out };
+}
+
+/** Every chassis file the .dart tree under `absDir` delegates to.
+ *  `{ files, lost }` — `lost` is a list of refusals the caller must report. */
+function chassisDelegationsUnder(absDir, repoRoot) {
+  const files = [];
+  const lost = [];
+  const walk = (d) => {
+    if (!existsSync(d)) return;
+    for (const e of listDir(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.dart')) {
+        const dg = delegationOf(p, repoRoot);
+        if (dg && dg.lost) {
+          lost.push(`${p} — ${dg.lost}`);
+        } else {
+          for (const f of (dg && dg.files) || []) if (!files.includes(f)) files.push(f);
+        }
+      }
+    }
+  };
+  walk(absDir);
+  return { files, lost };
+}
+
 // ── B · the POSITIVE limb ───────────────────────────────────────────────────
 // Without this, deleting the price from the paywall entirely passes limb A.
 {
@@ -313,9 +386,27 @@ for (const a of ALLOW) {
   if (!existsSync(p)) {
     problems.push(`COVERAGE LOST — ${PAYWALL} does not exist, so limb A's clean result proves only that a tree with no paywall has no prices in it.`);
   } else {
-    const src = readFileSync(p, 'utf8')
-      .replace(/^\s*\/\/.*$/gm, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const strip = (t) => t.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    let src = strip(readFileSync(p, 'utf8'));
+    // The paywall may now be an ADAPTER over a chassis widget — see the
+    // resolver above. Read what it delegates to as well; this only ever adds
+    // text, so a paywall that really shows no price still fails.
+    const dg = delegationOf(p, ROOT);
+    if (dg && dg.lost) {
+      problems.push(
+        `COVERAGE LOST — ${PAYWALL} ${dg.lost}. The positive limb reads the paywall PLUS what it ` +
+          'delegates to, and a delegation it cannot follow is a price it cannot see.',
+      );
+    }
+    for (const f of (dg && dg.files) || []) {
+      src += `\n${strip(readFileSync(join(ROOT, f), 'utf8'))}`;
+    }
+    if (dg && dg.files) {
+      console.log(
+        `⬜ the paywall price limb also read ${dg.files.length} chassis file(s) it delegates to: ` +
+          `${dg.files.join(', ')}`,
+      );
+    }
     if (!/\.formattedPrice\b/.test(src)) {
       problems.push(
         `${PAYWALL} never reads \`.formattedPrice\`. The paywall shows no rail-derived price at all — which passes the negative limb perfectly and is exactly the wrong way to satisfy M-11.`,

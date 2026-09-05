@@ -94,6 +94,51 @@ function railFromData(json) {
   return { offerings, paywallLive };
 }
 const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A NAVIGATION EDGE FOLLOWS ITS SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// §E builds the ROSCA step count out of `context.go('…')` edges collected from
+// the class bodies under the brick lib. [ADR 066] step 4 moves a screen body
+// into `package:nikatru_chassis_screens`, and both the class declaration and
+// its `context.go` calls go with it — at which point `screenFile.get(screen)`
+// answers undefined and the loop `continue`s. The edge is not wrong here, it is
+// ABSENT, and an absent edge makes the cancel path look further away (or
+// unreachable) than it is: a ROSCA compliance finding about a compliant rail.
+//
+// So the walk reads the chassis files the brick delegates to as well. This only
+// ever ADDS class bodies; an edge that existed still exists.
+// ─────────────────────────────────────────────────────────────────────────────
+const CHASSIS_PKG = 'nikatru_chassis_screens';
+const CHASSIS_DIR = 'packages/chassis_screens';
+const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+
+/** The chassis file(s) an absolute path delegates to, resolved ONE level, as
+ *  ABSOLUTE paths. `null` = none · `{ lost }` = could not be followed ·
+ *  `{ files }`. The first two stay different answers on purpose. */
+function delegationOf(abs) {
+  if (!existsSync(abs)) return null;
+  CHASSIS_IMPORT.lastIndex = 0;
+  const paths = [
+    ...new Set([...readFileSync(abs, 'utf8').matchAll(CHASSIS_IMPORT)].map((m) => m[1])),
+  ];
+  if (paths.length === 0) return null;
+  if (paths.length > 1) {
+    return { lost: `imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')})` };
+  }
+  const rel = `${CHASSIS_DIR}/lib/${paths[0]}`;
+  if (!existsSync(join(ROOT, rel))) {
+    return { lost: `delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${rel} and that file is not on disk` };
+  }
+  const out = [join(ROOT, rel)];
+  for (const m of readFileSync(join(ROOT, rel), 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
+    const t = join(ROOT, `${CHASSIS_DIR}/lib/${m[1]}`);
+    if (existsSync(t)) out.push(t);
+  }
+  return { files: out };
+}
+
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 
 function read(rel) {
@@ -390,6 +435,34 @@ let registerChannels = []; // the register's channel rows, whole
       walk(join(ROOT, BRICK_LIB));
     } catch {
       /* absent — reported by the COVERAGE LOST above */
+    }
+
+    // … plus the chassis files the template delegates to — see the resolver
+    // above. Collected from the files already walked, so a screen that has not
+    // moved contributes nothing and this run is byte-for-byte the old one.
+    const delegatedFiles = [];
+    for (const f of [...files]) {
+      const dg = delegationOf(f);
+      if (dg && dg.lost) {
+        problems.push(
+          `COVERAGE LOST — ${f.slice(ROOT.length + 1).replace(/\\/g, '/')} ${dg.lost}. §E's step count is ` +
+            'built from the `context.go` edges in these files, and an edge in a file this walk cannot ' +
+            'reach is not a shorter path — it is an invisible one.',
+        );
+        continue;
+      }
+      for (const t of (dg && dg.files) || []) {
+        if (!files.includes(t)) {
+          files.push(t);
+          delegatedFiles.push(t);
+        }
+      }
+    }
+    if (delegatedFiles.length) {
+      console.log(
+        `⬜ §E also read ${delegatedFiles.length} chassis file(s) the template delegates to: ` +
+          `${delegatedFiles.map((f) => f.slice(ROOT.length + 1).replace(/\\/g, '/')).sort().join(', ')}`,
+      );
     }
 
     const screenFile = new Map(); // ScreenClass -> file body

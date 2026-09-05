@@ -29,7 +29,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -444,5 +444,111 @@ describe('assert-screen-set', () => {
     }));
     assert.equal(code, 1);
     assert.match(out, /not one screen is marked present/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — AN ANCHOR FOLLOWS ITS SCREEN INTO THE CHASSIS (ADR 067 dec. 2)
+//
+// [ADR 066] step 4 leaves an ADAPTER where a screen used to be: same path,
+// still routed, still the file a reader would look in — and the `class
+// NotFoundScreen` it is anchored to has moved into
+// `package:nikatru_chassis_screens`.
+//
+// Read at the adapter alone the guard says the file "does not declare" it. That
+// is true of the file and false of the tree, and the repair a reader reaches for
+// is to re-point the anchor at the package — which QUIETLY DROPS the assertion
+// that the routed file is still the one carrying the screen. So the anchor stays
+// where it is and the declaration is looked for one import away.
+//
+// The purchase-path invariant has the same exposure at directory granularity:
+// its five limbs are matched over the brick lib, and a limb that moves into the
+// package leaves that directory. S-D4 is the control for that half.
+//
+// GREEN CONTROLS FIRST — S-D1 and S-D4. Without them every red below is
+// consistent with a resolver that refuses every delegation.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('an anchor whose screen moved into the chassis is judged there', () => {
+  const CHASSIS_BODY = 'packages/chassis_screens/lib/system_screens.dart';
+  const ADAPTER =
+    "import 'package:nikatru_chassis_screens/system_screens.dart';\n\n" +
+    'class OfflineNotice extends StatelessWidget {\n  const OfflineNotice({super.key});\n}\n';
+
+  /** The design-system file emptied into the chassis, adapter left behind.
+   *  `OfflineNotice` deliberately STAYS in the adapter: one anchor resolving
+   *  locally and one through the delegation is what proves the widening did not
+   *  simply stop reading the anchor file. */
+  function delegating({ declaredInPackage = true, packageOnDisk = true } = {}) {
+    const root = tree({ widgets: ADAPTER });
+    if (packageOnDisk) {
+      mkdirSync(join(root, 'packages/chassis_screens/lib'), { recursive: true });
+      writeFileSync(
+        join(root, CHASSIS_BODY),
+        declaredInPackage
+          ? 'class NotFoundScreen extends StatelessWidget {\n  const NotFoundScreen({super.key});\n}\n'
+          : 'class SomethingElse extends StatelessWidget {\n  const SomethingElse({super.key});\n}\n',
+      );
+    }
+    return root;
+  }
+
+  // GREEN CONTROL.
+  test('S-D1 · the anchor resolves through the delegation, and says where it landed', () => {
+    const { code, out } = run(delegating());
+    assert.equal(code, 0, out);
+    assert.match(out, /24 screen\(s\) present and anchored/);
+    assert.match(out, /`NotFoundScreen` is DECLARED IN `packages\/chassis_screens\/lib\/system_screens\.dart`/);
+    assert.match(out, /The anchor stays on the brick file because that is what still routes it/);
+  });
+
+  // The failure the anchor exists for still fires THROUGH the delegation.
+  test('S-D2 · FAILS when the chassis file does not declare the symbol either', () => {
+    const { code, out } = run(delegating({ declaredInPackage: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`system.not-found`: .*system_screens\.dart` does not declare `NotFoundScreen`/);
+  });
+
+  test('S-D3 · FAILS when the delegation resolves to nothing on disk', () => {
+    const { code, out } = run(delegating({ packageOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /its delegation could not be followed/);
+    assert.match(out, /that file is not on disk/);
+  });
+
+  // ── the purchase-path invariant, same shape one level up ────────────────
+  //
+  // GREEN CONTROL: the paywall body moves into the chassis, taking three of the
+  // five limbs with it. The gate stays in the brick. Without the resolver this
+  // is "a gate in the template with no way to pay past it" — a finding about a
+  // rail that is perfectly whole.
+  test('S-D4 · the purchase-path limbs are still found after the body moves', () => {
+    const root = tree();
+    mkdirSync(join(root, 'packages/chassis_screens/lib'), { recursive: true });
+    writeFileSync(
+      join(root, 'packages/chassis_screens/lib/paywall_body.dart'),
+      'await rail.startCheckout(o);\nawait c.awaitUnlock(appId: a);\nawait funnel.onPurchaseSuccess(o.productId);\n',
+    );
+    writeFileSync(
+      join(root, `${BRICK_LIB}/features/monetization/paywall_screen.dart`),
+      "import 'package:nikatru_chassis_screens/paywall_body.dart';\n\nclass PaywallScreen extends StatelessWidget {}\n",
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /purchase path whole/);
+    assert.match(out, /the purchase-path scan read 1 chassis file\(s\) the template delegates to/);
+  });
+
+  // And the same move with the package file missing is COVERAGE LOST, not a
+  // quiet fall-back to reading the adapter alone.
+  test('S-D5 · COVERAGE LOST when a brick file delegates to nothing', () => {
+    const root = tree();
+    writeFileSync(
+      join(root, `${BRICK_LIB}/features/monetization/paywall_screen.dart`),
+      "import 'package:nikatru_chassis_screens/paywall_body.dart';\n\nclass PaywallScreen extends StatelessWidget {}\n",
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.match(out, /that file is not on disk/);
   });
 });

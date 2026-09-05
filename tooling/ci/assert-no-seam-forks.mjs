@@ -677,6 +677,107 @@ function capsReads(rel) {
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A CAPS GATE FOLLOWS THE SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the collision this resolves is [ADR 066]'s item 2 under
+//  "what actually pins the lines")
+//
+// [ADR 066] measured the zero-caps limb below as ONE OF THE THREE HARD
+// CONSTRAINTS on chassis step 4, and it is right to be: a parity chassis file
+// that reads no `caps.<field>` makes C empty, C is then a subset of ANY fork,
+// and the test cannot fail. Three files hold the live reads today --
+// sign_in_screen.dart, settings_screen.dart, home_screen.dart -- and they are
+// exactly the three PARITY_PAIRS. "Empty the template" collides head-on here.
+//
+// THE COLLISION IS REAL AND THE ANSWER IS NOT TO SOFTEN THE LIMB. Emptying
+// sign_in_screen.dart into `package:nikatru_chassis_screens` moves the
+// `if (caps.oauthRedirect ...)` gate into the package and leaves an ADAPTER
+// behind. Read at the adapter alone, C goes to zero and this guard reports
+// COVERAGE LOST -- correctly about the file it read, and wrongly about the
+// tree, because the gate is one import away and perfectly alive.
+//
+// So C is taken over the ADAPTER PLUS the package file it delegates to, and F
+// the same way on the fork's side. WHAT DOES NOT CHANGE:
+//   - the zero-caps COVERAGE LOST still fires, and it still NAMES THE ADAPTER.
+//     If the union is still empty the subset test is still vacuous and this
+//     guard still refuses it. The rule is untouched; only where it reads from
+//     has widened.
+//   - MIN_ACCOUNTED_PAIRS stays 12, and the per-file existsSync on both the
+//     brick and the fork stays. A delegating screen is still a screen that must
+//     EXIST at its declared path: an adapter is a file, not an absence, and a
+//     pair that vanishes is still loud.
+//   - the ARRIVE limb still derives its universe from the brick features
+//     directory. Delegation does not remove a file from that directory.
+//
+// ONE LEVEL, ONE IMPORT, AND EVERY REFUSAL IS LOUD. Two different chassis
+// imports in one file is ambiguous; a target not on disk is COVERAGE LOST. A
+// delegation this resolver cannot follow must never read as "no delegation" --
+// that is the silent-pass shape this whole guard is built against.
+// ─────────────────────────────────────────────────────────────────────────────
+const CHASSIS_PKG = 'nikatru_chassis_screens';
+const CHASSIS_DIR = 'packages/chassis_screens';
+const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+
+/** The package file `rel` delegates to, resolved ONE level.
+ *
+ *  Three answers, kept apart deliberately: `null` (no delegation), `{ lost }` (a
+ *  delegation this resolver could not follow -- the caller reports COVERAGE
+ *  LOST) and `{ files }` (where the gates now live). `null` and `{ lost }`
+ *  collapsing into one answer is how a resolver that stopped reaching its
+ *  target starts reporting a clean tree. */
+function delegationOf(rel) {
+  if (!existsSync(join(ROOT, rel))) return null;
+  CHASSIS_IMPORT.lastIndex = 0;
+  const src = stripComments(readFileSync(join(ROOT, rel), 'utf8'));
+  const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
+  if (paths.length === 0) return null;
+  if (paths.length > 1) {
+    return {
+      lost:
+        `${rel} -- imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths ` +
+        `(${paths.join(', ')}), so the file that now holds this screen's caps gates cannot be identified. ` +
+        'This limb compares two NAMED files and will not guess between two of them.',
+    };
+  }
+  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
+  if (!existsSync(join(ROOT, target))) {
+    return {
+      lost:
+        `${rel} -- delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${target}, and ` +
+        'that file is not on disk. The gates left this file and arrived nowhere this guard reads.',
+    };
+  }
+  const targetSrc = stripComments(readFileSync(join(ROOT, target), 'utf8'));
+  // The target ITSELF is always read, and its one level of re-exports is read
+  // WITH it rather than instead of it. That is deliberately a superset: this
+  // limb's question is "where are the gates", not "which file is the widget",
+  // and a resolver that had to recognise a widget declaration to decide would
+  // answer "no gates anywhere" for a target it merely failed to classify --
+  // which is the silent-pass shape, arriving through the resolver instead of
+  // through the guard.
+  const out = [target];
+  for (const m of targetSrc.matchAll(/export\s+'([^':]+\.dart)'/g)) {
+    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
+    if (existsSync(join(ROOT, t)) && !out.includes(t)) out.push(t);
+  }
+  return { files: out };
+}
+
+/** `caps.<field>` reads in a file AND in the chassis file it delegates to.
+ *  `from` names every file the set was taken over, so the report can say WHERE
+ *  a gate was found rather than only that it was. */
+function capsReadsFollowingDelegation(rel) {
+  const from = [rel];
+  const reads = capsReads(rel);
+  const d = delegationOf(rel);
+  if (d && d.lost) return { reads, from, lost: d.lost };
+  for (const f of (d && d.files) || []) {
+    from.push(f);
+    for (const field of capsReads(f)) reads.add(field);
+  }
+  return { reads, from, lost: null };
+}
+
 const parityLost = [];
 const parityGaps = [];
 const parityOk = [];
@@ -793,12 +894,22 @@ for (const pair of PARITY_PAIRS) {
     }
     continue;
   }
-  const chassisReads = capsReads(pair.chassis);
-  const forkReads = capsReads(pair.fork);
+  const chassisSide = capsReadsFollowingDelegation(pair.chassis);
+  const forkSide = capsReadsFollowingDelegation(pair.fork);
+  if (chassisSide.lost || forkSide.lost) {
+    for (const why of [chassisSide.lost, forkSide.lost].filter(Boolean)) parityLost.push(`    ${why}`);
+    continue;
+  }
+  const chassisReads = chassisSide.reads;
+  const forkReads = forkSide.reads;
   if (chassisReads.size === 0) {
     parityLost.push(
-      `    ${pair.chassis} — 0 \`caps.<field>\` read(s) found. C is empty, so C ⊆ F holds for ANY fork:` +
-        ' the subset test cannot fail and is therefore worse than none.',
+      `    ${pair.chassis} — 0 \`caps.<field>\` read(s) found` +
+        (chassisSide.from.length > 1
+          ? `, in it OR in the chassis file it delegates to (${chassisSide.from.slice(1).join(', ')})`
+          : '') +
+        '. C is empty, so C ⊆ F holds for ANY fork: the subset test cannot fail and is therefore worse ' +
+        'than none.',
     );
     continue;
   }
@@ -818,8 +929,13 @@ for (const pair of WATCHED_PAIRS) {
     }
     continue;
   }
-  const chassisReads = capsReads(pair.chassis);
-  if (chassisReads.size > 0) watchPromotable.push({ pair, chassisReads });
+  const chassisSide = capsReadsFollowingDelegation(pair.chassis);
+  if (chassisSide.lost) {
+    watchLost.push(`    ${chassisSide.lost}`);
+    continue;
+  }
+  const chassisReads = chassisSide.reads;
+  if (chassisReads.size > 0) watchPromotable.push({ pair, chassisReads, from: chassisSide.from });
 }
 
 if (watchLost.length) {

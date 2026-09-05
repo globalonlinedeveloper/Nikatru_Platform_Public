@@ -492,3 +492,135 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.match(out, /packages\/design_system: 11 of 20 surface\(s\) measured — 9 PRINTED/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A WIDTH TEST FOLLOWS ITS SCREEN INTO THE CHASSIS (ADR 067 dec. 2)
+//
+// [ADR 066] step 4 empties a brick screen into `package:nikatru_chassis_screens`
+// and leaves an ADAPTER at the same path. The LayoutBuilder, the ConstrainedBox
+// and the max-width go into the package with the body — AND SO DOES THE WIDTH
+// TEST, into the package's own suite.
+//
+// Read without the resolver, that move is indistinguishable from DELETING the
+// width test: the brick's covered set drops by one and `coveredSurfaces` falls
+// under its floor of 3, which is a COVERAGE LOST finding about a tree where the
+// measurement is right there, green, one import away.
+//
+// THE BRICK IS THE ROOT USED, NOT `apps/subly`, AND THAT IS DELIBERATE. subly
+// measures all 19 of its surfaces, so a delegation there changes no number and
+// the tests below would pass against a resolver that does nothing at all. The
+// brick measures exactly 3 of 12 with a floor at 3 — zero slack — so moving one
+// of the three is the smallest change this suite can read, and the floor is
+// what reads it.
+//
+// GREEN CONTROL FIRST, EVERY TIME. R-D1 is the whole point: without it, R-D2's
+// red is equally consistent with a resolver that refuses every delegation.
+// ─────────────────────────────────────────────────────────────────────────────
+const FIXTURES = join(CI_DIR, 'test', 'fixtures', 'chassis-delegation');
+const CHASSIS_DIR = 'packages/chassis_screens';
+const tpl = (name, subs) => {
+  let text = readFileSync(join(FIXTURES, name), 'utf8');
+  for (const [k, v] of Object.entries(subs)) text = text.split(k).join(v);
+  return text;
+};
+
+/** The brick's SettingsScreen moved into the chassis: an adapter at the brick
+ *  path, the widget in the package, and the brick's own four `SettingsScreen`
+ *  width cases gone — because they went with it.
+ *
+ *  `chassisWidthTest: false` is the MUTATION: the screen moved and its width
+ *  test did not arrive. The brick is then genuinely measuring 2 surfaces
+ *  against a floor of 3, and that must fail. */
+function treeWithChassis({ chassisWidthTest = true, inWorkspace = true, widgetOnDisk = true } = {}) {
+  const root = treeWithNewRoots();
+  mkdirSync(join(root, CHASSIS_DIR, 'lib'), { recursive: true });
+  mkdirSync(join(root, CHASSIS_DIR, 'test'), { recursive: true });
+  writeFileSync(
+    join(root, CHASSIS_DIR, 'pubspec.yaml'),
+    'name: nikatru_chassis_screens\npublish_to: none\n\ndependencies:\n  flutter:\n    sdk: flutter\n\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n',
+  );
+  if (widgetOnDisk) {
+    writeFileSync(
+      join(root, CHASSIS_DIR, 'lib', 'settings_body.dart'),
+      tpl('chassis_widget.dart.tpl', { __CLASS__: 'SettingsBody' }),
+    );
+  }
+  if (chassisWidthTest) {
+    writeFileSync(
+      join(root, CHASSIS_DIR, 'test', 'width_settings_body_test.dart'),
+      [
+        "import 'package:flutter/material.dart';",
+        "import 'package:flutter_test/flutter_test.dart';",
+        "import 'package:nikatru_chassis_screens/settings_body.dart';",
+        '',
+        'const Size kPhone = Size(375, 812);',
+        'const Size kTablet = Size(768, 1024);',
+        'const Size kDesktop = Size(1280, 900);',
+        '',
+        'void main() {',
+        "  testWidgets('SettingsBody at every window class', (tester) async {",
+        '    for (final size in <Size>[kPhone, kTablet, kDesktop]) {',
+        '      await tester.binding.setSurfaceSize(size);',
+        '      await tester.pumpWidget(const MaterialApp(home: SettingsBody()));',
+        '    }',
+        '  });',
+        '}',
+        '',
+      ].join('\n'),
+    );
+  }
+
+  writeFileSync(
+    join(root, BRICK, 'lib/features/settings/settings_screen.dart'),
+    tpl('adapter_screen.dart.tpl', {
+      __IMPORT__: 'package:nikatru_chassis_screens/settings_body.dart',
+      __CLASS__: 'SettingsScreen',
+      __BODY__: 'SettingsBody',
+    }),
+  );
+
+  // The width cases went with the body. `edit()` throws if the anchor is not
+  // there, so this mutation cannot silently apply nothing.
+  edit(root, `${BRICK}/test/responsive_width_test.dart`, 'const SettingsScreen()', 'const Placeholder()', {
+    count: 4,
+  });
+
+  if (inWorkspace) {
+    edit(root, WORKSPACE_MANIFEST, '\n  - apps/subly', `\n  - ${CHASSIS_DIR}\n  - apps/subly`);
+  }
+  return root;
+}
+
+describe('a screen that DELEGATES into the chassis is measured where it now lives', () => {
+  // GREEN CONTROL.
+  test('R-D1 · the width test moves with the screen and the floor still holds', () => {
+    const { code, out } = run(treeWithChassis());
+    assert.equal(code, 0, out);
+    assert.match(out, /4 derived root\(s\)/);
+    assert.match(out, /1 measured where they delegate to/);
+  });
+
+  // THE MUTATION — the screen moved and NO width test arrived with it.
+  test('R-D2 · the chassis widget has no width test: the brick floor fires', () => {
+    const { code, out } = run(treeWithChassis({ chassisWidthTest: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — .*\{\{app_id\}\}` has 2 measured surface\(s\) and its measured floor is 3/);
+  });
+
+  // Same mutation seen from the other side: the delegation resolves to nothing.
+  test('R-D3 · COVERAGE LOST when the delegation resolves to nothing on disk', () => {
+    const { code, out } = run(treeWithChassis({ widgetOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — .*settings_screen\.dart` delegates to/);
+    assert.match(out, /that file is not on disk/);
+  });
+
+  // The refusal that makes the widening safe: followed out of the domain, the
+  // width decision would be measured by nothing and the run would still be green.
+  test('R-D4 · COVERAGE LOST when the chassis is not a DERIVED ROOT of the scan', () => {
+    const { code, out } = run(treeWithChassis({ inWorkspace: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is NOT among the \d+ root\(s\) this scan derived/);
+    assert.match(out, /never arrived anywhere this guard looks/);
+  });
+});

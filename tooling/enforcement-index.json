@@ -1027,6 +1027,8 @@
   },
   {
     "claims": [
+      "ADR 065",
+      "ADR 066",
       "C-4"
     ],
     "invokedBy": [
