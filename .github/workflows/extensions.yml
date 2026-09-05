@@ -66,8 +66,23 @@ name: Extensions
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
+  # 🔴 `push` IS TAGS-ONLY, AND `branches: [main]` WAS HERE UNTIL CI SAID WHY IT
+  # COULD NOT BE. tooling/ops/safe-rerun.mjs identifies a release re-run by
+  # inferring "this push was a TAG push" from the workflow's own trigger — the
+  # runs API carries no `ref_type`, so `releaseTagOf` returns null for any
+  # publishing workflow whose `on.push` is not tags-only, and the refusal that
+  # stops `gh release create` running twice at the same tag goes silently inert.
+  # `tooling/ci/test/safe-rerun.test.mjs` caught it the first time this file
+  # reached CI, through a positive control that pins how many publishers the
+  # tree has.
+  #
+  # ⚠️ THE COST IS REAL AND IT IS THE PRICE OF ONE FILE: the extensions no
+  # longer get a CI run on a push to main. The three separate workflows this
+  # file replaces could have a tags-only release lane AND a main-push CI lane,
+  # because they were separate files. Here the PR run is the gate — `ci-gate` is
+  # the required check and a squash merge lands exactly the content it graded —
+  # and the safety of the one irreversible act outranks a duplicate run.
   push:
-    branches: [main]
     tags:
       - '*-v[0-9]+.[0-9]+.[0-9]+'
       - '*-v[0-9]+.[0-9]+.[0-9]+.[0-9]+'
@@ -1480,7 +1495,7 @@ jobs:
 
   e2e-suite:
     name: e2e · ${{ matrix.suite.dir }}
-    needs: e2e-suite-discover
+    needs: e2e-discover
     # `result == 'success'` is stated rather than left implicit: on a PR without
     # the label the discover job is skipped, its outputs are empty strings, and
     # `'' != '0'` is TRUE — a condition that reads as "there is work" at the
