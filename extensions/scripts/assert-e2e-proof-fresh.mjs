@@ -498,7 +498,21 @@ const api = async p => {
     console.log(`::error::${red.length} freshness finding(s): ${red.join(' | ')}`);
     process.exit(1);
   }
-  console.log(`proof-fresh ok — timer ${timerAge.toFixed(1)}d, green proof ${greenAge.toFixed(1)}d, both inside ${MAX_AGE_DAYS}d`);
+  /* ⚠️ BOTH AGES ARE NULL UNDER THE BOOTSTRAP, and the first draft of that
+     escape CRASHED HERE rather than printing: `.toFixed` on null, caught by the
+     outer handler and reported as `proof-fresh COVERAGE LOST` — the right
+     refusal for entirely the wrong reason, and a reader would have gone looking
+     for a broken API call. Found by CI on the run that added the bootstrap.
+
+     The summary line has to say what it actually knows. An absent age prints as
+     `—` and the line names the bootstrap, rather than claiming two
+     measurements it never took: this is "not due", not "fresh". */
+  const age = (v) => (v === null ? '—' : v.toFixed(1) + 'd');
+  if (timerAge === null && greenAge === null) {
+    console.log(`proof-fresh ok — NOTHING MEASURED and nothing certified: no scheduled run of ${WORKFLOW} exists yet and the bootstrap window is open until ${new Date(BOOTSTRAP_UNTIL).toISOString()}.`);
+  } else {
+    console.log(`proof-fresh ok — timer ${age(timerAge)}, green proof ${age(greenAge)}, both inside ${MAX_AGE_DAYS}d`);
+  }
 })().catch(e => {
   console.log(`::error::proof-fresh COVERAGE LOST — ${e.message}. It could not read the run history, and a guard that cannot see the timer must not certify it.`);
   process.exit(2);
