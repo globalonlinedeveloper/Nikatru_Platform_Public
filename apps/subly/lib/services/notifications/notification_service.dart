@@ -1,5 +1,10 @@
 import 'package:flutter/foundation.dart'
-    show immutable, kIsWeb, visibleForTesting;
+    show
+        TargetPlatform,
+        defaultTargetPlatform,
+        immutable,
+        kIsWeb,
+        visibleForTesting;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -178,15 +183,16 @@ class NotificationService {
     linux: const LinuxNotificationDetails(),
   );
 
-  /// Schedules a one-off reminder [daysBefore] the renewal, at 09:00 local.
-  /// (Windows can't do *repeating* notifications, but one-off per-renewal
-  /// reminders like this work everywhere.)
-  Future<void> scheduleRenewalReminder(
-    Subscription sub, {
-    required ReminderCopy copy,
-    int daysBefore = 2,
-  }) async {
-    if (!_ready) return;
+  /// The instant a reminder for [sub] should fire, or `null` when that instant
+  /// has already passed and the reminder is therefore not schedulable.
+  ///
+  /// 🔴 ONE DEFINITION, TWO CALLERS, DELIBERATELY. [scheduleRenewalReminder]
+  /// posts it and [plannedReminders] budgets against it. A second copy of this
+  /// arithmetic would drift, and the drift is not visible: the planner would
+  /// spend a scarce slot (see [renewalReminderBudget]) on a reminder the
+  /// scheduler then silently declines to post, so the user would lose a
+  /// reminder they COULD have had to one they never could.
+  tz.TZDateTime? _whenFor(Subscription sub, int daysBefore) {
     final DateTime target = sub.nextRenewal.subtract(
       Duration(days: daysBefore),
     );
@@ -198,7 +204,43 @@ class NotificationService {
       9,
     );
     // Don't fire in the past.
-    if (when.isBefore(tz.TZDateTime.now(tz.local))) return;
+    if (when.isBefore(tz.TZDateTime.now(tz.local))) return null;
+    return when;
+  }
+
+  /// Schedules a one-off reminder [daysBefore] the renewal, at 09:00 local.
+  ///
+  /// ⚠️ "ONE-OFF" IS THE WORD THAT MATTERS, AND IT IS NOT A LIMITATION OF THE
+  /// PLATFORMS — it is what a renewal reminder IS. The obvious-looking
+  /// alternative — `matchDateTimeComponents`, which [scheduleWeeklyDigest]
+  /// genuinely does use, and which `DateTimeComponents.dayOfMonthAndTime` /
+  /// `.dateAndTime` would express for this app's two [BillingCycle] arms — was
+  /// measured and rejected here, twice over:
+  ///
+  ///  · the body is a FINISHED STRING containing a concrete date —
+  ///    `copy.reminderBody(sub.name, sub.nextRenewal)` renders "Netflix renews
+  ///    on Aug 12" once, and a repeating request re-posts those same words
+  ///    every month forever. A repeat would not carry the moving renewal date;
+  ///    it would carry a frozen one, and be wrong from its second firing on.
+  ///  · it would not buy a single slot anyway. iOS counts PENDING requests,
+  ///    and a repeating request is one pending request exactly like a one-off.
+  ///    Repetition is orthogonal to the budget below, not a way around it.
+  ///
+  /// ⚠️ AND IT DOES NOT "WORK EVERYWHERE" — this doc used to claim it did.
+  /// `FlutterLocalNotificationsPlugin.zonedSchedule` dispatches on
+  /// `defaultTargetPlatform` and its final `else` throws `UnimplementedError`
+  /// (flutter_local_notifications 17.2.4,
+  /// lib/src/flutter_local_notifications_plugin.dart:377), so Linux and Windows
+  /// reach no implementation at all. Recorded, not fixed here: this increment
+  /// bounds the reminder set, and the desktop gap is a separate change.
+  Future<void> scheduleRenewalReminder(
+    Subscription sub, {
+    required ReminderCopy copy,
+    int daysBefore = 2,
+  }) async {
+    if (!_ready) return;
+    final tz.TZDateTime? when = _whenFor(sub, daysBefore);
+    if (when == null) return;
 
     await _plugin.zonedSchedule(
       _idFor(sub.id),
@@ -270,6 +312,92 @@ class NotificationService {
     await _plugin.cancelAll();
   }
 
+  /// 🔴 APPLE'S PENDING-NOTIFICATION POOL — 64 PER APP, ENFORCED BY DISCARDING.
+  /// `UNUserNotificationCenter` keeps only the 64 soonest pending requests an
+  /// app has scheduled and drops every one after that. It does not throw, does
+  /// not call back, and does not report the drop anywhere; the only way to see
+  /// it is to ask for the pending list afterwards and find yours missing. The
+  /// limit is per APP, shared by every scheduled notification this service
+  /// owns, and it applies on macOS too — both go through
+  /// `UNUserNotificationCenter`.
+  static const int _darwinPendingLimit = 64;
+
+  /// The most renewal reminders [syncAll] will schedule on a platform that caps
+  /// them.
+  ///
+  /// 🔴 STRICTLY BELOW [_darwinPendingLimit], AND THAT GAP IS NOT ROUNDING.
+  /// [_digestId] lives in the SAME per-app pool: a renewal set filling all 64
+  /// slots would push the weekly digest out, and the digest is the one
+  /// notification that can still tell a user something when their reminders
+  /// have been capped. Four slots is room for the digest and for whatever this
+  /// service is asked to schedule next, at a cost of four reminders on an
+  /// account that already has more than 60 subscriptions.
+  static const int renewalReminderBudget = _darwinPendingLimit - 4;
+
+  /// Whether [platform] silently discards pending notifications past a cap.
+  ///
+  /// ⚠️ ANDROID IS DELIBERATELY ABSENT. It schedules through `AlarmManager`,
+  /// which has no 64-request pool, so applying the budget there would delete
+  /// working reminders to solve a problem that platform does not have — a
+  /// regression dressed as a fix. Linux and Windows are absent for a blunter
+  /// reason: `zonedSchedule` reaches no implementation at all on them (see
+  /// [scheduleRenewalReminder]), so there is nothing there to budget.
+  @visibleForTesting
+  static bool platformCapsPendingNotifications(TargetPlatform platform) =>
+      platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+
+  /// The subscriptions [syncAll] will actually schedule a reminder for, in the
+  /// order it will schedule them.
+  ///
+  /// Below the budget, or on a platform that does not cap, this is the input
+  /// untouched — the ordinary account must behave exactly as it did. Above it,
+  /// the set is narrowed on purpose and in a defensible order:
+  ///
+  ///  1. drop the reminders that CANNOT fire — a renewal already past its
+  ///     reminder instant is skipped by [scheduleRenewalReminder] anyway, and
+  ///     letting those consume slots would spend the budget on nothing (an
+  ///     account carrying stale renewal dates is exactly the crowded account
+  ///     this cap exists for);
+  ///  2. soonest first — the reminders a user could still act on;
+  ///  3. take [renewalReminderBudget].
+  ///
+  /// The result is the same overflow the OS was going to impose regardless,
+  /// except chosen rather than arbitrary, and countable
+  /// ([remindersDroppedByBudget]) rather than invisible.
+  @visibleForTesting
+  List<Subscription> plannedReminders(
+    List<Subscription> subs, {
+    int daysBefore = 2,
+    TargetPlatform? platform,
+  }) {
+    if (kIsWeb) return List<Subscription>.unmodifiable(subs);
+    final TargetPlatform target = platform ?? defaultTargetPlatform;
+    if (!platformCapsPendingNotifications(target) ||
+        subs.length <= renewalReminderBudget) {
+      return List<Subscription>.unmodifiable(subs);
+    }
+    final List<Subscription> schedulable =
+        subs.where((Subscription s) => _whenFor(s, daysBefore) != null).toList()
+          ..sort(
+            (Subscription a, Subscription b) =>
+                a.nextRenewal.compareTo(b.nextRenewal),
+          );
+    return List<Subscription>.unmodifiable(
+      schedulable.take(renewalReminderBudget),
+    );
+  }
+
+  /// How many subscriptions the last [syncAll] left out because the cap in
+  /// [plannedReminders] narrowed the set. Exactly 0 whenever the cap did not
+  /// bite — on Android, and on any account inside [renewalReminderBudget] —
+  /// because the planner returns its input untouched in both cases.
+  ///
+  /// This is the "observable" half of the cap: the OS was going to discard
+  /// these either way, but a number the app can read is the whole difference
+  /// between a deliberate limit and a silent one.
+  int get remindersDroppedByBudget => _droppedByBudget;
+  int _droppedByBudget = 0;
+
   /// Rebuilds the full reminder set (call after edits, or on app resume).
   Future<void> syncAll(
     List<Subscription> subs, {
@@ -278,7 +406,12 @@ class NotificationService {
   }) async {
     if (!_ready) return;
     await cancelAll();
-    for (final Subscription s in subs) {
+    final List<Subscription> planned = plannedReminders(
+      subs,
+      daysBefore: daysBefore,
+    );
+    _droppedByBudget = subs.length - planned.length;
+    for (final Subscription s in planned) {
       await scheduleRenewalReminder(s, copy: copy, daysBefore: daysBefore);
     }
   }
