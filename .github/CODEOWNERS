@@ -1,0 +1,17 @@
+# One owner, stated rather than assumed.
+#
+# `require_code_owner_reviews` is FALSE on main today and this file does not
+# change that: with `required_approving_review_count: 0` it only makes the
+# option available later without a second change. What it does buy now is a
+# review request on every pull request, so nothing merges without appearing in
+# an inbox.
+#
+# Reviewed-by is not the gate. `ci-gate` is, and it is the only required status
+# check on main — see docs/ci/README.md.
+
+* @globalonlinedeveloper
+
+# The two places where a wrong merge is expensive rather than merely wrong:
+# CI's own definition, and the guards that decide what may ship.
+/.github/         @globalonlinedeveloper
+/tooling/ci/      @globalonlinedeveloper

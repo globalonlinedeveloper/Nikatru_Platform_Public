@@ -8,32 +8,27 @@
     "is the half that makes it sustainable. Without it the pins rot and the repo ends",
     "up LESS safe than before they were added.",
     "NO AUTOMERGE, deliberately: the queue says review-required, and a bot that merges",
-    "its own PRs is the kind of unattended write path F-11 spent its time removing."
+    "its own PRs is the kind of unattended write path F-11 spent its time removing.",
+    "",
+    "AMENDED 2026-09-05 (ADR 067 decision 4). The clause above stands for MAJORS and",
+    "for anything that reaches a user. It is narrowed for patch, pin and digest",
+    "updates, which now automerge THROUGH ci-gate: the write path is not unattended,",
+    "it is gated by the single required status check on main, with enforce_admins on.",
+    "What was actually costing safety was the opposite of a bot merging too much - 16",
+    "updates sat under Awaiting Schedule and a config error stopped every PR for days",
+    "while the workflow reported 100% success (issue #420). A pin nobody advances is",
+    "the hole F-2 opened; ci-gate is what makes closing it cheap.",
+    "",
+    "The prose that used to live here as a key called _scheduleWhy - which is not a",
+    "Renovate option, so Renovate refused the WHOLE config and opened no pull request",
+    "from 2026-09-03 - is now docs/ci/README.md section 8. `description` is a real",
+    "option and is the only place prose belongs in this file."
   ],
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Asia/Kolkata",
-  "_scheduleWhy": [
-    "🔴 \"on monday\", NOT \"before 6am on monday\", AND THE OLD VALUE MEANT RENOVATE COULD NEVER OPEN",
-    "A PULL REQUEST AT ALL. This window is evaluated in Asia/Kolkata, so 'before 6am on monday' is",
-    "Sunday 18:30 UTC to Monday 00:30 UTC -- and the ONLY thing that now runs Renovate is",
-    ".github/workflows/renovate.yml, whose cron fires at 03:00 UTC. 03:00 UTC is 08:30 IST. The two",
-    "sets never intersect, so every run evaluated the tree, wrote the dashboard, and deferred every",
-    "update forever. MEASURED, not reasoned: the first self-hosted run left SIXTEEN updates under",
-    "'Awaiting Schedule' on the Dependency Dashboard (issue #417, 2026-09-03).",
-    "",
-    "⚠️ IT WAS ALREADY BROKEN BEFORE THE SELF-HOSTED MOVE, which is why nobody noticed: the",
-    "Mend-hosted App ran on ITS OWN cadence, several times a day, so it always found the window. The",
-    "moment the schedule became ours, the mismatch became total. The lesson generalises: A SCHEDULE",
-    "IS NOT A SETTING, IT IS AN INTERSECTION -- with whatever fires it, in whatever timezone.",
-    "",
-    "'on monday' is the whole of Monday IST = Sunday 18:30 UTC to Monday 18:30 UTC, so the 03:00 UTC",
-    "Monday firing lands inside it with about 15 HOURS of delivery lateness to spare -- which matters",
-    "on a scheduler measured at 10.1% on-time. The DUTY is still weekly; the widening buys margin on",
-    "the evidence, never a change of cadence. Same principle as the daily cron behind a 7d duty row."
-  ],
   "schedule": [
     "on monday"
   ],
@@ -56,6 +51,22 @@
     ]
   },
   "packageRules": [
+    {
+      "description": [
+        "Patch, pin and digest updates automerge, gated on ci-gate. automergeType is",
+        "the DEFAULT pr, never branch: ci.yml now runs on push to main only, so a",
+        "Renovate branch carries no status check of its own and a branch automerge",
+        "would be merging on the absence of a red rather than the presence of a green.",
+        "Majors and minors keep automerge: false from the top level."
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": true,
+      "automergeType": "pr"
+    },
     {
       "description": "Actions move together and are low-risk to review as one PR.",
       "matchManagers": [
