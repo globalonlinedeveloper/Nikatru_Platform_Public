@@ -810,3 +810,178 @@ describe('a sweep must point at something a user can reach', () => {
     assert.match(out, /FAIL `AppShell` is excluded in NOT_A_PANE for `apps\/subly` but no route in .* builds it/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — THE SHAPE CHASSIS STEP 4 PRODUCES (ADR 067 decision 2)
+//
+// [ADR 066] step 4 does not delete a brick screen: it EMPTIES one. The body
+// moves into `package:nikatru_chassis_screens` and an ADAPTER is left at the
+// same path — same file, same route, same class name, none of the body. Every
+// `Semantics(`, every label and every tap target goes with the body.
+//
+// Read at the adapter alone the surface prints as owed FOREVER, while the work
+// that discharges it sits one import away under a different root. That is this
+// guard's own recorded `NotFoundScreen` failure verbatim, and the repair is the
+// same: put the declaring file in the domain and follow the import to it.
+//
+// EVERY CASE HERE HAS ITS GREEN CONTROL FIRST. Without them the two COVERAGE
+// LOST cases below are equally consistent with a resolver that refuses every
+// delegation, which would pass this file and redden the first real chassis unit.
+//
+// THE FIXTURE SOURCES ARE FILES, NOT STRINGS — tooling/ci/test/fixtures/
+// chassis-delegation/. Six suites build this same shape and six hand-written
+// copies of it drift in the one way that reports clean.
+// ─────────────────────────────────────────────────────────────────────────────
+const FIXTURES = join(CI_DIR, 'test', 'fixtures', 'chassis-delegation');
+const CHASSIS_DIR = 'packages/chassis_screens';
+const tpl = (name, subs) => {
+  let text = readFileSync(join(FIXTURES, name), 'utf8');
+  for (const [k, v] of Object.entries(subs)) text = text.split(k).join(v);
+  return text;
+};
+
+/** `treeWithNewRoots()`, plus a chassis package the BRICK's settings screen
+ *  delegates to.
+ *
+ *  The BRICK is the root used and not `apps/subly`, deliberately: subly sweeps
+ *  all 19 of its surfaces, so a delegation there would be invisible in the
+ *  report. The brick sweeps ZERO of its 12, so a surface moving from the owed
+ *  list to the swept one is a difference this suite can actually read — which is
+ *  what makes the green control a control rather than a re-run.
+ *
+ *  `sweep` false leaves the chassis widget UNSWEPT: the delegation resolves, the
+ *  guard follows it, and the surface stays owed. That is not a failure — this
+ *  guard prints unswept surfaces rather than failing on them — and asserting the
+ *  DIFFERENCE between the two runs is how the follow is proven to be real. */
+function treeWithChassis({ inWorkspace = true, widgetOnDisk = true, sweep = true, barrel = false, bare = false } = {}) {
+  const root = treeWithNewRoots();
+  const widgetFile = barrel ? `${CHASSIS_DIR}/lib/src/settings_body.dart` : `${CHASSIS_DIR}/lib/settings_body.dart`;
+  const importPath = barrel
+    ? 'package:nikatru_chassis_screens/nikatru_chassis_screens.dart'
+    : 'package:nikatru_chassis_screens/settings_body.dart';
+
+  mkdirSync(join(root, CHASSIS_DIR, 'lib', 'src'), { recursive: true });
+  mkdirSync(join(root, CHASSIS_DIR, 'test'), { recursive: true });
+  writeFileSync(
+    join(root, CHASSIS_DIR, 'pubspec.yaml'),
+    'name: nikatru_chassis_screens\npublish_to: none\n\ndependencies:\n  flutter:\n    sdk: flutter\n\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n',
+  );
+  if (widgetOnDisk) {
+    // `bare` is the widget with the property REMOVED — no Semantics, no width
+    // cap, no caps gate. The ADAPTER is byte-identical either way, which is
+    // exactly why a guard that reads only the adapter cannot tell the two trees
+    // apart.
+    writeFileSync(
+      join(root, widgetFile),
+      tpl(bare ? 'chassis_widget_bare.dart.tpl' : 'chassis_widget.dart.tpl', { __CLASS__: 'SettingsBody' }),
+    );
+  }
+  if (barrel) {
+    writeFileSync(
+      join(root, CHASSIS_DIR, 'lib', 'nikatru_chassis_screens.dart'),
+      tpl('chassis_barrel.dart.tpl', { __EXPORT__: 'src/settings_body.dart' }),
+    );
+  }
+  if (sweep) {
+    writeFileSync(
+      join(root, CHASSIS_DIR, 'test', 'a11y_settings_body_test.dart'),
+      "import 'package:flutter_test/flutter_test.dart';\n" +
+        "import 'package:nikatru_chassis_screens/settings_body.dart';\n\n" +
+        "void main() {\n" +
+        "  testWidgets('naked-controls · SettingsBody', (tester) async {\n" +
+        '    await tester.pumpWidget(const SettingsBody());\n' +
+        '    expectNothingNaked(tester);\n' +
+        '  });\n' +
+        '}\n',
+    );
+  }
+
+  // The adapter replaces the brick's settings screen at its own path — the file
+  // is still there, still routed, still called SettingsScreen.
+  writeFileSync(
+    join(root, BRICK, 'lib/features/settings/settings_screen.dart'),
+    tpl('adapter_screen.dart.tpl', {
+      __IMPORT__: importPath,
+      __CLASS__: 'SettingsScreen',
+      __BODY__: 'SettingsBody',
+    }),
+  );
+
+  if (inWorkspace) {
+    edit(root, WORKSPACE_MANIFEST, '\n  - apps/subly', `\n  - ${CHASSIS_DIR}\n  - apps/subly`);
+  }
+  return root;
+}
+
+describe('a screen that DELEGATES into the chassis is judged where it now lives', () => {
+  // GREEN CONTROL 1 — the delegation resolves, the chassis is a root, and the
+  // package's own sweep discharges the brick surface.
+  test('the brick surface counts as SWEPT when the chassis file it delegates to is swept', () => {
+    const { code, out } = run(treeWithChassis());
+    assert.equal(code, 0, out);
+    assert.match(out, /4 root\(s\) DERIVED/);
+    assert.match(out, /1 reachable surface\(s\) in .*\{\{app_id\}\} DELEGATE into `packages\/chassis_screens`/);
+    assert.match(out, /SettingsScreen .* — SWEPT there/);
+    // And it has LEFT the owed list, which is the difference the widening makes.
+    assert.ok(!printedUnswept(out, BRICK).includes('SettingsScreen'), out);
+  });
+
+  // GREEN CONTROL 2 — the same delegation through a BARREL, expanded one level.
+  test('a delegation through a barrel resolves one level to the widget file', () => {
+    const { code, out } = run(treeWithChassis({ barrel: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /SettingsScreen .* → packages\/chassis_screens\/lib\/src\/settings_body\.dart/);
+  });
+
+  // GREEN CONTROL 3 — the follow is real, not a blanket pass. With the chassis
+  // widget UNSWEPT the surface stays owed and the run is still green (this guard
+  // prints unswept surfaces, it does not fail on them).
+  test('the chassis widget carries no Semantics and no sweep: the surface stays owed, and says so', () => {
+    const { code, out } = run(treeWithChassis({ sweep: false, bare: true }));
+    assert.equal(code, 0, out);
+    assert.match(out, /SettingsScreen .* — not swept there either/);
+    assert.ok(printedUnswept(out, BRICK).includes('SettingsScreen'), out);
+  });
+
+  // MUTATION 1 — the screen was emptied into a package that does not carry it.
+  test('COVERAGE LOST when the delegation resolves to nothing on disk', () => {
+    const { code, out } = run(treeWithChassis({ widgetOnDisk: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST — .*settings_screen\.dart` delegates to/);
+    assert.match(out, /that file is not on disk/);
+    assert.match(out, /asserted NOWHERE by anything/);
+  });
+
+  // MUTATION 2 — the file exists and NOTHING JUDGES IT. This is the failure the
+  // widening would otherwise create: follow an import out of the domain and the
+  // obligation vanishes with it.
+  test('COVERAGE LOST when the chassis is not a DERIVED ROOT of the scan', () => {
+    const { code, out } = run(treeWithChassis({ inWorkspace: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST — `SettingsScreen`.*delegates its surface to/);
+    assert.match(out, /is NOT among the \d+ root\(s\) this scan derived/);
+    assert.match(out, /it left this root by moving house and it never arrived anywhere this guard looks/);
+  });
+
+  // MUTATION 3 — two chassis imports in one adapter. Coverage here is keyed by
+  // FILE, and a delegation that cannot be attributed to one file defeats that
+  // exactly the way an unrouted twin does.
+  test('COVERAGE LOST when one adapter delegates to two different chassis files', () => {
+    const root = treeWithChassis();
+    writeFileSync(
+      join(root, CHASSIS_DIR, 'lib', 'other_body.dart'),
+      tpl('chassis_widget.dart.tpl', { __CLASS__: 'OtherBody' }),
+    );
+    edit(
+      root,
+      `${BRICK}/lib/features/settings/settings_screen.dart`,
+      "import 'package:nikatru_chassis_screens/settings_body.dart';",
+      "import 'package:nikatru_chassis_screens/settings_body.dart';\n" +
+        "import 'package:nikatru_chassis_screens/other_body.dart';",
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL COVERAGE LOST — .*imports 2 different `package:nikatru_chassis_screens` paths/);
+    assert.match(out, /will not guess between two of them/);
+  });
+});

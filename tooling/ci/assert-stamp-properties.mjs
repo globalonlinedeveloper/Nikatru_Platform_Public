@@ -77,6 +77,7 @@
 // per app would fail the client-only probe for being what it is.
 import { readFileSync, existsSync } from 'node:fs';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
@@ -2263,6 +2264,66 @@ const anchorDomain = (path) => {
   return [path, ...entries.filter((e) => e.endsWith('.dart')).sort().map((e) => `${dir}/${e}`)];
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — AN ANCHOR FOLLOWS ITS SPELLING INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2)
+//
+// [ADR 066] measured 88 literal shapes anchored to 10 named brick files and
+// called each one "re-pointable, but each is a guard edit, never a free move".
+// This is that edit, made ONCE, generically: an anchor whose file DELEGATES to
+// `package:nikatru_chassis_screens` searches the package file too.
+//
+// WHY A DEFAULT AND NOT AN OPT-IN PER MOVE. An anchor is a claim about a
+// BEHAVIOUR ("app.dart must pass its stamped seed to the light theme"), not
+// about a byte offset in a particular file. If every screen that moves needs a
+// hand edit here, then either every spine unit edits this guard — which is how
+// 88 anchors drift out of step one at a time — or somebody re-points an anchor
+// at the package and quietly drops the assertion that the BRICK still wires it.
+// So the default is: read the anchor file, and read what it delegates to.
+//
+// AND THERE IS NO OPT-OUT FIELD, WHICH IS A DELETION AND NOT AN OMISSION. This
+// carried a per-anchor `delegatesTo` (`false` to refuse the follow, a path to
+// re-point by hand) until it was asked what would ever set it. Nothing: every
+// anchor here is a POSITIVE `re.test`, following a delegation only ever ADDS
+// text to the search, so an anchor that matched still matches and `false` could
+// not change a verdict. And an anchor that really is about one named file
+// already says so — `sources[].file` takes any path, and a `packages/…` one is
+// resolved repo-absolute by `resolveSource`. Two branches nothing could reach
+// and no test could exercise is the assertion-that-cannot-fail shape wearing a
+// configuration costume, so they are not here.
+//
+// EVERY REFUSAL IS LOUD. A delegation that cannot be followed — two different
+// chassis imports, or a target that is not on disk — is COVERAGE LOST, never a
+// quiet fall-back to reading the adapter alone. And the domain only ever GROWS:
+// an anchor that matched before still matches, because its own file is still
+// read first.
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level. */
+const delegationOf = (rel) => resolveChassisDelegation(repo, rel, { describe: () => '' });
+
+/** The files ONE anchor is read over: its own spine domain, plus wherever that
+ *  domain delegates to. Returns `{ files }` or `{ lost }`. */
+function anchorFiles(path) {
+  const base = anchorDomain(path);
+  const extra = [];
+  for (const f of base) {
+    const d = delegationOf(f);
+    if (d && d.lost) return { lost: `\`${f}\` ${d.lost}.` };
+    for (const t of (d && d.files) || []) if (!extra.includes(t)) extra.push(t);
+  }
+  return { files: [...base, ...extra] };
+}
+
 const MIN_BLOCKS = 12;
 let rootsAudited = 0;
 
@@ -2349,7 +2410,16 @@ function auditPropertyRoot(root, sink) {
         // sibling read of the property test itself (grep `test =
         // stripDartComments`, never a line number — this file gets edited) is
         // off for exactly the same reason: `group('property: …')` is a string.
-        domain = anchorDomain(path);
+        const resolved = anchorFiles(path);
+        if (resolved.lost) {
+          sink.fail(
+            `COVERAGE LOST — ${root}: property '${p.key}' anchor on ${path} could not be resolved: ` +
+              `${resolved.lost}`,
+          );
+          anchored = false;
+          break;
+        }
+        domain = resolved.files;
         src = domain
           .map((f) => stripAnchorComments(f, readFileSync(join(repo, f), 'utf8')))
           .join('\n');

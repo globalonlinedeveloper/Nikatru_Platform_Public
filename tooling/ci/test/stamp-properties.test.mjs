@@ -253,3 +253,119 @@ describe('assert-stamp-properties — EXEMPT_APPS is visible, existent and sized
     assert.match(out, /has CAUGHT UP: the audit produces 0 FAIL line\(s\)/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — AN ANCHOR FOLLOWS ITS SPELLING INTO THE CHASSIS (ADR 067 dec. 2)
+//
+// [ADR 066] measured 88 literal shapes anchored to 10 named brick files and
+// called each one "re-pointable, but each is a guard edit, never a free move".
+// The edit is made once, generically: an anchor whose file DELEGATES to
+// `package:nikatru_chassis_screens` is searched there too.
+//
+// The subject here is `theme-triplet-supplied`, whose single anchor is
+// `themeMode: ref.watch(themeModeProvider)` in `lib/app.dart`. Move that line
+// into the chassis and read the adapter alone, and the guard says the property
+// "is asserted but its IMPLEMENTATION is gone" — about a tree where the line is
+// one import away and perfectly alive.
+//
+// SP-D1 IS THE GREEN CONTROL AND IT IS NOT OPTIONAL. Without it SP-D2's red is
+// equally consistent with a resolver that refuses every delegation, and SP-D2 is
+// the case that has to keep working: the anchor must still be able to FAIL when
+// the line is genuinely nowhere.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('an anchor whose line moved into the chassis is judged there', () => {
+  const APP_ROOT = 'lib/app.dart';
+  const ANCHOR = 'themeMode: ref.watch(themeModeProvider),';
+  const CHASSIS = 'packages/chassis_screens/lib/app_shell.dart';
+
+  /** The brick's `app.dart` emptied of the anchored line, which now lives in the
+   *  chassis file it delegates to.
+   *
+   *  `lineInPackage: false` is the mutation the anchor exists for — the line is
+   *  in NEITHER file. `packageOnDisk: false` is the resolver's own refusal. */
+  function delegate({ lineInPackage = true, packageOnDisk = true } = {}) {
+    const appPath = join(BASE, BRICK, APP_ROOT);
+    const original = readFileSync(appPath, 'utf8');
+    assert.ok(original.includes(ANCHOR), 'the subject anchor has moved out of the brick app.dart');
+    writeFileSync(
+      appPath,
+      `import 'package:nikatru_chassis_screens/app_shell.dart';\n` +
+        // 🔴 THE ADAPTER MUST ACTUALLY USE WHAT IT IMPORTS. The shared resolver
+        // refuses an import nothing references, because a review proved on
+        // 2026-09-05 that one unused import line was enough to widen a scan and
+        // silence a deleted control. So the anchored line is replaced by a REAL
+        // use of `AppShell` — which is what a screen moving into the chassis
+        // actually looks like, and a comment would not have been.
+        original.split(ANCHOR).join('home: const AppShell(),'),
+    );
+    if (packageOnDisk) {
+      mkdirSync(join(BASE, 'packages/chassis_screens/lib'), { recursive: true });
+      writeFileSync(
+        join(BASE, CHASSIS),
+        'class AppShell extends StatelessWidget {\n' +
+          '  Widget build(BuildContext context) => MaterialApp(\n' +
+          (lineInPackage ? `    ${ANCHOR}\n` : '    // the line is in neither file\n') +
+          '  );\n}\n',
+      );
+    }
+  }
+
+  /** Every case rewrites `app.dart`, so it is restored afterwards — the fixture
+   *  tree is shared by every describe block in this file and a case that leaks
+   *  its edit reddens the ones after it for a reason that is not theirs. */
+  const restoreApp = () => {
+    cpSync(join(REPO, BRICK, APP_ROOT), join(BASE, BRICK, APP_ROOT));
+    rmSync(join(BASE, 'packages/chassis_screens'), { recursive: true, force: true });
+  };
+
+  test('SP-D1 · the anchor resolves through the delegation', () => {
+    try {
+      delegate();
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 0, out);
+      assert.match(out, /property 'theme-triplet-supplied' asserted and implemented/);
+    } finally {
+      restoreApp();
+    }
+  });
+
+  test('SP-D2 · the anchor still FAILS when the line is in neither file', () => {
+    try {
+      delegate({ lineInPackage: false });
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(out, /property 'theme-triplet-supplied' is asserted but its IMPLEMENTATION is gone/);
+    } finally {
+      restoreApp();
+    }
+  });
+
+  test('SP-D3 · COVERAGE LOST when the delegation resolves to nothing on disk', () => {
+    try {
+      delegate({ packageOnDisk: false });
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(out, /COVERAGE LOST — .*anchor on .*app\.dart could not be resolved/);
+      assert.match(out, /that file is not on disk/);
+    } finally {
+      restoreApp();
+    }
+  });
+
+  test('SP-D4 · two chassis imports in one file is refused, not guessed', () => {
+    try {
+      delegate();
+      const appPath = join(BASE, BRICK, APP_ROOT);
+      writeFileSync(
+        appPath,
+        `import 'package:nikatru_chassis_screens/other.dart';\n${readFileSync(appPath, 'utf8')}`,
+      );
+      const { code, out } = run({ missingGroups: FLOOR });
+      assert.equal(code, 1, out);
+      assert.match(out, /imports 2 different `package:nikatru_chassis_screens` paths/);
+      assert.match(out, /will not guess between two of them/);
+    } finally {
+      restoreApp();
+    }
+  });
+});

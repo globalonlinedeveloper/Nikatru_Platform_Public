@@ -23,7 +23,11 @@
 //                      package's own pubspec
 //   licence-exposure → evidence.dependency declared, and the licence named
 //   codegen          → evidence.buildFile must really exist on disk
-//   GRANDFATHERED    → predates the rule; requires a date and a detail, and is
+//   chassis          → evidence.ledgerTarget must be the destination of at
+//                      least one MOVES row in tooling/chassis-ledger.json whose
+//                      measured callSiteDelta is NEGATIVE
+//   GRANDFATHERED    → predates the rule; requires a date and a detail, the
+//                      date must be ON OR BEFORE the rule date, and it is
 //                      PRINTED on every run rather than silently forgiven
 //
 // Measured against the tree 2026-07-28: of 8 packages, exactly 4 substantiate a
@@ -31,6 +35,34 @@
 // and exactly 4 substantiate nothing (core, design_system, api_client,
 // analysis). Those four are grandfathered with dates. An exemption you can see
 // is safer than a justification that is not true.
+//
+// ── `chassis`, AND WHY IT IS NOT FREE TEXT EITHER (ADR 067 decision 2) ───────
+// [ADR 065] moves the generic chassis out of the app tree and into packages,
+// and [ADR 066] re-scoped that to a measured rule: A SCREEN MOVES ONLY WHEN THE
+// CALL SITE MEASURABLY SHRINKS. That rule already has a machine-readable home —
+// `tooling/chassis-ledger.json`, kept in bijection with the brick tree by
+// `assert-chassis-ledger.mjs`, which refuses a `MOVES` row whose `callSiteDelta`
+// is not negative and refuses a `target` that is not on disk.
+//
+// So a chassis package does not earn its place by being called a chassis. It
+// earns it by being the TARGET of work the ledger has already measured as a
+// shrink. `evidence.ledgerTarget` names the package path; this guard reads the
+// ledger and requires at least one `MOVES` row landing inside it with a
+// negative delta. A package nothing has moved into yet substantiates NOTHING,
+// which is the correct answer — it is a package named before it was earned, the
+// exact failure C-4 exists to stop.
+//
+// ── WHY `GRANDFATHERED` NOW CHECKS THE DATE ITSELF (ADR 066 defect 1) ────────
+// [ADR 066] measured this guard's own line 195 — "A NEW package with no reason
+// fails the build" — and found it FALSE. The branch checked only that
+// `declaredOn` matched `/^\d{4}-\d{2}-\d{2}$/`, so a package created today,
+// declared GRANDFATHERED with today's date and any sentence, passed and was
+// merely PRINTED. "Predates the rule" was prose, not a check.
+//
+// It is a check now: the date must parse AND be on or before RULE_DATE, the day
+// the four honest exemptions were recorded. A later date is not a grandfather
+// clause, it is a new package claiming one — and the whole point of the enum is
+// that a reason nobody can check always passes.
 //
 // ── WHY A SEPARATE GUARD ─────────────────────────────────────────────────────
 // C-4's spec line says "assert-capability-register.mjs (register field)". This
@@ -45,14 +77,20 @@ import { listDir } from './tree-walk.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/capability-register.json';
+const LEDGER = 'tooling/chassis-ledger.json';
 const problems = [];
 const notes = [];
 const ok = (m) => console.log(`ok   ${m}`);
+
+/** The day the four honest exemptions were recorded. A `declaredOn` after this
+ *  is not "predates the rule" — see the header, [ADR 066] defect 1. */
+const RULE_DATE = '2026-07-28';
 
 const REASONS = {
   'native-binary': 'a platform payload that a Dart-only package cannot carry',
   'licence-exposure': 'a licence that must be isolated from the rest of the tree',
   codegen: 'a build step that produces artefacts, not a library',
+  chassis: 'the measured destination of chassis work the ledger records as a call-site SHRINK',
   GRANDFATHERED: 'predates the rule — recorded and dated, never silently forgiven',
 };
 
@@ -108,6 +146,37 @@ function declaredDeps(pkgDir) {
   return deps;
 }
 
+/** The chassis ledger's MOVES rows, or `null` when there is no ledger to read.
+ *
+ *  `null` and `[]` are DIFFERENT ANSWERS and the caller must keep them apart:
+ *  an absent ledger means the claim could not be checked at all, an empty one
+ *  means it was checked and nothing has moved. Collapsing the two is how a
+ *  reader that stopped reaching its file starts reporting "no findings".
+ *
+ *  Only `MOVES` rows with a NEGATIVE `callSiteDelta` are returned, which is
+ *  [ADR 066]'s rule restated: a screen moves only when the call site
+ *  measurably shrinks. `assert-chassis-ledger.mjs` already refuses a row that
+ *  breaks it, so this is a second reader of the same rule and not a second
+ *  copy of it. */
+function shrinkingMoves() {
+  const p = join(ROOT, LEDGER);
+  if (!existsSync(p)) return null;
+  let ledger;
+  try {
+    ledger = JSON.parse(readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(ledger.files)) return null;
+  return ledger.files.filter(
+    (r) => r && r.verdict === 'MOVES' && typeof r.target === 'string' && typeof r.callSiteDelta === 'number' && r.callSiteDelta < 0,
+  );
+}
+
+/** `target` lands inside `pkg` — a path prefix on a `/` boundary, so
+ *  `packages/chassis_screens` does not match `packages/chassis_screens_x`. */
+const landsIn = (target, pkg) => target === pkg || target.startsWith(`${pkg}/`);
+
 let substantiated = 0;
 for (const pkg of onDisk) {
   const entry = declared[pkg];
@@ -156,9 +225,53 @@ for (const pkg of onDisk) {
       }
       break;
     }
+    case 'chassis': {
+      if (!ev.ledgerTarget) {
+        problems.push(
+          `\`${pkg}\` claims \`chassis\` but names no evidence.ledgerTarget, so there is no ledger row to check the claim against. [ADR 066]: a screen moves only when the call site measurably shrinks, and the ledger is where that measurement lives.`,
+        );
+        break;
+      }
+      const moves = shrinkingMoves();
+      if (moves === null) {
+        problems.push(
+          `COVERAGE LOST — \`${pkg}\` claims \`chassis\` via \`${ev.ledgerTarget}\`, but ${LEDGER} could not be read as a ledger with a \`files\` array. The claim was not checked against anything, which is not the same as passing.`,
+        );
+        break;
+      }
+      // 🔴 THE EVIDENCE MUST NAME THE PACKAGE IT JUSTIFIES. `ledgerTarget` is
+      // free text out of a register, and until this check existed nothing tied
+      // it to `pkg`: a review registered `packages/chassis_screens` with
+      // `ledgerTarget: "packages"` and a single MOVES row landing in
+      // `packages/design_system` — EXIT 0, "7 substantiated". A shrink measured
+      // into a DIFFERENT package earned this one its place. Not exploitable on
+      // the day it shipped (the ledger held 96 rows, all STAYS, zero MOVES) and
+      // exploitable the moment the first spine unit lands a row, which is the
+      // worst shape a guard defect can have: correct today, silent tomorrow.
+      if (!landsIn(ev.ledgerTarget, pkg)) {
+        problems.push(
+          `\`${pkg}\` claims \`chassis\` via evidence.ledgerTarget \`${ev.ledgerTarget}\`, which is not \`${pkg}\` and does not sit inside it. The evidence for a package has to be about THAT package: a ledger row measuring a shrink into somewhere else substantiates that somewhere else, and reading it here lets one real measurement earn every package that names a wide enough prefix.`,
+        );
+        break;
+      }
+      const landed = moves.filter((r) => landsIn(r.target, ev.ledgerTarget) && landsIn(r.target, pkg));
+      if (landed.length === 0) {
+        problems.push(
+          `\`${pkg}\` claims \`chassis\` via \`${ev.ledgerTarget}\`, but ${LEDGER} holds no MOVES row landing there with a NEGATIVE callSiteDelta (${moves.length} shrinking MOVES row(s) in the ledger overall). A package nothing has measurably moved into is a package NAMED, not earned — [ADR 066]'s rule is that the call site has to get smaller, and a row with a delta of zero or more is exactly the case that rule refuses.`,
+        );
+        break;
+      }
+      substantiated++;
+      break;
+    }
     case 'GRANDFATHERED': {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.declaredOn ?? '')) {
+      const declaredOn = entry.declaredOn ?? '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(declaredOn)) {
         problems.push(`\`${pkg}\` is GRANDFATHERED without a \`declaredOn\` date. An undated exemption is permanent by accident — the date is what makes it reviewable.`);
+      } else if (declaredOn > RULE_DATE) {
+        problems.push(
+          `\`${pkg}\` is GRANDFATHERED with \`declaredOn\` ${declaredOn}, which is AFTER the rule date ${RULE_DATE}. GRANDFATHERED means "predates the rule"; a package declared after it is a new package claiming an exemption it cannot have. Give it one of ${Object.keys(REASONS).filter((r) => r !== 'GRANDFATHERED').join(' / ')} with evidence this guard can check, or the capability belongs in an existing package. ([ADR 066] measured this branch passing a brand-new package declared with the day's own date — the words "predates the rule" were prose until now.)`,
+        );
       }
       if (!entry.detail) {
         problems.push(`\`${pkg}\` is GRANDFATHERED with no \`detail\`. The point of recording it is that the next person can tell whether it still applies.`);
@@ -192,7 +305,9 @@ const grandfathered = onDisk.filter((p) => declared[p]?.reason === 'GRANDFATHERE
 if (grandfathered.length) {
   notes.push(`⬜ ${grandfathered.length} package(s) earn NONE of the three structural reasons — dated, not forgiven:`);
   for (const p of grandfathered) notes.push(`   · ${p} (${declared[p].declaredOn}) — ${declared[p].detail}`);
-  notes.push('   (printed, not failed: merging them is churn across every pubspec and import. A NEW package with no reason fails the build.)');
+  notes.push(
+    `   (printed, not failed: merging them is churn across every pubspec and import. A NEW package with no reason fails the build — and since [ADR 066] so does a new one declared GRANDFATHERED, because \`declaredOn\` must now be on or before ${RULE_DATE} rather than merely look like a date.)`,
+  );
 }
 
 if (notes.length) console.log(`\n${notes.join('\n')}`);

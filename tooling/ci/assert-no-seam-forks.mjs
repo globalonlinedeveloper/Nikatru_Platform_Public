@@ -45,6 +45,7 @@ import { join, resolve, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
@@ -677,6 +678,71 @@ function capsReads(rel) {
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A CAPS GATE FOLLOWS THE SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the collision this resolves is [ADR 066]'s item 2 under
+//  "what actually pins the lines")
+//
+// [ADR 066] measured the zero-caps limb below as ONE OF THE THREE HARD
+// CONSTRAINTS on chassis step 4, and it is right to be: a parity chassis file
+// that reads no `caps.<field>` makes C empty, C is then a subset of ANY fork,
+// and the test cannot fail. Three files hold the live reads today --
+// sign_in_screen.dart, settings_screen.dart, home_screen.dart -- and they are
+// exactly the three PARITY_PAIRS. "Empty the template" collides head-on here.
+//
+// THE COLLISION IS REAL AND THE ANSWER IS NOT TO SOFTEN THE LIMB. Emptying
+// sign_in_screen.dart into `package:nikatru_chassis_screens` moves the
+// `if (caps.oauthRedirect ...)` gate into the package and leaves an ADAPTER
+// behind. Read at the adapter alone, C goes to zero and this guard reports
+// COVERAGE LOST -- correctly about the file it read, and wrongly about the
+// tree, because the gate is one import away and perfectly alive.
+//
+// So C is taken over the ADAPTER PLUS the package file it delegates to, and F
+// the same way on the fork's side. WHAT DOES NOT CHANGE:
+//   - the zero-caps COVERAGE LOST still fires, and it still NAMES THE ADAPTER.
+//     If the union is still empty the subset test is still vacuous and this
+//     guard still refuses it. The rule is untouched; only where it reads from
+//     has widened.
+//   - MIN_ACCOUNTED_PAIRS stays 12, and the per-file existsSync on both the
+//     brick and the fork stays. A delegating screen is still a screen that must
+//     EXIST at its declared path: an adapter is a file, not an absence, and a
+//     pair that vanishes is still loud.
+//   - the ARRIVE limb still derives its universe from the brick features
+//     directory. Delegation does not remove a file from that directory.
+//
+// ONE LEVEL, ONE IMPORT, AND EVERY REFUSAL IS LOUD. Two different chassis
+// imports in one file is ambiguous; a target not on disk is COVERAGE LOST. A
+// delegation this resolver cannot follow must never read as "no delegation" --
+// that is the silent-pass shape this whole guard is built against.
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level. */
+const delegationOf = (rel) => resolveChassisDelegation(ROOT, rel, { describe: (r) => `${r} --` });
+
+/** `caps.<field>` reads in a file AND in the chassis file it delegates to.
+ *  `from` names every file the set was taken over, so the report can say WHERE
+ *  a gate was found rather than only that it was. */
+function capsReadsFollowingDelegation(rel) {
+  const from = [rel];
+  const reads = capsReads(rel);
+  const d = delegationOf(rel);
+  if (d && d.lost) return { reads, from, lost: d.lost };
+  for (const f of (d && d.files) || []) {
+    from.push(f);
+    for (const field of capsReads(f)) reads.add(field);
+  }
+  return { reads, from, lost: null };
+}
+
 const parityLost = [];
 const parityGaps = [];
 const parityOk = [];
@@ -793,12 +859,47 @@ for (const pair of PARITY_PAIRS) {
     }
     continue;
   }
-  const chassisReads = capsReads(pair.chassis);
-  const forkReads = capsReads(pair.fork);
+  const chassisSide = capsReadsFollowingDelegation(pair.chassis);
+  const forkSide = capsReadsFollowingDelegation(pair.fork);
+  if (chassisSide.lost || forkSide.lost) {
+    for (const why of [chassisSide.lost, forkSide.lost].filter(Boolean)) parityLost.push(`    ${why}`);
+    continue;
+  }
+  const chassisReads = chassisSide.reads;
+  const forkReads = forkSide.reads;
+  // ── THE ZERO-CAPS TRIPWIRE STAYS ON THE ADAPTER, UNWIDENED ────────────────
+  // [ADR 066] names this limb one of the THREE constraints on chassis step 4
+  // that are NOT escapable. It shipped on 2026-09-05 evaluated over the
+  // adapter ∪ chassis UNION while keeping only the adapter's NAME in the
+  // message — and a review then stripped every `caps.` read out of the brick
+  // screen, added an import whose target merely MENTIONED `caps.oauthRedirect`,
+  // and watched EXIT 1 become EXIT 0. Widening C is the right answer for the
+  // SUBSET test (a gate that moved into the package is still a gate the fork
+  // must follow, and that widening stays, below). It is the wrong answer for
+  // the tripwire, whose whole subject is whether THIS FILE still gates on
+  // anything — because a file that gates on nothing is a file whose C ⊆ F
+  // cannot fail no matter what any other file says.
+  //
+  // The price is stated out loud rather than dodged: step 4 must leave a live
+  // `caps.<field>` read in the adapter it leaves behind. That is a constraint
+  // on how a screen moves, which is exactly what [ADR 066] said it was.
+  const adapterReads = capsReads(pair.chassis);
+  if (adapterReads.size === 0) {
+    parityLost.push(
+      `    ${pair.chassis} — 0 \`caps.<field>\` read(s) found IN THE ADAPTER ITSELF` +
+        (chassisSide.from.length > 1
+          ? ` (it delegates to ${chassisSide.from.slice(1).join(', ')}, and that does NOT discharge this — ` +
+            'the tripwire is about whether this file still gates on anything)'
+          : '') +
+        '. C is empty, so C ⊆ F holds for ANY fork: the subset test cannot fail and is therefore worse ' +
+        'than none.',
+    );
+    continue;
+  }
   if (chassisReads.size === 0) {
     parityLost.push(
-      `    ${pair.chassis} — 0 \`caps.<field>\` read(s) found. C is empty, so C ⊆ F holds for ANY fork:` +
-        ' the subset test cannot fail and is therefore worse than none.',
+      `    ${pair.chassis} — 0 \`caps.<field>\` read(s) found. C is empty, so C ⊆ F holds for ANY fork: ` +
+        'the subset test cannot fail and is therefore worse than none.',
     );
     continue;
   }
@@ -818,8 +919,13 @@ for (const pair of WATCHED_PAIRS) {
     }
     continue;
   }
-  const chassisReads = capsReads(pair.chassis);
-  if (chassisReads.size > 0) watchPromotable.push({ pair, chassisReads });
+  const chassisSide = capsReadsFollowingDelegation(pair.chassis);
+  if (chassisSide.lost) {
+    watchLost.push(`    ${chassisSide.lost}`);
+    continue;
+  }
+  const chassisReads = chassisSide.reads;
+  if (chassisReads.size > 0) watchPromotable.push({ pair, chassisReads, from: chassisSide.from });
 }
 
 if (watchLost.length) {

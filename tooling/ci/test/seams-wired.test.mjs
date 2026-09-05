@@ -25,7 +25,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -416,4 +416,94 @@ const String kPrivacyPolicyVersion = '2026-07-26';
     assert.equal(code, 0, out);
     assert.match(out, /plus 1 outside the chassis/);
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // A SEAM'S CALLER THAT MOVED INTO THE CHASSIS PACKAGE — [ADR 067] decision 2
+  //
+  // 🔴 THIS BLOCK EXISTS BECAUSE THE EXTENSION SHIPPED DEAD. On 2026-09-05 the
+  // +83 lines that follow a delegation were added to this guard with NO test,
+  // and an independent review then measured them: the import regex ran over the
+  // `bodies` map, which is `stripDart(...)`, and stripDart BLANKS EVERY STRING
+  // LITERAL — which is what an import path is.
+  //     RAW      first line: "import 'package:nikatru_chassis_screens/x.dart';"
+  //     STRIPPED first line: "import                                       ;"
+  //     matches in RAW: 1 · matches in STRIPPED: 0
+  // With an unresolvable delegation injected, TEN sibling guards exited 1 and
+  // this one exited 0 printing nothing at all. The resolver, its COVERAGE LOST
+  // refusal and its `scope` filter were unreachable code that read as shipped.
+  //
+  // DL1 is the case that would have caught it: a RESOLVABLE delegation must
+  // print the follow line. Nothing else in this file asserts that any of those
+  // lines can execute at all.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('a caller that moved into the chassis package', () => {
+    const CHASSIS_REL = 'packages/chassis_screens/lib/settings_body.dart';
+    let delegSeq = 0;
+
+    /** The baseline tree, plus a chassis package and a brick settings file that
+     *  delegates to it.
+     *
+     *  `onDisk` false is the unresolvable delegation · `used` false is the
+     *  import the adapter never references, which since 2026-09-05 is a refusal
+     *  rather than a widening · `callInPackage` moves the sign-out caller across
+     *  the boundary, which is the whole point of following the delegation. */
+    const delegating = ({ onDisk = true, used = true, callInPackage = false } = {}) => {
+      const name = `pack-deleg-${(delegSeq += 1)}`;
+      const dir = build(name);
+      const settings = join(dir, BRICK, 'lib/features/settings/settings_screen.dart');
+      const body = readFileSync(settings, 'utf8');
+      writeFileSync(
+        settings,
+        "import 'package:nikatru_chassis_screens/settings_body.dart';\n\n" +
+          (callInPackage ? body.split('await signOutAndForgetUser(ref);').join('// moved') : body) +
+          (used ? 'Widget shell(BuildContext c) => const SettingsBody();\n' : ''),
+      );
+      if (onDisk) {
+        const target = join(dir, CHASSIS_REL);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(
+          target,
+          'class SettingsBody {\n' +
+            '  Future<void> signOut(WidgetRef ref) async {\n' +
+            (callInPackage ? '    await signOutAndForgetUser(ref);\n' : '    await nothing();\n') +
+            '  }\n}\n',
+        );
+      }
+      return dir;
+    };
+
+    // 🔴 THE CASE THAT WOULD HAVE CAUGHT THE DEAD ASSERTION.
+    test('DL1 · a RESOLVABLE delegation is followed, and the guard SAYS SO', () => {
+      const { code, out } = run(delegating());
+      assert.equal(code, 0, out);
+      assert.match(out, /scan follows 1 chassis delegation target\(s\)/);
+      assert.match(out, /packages\/chassis_screens\/lib\/settings_body\.dart/);
+    });
+
+    // The union is REAL: the sign-out caller crosses the boundary and is still
+    // found. Without this, DL1 is consistent with a resolver that reads the file
+    // and does nothing with what it read.
+    test('DL2 · the caller itself moves into the package and the seam stays wired', () => {
+      const { code, out } = run(delegating({ callInPackage: true }));
+      assert.equal(code, 0, out);
+      assert.match(out, /scan follows 1 chassis delegation target\(s\)/);
+    });
+
+    // COVERAGE LOST, which is what EXIT 0 was standing in for.
+    test('DL3 · 🔴 an UNRESOLVABLE delegation is COVERAGE LOST, not silence', () => {
+      const { code, out } = run(delegating({ onDisk: false }));
+      assert.equal(code, 1, out);
+      assert.match(out, /a chassis delegation could not be followed/);
+      assert.match(out, /that file is not on disk/);
+    });
+
+    // An import alone is not evidence that behaviour went anywhere.
+    test('DL4 · 🔴 an import the adapter never uses is refused, not followed', () => {
+      const { code, out } = run(delegating({ used: false }));
+      assert.equal(code, 1, out);
+      assert.match(out, /never references anything it declares \(SettingsBody\)/);
+      assert.match(out, /a reference is evidence/);
+    });
+  });
+
 });

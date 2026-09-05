@@ -33,6 +33,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -94,6 +95,43 @@ function railFromData(json) {
   return { offerings, paywallLive };
 }
 const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A NAVIGATION EDGE FOLLOWS ITS SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// §E builds the ROSCA step count out of `context.go('…')` edges collected from
+// the class bodies under the brick lib. [ADR 066] step 4 moves a screen body
+// into `package:nikatru_chassis_screens`, and both the class declaration and
+// its `context.go` calls go with it — at which point `screenFile.get(screen)`
+// answers undefined and the loop `continue`s. The edge is not wrong here, it is
+// ABSENT, and an absent edge makes the cancel path look further away (or
+// unreachable) than it is: a ROSCA compliance finding about a compliant rail.
+//
+// So the walk reads the chassis files the brick delegates to as well. This only
+// ever ADDS class bodies; an edge that existed still exists.
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) an ABSOLUTE path delegates to, as ABSOLUTE paths — §E's
+ *  `files` list is absolute, and handing it a repo-relative one reads a path
+ *  that does not exist while printing an empty name for it. */
+function delegationOf(abs) {
+  const d = resolveChassisDelegation(ROOT, abs.slice(ROOT.length + 1).replaceAll('\\', '/'), {
+    describe: () => '',
+  });
+  if (d === null || d.lost) return d;
+  return { ...d, files: d.files.map((f) => join(ROOT, f)) };
+}
+
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
 
 function read(rel) {
@@ -390,6 +428,34 @@ let registerChannels = []; // the register's channel rows, whole
       walk(join(ROOT, BRICK_LIB));
     } catch {
       /* absent — reported by the COVERAGE LOST above */
+    }
+
+    // … plus the chassis files the template delegates to — see the resolver
+    // above. Collected from the files already walked, so a screen that has not
+    // moved contributes nothing and this run is byte-for-byte the old one.
+    const delegatedFiles = [];
+    for (const f of [...files]) {
+      const dg = delegationOf(f);
+      if (dg && dg.lost) {
+        problems.push(
+          `COVERAGE LOST — ${f.slice(ROOT.length + 1).replace(/\\/g, '/')} ${dg.lost}. §E's step count is ` +
+            'built from the `context.go` edges in these files, and an edge in a file this walk cannot ' +
+            'reach is not a shorter path — it is an invisible one.',
+        );
+        continue;
+      }
+      for (const t of (dg && dg.files) || []) {
+        if (!files.includes(t)) {
+          files.push(t);
+          delegatedFiles.push(t);
+        }
+      }
+    }
+    if (delegatedFiles.length) {
+      console.log(
+        `⬜ §E also read ${delegatedFiles.length} chassis file(s) the template delegates to: ` +
+          `${delegatedFiles.map((f) => f.slice(ROOT.length + 1).replace(/\\/g, '/')).sort().join(', ')}`,
+      );
     }
 
     const screenFile = new Map(); // ScreenClass -> file body

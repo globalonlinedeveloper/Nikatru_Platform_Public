@@ -100,11 +100,12 @@
 // that do not exist, which is why the reduction is mandatory and not tidy.
 // ─────────────────────────────────────────────────────────────────────────────
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 // argv[2] overrides the tree, so the negative tests can mutate a COPY of the
 // real tree instead of the checkout. 🔴 THE COPY IS `git init`-ed BY THE TEST
@@ -208,6 +209,39 @@ if (GATED.size === 0) {
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — A GATED CALL SITE FOLLOWS ITS SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// Every root here is a DIRECTORY, and that is the whole exposure. [ADR 066]
+// step 4 empties a brick screen into `package:nikatru_chassis_screens`; the
+// `signInWithEmail(` call and the `TurnstileGate` mount go with the body, and
+// `packages/chassis_screens` is not one of the roots below. The call site does
+// not fail this guard — it LEAVES it, which is worse, because the root then
+// looks compliant for having nothing in it.
+//
+// So each root's file set gains the chassis files that root delegates to. The
+// file label stays the real package path, so a finding sends the reader where
+// the code is. This only ever ADDS files to a scan.
+//
+// ONE LEVEL, ONE IMPORT, EVERY REFUSAL LOUD — an ambiguous or unresolvable
+// delegation is COVERAGE LOST, never a quiet fall-back to the adapter alone.
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level.
+ *  `null` = none · `{ lost }` = could not be followed · `{ files }`. */
+const delegationOf = (rel) => resolveChassisDelegation(REPO, rel, { describe: (r) => r });
+
 // ── the roots ───────────────────────────────────────────────────────────────
 const tracked = git('ls-files', '--', '*.dart').split('\n').filter(Boolean);
 
@@ -237,6 +271,32 @@ for (const root of roots) {
   const files = tracked.filter((p) => p.startsWith(`${root}/`));
   const read = new Map();
   for (const f of files) read.set(f, reduce(readFileSync(join(REPO, f), 'utf8')));
+
+  // The chassis files this root delegates to are scanned WITH it — see the
+  // resolver above. Keyed by their real package path so every line printed
+  // below sends the reader to the file the call is actually in.
+  const delegatedHere = [];
+  for (const f of files) {
+    const dg = delegationOf(f);
+    if (dg && dg.lost) {
+      coverageLost(
+        `a chassis delegation could not be followed: ${dg.lost}`,
+        'The gated call sites move into the package with the screen body, so a delegation this scan',
+        'cannot follow is a call site it cannot see — and a root with nothing in it reads as compliant.',
+      );
+    }
+    for (const t of (dg && dg.files) || []) {
+      if (read.has(t)) continue;
+      read.set(t, reduce(readFileSync(join(REPO, t), 'utf8')));
+      delegatedHere.push(t);
+    }
+  }
+  if (delegatedHere.length) {
+    console.log(
+      `⬜ ${root} — also scanned ${delegatedHere.length} chassis file(s) it delegates to: ` +
+        `${delegatedHere.sort().join(', ')}`,
+    );
+  }
 
   // A root is GOVERNED once it mounts the widget anywhere. Nothing here is an
   // allowlist: this is measured, and it arms itself the day the widget lands.

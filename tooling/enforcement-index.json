@@ -1027,6 +1027,8 @@
   },
   {
     "claims": [
+      "ADR 065",
+      "ADR 066",
       "C-4"
     ],
     "invokedBy": [
@@ -1711,6 +1713,17 @@
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/channel-arming.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
+    "claims": [
+      "ADR 066",
+      "ADR 067"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/chassis-delegation.mjs",
     "references": [],
     "state": "LIBRARY"
   },

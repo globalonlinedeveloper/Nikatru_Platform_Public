@@ -396,6 +396,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { CHASSIS_DIR as SHARED_CHASSIS_DIR, delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = process.argv[2] ?? process.cwd();
 
@@ -944,6 +945,79 @@ function resolveImport(R, path) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// (0e) DELEGATION — WHEN A SCREEN MOVES INTO THE CHASSIS, ITS ACCESSIBILITY
+//      MOVES WITH IT, AND THIS GUARD FOLLOWS IT THERE (ADR 067 decision 2)
+//
+// [ADR 065] moves the generic chassis into `packages/`; [ADR 066] scopes step 4
+// to the screens whose CALL SITE measurably shrinks. What is left behind at
+// each moved screen is an ADAPTER: a file at the same path, still routed, still
+// named `SettingsScreen`, that owns a controller and hands plain values to a
+// widget under `package:nikatru_chassis_screens`.
+//
+// 🔴 READ WITHOUT THIS RESOLVER, THAT ADAPTER IS A SURFACE WITH NO SEMANTICS.
+// Every `Semantics(`, every label and every tap target left this file the day
+// the screen moved, so the surface prints as owed FOREVER while the work that
+// would discharge it sits one import away, in a file this scan judges under a
+// different root. That is the `NotFoundScreen` failure this guard's own header
+// records verbatim — "DECLARED IN packages/design_system … a promise nothing
+// kept" — and the fix there was the same one: put the declaring file in the
+// domain and follow the import to it.
+//
+// ⚠️ THE ADAPTER IS NOT REMOVED FROM THE ROUTED SET. It is still reachable, it
+// is still counted, it still appears in the report. The domain WIDENS: the
+// surface is swept when its own root sweeps it OR when the chassis root sweeps
+// the file it delegates to. A resolver that moved surfaces OUT of the routed
+// set would be shrinking a domain, which is the one direction every floor in
+// this file exists to refuse.
+//
+// ⚠️ ONE LEVEL, LIKE THE BARREL RULE ABOVE, AND NOT A GRAPH. A single
+// `package:nikatru_chassis_screens/…` import per adapter; if that path is a
+// barrel it is expanded one level through its `export '…';` lines and no
+// further. Two different chassis imports in one adapter is AMBIGUOUS and
+// refused rather than guessed: this guard keys coverage by FILE, and a
+// delegation it cannot attribute to one file defeats that exactly the way an
+// unrouted twin does.
+//
+// ⚠️ AND EVERY REFUSAL IS COVERAGE LOST, NEVER SILENCE. A delegation that
+// resolves to nothing on disk, and a delegation whose target is not inside any
+// DERIVED ROOT of this scan, both mean the same thing: the accessibility of
+// that screen is now judged NOWHERE, by a guard that would otherwise print ok.
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired. What stays HERE is the
+// one thing that is this guard's own: a target with no PUBLIC WIDGET is no
+// use to a scan whose unit of coverage is a widget, so the shared answer is
+// narrowed by `surfacesIn` before it is accepted.
+const CHASSIS_DIR = SHARED_CHASSIS_DIR;
+
+/** Where `rel` delegates to, resolved one level, NARROWED to the files that
+ *  declare a public widget.
+ *
+ *  Three answers, deliberately distinct — `null` (this file does not delegate),
+ *  `{ lost }` (it does and the target could not be resolved, which the caller
+ *  must report as COVERAGE LOST) and `{ files }` (the package file(s) that now
+ *  own this surface's properties). Collapsing `null` and `{ lost }` is how a
+ *  resolver that stopped reaching its target starts reporting "nothing to do". */
+function delegationOf(rel) {
+  const d = resolveChassisDelegation(ROOT, rel, { describe: (r) => `\`${r}\`` });
+  if (d === null || d.lost) return d;
+  const withWidgets = d.files.filter((f) => surfacesIn(f, 'package').length > 0);
+  if (withWidgets.length === 0) {
+    return {
+      lost:
+        `\`${rel}\` delegates to \`${d.files[0]}\`, which declares no public widget and re-exports none ` +
+        'that does. One level of barrel expansion is all this resolver does, and it found nothing to ' +
+        'judge — so the surface has no owner and nothing would ever fail over it.',
+    };
+  }
+  return { files: withWidgets };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ONE ROOT, ANALYSED. Everything below (A)–(G) used to be top-level code over
 // `const APP = 'apps/subly'`; it is the same accounting, once per derived root.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1122,6 +1196,26 @@ function analyseRoot(R) {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // (A2) WHICH REACHABLE SURFACES DELEGATE INTO THE CHASSIS — see (0e)
+  //
+  // Computed over the reachable set, not over the disk, because the question is
+  // only ever asked about a surface a user can open. The chassis root does not
+  // ask it of itself: a widget importing its own package is not a delegation.
+  // ═══════════════════════════════════════════════════════════════════════
+  const delegatesTo = new Map(); // reachable key → [package file, …]
+  if (R.dir !== CHASSIS_DIR) {
+    for (const [key, entry] of reachable) {
+      const d = delegationOf(entry.file);
+      if (d === null) continue;
+      if (d.lost) {
+        rootCoverageLost(d.lost);
+        continue;
+      }
+      delegatesTo.set(key, d.files);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // (B) THE SWEPT SET — per testWidgets BLOCK, not per file
   // ═══════════════════════════════════════════════════════════════════════
   let a11yFiles = [];
@@ -1226,6 +1320,7 @@ function analyseRoot(R) {
   return {
     R,
     reachable,
+    delegatesTo,
     excluded,
     routerTargets,
     declaringFiles,
@@ -1262,7 +1357,38 @@ ok(
 );
 
 const byDir = new Map(analyses.map((a) => [a.R.dir, a]));
-const totals = { reachable: 0, swept: 0, unswept: 0, cases: 0, files: 0, excluded: 0 };
+const totals = { reachable: 0, swept: 0, delegated: 0, unswept: 0, cases: 0, files: 0, excluded: 0 };
+
+/** The chassis sweeps that discharge a delegating surface's obligation — see
+ *  (0e). Three answers again: `null` (this surface does not delegate),
+ *  `{ lost }` (it does, and the chassis is not in the domain, so nothing judges
+ *  it) and `{ via }` (the package file(s) whose sweeps cover it).
+ *
+ *  🔴 KEYED BY FILE, NOT BY SYMBOL, AND THAT IS THE POINT. The adapter is still
+ *  called `SettingsScreen`; the widget it delegates to is called whatever the
+ *  chassis calls it. Requiring the names to match would make every delegation
+ *  read as unswept for a reason that has nothing to do with accessibility — the
+ *  same failure the barrel rule above was written to stop. */
+function delegatedSweep(a, key) {
+  const targets = a.delegatesTo.get(key);
+  if (!targets) return null;
+  const owner = byDir.get(CHASSIS_DIR);
+  if (!owner) {
+    return {
+      lost:
+        `\`${key.split('#')[1]}\` (${key.split('#')[0]}) delegates its surface to ${targets.join(', ')}, and ` +
+        `\`${CHASSIS_DIR}\` is NOT among the ${analyses.length} root(s) this scan derived. The screen's ` +
+        'accessibility is therefore asserted by nothing at all: it left this root by moving house and it ' +
+        'never arrived anywhere this guard looks. Put the chassis package on the workspace list with a ' +
+        '`flutter_test` dev-dependency and a public widget, or stop delegating to it.',
+    };
+  }
+  const via = targets.filter((f) => [...owner.swept.keys()].some((k) => k.startsWith(`${f}#`)));
+  return via.length ? { via } : { via: [] };
+}
+
+/** Swept in its own root, or swept where it now lives. */
+const isSwept = (a, key) => a.swept.has(key) || (delegatedSweep(a, key)?.via?.length ?? 0) > 0;
 
 for (const a of analyses) {
   const { R } = a;
@@ -1357,6 +1483,19 @@ for (const a of analyses) {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // (D2) A DELEGATION WITH NOWHERE TO LAND — see (0e)
+  //
+  // The refusal that makes the widening safe. Every clause below reads
+  // `isSwept`, which is allowed to answer "swept, in the chassis"; if the
+  // chassis is not in the domain that answer is not available and the surface
+  // would print as owed while the work sits in a file nothing here opens.
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const key of [...a.delegatesTo.keys()].sort()) {
+    const d = delegatedSweep(a, key);
+    if (d?.lost) a.problems.push(`COVERAGE LOST — ${d.lost}`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // (E) SWEPT_FLOOR — what WAS swept, by name. See (0d).
   // ═══════════════════════════════════════════════════════════════════════
   if (parsedCleanly) {
@@ -1370,7 +1509,7 @@ for (const a of analyses) {
         );
         continue;
       }
-      if (!a.swept.has(key)) {
+      if (!isSwept(a, key)) {
         const [file, symbol] = key.split('#');
         const alsoNamed = a.namedOnly.get(key);
         a.problems.push(
@@ -1463,10 +1602,15 @@ for (const a of analyses) {
   // either, and a surface added tomorrow joins it by existing rather than by
   // somebody remembering.
   // ═══════════════════════════════════════════════════════════════════════
-  const unswept = [...a.reachable.keys()].filter((k) => !a.swept.has(k)).sort();
+  const unswept = [...a.reachable.keys()].filter((k) => !isSwept(a, k)).sort();
+  // Swept WHERE THEY NOW LIVE — counted apart from the root's own sweeps so the
+  // report never implies this root's suite did work the chassis's suite did.
+  const delegated = [...a.reachable.keys()].filter((k) => !a.swept.has(k) && isSwept(a, k)).sort();
   a.unswept = unswept;
+  a.delegated = delegated;
   totals.reachable += a.reachable.size;
   totals.swept += a.swept.size;
+  totals.delegated += delegated.length;
   totals.unswept += unswept.length;
   totals.cases += a.a11yCases;
   totals.files += a.a11yFiles.length;
@@ -1475,7 +1619,10 @@ for (const a of analyses) {
   if (a.problems.length === 0) {
     ok(
       `${label}: ${a.swept.size} of ${a.reachable.size} reachable surface(s) carry an a11y sweep, from ` +
-        `${a.a11yFiles.length} a11y test file(s) across ${a.a11yCases} case(s)`,
+        `${a.a11yFiles.length} a11y test file(s) across ${a.a11yCases} case(s)` +
+        (delegated.length
+          ? `; ${delegated.length} more are swept in \`${CHASSIS_DIR}\`, which they delegate to`
+          : ''),
     );
   }
   for (const p of a.problems) problems.push(p);
@@ -1536,6 +1683,21 @@ for (const a of analyses) {
     );
   }
 
+  if (a.delegatesTo.size) {
+    notes.push(
+      `⬜ ${a.delegatesTo.size} reachable surface(s) in ${label} DELEGATE into \`${CHASSIS_DIR}\` and are ` +
+        'judged there — printed every run, because a property judged somewhere else is exactly the shape ' +
+        'that reads as judged nowhere:',
+    );
+    for (const key of [...a.delegatesTo.keys()].sort()) {
+      const d = delegatedSweep(a, key);
+      notes.push(
+        `   · ${key.split('#')[1]} (${key.split('#')[0]}) → ${a.delegatesTo.get(key).join(', ')}` +
+          (d?.via?.length ? ' — SWEPT there' : ' — not swept there either; it stays on the owed list above'),
+      );
+    }
+  }
+
   if (a.excluded.length) {
     notes.push(
       `⬜ ${a.excluded.length} builder target(s) in ${label} DELIBERATELY OUTSIDE the domain, printed not hidden:`,
@@ -1585,6 +1747,7 @@ if (problems.length) {
 console.log(
   `\nassert-a11y-coverage: ok — ${roots.length} derived root(s) (${roots.map((r) => r.dir).join(', ')}); ` +
     `${totals.reachable} reachable surface(s); ${totals.swept} swept by ${totals.files} a11y test file(s) ` +
-    `across ${totals.cases} case(s); ${totals.unswept} unswept and PRINTED; ` +
+    `across ${totals.cases} case(s); ${totals.delegated} swept where they delegate to; ` +
+    `${totals.unswept} unswept and PRINTED; ` +
     `${totals.excluded} exclusion(s) printed`,
 );

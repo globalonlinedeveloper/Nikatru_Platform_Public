@@ -49,7 +49,7 @@ let seq = 0;
  * no substantiating packages at all would agree with a guard whose
  * substantiation had stopped running.
  */
-function tree({ mutate = (r) => r, dropBuildFile = false, extraPkgs = [], dropPkgs = [] } = {}) {
+function tree({ mutate = (r) => r, dropBuildFile = false, extraPkgs = [], dropPkgs = [], ledger = null } = {}) {
   const root = join(TMP, `r${seq++}`);
   const G = (detail) => ({ reason: 'GRANDFATHERED', declaredOn: '2026-07-28', detail });
 
@@ -93,6 +93,11 @@ function tree({ mutate = (r) => r, dropBuildFile = false, extraPkgs = [], dropPk
     if (!dropBuildFile) files[join(root, 'packages/tokens/style-dictionary.config.mjs')] = 'export default {};\n';
   }
   for (const p of extraPkgs) files[join(root, `packages/${p}/pubspec.yaml`)] = spec(`nikatru_${p}`, '  flutter:\n    sdk: flutter\n');
+
+  // The chassis ledger, when a case is about the `chassis` reason. Absent by
+  // default — no package in the base fixture claims it, and a ledger nothing
+  // reads would make the "could not be read" limb untestable.
+  if (ledger !== null) files[join(root, 'tooling/chassis-ledger.json')] = JSON.stringify(ledger, null, 2);
 
   for (const [f, body] of Object.entries(files)) {
     mkdirSync(dirname(f), { recursive: true });
@@ -242,6 +247,204 @@ describe('assert-package-earned', () => {
       const { code, out } = run(tree({ dropPkgs: ['telemetry', 'analysis', 'tokens'] }));
       assert.equal(code, 1);
       assert.match(out, /COVERAGE LOST — found only \d+ package dir\(s\)/);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // `chassis`, AND THE GRANDFATHERED DATE — ADR 067 decision 2 / ADR 066 defect 1
+  //
+  // THE GREEN CONTROL IS NOT DECORATION HERE. Without it every red below is
+  // equally consistent with a `chassis` branch that refuses everything — which
+  // would pass this file and fail the first real chassis package.
+  // ───────────────────────────────────────────────────────────────────────
+  describe('a chassis package is earned by a MEASURED shrink, not by being called one', () => {
+    const MOVED = {
+      path: 'lib/features/settings/settings_screen.dart',
+      verdict: 'MOVES',
+      target: 'packages/chassis_screens/lib/src/settings_body.dart',
+      callSiteDelta: -212,
+    };
+
+    const withChassis = (rows) => ({
+      extraPkgs: ['chassis_screens'],
+      ledger: { files: rows },
+      mutate: (r) => {
+        r.packageEarnReasons['packages/chassis_screens'] = {
+          reason: 'chassis',
+          evidence: { ledgerTarget: 'packages/chassis_screens' },
+          detail: 'the measured destination of chassis step 4',
+        };
+        return r;
+      },
+    });
+
+    // GREEN CONTROL.
+    test('passes when the ledger records a MOVES row into it with a NEGATIVE callSiteDelta', () => {
+      const { code, out } = run(tree(withChassis([MOVED])));
+      assert.equal(code, 0);
+      assert.match(out, /5 package\(s\) substantiate a structural reason/);
+    });
+
+    // THE MUTATION [ADR 066]'s rule exists for: the call site got BIGGER.
+    test('FAILS when the only MOVES row into it made the call site bigger', () => {
+      const { code, out } = run(tree(withChassis([{ ...MOVED, callSiteDelta: 5 }])));
+      assert.equal(code, 1);
+      assert.match(out, /holds no MOVES row landing there with a NEGATIVE callSiteDelta/);
+      assert.match(out, /a package NAMED, not earned/);
+    });
+
+    test('FAILS when nothing has moved into it at all', () => {
+      const { code, out } = run(tree(withChassis([])));
+      assert.equal(code, 1);
+      assert.match(out, /holds no MOVES row landing there/);
+    });
+
+    // A prefix match on a `/` boundary, so a NEIGHBOURING package cannot pay for
+    // this one's place.
+    test('FAILS when the shrinking row lands in a DIFFERENT package', () => {
+      const { code, out } = run(
+        tree(withChassis([{ ...MOVED, target: 'packages/chassis_screens_other/lib/x.dart' }])),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /holds no MOVES row landing there/);
+    });
+
+    // An unread ledger and an empty one are different answers, and the guard
+    // must say which — collapsing them is how a reader that stopped reaching its
+    // file starts reporting no findings.
+    test('reports COVERAGE LOST rather than a finding when there is no ledger to read', () => {
+      const opts = withChassis([]);
+      delete opts.ledger;
+      const { code, out } = run(tree(opts));
+      assert.equal(code, 1);
+      assert.match(out, /COVERAGE LOST/);
+      assert.match(out, /not the same as passing/);
+    });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🔴 THE EVIDENCE MUST NAME THE PACKAGE IT JUSTIFIES.
+    //
+    // `evidence.ledgerTarget` is free text out of a register, and the case
+    // above only ever exercised an HONEST one. Measured on the real tree by an
+    // independent reviewer, 2026-09-05: register `packages/chassis_screens`
+    // with `ledgerTarget: "packages"` and one MOVES row landing in
+    // `packages/design_system` with `callSiteDelta: -42` — EXIT 0, "11
+    // package(s), 7 substantiated". A shrink measured into a DIFFERENT package
+    // earned this one its place, and the widest possible prefix was the cheapest
+    // thing to write.
+    //
+    // Both halves are pinned: a ledgerTarget OUTSIDE the package is refused
+    // outright, and a ledgerTarget inside it still cannot be paid for by a row
+    // that lands elsewhere.
+    // ─────────────────────────────────────────────────────────────────────
+    const dishonest = (ledgerTarget, rows) => ({
+      extraPkgs: ['chassis_screens'],
+      ledger: { files: rows },
+      mutate: (r) => {
+        r.packageEarnReasons['packages/chassis_screens'] = {
+          reason: 'chassis',
+          evidence: { ledgerTarget },
+          detail: 'the measured destination of chassis step 4',
+        };
+        return r;
+      },
+    });
+
+    test('FAILS when evidence.ledgerTarget is a WIDER path than the package it justifies', () => {
+      const { code, out } = run(
+        tree(dishonest('packages', [{ ...MOVED, target: 'packages/design_system/lib/probe.dart', callSiteDelta: -42 }])),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /is not `packages\/chassis_screens` and does not sit inside it/);
+      assert.match(out, /a ledger row measuring a shrink into somewhere else substantiates that somewhere else/);
+    });
+
+    test('FAILS when evidence.ledgerTarget names a DIFFERENT package entirely', () => {
+      const { code, out } = run(
+        tree(dishonest('packages/design_system', [{ ...MOVED, target: 'packages/design_system/lib/probe.dart', callSiteDelta: -42 }])),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /is not `packages\/chassis_screens` and does not sit inside it/);
+    });
+
+    // GREEN CONTROL for the pair above — an honest, NARROWER ledgerTarget
+    // inside the package still passes, so the two reds are not consistent with
+    // a limb that refuses every ledgerTarget.
+    test('an honest ledgerTarget NARROWER than the package still passes', () => {
+      const opts = dishonest('packages/chassis_screens/lib', [MOVED]);
+      const { code, out } = run(tree(opts));
+      assert.equal(code, 0, out);
+      assert.match(out, /5 package\(s\) substantiate a structural reason/);
+    });
+
+    test('FAILS when a chassis claim names no ledgerTarget', () => {
+      const { code, out } = run(
+        tree({
+          extraPkgs: ['chassis_screens'],
+          ledger: { files: [MOVED] },
+          mutate: (r) => {
+            r.packageEarnReasons['packages/chassis_screens'] = { reason: 'chassis', detail: 'x' };
+            return r;
+          },
+        }),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /names no evidence.ledgerTarget/);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // [ADR 066] DEFECT 1 — "PREDATES THE RULE" WAS PROSE UNTIL 2026-09-05
+  //
+  // Measured on the real tree before the fix: a `packages/zzz_probe` declared
+  // GRANDFATHERED with the day's own date exited 0 and was merely PRINTED, under
+  // a guard comment reading "A NEW package with no reason fails the build".
+  // ───────────────────────────────────────────────────────────────────────
+  describe('GRANDFATHERED means predates the rule, and the date is checked', () => {
+    // GREEN CONTROL: the four real exemptions are dated ON the rule date and must
+    // keep passing. Without it the case below is consistent with a branch that
+    // refuses every grandfathered package.
+    test('passes on the rule date itself', () => {
+      const { code } = run(
+        tree({
+          mutate: (r) => {
+            r.packageEarnReasons['packages/core'].declaredOn = '2026-07-28';
+            return r;
+          },
+        }),
+      );
+      assert.equal(code, 0);
+    });
+
+    test('FAILS on a date AFTER the rule date', () => {
+      const { code, out } = run(
+        tree({
+          extraPkgs: ['app_chassis'],
+          mutate: (r) => {
+            r.packageEarnReasons['packages/app_chassis'] = {
+              reason: 'GRANDFATHERED',
+              declaredOn: '2026-09-06',
+              detail: 'a brand new package claiming an exemption it cannot have',
+            };
+            return r;
+          },
+        }),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /GRANDFATHERED with `declaredOn` 2026-09-06, which is AFTER the rule date 2026-07-28/);
+      assert.match(out, /a new package claiming an exemption it cannot have/);
+    });
+
+    test('a date one day BEFORE the rule date is still a real grandfather clause', () => {
+      const { code } = run(
+        tree({
+          mutate: (r) => {
+            r.packageEarnReasons['packages/analysis'].declaredOn = '2026-07-27';
+            return r;
+          },
+        }),
+      );
+      assert.equal(code, 0);
     });
   });
 });

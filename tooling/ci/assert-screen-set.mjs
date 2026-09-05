@@ -81,6 +81,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/screen-register.json';
@@ -158,6 +159,69 @@ function readAll(dir) {
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — AN ANCHOR FOLLOWS ITS SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2)
+//
+// The register already accepts ANY path in `anchor.file`, including a
+// `packages/...` one, and three anchors already point there. What it could not
+// express until now is the SHAPE chassis step 4 actually produces: the anchor
+// file still exists, is still routed and is still the file a reader would look
+// in, but the `class SettingsScreen` it names has moved into
+// `package:nikatru_chassis_screens` and what is left is an ADAPTER that builds
+// the package widget.
+//
+// Read at the adapter alone, `class <Symbol>` is gone and this guard says the
+// screen "does not declare" it. That is true of the file and false of the tree,
+// and the repair a reader reaches for is to re-point the anchor at the package
+// — which quietly drops the assertion that the BRICK still routes it. Both
+// halves matter, so the anchor keeps naming the brick file and the declaration
+// is looked for one import away.
+//
+// WHAT DOES NOT CHANGE: the anchor file must still EXIST (an absent file is
+// still a failure, never a delegation), the symbol must still be declared
+// somewhere this guard actually reads, and the `reachable` half is untouched —
+// a screen that nothing reaches is still a screen nothing reaches.
+//
+// ONE LEVEL, ONE IMPORT. Two different chassis imports in one adapter is
+// ambiguous and refused rather than guessed; a target not on disk is a failure,
+// not a pass.
+// ─────────────────────────────────────────────────────────────────────────────
+const stripCode = (src) => src.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+/** Every `.dart` under `rel`, recursively, as paths relative to ROOT. */
+function dartFilesUnder(rel) {
+  const out = [];
+  const walk = (d) => {
+    let entries;
+    try {
+      entries = listDir(join(ROOT, d));
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const child = `${d}/${e}`;
+      if (statSync(join(ROOT, child)).isDirectory()) walk(child);
+      else if (e.endsWith('.dart')) out.push(child);
+    }
+  };
+  walk(rel);
+  return out.sort();
+}
+
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level. */
+const delegationOf = (rel) => resolveChassisDelegation(ROOT, rel, { describe: () => '' });
+
 // ── THE TRIPWIRE, RE-POINTED AT THE INVARIANT IT WAS ALWAYS ABOUT ───────────
 //
 // The old form was a BLOCKER predicate, so it only ran while some register entry
@@ -186,7 +250,35 @@ function checkPurchasePathIsWhole() {
     );
     return;
   }
-  const src = readAll(BRICK_LIB).replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  // 🔴 THE BRICK LIB IS NOT THE WHOLE STAMPED CHASSIS ONCE A SCREEN DELEGATES.
+  // Every limb below is matched over the template's own source; move
+  // `paywall_screen.dart` into `package:nikatru_chassis_screens` and
+  // `.startCheckout(` leaves this directory while `PaywallGate(` may not — which
+  // reads here as "a gate with no way to pay past it", a finding about a tree
+  // that is perfectly whole. So the chassis files the brick delegates to are
+  // read WITH it. This only ever ADDS text: a limb that was present stays
+  // present, and a limb that is genuinely absent is still absent.
+  let src = readAll(BRICK_LIB);
+  const delegated = new Set();
+  for (const rel of dartFilesUnder(BRICK_LIB)) {
+    const d = delegationOf(rel);
+    if (d && d.lost) {
+      problems.push(
+        `COVERAGE LOST — \`${rel}\` ${d.lost} The purchase-path invariant is read over the stamped ` +
+          'chassis, and a delegation it cannot follow is a limb it cannot see.',
+      );
+      continue;
+    }
+    for (const f of (d && d.files) || []) delegated.add(f);
+  }
+  for (const f of [...delegated].sort()) src += readFileSync(join(ROOT, f), 'utf8');
+  if (delegated.size) {
+    notes.push(
+      `⬜ the purchase-path scan read ${delegated.size} chassis file(s) the template delegates to: ` +
+        `${[...delegated].sort().join(', ')}`,
+    );
+  }
+  src = stripCode(src);
 
   const gate = /PaywallGate\(/.test(src);
   // The limbs a paywall is a promise WITHOUT. Each is the call site, in the
@@ -269,9 +361,37 @@ for (const s of screens) {
       problems.push(`\`${s.id}\`: unknown anchor kind \`${kind}\` (expected class / member / uses).`);
       continue;
     }
-    if (!pattern.test(code)) {
+    let declaredIn = pattern.test(code) ? s.anchor.file : null;
+    if (declaredIn === null) {
+      // The screen may have moved into the chassis package, leaving an adapter
+      // at this path — see the resolver above. The anchor stays on the brick
+      // file (which still routes it) and the declaration is looked for one
+      // import away.
+      const d = delegationOf(s.anchor.file);
+      if (d && d.lost) {
+        problems.push(
+          `\`${s.id}\`: \`${s.anchor.file}\` does not ${kind === 'uses' ? 'use' : 'declare'} ` +
+            `\`${s.anchor.symbol}\`, and its delegation could not be followed — it ${d.lost}`,
+        );
+        continue;
+      }
+      for (const f of (d && d.files) || []) {
+        if (pattern.test(stripCode(readFileSync(join(ROOT, f), 'utf8')))) {
+          declaredIn = f;
+          break;
+        }
+      }
+    }
+    if (declaredIn === null) {
       problems.push(`\`${s.id}\`: \`${s.anchor.file}\` does not ${kind === 'uses' ? 'use' : 'declare'} \`${s.anchor.symbol}\`.`);
       continue;
+    }
+    if (declaredIn !== s.anchor.file) {
+      notes.push(
+        `⬜ ${s.id} — \`${s.anchor.symbol}\` is DECLARED IN \`${declaredIn}\`, which ` +
+          `\`${s.anchor.file}\` delegates to. The anchor stays on the brick file because that is what ` +
+          'still routes it; a property judged somewhere else is printed rather than left to be inferred.',
+      );
     }
     present++;
 

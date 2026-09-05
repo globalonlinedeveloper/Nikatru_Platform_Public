@@ -187,6 +187,7 @@ import { join, resolve } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation, delegationsUnder } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
@@ -254,6 +255,47 @@ const coverageLost = (lines) => {
 const reduce = (src) => stripStringLiterals(stripSourceComments(src, '.dart'));
 
 /** [{ rel, body }] for every .dart file under `dir`, reduced. */
+// ─────────────────────────────────────────────────────────────────────────────
+// DELEGATION — THE WITHDRAWAL CONTROL FOLLOWS THE SCREEN INTO THE CHASSIS PACKAGE
+// (ADR 067 decision 2; the same resolver assert-a11y-coverage.mjs carries)
+//
+// [ADR 066] step 4 empties a brick screen into `package:nikatru_chassis_screens`
+// and leaves an ADAPTER at the same path: same file, same route, same class
+// name, and none of the body. The `recordConsent(` call, the `granted:` toggle expression and the state read all move with the body, out of `lib/features/settings/` and into the package — and read at the adapter alone this guard reports that there is nowhere in the app to turn analytics off. That is a DPDP §6(3) claim, and making it about a compliant tree is exactly as bad as missing a real one.
+//
+// So the scan below reads the adapter AND the chassis file it delegates to.
+// This only ever ADDS text: a call site that was found is still found, and one
+// that is genuinely absent is still absent. Nothing is removed from any domain
+// and no floor is lowered.
+//
+// ONE LEVEL, ONE IMPORT, EVERY REFUSAL LOUD. Two different chassis imports in
+// one adapter is ambiguous and refused; a target that is not on disk is
+// COVERAGE LOST. A delegation this resolver cannot follow must never read as
+// "no delegation" — that is the silent-pass shape.
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+const relTo = (abs, repoRoot) => abs.slice(repoRoot.length + 1).replaceAll('\\', '/');
+
+/** The chassis file(s) an ABSOLUTE path delegates to, as REPO-RELATIVE paths. */
+function delegationOf(absFile, repoRoot) {
+  return resolveChassisDelegation(repoRoot, relTo(absFile, repoRoot), { describe: () => '' });
+}
+
+/** Every chassis file the .dart tree under `absDir` delegates to.
+ *  `{ files, lost }` — `lost` is a list of refusals the CALLER must report. */
+function chassisDelegationsUnder(absDir, repoRoot) {
+  return delegationsUnder(repoRoot, relTo(absDir, repoRoot), { describe: (r) => r });
+}
+
 function readDartTree(rootAbs, relDir) {
   const out = [];
   const walk = (relPath) => {
@@ -583,6 +625,31 @@ for (const root of roots) {
     ]);
   }
   const settingsFiles = readDartTree(join(ROOT, root), SETTINGS_DIR);
+  // The chassis files the settings tree delegates to are read WITH it — see the
+  // resolver above. Tagged `delegated` so every message can name the file it
+  // really read: a finding printed against `${root}/${rel}` for a line that
+  // lives in `packages/` sends the reader to the wrong tree.
+  const settingsDelegations = chassisDelegationsUnder(
+    join(ROOT, root, ...SETTINGS_DIR.split('/')),
+    ROOT,
+  );
+  for (const why of settingsDelegations.lost) {
+    coverageLost([
+      `${root}: a settings file's chassis delegation could not be followed — ${why}.`,
+      'Limbs 1-3 read the settings tree PLUS whatever it delegates to. A delegation this scan cannot',
+      'follow is a withdrawal control it cannot see, and an unseen control reads exactly like an absent',
+      'one — which here is a DPDP finding against a compliant app.',
+    ]);
+  }
+  for (const f of settingsDelegations.files) {
+    settingsFiles.push({ rel: f, body: reduce(readFileSync(join(ROOT, f), 'utf8')), delegated: true });
+  }
+  if (settingsDelegations.files.length) {
+    notes.push(
+      `⬜ ${root}: limbs 1-3 also read ${settingsDelegations.files.length} chassis file(s) the settings ` +
+        `tree delegates to — ${settingsDelegations.files.join(', ')}`,
+    );
+  }
   if (!settingsFiles.length) {
     coverageLost([
       `${root}/${SETTINGS_DIR} contains no .dart files.`,
@@ -594,15 +661,16 @@ for (const root of roots) {
   // ── limb 1 · a CALL, not a declaration, inside settings ──────────────────
   const calls = [];
   for (const f of settingsFiles) {
+    const where = f.delegated ? f.rel : `${root}/${f.rel}`;
     if (DECLARES.test(f.body)) {
       problems.push(
-        `${root}/${f.rel} DECLARES ${RECORD}. Moving the declaration into the settings tree would make limb 1 ` +
+        `${where} DECLARES ${RECORD}. Moving the declaration into the settings tree would make limb 1 ` +
           'satisfied by the function\'s own signature — the precise defect assert-seams-wired.mjs shipped with, ' +
           'which all six of its fixture tests passed against.',
       );
       continue;
     }
-    for (const c of callArgs(f.body, RECORD)) calls.push({ file: `${root}/${f.rel}`, args: c.args });
+    for (const c of callArgs(f.body, RECORD)) calls.push({ file: where, args: c.args });
   }
   settingsCallsFound += calls.length;
 
