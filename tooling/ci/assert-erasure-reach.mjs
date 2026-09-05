@@ -22,14 +22,23 @@
 // disclosed" there was no assertion that the button REACHES anything.
 //
 // ── WHY `no-route` IS NOT AN ACCEPTABLE ANSWER FOR A TABLE WITH A `user_id` ──
-// The erasure routes carry no table list: they ask the schema which tables are
-// user-owned. So for a table that HAS a `user_id`, "no route reaches it" never
-// describes a hard problem — the sweep would cover it the moment a route existed.
-// It describes a route somebody has not written. That is exactly the shape of gap
-// that becomes permanent by being disclosed, so here it FAILS instead of printing.
-// A store with genuinely nothing to address it (the Pages KV keyed by email
-// address, which no code in this repository can delete) has no columns at all and
-// is not in this guard's domain — the distinction is derived, not listed.
+// The SHIPPED erasure routes carry no table list: they ask the schema which
+// tables are user-owned. So for a table that HAS a `user_id`, "no route reaches
+// it" never describes a hard problem — the sweep would cover it the moment a
+// route existed. It describes a route somebody has not written. That is exactly
+// the shape of gap that becomes permanent by being disclosed, so here it FAILS
+// instead of printing. A store with genuinely nothing to address it (the Pages KV
+// keyed by email address, which no code in this repository can delete) has no
+// columns at all and is not in this guard's domain — the distinction is derived,
+// not listed.
+//
+// ⚠️ "THE ERASURE ROUTES CARRY NO TABLE LIST" IS TRUE OF THE TWO SHIPPED ROUTES
+// AND FALSE OF THE TEMPLATE, AND THAT SENTENCE USED TO BE WRITTEN HERE WITHOUT
+// THE QUALIFIER. The brick's `src/routes/account.ts` still carries
+// `const appTables = ['records'];` — a hand-maintained list — which is why the
+// TEMPLATE ROOT below cannot ask limb 1's question through the register and asks
+// a different one instead: does the route's table set COVER the template's own
+// schema. Both shipped routes say so in their own headers; nothing enforced it.
 //
 // ── WHAT IS CHECKED ─────────────────────────────────────────────────────────
 //   1. NO USER-OWNED TABLE IS ORPHANED. Every table whose migrations give it a
@@ -59,24 +68,149 @@
 //      every name in that list must be a service that exists. Both directions, so
 //      binding app #2's database cannot silently skip its erasure.
 //
-// ── THE DOMAIN, DERIVED ─────────────────────────────────────────────────────
-// Services = every `services/*/wrangler.jsonc` that declares a `migrations_dir`,
-// i.e. every Worker that OWNS a database. Nothing is exempt and nothing is
-// listed. COVERAGE LOST if fewer than two are found (the shared Worker and at
-// least one app Worker): a domain that has collapsed to one is the blind spot
-// this guard was written to close, and an empty-domain scan prints ok.
+// ── THE TEMPLATE ROOT, AND WHY LIMBS 1–4 COULD NOT SEE IT ───────────────────
+// 🔴 THE SUBJECT WAS `services/` AND THE REGISTER, AND THAT IS ONE OF TWO ROOTS.
+// The brick stamps a WHOLE WORKER — `tooling/bricks/app/__brick__/{{#needs_
+// backend}}services{{/needs_backend}}/{{app_id}}-api` — with its own
+// wrangler.jsonc (APP_DB + a `migrations_dir`), its own `migrations/0001_init
+// .sql` creating a `records` table with a `user_id`, its own `src/index.ts`
+// mounting `/v1/account`, its own `src/middleware/auth.ts` carrying the
+// SUPABASE_JWT_SECRET fallback, and its own `src/routes/account.ts`. Every limb
+// above has an exact structural twin in there, and none of them read a byte of
+// it: measured 2026-09-05, this guard read 9 migration files (7 platform +
+// 2 subly-api) and the template's was not one.
+//
+// So SIX brick-shaped defects were all EXIT 0 on the unwidened guard — see the
+// dated mutation table at the foot of this header. Each one stamps into every
+// backend app the factory ever produces, which is the multiplier that makes the
+// template root worth more than the live one: a defect here is not one app's
+// orphaned rows, it is app #2 through app #50's.
+//
+// ── THE DOMAIN, DERIVED — TWO ROOTS, TWO FLOORS, NEVER A UNION ──────────────
+//   LIVE ROOT      every `services/*/wrangler.jsonc` that declares a
+//                  `migrations_dir`, i.e. every Worker that OWNS a database.
+//                  FLOOR: at least TWO (the shared Worker and at least one app
+//                  Worker). A domain that has collapsed to one is the blind spot
+//                  this guard was written to close.
+//   TEMPLATE ROOT  every `tooling/bricks/**/wrangler.jsonc` that declares a
+//                  `migrations_dir`. FLOOR: at least ONE, owning at least one
+//                  database, with at least one migration file read and at least
+//                  one user-owned table found in it.
+//
+// The floors are SEPARATE. A union floor of three stays satisfied while the
+// template root is emptied — `assert-workspace-coverage.mjs:130-136` is the
+// recorded case of exactly that, a union floor holding over an emptied `apps/`.
+//
+// 🔴 AND A ROOT NEVER DERIVED IS NEVER EMPTY. Two named roots would still be a
+// LIST, so the enumeration is the whole tree: every `wrangler.jsonc` reachable
+// through `boundedGlob`, cross-checked against `git ls-files`. A config that is
+// in neither root is COVERAGE LOST, not a silent skip — otherwise a Worker that
+// lands under `packages/` or at the repo root joins the portfolio with an
+// unswept database and this guard never mentions it.
+//
+// ⚠️ THE MUSTACHE PATH IS NOT A GLOB PATTERN. The `/` inside `{{/needs_backend}}`
+// IS A PATH SEPARATOR: on disk that is a directory named
+// `{{#needs_backend}}services{{` containing one named `needs_backend}}`, and
+// braces are glob syntax. So every template path here is used LITERALLY after
+// enumeration and never fed back to a matcher — the same answer
+// assert-no-do-alarms.mjs reached for the same directory.
+//
+// ⚠️ THE TEMPLATE FLOOR IS APPLIED ONLY OVER A FULL CHECKOUT, detected by this
+// guard's OWN file under ROOT — a sentinel that sits OUTSIDE both subject trees
+// (`services/` and `tooling/bricks/`) and therefore survives any mutation of
+// either, which a sentinel inside one of them would not. The unit tests
+// legitimately model one root at a time. WHICH BRANCH WAS TAKEN IS PRINTED ON
+// EVERY RUN rather than implied.
+//
+// ── WHAT IS CHECKED ON THE TEMPLATE ROOT ────────────────────────────────────
+//   T1. THE ROUTE'S TABLE SET COVERS THE TEMPLATE'S OWN SCHEMA. Limb 1's
+//       question cannot be asked through the register — `{{app_id}}_db` is not a
+//       database and has no inventory row — so it is asked against the two
+//       template files instead: every table the template's migrations give a
+//       `user_id` must be reachable by the template's erasure route, either
+//       because the route DERIVES its set from `sqlite_master` (what both
+//       shipped routes do) or because the table is named in the list it carries.
+//   T2. THE TEMPLATE MOUNTS ITS ERASURE ROUTE. Derived from the `.route('…
+//       account…', X)` call in the template's index.ts and resolved back to the
+//       import — a stamped Worker whose account route is imported and not
+//       mounted ships a dead seam in every app.
+//   T3. THE SAME LIMB 3, ON THE TEMPLATE. The brick's auth.ts carries the
+//       SUPABASE_JWT_SECRET fallback, so the mounting and the handler's own
+//       `tokenAssurance !== 'asymmetric'` refusal are both required there for
+//       the same reason they are required in `services/`.
+//   T4. THE TEMPLATE DECLARES `vars.APP_ID`. Without it every stamped backend
+//       fails limb 4 on the day it is stamped, because nothing can match it to
+//       the shared Worker's APP_ERASURE_ENDPOINTS.
+//
+//   NOT CHECKED, AND SAID RATHER THAN IMPLIED: limb 4's own relation. A stamped
+//   app's presence in APP_ERASURE_ENDPOINTS is a PROVISIONING act
+//   (tooling/scripts/provision-backend.mjs), not a fact the template can carry —
+//   the template has no app id yet. T4 checks only that the hook exists.
+//
+// ── MEASURED BY MUTATION ON THE REAL TREE, 2026-09-05 ───────────────────────
+// `before` = main@a9b04696's version of this file, run in place under
+// tooling/ci/ so its relative imports resolve. THE GREEN CONTROL IS THE FIRST
+// ROW AND IT IS NOT DECORATION: without a 0 on the unmutated tree, a 1 anywhere
+// below is just as likely to be a guard that cannot load.
+//
+//   mutation                                    before  after  caught by
+//   (none — GREEN CONTROL)                        0       0     —
+//   brick migration grows a `user_id` table       0       1     T1
+//     the route's `appTables` does not name
+//   brick index mounts /v1/account behind         0       1     T3(a)
+//     `supabaseAuth` instead of `erasureAuth`
+//   brick index stops `.route(…)`-ing account     0       1     T2
+//   brick route loses `tokenAssurance`            0       1     T3(b)
+//   brick route spelled `!== 'symmetric'`         0       1     T3(b)
+//   brick route file emptied to a stub            0       1     T1 + T3(b)
+//   brick wrangler drops `vars.APP_ID`            0       1     T4
+//   brick wrangler drops `migrations_dir`         0       1     template floor
+//   a wrangler.jsonc under `packages/`            0       1     COVERAGE LOST
+//   a wrangler.jsonc nested under `services/`     0       1     COVERAGE LOST
+//   subly-api route spelled `!== 'symmetric'`     1       1     live limb 3(b)
+//                                                                (positive
+//                                                                 control: the
+//                                                                 harness bites)
+//   subly-api `tokenAssurance` SUFFIX-renamed     0       1     live limb 3(b),
+//     to `tokenAssuranceXX`                                      after the fix
+//                                                                below
+//
+// 🔴 THE LAST ROW IS A DEFECT THIS WIDENING FOUND IN THE EXISTING LIMB, not in
+// the new one. `/tokenAssurance/` unanchored is satisfied by
+// `tokenAssuranceXX`, so a find-and-replace that SUFFIXES the identifier left
+// the handler with no refusal and limb 3(b) green — on the live root, since
+// 3(b) was written. Both spellings are `\btokenAssurance\b` now. It was found by
+// running the mutation, not by reading the line; the existing test only ever
+// renamed the identifier to a different word, which the unanchored regex caught.
 //
 // Usage:  node tooling/ci/assert-erasure-reach.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, resolve, sep } from 'node:path';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
-import { listDir } from './tree-walk.mjs';
+import { listDir, boundedGlob } from './tree-walk.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const SERVICES = join(ROOT, 'services');
 const REGISTER = join(ROOT, 'tooling', 'legal', 'data-inventory.json');
+
+/** 🔴 THE SENTINEL FOR THE TEMPLATE FLOOR, AND IT IS DELIBERATELY THIS FILE.
+ *  The floor below is a measurement of THIS repository and means nothing over a
+ *  synthetic root — erasure-reach.test.mjs legitimately models the live root
+ *  alone, with three files in it. `tooling/ci/assert-erasure-reach.mjs` sits
+ *  OUTSIDE both subject trees (`services/` and `tooling/bricks/`), so it
+ *  survives every mutation OF a subject; a sentinel inside either tree would
+ *  vanish with the thing it was vouching for. Same shape as
+ *  assert-no-tls-pinning.mjs's IS_FULL_CHECKOUT. */
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-erasure-reach.mjs'));
+
+/** Vendored code and build output are not part of the tree under test. (Nested
+ *  checkouts and `.claude` are already excluded inside tree-walk.mjs.) */
+const EXCLUDED_SEGMENTS = new Set([
+  'node_modules', '.git', '.dart_tool', '.wrangler', 'build', 'dist', 'coverage', '.next', 'out',
+]);
 
 const problems = [];
 const notes = [];
@@ -100,6 +234,71 @@ if (!existsSync(SERVICES)) {
     'is reached by delete-my-account" is vacuously true and this guard prints ok over the exact gap it',
     'was written to close.',
   ]);
+}
+
+// ── EVERY WRANGLER CONFIG IN THE TREE, CLASSIFIED INTO A ROOT ───────────────
+// 🔴 THIS IS WHAT STOPS THE ROOTS BEING A LIST. Two named roots are still two
+// names, and a Worker that lands anywhere else joins the portfolio with an
+// unswept database while both floors stay satisfied. So the enumeration is the
+// whole tree and the classification is exhaustive: a config in neither root is
+// COVERAGE LOST. Paths are used LITERALLY after this point — see the mustache
+// note in the header.
+// NOT named `rel`: limbs 2 and 3 both bind a loop variable of that name, and a
+// module-level `rel` silently shadowed inside them is a trap in a file this
+// careful. Repo-relative paths are compared as POSIX throughout.
+const toPosix = (p) => String(p).replaceAll('\\', '/');
+const allConfigs = new Set();
+for (const pattern of ['**/wrangler.jsonc', 'wrangler.jsonc']) {
+  for await (const match of boundedGlob(pattern, { cwd: ROOT })) {
+    const r = toPosix(match);
+    if (r.split('/').some((seg) => EXCLUDED_SEGMENTS.has(seg))) continue;
+    allConfigs.add(r);
+  }
+}
+const LIVE_PREFIX = 'services/';
+const TEMPLATE_PREFIX = 'tooling/bricks/';
+const liveConfigs = [...allConfigs].filter((r) => r.startsWith(LIVE_PREFIX)).sort();
+const templateConfigs = [...allConfigs].filter((r) => r.startsWith(TEMPLATE_PREFIX)).sort();
+const unclassified = [...allConfigs]
+  .filter((r) => !r.startsWith(LIVE_PREFIX) && !r.startsWith(TEMPLATE_PREFIX))
+  .sort();
+if (unclassified.length) {
+  coverageLost([
+    `${unclassified.length} wrangler config(s) belong to neither root: ${unclassified.join(', ')}.`,
+    'Both floors below quantify over `services/*` and `tooling/bricks/**`. A Worker outside both is a Worker',
+    'whose bindings, migrations and erasure route this scan never reads — and both floors stay satisfied while',
+    'it does, which is a root that is never derived and therefore never empty. Put it under one of the two',
+    'roots, or widen this classification deliberately and say why.',
+  ]);
+}
+// The DERIVED cross-check: whatever git tracks must be among what this scan
+// enumerated. Not "at least N" — a number somebody eventually lowers — but a
+// relationship between two independent observations of the same tree. Only over
+// a real checkout; a temp fixture is not a repository.
+// ⚠️ `.git` MUST EXIST AT ROOT, AND THE TEST IS EXISTENCE RATHER THAN
+// `isDirectory()`: it is a directory in a clone and a FILE (`gitdir: …`) in a
+// worktree, which is what this repository's agents actually run in. Without the
+// test, `git -C <tmp> ls-files` walks UP to whatever repository encloses the
+// temp directory and reports ITS files as unseen — a COVERAGE LOST naming files
+// that were never in scope.
+if (IS_FULL_CHECKOUT && existsSync(join(ROOT, '.git'))) {
+  const ls = spawnSync('git', ['-C', ROOT, 'ls-files'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const tracked =
+    ls.status === 0
+      ? ls.stdout
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => /(?:^|\/)wrangler\.jsonc$/.test(l))
+          .sort()
+      : [];
+  const unseen = tracked.filter((t) => !allConfigs.has(t));
+  if (unseen.length) {
+    coverageLost([
+      `git tracks ${tracked.length} wrangler.jsonc and this scan enumerated ${allConfigs.size}; it never saw: ${unseen.join(', ')}.`,
+      'Every unseen config takes its databases, its migrations and its erasure route with it, and this guard',
+      'would print ok over exactly the Worker it could not open.',
+    ]);
+  }
 }
 
 /** { dir, name (worker name), appId, owns: [dbName], binds: [dbName], vars } */
@@ -131,6 +330,22 @@ for (const entry of listDir(SERVICES, { withFileTypes: true })) {
       .filter((d) => typeof d?.migrations_dir === 'string')
       .map((d) => ({ db: d.database_name, dir: join(dir, d.migrations_dir) })),
   });
+}
+
+// The live walk above takes DIRECT children of `services/`; the glob takes every
+// depth. They must agree, or a Worker nested one level deeper is a live config
+// this scan enumerated and never opened — the same silent skip the
+// classification above refuses, one level in.
+{
+  const opened = new Set(services.map((s) => `services/${s.id}/wrangler.jsonc`));
+  const missed = liveConfigs.filter((c) => !opened.has(c));
+  if (missed.length) {
+    coverageLost([
+      `the live walk opened ${opened.size} config(s) under services/ and the tree contains ${liveConfigs.length}; it never opened: ${missed.join(', ')}.`,
+      'The walk takes direct children of `services/`. A Worker nested deeper owns databases that no limb below',
+      'ranges over, while the two-owner floor stays satisfied by the two above it.',
+    ]);
+  }
 }
 
 const owners = services.filter((s) => s.owns.length > 0);
@@ -441,7 +656,12 @@ for (const [rel, svc] of routeService) {
   // check could never pass; it failed exactly that way when first run. Comments
   // still go, which is what stops this matching the paragraph above the line.
   const routeCode = readCode(join(ROOT, ...rel.split('/')));
-  if (!/tokenAssurance/.test(routeCode)) {
+  // ⚠️ WORD-ANCHORED. An unanchored /tokenAssurance/ is satisfied by
+  // `tokenAssuranceXX`, so a rename that SUFFIXES the identifier — the shape a
+  // find-and-replace produces — left the route with no refusal and this limb
+  // green. Found by mutation on 2026-09-05 while widening the same check onto
+  // the template root, where it fired the same way.
+  if (!/\btokenAssurance\b/.test(routeCode)) {
     problems.push(
       `${rel} does not check \`tokenAssurance\`. The mounting above is one line in an index file that a tidy-up ` +
         'can move; without a refusal inside the handler, moving it puts account deletion behind the shared secret ' +
@@ -537,6 +757,227 @@ if (appsWithRoutes.length === 0 && problems.length === 0) {
   ]);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// THE TEMPLATE ROOT — the Worker every future backend app is stamped from.
+//
+// Its own floor, never added to the live one. See the header for why the roots
+// are separate and why the enumeration is the whole tree rather than two names.
+// ═══════════════════════════════════════════════════════════════════════════
+const templateOwners = [];
+for (const cfgRel of templateConfigs) {
+  const dirRel = cfgRel.slice(0, cfgRel.lastIndexOf('/'));
+  const dir = join(ROOT, ...dirRel.split('/'));
+  let cfg;
+  try {
+    cfg = jsoncParse(readFileSync(join(ROOT, ...cfgRel.split('/')), 'utf8'));
+  } catch (err) {
+    problems.push(
+      `${cfgRel} could not be parsed as JSONC (${err.message}). It is the template every stamped backend is ` +
+        'born from, so an unreadable one is every future app\'s bindings unreadable at once.',
+    );
+    continue;
+  }
+  const dbs = Array.isArray(cfg.d1_databases) ? cfg.d1_databases : [];
+  const owns = dbs.filter((d) => typeof d?.migrations_dir === 'string');
+  if (owns.length === 0) continue;
+  templateOwners.push({
+    cfgRel,
+    dirRel,
+    dir,
+    vars: cfg.vars ?? {},
+    appId: typeof cfg.vars?.APP_ID === 'string' ? cfg.vars.APP_ID : null,
+    migrationDirs: owns.map((d) => ({ db: d.database_name, dir: join(dir, d.migrations_dir) })),
+  });
+}
+
+// 🔴 THE TEMPLATE FLOOR, SEPARATE FROM THE LIVE ONE. A union floor of three
+// stays satisfied while this root is emptied — assert-workspace-coverage.mjs
+// :130-136 is the recorded case of a union floor holding over an emptied tree.
+if (IS_FULL_CHECKOUT && templateOwners.length === 0) {
+  coverageLost([
+    `no wrangler config under ${TEMPLATE_PREFIX} declares a \`migrations_dir\` (${templateConfigs.length} template config(s) found).`,
+    'The brick stamps a Worker with its own D1, its own migrations and its own erasure route, and every limb of',
+    'this guard has a structural twin in it. With the template root empty, T1–T4 range over nothing and print',
+    'ok — while a defect stamped here reaches app #2 through app #50 at once, which is the whole reason this',
+    'root is worth more than the live one.',
+  ]);
+}
+
+let templateTablesChecked = 0;
+let templateMigrationFilesRead = 0;
+for (const tpl of templateOwners) {
+  // ── the template's own schema: which tables carry a `user_id` ─────────────
+  const tplUserOwned = new Set();
+  for (const { dir: mdir } of tpl.migrationDirs) {
+    if (!existsSync(mdir)) {
+      problems.push(
+        `${tpl.cfgRel} points a database at a migrations_dir that does not exist. Every app stamped from this ` +
+          'template is stamped with a schema that cannot be applied.',
+      );
+      continue;
+    }
+    for (const f of listDir(mdir).filter((n) => n.toLowerCase().endsWith('.sql')).sort()) {
+      templateMigrationFilesRead++;
+      const sql = stripStringLiterals(stripSourceComments(readFileSync(join(mdir, f), 'utf8'), '.sql'));
+      for (const m of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`[]?([A-Za-z_][\w$]*)[^;]*/gi)) {
+        if (/\buser_id\b/i.test(m[0])) tplUserOwned.add(m[1]);
+      }
+      for (const m of sql.matchAll(
+        /ALTER\s+TABLE\s+["'`[]?([A-Za-z_][\w$]*)["'`\]]?\s+ADD\s+(?:COLUMN\s+)?["'`[]?([A-Za-z_][\w$]*)/gi,
+      )) {
+        if (/^user_id$/i.test(m[2])) tplUserOwned.add(m[1]);
+      }
+    }
+  }
+  // The floor for THIS root's schema read, on the same reasoning as the live
+  // one: zero is a broken parse, not a template.
+  if (IS_FULL_CHECKOUT && tplUserOwned.size === 0) {
+    coverageLost([
+      `${tpl.dirRel} owns a database and NOT ONE user-owned table was found in its ${templateMigrationFilesRead} migration file(s).`,
+      'T1 asks whether the template\'s erasure route covers the template\'s schema. Over an empty schema the',
+      'answer is yes for a route that sweeps nothing, which is the vacuous pass this guard refuses everywhere',
+      'else. The starter migration creates a user-owned table on purpose — every stamped app inherits it.',
+    ]);
+  }
+
+  // ── T2 · the template mounts its erasure route ────────────────────────────
+  const indexPath = join(tpl.dir, 'src', 'index.ts');
+  if (!existsSync(indexPath)) {
+    problems.push(`${tpl.dirRel} has no src/index.ts, so nothing in the stamped Worker serves an erasure route.`);
+    continue;
+  }
+  const tplIndex = readCode(indexPath);
+  // Derived from the tree, not from a filename this guard expects: the mount
+  // whose PATH names /account, then resolved back through its import.
+  const mount = /\.route\(\s*['"]([^'"]*account[^'"]*)['"]\s*,\s*([A-Za-z_$][\w$]*)\s*\)/.exec(tplIndex);
+  if (!mount) {
+    problems.push(
+      `${tpl.dirRel}/src/index.ts mounts no \`.route('…account…', …)\`. Every app stamped from this template ` +
+        'ships a Worker that owns a database and answers nothing on account deletion — a dead seam multiplied by ' +
+        'the number of apps the factory produces.',
+    );
+    continue;
+  }
+  const [, mountPath, bound] = mount;
+  const imp = new RegExp(`import\\s+${bound}\\s+from\\s+['"]([^'"]+)['"]`).exec(tplIndex);
+  if (!imp) {
+    problems.push(
+      `${tpl.dirRel}/src/index.ts mounts \`${bound}\` at ${mountPath} and never imports it. An unbound mount is a ` +
+        'Worker that does not build, stamped into every future app.',
+    );
+    continue;
+  }
+  const routeRel = `${tpl.dirRel}/src/${imp[1].replace(/^\.\//, '')}.ts`;
+  const routeAbs = join(tpl.dir, 'src', `${imp[1].replace(/^\.\//, '')}.ts`);
+  if (!existsSync(routeAbs)) {
+    problems.push(`${tpl.dirRel}/src/index.ts mounts an erasure route from ${imp[1]}, and ${routeRel} does not exist.`);
+    continue;
+  }
+  // ⚠️ COMMENTS STRIPPED, STRING LITERALS KEPT — the same deliberate inversion
+  // as limb 3(b) below the live loop, and for the same reason: the things
+  // asserted here ARE string literals (`'asymmetric'`, and the table names in
+  // whatever list the route carries). Stripping them would make T1 and T3(b)
+  // unfailable. Comments still go, so the paragraph explaining a rule cannot be
+  // mistaken for the rule being kept.
+  const tplRoute = readCode(routeAbs);
+
+  // ── T1 · the route's table set covers the template's own schema ───────────
+  // 🔴 THIS IS LIMB 1'S QUESTION, ASKED WITHOUT THE REGISTER. `{{app_id}}_db` is
+  // not a database and has no inventory row, so the two template files are
+  // compared to each other instead. Two acceptable answers, and the first is the
+  // one both shipped routes give:
+  //   · the route DERIVES its set from the schema (`sqlite_master`), in which
+  //     case a new table is covered by its migration alone; or
+  //   · the route carries a list, in which case every user-owned table in the
+  //     template's migrations must be IN it.
+  const derivesFromSchema = /\bsqlite_master\b|\bsqlite_schema\b/.test(tplRoute);
+  for (const table of [...tplUserOwned].sort()) {
+    templateTablesChecked++;
+    if (derivesFromSchema) continue;
+    if (new RegExp(`['"\`]${table}['"\`]`).test(tplRoute)) continue;
+    problems.push(
+      `${routeRel} does not reach \`${table}\`, which the template's own migrations give a \`user_id\`. The route ` +
+        'carries a hand-maintained table list rather than deriving the set from `sqlite_master` the way both ' +
+        'shipped routes do, so a table added to the starter schema without the SAME diff editing this list is ' +
+        'orphaned PII in every app stamped from here — and the failure is silent: the route answers `{ ok: true }` ' +
+        'and the rows stay. Add the table to the list, or derive the set from the schema.',
+    );
+  }
+
+  // ── T3 · the same limb 3, on the template ─────────────────────────────────
+  const tplAuthPath = join(tpl.dir, 'src', 'middleware', 'auth.ts');
+  if (!existsSync(tplAuthPath)) {
+    problems.push(
+      `${tpl.dirRel} mounts an erasure route and has no src/middleware/auth.ts, so this scan cannot tell what ` +
+        'authenticates it in any app stamped from here. An unreadable auth boundary is not a passing one.',
+    );
+  } else {
+    const tplDecls = declarations(stripStringLiterals(readCode(tplAuthPath)));
+    if (tplDecls.size === 0) {
+      coverageLost([
+        `no top-level declaration was parsed out of ${tpl.dirRel}/src/middleware/auth.ts.`,
+        'T3 decides which middleware can fall back to a shared secret by following the calls between those',
+        'declarations. With none parsed the template is judged fallback-free — the same answer a broken parse',
+        'gives and a safe template gives, and they must not print the same.',
+      ]);
+    }
+    const tplFallback = [...tplDecls.keys()].filter((n) => reaches(tplDecls, n, 'SUPABASE_JWT_SECRET'));
+    if (tplFallback.length === 0) {
+      // PRINTED, never silently skipped — and NOT a coverage failure: a template
+      // with no symmetric path at all is the end state this guard pushes towards.
+      notes.push(
+        `⬜ ${tpl.dirRel} — src/middleware/auth.ts never uses SUPABASE_JWT_SECRET, so the stamped erasure route ` +
+          'has no symmetric fallback to be exposed to.',
+      );
+    } else {
+      const tplGuards = [...tplIndex.matchAll(/\.use\(\s*['"]([^'"]*account[^'"]*)['"]\s*,\s*([A-Za-z_$][\w$]*)/g)];
+      if (tplGuards.length === 0) {
+        problems.push(
+          `${tpl.dirRel}/src/index.ts mounts an erasure route and no path-scoped \`use('…account…', …)\` guards ` +
+            'it. Every app stamped from this template would serve account deletion either unauthenticated or ' +
+            `behind the shared HS256 secret (fallback-capable here: ${tplFallback.join(', ')}).`,
+        );
+      }
+      for (const [, path, mw] of tplGuards) {
+        if (tplFallback.includes(mw)) {
+          problems.push(
+            `${tpl.dirRel}: the template guards DELETE ${path} with \`${mw}\`, which reaches SUPABASE_JWT_SECRET. ` +
+              'One leaked environment variable would then mint a deletion for any user of any app ever stamped ' +
+              'from this brick. Guard it with a middleware that verifies asymmetrically and has no secret in scope.',
+          );
+        }
+      }
+    }
+  }
+  // (b) …and the stamped handler refuses on its own, because (a) is one line in
+  // an index file a tidy-up can move — in fifty repositories at once, here.
+  if (!/\btokenAssurance\b/.test(tplRoute)) {
+    problems.push(
+      `${routeRel} does not check \`tokenAssurance\`. The mounting is one line in an index file; without a ` +
+        'refusal inside the stamped handler, moving it puts account deletion behind the shared secret in every ' +
+        'app born from this template, with every test still green.',
+    );
+  } else if (!/!==\s*'asymmetric'/.test(tplRoute)) {
+    problems.push(
+      `${routeRel} reads \`tokenAssurance\` and does not refuse on \`!== 'asymmetric'\`. A check spelled ` +
+        "`!== 'symmetric'` admits `undefined` — a route reached with no auth middleware at all — which is the " +
+        'fail-OPEN spelling, stamped.',
+    );
+  }
+
+  // ── T4 · the template declares the hook limb 4 matches on ─────────────────
+  // NOT limb 4's relation: a stamped app's presence in APP_ERASURE_ENDPOINTS is
+  // a provisioning act, and the template has no app id yet. What IS checkable is
+  // that the hook exists — without `vars.APP_ID` every stamped backend fails
+  // limb 4 on the day it lands, and the fix is a template edit either way.
+  if (!tpl.appId) {
+    problems.push(
+      `${tpl.cfgRel} declares no \`vars.APP_ID\`, so no app stamped from it can be matched to the shared ` +
+        "Worker's APP_ERASURE_ENDPOINTS — limb 4 fails on arrival for every one of them.",
+    );
+  }
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ erasure reach — ${problems.length} problem(s):`);
@@ -549,7 +990,7 @@ if (problems.length) {
 
 for (const n of notes) console.log(n);
 console.log(
-  `ok  erasure reach — ${userOwned.size} user-owned table(s) across ${owners.length} database-owning service(s), ` +
+  `ok  erasure reach — LIVE ROOT: ${userOwned.size} user-owned table(s) across ${owners.length} database-owning service(s), ` +
     `every one declaring a route that is really mounted (${routeFiles.size} route(s), ${migrationFilesRead} migration file(s) read)`,
 );
 console.log(
@@ -559,4 +1000,22 @@ console.log(
 console.log(
   `    the entry point (services/${entry.id}) declares an erasure endpoint for every one of the ${appsWithRoutes.length} ` +
     `app Worker(s) that own a database, and names no app that is not there`,
+);
+// 🔴 THE TEMPLATE ROOT IS REPORTED SEPARATELY AND ITS BRANCH IS PRINTED. A
+// second root folded into the counts above would be a union, and the reader
+// could not tell an emptied template from a covered one.
+console.log(
+  `    TEMPLATE ROOT: ${templateOwners.length} stamped-Worker template(s) owning a database ` +
+    `(${templateMigrationFilesRead} migration file(s) read, ${templateTablesChecked} user-owned table(s) proven reachable ` +
+    'by the erasure route each stamp ships) — a defect here reaches every app the factory produces',
+);
+console.log(
+  `    ${allConfigs.size} wrangler.jsonc enumerated across the whole tree, every one classified into a root ` +
+    `(${liveConfigs.length} live, ${templateConfigs.length} template, 0 unclassified)` +
+    (IS_FULL_CHECKOUT
+      ? `; FULL CHECKOUT — the template floor was APPLIED, and the git ls-files cross-check ${
+          existsSync(join(ROOT, '.git')) ? 'was APPLIED' : 'was SKIPPED (no .git at the root)'
+        }`
+      : '; NOT a full checkout (this guard\'s own file is absent under the root) — the template floor and the ' +
+        'git cross-check were SKIPPED, and only the live root above was proven'),
 );
