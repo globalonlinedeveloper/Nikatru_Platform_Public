@@ -1163,10 +1163,11 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     // ── 11 Read-back on Home (proves the row round-tripped through D1) ────────
     // Home is a lazy ListView — scroll the new row into view before asserting.
     final Finder subFinder = find.text(subName);
-    await tester.scrollUntilVisible(
-      subFinder.first,
-      160,
-      scrollable: find.byType(Scrollable).first,
+    await scrollUntilFound(
+      tester,
+      target: subFinder.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the subscription just created, on Home',
       maxScrolls: 40,
     );
     expect(
@@ -1188,11 +1189,13 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     await shot('12-detail');
 
     // ── 13 Cancel/delete A (exercises DELETE /v1/subscriptions/:id) ───────────
-    await tester.scrollUntilVisible(
-      find.text('Cancel plan'),
-      200,
-      scrollable: find.byType(Scrollable).first,
+    await scrollUntilFound(
+      tester,
+      target: find.text('Cancel plan'),
+      scrollable: find.byType(Scrollable),
+      what: 'the "Cancel plan" button on the subscription detail sheet',
       maxScrolls: 20,
+      delta: 200,
     );
     await tester.tap(find.text('Cancel plan'));
     await pumpFor(tester, const Duration(seconds: 2));
@@ -1228,10 +1231,11 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     await tester.tap(find.byKey(E2EKeys.addSubmit));
     await pumpFor(tester, const Duration(seconds: 8));
     final Finder subFinderB = find.text(subNameB);
-    await tester.scrollUntilVisible(
-      subFinderB.first,
-      160,
-      scrollable: find.byType(Scrollable).first,
+    await scrollUntilFound(
+      tester,
+      target: subFinderB.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the SECOND subscription, on Home',
       maxScrolls: 40,
     );
     expect(
@@ -1495,10 +1499,11 @@ Future<bool> signInWithMagicToken(WidgetTester tester, String tokenHash) async {
     await tester.tap(find.byKey(E2EKeys.addSubmit));
     await pumpFor(tester, const Duration(seconds: 8));
     final Finder doomedFinder = find.text(doomed);
-    await tester.scrollUntilVisible(
-      doomedFinder.first,
-      160,
-      scrollable: find.byType(Scrollable).first,
+    await scrollUntilFound(
+      tester,
+      target: doomedFinder.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the doomed subscription, on Home before account deletion',
       maxScrolls: 40,
     );
     expect(
