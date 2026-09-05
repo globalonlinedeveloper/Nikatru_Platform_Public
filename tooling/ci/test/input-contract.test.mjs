@@ -470,6 +470,75 @@ describe('assert-input-contract', () => {
     });
   });
 
+  // ── the phantom walk's BOUND, and why these cases exist ──────────────────
+  //
+  // `existsAnywhere` walks `SEARCH_ROOTS` to `SEARCH_DEPTH` (4). A depth cap on
+  // a guard's walk is nearly always a defect in this repo — PR #465 deleted the
+  // identical one from assert-content-licences.mjs, where it had left the guard
+  // printing ok over a brick pubspec it could not reach — and the same deletion
+  // was proposed here on the strength of the shape alone.
+  //
+  // 🔴 IT WOULD BE A REGRESSION HERE, AND NOTHING IN THIS FILE COULD TELL. With
+  // the cap deleted from the guard, all 26 cases below still passed, exit 0.
+  // These three are what makes the bound a decision instead of an accident:
+  // the walk EXCUSES a name rather than collecting a subject, so every level of
+  // reach moves names OUT of the phantom set. Wider is weaker, not stronger.
+  //
+  // Depth is counted in intervening directories: a file directly in a root is
+  // found at 0, so four directories deep is the last reachable level.
+
+  /** Plant a file `dirs` directories below `root`, returning nothing. */
+  const plant = (root, rel) => {
+    const p = join(root, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, 'planted\n');
+  };
+
+  test('🔴 a same-named file BELOW the bound does NOT excuse the historical `app.yaml` phantom', () => {
+    // The whole reason section 2 exists: the brick told its user four times to
+    // edit `apps/<id>/app.yaml`, a file that never existed. The extractor
+    // captures a BASENAME, so any file called `app.yaml` anywhere the walk can
+    // see becomes an alibi for that instruction. Five directories under the
+    // brick is beyond the bound, so it is not one.
+    //
+    // ⚠️ THIS IS THE CASE THAT FAILS IF THE CAP IS RAISED OR DELETED. Proven by
+    // mutation: with `if (depth > SEARCH_DEPTH) return false;` removed from the
+    // guard, this tree prints `assert-input-contract: ok` and exits 0.
+    const root = tree({ post: `${goodPostGen}\n// edit apps/my-app/app.yaml before shipping\n` });
+    plant(root, `${BRICK}/probe/a/b/c/d/app.yaml`);
+    const { code, out } = run(root);
+    assert.equal(code, 1, 'a decoy five levels down must not vouch for a phantom instruction');
+    assert.match(out, /names `app\.yaml`/);
+  });
+
+  test('a real file AT the bound is found, so the bound is inclusive at four levels', () => {
+    // `content-rating.json` and `defaults.json` both resolve at exactly this
+    // depth on the real tree. A cap lowered even by one turns both into false
+    // alarms, so the last reachable level is pinned rather than left to drift.
+    const root = tree({ post: `${goodPostGen}\n// see edge-real.json for the defaults\n` });
+    plant(root, `${BRICK}/a/b/c/d/edge-real.json`);
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /no phantom filenames in 3 brick file\(s\)/);
+  });
+
+  test('the false alarm the bound costs says what was SEARCHED, and does not steer the reader to ALLOW', () => {
+    // The honest cost of keeping the cap: a file that really exists, deeper
+    // than the walk reaches, is reported. That is the safe direction — loud,
+    // not silent — but the sentence used to claim the file did "not exist
+    // anywhere in the tree", which a bounded walk had established nothing of,
+    // and it offered `ALLOW` as the remedy. Allowlisting is a permanent blind
+    // spot for that basename everywhere, so taking that advice would trade this
+    // loud failure for exactly the silent one the guard exists to prevent.
+    const root = tree({ post: `${goodPostGen}\n// see deep-real.json for the rest\n` });
+    plant(root, `${BRICK}/probe/a/b/c/d/deep-real.json`);
+    const { code, out } = run(root);
+    assert.equal(code, 1);
+    assert.match(out, /does not exist within 4 level\(s\) of/, 'the message must name the bound it searched');
+    assert.doesNotMatch(out, /does not exist anywhere in the tree/, 'a bounded walk may not claim the whole tree');
+    assert.match(out, /do NOT reach for `ALLOW`/);
+  });
+
   test('COVERAGE LOST when the extractor recovers fewer headers than the file has', () => {
     const { code, out } = run(tree({
       post: goodPostGen.replace(
