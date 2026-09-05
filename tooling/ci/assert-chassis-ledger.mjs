@@ -27,6 +27,17 @@
 // this repository noticed a new file appearing in the template every future app
 // is stamped from. This guard is the first thing that does.
 //
+// ⚠️ THAT SEVENTEEN IS A PRIMARY-CHECKOUT NUMBER AND DOES NOT TRAVEL. In a
+// detached worktree under a temp path the baseline is NINETEEN: two more go red
+// for reasons that have nothing to do with the tree's content —
+// `assert-apple-privacy-manifest` wants a `flutter pub get` that has not run
+// there, and `assert-github-matrix` walks up for an ancestor holding both
+// `Projects/` and `nikatru/`, which no temp path has. Two agents measuring
+// against this file's seventeen on 2026-09-05 each caught the discrepancy by
+// taking their own baseline first, which is the only reason their deltas were
+// true. Quote a baseline WITH the checkout it came from, or it silently becomes
+// somebody's wrong reference.
+//
 // ── WHAT IS CHECKED, AND WHY EACH LIMB CAN FAIL ─────────────────────────────
 //   1. BIJECTION, BOTH DIRECTIONS. A tracked file with no row fails; a row
 //      naming no tracked file fails. One direction alone is half a check: rows
