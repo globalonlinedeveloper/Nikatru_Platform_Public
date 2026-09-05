@@ -1341,25 +1341,46 @@ jobs:
           # and that list is hand-written — so the next job added to this file
           # would be outside the required check while looking exactly like part
           # of it. This reads the job ids back out of the file and refuses a
-          # disagreement. The domain is this file only; e2e.yml and release.yml
-          # are separate check names, stated here and in the output below rather
-          # than left to be assumed.
-          declared=$(awk '/^jobs:/{f=1;next} f && /^  [A-Za-z0-9_-]+:/{sub(/:.*/,"",$1); print $1}' .github/workflows/ci.yml \
+          # disagreement.
+          #
+          # 🔴 THE DOMAIN IS THE CI LANE, NOT THE FILE, AND IT IS DERIVED RATHER
+          # THAN LISTED. Until 2026-09-05 those were the same thing: this file was
+          # ci.yml in a repository of its own. It is now one of three lanes in one
+          # workflow at the platform's repository root, so "every job in this
+          # file" would demand that this aggregator wait on the release job and
+          # the weekly e2e job — which it must not, because they run on different
+          # events and are deliberately skipped here.
+          #
+          # An exclusion list would be the hand-written thing this check exists to
+          # refuse, so the CI lane is derived from the lane guard itself: a job
+          # belongs to this aggregator exactly when its own `if:` carries the CI
+          # lane's condition. Add a CI job without the guard and it never runs on a
+          # pull request; add it with the guard and this list grows and demands it.
+          # The lanes themselves are graded by `extensions-lane-accounting`, which
+          # is the job that proves a skipped lane was the right lane to skip.
+          wf="$GITHUB_WORKSPACE/.github/workflows/extensions.yml"
+          declared=$(awk '/^jobs:/{f=1;next}
+                          f && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
+                            if (job != "" && guarded) print job
+                            job=$1; sub(/:.*/,"",job); guarded=0; next
+                          }
+                          f && /inputs.lane == .ci./ { guarded=1 }
+                          END { if (job != "" && guarded) print job }' "$wf" \
                        | grep -v '^ci-required$' | sort) || true
           required=$(printf '%s\n' "${pairs[@]}" | sed 's/=.*//' | sort)
           if [ -z "$declared" ]; then
-            echo "::error::found no job ids in .github/workflows/ci.yml at all — this step's own awk is broken, and it was about to certify that every job is aggregated over an empty set."
+            echo "::error::found no CI-lane job ids in $wf at all — this step's own awk is broken, or the lane guard was respelled, and it was about to certify that every job is aggregated over an empty set."
             exit 1
           fi
           if [ "$declared" != "$required" ]; then
-            echo "jobs declared in ci.yml (excluding ci-required itself):"
+            echo "CI-lane jobs declared in extensions.yml (excluding ci-required itself):"
             printf '%s\n' "$declared" | sed 's/^/  /'
             echo "jobs this aggregator waits on:"
             printf '%s\n' "$required" | sed 's/^/  /'
             echo "::error::the two lists above disagree. A job outside this aggregator's needs list is a job branch protection does not require — it shows on the checks page and blocks nothing. Add it to needs: and to the pairs list in this step."
             exit 1
           fi
-          echo "$(printf '%s\n' "$required" | grep -c .) job(s) declared in ci.yml, and this aggregator waits on every one of them (e2e.yml and release.yml are separate check names and are NOT aggregated here)."
+          echo "$(printf '%s\n' "$required" | grep -c .) CI-lane job(s) declared in extensions.yml, and this aggregator waits on every one of them. The e2e and release lanes are separate check names and are NOT aggregated here — extensions-lane-accounting grades which lane was supposed to run."
           echo
 
           # ── THE RULE IS EXERCISED BEFORE IT IS TRUSTED ──────────────────────
