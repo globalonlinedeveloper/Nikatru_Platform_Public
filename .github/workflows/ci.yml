@@ -48,9 +48,7 @@ jobs:
         # .git/ — so this closes a FUTURE mistake, not a live leak.
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       - run: npm ci
       - run: npx tsc --noEmit
       # This lane was typecheck + dry-run and NOTHING else, on a Worker with no
@@ -98,9 +96,7 @@ jobs:
           # removing this line turns the step RED rather than quietly hollow.
           # [pipeline K-4]
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       # FIRST: prove the guards can still FAIL, before trusting anything they say.
       #
       # Every guard below runs against the real repository — which is valid input
@@ -1891,9 +1887,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       - run: npm ci
       # 🔴 THE ARTIFACT IS DELETED FIRST, AND THAT IS THE WHOLE POINT. A bare
       # `git diff --exit-code` after a build cannot tell "the generator produced
@@ -1928,9 +1922,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       - run: npm ci
       - run: npm run build && test -s _site/index.html  # eleventy exits 0 on "Wrote 0 files"
 
@@ -1953,9 +1945,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       # The pipeline's own suite first: the guards below IMPORT its modules, so a
       # broken emitter would otherwise surface as a confusing guard failure rather
       # than as the unit failure it is.
@@ -2040,13 +2030,8 @@ jobs:
           # softening to a print, so removing this line turns the lane RED rather
           # than quietly hollow. [pipeline N-5]
           fetch-depth: 0
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: 3.47.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-flutter
+      - uses: ./.github/actions/setup-node
       # PINNED. This was `activate mason_cli` with no version, taking whatever was
       # newest on every run — and mason is what STAMPS APPS, so the factory's own
       # product could differ between runs with nothing in the repo to explain it.
@@ -2518,10 +2503,7 @@ jobs:
       # [pipeline F-1]
       - name: Assert workspace coverage
         run: node tooling/ci/assert-workspace-coverage.mjs
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: 3.47.2
+      - uses: ./.github/actions/setup-flutter
       - name: Activate melos
         run: dart pub global activate melos 8.2.2
       # Flutter members require the Flutter tool for root workspace resolution

@@ -166,14 +166,9 @@ jobs:
           echo "E2E_APP_VERSION=e2e-${{ github.run_number }}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           echo "This run stamps app_version=e2e-${{ github.run_number }}-${GITHUB_SHA::7} on every row it writes."
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: 3.47.2
+      - uses: ./.github/actions/setup-flutter
 
       # 🔴 REPINNED 2026-09-03, AND THE OLD PIN WAS FROZEN RATHER THAN MERELY OLD.
       # It read `@ef5c64a9 # v2` — a real commit, but an UNTAGGED one (16 minutes
