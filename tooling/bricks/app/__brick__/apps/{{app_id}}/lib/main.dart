@@ -14,6 +14,27 @@ import 'state/providers.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 🔴 [pipeline K-10/K-11] THE LICENCE CONDITION EVERY STAMPED APP WAS
+  // BREACHING. The assets that ship in the bundle but that Flutter's NOTICES
+  // collector never sees — today the CC BY 4.0 Material Icons font, which
+  // arrives from the SDK artifact cache rather than as a Dart package.
+  // Measured: the shipped NOTICES has ZERO hits for its licence, so the font
+  // was distributed with its attribution condition UNMET, and an unmet CC BY
+  // condition means the licence does not apply. That is a breach at the first
+  // store submission, not untidiness.
+  //
+  // The shared half already existed and was tested
+  // (`packages/design_system/.../vendored_asset_licences.dart`); the brick
+  // simply never called it, so apps/subly was compliant and every app this
+  // factory stamps was not.
+  //
+  // Registered BEFORE `runApp` because `LicenseRegistry` is read lazily by
+  // `LicensePage` — the surface Settings offers below — and a registration
+  // that lands after a user has already opened that page shows them an
+  // incomplete list. It is idempotent, so a hot restart, a second call, or a
+  // stamped app that also calls it cannot stack duplicate entries.
+  registerVendoredAssetLicences();
+
   // Telemetry chassis: no DSN -> NoOp client (appRunner runs directly);
   // a GLITCHTIP_DSN via --dart-define enables GlitchTip/Sentry with PII
   // scrubbing. sentry_flutter is isolated inside packages/telemetry.
