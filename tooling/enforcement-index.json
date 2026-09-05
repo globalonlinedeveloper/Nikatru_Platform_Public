@@ -49,7 +49,10 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 065",
+      "C-6"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#platform"
     ],
@@ -1281,7 +1284,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 065"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#platform"
     ],
