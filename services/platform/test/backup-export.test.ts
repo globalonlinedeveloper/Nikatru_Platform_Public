@@ -62,7 +62,7 @@ function envWith(bucket: FakeBucket | undefined, db = realPlatformDb()) {
       SUBLY_DB: db as unknown as D1Database,
       CONFIG_KV: new FakeKv({ 'config:subly': '{"flags":{}}' }) as unknown as KVNamespace,
       JWKS_CACHE: new FakeKv({ jwks: '{"keys":[]}' }) as unknown as KVNamespace,
-      SIGNUPS_KV: new FakeKv({}) as unknown as KVNamespace,
+      SIGNUPS: new FakeKv({}) as unknown as KVNamespace,
       BACKUPS_R2: bucket as unknown as R2Bucket | undefined,
     } as BackupEnv,
     db,
@@ -182,7 +182,7 @@ describe('a backup that did not fully happen must never look like one that did',
 
   it('a KV namespace with no binding is RED for that namespace and green for the rest', async () => {
     const { env } = envWith(new FakeBucket());
-    (env as { SIGNUPS_KV?: KVNamespace }).SIGNUPS_KV = undefined;
+    (env as { SIGNUPS?: KVNamespace }).SIGNUPS = undefined;
     const out = await runBackup(env, NOW);
     expect(out.find((o) => o.target === 'kv:nikatru-signups')?.ok).toBe(false);
     expect(out.find((o) => o.target === 'kv:platform-config')?.ok).toBe(true);

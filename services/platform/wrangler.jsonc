@@ -101,7 +101,7 @@
     // namespace bound to NO Worker — 2 list operations, 0 reads, 0 writes in
     // seven days — so it was a store that could disappear with nobody noticing.
     // src/backup/ cannot back up what the Worker cannot read; no route touches it.
-    { "binding": "SIGNUPS_KV", "id": "d73cf5ffd0fd4d8396012fccd15906ad" }
+    { "binding": "SIGNUPS", "id": "d73cf5ffd0fd4d8396012fccd15906ad" }
   ],
   // ── THE ONE PORTFOLIO BACKUP BUCKET ────────────────────────────────────────
   //

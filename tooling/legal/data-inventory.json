@@ -541,6 +541,54 @@
       "note": "The brick's backend variant binds the SAME namespace id, so this row covers both. Deduplicated by id, not by binding name — two Workers sharing a cache is one store."
     },
     {
+      "id": "kv:d73cf5ffd0fd4d8396012fccd15906ad",
+      "kind": "kv-namespace",
+      "name": "SIGNUPS",
+      "personalData": true,
+      "holds": "🔴 THE SAME PHYSICAL NAMESPACE AS `kv:nikatru-signups` BELOW — the launch-notification signup list, `sub:<email>` → { email, ts }, plus the `rl:` rate-limit prefix. It holds the only plain-text email address anywhere in this repository. This row exists because services/platform bound it on 2026-09-05 so the nightly export could back it up, and the two walks that find it derive DIFFERENT ids for one store: the Pages walk uses the id the register supplies (`kv:nikatru-signups`, chosen before the namespace id was to hand), and the wrangler walk uses the real namespace id. Merging them onto one row would mean changing the Pages row's id, and apps/subly/store/android-play/data-safety.json cites that id verbatim in `inventory.notFromThisApp` — so the id stays and the duplication is written down instead. Everything substantive lives on the row below; this one must not drift from it.",
+      "retention": {
+        "kind": "ttl",
+        "reason": "Identical to `kv:nikatru-signups` below, because it is the same namespace: 400 days, fixed at WRITE time by `const SIGNUP_RETENTION_DAYS = 400;` in sites/nikatru/functions/api/subscribe.js, with three cohorts already written (no TTL before 2026-08-09, 365 until 2026-08-13, 400 since). ⚠️ THE PLATFORM WORKER CANNOT AFFECT ANY OF THAT. It holds this binding to LIST and GET, once a night, into the R2 backup bucket; it never writes a key, so it can neither set nor extend an expiry. If that ever stops being true, this row and the one below are both false and must move together."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "The same absence recorded on `kv:nikatru-signups` below: no code in this repository deletes a signup key, and an erasure request is served by the operator deleting it. This binding adds nothing to that and takes nothing away — it is read-only. ⚠️ IT DOES ADD ONE THING TO DISCLOSE, and it is on the R2 row above, not here: from 2026-09-05 a copy of this namespace lands in `r2:nikatru-backups` every night and lives there up to 30 days, so an operator deletion is now complete only after that window."
+      },
+      "writtenBy": [
+        "sites/nikatru/functions/api/subscribe.js"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "email address and the time you signed up"
+      },
+      "note": "🔴 THE BINDING IS SPELLED `SIGNUPS` IN services/platform/wrangler.jsonc AND THAT SPELLING IS LOAD-BEARING. A first pass called it `SIGNUPS_KV`, and this file could then satisfy neither of two limbs at once: `rule: ttl` requires a `writtenBy` file that sets `expirationTtl`, and every `writtenBy` file must mention the store's name — and no single file could do both, because the only writer is a Pages Function that spells the binding `SIGNUPS`. Matching the Pages name makes one store read as one store from both walks, which is what it is. Bound in services/platform/wrangler.jsonc for the nightly export ONLY (services/platform/src/backup/index.ts). Before 2026-09-05 this namespace was bound to no Worker at all — `research/revamp-2026-09-05/06 §3.4` measured 2 list operations and zero reads or writes in seven days — which is the shape of a store that disappears without anyone noticing, and it is the one holding contactable addresses."
+    },
+    {
+      "id": "r2:nikatru-backups",
+      "kind": "r2-bucket",
+      "name": "nikatru-backups",
+      "personalData": true,
+      "holds": "🔴 A NIGHTLY COPY OF OTHER STORES IN THIS FILE, so it holds whatever they hold. `d1/platform_db/<date>.jsonl.gz` carries every table of platform_db — including `provider_notifications`, which is verbatim merchant-of-record payloads containing a buyer's name, email and billing country — and `kv/nikatru-signups/<date>.json.gz` carries the plain-text signup addresses. Also `d1/subly_db/`, `kv/platform-config/`, `kv/platform-jwks/`, and a manifest per night carrying sizes and SHA-256 digests, no content. Created 2026-09-05 to close `research/revamp-2026-09-05/06 §4.2`: D1, KV and R2 were in NO backup, and the entitlements database — the busiest datastore in the estate — had no export, no snapshot and a recovery path recorded as NEVER drilled.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 30,
+        "sweptBy": "services/platform/src/backup/index.ts",
+        "reason": "`swept` and not `ttl`, deliberately: R2 has no expiry of its own, so this bound holds only while our own job keeps running — and saying `ttl` would claim a durability the substrate does not give. The sweep runs at the end of every nightly export and reports the count it deleted in its heartbeat row, so a sweep that stops shows up as a job that stopped rather than as a bucket that quietly grows. 30 days is D1 Time Travel's own window: shorter would leave days neither mechanism can reach; longer buys little while Time Travel covers the same period from the other side."
+      },
+      "erasure": {
+        "kind": "no-route",
+        "blockedBy": "🔴 AN ERASURE IS NOT COMPLETE THE DAY IT RUNS, AND THIS IS THE ROW THAT SAYS SO. DELETE /v1/account empties the live tables, but the copies already written here are immutable objects named by date; nothing rewrites a past night's export, and rewriting one would break the SHA-256 the off-vendor chain verifies. The bound is the 30-day sweep above: a person erased today is gone from the archive within 30 days, without exception and without an operator step. Editing backups to satisfy an erasure request is a worse answer than bounding them — it destroys the property that makes a backup a backup. This is the standard backup carve-out, made explicit rather than left implied."
+      },
+      "writtenBy": [
+        "services/platform/src/backup/index.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "We keep information only for as long as necessary for the purposes described here or as required by"
+      },
+      "note": "🔴 THE QUOTED SENTENCE IS THE RETENTION SENTENCE, AND IT IS THE HONEST ONE AVAILABLE TODAY - NOT THE ONE THIS STORE DESERVES. This bucket introduces no new CATEGORY of personal data: every byte is a copy of something already disclosed elsewhere on the same page (the signup email in sec 1, the purchase information in sec 1), and sec 6 is the published sentence about how long information is kept. What the page does NOT yet say is that backup copies exist and are bounded at 30 days. 👤 OWNER ITEM, AND IT IS A RELEASE EVENT, NOT AN EDIT: adding that sentence bumps `data-policy-version`, and assert-seams-wired.mjs pins that string to `kPrivacyPolicyVersion` in the shipped apps, so a wording change re-dates every consent artifact and needs a build. A drafted sentence is in the wave-1 report. ⚠️ THE GAP IS ALSO OLDER AND WIDER THAN THIS BUCKET: the Box A Postgres dumps on Drive and Box B hold the same categories and have never been disclosed either, because no tree walk can see them and so no guard ever asked. This row is simply where it first became visible. ONE portfolio bucket, addressed by key prefix. The per-app `<app>-exports` buckets were removed from the brick on 2026-07-25 for multiplying lifecycle rules by the number of apps; `subly-exports` is still in the account, empty and unbound, as the reminder. ⚠️ There is no row for this bucket in tooling/ops/register.json: assert-retention-coverage.mjs's `enumerateStores` reads `kv_namespaces` and `d1_databases` only, so an r2 store would be a rule for a store it cannot see and would fail its own both-directions limb. Teaching that walk `r2_buckets` is the fix; it is a tooling/ci change and was out of this change's scope."
+    },
+    {
       "id": "kv:nikatru-signups",
       "kind": "kv-namespace-pages",
       "name": "SIGNUPS",

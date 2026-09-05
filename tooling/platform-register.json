@@ -449,7 +449,7 @@
       ]
     },
     {
-      "binding": "SIGNUPS_KV",
+      "binding": "SIGNUPS",
       "kind": "kv_namespaces",
       "scope": "shared",
       "purpose": "The `nikatru-signups` namespace, bound READ-ONLY into `platform` for the nightly off-vendor export and NOTHING else. 🔴 `research/revamp-2026-09-05/06 §3.4` measured it bound to no Worker at all — 2 list operations, 0 reads, 0 writes in seven days — which is the exact shape of a store that gets lost with nobody noticing, and it holds contactable email addresses. The writer is still sites/nikatru/functions/api/subscribe.js (a Pages Function), which is also where its expirationTtl is set; this Worker never writes it. A binding is the only way a Worker can back up a namespace.",

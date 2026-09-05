@@ -79,7 +79,7 @@ export interface BackupEnv {
   SUBLY_DB: D1Database;
   CONFIG_KV: KVNamespace;
   JWKS_CACHE?: KVNamespace;
-  SIGNUPS_KV?: KVNamespace;
+  SIGNUPS?: KVNamespace;
   BACKUPS_R2?: R2Bucket;
 }
 
@@ -187,7 +187,7 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
   const namespaces: { name: string; ns: KVNamespace | undefined }[] = [
     { name: 'platform-config', ns: env.CONFIG_KV },
     { name: 'platform-jwks', ns: env.JWKS_CACHE },
-    { name: 'nikatru-signups', ns: env.SIGNUPS_KV },
+    { name: 'nikatru-signups', ns: env.SIGNUPS },
   ];
   for (const { name, ns } of namespaces) {
     const key = `kv/${name}/${date}.json.gz`;

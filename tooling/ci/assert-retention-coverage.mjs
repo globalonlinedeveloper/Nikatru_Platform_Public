@@ -212,6 +212,8 @@ export function enumerateStores(root) {
     ]);
   }
   const stores = new Map();
+  /** bucket_name -> the enumerated store key for the binding pointing at it. */
+  const bucketKeys = new Map();
   let d1Bindings = 0;
   for (const rel of found) {
     let cfg;
@@ -223,6 +225,24 @@ export function enumerateStores(root) {
     const worker = cfg?.name ?? rel;
     for (const kv of cfg?.kv_namespaces ?? []) {
       if (kv?.binding) stores.set(`kv:${worker}:${kv.binding}`, `${rel} → kv_namespaces`);
+    }
+    // 🔴 R2 WAS OUTSIDE THIS DOMAIN UNTIL 2026-09-05, AND THE DAY IT MATTERED IT
+    // SAID SO. The nightly D1/KV export bound the first bucket any Worker in this
+    // repo has ever held, `nikatru-backups`, and that bucket holds a copy of every
+    // personal-data store in tooling/legal/data-inventory.json. Its 30-day period
+    // was declared in the inventory and this guard REFUSED it — "no rule for
+    // joining that id shape" — rather than skipping it, which is why the gap was
+    // one message rather than a silent hole. A bucket is a place data goes; two
+    // lines is what it cost to make it a place a rule has to exist for.
+    for (const r2 of cfg?.r2_buckets ?? []) {
+      if (!r2?.binding) continue;
+      const key = `r2:${worker}:${r2.binding}`;
+      stores.set(key, `${rel} → r2_buckets`);
+      // tooling/legal/data-inventory.json ids a bucket by its NAME (that is what
+      // assert-data-inventory derives) while this domain keys it by its BINDING.
+      // Recording the pair HERE, in the walk, is what lets the period cross-check
+      // join the two without a second list to keep in step.
+      if (r2.bucket_name) bucketKeys.set(r2.bucket_name, key);
     }
     for (const db of cfg?.d1_databases ?? []) {
       d1Bindings++;
@@ -251,7 +271,7 @@ export function enumerateStores(root) {
   if (d1Bindings === 0) {
     coverageLost([`the ${found.length} live wrangler config(s) declare no D1 binding at all, so the D1 half of the domain is empty.`]);
   }
-  return { stores, configs: found, excluded };
+  return { stores, bucketKeys, configs: found, excluded };
 }
 
 function main() {
@@ -275,7 +295,7 @@ function main() {
     ]);
   }
 
-  const { stores, configs, excluded } = enumerateStores(ROOT);
+  const { stores, bucketKeys, configs, excluded } = enumerateStores(ROOT);
 
   // The external half: stores that exist in the account and that no tree walk
   // will ever reach. Taken from the register's own _requiredCoverage, filtered
@@ -470,13 +490,27 @@ function main() {
     return `${file}${n ? `:${n}` : ''}`;
   };
 
-  /** inventory id → the register `store` key it names. `table:<db>.<table>` is
-   *  the only id shape a period is declared under today. Anything else is an
-   *  ERROR rather than a skip: a skipped row is an unchecked number that reads
-   *  exactly like a checked one. */
+  /** inventory id → the register `store` key it names. Anything with no rule is
+   *  an ERROR rather than a skip: a skipped row is an unchecked number that reads
+   *  exactly like a checked one.
+   *
+   *  `table:<db>.<table>` was the only shape until 2026-09-05, when the nightly
+   *  export gave this repository its first R2 bucket with a declared period. The
+   *  bucket's inventory id is `r2:<bucket_name>` (assert-data-inventory derives it
+   *  from `bucket_name`) while the enumerated store key is `r2:<worker>:<binding>`
+   *  (derived from the BINDING, like every kv key here) — so the join cannot be a
+   *  rename and has to be a lookup. `r2Keys` is built from the same walk the
+   *  domain comes from, which is what stops it becoming a second hand-kept list. */
   const storeKeyFor = (id) => {
-    const m = /^table:([^.]+)\.(.+)$/.exec(typeof id === 'string' ? id : '');
-    return m ? `d1:${m[1]}:${m[2]}` : null;
+    const s = typeof id === 'string' ? id : '';
+    const table = /^table:([^.]+)\.(.+)$/.exec(s);
+    if (table) return `d1:${table[1]}:${table[2]}`;
+    const bucket = /^r2:(.+)$/.exec(s);
+    // The inventory names the BUCKET; the enumerated key names the BINDING that
+    // points at it. `bucketKeys` is built by the same walk the domain comes from,
+    // so it cannot become a second hand-kept list that agrees until it does not.
+    if (bucket) return bucketKeys.get(bucket[1]) ?? null;
+    return null;
   };
 
   const invPeriods = new Map();

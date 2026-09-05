@@ -43,7 +43,7 @@ export interface Env {
    * Optional so a deploy without it still runs; the export then records the
    * namespace as FAILED rather than skipping it silently.
    */
-  SIGNUPS_KV?: KVNamespace;
+  SIGNUPS?: KVNamespace;
 
   /**
    * The one portfolio backup bucket. Written by the 02:30 cron only.

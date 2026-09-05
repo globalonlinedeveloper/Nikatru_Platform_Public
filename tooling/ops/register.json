@@ -2578,9 +2578,9 @@
       "source": "verified"
     },
     {
-      "id": "retention.kv.platform.SIGNUPS_KV",
+      "id": "retention.kv.platform.SIGNUPS",
       "kind": "retention",
-      "store": "kv:platform:SIGNUPS_KV",
+      "store": "kv:platform:SIGNUPS",
       "what": "🔴 THE SAME PHYSICAL NAMESPACE AS `retention.kv.nikatru-signups.signup` AND `.rate-limit`, SEEN FROM A SECOND BINDING. It entered this guard's domain on 2026-09-05, when services/platform bound `nikatru-signups` READ-ONLY so the nightly export could back it up (research/revamp-2026-09-05/06 §3.4 measured it bound to no Worker at all). The tree walk enumerates stores as `kv:<worker>:<binding>`, so a namespace bound twice is two stores to this guard and one store in the account — and the second view must not be allowed to imply a second, weaker rule. It does not: the rule is the SAME rule, set at the SAME place, and this row points at that place rather than restating a period beside it.",
       "rule": "ttl",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, so this row cannot claim a period the writer does not set.",
@@ -2594,6 +2594,30 @@
         "readBy": "tooling/ci/assert-retention-coverage.mjs",
         "ttlSource": "const SIGNUP_RETENTION_DAYS = 400;"
       },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.r2.platform.BACKUPS_R2",
+      "kind": "retention",
+      "store": "r2:platform:BACKUPS_R2",
+      "what": "🔴 THE FIRST R2 BUCKET IN THIS DOMAIN, AND THE DOMAIN HAD TO GROW TO HOLD IT. `nikatru-backups` is the nightly off-vendor export of D1 and KV added 2026-09-05 to close research/revamp-2026-09-05/06 sec 4.2 — d1/<db>/<date>.jsonl.gz, kv/<ns>/<date>.json.gz, and one manifest per night. It is a DERIVED store: every byte is a copy of something whose own row is elsewhere in this file, which is exactly why it needs a rule of its own — copies outlive their originals unless something deletes them.",
+      "rule": "period",
+      "periodDays": 30,
+      "declaredBy": "ADR 067 decision 6. The number is not a preference: it is D1 Time Travel's own 30-day window, so the two mechanisms cover the same period from opposite sides - shorter would leave days neither can reach, longer buys little. Cost did not decide it; R2 is at 1.3% of the free 10 GB and a night is under half a megabyte.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — and its `enumerateStores` LEARNED r2_buckets on 2026-09-05 for this row. Until then a bucket was a place data could go that the domain could not see, and the guard REFUSED the inventory's period rather than skipping it, which is the only reason the gap was a message instead of a hole.",
+      "response": "A sweep that stops shows up as `ok = 0` on the `backup_export` job, target `retention`, in platform_db.cron_heartbeat — the same table every other cron limb writes to, read by tooling/ops/check-heartbeats.mjs from OUTSIDE Cloudflare.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-r2",
+        "anchor": "services/platform/src/backup/index.ts",
+        "record": "the bucket itself; `BACKUP_RETENTION_DAYS` is the declared period and the sweep at the end of each run is what applies it",
+        "failingValue": "an object whose key carries a date older than the window, still present after a run",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "deletingJob": "backup_export — the 02:30 UTC Cloudflare cron limb `runBackup` in services/platform/src/backup/index.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. ⚠️ THE SWEEP IS PART OF THE JOB THAT WRITES, not a separate schedule: a retention job that can fail independently of the job it prunes is a retention job that stops without the writing stopping, and nothing notices. It refuses to delete a key it cannot date (`isExpired` returns false on an unrecognised key), so it can never delete something another writer put in this bucket.",
       "accessProviders": [
         "cloudflare"
       ],
