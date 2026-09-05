@@ -161,6 +161,28 @@ const TWO_STEP =
   "    db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)";
 const replaceListing = (sql) => (root, rel = PLATFORM_ROUTE) =>
   edit(root, rel, (s) => s.replace(TWO_STEP, `    db.prepare(\`${sql}\`)`));
+
+/** services/platform/src/backup/dump.ts's catalogue read — THE SECOND STATEMENT
+ *  IN THIS REPOSITORY THAT LISTS A DATABASE'S TABLES, added 2026-09-05 with the
+ *  nightly D1 export (research/revamp-2026-09-05/06 §4.2).
+ *
+ *  🔴 IT DID NOT ONLY MOVE A COUNT. The `only hole-free introspection is a
+ *  pragma` case below works by leaving `services/platform` with NO table-listing
+ *  statement, and `replaceListing` reaches `account.ts` alone — so the backup's
+ *  own listing survived it and answered the question that case exists to ask.
+ *  The case went red saying "no table name came back" instead of "nothing lists
+ *  the tables", which is the very confusion its own comment warns about. The pin
+ *  is extended rather than the expectation loosened.
+ *
+ *  Pinned on production source for the same reason TWO_STEP is, and it expires
+ *  the same way: `edit()` asserts the mutation changed something, so respelling
+ *  the statement in dump.ts turns this RED rather than quietly green. */
+const BACKUP_DUMP = 'services/platform/src/backup/dump.ts';
+const BACKUP_CATALOGUE =
+  '      "SELECT type, name, tbl_name, sql FROM sqlite_master ' +
+  "WHERE type IN ('table','index') ORDER BY type DESC, name\",";
+const replaceBackupCatalogue = (sql) => (root) =>
+  edit(root, BACKUP_DUMP, (s) => s.replace(BACKUP_CATALOGUE, `      "${sql}",`));
 /** Adds a statement next to the real walk instead of replacing it — the right
  *  shape for asking "does R1 false-positive on this?", because replacing the
  *  listing also removes a fingerprint and answers a different question. */
@@ -788,7 +810,12 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
       assert.match(r.stdout, /step 1 — services\/platform\/src\/renewals\.ts:\d+ accepted, 6 row\(s\)/);
       // …and both erasure statements ran against a REAL table.
       assert.match(r.stdout, /step 2 — services\/platform\/src\/routes\/account\.ts:\d+ executed on subscriptions, changes=0/);
-      assert.match(r.stdout, /ok {2}platform_db — 3 introspective and 2 mutating statement\(s\) executed/);
+      // 4, not 3, since 2026-09-05: the nightly export's catalogue read in
+      // services/platform/src/backup/dump.ts is a fourth introspective statement
+      // this Worker deploys, so it is a fourth one the live half must execute.
+      // The number is the COUNT OF DEPLOYED STATEMENTS, so it moves whenever the
+      // Worker gains or loses one — that is the pin working, not drifting.
+      assert.match(r.stdout, /ok {2}platform_db — 4 introspective and 2 mutating statement\(s\) executed/);
     });
   });
 
@@ -809,6 +836,11 @@ describe('check-d1-accepts-live-sql.mjs — the exit contract', () => {
     const snap = snapshotOf(root);
     try {
       replaceListing(COLUMNS)(root);
+      // 🔴 BOTH LISTINGS, OR THE CASE IS NOT THE CASE. `services/platform` gained
+      // a second table-listing statement on 2026-09-05 (the nightly export's
+      // catalogue read); replacing only the route's left one behind, so the tree
+      // still listed tables and this test measured a different condition.
+      replaceBackupCatalogue(COLUMNS)(root);
       const r = runLive(liveFixtureAnsweringNoSuchTable(), root);
       assert.equal(r.status, 2, r.stdout + r.stderr);
       assert.match(r.stderr, /nothing this check executed against \w+ LISTS THE DATABASE'S TABLES/);

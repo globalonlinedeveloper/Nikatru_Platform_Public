@@ -350,7 +350,11 @@ const String kPrivacyPolicyVersion = '2026-07-26';
       }),
     );
     assert.equal(code, 0, out);
-    assert.match(out, /declares NO r2_buckets/);
+    // The wording moved on 2026-09-05 with the predicate behind it: "no r2_buckets"
+    // stopped being the same claim as "no pack shelf" the day a BACKUP bucket was
+    // bound, so the message names the shelf rather than the key. Both cases below
+    // still assert the SHUT gate, which is what they were written for.
+    assert.match(out, /declares no r2_bucket that is a PACK SHELF/);
     assert.doesNotMatch(out, /FAIL pack_verifier limb \(c\)/);
   });
 
@@ -359,7 +363,11 @@ const String kPrivacyPolicyVersion = '2026-07-26';
       build('pack-shelf-empty', { wrangler: '{\n  "name": "platform",\n  "r2_buckets": []\n}\n' }),
     );
     assert.equal(code, 0, out);
-    assert.match(out, /declares NO r2_buckets/);
+    // The wording moved on 2026-09-05 with the predicate behind it: "no r2_buckets"
+    // stopped being the same claim as "no pack shelf" the day a BACKUP bucket was
+    // bound, so the message names the shelf rather than the key. Both cases below
+    // still assert the SHUT gate, which is what they were written for.
+    assert.match(out, /declares no r2_bucket that is a PACK SHELF/);
   });
 
   test('AN UNREADABLE wrangler.jsonc IS UNKNOWN, NOT A MEASURED SHELF — so it prints', () => {

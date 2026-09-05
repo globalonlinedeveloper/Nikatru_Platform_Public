@@ -846,7 +846,38 @@ function packShelfBindings() {
   try { raw = readFileSync(join(repo, PACK_SHELF_FILE), 'utf8'); } catch { return null; }
   const body = stripJsonc(raw).match(/"r2_buckets"\s*:\s*\[([\s\S]*?)\]/)?.[1];
   if (body === undefined) return 0;
-  return (body.match(/"bucket_name"\s*:/g) ?? []).length;
+  const bindings = [...body.matchAll(/"binding"\s*:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const buckets = (body.match(/"bucket_name"\s*:/g) ?? []).length;
+  // 🔴 "AN R2 BINDING EXISTS" STOPPED MEANING "THE PACK SHELF EXISTS" ON 2026-09-05,
+  //    and the day it did, this limb FAILED on a bucket that has nothing to do with
+  //    content packs. `nikatru-backups` is the nightly D1/KV export
+  //    (research/revamp-2026-09-05/06 sec 4.2); binding it made the premise false
+  //    while every word of the reasoning above stayed true of the SHELF, which does
+  //    not exist: no bucket for packs, no packs.nikatru.com binding, no cache policy,
+  //    no latest.json, nothing published.
+  //
+  //    The predicate is now the binding's declared ROLE, read from
+  //    tooling/platform-register.json, because that file already carries one row per
+  //    binding in BOTH directions (assert-platform-register.mjs) — so a role cannot be
+  //    invented for a binding that does not exist, and a binding cannot dodge this by
+  //    having no row.
+  //
+  // ⚠️ IT FAILS CLOSED, DELIBERATELY. A bucket whose register row declares no `role`
+  //    COUNTS toward the shelf, because "we did not say what this bucket is for" must
+  //    not be the cheap way to switch a gate off. Only an explicit non-shelf role
+  //    exempts one, and the roles are printed so the exemption is visible.
+  let roles = new Map();
+  try {
+    const reg = JSON.parse(readFileSync(join(repo, 'tooling/platform-register.json'), 'utf8'));
+    for (const b of reg.bindings ?? []) {
+      if (b?.kind === 'r2_buckets' && typeof b.binding === 'string') roles.set(b.binding, b.role ?? null);
+    }
+  } catch {
+    // An unreadable register cannot be read as "no bucket is a shelf". Count them all.
+    return buckets;
+  }
+  if (bindings.length !== buckets) return buckets; // a shape this parse does not understand
+  return bindings.filter((b) => roles.get(b) !== 'backup').length;
 }
 
 /** Dart files under SCAN_ROOTS that this guard's scan deliberately DROPS — the
@@ -907,7 +938,7 @@ function checkPackHasAShippedConsumer() {
     shelf === null
       ? `${PACK_SHELF_FILE} could not be read, so the shelf gate is UNKNOWN`
       : shelf === 0
-        ? `${PACK_SHELF_FILE} declares NO r2_buckets, so the pack shelf does not exist ([4]B-18: no bucket, no packs.nikatru.com binding, no latest.json) and no pack has ever been published — a consumer built today could only ever render the fallback`
+        ? `${PACK_SHELF_FILE} declares no r2_bucket that is a PACK SHELF (a bucket whose tooling/platform-register.json row declares \`role: backup\` is not one — since 2026-09-05 the nightly D1/KV export binds one), so the shelf does not exist ([4]B-18: no bucket, no packs.nikatru.com binding, no latest.json) and no pack has ever been published — a consumer built today could only ever render the fallback`
         : `${PACK_SHELF_FILE} declares ${shelf} object-storage binding(s), so the pack shelf EXISTS`;
 
   if (shelf !== null && shelf > 0) {

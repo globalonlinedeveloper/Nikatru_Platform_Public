@@ -52,7 +52,6 @@
     "write is rejected. Cost projections live in nikatru/business/; they move independently and citing",
     "one for the other is how a limit becomes a guess."
   ],
-
   "planOfRecord": {
     "_why": [
       "Every ceiling below is recorded for the plan this portfolio actually runs on. Reading a PAID",
@@ -91,7 +90,6 @@
     ],
     "note": "Cloudflare publishes Free and Paid side by side on the same pages. Where both exist, the row records the FREE value in `value` and the paid one in `paidValue`, so an upgrade is a one-line edit rather than a re-research."
   },
-
   "verificationCadence": {
     "_why": [
       "[pipeline 11]E-14 — 'The ceilings carry the date they were last checked against the vendor, and a",
@@ -118,7 +116,6 @@
     "reason": "🔴 NOT CHOSEN TO KEEP TODAY GREEN. Any value at or above 7d passes the current rows (they are 1–6 days old), so the number is only doing work in the future and the question is solely how long a MOVED limit may sit unnoticed. 180d is the shorter of the two long cadences already in this repo's vocabulary (tooling/ops/register.json uses 120d and 365d): 365d would let a Free-tier change go a full year undetected on the shared platform every app depends on, and Cloudflare HAS changed D1's Free tier before. 120d — the quarterly cadence — is what this repo uses for things that genuinely move quarterly, and a vendor's published platform limits do not; spending a re-read of nine pages four times a year buys nothing over twice. Twice a year also happens to be the cheapest cadence that cannot silently skip a calendar year. The honest counter-argument: a limit that moves the day after a sweep is invisible for 180 days, and this cadence does NOT protect against that — only the aggregate daily-write guard ([11]E-2) observes a real number. This is a bound on how long a DOCUMENTED change stays unread, and nothing more.",
     "howToReVerify": "Open each row's `source`, confirm the `sourceText` sentence and its number still say what the row says, then set that row's `verifiedOn` to the day you read it. If a value MOVED, change `value`/`paidValue` too — limbs 3, 5 and 6 will then re-check every cap and every derived figure against the new number, which is the point of doing it here rather than in prose."
   },
-
   "actualsReadFrom": {
     "_why": [
       "[pipeline 11]E-14 — 'Where the actual numbers are read is still `human` (Cloudflare account",
@@ -176,10 +173,27 @@
         "where": "Cloudflare dashboard → Storage & Databases → KV → each namespace → Metrics, summed. This is the TIGHT one (1,000/day) and the one a misbehaving cache warmer exhausts in minutes, so it is worth reading first.",
         "url": "https://developers.cloudflare.com/kv/observability/metrics-analytics/",
         "reads": "write operations today, summed across every namespace"
+      },
+      {
+        "ceiling": "r2.storageFree",
+        "where": "Cloudflare dashboard → R2 object storage → select the bucket → Metrics tab. Read the STORED bytes for the account, not one bucket: the allowance is per account and `nikatru-backups` is one of three (`ratel-media` holds ~130 MB, `subly-exports` is empty and unbound). ⚠️ MONTHLY, so a mid-month reading is not the month's figure.",
+        "url": "https://developers.cloudflare.com/r2/platform/metrics-analytics/",
+        "reads": "stored bytes, summed across every bucket on the account"
+      },
+      {
+        "ceiling": "r2.classAOperationsFree",
+        "where": "Cloudflare dashboard → R2 object storage → select the bucket → Metrics tab, Operations. Class A is the MUTATING half (put, list, delete) and is the one the nightly export spends: ~13 a night, ~400 a month. ⚠️ The page documents the navigation and the GraphQL Operations dataset (`actionType`); it does NOT print the words 'Class A' on the dashboard, so read the operation breakdown and map it yourself rather than hunting a label that is not there.",
+        "url": "https://developers.cloudflare.com/r2/platform/metrics-analytics/",
+        "reads": "Class A (mutating) operations this month, summed across every bucket"
+      },
+      {
+        "ceiling": "r2.classBOperationsFree",
+        "where": "Cloudflare dashboard → R2 object storage → select the bucket → Metrics tab, Operations. Class B is the READING half (get, head). Nothing in the Worker reads this bucket; the reader is Box B's cf_backup_pull.sh at 6 gets a night, so a figure materially above ~200/month means something else is reading the backups and that is the finding.",
+        "url": "https://developers.cloudflare.com/r2/platform/metrics-analytics/",
+        "reads": "Class B (reading) operations this month, summed across every bucket"
       }
     ]
   },
-
   "ceilings": [
     {
       "id": "d1.queriesPerInvocation",
@@ -187,7 +201,11 @@
       "paidValue": 1000,
       "unit": "queries",
       "scope": "per-invocation",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB"
+      ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Queries per Worker invocation: 1000 (Workers Paid) / 50 (Free)",
       "verifiedOn": "2026-08-01",
@@ -200,7 +218,11 @@
       "paidValue": 50000,
       "unit": "databases",
       "scope": "per-account",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB"
+      ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Databases per account: 50,000 (Workers Paid) / 10 (Free)",
       "verifiedOn": "2026-08-01",
@@ -213,7 +235,11 @@
       "paidValue": 10737418240,
       "unit": "bytes",
       "scope": "per-database",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB"
+      ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Maximum database size: 10 GB (Workers Paid) / 500 MB (Free)",
       "verifiedOn": "2026-08-01",
@@ -226,7 +252,11 @@
       "paidValue": 1099511627776,
       "unit": "bytes",
       "scope": "per-account",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB"
+      ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Maximum storage per account: 1 TB (Workers Paid) / 5 GB (Free)",
       "verifiedOn": "2026-08-01",
@@ -239,7 +269,11 @@
       "paidValue": null,
       "unit": "rows",
       "scope": "per-account-per-day",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB"
+      ],
       "source": "https://developers.cloudflare.com/d1/platform/pricing/",
       "sourceText": "Rows written | 100,000 / day | First 50 million / month included + $1.00 / million rows",
       "verifiedOn": "2026-08-06",
@@ -252,7 +286,11 @@
       "paidValue": 100,
       "unit": "parameters",
       "scope": "per-query",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB"
+      ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Maximum bound parameters per query: 100",
       "verifiedOn": "2026-08-01",
@@ -265,7 +303,11 @@
       "paidValue": null,
       "unit": "reads",
       "scope": "per-account-per-day",
-      "surfaces": ["CONFIG_KV", "JWKS_CACHE"],
+      "surfaces": [
+        "CONFIG_KV",
+        "JWKS_CACHE",
+        "SIGNUPS"
+      ],
       "source": "https://developers.cloudflare.com/kv/platform/limits/",
       "sourceText": "Reads: 100,000 reads per day (Free) / Unlimited (Paid)",
       "verifiedOn": "2026-08-01",
@@ -278,7 +320,11 @@
       "paidValue": null,
       "unit": "writes",
       "scope": "per-account-per-day",
-      "surfaces": ["CONFIG_KV", "JWKS_CACHE"],
+      "surfaces": [
+        "CONFIG_KV",
+        "JWKS_CACHE",
+        "SIGNUPS"
+      ],
       "source": "https://developers.cloudflare.com/kv/platform/limits/",
       "sourceText": "Writes to different keys: 1,000 writes per day (Free) / Unlimited (Paid)",
       "verifiedOn": "2026-08-01",
@@ -291,7 +337,11 @@
       "paidValue": 1000,
       "unit": "namespaces",
       "scope": "per-account",
-      "surfaces": ["CONFIG_KV", "JWKS_CACHE"],
+      "surfaces": [
+        "CONFIG_KV",
+        "JWKS_CACHE",
+        "SIGNUPS"
+      ],
       "source": "https://developers.cloudflare.com/kv/platform/limits/",
       "sourceText": "Namespaces per account: 1,000 (Free and Paid)",
       "verifiedOn": "2026-08-01",
@@ -299,12 +349,59 @@
       "note": "Not a real constraint at this portfolio's scale — recorded so that the SHARED-namespace design (one CONFIG_KV keyed `config:<app>`, one JWKS_CACHE) is a deliberate choice rather than a workaround for a limit nobody checked. The reason for sharing is operational, not quota-driven."
     },
     {
+      "id": "r2.storageFree",
+      "value": 10737418240,
+      "paidValue": null,
+      "unit": "bytes",
+      "scope": "per-account-per-month",
+      "surfaces": [
+        "BACKUPS_R2"
+      ],
+      "source": "https://developers.cloudflare.com/r2/pricing/",
+      "sourceText": "Storage: 10 GB-month / month",
+      "verifiedOn": "2026-09-05",
+      "ambiguity": "`paidValue: null` is a PRICE, not a magnitude - past the free allowance R2 bills $0.015 per GB-month, so there is no comparable paid ceiling and inventing one would be this register's own worst failure. Same shape as d1.rowsWrittenPerDay.",
+      "note": "🔴 R2 ENTERED THIS REGISTER ON 2026-09-05, WITH THE FIRST BUCKET ANY WORKER IN THIS PORTFOLIO HAS EVER BOUND. `nikatru-backups` is the nightly off-vendor export of D1 and KV (research/revamp-2026-09-05/06 sec 4.2). Measured the same day: one night is ~17 KB across five objects and 30 nights are retained, so the whole archive is under a megabyte against a 10 GB allowance. ⚠️ THESE ARE MONTHLY, NOT DAILY, unlike every D1 and KV row above - reading them as daily would understate the headroom by a factor of ~30 and is the mistake this sentence exists to stop."
+    },
+    {
+      "id": "r2.classAOperationsFree",
+      "value": 1000000,
+      "paidValue": null,
+      "unit": "requests",
+      "scope": "per-account-per-month",
+      "surfaces": [
+        "BACKUPS_R2"
+      ],
+      "source": "https://developers.cloudflare.com/r2/pricing/",
+      "sourceText": "Class A Operations: 1 million requests / month",
+      "verifiedOn": "2026-09-05",
+      "ambiguity": "Class A is the MUTATING half - `put`, `list`, `delete`. The nightly export spends 7 puts + 1 list + up to 5 deletes, i.e. ~13/night and ~400/month: 0.04% of this row. The unbounded shape would be a retention sweep that deleted per key without a cap, which is why MAX_R2_DELETES_PER_RUN exists and derives from workers.subrequestsToCloudflareServices rather than from here.",
+      "note": "🔴 R2 ENTERED THIS REGISTER ON 2026-09-05, WITH THE FIRST BUCKET ANY WORKER IN THIS PORTFOLIO HAS EVER BOUND. `nikatru-backups` is the nightly off-vendor export of D1 and KV (research/revamp-2026-09-05/06 sec 4.2). Measured the same day: one night is ~17 KB across five objects and 30 nights are retained, so the whole archive is under a megabyte against a 10 GB allowance. ⚠️ THESE ARE MONTHLY, NOT DAILY, unlike every D1 and KV row above - reading them as daily would understate the headroom by a factor of ~30 and is the mistake this sentence exists to stop."
+    },
+    {
+      "id": "r2.classBOperationsFree",
+      "value": 10000000,
+      "paidValue": null,
+      "unit": "requests",
+      "scope": "per-account-per-month",
+      "surfaces": [
+        "BACKUPS_R2"
+      ],
+      "source": "https://developers.cloudflare.com/r2/pricing/",
+      "sourceText": "Class B Operations: 10 million requests / month",
+      "verifiedOn": "2026-09-05",
+      "ambiguity": "Class B is the READING half - `get`, `head`. Nothing in the Worker reads this bucket; the reader is Box B's cf_backup_pull.sh, at 6 gets a night. The number is recorded because a surface with no recorded limit is a surface whose failure mode is discovered in production, not because it is close.",
+      "note": "🔴 R2 ENTERED THIS REGISTER ON 2026-09-05, WITH THE FIRST BUCKET ANY WORKER IN THIS PORTFOLIO HAS EVER BOUND. `nikatru-backups` is the nightly off-vendor export of D1 and KV (research/revamp-2026-09-05/06 sec 4.2). Measured the same day: one night is ~17 KB across five objects and 30 nights are retained, so the whole archive is under a megabyte against a 10 GB allowance. ⚠️ THESE ARE MONTHLY, NOT DAILY, unlike every D1 and KV row above - reading them as daily would understate the headroom by a factor of ~30 and is the mistake this sentence exists to stop."
+    },
+    {
       "id": "workers.cronTriggersPerAccount",
       "value": 5,
       "paidValue": 250,
       "unit": "triggers",
       "scope": "per-account",
-      "surfaces": ["triggers.crons"],
+      "surfaces": [
+        "triggers.crons"
+      ],
       "source": "https://developers.cloudflare.com/workers/platform/limits/",
       "sourceText": "Cron Triggers per account: 5 (Free) / 250 (Paid)",
       "verifiedOn": "2026-08-01",
@@ -317,7 +414,9 @@
       "paidValue": null,
       "unit": "requests",
       "scope": "per-account-per-day",
-      "surfaces": ["triggers.crons"],
+      "surfaces": [
+        "triggers.crons"
+      ],
       "source": "https://developers.cloudflare.com/workers/platform/limits/",
       "sourceText": "Accounts on the Workers Free plan have a daily request limit of 100,000 requests, resetting at midnight UTC. When a Worker exceeds this limit, Cloudflare returns Error 1027.",
       "verifiedOn": "2026-08-01",
@@ -343,7 +442,13 @@
       "paidValue": 10000,
       "unit": "subrequests",
       "scope": "per-invocation",
-      "surfaces": ["PLATFORM_DB", "SUBLY_DB", "APP_DB", "CONFIG_KV", "JWKS_CACHE"],
+      "surfaces": [
+        "PLATFORM_DB",
+        "SUBLY_DB",
+        "APP_DB",
+        "CONFIG_KV",
+        "JWKS_CACHE"
+      ],
       "source": "https://developers.cloudflare.com/workers/platform/limits/",
       "sourceText": "Workers on the free plan remain limited to 50 external subrequests and 1,000 subrequests to Cloudflare services per invocation.",
       "verifiedOn": "2026-08-01",
@@ -356,7 +461,9 @@
       "paidValue": 10000,
       "unit": "subrequests",
       "scope": "per-invocation",
-      "surfaces": ["triggers.crons"],
+      "surfaces": [
+        "triggers.crons"
+      ],
       "source": "https://developers.cloudflare.com/workers/platform/limits/",
       "sourceText": "Subrequests: 50/request (Free) / 10,000 (up to 10M) (Paid)",
       "verifiedOn": "2026-08-01",
@@ -369,8 +476,15 @@
       "paidValue": null,
       "unit": "seconds",
       "scope": "per-binding",
-      "allowedValues": [10, 60],
-      "surfaces": ["EVENTS_LIMITER", "EVENTS_CEILING_LIMITER", "CONFIG_CEILING_LIMITER"],
+      "allowedValues": [
+        10,
+        60
+      ],
+      "surfaces": [
+        "EVENTS_LIMITER",
+        "EVENTS_CEILING_LIMITER",
+        "CONFIG_CEILING_LIMITER"
+      ],
       "source": "https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/",
       "sourceText": "Must be either 10 or 60 [seconds].",
       "verifiedOn": "2026-08-01",
@@ -383,7 +497,11 @@
       "paidValue": null,
       "unit": "n/a",
       "scope": "per-binding",
-      "surfaces": ["EVENTS_LIMITER", "EVENTS_CEILING_LIMITER", "CONFIG_CEILING_LIMITER"],
+      "surfaces": [
+        "EVENTS_LIMITER",
+        "EVENTS_CEILING_LIMITER",
+        "CONFIG_CEILING_LIMITER"
+      ],
       "source": "https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/",
       "sourceText": "permissive, eventually consistent, and intentionally designed to not be used as an accurate accounting system … For each unique key you pass to your rate limiting binding, there is a unique limit per Cloudflare location.",
       "verifiedOn": "2026-08-01",
@@ -391,7 +509,6 @@
       "note": "🔴 RECORDED AS A CEILING BECAUSE IT BOUNDS WHAT THE LIMITERS CAN CLAIM, not because it is a magnitude. The limit is PER CLOUDFLARE LOCATION, so a 600/min ceiling is 600/min at EACH colo — the account-wide daily budget (workers.requestsPerDay, d1.storagePerAccount) is NOT protected by any limiter here and needs the separate aggregate guard ([11]E-2). Anything that describes these three bindings as enforcing an account-wide budget is wrong, and this row is the citation for saying so."
     }
   ],
-
   "batchCallSites": {
     "_why": [
       "A `.batch([...])` is the ONE construct in this codebase that turns a single handler into N",
@@ -429,7 +546,6 @@
       }
     ]
   },
-
   "writeAmplification": {
     "_why": [
       "[pipeline 11]E-14 — 'rows_written_per_event is COMPUTED BY COUNTING THE INDEXES on `events`, not",
@@ -465,7 +581,6 @@
     "eventsPerDayWithinCeiling": 20000,
     "note": "5 = 1 base row + 4 indexes (0002_analytics.sql: idx_events_event_id, idx_events_app_ts, idx_events_app_evt_ts, idx_events_app_anon_ts). 20,000 = ⌊100,000 ÷ 5⌋, and it is a PORTFOLIO-WIDE daily number shared by every app, not a per-app one. E-14's launches/day and DAU rows are that figure divided by an events-per-launch ESTIMATE, which is a product guess and is deliberately NOT stored here — a guess given the same derived standing as a count is how the 5× error was written in the first place."
   },
-
   "configCeilings": {
     "_why": [
       "Limb 5's inputs. Each names the ceiling row it compares against and the thing it counts across",

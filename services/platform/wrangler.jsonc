@@ -96,7 +96,27 @@
     // whole portfolio, so a second namespace would be a second copy of one
     // public document, doubling the KV writes that cache costs against a Free
     // budget of 1,000/day account-wide (tooling/ceilings.json → kv.writesPerDay).
-    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+    { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" },
+    // BOUND FOR THE NIGHTLY EXPORT AND NOTHING ELSE. `06 §3.4` measured this
+    // namespace bound to NO Worker — 2 list operations, 0 reads, 0 writes in
+    // seven days — so it was a store that could disappear with nobody noticing.
+    // src/backup/ cannot back up what the Worker cannot read; no route touches it.
+    { "binding": "SIGNUPS", "id": "d73cf5ffd0fd4d8396012fccd15906ad" }
+  ],
+  // ── THE ONE PORTFOLIO BACKUP BUCKET ────────────────────────────────────────
+  //
+  // 🔴 THE COMMENT AT THE FOOT OF THIS FILE SAID "NO r2_buckets YET — nothing
+  // reads or writes object storage today". That stopped being true on 2026-09-05:
+  // `06 §4.2` measured D1 and KV in NO backup at all, with `platform_db` — the
+  // entitlements store, the busiest datastore in the estate — holding who has
+  // paid for what behind no export, no snapshot and a recovery path recorded as
+  // NEVER drilled. src/backup/ writes here nightly at 02:30 UTC.
+  //
+  // ⚠️ ONE bucket for the portfolio, addressed by key prefix (`d1/`, `kv/`,
+  // `manifests/`) — the same rule the removed per-app `<app>-exports` buckets
+  // broke. A second backup bucket is a second lifecycle policy to forget.
+  "r2_buckets": [
+    { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups" }
   ],
   "ratelimits": [
     {
@@ -201,6 +221,14 @@
       // against a 36h freshness window — six breaches in one month. A 6h cadence
       // leaves 30h of margin on that window.
       "0 0 * * *",
+      // 🔴 THE OFF-VENDOR EXPORT, AND THE ONLY CRON HERE THAT IS NEITHER THE
+      // NIGHTLY HANDLER NOR A DISPATCHER MARGIN FIRING. src/backup/ writes D1 +
+      // KV into R2 (`06 §4.2`). 02:30 is DERIVED, not chosen: Box B dumps at
+      // 02:00 and syncs to Drive at 02:30 (`06 §2.5`), so an object written now
+      // rides the existing chain within the hour instead of waiting ~20h for the
+      // next sync — and it lands BEFORE `retentionSweep` deletes at 06:00, so the
+      // archive holds the night the sweep is about to prune.
+      "30 2 * * *",
       "0 6 * * *",
       "0 12 * * *",
       "0 18 * * *"
@@ -218,10 +246,14 @@
     { "pattern": "platform.nikatru.com", "custom_domain": true }
   ]
 
-  // NO "r2_buckets" YET — nothing reads or writes object storage today, and an
-  // unresolvable bucket binding would fail this Worker's deploy. WHEN one is
-  // needed: create ONE portfolio bucket and bind it HERE, addressed with an
-  // `<app_id>/` key prefix. Per-app buckets (`<app>-exports`) were removed from
-  // the brick on 2026-07-25 — they multiplied buckets, lifecycle rules and CORS
-  // policies by the number of apps to store the same kind of blob.
+  // "r2_buckets" NOW EXISTS — see the block above `triggers`. This comment said
+  // "NO r2_buckets YET — nothing reads or writes object storage today" until
+  // 2026-09-05; the rule it carried SURVIVES and is the reason there is exactly
+  // one bucket: ONE portfolio bucket, addressed by key prefix. Per-app buckets
+  // (`<app>-exports`) were removed from the brick on 2026-07-25 — they multiplied
+  // buckets, lifecycle rules and CORS policies by the number of apps to store the
+  // same kind of blob. The other half of the old note still holds: an
+  // unresolvable bucket binding FAILS this Worker's deploy, so `nikatru-backups`
+  // was created before this line was written (2026-09-05, `wrangler r2 bucket
+  // create`), never the other way round.
 }
