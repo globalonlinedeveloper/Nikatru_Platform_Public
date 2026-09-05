@@ -1,4 +1,6 @@
-name: Apple App Store submission path (dry run)
+name: "Store submit: Apple App Store"
+
+run-name: "Store submit: Apple App Store (dry run) by @${{ github.actor }}"
 
 # [pipeline D-10] limb (i) — "a submission script exists AND RESOLVES TO A STEP
 # IN A WORKFLOW, parsed not grepped". This workflow is the step it resolves to.
@@ -39,8 +41,6 @@ permissions:
   contents: read
   checks: read
 
-env:
-  FLUTTER_VERSION: '3.47.2'
 
 jobs:
   # Same shape and same reason as build-platforms.yml's gate job: this workflow
@@ -78,10 +78,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
       # When an Apple build breaks the first question is "what toolchain was

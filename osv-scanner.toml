@@ -1,0 +1,47 @@
+# OSV-Scanner findings that are ACKNOWLEDGED AND DATED, never waived.
+#
+# Read by `osv-scanner scan source -r .` in ci.yml's security-scan lane; the
+# file name and location are OSV-Scanner's own default, so nothing passes it a
+# flag and nothing can silently point at the wrong config.
+#
+# Every entry carries an `ignoreUntil`. When that date passes the finding
+# reddens the lane again, so an entry left here by accident becomes loud
+# instead of permanent. An entry with no expiry does not belong in this file.
+#
+# ── 2026-09-05, the first run OSV-Scanner ever made in this repository ────────
+# It found four vulnerabilities in two packages, all of them fixable, all of
+# them DEV dependencies of packages/tokens — the design-token build, which
+# produces a CSS file and ships no code to a user. Two are CVSS 7.5.
+#
+# They are recorded rather than fixed here for one reason: the change that
+# added the scanner does not own packages/, and a lockfile bump belongs in the
+# same commit as the `npm install` that produced it. The fix is now automatic
+# rather than owed to somebody's memory: renovate.json automerges patch and
+# digest updates through ci-gate as of the same change, so brace-expansion
+# 5.0.7 → 5.0.9 lands on its own. `qs` 6.15.3 → 6.16.0 is a MINOR, so Renovate
+# will open it and it will wait for a human.
+#
+# ⚠️ If these are still here on the ignoreUntil date, the thing to check first
+# is whether Renovate is opening pull requests at all — it had been silently
+# opening none since 2026-09-03. That is the failure this expiry exists to
+# catch, not the vulnerabilities themselves.
+
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-09-19
+reason = "brace-expansion 5.0.7 (dev, packages/tokens) — fixed in 5.0.8. Renovate automerges patch through ci-gate; expiry re-reddens if it did not."
+
+[[IgnoredVulns]]
+id = "GHSA-rgw5-rvv9-x895"
+ignoreUntil = 2026-09-19
+reason = "brace-expansion 5.0.7 (dev, packages/tokens) — fixed in 5.0.9. Same PR as the row above."
+
+[[IgnoredVulns]]
+id = "GHSA-4mjr-xmp4-gh2g"
+ignoreUntil = 2026-09-19
+reason = "qs 6.15.3 (dev, packages/tokens) — fixed in 6.16.0, a MINOR, so Renovate opens it and a human merges it."
+
+[[IgnoredVulns]]
+id = "GHSA-x5fp-wj9c-mxmx"
+ignoreUntil = 2026-09-19
+reason = "qs 6.15.3 (dev, packages/tokens) — fixed in 6.16.0. Same PR as the row above."

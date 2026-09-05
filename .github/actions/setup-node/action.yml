@@ -1,0 +1,35 @@
+name: Set up Node
+description: Install the Node major pinned in tooling/versions.json, with the npm cache restored.
+
+# why: the Node major is read from tooling/versions.json at run time rather than
+# written here, so the pin has exactly one home and Renovate's customManager over
+# that file is the only thing that has to move to advance it.
+
+inputs:
+  cache-dependency-path:
+    description: Lockfile whose hash keys the npm cache. Empty disables caching.
+    required: false
+    default: ''
+
+outputs:
+  node-version:
+    description: The Node major this action installed, as read from tooling/versions.json.
+    value: ${{ steps.pin.outputs.node }}
+
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      # why: node is preinstalled on every GitHub-hosted runner, so this resolves
+      # before setup-node replaces it.
+      run: |
+        set -euo pipefail
+        v="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').node")"
+        test -n "$v"
+        echo "node=$v" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: ${{ steps.pin.outputs.node }}
+        cache: ${{ inputs.cache-dependency-path != '' && 'npm' || '' }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}

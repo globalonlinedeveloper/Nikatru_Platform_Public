@@ -179,7 +179,7 @@
       "id": "H",
       "title": "Proven — the app analyzes clean and its own suite passes",
       "enforcedBy": "lane",
-      "check": "app_brick",
+      "check": "app-brick",
       "why": "the lane stamps a fresh app, resolves it, analyzes it and runs its tests on every push. The per-feature effect proof is assert-app-dod.mjs's `features` block; the golden matrix, the >=80% number and E2E-per-environment are all recorded cuts below"
     }
   ],

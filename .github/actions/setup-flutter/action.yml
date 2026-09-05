@@ -1,0 +1,42 @@
+name: Set up Flutter
+description: Install the Flutter SDK pinned in tooling/versions.json, with the pub cache restored.
+
+# why: the SDK version is read from tooling/versions.json at run time rather than
+# written here, so the pin has exactly one home and Renovate's customManager over
+# that file is the only thing that has to move to advance it.
+
+inputs:
+  cache:
+    description: Restore the Flutter SDK and pub cache. Off for jobs that must resolve cold.
+    required: false
+    # why: back ON. Turning it off did NOT make `sha_pinning_required: true`
+    # workable - GitHub validates every `uses:` in a composite action whether or
+    # not its `if:` will run it, so subosito/flutter-action's `actions/cache@v5`
+    # is refused either way. Proven by re-running CI on main under the setting:
+    # run 33961320034 attempt 2, same error, cache already off. The setting is
+    # therefore OFF and the cache is worth ~130 runner-seconds a run.
+    # docs/ci/README.md section 7.1 carries the whole measurement.
+    default: 'true'
+
+outputs:
+  flutter-version:
+    description: The version this action installed, as read from tooling/versions.json.
+    value: ${{ steps.pin.outputs.flutter }}
+
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      # why: node is preinstalled on every GitHub-hosted runner, so this resolves
+      # before any toolchain is set up.
+      run: |
+        set -euo pipefail
+        v="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').flutter")"
+        test -n "$v"
+        echo "flutter=$v" >> "$GITHUB_OUTPUT"
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+      with:
+        channel: stable
+        flutter-version: ${{ steps.pin.outputs.flutter }}
+        cache: ${{ inputs.cache }}
