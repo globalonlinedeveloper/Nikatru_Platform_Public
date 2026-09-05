@@ -140,7 +140,9 @@ const declaresMethod = (body, method) =>
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER = join(ROOT, 'tooling', 'capability-register.json');
 const PACKAGES_DIR = join(ROOT, 'packages');
-const APPS_DIR = join(ROOT, 'apps');
+// Check 5's app roots are declared with the check itself, as FORK_SCAN_ROOTS —
+// one entry per root, each with its own floor. A bare `APPS_DIR` const lived here
+// and was the whole of that domain, floorless.
 /** Whether the tree being scanned is the one this script lives in. Some checks
  *  name real seams of THIS repository and must not be asserted against the
  *  synthetic registers the guard tests build. */
@@ -711,7 +713,8 @@ for (const cap of capabilities) {
   }
 }
 
-/** Every .dart file under apps/<app>/lib. */
+/** Every .dart file under `dir`, reported at `rel`. Used by check 5's per-root
+ *  walk below and, hoisted, by `allDartFiles()` far above. */
 function dartFilesUnder(dir, rel, out) {
   let entries;
   try {
@@ -727,13 +730,219 @@ function dartFilesUnder(dir, rel, out) {
     else if (e.name.endsWith('.dart')) out.push(r);
   }
 }
-let appFiles = [];
-if (existsSync(APPS_DIR)) {
-  for (const e of listDir(APPS_DIR, { withFileTypes: true })) {
-    if (!e.isDirectory() || e.name.startsWith('.')) continue;
-    dartFilesUnder(join(APPS_DIR, e.name, 'lib'), `apps/${e.name}/lib`, appFiles);
+// ── check 5's DOMAIN, the floor under it, and what it deliberately delegates ─
+//
+// 🔴 THE FINDING (2026-09-05). This scan had NO FLOOR OF ANY KIND. Measured on
+// the real tree, not argued: with `APPS_DIR` re-pointed at a real but Dart-free
+// directory — the one-line shape of an app tree that is renamed, relocated, or
+// grows a second source root — the guard printed
+// `ok … 0 app file(s) scanned for forks` and EXITED 0. Check 1 has carried the
+// sentence "a scan that matches nothing reports perfect coverage over an empty
+// set" since day one and carried it about packages/ ONLY; the fork scan, whose
+// entire job is to assert an ABSENCE, was the limb without it.
+//
+// ⚠️ WHAT WAS HOLDING IT UP INSTEAD, AND WHY THAT IS NOT A FLOOR. Emptying
+// apps/*/lib on today's tree does go red — but only through three ACCIDENTS of
+// the current register: the two declared violations at apps/subly/lib/… stop
+// existing (the stale-waiver limb of this very check), and the [13]T-9 emitter
+// pin names a third file under the same tree. Every one of those is a thing the
+// de-forking increment (OWNER_QUEUE D-8) exists to REMOVE. The protection would
+// have walked out with the thing it was protecting, and nothing would have said
+// so — which is this repo's recurring failure, arriving on a schedule.
+//
+// ── WHY THE BRICK TEMPLATE IS NOT IN THIS DOMAIN ─────────────────────────────
+// `isPerApp` below calls `__brick__/apps/` per-app territory while this scan
+// reads apps/ alone, and that reads like one file disagreeing with itself. It
+// was raised as exactly that, and it is not one. MEASURED 2026-09-05: a
+// `class NotificationService` planted in
+// tooling/bricks/app/__brick__/apps/{{app_id}}/lib/state/providers.dart left
+// THIS guard at exit 0 and turned assert-no-seam-forks.mjs RED — naming the
+// file, the contract, and "THE TEMPLATE — every stamped app inherits this".
+// Both guards run in the same ci.yml `platform` lane, so that is live coverage
+// and not a plan. That guard's own header records this file's brick-blindness
+// as the reason it was written, and its matcher is strictly stronger over the
+// same tree: it also catches a RENAMED implementer, which name-matching cannot.
+// Widening this scan to the template would therefore add a second red on every
+// input the first one already reddens, and nothing else — an assertion whose
+// domain is already covered inflates apparent coverage exactly the way the
+// empty-domain one at [13]T-12 does.
+//
+// So the template is DELEGATED, not overlooked, and the delegation is now
+// DECLARED, CHECKED AND PRINTED rather than left as an unwritten assumption
+// discoverable only by reading a sibling guard. The residual risk is the one a
+// root list always has — not an emptied root but an UNLISTED one — so every
+// app-shaped `consumerRoot` must be under a scanned root or on the delegated
+// list, and a root in neither fails the build.
+
+/** Is this path a PER-APP location? apps/, or the brick's per-app template tree
+ *  (stamping a capability into every app is per-app duplication wearing a
+ *  template's clothes, which is precisely what "never per app" forbids).
+ *  ONE definition, TWO readers: check 5's domain immediately below, and the
+ *  demand gate's "never per app" limb at check 7. It used to sit beside check 7
+ *  alone, 100-odd lines from the scan that most needed to agree with it. */
+const isPerApp = (rel) => rel.startsWith('apps/') || rel.includes('__brick__/apps/');
+
+/** Check 5's domain: ONE ENTRY PER ROOT, EACH CARRYING ITS OWN FLOOR — never a
+ *  single floor over the union. A union floor is satisfied by whichever root is
+ *  fattest while the others empty in silence; assert-no-tls-pinning.mjs:85-92
+ *  records that guard printing ok over 12% of its subject for exactly that
+ *  reason, and assert-workspace-coverage.mjs:130-136 records a union floor
+ *  staying satisfied over an emptied apps/. The list shape is the protection:
+ *  a second root cannot be added without being given a floor of its own. */
+const FORK_SCAN_ROOTS = [
+  {
+    dir: 'apps',
+    sub: 'lib',
+    floor: 30,
+    label: 'the shipped apps — where a forked seam reaches a real install (73 .dart under apps/*/lib today)',
+  },
+];
+
+/** Per-app roots this check deliberately does NOT read, each naming the guard
+ *  that does and the evidence that it really does.
+ *
+ *  A row here is a claim about ANOTHER FILE, so it states its ceiling: the
+ *  delegate's EXISTENCE is checked here, its BEHAVIOUR is not. Nothing in this
+ *  file can tell that assert-no-seam-forks.mjs still walks tooling/bricks — that
+ *  is a guard edit, and assert-no-gate-weakening.mjs is what watches guard edits.
+ *
+ *  🔴 BUT THE SUBJECT IS CHECKED HERE, and it has to be, because the delegate
+ *  cannot do it. assert-no-seam-forks.mjs:118 floors `sharedFiles.length +
+ *  suspectFiles.length` at 10 — a UNION over packages/ AND apps/ AND
+ *  tooling/bricks/. packages/ alone supplies 181 of today's 358 files, so the
+ *  brick template could empty completely and that guard would still print ok
+ *  over the rest. Delegating a root to a guard whose floor cannot notice the
+ *  root emptying is delegating to nobody, so each row carries its OWN floor over
+ *  its OWN tree — the same one-per-root rule the scanned roots follow. */
+const FORK_SCAN_DELEGATED = [
+  {
+    root: 'tooling/bricks/app/__brick__/apps/{{app_id}}',
+    to: 'tooling/ci/assert-no-seam-forks.mjs',
+    floor: 10,
+    why:
+      'the brick template is that guard\'s C-9 limb ("a seam implementation never lives in the brick ' +
+      'template"), it runs in the same ci.yml `platform` lane, and its matcher is strictly stronger over ' +
+      'this tree because it also catches a renamed implementer. Measured 2026-09-05: a planted `class ' +
+      'NotificationService` in the template leaves THIS guard at exit 0 and turns that one red.',
+  },
+];
+
+const appFiles = [];
+/** dir -> { present, appDirs, found } — kept per root so the passing line can
+ *  print a SPLIT. A single total is still literally true of a collapsed tree,
+ *  which is how a reader confirms coverage from a number that no longer has any. */
+const forkScanPerRoot = new Map();
+for (const r of FORK_SCAN_ROOTS) {
+  const absRoot = join(ROOT, r.dir);
+  const before = appFiles.length;
+  let appDirs = 0;
+  const present = existsSync(absRoot) && statSync(absRoot).isDirectory();
+  if (present) {
+    for (const e of listDir(absRoot, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      appDirs++;
+      dartFilesUnder(join(absRoot, e.name, r.sub), `${r.dir}/${e.name}/${r.sub}`, appFiles);
+    }
+  }
+  forkScanPerRoot.set(r.dir, { present, appDirs, found: appFiles.length - before });
+}
+
+// ── the floor, ONE PER ROOT ──────────────────────────────────────────────────
+// Own-repo only, the same split every other coverage limb in this file takes and
+// for the same reason: these numbers are measurements of THIS repository, and the
+// guard's fixtures legitimately model a three-file tree. The sentinel is
+// SCANNING_OWN_REPO, which is this script's own location — outside apps/, outside
+// the brick, and therefore surviving any mutation OF a subject. WHICH BRANCH WAS
+// TAKEN IS PRINTED ON EVERY RUN, at the bottom of this file, rather than implied.
+if (SCANNING_OWN_REPO) {
+  for (const r of FORK_SCAN_ROOTS) {
+    const t = forkScanPerRoot.get(r.dir);
+    if (!t.present) {
+      problems.push(
+        `COVERAGE LOST — check 5's root \`${r.dir}\` is not a directory under ${ROOT} — ${r.label}. This ` +
+          'check asserts an ABSENCE, and an absence over an empty set is true of every tree including one ' +
+          'where the walk is broken. There is no weaker pass than this one.',
+      );
+    } else if (t.found === 0) {
+      problems.push(
+        `COVERAGE LOST — check 5's root \`${r.dir}\` holds ${t.appDirs} app dir(s) and not one \`.dart\` ` +
+          `file under \`${r.dir}/*/${r.sub}\` — ${r.label}. The source moved or the walk narrowed; neither ` +
+          'is a clean tree, and both print identically to one.',
+      );
+    } else if (t.found < r.floor) {
+      problems.push(
+        `COVERAGE LOST — check 5's root \`${r.dir}\` yielded ${t.found} .dart file(s), below its floor of ` +
+          `${r.floor} — ${r.label}. Either the scan narrowed or the tree really shrank; if it shrank, lower ` +
+          'the floor in FORK_SCAN_ROOTS deliberately, in the same commit, with the new count in the message.',
+      );
+    }
   }
 }
+
+// ── the UNLISTED root — the failure a floor cannot see ───────────────────────
+// A floor only ever asks "did the root I know about deliver?". It is blind to a
+// per-app root that was never on the list, which is the same tree state and the
+// quieter half of it. `consumerRoots` is this register's own machine-readable set
+// of app roots, already verified against a real pubspec by check 4, so it is the
+// honest place to ask the question from — and `isPerApp` decides what counts,
+// which is the whole reason that predicate now lives above this check instead of
+// beside check 7 only.
+/** root -> .dart under it, so the printed line can show the delegated SUBJECT
+ *  and not merely the fact that a delegation was declared. */
+const delegatedCounts = new Map();
+const forkScanCovers = (root) =>
+  FORK_SCAN_ROOTS.some((r) => {
+    const parts = root.split('/');
+    return parts.length === 2 && parts[0] === r.dir;
+  });
+for (const root of consumerRoots) {
+  if (!isPerApp(root)) continue; // packages/purchases is a consumerRoot and is not an app
+  if (forkScanCovers(root)) continue;
+  const delegated = FORK_SCAN_DELEGATED.find((d) => d.root === root);
+  if (!delegated) {
+    problems.push(
+      `COVERAGE LOST — \`${root}\` is a per-app consumerRoot that check 5 does not scan and no entry in ` +
+        'FORK_SCAN_DELEGATED hands to another guard. A seam forked under a per-app root nobody reads is ' +
+        'invisible here, and if that root is a TEMPLATE it is forked into every app stamped from it. Put ' +
+        'it under a scanned root with its own floor, or delegate it explicitly, naming the guard that ' +
+        'covers it and the evidence that it does.',
+    );
+    continue;
+  }
+  // NOT own-repo gated, unlike the floors: "the guard I handed this root to is
+  // on disk" is true or false in any tree, and a fixture that delegates to a
+  // file it did not create is exactly the failure this limb exists to catch.
+  if (!existsSync(join(ROOT, delegated.to))) {
+    problems.push(
+      `COVERAGE LOST — \`${root}\` is delegated to \`${delegated.to}\`, which does not exist. The ` +
+        'delegation is now a promise to a file that is gone, and this check has been reading past that ' +
+        `root on the strength of it. ${delegated.why}`,
+    );
+    continue;
+  }
+  // ── and the delegated SUBJECT must still be there ──────────────────────────
+  // The delegate's own floor is a union it cannot un-pool (see the doc above),
+  // so this root's emptiness is a thing only this file is positioned to notice.
+  // Un-gated for the "not one .dart" case — true or false in any tree — and
+  // own-repo gated for the count, which is a measurement of this repository.
+  const delegatedFiles = [];
+  dartFilesUnder(join(ROOT, ...root.split('/')), root, delegatedFiles);
+  delegatedCounts.set(root, delegatedFiles.length);
+  if (delegatedFiles.length === 0) {
+    problems.push(
+      `COVERAGE LOST — \`${root}\` is delegated to \`${delegated.to}\` and holds no \`.dart\` file at ` +
+        'all. The delegation now covers an empty set, which reads exactly like a template with nothing ' +
+        'wrong in it. Re-point the row or remove it deliberately.',
+    );
+  } else if (SCANNING_OWN_REPO && delegatedFiles.length < delegated.floor) {
+    problems.push(
+      `COVERAGE LOST — \`${root}\` yielded ${delegatedFiles.length} .dart file(s), below the floor of ` +
+        `${delegated.floor} this row carries over the tree it delegates. ${delegated.to} floors its whole ` +
+        'corpus as one union and cannot see this root shrink; that is why the floor lives here.',
+    );
+  }
+}
+
 for (const rel of appFiles) {
   // Stripped for the same reason as check 3, pointed the other way: here a
   // commented-out `class NotificationService` would falsely ACCUSE an app file
@@ -852,10 +1061,10 @@ const CONTROL_SYMBOL = 'NotificationService';
  *  not an app — the requirement quantifies over apps, so it is not in the domain. */
 const demandRoots = consumerRoots.filter((r) => r.startsWith('apps/') || r.includes('__brick__'));
 
-/** Is this path a PER-APP location? apps/, or the brick's per-app template tree
- *  (stamping the module into every app is per-app duplication wearing a
- *  template's clothes, which is precisely what "never per app" forbids). */
-const isPerApp = (rel) => rel.startsWith('apps/') || rel.includes('__brick__/apps/');
+// `isPerApp` — the "never per app" predicate this limb uses — is declared with
+// check 5's domain above, because check 5 has to agree with it about what per-app
+// territory is. It was defined here, and only here, while check 5 read apps/
+// alone; the two never disagreed in fact, but nothing in the file said so.
 
 /** Files declaring `class <symbol>` for any of `symbols`, in stripped source —
  *  so the prose in packages/core's notification seam, which discusses streaks and
@@ -1049,10 +1258,30 @@ for (const g of gapPrints) console.log(`⬜ ${g}`);
 for (const w of wiredPrints) console.log(`✅ ${w}`);
 
 const seamCount = seamSymbols.size;
+// 🔴 THE SPLIT, NOT THE TOTAL. This line used to read "N app file(s) scanned for
+// forks" — one number over a domain the reader had to take on trust, and a
+// sentence that stayed literally true at N=0. A per-root breakdown with its floor
+// beside it cannot be true of a collapsed tree.
+const forkSplit = FORK_SCAN_ROOTS.map((r) => {
+  const t = forkScanPerRoot.get(r.dir);
+  return `${r.dir}/*/${r.sub}=${t.found}${SCANNING_OWN_REPO ? `/floor ${r.floor}` : ''}`;
+}).join(', ');
 console.log(
   `ok  capability register — ${capabilities.length} capability(ies) over ${onDisk.length} package dir(s); ` +
-    `${seamCount} seam symbol(s) verified in place, ${appFiles.length} app file(s) scanned for forks, ` +
-    `${declaredViolations.size} declared violation(s), ${waived.length} unconsumed with a reason`,
+    `${seamCount} seam symbol(s) verified in place, ${appFiles.length} app file(s) scanned for forks ` +
+    `[${forkSplit}], ${declaredViolations.size} declared violation(s), ${waived.length} unconsumed with a reason`,
+);
+// WHICH BRANCH THE FLOORS TOOK, on every run rather than implied — a floor that
+// is silently skipped over a foreign root reads exactly like a floor that passed.
+console.log(
+  `    check 5 fork scan: ${forkSplit}; ${FORK_SCAN_DELEGATED.length} per-app root(s) delegated ` +
+    `(${FORK_SCAN_DELEGATED.map(
+      (d) => `${d.root}=${delegatedCounts.get(d.root) ?? 'not a consumerRoot here'} .dart → ${d.to}`,
+    ).join('; ')})` +
+    (SCANNING_OWN_REPO
+      ? '; per-root floors APPLIED'
+      : '; per-root floors NOT applied — this root is not a checkout of this repository, so only the ' +
+        'unlisted-root and delegation limbs ran'),
 );
 // The COUNT, not merely the entries. Zero and one print identically once the
 // loop above has nothing to iterate, which is precisely how `missingMethods`

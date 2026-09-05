@@ -489,3 +489,141 @@ describe('[13]T-12 — the demand gate', () => {
     assert.match(out, /no consumer declares the habit module\./);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHECK 5's DOMAIN — the fork scan's own coverage
+//
+// 🔴 WHAT THESE CASES REPLACE. Until 2026-09-05 check 5 walked a bare
+// `join(ROOT, 'apps')` with NO FLOOR OF ANY KIND, and the guard's own passing
+// line said "0 app file(s) scanned for forks" at EXIT 0 when that walk reached
+// nothing. Check 1 had carried "a scan that matches nothing reports perfect
+// coverage over an empty set" since day one — about packages/ only.
+//
+// ⚠️ THE FLOOR LIMBS ARE NOT FALSIFIABLE FROM HERE, and are not tested here.
+// They are gated on SCANNING_OWN_REPO for the same reason the demand gate's
+// coverage checks are: the numbers are measurements of THIS repository and these
+// fixtures legitimately model a five-package tree. They were falsified against
+// the real tree instead, 2026-09-05, each restored byte-identical:
+//
+//   control, unmutated                                     → EXIT 0
+//   FORK_SCAN_ROOTS[0].dir 'apps' → 'catalog'              → EXIT 1 "holds 0 app dir(s) and not one .dart"
+//   FORK_SCAN_ROOTS[0].floor 30 → 200                      → EXIT 1 "73 .dart file(s), below its floor of 200"
+//   FORK_SCAN_DELEGATED emptied                            → EXIT 1 unlisted brick root
+//   the delegate re-pointed at tooling/ci/assert-gone.mjs  → EXIT 1 "which does not exist"
+//   apps/subly/lib moved aside (TREE, not guard)           → EXIT 1 "holds 1 app dir(s) and not one .dart"
+//
+// And the measurement that decided the DOMAIN rather than the floor: a
+// `class NotificationService` planted in the brick's per-app template left this
+// guard at EXIT 0 and turned assert-no-seam-forks.mjs RED. That is why the
+// template is delegated here and not scanned twice — and why the two limbs below,
+// which police the delegation itself, are the ones that had to be testable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The brick per-app root this guard really delegates, and the guard it names. */
+const BRICK_ROOT = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+const DELEGATE_REL = 'tooling/ci/assert-no-seam-forks.mjs';
+
+/** Add `root` to consumerRoots with a pubspec that declares every base package,
+ *  so check 4 is satisfied and the only thing under test is check 5's domain. */
+function addConsumerRoot(reg, files, r, root, { deps = true } = {}) {
+  reg.consumerRoots.push(root);
+  const body = deps
+    ? `name: extra\ndependencies:\n${BASE.map((id) => `  nikatru_${id}:\n    path: x`).join('\n')}\n`
+    : 'name: extra\n';
+  files[join(r, ...root.split('/'), 'pubspec.yaml')] = body;
+  if (deps) for (const c of reg.capabilities) c.consumers = [...(c.consumers ?? []), root];
+}
+
+describe('check 5 — the fork scan knows which per-app roots it does not read', () => {
+  test('a per-app consumerRoot that is neither scanned nor delegated is COVERAGE LOST', () => {
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, r) => {
+          // A SECOND brick. `isPerApp` calls it per-app territory, check 5 does
+          // not walk it, and no delegation row names it — the "unlisted root"
+          // a floor can never see, because a floor only asks whether the roots
+          // it already knows about delivered.
+          addConsumerRoot(reg, files, r, 'tooling/bricks/app2/__brick__/apps/{{app_id}}');
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — `tooling\/bricks\/app2\/__brick__\/apps\/\{\{app_id\}\}` is a per-app consumerRoot/);
+    assert.match(out, /no entry in FORK_SCAN_DELEGATED hands to another guard/);
+  });
+
+  test('a DELEGATED per-app root whose named guard is not on disk is COVERAGE LOST', () => {
+    // The delegation is the only reason check 5 reads past the brick template.
+    // If the file it names has gone, that reason has gone with it and this guard
+    // has been skipping the root on the strength of a promise to nothing.
+    const { code, out } = run(
+      tree({ mutate: (reg, files, r) => addConsumerRoot(reg, files, r, BRICK_ROOT) }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /is delegated to `tooling\/ci\/assert-no-seam-forks\.mjs`, which does not exist/);
+  });
+
+  test('a delegated root with the guard on disk but NO source is COVERAGE LOST', () => {
+    // 🔴 THE LIMB THE DELEGATE CANNOT SUPPLY. assert-no-seam-forks.mjs:118 floors
+    // `sharedFiles.length + suspectFiles.length` at 10 — a UNION over packages/,
+    // apps/ and tooling/bricks/ — and packages/ alone is 181 of the real tree's
+    // 358 files. So the template can empty completely and that guard still prints
+    // ok. Delegating to a floor that cannot see the root empty is delegating to
+    // nobody, which is why the row carries a floor over its own tree.
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, r) => {
+          addConsumerRoot(reg, files, r, BRICK_ROOT);
+          files[join(r, ...DELEGATE_REL.split('/'))] = '// stand-in for the delegate\n';
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /holds no `\.dart` file at all/);
+    assert.match(out, /the delegation now covers an empty set/i);
+  });
+
+  test('the same delegated root passes once the guard AND the source are really there', () => {
+    // The discriminating half: without this, the two cases above would also pass
+    // if the limb simply failed on every brick root it ever saw.
+    const { code, out } = run(
+      tree({
+        mutate: (reg, files, r) => {
+          addConsumerRoot(reg, files, r, BRICK_ROOT);
+          files[join(r, ...DELEGATE_REL.split('/'))] = '// stand-in for the delegate\n';
+          files[join(r, ...BRICK_ROOT.split('/'), 'lib', 'app.dart')] = 'class TemplateApp {}\n';
+        },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.match(out, /1 per-app root\(s\) delegated/);
+    // The printed line names the delegated SUBJECT, not merely the delegation:
+    // "1 root delegated" is equally true of a root with nothing in it.
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}=1 \.dart → tooling\/ci\/assert-no-seam-forks\.mjs/);
+  });
+
+  test('a consumerRoot that is not per-app is not dragged into check 5s domain', () => {
+    // This repository really does have one: `packages/purchases` is a
+    // consumerRoot and is not an app. (The fixture uses services/edge rather
+    // than a packages/ path only because a bare dir under packages/ trips check
+    // 2 — an unowned package — and would fail for the wrong reason.) If
+    // `isPerApp` ever stopped discriminating, this case goes red, which is the
+    // point of keeping ONE predicate rather than two spellings of it.
+    const { code, out } = run(
+      tree({ mutate: (reg, files, r) => addConsumerRoot(reg, files, r, 'services/edge', { deps: false }) }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /is a per-app consumerRoot/);
+  });
+
+  test('the passing line prints the per-root split AND which branch the floors took', () => {
+    // A total is still literally true of a collapsed tree; a split is not. And a
+    // floor that was silently skipped over a foreign root reads exactly like a
+    // floor that passed, so the branch is printed rather than implied.
+    const { code, out } = run(tree());
+    assert.equal(code, 0, out);
+    assert.match(out, /app file\(s\) scanned for forks \[apps\/\*\/lib=\d+\]/);
+    assert.match(out, /check 5 fork scan: apps\/\*\/lib=\d+;/);
+    assert.match(out, /per-root floors NOT applied — this root is not a checkout of this repository/);
+  });
+});
