@@ -397,11 +397,21 @@ Future<void> recordAnalyticsConsent(
     ref.context,
     listen: false,
   );
-  final core.ConsentTransport transport = ref.read(consentTransportProvider);
-  final core.ConsentController controller = await ref.read(
+  // 🔴 AND EVERY LOOKUP AFTER THAT GOES THROUGH THE CONTAINER, NOT `ref`.
+  // Hoisting only the invalidate is the half-fix: `WidgetRef.read` is the SAME
+  // `_assertNotDisposed()` plus the same container call as `invalidate`
+  // (`flutter_riverpod/lib/src/consumer.dart`), so a `ref.read` in a
+  // continuation that resumes after the widget is gone throws the identical
+  // release-mode `StateError` one line earlier. Watched fail, not reasoned
+  // about: `test/consent_withdrawal_disposal_test.dart` races disposal against
+  // each await, and three of its cases were RED on `ref` here.
+  final core.ConsentTransport transport = container.read(
+    consentTransportProvider,
+  );
+  final core.ConsentController controller = await container.read(
     consentControllerProvider.future,
   );
-  final String anonId = await ref.read(installIdProvider.future);
+  final String anonId = await container.read(installIdProvider.future);
   await applyConsentDecision(
     controller: controller,
     transport: transport,
@@ -413,7 +423,12 @@ Future<void> recordAnalyticsConsent(
     // hole: the rebuilt recorder's `hydrate` refuses to restore a queue under a
     // denied decision and deletes the persisted copy, so the disk half dies
     // either way.
-    analytics: ref.read(analyticsProvider).valueOrNull,
+    //
+    // ⚠️ MOVING IT OFF `ref` IS NOT MOVING IT EARLIER. The lateness is the
+    // point and it is unchanged: the read still happens after both awaits and
+    // before the invalidate. Hoisting it up beside the container would hand
+    // `applyConsentDecision` a recorder read before the decision it purges for.
+    analytics: container.read(analyticsProvider).valueOrNull,
   );
   container.invalidate(consentControllerProvider);
 }
@@ -465,11 +480,19 @@ Future<void> recordPromoObjection(
     ref.context,
     listen: false,
   );
-  final core.ConsentTransport transport = ref.read(consentTransportProvider);
-  final core.ConsentController controller = await ref.read(
+  // 🔴 AND EVERY LOOKUP AFTER THAT GOES THROUGH THE CONTAINER, NOT `ref` —
+  // the same reason spelled out in [recordAnalyticsConsent]. This twin has ONE
+  // post-await lookup rather than two (it passes no `analytics:`), and one is
+  // enough: `WidgetRef.read` is `_assertNotDisposed()` plus the container call,
+  // so the install id read alone threw the release-mode `StateError` when the
+  // promo row was disposed while the rail was still coming off disk.
+  final core.ConsentTransport transport = container.read(
+    consentTransportProvider,
+  );
+  final core.ConsentController controller = await container.read(
     consentControllerProvider.future,
   );
-  final String anonId = await ref.read(installIdProvider.future);
+  final String anonId = await container.read(installIdProvider.future);
   await applyConsentDecision(
     controller: controller,
     transport: transport,
