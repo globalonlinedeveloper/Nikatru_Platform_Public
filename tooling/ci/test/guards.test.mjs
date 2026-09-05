@@ -1557,11 +1557,24 @@ describe('assert-workflow-hardening', () => {
   describe('Actions expressions open with two braces', () => {
     const SNAP_REL = '.github/workflows/submit-snap.yml';
     const REAL_SNAP = readFileSync(resolve(CI_DIR, '..', '..', SNAP_REL), 'utf8');
-    /** The step as both lanes read it TODAY, and as the publish lane read it
-     *  until 2026-08-26. Byte-identical in the two lanes, so an anchor taken at
-     *  the FIRST occurrence would mutate the dry-run job instead. */
-    const GOOD = '          flutter-version: ${{ env.FLUTTER_VERSION }}\n';
-    const BAD = '          flutter-version: ${ env.FLUTTER_VERSION }\n';
+    /** RE-ANCHORED 2026-09-05, and why is written here rather than left to a
+     *  commit message. The anchor WAS `flutter-version: ${{ env.FLUTTER_VERSION }}`
+     *  — the literal line the 2026-08-26 defect shipped on — and it stopped
+     *  existing when the flutter-action block moved into
+     *  .github/actions/setup-flutter and the five FLUTTER_VERSION declarations
+     *  went with it. The control then failed for the one reason a control must
+     *  never fail: its SUBJECT moved, not its property. The replacement keeps
+     *  every property the old anchor was chosen for — it is real rather than
+     *  hand-written; it is a JUDGED line (an `env:` value, where limb 6 looks,
+     *  not a `run:` body, which it deliberately does not judge); it appears
+     *  BYTE-IDENTICALLY IN BOTH LANES, so an anchor taken at the FIRST
+     *  occurrence still mutates the dry-run job instead of the publish one; and
+     *  a single brace there is the same class of defect, handing snapcraft the
+     *  literal text of a credential expression instead of the credential.
+     *  ⚠️ It is NOT the line the bug shipped on. That is a real loss and it is
+     *  recorded rather than papered over; what the limb catches is unchanged. */
+    const GOOD = '          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}\n';
+    const BAD = '          SNAPCRAFT_STORE_CREDENTIALS: ${ secrets.SNAPCRAFT_STORE_CREDENTIALS }\n';
 
     /** The real snap workflow beside two ordinary ones — three files, which is
      *  what clears the scan's own no-manifest floor. */
@@ -1575,7 +1588,7 @@ describe('assert-workflow-hardening', () => {
     test('the control: the REAL submit-snap.yml passes, and BOTH lanes read `${{ … }}`', () => {
       // The byte assertions are the regression: they fail if either lane ever
       // loses its second brace again, whatever this guard happens to do.
-      assert.equal(REAL_SNAP.split(GOOD).length - 1, 2, 'both flutter-action steps must read `${{ env.FLUTTER_VERSION }}`');
+      assert.equal(REAL_SNAP.split(GOOD).length - 1, 2, 'both snapcraft steps must read `${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}`');
       assert.equal(REAL_SNAP.includes(BAD), false, 'no lane may read the single-brace form');
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [withSnap('wh-expr-real', REAL_SNAP)] });
       assert.equal(code, 0, out);
@@ -1592,7 +1605,7 @@ describe('assert-workflow-hardening', () => {
       const line = broken.slice(0, at).split('\n').length;
       const { code, out } = run('assert-workflow-hardening.mjs', { args: [withSnap('wh-expr-bug', broken)] });
       assert.equal(code, 1, out);
-      assert.match(out, new RegExp(`submit-snap\\.yml:${line} \`\\$\\{ env\\.FLUTTER_VERSION \\}\` opens with ONE brace`));
+      assert.match(out, new RegExp(`submit-snap\\.yml:${line} \`\\$\\{ secrets\\.SNAPCRAFT_STORE_CREDENTIALS \\}\` opens with ONE brace`));
       assert.match(out, /reaches the step as the literal text/);
     });
 
