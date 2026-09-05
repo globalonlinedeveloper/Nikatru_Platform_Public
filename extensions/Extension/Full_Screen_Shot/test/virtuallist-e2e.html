@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — embedded virtualized (render-window) list, inline unroll</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #2A3A96; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  /* The virtualized list: a fixed 600px viewport over a tall sizer spacer;
+     only a small window of absolutely-positioned rows is realized (react-window
+     style). The engine must detect this render-window and, with unrollVirtual
+     on, step it through its full content and inject it at its slot. */
+  #vlist { height: 600px; overflow-y: auto; border-top: 2px solid #888; border-bottom: 2px solid #888; background: #EEF2F8; }
+  #vsizer { position: relative; }
+  .vrow { position: absolute; left: 0; right: 0; height: 40px; padding: 8px 20px; color: #fff; }
+  #article .blk { height: 100px; padding: 8px 20px; color: #4a3a2a; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 12px 20px; }
+  #fab { position: fixed; right: 26px; bottom: 60px; width: 64px; height: 64px; border-radius: 50%; background: #FF00FF; z-index: 9; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 460px; max-height: 220px; overflow-y: auto; z-index: 20;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — embedded render-window list. Turn ON "Unroll virtualized lists", scroll the list to the middle, then press Alt+Shift+P.</div>
+<div id="vlist"><div id="vsizer"></div></div>
+<div id="article"></div>
+<div id="bottom">PAGE BOTTOM MARKER — must appear once, below the fully unrolled list.</div>
+<div id="fab"></div>
+<div id="scoreboard">Waiting for capture… enable unrollVirtual in options, then Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const N = 150, ROWH = 40, VIEW = 600, OVER = 3, TOTAL = N * ROWH;   // 6000px sizer
+  const vlist = $('vlist'), vsizer = $('vsizer'), board = $('scoreboard');
+  vsizer.style.height = TOTAL + 'px';
+
+  /* real render-window: realize only the rows near the current scrollTop */
+  function windowRows() {
+    const st = vlist.scrollTop;
+    const first = Math.max(0, Math.floor(st / ROWH) - OVER);
+    const last = Math.min(N, Math.ceil((st + VIEW) / ROWH) + OVER);
+    while (vsizer.firstChild) vsizer.removeChild(vsizer.firstChild);
+    for (let i = first; i < last; i++) {
+      const r = document.createElement('div');
+      r.className = 'vrow';
+      r.style.top = (i * ROWH) + 'px';
+      r.style.background = i >= N - 4 ? '#00FF88' : (i % 2 ? '#5AA0D2' : '#3C82BE');
+      r.textContent = 'list row ' + (i + 1) + (i >= N - 4 ? '  — DEEP SENTINEL (remaining rows)' : '');
+      vsizer.appendChild(r);
+    }
+  }
+  vlist.addEventListener('scroll', windowRows);
+
+  /* tall article makes the DOCUMENT the dominant scroller (list stays embedded) */
+  for (let i = 0; i < 35; i++) {
+    const d = document.createElement('div');
+    d.className = 'blk';
+    d.textContent = 'article block ' + (i + 1);
+    d.style.background = 'hsl(' + (28 + (i % 6) * 4) + ', 45%, ' + (88 - (i % 6) * 3) + '%)';
+    $('article').appendChild(d);
+  }
+
+  vlist.scrollTop = 1200;   // user parked the list in the middle
+  windowRows();
+
+  /* self-grading */
+  const S = { stepped: false, notBallooned: true, scrollRestored: false, heightRestored: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (vlist.scrollTop >= (TOTAL - VIEW) - 4) S.stepped = true;   // reached the last window
+      if (vlist.clientHeight > 620) S.notBallooned = false;          // must never be grown
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.scrollRestored = Math.abs(vlist.scrollTop - 1200) <= 2;
+        S.heightRestored = vlist.clientHeight <= 620;
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok) {
+    return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + '\n';
+  }
+  function report() {
+    const rows = [
+      ['render-window list stepped to its last window (deep content reachable)', S.stepped],
+      ['list never ballooned (kept its 600px box, no blank spacer)', S.notBallooned],
+      ['list scroll restored (1200 ±2)', S.scrollRestored],
+      ['list box height restored', S.heightRestored]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'VIRTUAL-UNROLL RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: the full list unrolled inline (rows 1…150), the green DEEP SENTINEL near its end, then the article, then the blue BOTTOM marker.';
+    console.log('FSVUNROLL', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2535 @@
+{
+  "appName": {
+    "message": "FullShot - Full Page Screen Capture",
+    "description": "manifest.json `name`. The extension's full store name. Shown in the Chrome Web Store, chrome://extensions and the browser's extension menu. \"FullShot\" is the product name and must stay untranslated; the part after the dash describes what it does and should be translated."
+  },
+  "appShortName": {
+    "message": "FullShot",
+    "description": "manifest.json `short_name`, and the brand word in the popup header and every page topbar. This is the product name. Keep it as-is in Latin-script locales. Only transliterate for locales that do not use Latin script (ar, fa, he, ja, ko, th, zh) IF that is the local convention; when in doubt, leave it as \"FullShot\"."
+  },
+  "appDescription": {
+    "message": "Capture full page, visible area, region, or any element. Edit, annotate, and export as PNG, JPEG, WebP, or PDF.",
+    "description": "manifest.json `description`. The one-line store listing summary; Chrome truncates around 132 characters, so keep the translation short. PNG, JPEG, WebP and PDF are file format names and must be copied through untranslated. NOTE: this message is resolved by the browser at manifest-load time, so it deliberately carries no placeholders."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - Capture page (Alt+Shift+P)",
+    "description": "manifest.json `action.default_title`. The tooltip on the toolbar button. \"Alt+Shift+P\" is a keyboard shortcut: copy it through exactly, do not translate or reorder the key names. NOTE: this message is resolved by the browser at manifest-load time, so it deliberately carries no placeholders."
+  },
+  "commandCaptureFullPage": {
+    "message": "Capture full page",
+    "description": "manifest.json command description, listed on the browser's keyboard-shortcuts page. Imperative, very short."
+  },
+  "commandCaptureVisible": {
+    "message": "Capture visible area",
+    "description": "manifest.json command description. \"Visible area\" = only the part of the page currently on screen."
+  },
+  "commandCaptureRegion": {
+    "message": "Capture selected region",
+    "description": "manifest.json command description. The user drags a rectangle to choose the area."
+  },
+  "commandCaptureElement": {
+    "message": "Capture a page element (click to pick)",
+    "description": "manifest.json command description. \"Element\" = a single box on the page (a card, a table, an image) chosen by clicking it."
+  },
+  "popupToggleTheme": {
+    "message": "Toggle theme",
+    "description": "Tooltip on the light/dark theme button. Appears in the popup and in the topbar of every FullShot page."
+  },
+  "popupModeFullTitle": {
+    "message": "Full page",
+    "description": "Capture-mode button label in the popup: scroll the whole page and stitch it into one tall image."
+  },
+  "popupModeFullSub": {
+    "message": "Scroll & capture entire page",
+    "description": "One-line explanation under the \"Full page\" button. Space is tight — about 30 characters."
+  },
+  "popupModeVisibleTitle": {
+    "message": "Visible area",
+    "description": "Capture-mode button label in the popup: capture only what is on screen right now, without scrolling."
+  },
+  "popupModeVisibleSub": {
+    "message": "Just what's on screen",
+    "description": "One-line explanation under the \"Visible area\" button. About 30 characters."
+  },
+  "popupModeRegionTitle": {
+    "message": "Selected region",
+    "description": "Capture-mode button label in the popup: the user drags a rectangle over the page."
+  },
+  "popupModeRegionSub": {
+    "message": "Drag to choose an area",
+    "description": "One-line explanation under the \"Selected region\" button. About 30 characters."
+  },
+  "popupModeElementTitle": {
+    "message": "Element",
+    "description": "Capture-mode button label in the popup: click one box on the page (a card, a table, an image) to capture just that."
+  },
+  "popupModeElementSub": {
+    "message": "Click any element on the page",
+    "description": "One-line explanation under the \"Element\" button. About 30 characters."
+  },
+  "popupModeDelayedTitle": {
+    "message": "Delayed capture",
+    "description": "Capture-mode button label in the popup: wait a few seconds, then capture the full page. Used to open a menu or hover state first."
+  },
+  "popupModeDelayedSub": {
+    "message": "Full page after countdown",
+    "description": "One-line explanation under the \"Delayed capture\" button. About 30 characters."
+  },
+  "popupDelayLabel": {
+    "message": "Delay seconds",
+    "description": "Tooltip on the dropdown that picks how many seconds to wait before a delayed capture."
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$s",
+    "description": "An option in the delay dropdown: a number of seconds, abbreviated. Rendered for 3, 5 and 10. Use the local abbreviation for seconds and the local spacing convention (English uses none: \"3s\").",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Expand scrollable panels & iframes",
+    "description": "Checkbox label in the popup. Turns on growing inner scrolling boxes and embedded frames to their full height before capturing, instead of photographing them as seen."
+  },
+  "popupExpandToggleTip": {
+    "message": "Grow inner scrollable panels and iframes to their full content instead of capturing them as seen. Cross-site frames ask for an extra permission once.",
+    "description": "PRIVACY / PERMISSION STRING — back-translation checked. Tooltip on the \"Expand scrollable panels & iframes\" checkbox. The second sentence states that turning this on will prompt for an additional browser permission, and that it is asked only once. Do not weaken, drop or invert that statement."
+  },
+  "popupDismiss": {
+    "message": "Dismiss",
+    "description": "Tooltip and accessible name for the X button that closes the error box in the popup. Imperative verb."
+  },
+  "popupLastErrorFailed": {
+    "message": "Last $MODE$ failed — $REASON$",
+    "description": "Shown in the popup when the previous capture failed. $MODE$ is one of the capture-mode names below (e.g. \"full-page capture\"); $REASON$ is a complete sentence explaining what went wrong. Reorder freely for your language — for example, put the mode name after the verb.",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Last $MODE$ failed — $REASON$ ($ORIGIN$)",
+    "description": "Same as popupLastErrorFailed, used when the page's origin is known. $ORIGIN$ is a scheme and host such as \"https://example.com\" — never translate or reformat it.",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "full-page capture",
+    "description": "Used inside the sentence popupLastErrorFailed, so it starts lower-case in English. Name of the capture mode that photographs the whole scrolling page."
+  },
+  "popupModeNameVisible": {
+    "message": "visible-area capture",
+    "description": "Used inside the sentence popupLastErrorFailed, so it starts lower-case in English. Name of the capture mode that photographs only what is on screen."
+  },
+  "popupModeNameRegion": {
+    "message": "region capture",
+    "description": "Used inside the sentence popupLastErrorFailed, so it starts lower-case in English. Name of the capture mode where the user drags a rectangle."
+  },
+  "popupModeNameElement": {
+    "message": "element capture",
+    "description": "Used inside the sentence popupLastErrorFailed, so it starts lower-case in English. Name of the capture mode where the user clicks one box on the page."
+  },
+  "popupModeNameGeneric": {
+    "message": "capture",
+    "description": "Used inside the sentence popupLastErrorFailed when the capture mode is not known. Lower-case in English for that reason."
+  },
+  "popupNoActiveTab": {
+    "message": "No active tab found.",
+    "description": "Error shown in the popup when the browser reports no page in the current window to capture."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Capture failed to start.",
+    "description": "Error shown in the popup when the background worker could not be reached at all. Deliberately vague — nothing more specific is known at this point."
+  },
+  "popupLinkHistory": {
+    "message": "History",
+    "description": "Link in the popup footer, and a button in the topbar of the result and options pages. Opens the library of past screenshots. Use the same word as historyTitle."
+  },
+  "popupLinkBatch": {
+    "message": "Batch",
+    "description": "Link in the popup footer. Opens the page where several page addresses are captured one after another."
+  },
+  "popupLinkOptions": {
+    "message": "Options",
+    "description": "Link in the popup footer, and the tooltip on the gear button on other pages. Opens the settings page."
+  },
+  "optionsPageTitle": {
+    "message": "Options — FullShot",
+    "description": "Browser tab title for the settings page. Pattern: the page name, an em dash, the product name."
+  },
+  "optionsBrand": {
+    "message": "FullShot · Options",
+    "description": "Topbar brand text on the settings page: product name, a middle dot, the page name."
+  },
+  "optionsHeading": {
+    "message": "Options",
+    "description": "Main heading on the settings page."
+  },
+  "optionsLead": {
+    "message": "Changes are saved automatically and synced to your browser profile.",
+    "description": "PRIVACY STRING — back-translation checked. Introductory line on the settings page. It tells the user two things: nothing needs saving by hand, AND these preference values travel with their browser profile (Chrome Sync). Do not drop the syncing half and do not state the opposite."
+  },
+  "optionsSectionImage": {
+    "message": "Image",
+    "description": "Settings section heading, rendered in small capitals. Covers file format, quality and filename."
+  },
+  "optionsFormat": {
+    "message": "Format",
+    "description": "Setting name: which image file type captures are saved as."
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ is lossless; $JPEG$ is smaller; $WEBP$ is smallest at similar quality.",
+    "description": "Explains the trade-off between the three image formats. The format names are file types and must not be translated.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ quality",
+    "description": "Setting name for the compression-quality slider, which applies only to the two lossy formats. Format names must not be translated.",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "description": "The current quality value under the slider, as a percentage. Put the percent sign where your language puts it (before the number in tr, with a space in fr).",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Filename template",
+    "description": "Setting name: the pattern used to build the name of each downloaded file."
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Placeholders: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "description": "Lists the tokens the user may type into the filename template. The tokens are matched literally by the code — translate the word \"Placeholders\" only, and copy every token through exactly as written, braces included.",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Capture",
+    "description": "Settings section heading, rendered in small capitals. Covers everything about how a page is photographed."
+  },
+  "optionsCaptureDelay": {
+    "message": "Extra delay per step",
+    "description": "Setting name: extra waiting time inserted after each scroll during a full-page capture."
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milliseconds to wait after each scroll. Raise for slow, animation-heavy pages.",
+    "description": "Explains the extra-delay setting. \"Milliseconds\" is the unit of the number box next to it."
+  },
+  "optionsHideFixed": {
+    "message": "Hide fixed & sticky elements",
+    "description": "Setting name. \"Fixed\" and \"sticky\" are the CSS behaviours that keep a header pinned to the top of the window while the page scrolls."
+  },
+  "optionsHideFixedDesc": {
+    "message": "Keeps headers from repeating on every screen (shown once at top).",
+    "description": "Explains why hiding pinned headers matters: without it, the same header is photographed once per scroll step and appears many times down the finished image."
+  },
+  "optionsPreScroll": {
+    "message": "Pre-scroll to load lazy content",
+    "description": "Setting name: scroll through the whole page once before capturing, so images that only load when scrolled into view are already there."
+  },
+  "optionsPreScrollDesc": {
+    "message": "Scrolls through the page once before capturing. Slower but catches lazy-loaded images.",
+    "description": "Explains the pre-scroll setting and its cost."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Wait for images to decode",
+    "description": "Setting name: pause until images have finished being drawn before photographing each screen."
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Lets late or lazy images finish decoding before each frame, so they aren't captured as black or blank tiles.",
+    "description": "Explains what goes wrong without the setting: half-drawn images appear as black or empty rectangles in the screenshot."
+  },
+  "optionsHideOverlays": {
+    "message": "Hide banners & pop-ups",
+    "description": "Setting name: remove cookie notices and pop-up boxes before photographing the page."
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Removes cookie/consent banners, newsletter modals and \"get the app\" pop-ups before capturing, and unlocks pages a modal has frozen. Restored afterward.",
+    "description": "Explains the hide-banners setting. \"Restored afterward\" means the page is put back exactly as it was once the capture finishes — keep that reassurance."
+  },
+  "optionsExpandInner": {
+    "message": "Expand scrollable content",
+    "description": "Setting name: grow inner scrolling boxes and embedded frames to their full height before capturing."
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Grows inner panels and iframes to show content hidden below their own fold, instead of capturing them exactly as seen.",
+    "description": "Explains the expand-scrollable-content setting. \"Below their own fold\" means the part of a scrolling box you would have to scroll that box to see."
+  },
+  "optionsExpandPermRow": {
+    "message": "Cross-site frames",
+    "description": "Sub-setting name, indented under \"Expand scrollable content\". Refers to embedded frames that come from a different website than the page itself."
+  },
+  "optionsExpandPermAllow": {
+    "message": "Allow",
+    "description": "Button that asks the browser for the additional permission needed to expand frames from other sites. Imperative verb."
+  },
+  "optionsExpandPermGranted": {
+    "message": "Permission granted — frames from other sites are expanded too.",
+    "description": "PRIVACY / PERMISSION STRING — back-translation checked. Shown when the user has granted the extra permission. States that the permission IS in place. Do not invert."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Without the \"$PERMISSION$\" permission, cross-site frames are captured as seen. Panels and same-site iframes always work.",
+    "description": "PRIVACY / PERMISSION STRING — back-translation checked. Shown when the user has NOT granted the extra permission. It says what is lost without it, and reassures that the rest still works. Keep both halves and keep the negation. $PERMISSION$ is the browser's own wording for the permission — use the exact phrase Chrome shows in your language.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Unroll virtualized lists",
+    "description": "Setting name. A \"virtualized\" list only keeps the rows near the screen in the page and throws the rest away; unrolling steps through it so the whole list is captured."
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Steps through render-window feeds ($LIB1$ / $LIB2$ style) to capture their full content inline, not just the rows on screen. Slower on very long lists.",
+    "description": "Explains the unroll-virtualized-lists setting. The two names in brackets are JavaScript libraries and must not be translated.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Expand interaction-gated content",
+    "description": "Setting name: open things that are collapsed until clicked, so their contents appear in the screenshot."
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Opens collapsed $DETAILS$, inactive tabs, accordions and \"show more\" sections before capturing, then restores them. Reveals content hidden behind a click.",
+    "description": "Explains the expand-interaction-gated-content setting. $DETAILS$ is the name of an HTML element and must not be translated. \"Accordion\" is the UI pattern where clicking a heading reveals a panel below it.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Click \"$BUTTONTEXT$\" buttons",
+    "description": "Setting name: repeatedly press the button at the bottom of a feed that fetches the next batch of items. $BUTTONTEXT$ is the wording FullShot looks for on the page itself, which it currently only recognises in English — leave it in English.",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Clicks \"load more\" / \"show more\" buttons and waits for the new content to load, repeatedly, until the feed is exhausted. Unlike the option above, this fetches content that isn't on the page yet; the loaded content stays after capture.",
+    "description": "Explains the click-load-more setting. The two quoted phrases are the button wordings FullShot searches for on the page and are recognised in English only — keep them in English inside the quotes. The last clause warns that, unlike the previous setting, the page is left changed afterwards."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Scroll to load infinite feeds",
+    "description": "Setting name: for feeds that load more as you scroll rather than offering a button."
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "For feeds with no \"load more\" button: scrolls to the bottom and waits for the next page to load, repeatedly, until the feed stops growing (bounded, so endless feeds aren't chased). Loaded content stays after capture.",
+    "description": "Explains the infinite-scroll setting. \"Bounded\" means there is a hard limit so a feed that never ends cannot hang the capture. The quoted \"load more\" is the English button wording FullShot looks for — keep it in English."
+  },
+  "optionsWaitStable": {
+    "message": "Wait for content to finish loading",
+    "description": "Setting name: hold off capturing while grey placeholder blocks are still standing in for the real content."
+  },
+  "optionsWaitStableDesc": {
+    "message": "Waits for skeleton / placeholder loaders (aria-busy regions, shimmer blocks) to be replaced by the real content before capturing, so a mid-page \"loading…\" swap isn't captured as grey placeholders. Bounded, so a stuck spinner won't hang the capture.",
+    "description": "Explains the wait-for-content setting. \"Skeleton\" and \"shimmer\" are the industry names for the grey animated blocks shown while content loads. \"aria-busy\" is an HTML attribute name — do not translate it."
+  },
+  "optionsRedactPII": {
+    "message": "Auto-redact sensitive info",
+    "description": "Setting name: look for personal data in the text a page exposes and cover it in the saved image. \"Redact\" = permanently cover over. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can."
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Scans the text a page exposes for emails, phone numbers, credit-card numbers, SSNs and API keys, and paints a solid block over what it matches in the saved image. It cannot read text drawn as pixels — a canvas, an image, a PDF, a video frame. Detection runs on your device; nothing is ever sent anywhere. Full-page (document-scroll) captures; the block is permanent, so review the result yourself.",
+    "description": "PRIVACY STRING — back-translation checked. Explains the auto-redact setting. Three claims must survive exactly: the detection happens on the user's own machine, NOTHING IS EVER SENT ANYWHERE, and the solid block cannot be undone. Do not soften or invert that negation. IT DESCRIBES AN ACT AND ITS LIMIT, NOT A RESULT: FullShot reads the text the page hands it, which is less than what is in the picture, so do not translate the first clause as \"scans the page\" or the third as \"covers everything it finds\" — both promise a completeness the product cannot deliver, and that promise in 54 languages is what this wording replaced. Keep the sentence saying it cannot read text drawn as pixels; keep the closing nudge to look at the result. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". \"SSN\" is the US Social Security number — use the local term for a national identity number or keep the abbreviation."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Max page height",
+    "description": "Setting name: the tallest page FullShot will try to capture, as a safety limit."
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Safety cap (CSS px) for infinite-scroll feeds.",
+    "description": "Explains the max-page-height setting. \"CSS px\" is the unit and must not be translated."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF export",
+    "description": "Settings section heading, rendered in small capitals. \"PDF\" must not be translated."
+  },
+  "optionsPdfPaper": {
+    "message": "Default paper size",
+    "description": "Setting name: the page size used when saving a screenshot as a PDF."
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" makes one page exactly the size of the screenshot.",
+    "description": "Explains the paper-size setting. $IMAGESIZE$ must match the translation of optionsPaperAuto exactly, because it names that dropdown choice.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Image size",
+    "description": "Dropdown choice for paper size: make the PDF page exactly as big as the image, rather than a standard paper size."
+  },
+  "optionsPaperA4": {
+    "message": "A4",
+    "description": "Dropdown choice for paper size. A4 is an international paper standard — keep the designation as-is."
+  },
+  "optionsPaperLetter": {
+    "message": "Letter",
+    "description": "Dropdown choice for paper size. US Letter is a North American paper standard; use the local name for it if one exists, otherwise keep \"Letter\"."
+  },
+  "optionsPaperLegal": {
+    "message": "Legal",
+    "description": "Dropdown choice for paper size. US Legal is a North American paper standard (longer than Letter); use the local name if one exists, otherwise keep \"Legal\". This is a paper size, not anything to do with law."
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientation",
+    "description": "Setting name: whether PDF pages are taller than wide or wider than tall."
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "For fixed paper sizes.",
+    "description": "Explains that orientation only matters when a standard paper size is chosen, not for \"Image size\"."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Portrait",
+    "description": "Dropdown choice: page taller than wide."
+  },
+  "optionsOrientationLandscape": {
+    "message": "Landscape",
+    "description": "Dropdown choice: page wider than tall."
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Smart page splitting",
+    "description": "Setting name: choose where to break a tall image across PDF pages so text is not cut through."
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Looks for a visual gap near each page break so lines of text aren't cut in half.",
+    "description": "Explains the smart-page-splitting setting."
+  },
+  "optionsPdfStamp": {
+    "message": "Stamp URL & date",
+    "description": "Setting name: print the page address and the capture date at the bottom of every PDF page."
+  },
+  "optionsPdfStampDesc": {
+    "message": "Adds the page URL and capture date to the footer of each PDF page.",
+    "description": "Explains the stamp setting. Note for translators: the stamped text itself is the captured page's own address and is never translated — only this description is."
+  },
+  "optionsSectionDownload": {
+    "message": "Download",
+    "description": "Settings section heading, rendered in small capitals. Covers where files are saved."
+  },
+  "optionsSaveDirectory": {
+    "message": "Directory",
+    "description": "Setting name: the folder inside the browser's downloads folder where screenshots are put."
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Subfolder under $DOWNLOADS$ for your screenshots, e.g. $EXAMPLE$. Blank = $DOWNLOADS$.",
+    "description": "Explains the directory setting. $DOWNLOADS$ names the browser's standard downloads folder — use the name your browser shows for it. $EXAMPLE$ is a sample folder name typed by the user and is kept in English so it stays a valid folder name everywhere.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)",
+    "description": "Greyed-out hint inside the empty directory box, showing what happens if it is left blank: files go straight to the downloads folder. Use the same folder name as in optionsSaveDirectoryDesc."
+  },
+  "optionsSaveAs": {
+    "message": "\"Save as\" dialog",
+    "description": "Setting name: show the browser's file-picker window on every download. Use the wording your browser uses for that window."
+  },
+  "optionsSaveAsDesc": {
+    "message": "Ask where to save each file instead of downloading silently.",
+    "description": "Explains the save-as setting."
+  },
+  "optionsClipboardFit": {
+    "message": "Fit clipboard copies to app limits",
+    "description": "Setting name: shrink very large copied images so other applications will accept them when pasted."
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Downscales copies past $PIXELS$ pixels so pasting into $APP$ & co. works.",
+    "description": "Explains the clipboard-fit setting. $PIXELS$ is a written-out number — format it the way your language writes large numbers. $APP$ is a product name and must not be translated.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Workflow",
+    "description": "Settings section heading, rendered in small capitals. Covers what happens right after a capture finishes."
+  },
+  "optionsAutoDownload": {
+    "message": "Auto-download after capture",
+    "description": "Setting name: save the file immediately, without waiting for the user to press Download."
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Immediately saves the image when a capture finishes.",
+    "description": "Explains the auto-download setting."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Open editor after capture",
+    "description": "Setting name: jump straight to the annotation editor when a capture finishes."
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Jump straight into annotating (single-part captures only).",
+    "description": "Explains the auto-open-editor setting. A very tall screenshot is split into several parts, and those do not open in the editor automatically."
+  },
+  "optionsTheme": {
+    "message": "Theme",
+    "description": "Setting name: light or dark appearance."
+  },
+  "optionsThemeDesc": {
+    "message": "For the popup and all FullShot pages.",
+    "description": "Explains that the theme setting covers every FullShot surface, not just one."
+  },
+  "optionsThemeSystem": {
+    "message": "System",
+    "description": "Theme dropdown choice: follow whatever the operating system is set to."
+  },
+  "optionsThemeLight": {
+    "message": "Light",
+    "description": "Theme dropdown choice: light background, dark text."
+  },
+  "optionsThemeDark": {
+    "message": "Dark",
+    "description": "Theme dropdown choice: dark background, light text."
+  },
+  "optionsShortcuts": {
+    "message": "Keyboard shortcuts",
+    "description": "Setting-row name introducing the current capture shortcuts and where to change them."
+  },
+  "optionsShortcutsDesc": {
+    "message": "Full page: $KEYFULL$ · Visible: $KEYVISIBLE$. Customize at $URL$",
+    "description": "Lists the default capture shortcuts and points at the browser page where they can be changed. The two key combinations and the address must be copied through exactly — do not translate key names or the address.",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Saved ✓",
+    "description": "Brief confirmation that pops up in the corner after a setting is changed. Keep it short — it sits in a small pill."
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕",
+    "description": "Shown in the same small pill as \"Saved ✓\" when the browser refused to store the change — most often because the settings were being written too fast. It has to read as the plain opposite of the confirmation, because the pill appearing is the user's only evidence either way. Keep it as short as the confirmation. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here."
+  },
+  "optionsSectionData": {
+    "message": "Your data",
+    "description": "Section heading for everything FullShot has stored on this device: how much space it uses, exporting it, and deleting it."
+  },
+  "optionsStorage": {
+    "message": "Storage",
+    "description": "Row title for the amount of space FullShot is using on this device."
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ of $QUOTA$ used on this device.",
+    "description": "How much local space FullShot is using, and how much the browser allows. Both are already-formatted sizes such as \"12.40 MB\".",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "This browser does not report how much space FullShot is using.",
+    "description": "Shown instead of the sizes when the browser offers no storage estimate. It says the browser is silent, NOT that nothing is stored - keep that distinction."
+  },
+  "optionsStorageKept": {
+    "message": "Your screenshots are kept: the browser will not clear them to reclaim space.",
+    "description": "Good state. The local database has been granted persistent storage."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Your screenshots are in the browser’s best-effort store, which it can clear to reclaim space.",
+    "description": "Warning state. The local database has not been granted persistent storage, so the browser may delete the whole history without asking. Keep the warning; do not soften it."
+  },
+  "optionsStorageKeep": {
+    "message": "Keep my data",
+    "description": "Button. Asks the browser to mark FullShot’s local database as persistent so it is not cleared to reclaim space."
+  },
+  "optionsExport": {
+    "message": "Export everything",
+    "description": "Row title for writing a single file holding the user’s settings and screenshots."
+  },
+  "optionsExportDesc": {
+    "message": "Writes one file holding your settings and your screenshot list. It is saved to this device and sent nowhere.",
+    "description": "Explains what the export file contains and that it never leaves the device. Keep the last clause."
+  },
+  "optionsExportImages": {
+    "message": "Include the images",
+    "description": "Toggle label. Whether the export file carries the pictures themselves as well as the list."
+  },
+  "optionsExportImagesDesc": {
+    "message": "The pictures themselves, which are nearly all of the size. Without them the file lists your screenshots but holds none of them.",
+    "description": "Explains the trade-off behind the \"Include the images\" toggle."
+  },
+  "optionsExportSize": {
+    "message": "File size: about $SIZE$",
+    "description": "The size of the export file, shown BEFORE it is written so the user can change their mind. $SIZE$ is an already-formatted size such as \"310.44 MB\".",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Leftover data",
+    "description": "Row title for frames left on disk by captures that were interrupted."
+  },
+  "optionsSweepDesc": {
+    "message": "A capture that is interrupted can leave frames on disk that belong to no screenshot. They appear on no page, so no page can delete them. This finds them and removes them.",
+    "description": "Explains what leftover data is and why a separate button exists for it."
+  },
+  "optionsSweepBtn": {
+    "message": "Find and remove",
+    "description": "Button. Scans the local database for leftover data and deletes what it finds."
+  },
+  "optionsSweepResult": {
+    "message": "Removed. Captures cleaned up: $COUNT$ · Space freed: $SIZE$",
+    "description": "Result line after the leftover scan found something. $COUNT$ is a whole number, $SIZE$ an already-formatted size. Written as a list rather than a sentence so that no grammatical agreement with the number is needed.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "description": "Result line after the leftover scan found rows it could not delete — including the case where it could not delete any of them, which must never read as an all-clear. $COUNT$ and $FOUND$ are whole numbers, $SIZE$ an already-formatted size. Written as a list rather than a sentence so that no grammatical agreement with either number is needed. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Nothing left over: everything stored belongs to a screenshot you can see.",
+    "description": "Result line after the leftover scan found nothing."
+  },
+  "optionsCountUnknown": {
+    "message": "—",
+    "description": "Stands in for a count the database would not supply, inside the sentence that asks before deleting everything. An em dash in English. Use whatever mark your language uses for \"no value here\"; it must NOT be the digit zero, because zero is a measurement and this is the absence of one — and the reader is about to agree to something that cannot be undone. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here."
+  },
+  "optionsReset": {
+    "message": "Reset settings",
+    "description": "Row title for putting every setting on this page back to its default."
+  },
+  "optionsResetDesc": {
+    "message": "Puts every setting on this page back to the value it shipped with. Your screenshots are not touched.",
+    "description": "Explains the reset button, including what it does NOT do."
+  },
+  "optionsResetBtn": {
+    "message": "Reset",
+    "description": "Button. Restores the default value of every setting on the options page."
+  },
+  "optionsResetConfirm": {
+    "message": "Put every FullShot setting back to its default? Your screenshots are not affected.",
+    "description": "Confirmation question shown before the settings are reset. Keep the reassurance about screenshots."
+  },
+  "optionsResetDone": {
+    "message": "Settings are back to their defaults.",
+    "description": "Result line after the settings were reset."
+  },
+  "optionsDeleteAll": {
+    "message": "Delete everything",
+    "description": "Row title and button label for deleting every screenshot and every leftover FullShot has stored."
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Removes every screenshot in your History, and everything left behind by interrupted captures. Your settings stay as they are.",
+    "description": "Explains the delete-everything button, including what it does NOT do."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Delete everything FullShot has stored on this device?\n\nScreenshots in your History: $COUNT$\nLeftovers from interrupted captures: $LEFTOVER$\nSpace this frees: $SIZE$\n\nYour settings are not affected. This cannot be undone.",
+    "description": "The confirmation shown before anything is destroyed. It must state plainly what will go, how much of it there is, and what will NOT be touched. Keep the blank lines and the line breaks, and keep the final warning. $COUNT$ and $LEFTOVER$ are whole numbers, $SIZE$ an already-formatted size.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Deleted. FullShot now stores no screenshots on this device.",
+    "description": "Result line after everything was deleted."
+  },
+  "resultPageTitle": {
+    "message": "Screenshot — FullShot",
+    "description": "Browser tab title for the result page before the captured page's own title is known."
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "description": "Browser tab title for the result page once the capture is loaded. $TITLE$ is the captured page's own title, in the captured page's own language — never translate or alter it.",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Copy",
+    "description": "Button that puts the screenshot on the clipboard. Imperative verb, very short — it sits in a crowded toolbar."
+  },
+  "resultCopyTip": {
+    "message": "Copy image to clipboard",
+    "description": "Tooltip for the Copy button on the result page."
+  },
+  "resultEdit": {
+    "message": "Edit",
+    "description": "Button that opens the annotation editor. Imperative verb, very short."
+  },
+  "resultEditTip": {
+    "message": "Open in editor",
+    "description": "Tooltip for the Edit button on the result page."
+  },
+  "resultBeautify": {
+    "message": "Beautify",
+    "description": "Button that opens the tool for putting the screenshot on a coloured backdrop for sharing. Imperative verb, very short."
+  },
+  "resultBeautifyTip": {
+    "message": "Beautify — frame & background for sharing",
+    "description": "Tooltip for the Beautify button on the result page."
+  },
+  "resultClip": {
+    "message": "Clip",
+    "description": "Button that opens the tool for turning a tall screenshot into a scrolling animation. Very short — noun, as in a short video clip."
+  },
+  "resultClipTip": {
+    "message": "Scroll clip — animated $GIF$ / $WEBM$",
+    "description": "Tooltip for the Clip button. The two file formats must not be translated.",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF paper size",
+    "description": "Tooltip for the dropdown choosing the page size of an exported PDF."
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "description": "A choice in the PDF paper-size dropdown, prefixed so it reads clearly in a toolbar full of other controls. $PAPER$ is one of the paper-size names (Image size, A4, Letter, Legal).",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF",
+    "description": "Button that exports the screenshot as a PDF. A file format name — do not translate."
+  },
+  "resultDownload": {
+    "message": "Download",
+    "description": "The main button on the result page: save the image to disk. Imperative verb."
+  },
+  "resultDeleteTip": {
+    "message": "Delete screenshot",
+    "description": "Tooltip for the trash button on the result page."
+  },
+  "resultHistoryTip": {
+    "message": "Screenshot history",
+    "description": "Tooltip for the History button on the result page."
+  },
+  "resultProgressAssembling": {
+    "message": "Assembling your screenshot…",
+    "description": "Shown with a spinner while the captured pieces are being joined into one image. Keep the trailing ellipsis."
+  },
+  "resultProgressDecodingOne": {
+    "message": "Decoding $COUNT$ frame…",
+    "description": "PLURAL: the 'one' form. Progress line while the captured screens are being read back. A \"frame\" is one photographed screenful.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Decoding $COUNT$ frames…",
+    "description": "PLURAL: the 'other' (default) form. Progress line while the captured screens are being read back. A \"frame\" is one photographed screenful. Provide every plural form your language needs; the runtime picks by CLDR category.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Stitching part $INDEX$…",
+    "description": "Progress line while a part of a very tall screenshot is being drawn. Used when the total number of parts is not yet known.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Stitching part $INDEX$ of ~$TOTAL$…",
+    "description": "Progress line while a part of a very tall screenshot is being drawn. The tilde means the total is an estimate — keep that hedge if your language has one.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Saving…",
+    "description": "Progress line while the finished screenshot is written to the local library. Keep the trailing ellipsis."
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "description": "The summary line in the result page topbar. $NAME$ is the captured page's own title or address, in its own language — never translate it. $WIDTH$ and $HEIGHT$ are pixel counts, $SIZE$ is a file size such as \"1.20 MB\". Note for right-to-left languages: the dimensions and the address must stay left-to-right.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Tip: drag the image straight to your desktop, or use $DOWNLOAD$.",
+    "description": "Hint above the screenshot. $DOWNLOAD$ names the Download button and must match the translation of resultDownload.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Nothing here",
+    "description": "Heading shown when the requested screenshot cannot be found."
+  },
+  "resultEmptyBody": {
+    "message": "This screenshot no longer exists.",
+    "description": "Explanation under \"Nothing here\": the screenshot was deleted or was never saved."
+  },
+  "resultOpenHistory": {
+    "message": "Open history",
+    "description": "Button offered when a screenshot cannot be found: go to the library of saved screenshots instead."
+  },
+  "resultSomethingWrong": {
+    "message": "Something went wrong — $REASON$",
+    "description": "Shown in place of the screenshot when loading or saving it failed. $REASON$ is a short clause that begins lower-case and ends in a full stop, such as \"the image is too large to export here.\"",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Part $INDEX$ of $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "description": "Heading above each piece of a screenshot that was too tall to keep in one image. The dimensions must stay left-to-right in right-to-left languages.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Download part",
+    "description": "Button next to one piece of a split screenshot: save just this piece."
+  },
+  "resultEditPart": {
+    "message": "Edit part",
+    "description": "Button next to one piece of a split screenshot: annotate just this piece."
+  },
+  "resultClipPart": {
+    "message": "Clip part",
+    "description": "Button next to one piece of a split screenshot: turn just this piece into a scrolling animation."
+  },
+  "resultPartAlt": {
+    "message": "Screenshot part $INDEX$",
+    "description": "Alternative text read by screen readers for one piece of a split screenshot.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Downloading $FILENAME$",
+    "description": "Brief confirmation after pressing Download. $FILENAME$ is the name of the file being saved and is built from the captured page — never translate it.",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Delete this screenshot permanently?",
+    "description": "Confirmation question before a screenshot is destroyed from the result page. \"Permanently\" warns it cannot be undone — keep that."
+  },
+  "resultDeleted": {
+    "message": "Screenshot deleted.",
+    "description": "Shown in place of the image once the user has confirmed deletion."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "description": "A STATS LINE, not a verdict. Shown under a screenshot and again in the review dialog before the image is handed to an AI assistant. The three numbers are the whole message: how many patterns the detector matched in the text it was given, how many of those matches it painted over, and how many of those it then read back out of the finished image as solid. ALL THREE COUNT MATCHES, never the solid blocks in the picture - one match needs one block per line it occupies, so a token that wraps across a line is one match and two blocks. Keep the counts in one unit: a reader subtracts them. Do NOT summarise them into a judgement, do not add a reassurance, and do not add plural agreement machinery - a sentence with three counts can only agree with one of them. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "description": "POLARITY-CRITICAL. The variant of the stats line for a capture where the detector matched none of its five patterns. THE POLARITY IS THE MESSAGE: it must say that NOTHING WAS COVERED. It is a fact about the reading, and it says nothing about what is in the picture - a bank account number matches none of the five patterns and is still sensitive. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "description": "POLARITY-CRITICAL. The variant shown when the detector matched more than the product managed to cover. It is arithmetic, not alarm: state the two counts and stop. The shortfall itself is the SEPARATE key redactActsUncovered, which follows this sentence — do not fold it in here, and do not add a noun after the numbers (\"matched 1 patterns\" is why this sentence was split). Do not soften it, do not turn it into an apology or an error, and do not drop any of the three numbers. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "description": "PLURAL: the \"one\" form. POLARITY-CRITICAL, and the one bolded sentence in the design: it is shown only when FullShot covered fewer things than it matched, immediately after redactActsShortfall. It must keep the negation — some matched text IS NOT COVERED in the image the reader is about to share. Provide every plural form your language needs. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". Do not soften it into a possibility and do not turn it into an apology; nothing failed, the product simply covered less than it found. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "description": "PLURAL: the \"other\" form. POLARITY-CRITICAL, and the one bolded sentence in the design: it is shown only when FullShot covered fewer things than it matched, immediately after redactActsShortfall. It must keep the negation — some matched text IS NOT COVERED in the image the reader is about to share. Provide every plural form your language needs. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". Do not soften it into a possibility and do not turn it into an apology; nothing failed, the product simply covered less than it found. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "description": "Appended to the stats line when the redaction pass stopped before it had read the whole page - it ran out of time, out of its element budget, or hit the limit on how many blocks it will paint at once. A statement about FullShot, not about the page. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "description": "Appended to the stats line when the record says the match count is NOT the whole count - the redaction pass gave up somewhere while reading, so the number of matches above is a number over less text than the pass could have reached. It is the human-readable half of the same fact the AI handoff payload states as \"(PARTIAL count)\", and the two surfaces describing one capture must not disagree about it. It carries NO NUMBERS, deliberately: the separate sentences that follow name the gaps that can be counted, and this one covers the gaps that cannot. A statement about FullShot and about the count, not about the picture. Do not turn it into an apology or an error - nothing failed, the count is simply not known to be whole. Do not soften \"may be short\" into a possibility so remote it reads as reassurance. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "description": "Appended to the stats line when the redaction pass gave up on individual items while reading. The first number counts pieces of text FullShot refused to read - too long, or their position could not be measured. The second counts blocks it had already found and ran out of room to draw. Both are statements about what FullShot did, not about what is in the picture, and they report DIFFERENT failures - do not merge them into one number or one clause. Do not add plural agreement machinery: a sentence with two counts can only agree with one of them. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "description": "Appended to the stats line when the redaction pass gave up while composing the image. The first number counts blocks that arrived and had nowhere to be drawn; the second counts blocks that were drawn and that FullShot then did not re-read to confirm they came out solid. The second is NOT a failure of the block - it means nobody looked - and the two must stay distinct, because a reader can act on them differently. Do not add plural agreement machinery: a sentence with two counts can only agree with one of them. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "description": "Shown for a screenshot whose stored record cannot say what the redaction pass did - it was taken by an older version, or it was produced by editing another image. It reports the ABSENCE OF A MEASUREMENT, which is not the same as measuring zero; do not translate it as \"nothing was redacted\". FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "description": "Stands in for a single count the stored record cannot supply, inside the stats line. An em dash in English. Use whatever mark your language uses for \"no value here\"; it must NOT be the digit zero, because zero is a measurement and this is the absence of one. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "description": "Heading of the dialog shown once before a screenshot and its manifest are copied for an AI assistant. Plain and calm - it is not a warning, it is an invitation to look at the picture. Keep it short. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "description": "POLARITY-CRITICAL. The constant paragraph in the review dialog, and the only defence against a reader turning the counts above it back into \"the image is clean\". Both halves must survive: FullShot reads TEXT, and it cannot see the IMAGE. The list of examples is illustrative, not exhaustive. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "description": "Tells the reader how many solid blocks are outlined on the preview image in the review dialog. Only blocks that were read back out of the finished image as solid are outlined; a block the product could not confirm is not shown, so this count can be lower than the number painted. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "description": "POLARITY-CRITICAL. The variant used when there is nothing to outline - either nothing matched, or the image was produced by editing another one and the block positions no longer describe it. Must keep the negation. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "description": "Under the preview in the review dialog. The person is judging a picture, so they have to be told how much smaller than the real thing they are seeing. $PERCENT$ is a whole number. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "description": "Shown in the review dialog, above the preview, when the capture had to be reduced to fit what an AI assistant will accept. THE READER IS BEING TOLD WHAT THEY ARE JUDGING: the picture in front of them is the picture that will be copied, and its small text is unreadable in both. Nothing failed and nothing was lost, so do not translate it as an error or an apology; and do not promise that the copy will work. This is the dialog's own line and it replaces the older toast resultAiOverviewOnly, so it names no button. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "description": "The label on a button that scrolls the preview to one outlined block, and the number printed on that block. Numbered rather than coloured so the blocks can be told apart without seeing colour. $INDEX$ starts at 1. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "description": "The spoken label of the same button, for a reader who cannot see which outline lit up. It says which numbered block it is and how far down the picture that block sits, as a percentage from the top. The visible label is reviewMarkLabel and must stay the beginning of this one, so that a person using speech recognition can say what they can see. $INDEX$ starts at 1; $PERCENT$ is a whole number. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "description": "Button in the review dialog: move the picture back by one screenful. A VIEW IS ONE SCREENFUL OF THE IMAGE, not one outlined block - the person is walking the whole picture, and the outlined blocks are landmarks in it rather than the route. Do not translate this as \"previous block\" or \"previous match\". AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "description": "Button in the review dialog: move the picture on by one screenful, magnifying it first if it is still shown too small to read. A VIEW IS ONE SCREENFUL OF THE IMAGE, not one outlined block. This is the control a person presses repeatedly to look at the whole picture, so keep it short. Do not translate this as \"next block\" or \"next match\". AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "description": "Button in the review dialog: show the picture smaller. Its smallest step is the whole image fitted to the dialog, so this is also how a person gets back to the overview. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "description": "Button in the review dialog: show the picture larger, up to and past the size the exported image itself is - which is what puts the page back at the size it was captured. Magnifying does not recover detail the export lost; it makes what survived big enough to look at. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "description": "Where in the picture the person currently is, beside the walk controls in the review dialog, and read aloud as they move. A VIEW IS ONE SCREENFUL of the image at the size it is being shown at, so the total changes when they zoom. It is a position, not a score and not a task list: it does not say anything has been checked or finished. Two counts, so no plural agreement machinery - a form that agrees with one of them is wrong about the other. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "description": "The spoken name of the scrolling area that holds the picture in the review dialog, and the one place a reader who cannot see the picture is told how big it is. It is a keyboard stop, so this names it AND says what the keyboard does there - without it a keyboard user can reach the buttons that move the picture but never the picture itself. It says which image this is and how large it is; it must not describe the contents, which FullShot cannot read. $DIMS$ is a width and a height already joined and already isolated for writing direction - insert it whole and do not add your own separator. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "description": "The primary button of the review dialog. IT CARRIES THE STATEMENT: the person is asserting that they looked at the picture, and the copy happens because they said so. Keep it first-person and keep both halves - a plain \"Copy\" turns the dialog into furniture. FORBIDDEN IN THIS STRING, IN EVERY LANGUAGE: safe, clean, secure, protected, done, nothing to hide, and any sentence beginning \"this page...\". FullShot reports what it DID; it never says the image is safe to share, because it cannot see the image and the reader can. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "description": "The secondary button of the review dialog. Nothing is copied and the clipboard is left exactly as it was. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "description": "Alternative text for the preview in the review dialog. It names WHICH image this is; it must not describe the contents, which FullShot cannot read. AWAITING-TRANSLATION: no locale has translated this string yet, so every locale renders the English above. Remove this marker in the same edit that lands the first translation - test/i18n-sim reddens if a memory carries the key while the marker is still here.",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "This capture is too tall to paste as one readable image, so $COPY$ puts a shrunk overview of the whole page on the clipboard. Small text in it will not be legible.",
+    "description": "Shown after a very tall capture. The screenshot cannot be sent to an AI assistant as a single image without shrinking it past the point where its text stays readable, so the clipboard receives a reduced whole-page overview instead of the screenshot itself. THE POINT IS THAT THE USER GETS SOMETHING DIFFERENT FROM WHAT THEY THINK: keep both halves — the clipboard holds an overview, and the small text in it cannot be read. Nothing failed and nothing was lost, so do not translate it as an error or an apology, and do not promise that the copy will work. $COPY$ names the Copy button and must match the translation of resultCopy.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Copied part $INDEX$ to clipboard",
+    "description": "Confirmation after copying a split screenshot: only the piece named was copied, not the whole thing.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Building PDF…",
+    "description": "Shown while the PDF is being assembled. Keep the trailing ellipsis."
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF downloaded ($COUNT$ page)",
+    "description": "PLURAL: the 'one' form. Confirmation after a PDF is saved, with how many pages it has.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF downloaded ($COUNT$ pages)",
+    "description": "PLURAL: the 'other' (default) form. Confirmation after a PDF is saved, with how many pages it has. Provide every plural form your language needs.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF failed — $REASON$",
+    "description": "Shown when the PDF could not be produced. $REASON$ is a short clause beginning lower-case.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor — FullShot",
+    "description": "Browser tab title for the annotation editor."
+  },
+  "editorBackTip": {
+    "message": "Back to screenshot",
+    "description": "Tooltip on the back arrow in the editor toolbar. Note: the arrow itself flips direction in right-to-left languages."
+  },
+  "editorToolSelect": {
+    "message": "Select / move ($KEY$)",
+    "description": "Tooltip for the arrow tool: pick an annotation already drawn and drag it. $KEY$ is the keyboard letter that activates it; the letter is fixed in code and must be copied through unchanged even if it no longer matches the translated tool name.",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Crop ($KEY$)",
+    "description": "Tooltip for the crop tool: trim the edges off the screenshot. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Pen ($KEY$)",
+    "description": "Tooltip for the freehand drawing tool. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Highlighter ($KEY$)",
+    "description": "Tooltip for the translucent marker tool that draws over text. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Line ($KEY$)",
+    "description": "Tooltip for the straight-line tool. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Arrow ($KEY$)",
+    "description": "Tooltip for the arrow tool: a line with a head, used to point at something. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Rectangle ($KEY$)",
+    "description": "Tooltip for the box-outline tool. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Ellipse ($KEY$)",
+    "description": "Tooltip for the oval-outline tool. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Text ($KEY$)",
+    "description": "Tooltip for the tool that types a caption onto the image. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Blur / pixelate ($KEY$)",
+    "description": "Tooltip for the tool that scrambles a rectangle so its contents cannot be read. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Numbered step ($KEY$)",
+    "description": "Tooltip for the tool that stamps 1, 2, 3… circles for walkthroughs. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Emoji stamp ($KEY$)",
+    "description": "Tooltip for the tool that places an emoji on the image. $KEY$ is the fixed keyboard letter — copy it through unchanged.",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Custom color",
+    "description": "Tooltip on the colour picker next to the preset colour dots."
+  },
+  "editorStrokeTip": {
+    "message": "Stroke width",
+    "description": "Tooltip on the dropdown that sets how thick drawn lines are."
+  },
+  "editorStrokeThin": {
+    "message": "Thin",
+    "description": "Line-width dropdown choice: the thinnest stroke."
+  },
+  "editorStrokeMedium": {
+    "message": "Medium",
+    "description": "Line-width dropdown choice: the middle stroke."
+  },
+  "editorStrokeThick": {
+    "message": "Thick",
+    "description": "Line-width dropdown choice: the heaviest stroke."
+  },
+  "editorSizeTip": {
+    "message": "Text / emoji size",
+    "description": "Tooltip on the dropdown that sets how large typed text and emoji stamps are."
+  },
+  "editorSizeS": {
+    "message": "S",
+    "description": "Size dropdown choice, small. A single-letter abbreviation — use the initial of your language's word for \"small\" if that reads naturally, otherwise keep the Latin letter."
+  },
+  "editorSizeM": {
+    "message": "M",
+    "description": "Size dropdown choice, medium. A single-letter abbreviation."
+  },
+  "editorSizeL": {
+    "message": "L",
+    "description": "Size dropdown choice, large. A single-letter abbreviation."
+  },
+  "editorSizeXL": {
+    "message": "XL",
+    "description": "Size dropdown choice, extra large. A two-letter abbreviation."
+  },
+  "editorUndoTip": {
+    "message": "Undo ($KEY$)",
+    "description": "Tooltip on the undo button. $KEY$ is a keyboard shortcut and must be copied through exactly.",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Redo ($KEY$)",
+    "description": "Tooltip on the redo button. $KEY$ is a keyboard shortcut and must be copied through exactly.",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Zoom out (-)",
+    "description": "Tooltip on the zoom-out button. The minus sign in brackets is the keyboard key — keep it."
+  },
+  "editorZoomInTip": {
+    "message": "Zoom in (+)",
+    "description": "Tooltip on the zoom-in button. The plus sign in brackets is the keyboard key — keep it."
+  },
+  "editorZoomFit": {
+    "message": "Fit",
+    "description": "Label on the zoom button when the image is scaled to fit the window. Very short — it sits in a 40-pixel button."
+  },
+  "editorZoomTipToHundred": {
+    "message": "Fit to window — click for 100%",
+    "description": "Tooltip on the zoom button while the image is fitted to the window: clicking will switch to actual size."
+  },
+  "editorZoomTipToFit": {
+    "message": "Click to fit window",
+    "description": "Tooltip on the zoom button while the image is at a fixed zoom: clicking will fit it to the window."
+  },
+  "editorExport": {
+    "message": "Export",
+    "description": "Button that opens the menu of save-as formats. Imperative verb."
+  },
+  "editorExportCopy": {
+    "message": "Copy to clipboard",
+    "description": "Export-menu item: put the edited image on the clipboard instead of saving a file."
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ image",
+    "description": "Export-menu item, once per image format. $FORMAT$ is filled in with PNG, JPEG or WebP — a file format name that is never translated. Word order matters: put the format name where your language puts it.",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ document",
+    "description": "Export-menu item for the PDF format. $FORMAT$ is filled in with \"PDF\", a file format name that is never translated.",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Save",
+    "description": "Button that writes the edited image back into the local library. Imperative verb."
+  },
+  "editorSaveTip": {
+    "message": "Save changes to history ($KEY$)",
+    "description": "Tooltip on the Save button. \"History\" is the library of saved screenshots — use the same word as popupLinkHistory. $KEY$ is a keyboard shortcut and must be copied through exactly.",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "More",
+    "description": "Tooltip on the three-dot button that opens a small menu of extra actions."
+  },
+  "editorMenuFiles": {
+    "message": "Go to History",
+    "description": "Menu item that navigates to the library of saved screenshots. Use the same word as popupLinkHistory so the destination is named consistently everywhere."
+  },
+  "editorMenuOptions": {
+    "message": "Go to Options",
+    "description": "Menu item that navigates to the settings page. Use the same word as popupLinkOptions."
+  },
+  "editorMenuShortcuts": {
+    "message": "Keyboard shortcuts",
+    "description": "Menu item that opens the list of editor keyboard shortcuts."
+  },
+  "editorCropApply": {
+    "message": "Apply crop",
+    "description": "Button that commits the pending trim of the image edges. Imperative."
+  },
+  "editorCropCancel": {
+    "message": "Cancel",
+    "description": "Button that abandons the pending crop. Imperative."
+  },
+  "editorShortcutsHeading": {
+    "message": "Keyboard shortcuts",
+    "description": "Heading of the editor's keyboard-shortcut panel."
+  },
+  "editorShortcutTools": {
+    "message": "Select tools",
+    "description": "Right-hand column of the shortcut table: what the row of single letters does — it picks a drawing tool."
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Undo / redo",
+    "description": "Right-hand column of the shortcut table, opposite the undo and redo key combinations."
+  },
+  "editorShortcutSave": {
+    "message": "Save to history",
+    "description": "Right-hand column of the shortcut table. \"History\" is the library of saved screenshots — use the same word as popupLinkHistory."
+  },
+  "editorShortcutZoom": {
+    "message": "Zoom out / in",
+    "description": "Right-hand column of the shortcut table, opposite the minus and plus keys."
+  },
+  "editorShortcutDelete": {
+    "message": "Remove selected object",
+    "description": "Right-hand column of the shortcut table: delete the annotation currently picked, not the screenshot."
+  },
+  "editorShortcutEscape": {
+    "message": "Deselect / cancel crop",
+    "description": "Right-hand column of the shortcut table, opposite the Escape key."
+  },
+  "editorShortcutsClose": {
+    "message": "Close",
+    "description": "Button that shuts the keyboard-shortcut panel. Imperative."
+  },
+  "editorNotFound": {
+    "message": "Screenshot not found",
+    "description": "Heading shown when the editor is opened for a screenshot that no longer exists. Also used by the beautify and scroll-clip pages."
+  },
+  "editorToastDownloaded": {
+    "message": "Downloaded",
+    "description": "Brief confirmation after the edited image is saved to disk."
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF downloaded",
+    "description": "Brief confirmation after the edited image is saved as a PDF."
+  },
+  "editorToastSaved": {
+    "message": "Saved to history",
+    "description": "Brief confirmation after the edited image is written back into the library. \"History\" is that library — use the same word as popupLinkHistory."
+  },
+  "historyPageTitle": {
+    "message": "History — FullShot",
+    "description": "Browser tab title for the library of saved screenshots."
+  },
+  "historyBrand": {
+    "message": "FullShot · History",
+    "description": "Topbar brand text on the history page: product name, a middle dot, the page name."
+  },
+  "historySearchPlaceholder": {
+    "message": "Search title or URL…",
+    "description": "Greyed-out hint inside the search box: it matches against the captured page's title and web address."
+  },
+  "historySelectAll": {
+    "message": "Select all",
+    "description": "Button that ticks every screenshot currently listed. Imperative."
+  },
+  "historyClearSelection": {
+    "message": "Clear selection",
+    "description": "Button that unticks every screenshot; replaces \"Select all\" once everything is ticked. Imperative."
+  },
+  "historyDownloadSelected": {
+    "message": "Download selected",
+    "description": "Button that saves every ticked screenshot to disk. Imperative."
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Download ($COUNT$)",
+    "description": "The Download-selected button once some are ticked, with how many. Space is tight.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Delete selected",
+    "description": "Button that destroys every ticked screenshot. Imperative."
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Delete ($COUNT$)",
+    "description": "The Delete-selected button once some are ticked, with how many. Space is tight.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "No screenshots yet",
+    "description": "Heading shown when the library is empty."
+  },
+  "historyEmptyBody": {
+    "message": "Captures you take will appear here. Click the FullShot icon in your toolbar to get started.",
+    "description": "Explanation under \"No screenshots yet\", pointing the user at the toolbar button."
+  },
+  "historyNoMatchesTitle": {
+    "message": "No matches",
+    "description": "Heading shown when a search returns nothing, as opposed to the library being empty."
+  },
+  "historyNoMatchesBody": {
+    "message": "No screenshots match \"$QUERY$\".",
+    "description": "Explanation under \"No matches\". $QUERY$ is exactly what the user typed and must be passed through untouched. Use your language's quotation marks around it.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ screenshot · $SIZE$",
+    "description": "PLURAL: the 'one' form. The summary in the history topbar: how many screenshots are stored and how much space they use. $SIZE$ is a file size such as \"12.40 MB\".",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ screenshots · $SIZE$",
+    "description": "PLURAL: the 'other' (default) form. The summary in the history topbar. Provide every plural form your language needs.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ of $COUNT$ screenshot · $SIZE$",
+    "description": "PLURAL: the 'one' form, used while a search filter is active. $SHOWN$ is how many match, $COUNT$ how many are stored in total.",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ of $COUNT$ screenshots · $SIZE$",
+    "description": "PLURAL: the 'other' (default) form, used while a search filter is active. The plural agrees with $COUNT$, the total. Provide every plural form your language needs.",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Select",
+    "description": "Tooltip on the tick box in the corner of a screenshot card. Imperative."
+  },
+  "historyCardOpen": {
+    "message": "Open",
+    "description": "Button and thumbnail tooltip on a screenshot card: view it full size. Imperative."
+  },
+  "historyCardEdit": {
+    "message": "Edit",
+    "description": "Button on a screenshot card: open it in the annotation editor. Imperative."
+  },
+  "historyCardDownloadTip": {
+    "message": "Download",
+    "description": "Tooltip on the download arrow of a screenshot card. Imperative."
+  },
+  "historyCardDeleteTip": {
+    "message": "Delete",
+    "description": "Tooltip on the trash icon of a screenshot card. Imperative."
+  },
+  "historyCardOpenOriginal": {
+    "message": "Open original page",
+    "description": "Tooltip on the web address shown under a screenshot card: opens the page that was captured."
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "description": "Second line of a screenshot card. $DATE$ is already formatted for the user's locale by the browser. The dimensions must stay left-to-right in right-to-left languages.",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ parts",
+    "description": "PLURAL: the 'other' (default) form. Second line of a card for a screenshot too tall to keep in one image, so it was split. Only ever shown when there are two or more parts, but languages with dual or paucal forms still need their own variants.",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Screenshot",
+    "description": "Stand-in title on a card when the captured page had no title and no address. Displayed only — it never becomes part of a filename."
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Delete this screenshot?",
+    "description": "Confirmation question before destroying a single screenshot from its card in the history list. Not a plural form — it never carries a count."
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Delete $COUNT$ screenshot permanently?",
+    "description": "PLURAL: the 'one' form. Confirmation before destroying the ticked screenshots. \"Permanently\" warns it cannot be undone — keep that.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Delete $COUNT$ screenshots permanently?",
+    "description": "PLURAL: the 'other' (default) form. Confirmation before destroying the ticked screenshots. Provide every plural form your language needs.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Downloading $COUNT$ screenshot",
+    "description": "PLURAL: the 'one' form. Brief confirmation after starting a bulk download.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Downloading $COUNT$ screenshots",
+    "description": "PLURAL: the 'other' (default) form. Brief confirmation after starting a bulk download. Provide every plural form your language needs.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Deleted",
+    "description": "Brief confirmation after the ticked screenshots have been destroyed."
+  },
+  "beautifyPageTitle": {
+    "message": "Beautify — FullShot",
+    "description": "Browser tab title for the tool that puts a screenshot on a coloured backdrop."
+  },
+  "beautifyHeading": {
+    "message": "Beautify",
+    "description": "Heading in the topbar of the beautify page. Same word as resultBeautify."
+  },
+  "actionBack": {
+    "message": "Back",
+    "description": "Button returning to the screenshot, on the beautify and scroll-clip pages. Preceded by an arrow glyph that must flip direction in right-to-left languages."
+  },
+  "commonLoading": {
+    "message": "Loading…",
+    "description": "Shown while a screenshot is being read, on the beautify and scroll-clip pages. Keep the trailing ellipsis."
+  },
+  "beautifyFieldSize": {
+    "message": "Size",
+    "description": "Group label above the output-size choices, rendered in small capitals."
+  },
+  "beautifyPresetAuto": {
+    "message": "Auto",
+    "description": "Output-size choice: size the result to the image plus its padding, with no fixed shape."
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630",
+    "description": "Output-size choice: the standard link-preview card size used by social networks. \"OG\" is Open Graph, a technical name — keep it and keep the dimensions."
+  },
+  "beautifyPresetSquare": {
+    "message": "Square",
+    "description": "Output-size choice: an equal-sided image, as used by Instagram."
+  },
+  "beautifyPresetPortrait": {
+    "message": "Portrait",
+    "description": "Output-size choice: taller than wide."
+  },
+  "beautifyPresetWide": {
+    "message": "16:9",
+    "description": "Output-size choice: widescreen slide proportions. An aspect ratio — keep the digits and the colon."
+  },
+  "beautifyFieldBackground": {
+    "message": "Background",
+    "description": "Group label above the backdrop colour swatches, rendered in small capitals."
+  },
+  "beautifyBgSlate": {
+    "message": "Slate",
+    "description": "Name of a backdrop colour: a pale cool grey. Shown as the swatch's tooltip."
+  },
+  "beautifyBgGraphite": {
+    "message": "Graphite",
+    "description": "Name of a backdrop colour: a dark charcoal grey. Shown as the swatch's tooltip."
+  },
+  "beautifyBgSky": {
+    "message": "Sky",
+    "description": "Name of a backdrop colour: a blue gradient. Shown as the swatch's tooltip."
+  },
+  "beautifyBgSunset": {
+    "message": "Sunset",
+    "description": "Name of a backdrop colour: a pink-to-peach gradient. Shown as the swatch's tooltip."
+  },
+  "beautifyBgGrape": {
+    "message": "Grape",
+    "description": "Name of a backdrop colour: a purple-to-blue gradient. Shown as the swatch's tooltip."
+  },
+  "beautifyBgMint": {
+    "message": "Mint",
+    "description": "Name of a backdrop colour: a green gradient. Shown as the swatch's tooltip."
+  },
+  "beautifyFieldPadding": {
+    "message": "Padding",
+    "description": "Group label above the slider that sets how much backdrop shows around the screenshot."
+  },
+  "beautifyFieldRadius": {
+    "message": "Corner radius",
+    "description": "Group label above the slider that sets how rounded the screenshot's corners are."
+  },
+  "beautifyFieldEffects": {
+    "message": "Effects",
+    "description": "Group label above the shadow and window-frame tick boxes, rendered in small capitals."
+  },
+  "beautifyShadow": {
+    "message": "Drop shadow",
+    "description": "Tick box: cast a soft shadow behind the screenshot so it lifts off the backdrop."
+  },
+  "beautifyWindowFrame": {
+    "message": "Window frame",
+    "description": "Tick box: draw a fake application title bar above the screenshot, with the three coloured dots."
+  },
+  "beautifyFieldExport": {
+    "message": "Export",
+    "description": "Group label above the Download and Copy buttons, rendered in small capitals."
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "description": "The output size shown in the topbar. Must stay left-to-right in right-to-left languages.",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Scroll clip — FullShot",
+    "description": "Browser tab title for the tool that turns a tall screenshot into a scrolling animation."
+  },
+  "scrollclipHeading": {
+    "message": "Scroll clip",
+    "description": "Heading in the topbar of the scroll-clip page: a short animation that pans down the screenshot."
+  },
+  "scrollclipFieldFormat": {
+    "message": "Format",
+    "description": "Group label above the GIF/WebM choice, rendered in small capitals."
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF",
+    "description": "Animation format choice. A file format name — do not translate."
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM",
+    "description": "Animation format choice. A file format name — do not translate."
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ plays everywhere. $WEBM$ is smaller & smoother (recorded live in your browser).",
+    "description": "PRIVACY STRING — back-translation checked. Explains the trade-off between the two formats. The clause in brackets states that the recording happens locally in the user's own browser — keep that claim intact. Format names must not be translated.",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Output width",
+    "description": "Group label above the 480 / 640 / 800 pixel-width choices."
+  },
+  "scrollclipFieldDensity": {
+    "message": "Density",
+    "description": "Group label above the 1× / 2× / 3× choices: how many real pixels are rendered per output pixel."
+  },
+  "scrollclipDensityHint": {
+    "message": "Higher density renders sharper (closer to the source resolution) — larger file.",
+    "description": "Explains the density choice and its cost in file size."
+  },
+  "scrollclipFieldShape": {
+    "message": "Shape",
+    "description": "Group label above the aspect-ratio choices (16:9, 4:3, 1:1, 4:5, 9:16)."
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Scroll speed (px/s)",
+    "description": "Group label above the speed slider. \"px/s\" is pixels per second and must not be translated."
+  },
+  "scrollclipFieldFps": {
+    "message": "Frame rate (fps)",
+    "description": "Group label above the frame-rate slider. \"fps\" is frames per second and must not be translated."
+  },
+  "scrollclipFieldMotion": {
+    "message": "Motion",
+    "description": "Group label above the bounce and loop tick boxes, rendered in small capitals."
+  },
+  "scrollclipBounce": {
+    "message": "Bounce (scroll back to top)",
+    "description": "Tick box: after reaching the bottom, scroll back up again before the animation ends."
+  },
+  "scrollclipLoop": {
+    "message": "Loop forever",
+    "description": "Tick box: the animation restarts endlessly instead of stopping at the last frame."
+  },
+  "scrollclipCopyFrame": {
+    "message": "Copy frame",
+    "description": "Button that copies the animation's first still image to the clipboard. Space is tight."
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Copy the poster (top) frame as $FORMAT$",
+    "description": "Tooltip for the Copy-frame button. The \"poster frame\" is the still image shown before an animation plays. $FORMAT$ is a file format name and must not be translated.",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ frame · $SECONDS$s",
+    "description": "PLURAL: the 'one' form. The animation summary in the topbar. $SECONDS$ is a decimal number already formatted for the user's locale (a comma in many languages). Dimensions must stay left-to-right in right-to-left languages.",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ frames · $SECONDS$s",
+    "description": "PLURAL: the 'other' (default) form. The animation summary in the topbar. Provide every plural form your language needs. The trailing \"s\" is the abbreviation for seconds — use your language's.",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Rendering frames… $PERCENT$%",
+    "description": "Progress line while each still image of the animation is being drawn. Put the percent sign where your language puts it.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Encoding $FORMAT$… $PERCENT$%",
+    "description": "Progress line while the still images are being packed into an animated file. $FORMAT$ is a file format name and must not be translated.",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Finalizing…",
+    "description": "Progress line for the last step of encoding, after every frame is packed. Keep the trailing ellipsis."
+  },
+  "scrollclipProgressRecording": {
+    "message": "Recording $FORMAT$…",
+    "description": "Progress line while the browser records the animation live. $FORMAT$ is a file format name and must not be translated.",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Recording…",
+    "description": "Brief notice that live recording has started. Keep the trailing ellipsis."
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ not supported here — exporting $GIF$",
+    "description": "Shown when this browser cannot record the WebM format, so the older GIF format is used instead. Format names must not be translated.",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Copied poster frame",
+    "description": "Brief confirmation after the animation's first still image is put on the clipboard."
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Batch capture",
+    "description": "Browser tab title for the page that captures several web addresses one after another."
+  },
+  "batchHeading": {
+    "message": "Batch capture",
+    "description": "Main heading on the batch page: capture a list of pages in one run."
+  },
+  "batchIntro": {
+    "message": "Paste URLs, one per line. FullShot opens each page, captures a full-page screenshot into your history, then moves on — up to $MAX$ at a time. Captures appear in your history; click $OPENLINK$ to view, edit or export any of them.",
+    "description": "Introductory paragraph on the batch page. $MAX$ is the hard limit on how many addresses one run accepts. $OPENLINK$ names the link in each finished row and must match the translation of batchRowOpen.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Capture all",
+    "description": "Button that starts the run. Imperative."
+  },
+  "batchPermissionHint": {
+    "message": "Opening these pages needs one-time permission the first time.",
+    "description": "PRIVACY / PERMISSION STRING — back-translation checked. Warns that the first run will ask the browser for an additional permission, and that it is asked only once. Do not drop \"one-time\" and do not invert the requirement."
+  },
+  "batchPermissionDeclined": {
+    "message": "Permission to open those pages was declined.",
+    "description": "PRIVACY / PERMISSION STRING — back-translation checked. Shown when the user refused the browser's permission prompt, so nothing was captured. It must stay a statement that permission was REFUSED, not granted."
+  },
+  "batchPanelPlan": {
+    "message": "Plan",
+    "description": "Column heading over the list of addresses that will be captured, rendered in small capitals."
+  },
+  "batchPanelProgress": {
+    "message": "Progress",
+    "description": "Column heading over the live list of what has been captured so far, rendered in small capitals."
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ page to capture",
+    "description": "PLURAL: the 'one' form. Summary above the plan list.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ pages to capture",
+    "description": "PLURAL: the 'other' (default) form. Summary above the plan list. Provide every plural form your language needs.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ pages to capture (capped at $MAX$)",
+    "description": "Summary above the plan list when the pasted list was longer than the limit and the rest were dropped. Always more than one page, but provide the plural forms your language needs.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "No valid URLs yet",
+    "description": "Shown above an empty plan list: nothing usable has been pasted."
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ skipped: $REASONS$",
+    "description": "Line under the plan list saying how many pasted lines were rejected and why. $REASONS$ is a comma-separated list of short reasons (see the batchSkipReason* messages) — join them with your language's list separator.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "unsupported scheme",
+    "description": "Reason a pasted line was rejected: the address does not start with http or https. Lower-case — it appears inside a comma-separated list."
+  },
+  "batchSkipReasonInvalid": {
+    "message": "invalid",
+    "description": "Reason a pasted line was rejected: it is not a usable web address at all. Lower-case — it appears inside a comma-separated list."
+  },
+  "batchSkipReasonNoHost": {
+    "message": "no host",
+    "description": "Reason a pasted line was rejected: there is no site name in it. Lower-case — it appears inside a comma-separated list."
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "duplicate",
+    "description": "Reason a pasted line was rejected: the same address is already in the list. Lower-case — it appears inside a comma-separated list."
+  },
+  "batchSkipReasonEmpty": {
+    "message": "empty",
+    "description": "Reason a pasted line was rejected: the line held nothing. Lower-case — it appears inside a comma-separated list."
+  },
+  "batchSkipReasonOverCap": {
+    "message": "over cap ($MAX$)",
+    "description": "Reason a pasted line was rejected: the list was already at its limit. Lower-case — it appears inside a comma-separated list.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ done",
+    "description": "Summary above the progress list: how many of the pages have been captured.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ done, $FAILED$ failed",
+    "description": "Summary above the progress list when some pages could not be captured.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ done — complete",
+    "description": "Summary above the progress list once the whole run has finished with no failures.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ done, $FAILED$ failed — complete",
+    "description": "Summary above the progress list once the whole run has finished and some pages failed.",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "open",
+    "description": "Link at the end of a finished row: view that screenshot. Lower-case, because it sits inline at the end of a row. Must match $OPENLINK$ in batchIntro."
+  },
+  "batchJobTimedOut": {
+    "message": "capture timed out",
+    "description": "Failure reason printed in a batch row: the page took too long. Lower-case and terse — it sits in a narrow column next to the address."
+  },
+  "batchJobNoSession": {
+    "message": "no capture session",
+    "description": "Failure reason printed in a batch row: FullShot lost track of the capture. Lower-case and terse — it sits in a narrow column next to the address."
+  },
+  "batchJobFailed": {
+    "message": "capture failed",
+    "description": "Failure reason printed in a batch row, when nothing more specific is known. Lower-case and terse."
+  },
+  "batchJobError": {
+    "message": "capture error",
+    "description": "Failure reason printed in a batch row, when the page itself reported a problem. Lower-case and terse."
+  },
+  "regionHintDrag": {
+    "message": "Drag to select a region — $ESC$ to cancel",
+    "description": "Instruction shown in a pill at the top of the web page while the user is dragging out a rectangle to capture. $ESC$ is the name of the Escape key — use the name printed on keyboards in your locale.",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Click an element to capture it — $ESC$ to cancel",
+    "description": "Instruction shown in a pill at the top of the web page while the user is picking one box on the page to capture. $ESC$ is the name of the Escape key — use the name printed on keyboards in your locale.",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try FullShot on a normal web page.",
+    "description": "Refusal shown when the user tries to capture one of the browser's own pages. \"Settings\", \"Extensions\" and \"New Tab\" are names of browser pages — use the names the browser shows in your language. The second sentence tells the user what to do instead; keep it."
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools windows cannot be captured by an extension. Use your computer's own screenshot tool for those.",
+    "description": "Refusal shown when the user tries to capture the browser's developer-tools window. \"DevTools\" is a product name — keep it. The second sentence offers the alternative; keep it."
+  },
+  "errRestrictedViewSource": {
+    "message": "View-source pages cannot be captured. Capture the page itself instead.",
+    "description": "Refusal shown when the user tries to capture the raw HTML view of a page. \"View source\" is the browser's own menu wording — use your language's."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Extension pages, including FullShot's own, are protected by the browser and cannot be captured.",
+    "description": "Refusal shown when the user tries to capture a page belonging to an extension — FullShot's own pages included."
+  },
+  "errRestrictedWebstore": {
+    "message": "The Chrome Web Store blocks extensions from reading its pages, so this one cannot be captured.",
+    "description": "Refusal shown when the user tries to capture the extension store. \"Chrome Web Store\" is a product name — use the store's own name in your language if it has one."
+  },
+  "errRestrictedGeneric": {
+    "message": "This page is protected by the browser and cannot be captured.",
+    "description": "Refusal shown for any other page the browser will not let an extension read."
+  },
+  "errWrongTab": {
+    "message": "Capture stopped — you switched tabs. Keep this page in front until FullShot finishes.",
+    "description": "Shown when the user moved to another tab part-way through a capture, so FullShot gave up rather than photograph the wrong page. The second sentence tells the user how to succeed next time; keep it."
+  },
+  "errGeneric": {
+    "message": "The capture stopped before it finished. Please try again.",
+    "description": "The catch-all failure message, used whenever nothing more specific is known. Deliberately vague — it must never hint at page content."
+  },
+  "errBusy": {
+    "message": "A capture is already running in this tab.",
+    "description": "Shown when the user starts a second capture in a tab that is still busy with the first. Not really a failure — a nudge to wait."
+  },
+  "errBlocked": {
+    "message": "This page cannot be captured (browser restriction).",
+    "description": "Shown when the browser refused to let FullShot run on the page at all."
+  },
+  "errNoStart": {
+    "message": "FullShot could not start on this page. Reload the page and try again.",
+    "description": "Shown when FullShot's helper script could not be injected into the page. The second sentence is the remedy; keep it."
+  },
+  "errCrash": {
+    "message": "The capture stopped unexpectedly. Please try again.",
+    "description": "Shown when the capture threw an error part-way through."
+  },
+  "errUnknownMessage": {
+    "message": "Unknown message.",
+    "description": "Shown when an internal instruction FullShot does not recognise reaches the background worker. A developer-facing situation the user should never normally see."
+  },
+  "errQuota": {
+    "message": "The browser is limiting how fast pages can be photographed. Wait a moment and try again.",
+    "description": "Shown when the browser's rate limit on screen captures was hit. The remedy is to wait, NOT to reload — do not change that advice."
+  },
+  "errFrameHandover": {
+    "message": "The browser stopped handing over the screen part way through. Wait a few seconds and try again.",
+    "description": "Shown when the browser refused to supply one of the screenfuls part way through a multi-screen capture. The remedy is to wait a few seconds, NOT to reload — do not change that advice."
+  },
+  "errLostTab": {
+    "message": "The capture lost track of this tab. Reload the page and try again.",
+    "description": "Shown when the page and the background worker fell out of step, usually because the page was reloaded or navigated during a capture. The second sentence is the remedy; keep it."
+  },
+  "errStoppedEarly": {
+    "message": "The capture was stopped before it finished.",
+    "description": "Shown when a capture in progress was cancelled — by the user pressing Escape, by the tab closing, or by the page navigating away. Neutral in tone: this is usually not an error the user needs to fix."
+  },
+  "errStorageFull": {
+    "message": "There is no room left to store this capture. Delete some screenshots from your History, then try again.",
+    "description": "Shown when the browser refused a write because the disk or the storage quota is full. The remedy is to free space, NOT to wait and NOT to reload - do not change that advice. Distinct from errQuota, which is about how FAST pages may be photographed."
+  },
+  "reasonGeneric": {
+    "message": "no reason was given. Please try again.",
+    "description": "A clause, not a sentence: it is appended after a prefix such as \"Copy failed — \". It therefore starts lower-case in English and ends in a full stop. Used when the underlying failure was not one FullShot recognises."
+  },
+  "reasonDecodeFailed": {
+    "message": "that screenshot could not be decoded.",
+    "description": "A clause appended after a prefix such as \"Copy failed — \". Starts lower-case, ends in a full stop. The stored image could not be read back."
+  },
+  "reasonTooLarge": {
+    "message": "the image is too large to export here.",
+    "description": "A clause appended after a prefix such as \"PDF failed — \". Starts lower-case, ends in a full stop. The image exceeded what the browser's canvas can export."
+  },
+  "toastCopiedClipboard": {
+    "message": "Copied to clipboard",
+    "description": "Brief confirmation after an image is put on the clipboard. Shared by the result, editor and beautify pages."
+  },
+  "toastCopyFailed": {
+    "message": "Copy failed — $REASON$",
+    "description": "Shown when copying to the clipboard did not work. $REASON$ is a clause that starts lower-case and ends in a full stop. Keep the dash as the only dash in the sentence.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Export failed — $REASON$",
+    "description": "Shown when saving a file did not work. $REASON$ is a clause that starts lower-case and ends in a full stop. Keep the dash as the only dash in the sentence.",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Saved $FILENAME$",
+    "description": "Brief confirmation naming the file just written. $FILENAME$ is built from the captured page and is never translated.",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Saved $FILENAME$  ·  $SIZE$",
+    "description": "Brief confirmation naming the file just written and how big it is. $FILENAME$ is never translated; $SIZE$ is a file size such as \"2.10 MB\".",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "description": "A file size below one kilobyte. \"B\" is the abbreviation for bytes. $VALUE$ is a whole number already formatted for the locale.",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "description": "A file size in kilobytes. $VALUE$ is a number with one decimal place, already formatted for the locale (a comma in many languages).",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "description": "A file size in megabytes. $VALUE$ is a number with two decimal places, already formatted for the locale (a comma in many languages).",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "description": "A file size in gigabytes. $VALUE$ is a number with two decimal places, already formatted for the locale (a comma in many languages). Use the same unit family as the KB and MB messages above.",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

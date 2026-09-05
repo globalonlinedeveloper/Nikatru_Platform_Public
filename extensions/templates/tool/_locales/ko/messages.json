@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — 여기를 바꾸세요",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "여기를 바꾸세요 — 한 문장, 한 가지 목적, 132자 이하, 홍보 문구 없이.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — 여기를 바꾸세요",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "테마 전환",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "옵션",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "활성 탭",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "읽는 중…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "제목 복사",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "활성 탭을 다시 읽기",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "닫기",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "복사했습니다",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "복사하지 못했습니다 — 대신 Ctrl+C를 누르세요",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "마지막 $ACTION$이(가) 실패했습니다 — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "마지막 $ACTION$이(가) 실패했습니다 — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "제목 읽기",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "복사",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "데이터 지우기",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "실행",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "무언가가 끝나기 전에 중단시켰습니다. 다시 시도해 주세요.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "이 탭은 이미 작업 중입니다.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "이 페이지는 브라우저가 보호하고 있어 읽을 수 없습니다.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "활성 탭을 찾지 못했습니다.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "이 페이지에는 읽을 제목이 없습니다.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "취소했습니다.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "알 수 없는 메시지입니다.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "작업이 끝나기 전에 그 탭이 닫혔습니다.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "확장 프로그램이 응답하지 않았습니다.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "아무것도 돌아오지 않았습니다.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "설정, 확장 프로그램, 새 탭 같은 브라우저 페이지는 모든 확장 프로그램에 금지되어 있습니다. 일반 웹페이지에서 시도해 보세요.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "개발자 도구 창은 확장 프로그램에 금지되어 있습니다.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "소스 보기 페이지는 확장 프로그램에 금지되어 있습니다. 대신 페이지 자체에서 시도해 보세요.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "이 확장 프로그램 자신의 페이지를 포함해 확장 프로그램 페이지는 브라우저가 보호합니다.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome 웹 스토어는 확장 프로그램이 자신의 페이지를 읽지 못하게 막습니다.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "로컬 파일에는 추가 권한이 하나 필요합니다. 브라우저의 확장 프로그램 페이지를 열고 이 확장 프로그램을 찾아 ‘파일 URL에 대한 액세스 허용’을 켜세요.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "이 페이지가 로드되지 않아 아직 읽을 것이 없습니다.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "브라우저에 내장된 PDF 뷰어입니다. 확장 프로그램은 그 안을 읽을 수 없습니다 — PDF를 일반 탭에서 열거나 먼저 내려받으세요.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "이 페이지는 페이지를 연 사이트가 샌드박스에 가두었기 때문에 확장 프로그램이 읽을 수 없습니다.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "부가 기능 사이트는 확장 프로그램이 자신의 페이지를 읽지 못하게 막습니다.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "이 기기에 공간이 없어 아무것도 저장되지 않았습니다. 옵션에서 저장된 행을 몇 개 지우고 다시 시도하세요.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "너무 오래 걸려 중단했습니다. 뒤에 남은 것은 없습니다.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "그 값은 동기화되는 설정에 저장하기에 너무 깁니다. 더 짧은 값을 사용해 보세요.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "그 설정을 저장하지 못했습니다. 잠시 기다렸다가 다시 시도하세요.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "옵션 — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · 옵션",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "옵션",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "자동으로 저장됩니다. 브라우저 동기화가 켜져 있으면 설정이 브라우저 프로필과 함께 이동합니다 — 저희에게 전송되는 일은 없습니다.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "동작",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "열 때 복사",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "팝업이 열리자마자 결과를 클립보드에 복사합니다.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "로컬 기록 남기기",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "기본값은 꺼짐입니다. 켜면 결과가 이 기기에만 저장되고, 아래에 표시되며, 언제든지 삭제할 수 있습니다.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "기록 한도",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "목록이 이 수보다 길어지면 가장 오래된 행부터 사라집니다.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "다음보다 오래된 행 삭제",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "일수입니다. 오래된 행은 백그라운드에서 자동으로 제거됩니다. 기록 한도로 밀려날 때까지 두려면 0으로 설정하세요.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "테마",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "기본적으로 시스템을 따릅니다.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "시스템",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "밝게",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "어둡게",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "내 데이터",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "이 기기에 저장된 것이 없습니다.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "이 기기에 $COUNT$개의 행이 저장되어 있습니다. 밖으로 나가는 것은 없습니다.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "이 기기에 $COUNT$개의 행이 저장되어 있습니다. 밖으로 나가는 것은 없습니다.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "이 기기에 $COUNT$개의 행이 저장되어 있습니다. 밖으로 나가는 것은 없습니다.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "이 기기에 $COUNT$개의 행이 저장되어 있습니다. 밖으로 나가는 것은 없습니다.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "이 기기에 $COUNT$개의 행이 저장되어 있습니다. 밖으로 나가는 것은 없습니다.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "이 기기에 $COUNT$개의 행이 저장되어 있습니다. 밖으로 나가는 것은 없습니다.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "영구: 브라우저가 이것을 지우지 않겠다고 약속했습니다.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "최선 노력: 기기 공간이 부족해지면 브라우저가 스스로 이것을 지울 수 있습니다. 백업을 내보내세요.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "이 브라우저는 저장된 데이터가 유지될지 알려 주지 않습니다. 임시로 여기고 백업을 내보내세요.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$ 중 $USED$ 사용 중.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "삭제",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$의 행 삭제",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "전체 내보내기",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "저장된 모든 행을 이 기기의 JSON 파일 하나에 저장합니다. 업로드되는 것은 없습니다.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "전체 내보내기",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "전체 삭제",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "저장된 모든 행을 이 기기에서 제거합니다. 설정은 그대로 유지됩니다.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "전체 삭제",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "설정 초기화",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "이 페이지의 모든 설정을 기본값으로 되돌리고 동기화되는 브라우저 프로필에서도 제거합니다. 저장된 행은 그대로 유지됩니다.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "설정 초기화",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "문제 신고",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "문제 보고서 준비",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "이 확장 프로그램의 상태를 설명하는 작은 파일을 만듭니다. 저장하기 전에 안에 무엇이 있는지 그대로 볼 수 있고, 어디로도 전송되지 않습니다.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "보고서 준비",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "정보",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — 여기를 바꾸세요",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "이 도구가 하는 일을 정확히 설명하는 한 문장. 작업은 사용자의 기기에서 이루어집니다. 계정 없음, 추적 없음, 네트워크 호출 없음, 저희에게 전송되는 것도 없습니다.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "저장했습니다",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "전부 삭제했습니다",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "삭제하지 못했습니다 — 다시 시도하세요",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "그 설정을 저장하지 못했습니다",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "내보내기를 저장했습니다",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "파일을 저장하지 못했습니다",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "행을 삭제했습니다",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "설정을 초기화했습니다",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "설정을 초기화하지 못했습니다",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "보고서를 저장했습니다",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "취소",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "전부 삭제할까요?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "저장된 모든 행이 이 기기에서 제거됩니다. 설정은 그대로 유지됩니다. 되돌릴 수 없습니다.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "모든 설정을 초기화할까요?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "이 페이지의 모든 환경설정이 기본값으로 돌아가고 동기화되는 브라우저 프로필에서 제거됩니다. 저장된 행은 그대로 유지됩니다. 되돌릴 수 없습니다.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "이 문제 보고서를 저장할까요?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "파일에 담길 내용은 이것이 전부입니다. 페이지 주소도, 페이지 텍스트도, 사용자가 캡처한 것도 들어 있지 않습니다. 어디로도 전송되지 않습니다 — 파일은 이 기기에 저장되며 공유 여부는 사용자가 정합니다.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "보고서 저장",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "시크릿 창 — 이 결과는 기록에 저장되지 않았습니다.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "사이트 액세스",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "모든 사이트에 대한 액세스",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "도구 모음 버튼을 누르지 않은 페이지에서 동작하는 기능에만 필요합니다. 여기에서 언제든지 되돌릴 수 있습니다.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "액세스 허용",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "액세스 취소",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "현재 이 확장 프로그램은 방문하는 모든 사이트를 읽을 수 있습니다.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "이 확장 프로그램은 도구 모음 버튼을 누른 뒤에야 탭을 읽을 수 있습니다.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "액세스를 허용했습니다",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "액세스가 허용되지 않았습니다",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "액세스를 취소했습니다",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "그 액세스를 취소하지 못했습니다",
+    "description": "en: Could not revoke that access"
+  }
+}

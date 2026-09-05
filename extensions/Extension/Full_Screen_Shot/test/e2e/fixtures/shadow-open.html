@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — PII inside an OPEN shadow root, plain nav outside</title>
+<!-- Task shape: shadow-DOM text. Closest spec relatives are §7.1 A (the
+     same-origin iframe) and §7.1 I (the closed shadow root).
+     An open shadow root is a REACHABLE surface, like the same-origin iframe:
+     `host.shadowRoot` is right there. The light DOM outside carries ordinary,
+     genuinely-placed nav text with no PII, so if the walk never descends, the
+     nav alone satisfies `fed > 0 && placed > 0 && matched === 0` and the
+     capture reaches `read-no-match` -> pixels "baked" over a visible email.
+     That is the fifth-fix bug in a different wrapper. The spec names no ledger
+     field for shadow doors (frames{} counts iframes only) — reported as a
+     question rather than guessed at.
+     Marker colours ride on inline spans with line-height 1 so the coloured
+     band IS the glyph band: the bake paints the text rect, not the block
+     element, so a padded row would keep its background either side. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 16px/1.5 system-ui, sans-serif; }
+  #nav { background: rgb(35, 45, 70); color: #fff; padding: 18px 24px; }
+  .band { height: 300px; background: rgb(232, 236, 246); }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var host = document.getElementById('app');
+  var root = host.attachShadow({ mode: 'open' });
+  root.innerHTML =
+    '<style>' +
+    '  .card { padding: 30px 24px; font: 600 20px/1.6 ui-monospace, monospace; }' +
+    '  .mark { font: 600 20px/1 ui-monospace, monospace; }' +
+    '  .email { background: rgb(255, 90, 90); color: #300; }' +
+    '  .phone { background: rgb(90, 200, 120); color: #031; }' +
+    '</style>' +
+    '<div class="card">Account holder: <span class="mark email">jane.doe@example.com</span></div>' +
+    '<div class="card">Duty desk: <span class="mark phone">+1 (555) 123-4567</span></div>';
+});
+</script>
+</head>
+<body>
+  <div id="nav">Dashboard &nbsp; Reports &nbsp; Billing &nbsp; Settings &nbsp; Help centre and product documentation</div>
+  <div class="band"></div>
+  <div id="app"></div>
+  <div class="band"></div>
+  <div class="band"></div>
+  <div id="bottom"></div>
+</body>
+</html>

@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot – skærmbillede af hele siden"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Tag billede af hele siden, det synlige område, et udsnit eller et element. Rediger, marker og gem som PNG, JPEG, WebP eller PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – tag billede af siden (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Tag billede af hele siden"
+  },
+  "commandCaptureVisible": {
+    "message": "Tag billede af det synlige område"
+  },
+  "commandCaptureRegion": {
+    "message": "Tag billede af markeret udsnit"
+  },
+  "commandCaptureElement": {
+    "message": "Tag billede af et element på siden (klik for at vælge)"
+  },
+  "popupToggleTheme": {
+    "message": "Skift tema"
+  },
+  "popupModeFullTitle": {
+    "message": "Hele siden"
+  },
+  "popupModeFullSub": {
+    "message": "Rul og tag hele siden"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Synligt område"
+  },
+  "popupModeVisibleSub": {
+    "message": "Kun det, der er på skærmen"
+  },
+  "popupModeRegionTitle": {
+    "message": "Markeret udsnit"
+  },
+  "popupModeRegionSub": {
+    "message": "Træk for at vælge et område"
+  },
+  "popupModeElementTitle": {
+    "message": "Element"
+  },
+  "popupModeElementSub": {
+    "message": "Klik på et element på siden"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Forsinket optagelse"
+  },
+  "popupModeDelayedSub": {
+    "message": "Hele siden efter nedtælling"
+  },
+  "popupDelayLabel": {
+    "message": "Forsinkelse i sekunder"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Udvid rulbare paneler og iframes"
+  },
+  "popupExpandToggleTip": {
+    "message": "Udvid indre rulbare paneler og iframes til hele deres indhold i stedet for at tage dem, som de ses. Rammer fra andre websteder beder om en ekstra tilladelse én enkelt gang."
+  },
+  "popupDismiss": {
+    "message": "Luk"
+  },
+  "popupLastErrorFailed": {
+    "message": "Seneste $MODE$ mislykkedes – $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Seneste $MODE$ mislykkedes – $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "billede af hele siden"
+  },
+  "popupModeNameVisible": {
+    "message": "billede af det synlige område"
+  },
+  "popupModeNameRegion": {
+    "message": "udsnitsbillede"
+  },
+  "popupModeNameElement": {
+    "message": "elementbillede"
+  },
+  "popupModeNameGeneric": {
+    "message": "optagelse"
+  },
+  "popupNoActiveTab": {
+    "message": "Der blev ikke fundet nogen aktiv fane."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Optagelsen kunne ikke startes."
+  },
+  "popupLinkHistory": {
+    "message": "Historik"
+  },
+  "popupLinkBatch": {
+    "message": "Batch"
+  },
+  "popupLinkOptions": {
+    "message": "Indstillinger"
+  },
+  "optionsPageTitle": {
+    "message": "Indstillinger – FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Indstillinger"
+  },
+  "optionsHeading": {
+    "message": "Indstillinger"
+  },
+  "optionsLead": {
+    "message": "Ændringer gemmes automatisk og synkroniseres med din browserprofil."
+  },
+  "optionsSectionImage": {
+    "message": "Billede"
+  },
+  "optionsFormat": {
+    "message": "Format"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ er tabsfrit, $JPEG$ fylder mindre, og $WEBP$ fylder mindst ved samme kvalitet.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Kvalitet for $JPEG$ og $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Skabelon for filnavn"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Pladsholdere: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Optagelse"
+  },
+  "optionsCaptureDelay": {
+    "message": "Ekstra ventetid pr. trin"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Millisekunder, der ventes efter hver rulning. Sæt den op på langsomme sider med mange animationer."
+  },
+  "optionsHideFixed": {
+    "message": "Skjul fastlåste og klæbende elementer"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Forhindrer, at sidehoveder gentages på hvert skærmbillede (vises kun øverst)."
+  },
+  "optionsPreScroll": {
+    "message": "Rul igennem først for at hente doven indlæsning"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Ruller gennem hele siden én gang før optagelsen. Langsommere, men fanger billeder, der først indlæses undervejs."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Vent på, at billeder afkodes"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Lader sene billeder blive afkodet færdigt før hvert delbillede, så de ikke ender som sorte eller tomme felter."
+  },
+  "optionsHideOverlays": {
+    "message": "Skjul bannere og pop op-vinduer"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Fjerner cookie- og samtykkebannere, nyhedsbrevsvinduer og »hent appen«-pop op-vinduer før optagelsen og låser sider op, som et vindue har frosset. Sættes tilbage bagefter."
+  },
+  "optionsExpandInner": {
+    "message": "Udvid rulbart indhold"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Udvider indre paneler og iframes, så indhold under deres egen kant kommer med, i stedet for at tage dem præcis som de ses."
+  },
+  "optionsExpandPermRow": {
+    "message": "Rammer fra andre websteder"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Tillad"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Tilladelse givet – rammer fra andre websteder udvides også."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Uden tilladelsen »$PERMISSION$« tages rammer fra andre websteder, som de ses. Paneler og iframes fra samme websted virker altid.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Rul virtualiserede lister ud"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Gennemgår feeds med rullevindue (i stil med $LIB1$ / $LIB2$), så hele indholdet kommer med, ikke kun rækkerne på skærmen. Langsommere på meget lange lister.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Udfold indhold, der kræver et klik"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Åbner sammenklappede $DETAILS$, inaktive faner, harmonikaer og »vis mere«-afsnit før optagelsen og lukker dem igen bagefter. Viser indhold, der ellers er gemt bag et klik.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Klik på »$BUTTONTEXT$«-knapper",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Klikker på »load more«- og »show more«-knapper og venter på, at det nye indhold indlæses, igen og igen, indtil feedet er udtømt. Modsat indstillingen ovenfor henter det indhold, der endnu ikke findes på siden, og det indlæste indhold bliver liggende efter optagelsen."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Rul for at hente uendelige feeds"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Til feeds uden en »load more«-knap: ruller til bunden og venter på næste portion, igen og igen, indtil feedet holder op med at vokse (med en grænse, så uendelige feeds ikke jages i det uendelige). Det indlæste indhold bliver liggende efter optagelsen."
+  },
+  "optionsWaitStable": {
+    "message": "Vent på, at indholdet er indlæst færdigt"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Venter på, at skelet- og pladsholderindlæsere (aria-busy-områder, glimtende felter) bliver erstattet af det rigtige indhold, så et »indlæser…«-skift midt på siden ikke ender som grå felter. Med en grænse, så en fastlåst spinner ikke blokerer optagelsen."
+  },
+  "optionsRedactPII": {
+    "message": "Skjul følsomme oplysninger automatisk"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Gennemsøger den tekst, siden viser frem, for e-mailadresser, telefonnumre, betalingskortnumre, CPR-numre og API-nøgler og lægger et massivt felt hen over det, der matcher, i det gemte billede. Den kan ikke læse tekst, der er tegnet som pixels – et lærred, et billede, en PDF, et videobillede. Genkendelsen kører på din enhed; intet bliver nogensinde sendt nogen steder hen. Gælder optagelser af hele siden (dokumentrulning); feltet er permanent, så gennemse selv resultatet."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Maksimal sidehøjde"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Sikkerhedsgrænse (CSS px) for feeds med uendelig rulning."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF-eksport"
+  },
+  "optionsPdfPaper": {
+    "message": "Standardpapirstørrelse"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "»$IMAGESIZE$« gør siden præcis lige så stor som skærmbilledet.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Billedstørrelse"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Retning"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Gælder faste papirstørrelser."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Stående"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Liggende"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Intelligent sideopdeling"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Leder efter et visuelt mellemrum tæt på hvert sideskift, så tekstlinjer ikke skæres midt over."
+  },
+  "optionsPdfStamp": {
+    "message": "Stempl URL og dato"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Tilføjer sidens URL og optagelsesdatoen nederst på hver PDF-side."
+  },
+  "optionsSectionDownload": {
+    "message": "Download"
+  },
+  "optionsSaveDirectory": {
+    "message": "Mappe"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Undermappe i $DOWNLOADS$ til dine skærmbilleder, f.eks. $EXAMPLE$. Tom = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialogen »Gem som«"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Spørg, hvor hver fil skal gemmes, i stedet for at hente den uden videre."
+  },
+  "optionsClipboardFit": {
+    "message": "Tilpas kopier til programmernes grænser"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Nedskalerer kopier over $PIXELS$ pixel, så de kan indsættes i $APP$ og lignende.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Arbejdsgang"
+  },
+  "optionsAutoDownload": {
+    "message": "Hent automatisk efter optagelse"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Gemmer billedet med det samme, når en optagelse er færdig."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Åbn editoren efter optagelse"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Gå direkte i gang med at tilføje noter (kun optagelser i én del)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Gælder pop op-vinduet og alle FullShot-sider."
+  },
+  "optionsThemeSystem": {
+    "message": "System"
+  },
+  "optionsThemeLight": {
+    "message": "Lyst"
+  },
+  "optionsThemeDark": {
+    "message": "Mørkt"
+  },
+  "optionsShortcuts": {
+    "message": "Tastaturgenveje"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Hele siden: $KEYFULL$ · Synligt: $KEYVISIBLE$. Tilpas dem på $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Gemt ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Dine data"
+  },
+  "optionsStorage": {
+    "message": "Lagerplads"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ af $QUOTA$ brugt på denne enhed.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Denne browser oplyser ikke, hvor meget plads FullShot bruger."
+  },
+  "optionsStorageKept": {
+    "message": "Dine skærmbilleder bevares: Browseren sletter dem ikke for at frigøre plads."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Dine skærmbilleder ligger i browserens best effort-lager, som den kan rydde for at frigøre plads."
+  },
+  "optionsStorageKeep": {
+    "message": "Behold mine data"
+  },
+  "optionsExport": {
+    "message": "Eksportér alt"
+  },
+  "optionsExportDesc": {
+    "message": "Skriver én fil med dine indstillinger og listen over dine skærmbilleder. Den gemmes på denne enhed og sendes ingen steder hen."
+  },
+  "optionsExportImages": {
+    "message": "Tag billederne med"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Selve billederne, som udgør næsten hele størrelsen. Uden dem opremser filen dine skærmbilleder, men indeholder ingen af dem."
+  },
+  "optionsExportSize": {
+    "message": "Filstørrelse: cirka $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Efterladte data"
+  },
+  "optionsSweepDesc": {
+    "message": "En afbrudt optagelse kan efterlade billeder på disken, som ikke hører til noget skærmbillede. De vises på ingen side, så ingen side kan slette dem. Dette finder og fjerner dem."
+  },
+  "optionsSweepBtn": {
+    "message": "Find og fjern"
+  },
+  "optionsSweepResult": {
+    "message": "Fjernet. Oryddede optagelser: $COUNT$ · Frigjort plads: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Intet er tilovers: Alt det gemte hører til et skærmbillede, du kan se."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Nulstil indstillinger"
+  },
+  "optionsResetDesc": {
+    "message": "Sætter alle indstillinger på denne side tilbage til den værdi, de kom med. Dine skærmbilleder røres ikke."
+  },
+  "optionsResetBtn": {
+    "message": "Nulstil"
+  },
+  "optionsResetConfirm": {
+    "message": "Sæt alle FullShot-indstillinger tilbage til standardværdien? Dine skærmbilleder påvirkes ikke."
+  },
+  "optionsResetDone": {
+    "message": "Indstillingerne er tilbage på standardværdierne."
+  },
+  "optionsDeleteAll": {
+    "message": "Slet alt"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Fjerner alle skærmbilleder i din historik og alt, hvad afbrudte optagelser har efterladt. Dine indstillinger forbliver, som de er."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Vil du slette alt, hvad FullShot har gemt på denne enhed?\n\nSkærmbilleder i din historik: $COUNT$\nRester fra afbrudte optagelser: $LEFTOVER$\nPlads, det frigør: $SIZE$\n\nDine indstillinger påvirkes ikke. Dette kan ikke fortrydes.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Slettet. FullShot gemmer nu ingen skærmbilleder på denne enhed."
+  },
+  "resultPageTitle": {
+    "message": "Skærmbillede – FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ – FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopiér"
+  },
+  "resultCopyTip": {
+    "message": "Kopiér billedet til udklipsholderen"
+  },
+  "resultEdit": {
+    "message": "Rediger"
+  },
+  "resultEditTip": {
+    "message": "Åbn i editoren"
+  },
+  "resultBeautify": {
+    "message": "Forskøn"
+  },
+  "resultBeautifyTip": {
+    "message": "Forskøn – ramme og baggrund til deling"
+  },
+  "resultClip": {
+    "message": "Klip"
+  },
+  "resultClipTip": {
+    "message": "Rulleklip – animeret $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF-papirstørrelse"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Hent"
+  },
+  "resultDeleteTip": {
+    "message": "Slet skærmbillede"
+  },
+  "resultHistoryTip": {
+    "message": "Historik over skærmbilleder"
+  },
+  "resultProgressAssembling": {
+    "message": "Samler dit skærmbillede…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Afkoder $COUNT$ delbillede…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Afkoder $COUNT$ delbilleder…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Sammensætter del $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Sammensætter del $INDEX$ af ca. $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Gemmer…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Tip: træk billedet direkte over på skrivebordet, eller brug $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Her er ingenting"
+  },
+  "resultEmptyBody": {
+    "message": "Dette skærmbillede findes ikke længere."
+  },
+  "resultOpenHistory": {
+    "message": "Åbn historik"
+  },
+  "resultSomethingWrong": {
+    "message": "Noget gik galt – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Del $INDEX$ af $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Hent del"
+  },
+  "resultEditPart": {
+    "message": "Rediger del"
+  },
+  "resultClipPart": {
+    "message": "Klip del"
+  },
+  "resultPartAlt": {
+    "message": "Skærmbillede, del $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Henter $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Vil du slette dette skærmbillede permanent?"
+  },
+  "resultDeleted": {
+    "message": "Skærmbilledet er slettet."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Dette skærmbillede er for højt til at blive indsat som ét læsbart billede, så $COPY$ lægger et formindsket overblik over hele siden i udklipsholderen. Lille tekst i det vil ikke kunne læses.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Del $INDEX$ er kopieret til udklipsholderen",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Bygger PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF hentet ($COUNT$ side)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF hentet ($COUNT$ sider)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF mislykkedes – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor – FullShot"
+  },
+  "editorBackTip": {
+    "message": "Tilbage til skærmbilledet"
+  },
+  "editorToolSelect": {
+    "message": "Vælg/flyt ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Beskær ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Pen ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Overstregningstusch ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Linje ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Pil ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Rektangel ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Ellipse ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Tekst ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Slør/pixelér ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Nummereret trin ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Emojistempel ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Brugerdefineret farve"
+  },
+  "editorStrokeTip": {
+    "message": "Stregtykkelse"
+  },
+  "editorStrokeThin": {
+    "message": "Tynd"
+  },
+  "editorStrokeMedium": {
+    "message": "Mellem"
+  },
+  "editorStrokeThick": {
+    "message": "Tyk"
+  },
+  "editorSizeTip": {
+    "message": "Tekst-/emojistørrelse"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Fortryd ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Gendan ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Zoom ud (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Zoom ind (+)"
+  },
+  "editorZoomFit": {
+    "message": "Tilpas"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Tilpasset til vinduet – klik for 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Klik for at tilpasse til vinduet"
+  },
+  "editorExport": {
+    "message": "Eksportér"
+  },
+  "editorExportCopy": {
+    "message": "Kopiér til udklipsholder"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$-billede",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$-dokument",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Gem"
+  },
+  "editorSaveTip": {
+    "message": "Gem ændringer i historikken ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Mere"
+  },
+  "editorMenuFiles": {
+    "message": "Gå til Historik"
+  },
+  "editorMenuOptions": {
+    "message": "Gå til Indstillinger"
+  },
+  "editorMenuShortcuts": {
+    "message": "Tastaturgenveje"
+  },
+  "editorCropApply": {
+    "message": "Anvend beskæring"
+  },
+  "editorCropCancel": {
+    "message": "Annuller"
+  },
+  "editorShortcutsHeading": {
+    "message": "Tastaturgenveje"
+  },
+  "editorShortcutTools": {
+    "message": "Vælg værktøj"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Fortryd/gendan"
+  },
+  "editorShortcutSave": {
+    "message": "Gem i historikken"
+  },
+  "editorShortcutZoom": {
+    "message": "Zoom ud/ind"
+  },
+  "editorShortcutDelete": {
+    "message": "Fjern det valgte objekt"
+  },
+  "editorShortcutEscape": {
+    "message": "Fravælg/annuller beskæring"
+  },
+  "editorShortcutsClose": {
+    "message": "Luk"
+  },
+  "editorNotFound": {
+    "message": "Skærmbilledet blev ikke fundet"
+  },
+  "editorToastDownloaded": {
+    "message": "Hentet"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF hentet"
+  },
+  "editorToastSaved": {
+    "message": "Gemt i historikken"
+  },
+  "historyPageTitle": {
+    "message": "Historik – FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Historik"
+  },
+  "historySearchPlaceholder": {
+    "message": "Søg i titel eller URL…"
+  },
+  "historySelectAll": {
+    "message": "Vælg alle"
+  },
+  "historyClearSelection": {
+    "message": "Ryd markering"
+  },
+  "historyDownloadSelected": {
+    "message": "Hent valgte"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Hent ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Slet valgte"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Slet ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Ingen skærmbilleder endnu"
+  },
+  "historyEmptyBody": {
+    "message": "De billeder, du tager, dukker op her. Klik på FullShot-ikonet på værktøjslinjen for at komme i gang."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Ingen resultater"
+  },
+  "historyNoMatchesBody": {
+    "message": "Ingen skærmbilleder passer til »$QUERY$«.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ skærmbillede · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ skærmbilleder · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ af $COUNT$ skærmbillede · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ af $COUNT$ skærmbilleder · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Vælg"
+  },
+  "historyCardOpen": {
+    "message": "Åbn"
+  },
+  "historyCardEdit": {
+    "message": "Rediger"
+  },
+  "historyCardDownloadTip": {
+    "message": "Hent"
+  },
+  "historyCardDeleteTip": {
+    "message": "Slet"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Åbn den oprindelige side"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ dele",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Skærmbillede"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Vil du slette dette skærmbillede?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Vil du slette $COUNT$ skærmbillede permanent?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Vil du slette $COUNT$ skærmbilleder permanent?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Henter $COUNT$ skærmbillede",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Henter $COUNT$ skærmbilleder",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Slettet"
+  },
+  "beautifyPageTitle": {
+    "message": "Forskøn – FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Forskøn"
+  },
+  "actionBack": {
+    "message": "Tilbage"
+  },
+  "commonLoading": {
+    "message": "Indlæser…"
+  },
+  "beautifyFieldSize": {
+    "message": "Størrelse"
+  },
+  "beautifyPresetAuto": {
+    "message": "Auto"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Kvadratisk"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Stående"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Baggrund"
+  },
+  "beautifyBgSlate": {
+    "message": "Skifer"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Himmel"
+  },
+  "beautifyBgSunset": {
+    "message": "Solnedgang"
+  },
+  "beautifyBgGrape": {
+    "message": "Drue"
+  },
+  "beautifyBgMint": {
+    "message": "Mynte"
+  },
+  "beautifyFieldPadding": {
+    "message": "Indvendig margen"
+  },
+  "beautifyFieldRadius": {
+    "message": "Hjørneradius"
+  },
+  "beautifyFieldEffects": {
+    "message": "Effekter"
+  },
+  "beautifyShadow": {
+    "message": "Slagskygge"
+  },
+  "beautifyWindowFrame": {
+    "message": "Vinduesramme"
+  },
+  "beautifyFieldExport": {
+    "message": "Eksport"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Rulleklip – FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Rulleklip"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Format"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ kan afspilles overalt. $WEBM$ fylder mindre og kører mere jævnt (optages direkte i din browser).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Bredde på resultatet"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Tæthed"
+  },
+  "scrollclipDensityHint": {
+    "message": "Højere tæthed giver et skarpere resultat (tættere på kildens opløsning) – men en større fil."
+  },
+  "scrollclipFieldShape": {
+    "message": "Form"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Rullehastighed (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Billedhastighed (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Bevægelse"
+  },
+  "scrollclipBounce": {
+    "message": "Retur (rul tilbage til toppen)"
+  },
+  "scrollclipLoop": {
+    "message": "Gentag i det uendelige"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopiér billede"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopiér det øverste startbillede som $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ delbillede · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ delbilleder · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Gengiver delbilleder… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Koder $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Afslutter…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Optager $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Optager…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ understøttes ikke her – eksporterer $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Startbilledet er kopieret"
+  },
+  "batchPageTitle": {
+    "message": "FullShot – batchoptagelse"
+  },
+  "batchHeading": {
+    "message": "Batchoptagelse"
+  },
+  "batchIntro": {
+    "message": "Indsæt URL'er, én pr. linje. FullShot åbner hver side, tager et billede af hele siden til din historik og går videre – op til $MAX$ ad gangen. Optagelserne havner i historikken; klik på $OPENLINK$ for at se, redigere eller eksportere dem.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Tag alle"
+  },
+  "batchPermissionHint": {
+    "message": "Første gang kræver det en engangstilladelse at åbne disse sider."
+  },
+  "batchPermissionDeclined": {
+    "message": "Tilladelsen til at åbne de sider blev afvist."
+  },
+  "batchPanelPlan": {
+    "message": "Plan"
+  },
+  "batchPanelProgress": {
+    "message": "Fremdrift"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ side skal optages",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ sider skal optages",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ sider skal optages (begrænset til $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Ingen gyldige URL'er endnu"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ sprunget over: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "ikke-understøttet protokol"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "ugyldig"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "intet værtsnavn"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "dublet"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "tom"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "over grænsen ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ færdige",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ færdige, $FAILED$ mislykkedes",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ færdige – fuldført",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ færdige, $FAILED$ mislykkedes – fuldført",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "åbn"
+  },
+  "batchJobTimedOut": {
+    "message": "optagelsen fik timeout"
+  },
+  "batchJobNoSession": {
+    "message": "ingen optagelsessession"
+  },
+  "batchJobFailed": {
+    "message": "optagelsen mislykkedes"
+  },
+  "batchJobError": {
+    "message": "fejl under optagelsen"
+  },
+  "regionHintDrag": {
+    "message": "Træk for at markere et udsnit – $ESC$ annullerer",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Klik på et element for at tage billede af det – $ESC$ annullerer",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Browserens egne sider som Indstillinger, Udvidelser og Ny fane er lukket land for alle udvidelser. Prøv FullShot på en almindelig webside."
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools-vinduer kan ikke optages af en udvidelse. Brug computerens eget skærmbilledeværktøj til dem."
+  },
+  "errRestrictedViewSource": {
+    "message": "Sider med kildekodevisning kan ikke optages. Tag billede af selve siden i stedet."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Udvidelsers sider, også FullShots egne, er beskyttet af browseren og kan ikke optages."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store blokerer for, at udvidelser læser butikkens sider, så denne kan ikke optages."
+  },
+  "errRestrictedGeneric": {
+    "message": "Denne side er beskyttet af browseren og kan ikke optages."
+  },
+  "errWrongTab": {
+    "message": "Optagelsen stoppede – du skiftede fane. Lad denne side blive forrest, indtil FullShot er færdig."
+  },
+  "errGeneric": {
+    "message": "Optagelsen stoppede, før den blev færdig. Prøv igen."
+  },
+  "errBusy": {
+    "message": "Der kører allerede en optagelse i denne fane."
+  },
+  "errBlocked": {
+    "message": "Denne side kan ikke optages (browserbegrænsning)."
+  },
+  "errNoStart": {
+    "message": "FullShot kunne ikke starte på denne side. Genindlæs siden, og prøv igen."
+  },
+  "errCrash": {
+    "message": "Optagelsen stoppede uventet. Prøv igen."
+  },
+  "errUnknownMessage": {
+    "message": "Ukendt besked."
+  },
+  "errQuota": {
+    "message": "Browseren begrænser, hvor hurtigt sider må fotograferes. Vent et øjeblik, og prøv igen."
+  },
+  "errFrameHandover": {
+    "message": "Browseren holdt op med at udlevere skærmen undervejs. Vent et par sekunder, og prøv igen."
+  },
+  "errLostTab": {
+    "message": "Optagelsen mistede sporet af denne fane. Genindlæs siden, og prøv igen."
+  },
+  "errStoppedEarly": {
+    "message": "Optagelsen blev stoppet, før den blev færdig."
+  },
+  "errStorageFull": {
+    "message": "Der er ikke mere plads til at gemme denne optagelse. Slet nogle skærmbilleder fra din historik, og prøv igen."
+  },
+  "reasonGeneric": {
+    "message": "der blev ikke angivet nogen årsag. Prøv igen."
+  },
+  "reasonDecodeFailed": {
+    "message": "det skærmbillede kunne ikke afkodes."
+  },
+  "reasonTooLarge": {
+    "message": "billedet er for stort til at blive eksporteret her."
+  },
+  "toastCopiedClipboard": {
+    "message": "Kopieret til udklipsholderen"
+  },
+  "toastCopyFailed": {
+    "message": "Kopiering mislykkedes – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Eksport mislykkedes – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Gemte $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Gemte $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

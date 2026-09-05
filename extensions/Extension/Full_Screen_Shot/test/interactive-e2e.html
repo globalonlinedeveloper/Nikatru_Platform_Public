@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — interaction-gated content reveal</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #2A3A96; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  details > summary { height: 40px; line-height: 24px; background: #886000; color: #fff; padding: 8px 20px; cursor: pointer; list-style: none; }
+  #detsBody { height: 500px; background: #FFC800; color: #4a3a00; padding: 12px 20px; font-weight: 700; }
+  #tabbar { height: 40px; background: #2A6A5A; color: #fff; padding: 8px 20px; }
+  #tabActive { height: 300px; background: #CFE8E0; color: #234; padding: 12px 20px; }
+  #tabInactive { height: 400px; background: #00C8A0; color: #023; padding: 12px 20px; font-weight: 700; }
+  #accordion { height: 350px; background: #C850A0; color: #fff; padding: 12px 20px; font-weight: 700; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 12px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 460px; max-height: 220px; overflow-y: auto; z-index: 20;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — interaction-gated content. Turn ON "Expand interaction-gated content", then press Alt+Shift+P.</div>
+
+<details id="dets">
+  <summary>Disclosure summary — always visible (click to expand)</summary>
+  <div id="detsBody">COLLAPSED &lt;details&gt; BODY — revealed only if the engine opens it.</div>
+</details>
+
+<div id="tabbar">Tabs — one panel active, one hidden behind an inactive tab</div>
+<div id="tabActive" role="tabpanel">active tab panel — always visible</div>
+<div id="tabInactive" role="tabpanel" aria-hidden="true" style="display:none">INACTIVE TAB PANEL — revealed by the expand pass, then re-hidden.</div>
+
+<div id="accordion" hidden>[hidden] ACCORDION CONTENT — revealed by the expand pass, then re-hidden.</div>
+
+<div id="bottom">PAGE BOTTOM MARKER — appears once at the end.</div>
+<div id="scoreboard">Waiting for capture… enable expandInteractive in options, then Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const dets = $('dets'), tab = $('tabInactive'), acc = $('accordion'), board = $('scoreboard');
+
+  const S = { detsOpened: false, tabRevealed: false, accRevealed: false,
+              detsRestored: false, tabRestored: false, accRestored: false };
+  let phase = 'idle';
+  const shown = el => getComputedStyle(el).display !== 'none';
+
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (dets.open) S.detsOpened = true;
+      if (shown(tab)) S.tabRevealed = true;
+      if (!acc.hasAttribute('hidden') && shown(acc)) S.accRevealed = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.detsRestored = !dets.open;
+        S.tabRestored = !shown(tab) && tab.getAttribute('aria-hidden') === 'true';
+        S.accRestored = acc.hasAttribute('hidden');
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok) {
+    return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + '\n';
+  }
+  function report() {
+    const rows = [
+      ['collapsed <details> opened during capture', S.detsOpened],
+      ['inactive tab panel revealed during capture', S.tabRevealed],
+      ['[hidden] accordion revealed during capture', S.accRevealed],
+      ['<details> restored (closed) after capture', S.detsRestored],
+      ['tab panel restored (aria-hidden + display:none)', S.tabRestored],
+      ['accordion restored ([hidden] re-applied)', S.accRestored]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'INTERACTIVE RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: gold <details> body, teal inactive tab panel, and pink accordion are all present, then the blue BOTTOM marker.';
+    console.log('FSINTERACTIVE', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

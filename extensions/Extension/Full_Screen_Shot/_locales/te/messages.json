@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - మొత్తం పేజీ స్క్రీన్ క్యాప్చర్"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "మొత్తం పేజీ, కనిపించే ప్రాంతం, ఎంచుకున్న ప్రాంతం, ఏ మూలకాన్నైనా క్యాప్చర్ చేయండి. సవరించి PNG, JPEG, WebP, PDF గా ఎగుమతి చేయండి."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - పేజీని క్యాప్చర్ చేయి (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "మొత్తం పేజీని క్యాప్చర్ చేయి"
+  },
+  "commandCaptureVisible": {
+    "message": "కనిపించే ప్రాంతాన్ని క్యాప్చర్ చేయి"
+  },
+  "commandCaptureRegion": {
+    "message": "ఎంచుకున్న ప్రాంతాన్ని క్యాప్చర్ చేయి"
+  },
+  "commandCaptureElement": {
+    "message": "పేజీలోని మూలకాన్ని క్యాప్చర్ చేయి (క్లిక్ చేసి ఎంచుకోండి)"
+  },
+  "popupToggleTheme": {
+    "message": "థీమ్ మార్చు"
+  },
+  "popupModeFullTitle": {
+    "message": "మొత్తం పేజీ"
+  },
+  "popupModeFullSub": {
+    "message": "స్క్రోల్ చేసి మొత్తం పేజీని తీయి"
+  },
+  "popupModeVisibleTitle": {
+    "message": "కనిపించే ప్రాంతం"
+  },
+  "popupModeVisibleSub": {
+    "message": "స్క్రీన్‌పై ఉన్నది మాత్రమే"
+  },
+  "popupModeRegionTitle": {
+    "message": "ఎంచుకున్న ప్రాంతం"
+  },
+  "popupModeRegionSub": {
+    "message": "లాగి ఒక ప్రాంతాన్ని ఎంచుకోండి"
+  },
+  "popupModeElementTitle": {
+    "message": "మూలకం"
+  },
+  "popupModeElementSub": {
+    "message": "పేజీలో ఏ మూలకాన్నైనా క్లిక్ చేయండి"
+  },
+  "popupModeDelayedTitle": {
+    "message": "ఆలస్య క్యాప్చర్"
+  },
+  "popupModeDelayedSub": {
+    "message": "కౌంట్‌డౌన్ తర్వాత మొత్తం పేజీ"
+  },
+  "popupDelayLabel": {
+    "message": "ఆలస్య సెకన్లు"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ సె",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "స్క్రోల్ ప్యానెల్‌లు & iframe‌లను విస్తరించు"
+  },
+  "popupExpandToggleTip": {
+    "message": "లోపలి స్క్రోల్ ప్యానెల్‌లను, iframe‌లను కనిపించినట్టుగా కాకుండా వాటి పూర్తి కంటెంట్ కనిపించేలా విస్తరిస్తుంది. ఇతర సైట్‌ల ఫ్రేమ్‌ల కోసం ఒక్కసారి మాత్రమే అదనపు అనుమతి అడుగుతుంది."
+  },
+  "popupDismiss": {
+    "message": "మూసివేయి"
+  },
+  "popupLastErrorFailed": {
+    "message": "చివరి $MODE$ విఫలమైంది — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "చివరి $MODE$ విఫలమైంది — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "మొత్తం పేజీ క్యాప్చర్"
+  },
+  "popupModeNameVisible": {
+    "message": "కనిపించే ప్రాంత క్యాప్చర్"
+  },
+  "popupModeNameRegion": {
+    "message": "ప్రాంత క్యాప్చర్"
+  },
+  "popupModeNameElement": {
+    "message": "మూలక క్యాప్చర్"
+  },
+  "popupModeNameGeneric": {
+    "message": "క్యాప్చర్"
+  },
+  "popupNoActiveTab": {
+    "message": "సక్రియ ట్యాబ్ ఏదీ కనబడలేదు."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "క్యాప్చర్ ప్రారంభం కాలేదు."
+  },
+  "popupLinkHistory": {
+    "message": "చరిత్ర"
+  },
+  "popupLinkBatch": {
+    "message": "బ్యాచ్"
+  },
+  "popupLinkOptions": {
+    "message": "ఎంపికలు"
+  },
+  "optionsPageTitle": {
+    "message": "ఎంపికలు — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · ఎంపికలు"
+  },
+  "optionsHeading": {
+    "message": "ఎంపికలు"
+  },
+  "optionsLead": {
+    "message": "మార్పులు స్వయంచాలకంగా సేవ్ అవుతాయి, మీ బ్రౌజర్ ప్రొఫైల్‌కు సమకాలీకరించబడతాయి."
+  },
+  "optionsSectionImage": {
+    "message": "చిత్రం"
+  },
+  "optionsFormat": {
+    "message": "ఫార్మాట్"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ నష్టరహితం; $JPEG$ చిన్నది; అదే నాణ్యతలో $WEBP$ అన్నింటికంటే చిన్నది.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ నాణ్యత",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "ఫైల్ పేరు టెంప్లేట్"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "ప్లేస్‌హోల్డర్‌లు: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "క్యాప్చర్"
+  },
+  "optionsCaptureDelay": {
+    "message": "ప్రతి దశకు అదనపు ఆలస్యం"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "ప్రతి స్క్రోల్ తర్వాత వేచి ఉండాల్సిన మిల్లీసెకన్లు. నెమ్మదైన, యానిమేషన్ ఎక్కువున్న పేజీలకు దీన్ని పెంచండి."
+  },
+  "optionsHideFixed": {
+    "message": "స్థిర & అతుక్కుపోయే మూలకాలను దాచు"
+  },
+  "optionsHideFixedDesc": {
+    "message": "ప్రతి స్క్రీన్‌పైనా హెడర్‌లు మళ్లీ మళ్లీ రాకుండా ఆపుతుంది (పైన ఒక్కసారి మాత్రమే కనిపిస్తుంది)."
+  },
+  "optionsPreScroll": {
+    "message": "లేజీ కంటెంట్ లోడ్ కావడానికి ముందే స్క్రోల్ చేయి"
+  },
+  "optionsPreScrollDesc": {
+    "message": "క్యాప్చర్ చేయడానికి ముందు పేజీని ఒకసారి స్క్రోల్ చేస్తుంది. నెమ్మదిగా ఉంటుంది కానీ ఆలస్యంగా లోడ్ అయ్యే చిత్రాలను పట్టుకుంటుంది."
+  },
+  "optionsAdaptiveWait": {
+    "message": "చిత్రాలు పూర్తిగా విడివడే వరకు వేచి ఉండు"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "ప్రతి ఫ్రేమ్‌కు ముందు ఆలస్యమైన చిత్రాలు పూర్తిగా విడివడేందుకు వీలు కల్పిస్తుంది; తద్వారా అవి నలుపు లేదా ఖాళీ గడులుగా క్యాప్చర్ కావు."
+  },
+  "optionsHideOverlays": {
+    "message": "బ్యానర్‌లు & పాప్-అప్‌లను దాచు"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "క్యాప్చర్‌కు ముందు కుకీ/సమ్మతి బ్యానర్‌లు, వార్తాలేఖ మోడల్‌లు, \"యాప్‌ను పొందండి\" పాప్-అప్‌లను తొలగిస్తుంది, మోడల్ స్తంభింపజేసిన పేజీలను విడిపిస్తుంది. తర్వాత అన్నీ పునరుద్ధరించబడతాయి."
+  },
+  "optionsExpandInner": {
+    "message": "స్క్రోల్ అయ్యే కంటెంట్‌ను విస్తరించు"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "లోపలి ప్యానెల్‌లను, iframe‌లను కనిపించినట్టుగా కాకుండా, వాటిలో కింద దాగి ఉన్న కంటెంట్ కూడా కనిపించేలా విస్తరిస్తుంది."
+  },
+  "optionsExpandPermRow": {
+    "message": "ఇతర సైట్‌ల ఫ్రేమ్‌లు"
+  },
+  "optionsExpandPermAllow": {
+    "message": "అనుమతించు"
+  },
+  "optionsExpandPermGranted": {
+    "message": "అనుమతి ఇవ్వబడింది — ఇతర సైట్‌ల ఫ్రేమ్‌లు కూడా విస్తరించబడతాయి."
+  },
+  "optionsExpandPermMissing": {
+    "message": "\"$PERMISSION$\" అనుమతి లేకుండా, ఇతర సైట్‌ల ఫ్రేమ్‌లు కనిపించినట్టుగానే క్యాప్చర్ అవుతాయి. ప్యానెల్‌లు, అదే సైట్ iframe‌లు ఎప్పుడూ పని చేస్తాయి.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "వర్చువలైజ్డ్ జాబితాలను విప్పు"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "స్క్రీన్‌పై ఉన్న వరుసలు మాత్రమే కాకుండా పూర్తి కంటెంట్‌ను క్యాప్చర్ చేయడానికి render-window ఫీడ్‌లను ($LIB1$ / $LIB2$ శైలి) దశలవారీగా దాటుతుంది. చాలా పొడవైన జాబితాల్లో నెమ్మదిగా ఉంటుంది.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "క్లిక్‌తో మాత్రమే తెరుచుకునే కంటెంట్‌ను విస్తరించు"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "క్యాప్చర్‌కు ముందు మూసివేసిన $DETAILS$, నిష్క్రియ ట్యాబ్‌లు, అకార్డియన్‌లు, \"మరింత చూపు\" విభాగాలను తెరిచి, తర్వాత వాటిని పునరుద్ధరిస్తుంది. క్లిక్ వెనుక దాగిన కంటెంట్‌ను బయటపెడుతుంది.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "\"$BUTTONTEXT$\" బటన్‌లను క్లిక్ చేయి",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "\"load more\" / \"show more\" బటన్‌లను క్లిక్ చేసి, ఫీడ్ అయిపోయే వరకు కొత్త కంటెంట్ లోడ్ అయ్యేందుకు మళ్లీ మళ్లీ వేచి ఉంటుంది. పై ఎంపిక లాగా కాకుండా, ఇది పేజీలో ఇంకా లేని కంటెంట్‌ను తెస్తుంది; లోడ్ అయిన కంటెంట్ క్యాప్చర్ తర్వాత కూడా అలాగే ఉంటుంది."
+  },
+  "optionsInfiniteScroll": {
+    "message": "అనంత ఫీడ్‌లను లోడ్ చేయడానికి స్క్రోల్ చేయి"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "\"load more\" బటన్ లేని ఫీడ్‌ల కోసం: కిందికి స్క్రోల్ చేసి, ఫీడ్ పెరగడం ఆగే వరకు తదుపరి పేజీ లోడ్ అయ్యేందుకు మళ్లీ మళ్లీ వేచి ఉంటుంది (పరిమితితో, కాబట్టి అంతులేని ఫీడ్‌ల వెంట పడదు). లోడ్ అయిన కంటెంట్ క్యాప్చర్ తర్వాత కూడా అలాగే ఉంటుంది."
+  },
+  "optionsWaitStable": {
+    "message": "కంటెంట్ లోడ్ పూర్తయ్యే వరకు వేచి ఉండు"
+  },
+  "optionsWaitStableDesc": {
+    "message": "స్కెలిటన్ / ప్లేస్‌హోల్డర్ లోడర్‌లు (aria-busy ప్రాంతాలు, షిమ్మర్ బ్లాక్‌లు) నిజమైన కంటెంట్‌తో భర్తీ అయ్యే వరకు క్యాప్చర్‌ను ఆపి ఉంచుతుంది; తద్వారా పేజీ మధ్యలో \"లోడ్ అవుతోంది…\" అనేది బూడిద గడులుగా క్యాప్చర్ కాదు. పరిమితి ఉంది, కాబట్టి ఆగిపోయిన స్పిన్నర్ క్యాప్చర్‌ను నిలిపివేయదు."
+  },
+  "optionsRedactPII": {
+    "message": "సున్నితమైన సమాచారాన్ని స్వయంచాలకంగా మరుగుపరచు"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "ఇమెయిల్‌లు, ఫోన్ నంబర్లు, క్రెడిట్ కార్డ్ నంబర్లు, జాతీయ గుర్తింపు నంబర్లు, API కీల కోసం పేజీ బహిర్గతం చేసే టెక్స్ట్‌ను స్కాన్ చేసి, సరిపోలినదాని మీద సేవ్ చేసిన చిత్రంలో గట్టి బ్లాక్‌ను వేస్తుంది. పిక్సెల్‌లుగా గీసిన టెక్స్ట్‌ను ఇది చదవలేదు — కాన్వాస్, చిత్రం, PDF, వీడియో ఫ్రేమ్. గుర్తింపు మీ పరికరంలోనే జరుగుతుంది; ఏదీ ఎక్కడికీ పంపబడదు. మొత్తం పేజీ (డాక్యుమెంట్-స్క్రోల్) క్యాప్చర్‌లకు మాత్రమే; ఆ బ్లాక్ శాశ్వతం, కాబట్టి ఫలితాన్ని మీరే పరిశీలించండి."
+  },
+  "optionsMaxPageHeight": {
+    "message": "గరిష్ఠ పేజీ ఎత్తు"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "అనంత స్క్రోల్ ఫీడ్‌ల కోసం భద్రతా పరిమితి (CSS px)."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF ఎగుమతి"
+  },
+  "optionsPdfPaper": {
+    "message": "డిఫాల్ట్ కాగితం పరిమాణం"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" ఒక పేజీని స్క్రీన్‌షాట్ పరిమాణంలోనే సరిగ్గా చేస్తుంది.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "చిత్ర పరిమాణం"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "దిశ"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "స్థిర కాగితం పరిమాణాలకు మాత్రమే."
+  },
+  "optionsOrientationPortrait": {
+    "message": "నిలువు"
+  },
+  "optionsOrientationLandscape": {
+    "message": "అడ్డం"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "తెలివైన పేజీ విభజన"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "ప్రతి పేజీ విరామం దగ్గర ఖాళీ చోటును వెతుకుతుంది, తద్వారా టెక్స్ట్ పంక్తులు సగానికి కత్తిరించబడవు."
+  },
+  "optionsPdfStamp": {
+    "message": "URL & తేదీని ముద్రించు"
+  },
+  "optionsPdfStampDesc": {
+    "message": "ప్రతి PDF పేజీ ఫుటర్‌లో పేజీ URL మరియు క్యాప్చర్ తేదీని జోడిస్తుంది."
+  },
+  "optionsSectionDownload": {
+    "message": "డౌన్‌లోడ్"
+  },
+  "optionsSaveDirectory": {
+    "message": "ఫోల్డర్"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "మీ స్క్రీన్‌షాట్‌ల కోసం $DOWNLOADS$ కింద ఒక సబ్‌ఫోల్డర్, ఉదా. $EXAMPLE$. ఖాళీగా ఉంటే = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "\"ఇలా సేవ్ చేయి\" డైలాగ్"
+  },
+  "optionsSaveAsDesc": {
+    "message": "నిశ్శబ్దంగా డౌన్‌లోడ్ చేయకుండా, ప్రతి ఫైల్‌ను ఎక్కడ సేవ్ చేయాలో అడుగుతుంది."
+  },
+  "optionsClipboardFit": {
+    "message": "క్లిప్‌బోర్డ్ కాపీలను యాప్ పరిమితులకు సరిపోయేలా చేయి"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "$PIXELS$ పిక్సెల్‌లు దాటిన కాపీలను చిన్నవి చేస్తుంది, తద్వారా $APP$ వంటి వాటిలో అతికించడం పని చేస్తుంది.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "పని విధానం"
+  },
+  "optionsAutoDownload": {
+    "message": "క్యాప్చర్ తర్వాత స్వయంచాలకంగా డౌన్‌లోడ్ చేయి"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "క్యాప్చర్ పూర్తయిన వెంటనే చిత్రాన్ని సేవ్ చేస్తుంది."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "క్యాప్చర్ తర్వాత ఎడిటర్‌ను తెరువు"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "నేరుగా గుర్తుపెట్టే పనిలోకి వెళ్తుంది (ఒకే భాగం ఉన్న క్యాప్చర్‌లకు మాత్రమే)."
+  },
+  "optionsTheme": {
+    "message": "థీమ్"
+  },
+  "optionsThemeDesc": {
+    "message": "పాప్-అప్ మరియు అన్ని FullShot పేజీల కోసం."
+  },
+  "optionsThemeSystem": {
+    "message": "సిస్టమ్"
+  },
+  "optionsThemeLight": {
+    "message": "లేత"
+  },
+  "optionsThemeDark": {
+    "message": "ముదురు"
+  },
+  "optionsShortcuts": {
+    "message": "కీబోర్డ్ షార్ట్‌కట్‌లు"
+  },
+  "optionsShortcutsDesc": {
+    "message": "మొత్తం పేజీ: $KEYFULL$ · కనిపించే ప్రాంతం: $KEYVISIBLE$. $URL$ వద్ద మార్చుకోండి",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "సేవ్ అయింది ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "మీ డేటా"
+  },
+  "optionsStorage": {
+    "message": "నిల్వ"
+  },
+  "optionsStorageUsage": {
+    "message": "ఈ పరికరంలో $QUOTA$ లో $USED$ వాడుకలో ఉంది.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "FullShot ఎంత స్థలం వాడుతోందో ఈ బ్రౌజర్ చెప్పదు."
+  },
+  "optionsStorageKept": {
+    "message": "మీ స్క్రీన్‌షాట్‌లు భద్రంగా ఉంటాయి: స్థలం ఖాళీ చేయడానికి బ్రౌజర్ వాటిని తొలగించదు."
+  },
+  "optionsStorageAtRisk": {
+    "message": "మీ స్క్రీన్‌షాట్‌లు బ్రౌజర్ యొక్క best-effort నిల్వలో ఉన్నాయి; స్థలం ఖాళీ చేయడానికి బ్రౌజర్ దాన్ని తుడిచివేయవచ్చు."
+  },
+  "optionsStorageKeep": {
+    "message": "నా డేటాను ఉంచు"
+  },
+  "optionsExport": {
+    "message": "అన్నీ ఎగుమతి చేయి"
+  },
+  "optionsExportDesc": {
+    "message": "మీ సెట్టింగ్‌లు, మీ స్క్రీన్‌షాట్‌ల జాబితా ఉన్న ఒకే ఫైల్‌ను రాస్తుంది. అది ఈ పరికరంలోనే భద్రపరచబడుతుంది, ఎక్కడికీ పంపబడదు."
+  },
+  "optionsExportImages": {
+    "message": "చిత్రాలను చేర్చు"
+  },
+  "optionsExportImagesDesc": {
+    "message": "చిత్రాలే — దాదాపు మొత్తం పరిమాణం అవే. అవి లేకుంటే ఫైల్ మీ స్క్రీన్‌షాట్‌లను జాబితా చేస్తుంది కానీ ఒక్కటీ కలిగి ఉండదు."
+  },
+  "optionsExportSize": {
+    "message": "ఫైల్ పరిమాణం: సుమారు $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "మిగిలిన డేటా"
+  },
+  "optionsSweepDesc": {
+    "message": "మధ్యలో ఆగిపోయిన క్యాప్చర్ ఏ స్క్రీన్‌షాట్‌కూ చెందని ఫ్రేమ్‌లను డిస్క్‌లో వదిలివేయవచ్చు. అవి ఏ పేజీలోనూ కనిపించవు, కాబట్టి ఏ పేజీ నుంచీ వాటిని తొలగించలేరు. ఇది వాటిని కనుగొని తీసివేస్తుంది."
+  },
+  "optionsSweepBtn": {
+    "message": "కనుగొని తీసివేయి"
+  },
+  "optionsSweepResult": {
+    "message": "తీసివేయబడింది. శుభ్రం చేసిన క్యాప్చర్‌లు: $COUNT$ · ఖాళీ అయిన స్థలం: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "ఏమీ మిగలలేదు: నిల్వ ఉన్నదంతా మీరు చూడగలిగే స్క్రీన్‌షాట్‌కే చెందుతుంది."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "సెట్టింగ్‌లను రీసెట్ చేయి"
+  },
+  "optionsResetDesc": {
+    "message": "ఈ పేజీలోని ప్రతి సెట్టింగ్‌ను దాని అసలు విలువకు తిరిగి తెస్తుంది. మీ స్క్రీన్‌షాట్‌లను తాకదు."
+  },
+  "optionsResetBtn": {
+    "message": "రీసెట్"
+  },
+  "optionsResetConfirm": {
+    "message": "FullShot లోని ప్రతి సెట్టింగ్‌ను డిఫాల్ట్ విలువకు తిరిగి తేవాలా? మీ స్క్రీన్‌షాట్‌లపై ప్రభావం ఉండదు."
+  },
+  "optionsResetDone": {
+    "message": "సెట్టింగ్‌లు తిరిగి డిఫాల్ట్ విలువలకు వచ్చాయి."
+  },
+  "optionsDeleteAll": {
+    "message": "అన్నీ తొలగించు"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "మీ చరిత్రలోని ప్రతి స్క్రీన్‌షాట్‌ను, ఆగిపోయిన క్యాప్చర్‌లు వదిలిన అన్నిటినీ తీసివేస్తుంది. మీ సెట్టింగ్‌లు ఉన్నట్టే ఉంటాయి."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "FullShot ఈ పరికరంలో నిల్వ చేసినదంతా తొలగించాలా?\n\nమీ చరిత్రలో స్క్రీన్‌షాట్‌లు: $COUNT$\nఆగిపోయిన క్యాప్చర్‌ల అవశేషాలు: $LEFTOVER$\nఇది ఖాళీ చేసే స్థలం: $SIZE$\n\nమీ సెట్టింగ్‌లపై ప్రభావం ఉండదు. దీన్ని వెనక్కి తీసుకోలేరు.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "తొలగించబడింది. FullShot ఇప్పుడు ఈ పరికరంలో ఏ స్క్రీన్‌షాట్‌నూ నిల్వ చేయడం లేదు."
+  },
+  "resultPageTitle": {
+    "message": "స్క్రీన్‌షాట్ — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "కాపీ"
+  },
+  "resultCopyTip": {
+    "message": "చిత్రాన్ని క్లిప్‌బోర్డ్‌కు కాపీ చేయి"
+  },
+  "resultEdit": {
+    "message": "సవరించు"
+  },
+  "resultEditTip": {
+    "message": "ఎడిటర్‌లో తెరువు"
+  },
+  "resultBeautify": {
+    "message": "అందంగా చేయి"
+  },
+  "resultBeautifyTip": {
+    "message": "అందంగా చేయి — పంచుకోవడానికి ఫ్రేమ్ & నేపథ్యం"
+  },
+  "resultClip": {
+    "message": "క్లిప్"
+  },
+  "resultClipTip": {
+    "message": "స్క్రోల్ క్లిప్ — యానిమేటెడ్ $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF కాగితం పరిమాణం"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "డౌన్‌లోడ్"
+  },
+  "resultDeleteTip": {
+    "message": "స్క్రీన్‌షాట్‌ను తొలగించు"
+  },
+  "resultHistoryTip": {
+    "message": "స్క్రీన్‌షాట్ చరిత్ర"
+  },
+  "resultProgressAssembling": {
+    "message": "మీ స్క్రీన్‌షాట్‌ను కూర్చుతోంది…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "$COUNT$ ఫ్రేమ్‌ను చదువుతోంది…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$ ఫ్రేమ్‌లను చదువుతోంది…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "$INDEX$వ భాగాన్ని కలుపుతోంది…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "~$TOTAL$ లో $INDEX$వ భాగాన్ని కలుపుతోంది…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "సేవ్ చేస్తోంది…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "చిట్కా: చిత్రాన్ని నేరుగా మీ డెస్క్‌టాప్‌కు లాగండి, లేదా $DOWNLOAD$ వాడండి.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "ఇక్కడ ఏమీ లేదు"
+  },
+  "resultEmptyBody": {
+    "message": "ఈ స్క్రీన్‌షాట్ ఇక లేదు."
+  },
+  "resultOpenHistory": {
+    "message": "చరిత్రను తెరువు"
+  },
+  "resultSomethingWrong": {
+    "message": "ఏదో తప్పు జరిగింది — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "భాగం $INDEX$ / $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "భాగాన్ని డౌన్‌లోడ్ చేయి"
+  },
+  "resultEditPart": {
+    "message": "భాగాన్ని సవరించు"
+  },
+  "resultClipPart": {
+    "message": "భాగాన్ని క్లిప్ చేయి"
+  },
+  "resultPartAlt": {
+    "message": "స్క్రీన్‌షాట్ భాగం $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ డౌన్‌లోడ్ అవుతోంది",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "ఈ స్క్రీన్‌షాట్‌ను శాశ్వతంగా తొలగించాలా?"
+  },
+  "resultDeleted": {
+    "message": "స్క్రీన్‌షాట్ తొలగించబడింది."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "ఈ క్యాప్చర్ చాలా పొడవుగా ఉన్నందున చదవగలిగే ఒకే చిత్రంగా అతికించడం సాధ్యం కాదు, అందుకే $COPY$ మొత్తం పేజీ యొక్క చిన్నదిగా చేసిన సమగ్ర దృశ్యాన్ని క్లిప్‌బోర్డ్‌లో ఉంచుతుంది. అందులోని చిన్న వచనం చదవడం సాధ్యం కాదు.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "$INDEX$వ భాగం క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF తయారవుతోంది…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF డౌన్‌లోడ్ అయింది ($COUNT$ పేజీ)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF డౌన్‌లోడ్ అయింది ($COUNT$ పేజీలు)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF విఫలమైంది — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "ఎడిటర్ — FullShot"
+  },
+  "editorBackTip": {
+    "message": "స్క్రీన్‌షాట్‌కు తిరిగి వెళ్లు"
+  },
+  "editorToolSelect": {
+    "message": "ఎంచుకో / జరుపు ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "కత్తిరించు ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "పెన్ను ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "హైలైటర్ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "గీత ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "బాణం ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "దీర్ఘ చతురస్రం ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "దీర్ఘ వృత్తం ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "టెక్స్ట్ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "మసకబార్చు / పిక్సలేట్ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "సంఖ్య వేసిన దశ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "ఎమోజీ ముద్ర ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "అనుకూల రంగు"
+  },
+  "editorStrokeTip": {
+    "message": "గీత మందం"
+  },
+  "editorStrokeThin": {
+    "message": "సన్నని"
+  },
+  "editorStrokeMedium": {
+    "message": "మధ్యస్థ"
+  },
+  "editorStrokeThick": {
+    "message": "మందపాటి"
+  },
+  "editorSizeTip": {
+    "message": "టెక్స్ట్ / ఎమోజీ పరిమాణం"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "రద్దు చేయి ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "మళ్లీ చేయి ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "చిన్నదిగా చూపు (-)"
+  },
+  "editorZoomInTip": {
+    "message": "పెద్దదిగా చూపు (+)"
+  },
+  "editorZoomFit": {
+    "message": "సరిపోల్చు"
+  },
+  "editorZoomTipToHundred": {
+    "message": "విండోకు సరిపోయింది — 100% కోసం క్లిక్ చేయండి"
+  },
+  "editorZoomTipToFit": {
+    "message": "విండోకు సరిపోయేలా క్లిక్ చేయండి"
+  },
+  "editorExport": {
+    "message": "ఎగుమతి"
+  },
+  "editorExportCopy": {
+    "message": "క్లిప్‌బోర్డ్‌కు కాపీ చేయి"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ చిత్రం",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ పత్రం",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "సేవ్ చేయి"
+  },
+  "editorSaveTip": {
+    "message": "మార్పులను చరిత్రలో సేవ్ చేయి ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "మరిన్ని"
+  },
+  "editorMenuFiles": {
+    "message": "చరిత్రకు వెళ్లు"
+  },
+  "editorMenuOptions": {
+    "message": "ఎంపికలకు వెళ్లు"
+  },
+  "editorMenuShortcuts": {
+    "message": "కీబోర్డ్ షార్ట్‌కట్‌లు"
+  },
+  "editorCropApply": {
+    "message": "కత్తిరింపును వర్తింపజేయి"
+  },
+  "editorCropCancel": {
+    "message": "రద్దు"
+  },
+  "editorShortcutsHeading": {
+    "message": "కీబోర్డ్ షార్ట్‌కట్‌లు"
+  },
+  "editorShortcutTools": {
+    "message": "సాధనాలను ఎంచుకోవడం"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "రద్దు / మళ్లీ చేయి"
+  },
+  "editorShortcutSave": {
+    "message": "చరిత్రలో సేవ్ చేయి"
+  },
+  "editorShortcutZoom": {
+    "message": "చిన్నదిగా / పెద్దదిగా చూపు"
+  },
+  "editorShortcutDelete": {
+    "message": "ఎంచుకున్న వస్తువును తీసివేయి"
+  },
+  "editorShortcutEscape": {
+    "message": "ఎంపిక తీసివేయి / కత్తిరింపు రద్దు"
+  },
+  "editorShortcutsClose": {
+    "message": "మూసివేయి"
+  },
+  "editorNotFound": {
+    "message": "స్క్రీన్‌షాట్ కనబడలేదు"
+  },
+  "editorToastDownloaded": {
+    "message": "డౌన్‌లోడ్ అయింది"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF డౌన్‌లోడ్ అయింది"
+  },
+  "editorToastSaved": {
+    "message": "చరిత్రలో సేవ్ అయింది"
+  },
+  "historyPageTitle": {
+    "message": "చరిత్ర — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · చరిత్ర"
+  },
+  "historySearchPlaceholder": {
+    "message": "శీర్షిక లేదా URL వెతకండి…"
+  },
+  "historySelectAll": {
+    "message": "అన్నీ ఎంచుకో"
+  },
+  "historyClearSelection": {
+    "message": "ఎంపికను తొలగించు"
+  },
+  "historyDownloadSelected": {
+    "message": "ఎంచుకున్నవి డౌన్‌లోడ్ చేయి"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "డౌన్‌లోడ్ ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "ఎంచుకున్నవి తొలగించు"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "తొలగించు ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "ఇంకా స్క్రీన్‌షాట్‌లు లేవు"
+  },
+  "historyEmptyBody": {
+    "message": "మీరు తీసిన క్యాప్చర్‌లు ఇక్కడ కనిపిస్తాయి. ప్రారంభించడానికి టూల్‌బార్‌లోని FullShot చిహ్నాన్ని క్లిక్ చేయండి."
+  },
+  "historyNoMatchesTitle": {
+    "message": "సరిపోలికలు లేవు"
+  },
+  "historyNoMatchesBody": {
+    "message": "\"$QUERY$\" కు సరిపోలే స్క్రీన్‌షాట్‌లు లేవు.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్ · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్‌లు · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్‌లో $SHOWN$ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్‌లలో $SHOWN$ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "ఎంచుకో"
+  },
+  "historyCardOpen": {
+    "message": "తెరువు"
+  },
+  "historyCardEdit": {
+    "message": "సవరించు"
+  },
+  "historyCardDownloadTip": {
+    "message": "డౌన్‌లోడ్"
+  },
+  "historyCardDeleteTip": {
+    "message": "తొలగించు"
+  },
+  "historyCardOpenOriginal": {
+    "message": "అసలు పేజీని తెరువు"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ భాగాలు",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "స్క్రీన్‌షాట్"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "ఈ స్క్రీన్‌షాట్‌ను తొలగించాలా?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్‌ను శాశ్వతంగా తొలగించాలా?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్‌లను శాశ్వతంగా తొలగించాలా?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్ డౌన్‌లోడ్ అవుతోంది",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "$COUNT$ స్క్రీన్‌షాట్‌లు డౌన్‌లోడ్ అవుతున్నాయి",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "తొలగించబడింది"
+  },
+  "beautifyPageTitle": {
+    "message": "అందంగా చేయి — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "అందంగా చేయి"
+  },
+  "actionBack": {
+    "message": "వెనుకకు"
+  },
+  "commonLoading": {
+    "message": "లోడ్ అవుతోంది…"
+  },
+  "beautifyFieldSize": {
+    "message": "పరిమాణం"
+  },
+  "beautifyPresetAuto": {
+    "message": "ఆటో"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "చతురస్రం"
+  },
+  "beautifyPresetPortrait": {
+    "message": "నిలువు"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "నేపథ్యం"
+  },
+  "beautifyBgSlate": {
+    "message": "స్లేట్"
+  },
+  "beautifyBgGraphite": {
+    "message": "గ్రాఫైట్"
+  },
+  "beautifyBgSky": {
+    "message": "ఆకాశం"
+  },
+  "beautifyBgSunset": {
+    "message": "సంధ్య"
+  },
+  "beautifyBgGrape": {
+    "message": "ద్రాక్ష"
+  },
+  "beautifyBgMint": {
+    "message": "పుదీనా"
+  },
+  "beautifyFieldPadding": {
+    "message": "అంచు ఖాళీ"
+  },
+  "beautifyFieldRadius": {
+    "message": "మూల వంపు"
+  },
+  "beautifyFieldEffects": {
+    "message": "ప్రభావాలు"
+  },
+  "beautifyShadow": {
+    "message": "నీడ"
+  },
+  "beautifyWindowFrame": {
+    "message": "విండో ఫ్రేమ్"
+  },
+  "beautifyFieldExport": {
+    "message": "ఎగుమతి"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "స్క్రోల్ క్లిప్ — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "స్క్రోల్ క్లిప్"
+  },
+  "scrollclipFieldFormat": {
+    "message": "ఫార్మాట్"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ ప్రతిచోటా ప్లే అవుతుంది. $WEBM$ చిన్నది & మృదువైనది (మీ బ్రౌజర్‌లోనే ప్రత్యక్షంగా రికార్డ్ చేయబడుతుంది).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "అవుట్‌పుట్ వెడల్పు"
+  },
+  "scrollclipFieldDensity": {
+    "message": "సాంద్రత"
+  },
+  "scrollclipDensityHint": {
+    "message": "ఎక్కువ సాంద్రత మరింత స్పష్టంగా చూపుతుంది (అసలు రిజల్యూషన్‌కు దగ్గరగా) — ఫైల్ పెద్దదవుతుంది."
+  },
+  "scrollclipFieldShape": {
+    "message": "ఆకారం"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "స్క్రోల్ వేగం (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "ఫ్రేమ్ రేటు (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "కదలిక"
+  },
+  "scrollclipBounce": {
+    "message": "వెనక్కి (పైకి తిరిగి స్క్రోల్ చేయి)"
+  },
+  "scrollclipLoop": {
+    "message": "ఎప్పటికీ పునరావృతం"
+  },
+  "scrollclipCopyFrame": {
+    "message": "ఫ్రేమ్ కాపీ"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "పోస్టర్ (పై) ఫ్రేమ్‌ను $FORMAT$ గా కాపీ చేయి",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ఫ్రేమ్ · $SECONDS$ సె",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ఫ్రేమ్‌లు · $SECONDS$ సె",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "ఫ్రేమ్‌లను గీస్తోంది… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$ ఎన్‌కోడ్ చేస్తోంది… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "ముగిస్తోంది…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ రికార్డ్ చేస్తోంది…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "రికార్డ్ చేస్తోంది…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "ఇక్కడ $WEBM$ మద్దతు లేదు — $GIF$ గా ఎగుమతి చేస్తోంది",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "పోస్టర్ ఫ్రేమ్ కాపీ చేయబడింది"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — బ్యాచ్ క్యాప్చర్"
+  },
+  "batchHeading": {
+    "message": "బ్యాచ్ క్యాప్చర్"
+  },
+  "batchIntro": {
+    "message": "URL‌లను ఒక్కో పంక్తికి ఒకటి చొప్పున అతికించండి. FullShot ప్రతి పేజీని తెరిచి, మొత్తం పేజీ స్క్రీన్‌షాట్‌ను మీ చరిత్రలో సేవ్ చేసి, తర్వాతిదానికి వెళుతుంది — ఒకేసారి గరిష్ఠంగా $MAX$. క్యాప్చర్‌లు మీ చరిత్రలో కనిపిస్తాయి; ఏదైనా చూడటానికి, సవరించడానికి లేదా ఎగుమతి చేయడానికి $OPENLINK$ క్లిక్ చేయండి.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "అన్నీ క్యాప్చర్ చేయి"
+  },
+  "batchPermissionHint": {
+    "message": "ఈ పేజీలను తెరవడానికి మొదటిసారి ఒక్కసారి మాత్రమే అనుమతి అవసరం."
+  },
+  "batchPermissionDeclined": {
+    "message": "ఆ పేజీలను తెరవడానికి అనుమతి తిరస్కరించబడింది."
+  },
+  "batchPanelPlan": {
+    "message": "ప్రణాళిక"
+  },
+  "batchPanelProgress": {
+    "message": "పురోగతి"
+  },
+  "batchPlanCountOne": {
+    "message": "క్యాప్చర్ చేయాల్సిన $COUNT$ పేజీ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "క్యాప్చర్ చేయాల్సిన $COUNT$ పేజీలు",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "క్యాప్చర్ చేయాల్సిన $COUNT$ పేజీలు ($MAX$ వరకు మాత్రమే)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "ఇంకా చెల్లుబాటు అయ్యే URL‌లు లేవు"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ దాటవేయబడ్డాయి: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "మద్దతు లేని స్కీమ్"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "చెల్లదు"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "హోస్ట్ లేదు"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "నకలు"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "ఖాళీ"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "పరిమితి దాటింది ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ పూర్తి",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ పూర్తి, $FAILED$ విఫలం",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ పూర్తి — అయిపోయింది",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ పూర్తి, $FAILED$ విఫలం — అయిపోయింది",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "తెరువు"
+  },
+  "batchJobTimedOut": {
+    "message": "క్యాప్చర్ సమయం ముగిసింది"
+  },
+  "batchJobNoSession": {
+    "message": "క్యాప్చర్ సెషన్ లేదు"
+  },
+  "batchJobFailed": {
+    "message": "క్యాప్చర్ విఫలమైంది"
+  },
+  "batchJobError": {
+    "message": "క్యాప్చర్ లోపం"
+  },
+  "regionHintDrag": {
+    "message": "ప్రాంతాన్ని ఎంచుకోవడానికి లాగండి — రద్దు చేయడానికి $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "క్యాప్చర్ చేయాలనుకున్న మూలకాన్ని క్లిక్ చేయండి — రద్దు చేయడానికి $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "సెట్టింగ్‌లు, పొడిగింపులు, కొత్త ట్యాబ్ వంటి బ్రౌజర్ సొంత పేజీలు ఏ పొడిగింపుకూ అందుబాటులో ఉండవు. FullShot ను సాధారణ వెబ్ పేజీలో ప్రయత్నించండి."
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools విండోలను ఏ పొడిగింపూ క్యాప్చర్ చేయలేదు. వాటి కోసం మీ కంప్యూటర్ సొంత స్క్రీన్‌షాట్ సాధనాన్ని వాడండి."
+  },
+  "errRestrictedViewSource": {
+    "message": "మూలాన్ని చూపే పేజీలను క్యాప్చర్ చేయలేము. బదులుగా పేజీనే క్యాప్చర్ చేయండి."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "FullShot సొంత పేజీలతో సహా పొడిగింపు పేజీలను బ్రౌజర్ కాపాడుతుంది, కాబట్టి వాటిని క్యాప్చర్ చేయలేము."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
+  },
+  "errRestrictedGeneric": {
+    "message": "ఈ పేజీని బ్రౌజర్ కాపాడుతోంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
+  },
+  "errWrongTab": {
+    "message": "క్యాప్చర్ ఆగిపోయింది — మీరు ట్యాబ్‌లు మార్చారు. FullShot పూర్తయ్యే వరకు ఈ పేజీని ముందు ఉంచండి."
+  },
+  "errGeneric": {
+    "message": "క్యాప్చర్ పూర్తి కాకముందే ఆగిపోయింది. దయచేసి మళ్లీ ప్రయత్నించండి."
+  },
+  "errBusy": {
+    "message": "ఈ ట్యాబ్‌లో ఇప్పటికే ఒక క్యాప్చర్ నడుస్తోంది."
+  },
+  "errBlocked": {
+    "message": "ఈ పేజీని క్యాప్చర్ చేయలేము (బ్రౌజర్ ఆంక్ష)."
+  },
+  "errNoStart": {
+    "message": "ఈ పేజీలో FullShot ప్రారంభం కాలేకపోయింది. పేజీని మళ్లీ లోడ్ చేసి ప్రయత్నించండి."
+  },
+  "errCrash": {
+    "message": "క్యాప్చర్ ఊహించని విధంగా ఆగిపోయింది. దయచేసి మళ్లీ ప్రయత్నించండి."
+  },
+  "errUnknownMessage": {
+    "message": "తెలియని సందేశం."
+  },
+  "errQuota": {
+    "message": "పేజీలను ఎంత వేగంగా ఫోటో తీయవచ్చో బ్రౌజర్ పరిమితం చేస్తోంది. కాసేపు ఆగి మళ్లీ ప్రయత్నించండి."
+  },
+  "errFrameHandover": {
+    "message": "మధ్యలోనే స్క్రీన్‌ను అందించడం బ్రౌజర్ ఆపేసింది. కొన్ని సెకన్లు ఆగి మళ్లీ ప్రయత్నించండి."
+  },
+  "errLostTab": {
+    "message": "క్యాప్చర్ ఈ ట్యాబ్‌తో సంబంధాన్ని కోల్పోయింది. పేజీని మళ్లీ లోడ్ చేసి ప్రయత్నించండి."
+  },
+  "errStoppedEarly": {
+    "message": "క్యాప్చర్ పూర్తి కాకముందే ఆపివేయబడింది."
+  },
+  "errStorageFull": {
+    "message": "ఈ క్యాప్చర్‌ను నిల్వ చేయడానికి స్థలం లేదు. మీ చరిత్ర నుంచి కొన్ని స్క్రీన్‌షాట్‌లను తొలగించి మళ్లీ ప్రయత్నించండి."
+  },
+  "reasonGeneric": {
+    "message": "ఎలాంటి కారణమూ ఇవ్వబడలేదు. దయచేసి మళ్లీ ప్రయత్నించండి."
+  },
+  "reasonDecodeFailed": {
+    "message": "ఆ స్క్రీన్‌షాట్‌ను చదవలేకపోయాం."
+  },
+  "reasonTooLarge": {
+    "message": "ఇక్కడ ఎగుమతి చేయడానికి చిత్రం చాలా పెద్దది."
+  },
+  "toastCopiedClipboard": {
+    "message": "క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది"
+  },
+  "toastCopyFailed": {
+    "message": "కాపీ విఫలమైంది — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "ఎగుమతి విఫలమైంది — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ సేవ్ అయింది",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ సేవ్ అయింది  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+SHORT PLAIN TEXT NOTE (served as text/plain)
+
+This one is deliberately under the 4000-character leaf cap so the long fixture
+failing and this one succeeding cannot both be blamed on text/plain itself.
+
+escalation contact: jane.doe@example.com
+
+END

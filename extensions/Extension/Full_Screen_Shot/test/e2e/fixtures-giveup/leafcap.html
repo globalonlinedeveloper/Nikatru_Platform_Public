@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>giveup — one leaf over the 4,000-character cap, beside a clean 1/1/1</title>
+<!-- THE PER-LEAF CHARACTER CAP, ON A PAGE WHOSE NUMBERS OTHERWISE READ AS
+     "NOTHING WENT WRONG".
+
+     #control holds one email, which is matched, painted and read back opaque.
+     #toolong holds ~5,200 characters and an email at the end of them, and the
+     cap refuses the whole leaf BEFORE the detector sees it. So:
+
+       matched / painted / verifiedOpaque  =  1 / 1 / 1   (no shortfall)
+       textRefused                          >= 1
+       matchedComplete                      false
+
+     A reader shown 1/1/1 and nothing else would take it as a whole count. The
+     refusal has to be on the screen, in the bundle and in the payload, or the
+     three numbers are a partial set presented as complete — which is the class
+     this round claims to have fixed. The refused email is still legible in the
+     delivered PNG; its colour is the proof. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 16px/22px system-ui, sans-serif; }
+  #control { color: rgb(255, 90, 90); font: 20px/24px monospace; padding: 8px; }
+  #toolong { color: rgb(90, 200, 120); font: 13px/16px monospace; padding: 8px;
+             width: 1100px; }
+  #tail { height: 60px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div id="control">covered@example.com</div>
+  <div id="toolong"></div>
+  <div id="tail"></div>
+<script>
+/* One LEAF — no element children — so fsOwnLeafText returns the whole string
+   and the per-leaf cap is what decides. The email is at the END so that a cap
+   applied to a prefix rather than to the leaf would still miss it. */
+(function () {
+  const d = document.getElementById('toolong');
+  let s = '';
+  while (s.length < 5200) s += 'lorem ipsum dolor sit amet consectetur adipiscing elit sed do ';
+  d.textContent = s + ' refused-leaf@example.com';
+  window.__fsFixture = { leafChars: d.textContent.length };
+})();
+</script>
+</body>
+</html>

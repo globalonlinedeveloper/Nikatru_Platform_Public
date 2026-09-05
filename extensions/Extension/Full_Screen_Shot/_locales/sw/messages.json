@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - Picha ya Skrini ya Ukurasa Mzima"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Nasa ukurasa mzima, eneo linaloonekana, sehemu uliyochagua au kipengele. Hariri, weka maelezo na hamisha PNG, JPEG, WebP au PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - Nasa ukurasa (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Nasa ukurasa mzima"
+  },
+  "commandCaptureVisible": {
+    "message": "Nasa eneo linaloonekana"
+  },
+  "commandCaptureRegion": {
+    "message": "Nasa sehemu uliyochagua"
+  },
+  "commandCaptureElement": {
+    "message": "Nasa kipengele cha ukurasa (bofya kuchagua)"
+  },
+  "popupToggleTheme": {
+    "message": "Badilisha mandhari"
+  },
+  "popupModeFullTitle": {
+    "message": "Ukurasa mzima"
+  },
+  "popupModeFullSub": {
+    "message": "Sogeza na unase ukurasa wote"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Eneo linaloonekana"
+  },
+  "popupModeVisibleSub": {
+    "message": "Kilicho skrini pekee"
+  },
+  "popupModeRegionTitle": {
+    "message": "Sehemu iliyochaguliwa"
+  },
+  "popupModeRegionSub": {
+    "message": "Buruta kuchagua eneo"
+  },
+  "popupModeElementTitle": {
+    "message": "Kipengele"
+  },
+  "popupModeElementSub": {
+    "message": "Bofya kipengele chochote"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Kunasa kwa kuchelewa"
+  },
+  "popupModeDelayedSub": {
+    "message": "Ukurasa mzima baada ya hesabu"
+  },
+  "popupDelayLabel": {
+    "message": "Sekunde za kuchelewa"
+  },
+  "popupDelaySeconds": {
+    "message": "sek $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Panua paneli zinazosogezwa na iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "Hukuza paneli za ndani zinazosogezwa na iframe hadi maudhui yao yote badala ya kuzinasa jinsi zinavyoonekana. Fremu kutoka tovuti nyingine huomba ruhusa ya ziada mara moja tu."
+  },
+  "popupDismiss": {
+    "message": "Ondoa"
+  },
+  "popupLastErrorFailed": {
+    "message": "$MODE$ ya mwisho ilishindikana — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "$MODE$ ya mwisho ilishindikana — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "kunasa ukurasa mzima"
+  },
+  "popupModeNameVisible": {
+    "message": "kunasa eneo linaloonekana"
+  },
+  "popupModeNameRegion": {
+    "message": "kunasa sehemu"
+  },
+  "popupModeNameElement": {
+    "message": "kunasa kipengele"
+  },
+  "popupModeNameGeneric": {
+    "message": "kunasa"
+  },
+  "popupNoActiveTab": {
+    "message": "Hakuna kichupo kinachotumika kilichopatikana."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Kunasa hakukuanza."
+  },
+  "popupLinkHistory": {
+    "message": "Historia"
+  },
+  "popupLinkBatch": {
+    "message": "Kundi"
+  },
+  "popupLinkOptions": {
+    "message": "Chaguo"
+  },
+  "optionsPageTitle": {
+    "message": "Chaguo — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Chaguo"
+  },
+  "optionsHeading": {
+    "message": "Chaguo"
+  },
+  "optionsLead": {
+    "message": "Mabadiliko huhifadhiwa kiotomatiki na kusawazishwa na wasifu wa kivinjari chako."
+  },
+  "optionsSectionImage": {
+    "message": "Picha"
+  },
+  "optionsFormat": {
+    "message": "Muundo"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ haipotezi ubora; $JPEG$ ni ndogo zaidi; $WEBP$ ndiyo ndogo kuliko zote kwa ubora unaofanana.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Ubora wa $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Kiolezo cha jina la faili"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Vishika nafasi: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Kunasa"
+  },
+  "optionsCaptureDelay": {
+    "message": "Ucheleweshaji wa ziada kwa kila hatua"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisekunde za kusubiri baada ya kila usogezaji. Ongeza kwa kurasa za polepole zenye uhuishaji mwingi."
+  },
+  "optionsHideFixed": {
+    "message": "Ficha vipengele vilivyobandikwa na vinavyonata"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Huzuia vichwa vya ukurasa kujirudia kwenye kila skrini (huonyeshwa mara moja juu)."
+  },
+  "optionsPreScroll": {
+    "message": "Sogeza kwanza ili kupakia maudhui ya kuchelewa"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Husogeza ukurasa mzima mara moja kabla ya kunasa. Ni polepole zaidi lakini hupata picha zinazopakiwa kwa kuchelewa."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Subiri picha zisimbuliwe"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Huruhusu picha za kuchelewa kumaliza kusimbuliwa kabla ya kila fremu, ili zisinaswe kama vipande vyeusi au vitupu."
+  },
+  "optionsHideOverlays": {
+    "message": "Ficha mabango na madirisha ibukizi"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Huondoa mabango ya vidakuzi/idhini, madirisha ya jarida na vibukizi vya \"pata programu\" kabla ya kunasa, na hufungua kurasa zilizogandishwa na dirisha ibukizi. Kila kitu hurejeshwa baadaye."
+  },
+  "optionsExpandInner": {
+    "message": "Panua maudhui yanayosogezwa"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Hukuza paneli za ndani na iframe ili kuonyesha maudhui yaliyofichwa chini ya ukingo wao wenyewe, badala ya kuyanasa hasa jinsi yanavyoonekana."
+  },
+  "optionsExpandPermRow": {
+    "message": "Fremu za tovuti nyingine"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Ruhusu"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Ruhusa imetolewa — fremu kutoka tovuti nyingine pia zinapanuliwa."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Bila ruhusa ya \"$PERMISSION$\", fremu kutoka tovuti nyingine hunaswa jinsi zinavyoonekana. Paneli na iframe za tovuti hiyo hiyo hufanya kazi kila wakati.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Kunjua orodha za mtandaoni zilizopunguzwa"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Hupitia hatua kwa hatua mipasho inayoonyesha dirisha la safu tu (mtindo wa $LIB1$ / $LIB2$) ili kunasa maudhui yao yote, si safu zilizo skrini pekee. Ni polepole kwenye orodha ndefu sana.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Panua maudhui yanayohitaji mwingiliano"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Hufungua vipengele vya $DETAILS$ vilivyokunjwa, vichupo visivyotumika, akodioni na sehemu za \"onyesha zaidi\" kabla ya kunasa, kisha huvirejesha. Hufichua maudhui yaliyojificha nyuma ya mbofyo.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Bofya vitufe vya \"$BUTTONTEXT$\"",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Hubofya vitufe vya \"load more\" / \"show more\" na kusubiri maudhui mapya yapakie, tena na tena, hadi mpasho uishe. Tofauti na chaguo lililo hapo juu, hili huleta maudhui ambayo bado hayapo kwenye ukurasa; maudhui yaliyopakiwa hubaki baada ya kunasa."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Sogeza ili kupakia mipasho isiyoisha"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Kwa mipasho isiyo na kitufe cha \"load more\": husogeza hadi chini na kusubiri ukurasa unaofuata upakie, tena na tena, hadi mpasho uache kukua (kuna kikomo, ili mipasho isiyoisha isifukuzwe milele). Maudhui yaliyopakiwa hubaki baada ya kunasa."
+  },
+  "optionsWaitStable": {
+    "message": "Subiri maudhui yamalize kupakia"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Husubiri vipakiaji vya mifupa/vishika nafasi (maeneo ya aria-busy, vitalu vinavyometa) vibadilishwe na maudhui halisi kabla ya kunasa, ili wakati wa \"inapakia…\" katikati ya ukurasa usinaswe kama vitalu vya kijivu. Kuna kikomo, hivyo kizungushi kilichokwama hakitasimamisha kunasa."
+  },
+  "optionsRedactPII": {
+    "message": "Ficha taarifa nyeti kiotomatiki"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Huchanganua maandishi ambayo ukurasa huonyesha ili kutafuta barua pepe, nambari za simu, nambari za kadi ya benki, nambari za utambulisho wa taifa na funguo za API, kisha hupaka kitalu kizito juu ya kile kinacholingana kwenye picha iliyohifadhiwa. Maandishi yaliyochorwa kama pikseli hayawezi kusomwa nayo — turubai, picha, PDF, fremu ya video. Ugunduzi huendeshwa ndani ya kifaa chako; hakuna chochote kinachotumwa popote hata mara moja. Hufanya kazi kwenye kunasa ukurasa mzima (usogezaji wa hati); kitalu hicho ni cha kudumu, hivyo kagua matokeo mwenyewe."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Kimo cha juu cha ukurasa"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Kikomo cha usalama (CSS px) kwa mipasho isiyoisha."
+  },
+  "optionsSectionPdf": {
+    "message": "Kuhamisha PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Ukubwa chaguo-msingi wa karatasi"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" hufanya ukurasa mmoja uwe sawa kabisa na ukubwa wa picha ya skrini.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Ukubwa wa picha"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Mkao"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Kwa ukubwa maalum wa karatasi."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Wima"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Mlalo"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Ugawaji makini wa kurasa"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Hutafuta nafasi wazi karibu na kila mpaka wa ukurasa ili mistari ya maandishi isikatwe katikati."
+  },
+  "optionsPdfStamp": {
+    "message": "Piga chapa URL na tarehe"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Huongeza URL ya ukurasa na tarehe ya kunasa kwenye kijachini cha kila ukurasa wa PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Kupakua"
+  },
+  "optionsSaveDirectory": {
+    "message": "Folda"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Folda ndogo ndani ya $DOWNLOADS$ kwa picha zako za skrini, k.m. $EXAMPLE$. Wazi = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Vipakuliwa)"
+  },
+  "optionsSaveAs": {
+    "message": "Dirisha la \"Hifadhi kama\""
+  },
+  "optionsSaveAsDesc": {
+    "message": "Huuliza pa kuhifadhi kila faili badala ya kupakua kimyakimya."
+  },
+  "optionsClipboardFit": {
+    "message": "Sawazisha nakala za ubao na vikomo vya programu"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Hupunguza nakala zinazozidi pikseli $PIXELS$ ili kubandika kwenye $APP$ na nyinginezo kufanye kazi.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Mtiririko wa kazi"
+  },
+  "optionsAutoDownload": {
+    "message": "Pakua kiotomatiki baada ya kunasa"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Huhifadhi picha mara moja kunasa kunapokamilika."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Fungua kihariri baada ya kunasa"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Nenda moja kwa moja kwenye kuweka maelezo (kwa picha za sehemu moja pekee)."
+  },
+  "optionsTheme": {
+    "message": "Mandhari"
+  },
+  "optionsThemeDesc": {
+    "message": "Kwa kidirisha ibukizi na kurasa zote za FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Mfumo"
+  },
+  "optionsThemeLight": {
+    "message": "Nuru"
+  },
+  "optionsThemeDark": {
+    "message": "Giza"
+  },
+  "optionsShortcuts": {
+    "message": "Njia za mkato za kibodi"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Ukurasa mzima: $KEYFULL$ · Linaloonekana: $KEYVISIBLE$. Binafsisha kwenye $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Imehifadhiwa ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Data yako"
+  },
+  "optionsStorage": {
+    "message": "Hifadhi"
+  },
+  "optionsStorageUsage": {
+    "message": "Zimetumika $USED$ kati ya $QUOTA$ kwenye kifaa hiki.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Kivinjari hiki hakiripoti FullShot inatumia nafasi kiasi gani."
+  },
+  "optionsStorageKept": {
+    "message": "Picha zako za skrini zitahifadhiwa: kivinjari hakitazifuta ili kupata nafasi."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Picha zako za skrini ziko kwenye hifadhi ya kivinjari ya “jitihada bora”, ambayo kinaweza kuifuta ili kupata nafasi."
+  },
+  "optionsStorageKeep": {
+    "message": "Hifadhi data yangu"
+  },
+  "optionsExport": {
+    "message": "Hamisha kila kitu"
+  },
+  "optionsExportDesc": {
+    "message": "Huandika faili moja lenye mipangilio yako na orodha ya picha zako za skrini. Huhifadhiwa kwenye kifaa hiki na halitumwi popote."
+  },
+  "optionsExportImages": {
+    "message": "Jumuisha picha"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Picha zenyewe, ambazo ni karibu ukubwa wote. Bila hizo, faili hutaja tu picha zako za skrini lakini halina hata moja."
+  },
+  "optionsExportSize": {
+    "message": "Ukubwa wa faili: takriban $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Data iliyobaki"
+  },
+  "optionsSweepDesc": {
+    "message": "Unasaji uliokatizwa unaweza kuacha fremu kwenye diski ambazo si za picha yoyote ya skrini. Hazionekani kwenye ukurasa wowote, hivyo hakuna ukurasa unaoweza kuzifuta. Kitendo hiki huzitafuta na kuziondoa."
+  },
+  "optionsSweepBtn": {
+    "message": "Tafuta na uondoe"
+  },
+  "optionsSweepResult": {
+    "message": "Zimeondolewa. Unasaji uliosafishwa: $COUNT$ · Nafasi iliyopatikana: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Hakuna kilichobaki: kila kilichohifadhiwa ni cha picha ya skrini unayoweza kuiona."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Rejesha mipangilio"
+  },
+  "optionsResetDesc": {
+    "message": "Hurejesha kila mpangilio wa ukurasa huu kwenye thamani yake ya awali. Picha zako za skrini haziguswi."
+  },
+  "optionsResetBtn": {
+    "message": "Rejesha"
+  },
+  "optionsResetConfirm": {
+    "message": "Urejeshe mipangilio yote ya FullShot kwenye thamani chaguo-msingi? Picha zako za skrini haziathiriki."
+  },
+  "optionsResetDone": {
+    "message": "Mipangilio imerudi kwenye thamani chaguo-msingi."
+  },
+  "optionsDeleteAll": {
+    "message": "Futa kila kitu"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Huondoa kila picha ya skrini kwenye historia yako na kila kilichoachwa na unasaji uliokatizwa. Mipangilio yako inabaki kama ilivyo."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Ufute kila kitu ambacho FullShot imehifadhi kwenye kifaa hiki?\n\nPicha za skrini kwenye historia yako: $COUNT$\nMabaki ya unasaji uliokatizwa: $LEFTOVER$\nNafasi itakayopatikana: $SIZE$\n\nMipangilio yako haiathiriki. Hatua hii haiwezi kutenduliwa.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Imefutwa. FullShot sasa haihifadhi picha yoyote ya skrini kwenye kifaa hiki."
+  },
+  "resultPageTitle": {
+    "message": "Picha ya skrini — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Nakili"
+  },
+  "resultCopyTip": {
+    "message": "Nakili picha kwenye ubao wa kunakili"
+  },
+  "resultEdit": {
+    "message": "Hariri"
+  },
+  "resultEditTip": {
+    "message": "Fungua kwenye kihariri"
+  },
+  "resultBeautify": {
+    "message": "Pamba"
+  },
+  "resultBeautifyTip": {
+    "message": "Pamba — fremu na mandharinyuma kwa kushiriki"
+  },
+  "resultClip": {
+    "message": "Klipu"
+  },
+  "resultClipTip": {
+    "message": "Klipu ya usogezaji — $GIF$ / $WEBM$ yenye mwendo",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Ukubwa wa karatasi ya PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Pakua"
+  },
+  "resultDeleteTip": {
+    "message": "Futa picha ya skrini"
+  },
+  "resultHistoryTip": {
+    "message": "Historia ya picha za skrini"
+  },
+  "resultProgressAssembling": {
+    "message": "Inaunganisha picha yako ya skrini…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Inasimbua fremu $COUNT$…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Inasimbua fremu $COUNT$…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Inashona sehemu ya $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Inashona sehemu ya $INDEX$ kati ya ~$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Inahifadhi…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Dokezo: buruta picha moja kwa moja hadi kwenye eneo-kazi lako, au tumia $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Hakuna kitu hapa"
+  },
+  "resultEmptyBody": {
+    "message": "Picha hii ya skrini haipo tena."
+  },
+  "resultOpenHistory": {
+    "message": "Fungua historia"
+  },
+  "resultSomethingWrong": {
+    "message": "Kuna hitilafu imetokea — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Sehemu ya $INDEX$ kati ya $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Pakua sehemu"
+  },
+  "resultEditPart": {
+    "message": "Hariri sehemu"
+  },
+  "resultClipPart": {
+    "message": "Klipu ya sehemu"
+  },
+  "resultPartAlt": {
+    "message": "Sehemu ya $INDEX$ ya picha ya skrini",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Inapakua $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Futa picha hii ya skrini kabisa?"
+  },
+  "resultDeleted": {
+    "message": "Picha ya skrini imefutwa."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Picha hii ni ndefu mno kubandikwa kama picha moja inayosomeka, kwa hivyo $COPY$ huweka muhtasari uliopunguzwa wa ukurasa mzima kwenye ubao wa kunakili. Maandishi madogo ndani yake hayatasomeka.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Sehemu ya $INDEX$ imenakiliwa kwenye ubao",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Inaunda PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF imepakuliwa (ukurasa $COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF imepakuliwa (kurasa $COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF imeshindikana — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Kihariri — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Rudi kwenye picha ya skrini"
+  },
+  "editorToolSelect": {
+    "message": "Chagua / sogeza ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Punguza ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Kalamu ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Kiangazi ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Mstari ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Mshale ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Mstatili ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Duaradufu ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Maandishi ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Fifisha / vuruga pikseli ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Hatua yenye nambari ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Chapa ya emoji ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Rangi maalum"
+  },
+  "editorStrokeTip": {
+    "message": "Unene wa mstari"
+  },
+  "editorStrokeThin": {
+    "message": "Membamba"
+  },
+  "editorStrokeMedium": {
+    "message": "Wastani"
+  },
+  "editorStrokeThick": {
+    "message": "Mnene"
+  },
+  "editorSizeTip": {
+    "message": "Ukubwa wa maandishi / emoji"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Tendua ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Rudia ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Punguza ukuzaji (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Ongeza ukuzaji (+)"
+  },
+  "editorZoomFit": {
+    "message": "Kisha"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Imetoshelezwa kwenye dirisha — bofya kupata 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "Bofya ili itoshee dirishani"
+  },
+  "editorExport": {
+    "message": "Hamisha"
+  },
+  "editorExportCopy": {
+    "message": "Nakili kwenye ubao"
+  },
+  "editorExportImage": {
+    "message": "Picha ya $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Hati ya $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Hifadhi"
+  },
+  "editorSaveTip": {
+    "message": "Hifadhi mabadiliko kwenye historia ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Zaidi"
+  },
+  "editorMenuFiles": {
+    "message": "Nenda kwenye Historia"
+  },
+  "editorMenuOptions": {
+    "message": "Nenda kwenye Chaguo"
+  },
+  "editorMenuShortcuts": {
+    "message": "Njia za mkato za kibodi"
+  },
+  "editorCropApply": {
+    "message": "Tumia upunguzaji"
+  },
+  "editorCropCancel": {
+    "message": "Ghairi"
+  },
+  "editorShortcutsHeading": {
+    "message": "Njia za mkato za kibodi"
+  },
+  "editorShortcutTools": {
+    "message": "Chagua zana"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Tendua / rudia"
+  },
+  "editorShortcutSave": {
+    "message": "Hifadhi kwenye historia"
+  },
+  "editorShortcutZoom": {
+    "message": "Punguza / ongeza ukuzaji"
+  },
+  "editorShortcutDelete": {
+    "message": "Ondoa kitu kilichochaguliwa"
+  },
+  "editorShortcutEscape": {
+    "message": "Acha kuchagua / ghairi upunguzaji"
+  },
+  "editorShortcutsClose": {
+    "message": "Funga"
+  },
+  "editorNotFound": {
+    "message": "Picha ya skrini haikupatikana"
+  },
+  "editorToastDownloaded": {
+    "message": "Imepakuliwa"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF imepakuliwa"
+  },
+  "editorToastSaved": {
+    "message": "Imehifadhiwa kwenye historia"
+  },
+  "historyPageTitle": {
+    "message": "Historia — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Historia"
+  },
+  "historySearchPlaceholder": {
+    "message": "Tafuta kichwa au URL…"
+  },
+  "historySelectAll": {
+    "message": "Chagua zote"
+  },
+  "historyClearSelection": {
+    "message": "Ondoa uteuzi"
+  },
+  "historyDownloadSelected": {
+    "message": "Pakua zilizochaguliwa"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Pakua ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Futa zilizochaguliwa"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Futa ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Bado hakuna picha za skrini"
+  },
+  "historyEmptyBody": {
+    "message": "Picha utakazonasa zitaonekana hapa. Bofya aikoni ya FullShot kwenye upau wako wa vidhibiti ili kuanza."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Hakuna zinazolingana"
+  },
+  "historyNoMatchesBody": {
+    "message": "Hakuna picha ya skrini inayolingana na \"$QUERY$\".",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "Picha $COUNT$ ya skrini · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "Picha $COUNT$ za skrini · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ kati ya picha $COUNT$ ya skrini · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ kati ya picha $COUNT$ za skrini · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Chagua"
+  },
+  "historyCardOpen": {
+    "message": "Fungua"
+  },
+  "historyCardEdit": {
+    "message": "Hariri"
+  },
+  "historyCardDownloadTip": {
+    "message": "Pakua"
+  },
+  "historyCardDeleteTip": {
+    "message": "Futa"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Fungua ukurasa halisi"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · sehemu $COUNT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Picha ya skrini"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Futa picha hii ya skrini?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Futa picha $COUNT$ ya skrini kabisa?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Futa picha $COUNT$ za skrini kabisa?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Inapakua picha $COUNT$ ya skrini",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Inapakua picha $COUNT$ za skrini",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Imefutwa"
+  },
+  "beautifyPageTitle": {
+    "message": "Pamba — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Pamba"
+  },
+  "actionBack": {
+    "message": "Rudi"
+  },
+  "commonLoading": {
+    "message": "Inapakia…"
+  },
+  "beautifyFieldSize": {
+    "message": "Ukubwa"
+  },
+  "beautifyPresetAuto": {
+    "message": "Kiotomatiki"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Mraba"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Wima"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Mandharinyuma"
+  },
+  "beautifyBgSlate": {
+    "message": "Kijivu baridi"
+  },
+  "beautifyBgGraphite": {
+    "message": "Kijivu cheusi"
+  },
+  "beautifyBgSky": {
+    "message": "Anga"
+  },
+  "beautifyBgSunset": {
+    "message": "Machweo"
+  },
+  "beautifyBgGrape": {
+    "message": "Zabibu"
+  },
+  "beautifyBgMint": {
+    "message": "Mnanaa"
+  },
+  "beautifyFieldPadding": {
+    "message": "Nafasi ya pembeni"
+  },
+  "beautifyFieldRadius": {
+    "message": "Mviringo wa pembe"
+  },
+  "beautifyFieldEffects": {
+    "message": "Athari"
+  },
+  "beautifyShadow": {
+    "message": "Kivuli"
+  },
+  "beautifyWindowFrame": {
+    "message": "Fremu ya dirisha"
+  },
+  "beautifyFieldExport": {
+    "message": "Hamisha"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Klipu ya usogezaji — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Klipu ya usogezaji"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Muundo"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ hucheza kila mahali. $WEBM$ ni ndogo na laini zaidi (hurekodiwa papo hapo ndani ya kivinjari chako).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Upana wa matokeo"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Msongamano"
+  },
+  "scrollclipDensityHint": {
+    "message": "Msongamano wa juu hutoa matokeo makali zaidi (karibu na ubora wa chanzo) — faili kubwa zaidi."
+  },
+  "scrollclipFieldShape": {
+    "message": "Umbo"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Kasi ya usogezaji (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Kasi ya fremu (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Mwendo"
+  },
+  "scrollclipBounce": {
+    "message": "Rudia (sogeza tena hadi juu)"
+  },
+  "scrollclipLoop": {
+    "message": "Jirudia bila mwisho"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Nakili fremu"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Nakili fremu ya bango (ya juu) kama $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · fremu $COUNT$ · sek $SECONDS$",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · fremu $COUNT$ · sek $SECONDS$",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Inachora fremu… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Inasimba $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Inakamilisha…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Inarekodi $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Inarekodi…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ haitumiki hapa — inahamishwa kama $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Fremu ya bango imenakiliwa"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Kunasa kwa kundi"
+  },
+  "batchHeading": {
+    "message": "Kunasa kwa kundi"
+  },
+  "batchIntro": {
+    "message": "Bandika URL, moja kwa kila mstari. FullShot hufungua kila ukurasa, hunasa picha ya ukurasa mzima kwenye historia yako, kisha huendelea — hadi $MAX$ kwa wakati mmoja. Picha zinaonekana kwenye historia yako; bofya $OPENLINK$ ili kuona, kuhariri au kuhamisha yoyote kati yake.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Nasa zote"
+  },
+  "batchPermissionHint": {
+    "message": "Kufungua kurasa hizi kunahitaji ruhusa ya mara moja tu wakati wa kwanza."
+  },
+  "batchPermissionDeclined": {
+    "message": "Ruhusa ya kufungua kurasa hizo ilikataliwa."
+  },
+  "batchPanelPlan": {
+    "message": "Mpango"
+  },
+  "batchPanelProgress": {
+    "message": "Maendeleo"
+  },
+  "batchPlanCountOne": {
+    "message": "Ukurasa $COUNT$ wa kunasa",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "Kurasa $COUNT$ za kunasa",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "Kurasa $COUNT$ za kunasa (kikomo ni $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Bado hakuna URL halali"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ zimerukwa: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "mpangilio usiotumika"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "si halali"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "hakuna seva pangishi"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "nakala rudufu"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "tupu"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "zaidi ya kikomo ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ zimekamilika",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ zimekamilika, $FAILED$ zimeshindikana",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ zimekamilika — imemalizika",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ zimekamilika, $FAILED$ zimeshindikana — imemalizika",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "fungua"
+  },
+  "batchJobTimedOut": {
+    "message": "muda wa kunasa umeisha"
+  },
+  "batchJobNoSession": {
+    "message": "hakuna kipindi cha kunasa"
+  },
+  "batchJobFailed": {
+    "message": "kunasa kumeshindikana"
+  },
+  "batchJobError": {
+    "message": "hitilafu ya kunasa"
+  },
+  "regionHintDrag": {
+    "message": "Buruta ili kuchagua sehemu — $ESC$ kughairi",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Bofya kipengele ili kukinasa — $ESC$ kughairi",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Kurasa za kivinjari kama Mipangilio, Viendelezi na Kichupo Kipya hazipatikani kwa kiendelezi chochote. Jaribu FullShot kwenye ukurasa wa kawaida wa wavuti."
+  },
+  "errRestrictedDevtools": {
+    "message": "Madirisha ya DevTools hayawezi kunaswa na kiendelezi. Tumia zana ya kunasa skrini ya kompyuta yako kwa hayo."
+  },
+  "errRestrictedViewSource": {
+    "message": "Kurasa za kuonyesha msimbo chanzo haziwezi kunaswa. Nasa ukurasa wenyewe badala yake."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Kurasa za viendelezi, pamoja na za FullShot yenyewe, zinalindwa na kivinjari na haziwezi kunaswa."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store huzuia viendelezi kusoma kurasa zake, hivyo ukurasa huu hauwezi kunaswa."
+  },
+  "errRestrictedGeneric": {
+    "message": "Ukurasa huu unalindwa na kivinjari na hauwezi kunaswa."
+  },
+  "errWrongTab": {
+    "message": "Kunasa kumesimama — ulibadilisha kichupo. Acha ukurasa huu mbele hadi FullShot imalize."
+  },
+  "errGeneric": {
+    "message": "Kunasa kulisimama kabla ya kumalizika. Tafadhali jaribu tena."
+  },
+  "errBusy": {
+    "message": "Tayari kuna kunasa kunakoendelea kwenye kichupo hiki."
+  },
+  "errBlocked": {
+    "message": "Ukurasa huu hauwezi kunaswa (kizuizi cha kivinjari)."
+  },
+  "errNoStart": {
+    "message": "FullShot haikuweza kuanza kwenye ukurasa huu. Pakia ukurasa upya kisha ujaribu tena."
+  },
+  "errCrash": {
+    "message": "Kunasa kulisimama bila kutarajiwa. Tafadhali jaribu tena."
+  },
+  "errUnknownMessage": {
+    "message": "Ujumbe usiojulikana."
+  },
+  "errQuota": {
+    "message": "Kivinjari kinapunguza kasi ya kupiga picha kurasa. Subiri kidogo kisha ujaribu tena."
+  },
+  "errFrameHandover": {
+    "message": "Kivinjari kiliacha kukabidhi skrini katikati ya kazi. Subiri sekunde chache kisha ujaribu tena."
+  },
+  "errLostTab": {
+    "message": "Kunasa kumepoteza mawasiliano na kichupo hiki. Pakia ukurasa upya kisha ujaribu tena."
+  },
+  "errStoppedEarly": {
+    "message": "Kunasa kulisimamishwa kabla ya kumalizika."
+  },
+  "errStorageFull": {
+    "message": "Hakuna nafasi iliyobaki ya kuhifadhi unasaji huu. Futa baadhi ya picha za skrini kwenye historia yako, kisha ujaribu tena."
+  },
+  "reasonGeneric": {
+    "message": "hakuna sababu iliyotolewa. Tafadhali jaribu tena."
+  },
+  "reasonDecodeFailed": {
+    "message": "picha hiyo ya skrini haikuweza kusimbuliwa."
+  },
+  "reasonTooLarge": {
+    "message": "picha ni kubwa mno kuhamishwa hapa."
+  },
+  "toastCopiedClipboard": {
+    "message": "Imenakiliwa kwenye ubao"
+  },
+  "toastCopyFailed": {
+    "message": "Kunakili kumeshindikana — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Kuhamisha kumeshindikana — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ imehifadhiwa",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ imehifadhiwa  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

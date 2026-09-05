@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — remplacez-moi",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "REMPLACEZ-MOI : une phrase, un objectif, 132 caractères maximum, sans marketing.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — remplacez-moi",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Changer de thème",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Options",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Onglet actif",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Lecture…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Copier le titre",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Relire l’onglet actif",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Fermer",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Copié",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Copie impossible — appuyez plutôt sur Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Dernière $ACTION$ échouée — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Dernière $ACTION$ échouée — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "lecture du titre",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "copie",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "effacement des données",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "exécution",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Quelque chose a interrompu l’opération avant la fin. Veuillez réessayer.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Cet onglet est déjà occupé.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Cette page est protégée par le navigateur et ne peut pas être lue.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Aucun onglet actif n’a été trouvé.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Cette page n’a aucun titre à lire.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Annulé.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Message inconnu.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Cet onglet a été fermé avant la fin du travail.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "L’extension n’a pas répondu.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Rien n’est revenu.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Les pages du navigateur telles que Paramètres, Extensions et la page Nouvel onglet sont interdites à toutes les extensions. Essayez sur une page web ordinaire.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Les fenêtres des outils de développement sont interdites aux extensions.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Les pages de code source sont interdites aux extensions. Essayez plutôt la page elle-même.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Les pages d’extension, y compris celles de cette extension, sont protégées par le navigateur.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Le Chrome Web Store empêche les extensions de lire ses pages.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Les fichiers locaux demandent une autorisation supplémentaire. Ouvrez la page Extensions de votre navigateur, trouvez cette extension et activez « Autoriser l’accès aux URL de fichier ».",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Cette page ne s’est pas chargée, il n’y a donc encore rien à lire.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Il s’agit de la visionneuse PDF intégrée au navigateur. Les extensions ne peuvent pas lire à l’intérieur — ouvrez le PDF dans un onglet ordinaire ou téléchargez-le d’abord.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Cette page est isolée par le site qui l’a ouverte, les extensions ne peuvent donc pas la lire.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Le site des modules complémentaires empêche les extensions de lire ses pages.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Cet appareil n’a plus d’espace, rien n’a donc été enregistré. Supprimez quelques lignes stockées dans les Options et réessayez.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "L’opération a été trop longue et a été arrêtée. Rien n’a été laissé derrière.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Cette valeur est trop longue pour être stockée dans vos paramètres synchronisés. Essayez-en une plus courte.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Ce paramètre n’a pas pu être enregistré. Patientez un instant et réessayez.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Options — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Options",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Options",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Enregistré automatiquement. Si la synchronisation de votre navigateur est activée, vos paramètres suivent votre profil de navigateur — ils ne nous sont jamais envoyés.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Comportement",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Copier à l’ouverture",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Copier le résultat dans le presse-papiers dès l’ouverture de la fenêtre.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Conserver un historique local",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Désactivé par défaut. Une fois activé, les résultats sont stockés sur cet appareil uniquement, listés ci-dessous, et supprimables à tout moment.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Limite de l’historique",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Les lignes les plus anciennes sont supprimées dès que la liste dépasse ce nombre.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Supprimer les lignes plus anciennes que",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Jours. Les anciennes lignes sont supprimées automatiquement en arrière-plan. Mettez 0 pour les conserver jusqu’à ce que la limite de l’historique les supprime.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Thème",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Suit votre système par défaut.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Système",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Clair",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Sombre",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Vos données",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Rien n’est stocké sur cet appareil.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ lignes sont stockées sur cet appareil. Rien n’en sort.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ ligne est stockée sur cet appareil. Rien n’en sort.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ lignes sont stockées sur cet appareil. Rien n’en sort.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ lignes sont stockées sur cet appareil. Rien n’en sort.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ lignes sont stockées sur cet appareil. Rien n’en sort.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ lignes sont stockées sur cet appareil. Rien n’en sort.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Durable : le navigateur a promis de ne pas effacer ces données.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Au mieux : le navigateur peut effacer ces données de lui-même si l’appareil manque d’espace. Exportez une sauvegarde.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Ce navigateur n’indique pas si les données stockées seront conservées ; considérez-les comme temporaires et exportez une sauvegarde.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $USED$ utilisés sur $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Supprimer",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Supprimer la ligne de $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Tout exporter",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Enregistre toutes les lignes stockées dans un seul fichier JSON sur cet appareil. Rien n’est téléversé.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Tout exporter",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Tout supprimer",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Retire de cet appareil toutes les lignes stockées. Les paramètres sont conservés.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Tout supprimer",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Réinitialiser les paramètres",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Remet chaque paramètre de cette page à sa valeur par défaut et le retire de votre profil de navigateur synchronisé. Les lignes stockées sont conservées.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Réinitialiser les paramètres",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Signaler un problème",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Préparer un rapport de problème",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Crée un petit fichier décrivant l’état de cette extension. Vous voyez exactement ce qu’il contient avant son enregistrement, et rien n’est envoyé nulle part.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Préparer un rapport",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "À propos",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — remplacez-moi",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Une phrase disant exactement ce que fait cet outil. Il travaille sur votre appareil : pas de compte, pas de suivi, aucun appel réseau, rien ne nous est envoyé.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Enregistré",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Tout a été supprimé",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Suppression impossible — réessayez",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Ce paramètre n’a pas pu être enregistré",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Export enregistré",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Le fichier n’a pas pu être enregistré",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Ligne supprimée",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Paramètres réinitialisés",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Les paramètres n’ont pas pu être réinitialisés",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Rapport enregistré",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Annuler",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Tout supprimer ?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Toutes les lignes stockées sont retirées de cet appareil. Vos paramètres sont conservés. Cette action est irréversible.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Réinitialiser tous les paramètres ?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Chaque préférence de cette page revient à sa valeur par défaut et est retirée de votre profil de navigateur synchronisé. Vos lignes stockées sont conservées. Cette action est irréversible.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Enregistrer ce rapport de problème ?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Voici tout ce que contiendra le fichier. Il ne comporte aucune adresse de page, aucun texte de page et rien de ce que vous avez capturé. Rien n’est envoyé nulle part — le fichier est enregistré sur cet appareil et c’est à vous de le partager ou non.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Enregistrer le rapport",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Fenêtre de navigation privée — ce résultat n’a pas été enregistré dans votre historique.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Accès aux sites",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Accès à tous les sites",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Nécessaire uniquement pour les fonctions qui agissent sur des pages où vous n’avez pas cliqué sur le bouton de la barre d’outils. Vous pouvez le retirer à tout moment, ici.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Accorder l’accès",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Retirer l’accès",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Cette extension peut actuellement lire tous les sites que vous visitez.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Cette extension ne peut lire un onglet qu’après un clic sur son bouton dans la barre d’outils.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Accès accordé",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "L’accès n’a pas été accordé",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Accès retiré",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Cet accès n’a pas pu être retiré",
+    "description": "en: Could not revoke that access"
+  }
+}

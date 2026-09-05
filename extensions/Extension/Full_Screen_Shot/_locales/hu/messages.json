@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot – teljes oldalas képernyőkép"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Rögzítse a teljes oldalt, a látható részt, egy kijelölést vagy elemet. Szerkessze és mentse PNG, JPEG, WebP vagy PDF formátumban."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – oldal rögzítése (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Teljes oldal rögzítése"
+  },
+  "commandCaptureVisible": {
+    "message": "Látható terület rögzítése"
+  },
+  "commandCaptureRegion": {
+    "message": "Kijelölt terület rögzítése"
+  },
+  "commandCaptureElement": {
+    "message": "Oldalelem rögzítése (kattintson a kiválasztáshoz)"
+  },
+  "popupToggleTheme": {
+    "message": "Téma váltása"
+  },
+  "popupModeFullTitle": {
+    "message": "Teljes oldal"
+  },
+  "popupModeFullSub": {
+    "message": "Végiggörgeti és rögzíti az oldalt"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Látható terület"
+  },
+  "popupModeVisibleSub": {
+    "message": "Csak ami a képernyőn van"
+  },
+  "popupModeRegionTitle": {
+    "message": "Kijelölt terület"
+  },
+  "popupModeRegionSub": {
+    "message": "Húzással jelöljön ki területet"
+  },
+  "popupModeElementTitle": {
+    "message": "Elem"
+  },
+  "popupModeElementSub": {
+    "message": "Kattintson az oldal bármely elemére"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Késleltetett rögzítés"
+  },
+  "popupModeDelayedSub": {
+    "message": "Teljes oldal visszaszámlálás után"
+  },
+  "popupDelayLabel": {
+    "message": "Késleltetés másodpercben"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ mp",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Görgethető panelek és iframe-ek kibontása"
+  },
+  "popupExpandToggleTip": {
+    "message": "A belső görgethető paneleket és iframe-eket rögzítés előtt a teljes tartalmukra nyitja ki, ahelyett hogy úgy fényképezné le őket, ahogy látszanak. Más webhelyekről származó keretekhez a böngésző egyszer további engedélyt kér."
+  },
+  "popupDismiss": {
+    "message": "Bezárás"
+  },
+  "popupLastErrorFailed": {
+    "message": "Legutóbb nem sikerült: $MODE$ — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Legutóbb nem sikerült: $MODE$ — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "teljes oldal rögzítése"
+  },
+  "popupModeNameVisible": {
+    "message": "látható terület rögzítése"
+  },
+  "popupModeNameRegion": {
+    "message": "terület rögzítése"
+  },
+  "popupModeNameElement": {
+    "message": "elem rögzítése"
+  },
+  "popupModeNameGeneric": {
+    "message": "rögzítés"
+  },
+  "popupNoActiveTab": {
+    "message": "Nem található aktív lap."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "A rögzítést nem sikerült elindítani."
+  },
+  "popupLinkHistory": {
+    "message": "Előzmények"
+  },
+  "popupLinkBatch": {
+    "message": "Kötegelt"
+  },
+  "popupLinkOptions": {
+    "message": "Beállítások"
+  },
+  "optionsPageTitle": {
+    "message": "Beállítások — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Beállítások"
+  },
+  "optionsHeading": {
+    "message": "Beállítások"
+  },
+  "optionsLead": {
+    "message": "A módosítások automatikusan mentődnek, és szinkronizálódnak a böngészőprofiljával."
+  },
+  "optionsSectionImage": {
+    "message": "Kép"
+  },
+  "optionsFormat": {
+    "message": "Formátum"
+  },
+  "optionsFormatDesc": {
+    "message": "A $PNG$ veszteségmentes, a $JPEG$ kisebb, a $WEBP$ pedig hasonló minőség mellett a legkisebb.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ minőség",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Fájlnévsablon"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Helyőrzők: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Rögzítés"
+  },
+  "optionsCaptureDelay": {
+    "message": "Extra várakozás lépésenként"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Ennyi ezredmásodpercet vár minden görgetés után. Lassú, animációkkal teli oldalaknál növelje."
+  },
+  "optionsHideFixed": {
+    "message": "Rögzített és tapadó elemek elrejtése"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Megakadályozza, hogy a fejléc minden képernyőn megismétlődjön (egyszer, felül jelenik meg)."
+  },
+  "optionsPreScroll": {
+    "message": "Előzetes görgetés a lusta tartalomért"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Rögzítés előtt egyszer végiggörgeti az oldalt. Lassabb, de elkapja a késleltetve betöltődő képeket is."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Várakozás a képek dekódolására"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Hagyja, hogy a késve vagy lustán érkező képek minden képkocka előtt befejezzék a dekódolást, így nem fekete vagy üres foltként kerülnek a képre."
+  },
+  "optionsHideOverlays": {
+    "message": "Szalagcímek és felugró ablakok elrejtése"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Rögzítés előtt eltávolítja a sütisávokat, a hírlevél-ablakokat és a „töltse le az appot” felugrókat, és feloldja a modális ablak által megdermesztett oldalt. Utána mindent visszaállít."
+  },
+  "optionsExpandInner": {
+    "message": "Görgethető tartalom kibontása"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "A belső paneleket és iframe-eket úgy nyitja ki, hogy a saját láthatósági határuk alatt rejlő tartalom is látszódjon, ahelyett hogy pontosan úgy rögzítené őket, ahogy látszanak."
+  },
+  "optionsExpandPermRow": {
+    "message": "Más webhelyről származó keretek"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Engedélyezés"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Az engedély megadva — a más webhelyekről származó keretek is kibomlanak."
+  },
+  "optionsExpandPermMissing": {
+    "message": "A(z) „$PERMISSION$” engedély nélkül a más webhelyekről származó keretek úgy kerülnek a képre, ahogy látszanak. A panelek és az azonos webhelyről származó iframe-ek mindig működnek.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Virtualizált listák kigöngyölítése"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Végiglépked a renderelési ablakot használó folyamokon ($LIB1$ / $LIB2$ típusúak), és a teljes tartalmukat rögzíti, nem csak a képernyőn lévő sorokat. Nagyon hosszú listáknál lassabb.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Kattintásra megnyíló tartalom kibontása"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Rögzítés előtt kinyitja az összecsukott $DETAILS$ elemeket, az inaktív füleket, a harmonikákat és a „továbbiak” szakaszokat, majd visszazárja őket. Előhozza a kattintás mögé rejtett tartalmat.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "„$BUTTONTEXT$” gombok kattintása",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Ismételten rákattint a „load more” / „show more” gombokra, és megvárja az új tartalom betöltődését, amíg a folyam ki nem merül. A fenti beállítással ellentétben olyan tartalmat tölt be, ami még nincs az oldalon; a betöltött tartalom a rögzítés után is ott marad."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Görgetés a végtelen folyamokhoz"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "„load more” gomb nélküli folyamokhoz: ismételten az aljára görget, és megvárja a következő adag betöltődését, amíg a folyam nem nő tovább (korlátozottan, hogy a végtelen folyamokat ne kergesse örökké). A betöltött tartalom a rögzítés után is ott marad."
+  },
+  "optionsWaitStable": {
+    "message": "Várakozás a tartalom betöltődésére"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Megvárja, amíg a csontváz- és helyőrző betöltők (aria-busy területek, csillámló blokkok) helyére a valódi tartalom kerül, hogy egy félúton lévő „betöltés…” ne szürke foltként kerüljön a képre. Korlátozott, így egy beragadt töltőjel nem akasztja meg a rögzítést."
+  },
+  "optionsRedactPII": {
+    "message": "Érzékeny adatok automatikus kitakarása"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Végigfésüli az oldal által közzétett szöveget e-mail-címek, telefonszámok, bankkártyaszámok, személyi azonosítók és API-kulcsok után, és a mentett képen tömör folttal fedi le azt, amire illeszkedett. A képpontokként kirajzolt szöveget nem tudja elolvasni — vásznat, képet, PDF-et, videokockát. A felismerés az Ön eszközén fut; semmi nem kerül soha sehová elküldésre. Teljes oldalas (dokumentumgörgetéses) rögzítésnél működik; a folt végleges, ezért nézze át maga az eredményt."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Legnagyobb oldalmagasság"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Biztonsági felső korlát (CSS px) a végtelen folyamokhoz."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF-exportálás"
+  },
+  "optionsPdfPaper": {
+    "message": "Alapértelmezett papírméret"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "A(z) „$IMAGESIZE$” pontosan akkora oldalt készít, mint a képernyőkép.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Képméret"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Tájolás"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Csak rögzített papírméretekre vonatkozik."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Álló"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Fekvő"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Okos oldaltördelés"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Minden oldaltörés közelében vizuális rést keres, hogy a szövegsorok ne szakadjanak ketté."
+  },
+  "optionsPdfStamp": {
+    "message": "URL és dátum rábélyegzése"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Minden PDF-oldal láblécébe beírja az oldal címét és a rögzítés dátumát."
+  },
+  "optionsSectionDownload": {
+    "message": "Letöltés"
+  },
+  "optionsSaveDirectory": {
+    "message": "Mappa"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "A képernyőképek almappája a(z) $DOWNLOADS$ mappán belül, például $EXAMPLE$. Üresen = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "„Mentés másként” párbeszédablak"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Csendes letöltés helyett kérdezzen rá minden fájl helyére."
+  },
+  "optionsClipboardFit": {
+    "message": "Vágólapra másolt képek igazítása az alkalmazások korlátaihoz"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "A $PIXELS$ képpont fölötti másolatokat lekicsinyíti, hogy a beillesztés a $APP$ és társai esetén is működjön.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Munkamenet"
+  },
+  "optionsAutoDownload": {
+    "message": "Automatikus letöltés rögzítés után"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "A rögzítés végeztével azonnal menti a képet."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Szerkesztő megnyitása rögzítés után"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Egyből a jelölésnél kezd (csak egyrészes képeknél)."
+  },
+  "optionsTheme": {
+    "message": "Téma"
+  },
+  "optionsThemeDesc": {
+    "message": "A felugró ablakra és az összes FullShot-oldalra vonatkozik."
+  },
+  "optionsThemeSystem": {
+    "message": "Rendszer"
+  },
+  "optionsThemeLight": {
+    "message": "Világos"
+  },
+  "optionsThemeDark": {
+    "message": "Sötét"
+  },
+  "optionsShortcuts": {
+    "message": "Billentyűparancsok"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Teljes oldal: $KEYFULL$ · Látható: $KEYVISIBLE$. Módosítás itt: $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Mentve ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Az Ön adatai"
+  },
+  "optionsStorage": {
+    "message": "Tárhely"
+  },
+  "optionsStorageUsage": {
+    "message": "$QUOTA$ méretből $USED$ használatban ezen az eszközön.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Ez a böngésző nem jelzi, mennyi helyet foglal a FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "A képernyőképei megmaradnak: a böngésző nem törli őket helyfelszabadítás céljából."
+  },
+  "optionsStorageAtRisk": {
+    "message": "A képernyőképei a böngésző „legjobb szándék” szerinti tárhelyén vannak, amelyet a böngésző helyfelszabadítás céljából kiüríthet."
+  },
+  "optionsStorageKeep": {
+    "message": "Adataim megtartása"
+  },
+  "optionsExport": {
+    "message": "Minden exportálása"
+  },
+  "optionsExportDesc": {
+    "message": "Egyetlen fájlt ír ki a beállításaival és a képernyőképei listájával. Ez az eszközre mentődik, és sehová sem kerül elküldésre."
+  },
+  "optionsExportImages": {
+    "message": "Képek belefoglalása"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Maguk a képek, amelyek a méret szinte egészét adják. Nélkülük a fájl felsorolja a képernyőképeit, de egyet sem tartalmaz belőlük."
+  },
+  "optionsExportSize": {
+    "message": "Fájlméret: körülbelül $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Visszamaradt adatok"
+  },
+  "optionsSweepDesc": {
+    "message": "A megszakadt rögzítés olyan képkockákat hagyhat a lemezen, amelyek egyetlen képernyőképhez sem tartoznak. Egyetlen oldalon sem jelennek meg, így egyetlen oldal sem tudja törölni őket. Ez megkeresi és eltávolítja őket."
+  },
+  "optionsSweepBtn": {
+    "message": "Keresés és eltávolítás"
+  },
+  "optionsSweepResult": {
+    "message": "Eltávolítva. Megtisztított rögzítések: $COUNT$ · Felszabadult hely: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Semmi sem maradt vissza: minden tárolt elem egy olyan képernyőképhez tartozik, amelyet lát."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Beállítások visszaállítása"
+  },
+  "optionsResetDesc": {
+    "message": "Az oldal minden beállítását visszaállítja a gyári értékére. A képernyőképeit ez nem érinti."
+  },
+  "optionsResetBtn": {
+    "message": "Visszaállítás"
+  },
+  "optionsResetConfirm": {
+    "message": "Visszaállítja a FullShot összes beállítását az alapértelmezett értékre? A képernyőképeit ez nem érinti."
+  },
+  "optionsResetDone": {
+    "message": "A beállítások visszaálltak az alapértelmezett értékekre."
+  },
+  "optionsDeleteAll": {
+    "message": "Minden törlése"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Eltávolítja az előzményekben lévő összes képernyőképet, és mindent, amit a megszakadt rögzítések hagytak hátra. A beállításai változatlanok maradnak."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Törli mindazt, amit a FullShot ezen az eszközön tárol?\n\nKépernyőképek az előzményekben: $COUNT$\nMegszakadt rögzítések maradványai: $LEFTOVER$\nEzzel felszabaduló hely: $SIZE$\n\nA beállításait ez nem érinti. A művelet nem vonható vissza.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Törölve. A FullShot mostantól nem tárol képernyőképet ezen az eszközön."
+  },
+  "resultPageTitle": {
+    "message": "Képernyőkép — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Másolás"
+  },
+  "resultCopyTip": {
+    "message": "Kép másolása a vágólapra"
+  },
+  "resultEdit": {
+    "message": "Szerkesztés"
+  },
+  "resultEditTip": {
+    "message": "Megnyitás a szerkesztőben"
+  },
+  "resultBeautify": {
+    "message": "Csinosítás"
+  },
+  "resultBeautifyTip": {
+    "message": "Csinosítás — keret és háttér a megosztáshoz"
+  },
+  "resultClip": {
+    "message": "Klip"
+  },
+  "resultClipTip": {
+    "message": "Görgetőklip — animált $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF papírmérete"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Letöltés"
+  },
+  "resultDeleteTip": {
+    "message": "Képernyőkép törlése"
+  },
+  "resultHistoryTip": {
+    "message": "Képernyőképek előzményei"
+  },
+  "resultProgressAssembling": {
+    "message": "Összeállítom a képernyőképet…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "$COUNT$ képkocka dekódolása…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$ képkocka dekódolása…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "$INDEX$. rész összefűzése…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "$INDEX$. rész összefűzése ~$TOTAL$ részből…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Mentés…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Tipp: húzza a képet egyenesen az asztalra, vagy használja a $DOWNLOAD$ gombot.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Itt nincs semmi"
+  },
+  "resultEmptyBody": {
+    "message": "Ez a képernyőkép már nem létezik."
+  },
+  "resultOpenHistory": {
+    "message": "Előzmények megnyitása"
+  },
+  "resultSomethingWrong": {
+    "message": "Valami hiba történt — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "$INDEX$. rész a(z) $TOTAL$-ból · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Rész letöltése"
+  },
+  "resultEditPart": {
+    "message": "Rész szerkesztése"
+  },
+  "resultClipPart": {
+    "message": "Klip a részből"
+  },
+  "resultPartAlt": {
+    "message": "A képernyőkép $INDEX$. része",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ letöltése",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Véglegesen törli ezt a képernyőképet?"
+  },
+  "resultDeleted": {
+    "message": "A képernyőkép törölve."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Ez a felvétel túl magas ahhoz, hogy egyetlen olvasható képként lehessen beilleszteni, ezért a $COPY$ a teljes oldal kicsinyített áttekintését teszi a vágólapra. A benne lévő apró szöveg nem lesz olvasható.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "A(z) $INDEX$. rész a vágólapra másolva",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF készítése…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF letöltve ($COUNT$ oldal)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF letöltve ($COUNT$ oldal)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "A PDF nem sikerült — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Szerkesztő — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Vissza a képernyőképhez"
+  },
+  "editorToolSelect": {
+    "message": "Kijelölés / mozgatás ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Vágás ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Toll ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Szövegkiemelő ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Vonal ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Nyíl ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Téglalap ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Ellipszis ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Szöveg ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Elmosás / pixelesítés ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Számozott lépés ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Emodzsibélyeg ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Egyéni szín"
+  },
+  "editorStrokeTip": {
+    "message": "Vonalvastagság"
+  },
+  "editorStrokeThin": {
+    "message": "Vékony"
+  },
+  "editorStrokeMedium": {
+    "message": "Közepes"
+  },
+  "editorStrokeThick": {
+    "message": "Vastag"
+  },
+  "editorSizeTip": {
+    "message": "Szöveg / emodzsi mérete"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Visszavonás ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Újra ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Kicsinyítés (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Nagyítás (+)"
+  },
+  "editorZoomFit": {
+    "message": "Illeszt"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Ablakhoz illesztve — kattintson a 100%-hoz"
+  },
+  "editorZoomTipToFit": {
+    "message": "Kattintson az ablakhoz illesztéshez"
+  },
+  "editorExport": {
+    "message": "Exportálás"
+  },
+  "editorExportCopy": {
+    "message": "Másolás a vágólapra"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ kép",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ dokumentum",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Mentés"
+  },
+  "editorSaveTip": {
+    "message": "Módosítások mentése az előzményekbe ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Továbbiak"
+  },
+  "editorMenuFiles": {
+    "message": "Ugrás az Előzményekhez"
+  },
+  "editorMenuOptions": {
+    "message": "Ugrás a Beállításokhoz"
+  },
+  "editorMenuShortcuts": {
+    "message": "Billentyűparancsok"
+  },
+  "editorCropApply": {
+    "message": "Vágás alkalmazása"
+  },
+  "editorCropCancel": {
+    "message": "Mégse"
+  },
+  "editorShortcutsHeading": {
+    "message": "Billentyűparancsok"
+  },
+  "editorShortcutTools": {
+    "message": "Eszközválasztás"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Visszavonás / újra"
+  },
+  "editorShortcutSave": {
+    "message": "Mentés az előzményekbe"
+  },
+  "editorShortcutZoom": {
+    "message": "Kicsinyítés / nagyítás"
+  },
+  "editorShortcutDelete": {
+    "message": "Kijelölt objektum eltávolítása"
+  },
+  "editorShortcutEscape": {
+    "message": "Kijelölés megszüntetése / vágás elvetése"
+  },
+  "editorShortcutsClose": {
+    "message": "Bezárás"
+  },
+  "editorNotFound": {
+    "message": "A képernyőkép nem található"
+  },
+  "editorToastDownloaded": {
+    "message": "Letöltve"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF letöltve"
+  },
+  "editorToastSaved": {
+    "message": "Mentve az előzményekbe"
+  },
+  "historyPageTitle": {
+    "message": "Előzmények — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Előzmények"
+  },
+  "historySearchPlaceholder": {
+    "message": "Keresés cím vagy URL szerint…"
+  },
+  "historySelectAll": {
+    "message": "Összes kijelölése"
+  },
+  "historyClearSelection": {
+    "message": "Kijelölés törlése"
+  },
+  "historyDownloadSelected": {
+    "message": "Kijelöltek letöltése"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Letöltés ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Kijelöltek törlése"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Törlés ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Még nincs képernyőkép"
+  },
+  "historyEmptyBody": {
+    "message": "Az elkészített képek itt jelennek meg. Az induláshoz kattintson a FullShot ikonjára az eszköztáron."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Nincs találat"
+  },
+  "historyNoMatchesBody": {
+    "message": "Egyetlen képernyőkép sem felel meg a következőnek: „$QUERY$”.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ képernyőkép · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ képernyőkép · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ / $COUNT$ képernyőkép · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ / $COUNT$ képernyőkép · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Kijelölés"
+  },
+  "historyCardOpen": {
+    "message": "Megnyitás"
+  },
+  "historyCardEdit": {
+    "message": "Szerkesztés"
+  },
+  "historyCardDownloadTip": {
+    "message": "Letöltés"
+  },
+  "historyCardDeleteTip": {
+    "message": "Törlés"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Eredeti oldal megnyitása"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ rész",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Képernyőkép"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Törli ezt a képernyőképet?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Véglegesen törli a kijelölt $COUNT$ képernyőképet?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Véglegesen törli a kijelölt $COUNT$ képernyőképet?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "$COUNT$ képernyőkép letöltése",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "$COUNT$ képernyőkép letöltése",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Törölve"
+  },
+  "beautifyPageTitle": {
+    "message": "Csinosítás — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Csinosítás"
+  },
+  "actionBack": {
+    "message": "Vissza"
+  },
+  "commonLoading": {
+    "message": "Betöltés…"
+  },
+  "beautifyFieldSize": {
+    "message": "Méret"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automatikus"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Négyzet"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Álló"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Háttér"
+  },
+  "beautifyBgSlate": {
+    "message": "Pala"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Égbolt"
+  },
+  "beautifyBgSunset": {
+    "message": "Naplemente"
+  },
+  "beautifyBgGrape": {
+    "message": "Szőlő"
+  },
+  "beautifyBgMint": {
+    "message": "Menta"
+  },
+  "beautifyFieldPadding": {
+    "message": "Térköz"
+  },
+  "beautifyFieldRadius": {
+    "message": "Sarokkerekítés"
+  },
+  "beautifyFieldEffects": {
+    "message": "Effektek"
+  },
+  "beautifyShadow": {
+    "message": "Vetett árnyék"
+  },
+  "beautifyWindowFrame": {
+    "message": "Ablakkeret"
+  },
+  "beautifyFieldExport": {
+    "message": "Exportálás"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Görgetőklip — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Görgetőklip"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Formátum"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "A $GIF$ mindenhol lejátszható. A $WEBM$ kisebb és simább (élőben, az Ön böngészőjében készül a felvétel).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Kimeneti szélesség"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Sűrűség"
+  },
+  "scrollclipDensityHint": {
+    "message": "A nagyobb sűrűség élesebb képet ad (közelebb az eredeti felbontáshoz) — a fájl nagyobb lesz."
+  },
+  "scrollclipFieldShape": {
+    "message": "Alak"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Görgetési sebesség (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Képkockasebesség (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Mozgás"
+  },
+  "scrollclipBounce": {
+    "message": "Visszapattanás (görgetés vissza a tetejére)"
+  },
+  "scrollclipLoop": {
+    "message": "Végtelenített ismétlés"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Képkocka másolása"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "A nyitó (felső) képkocka másolása $FORMAT$ formátumban",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ képkocka · $SECONDS$ mp",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ képkocka · $SECONDS$ mp",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Képkockák renderelése… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$ kódolása… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Véglegesítés…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ rögzítése…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Felvétel…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "A $WEBM$ itt nem támogatott — $GIF$ exportálása",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "A nyitó képkocka másolva"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — kötegelt rögzítés"
+  },
+  "batchHeading": {
+    "message": "Kötegelt rögzítés"
+  },
+  "batchIntro": {
+    "message": "Illessze be az URL-eket, soronként egyet. A FullShot megnyitja mindegyik oldalt, teljes oldalas képet ment az előzményekbe, majd továbblép — egyszerre legfeljebb $MAX$ címet. A képek az előzményekben jelennek meg; a $OPENLINK$ hivatkozásra kattintva megtekintheti, szerkesztheti vagy exportálhatja őket.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Összes rögzítése"
+  },
+  "batchPermissionHint": {
+    "message": "Ezeknek az oldalaknak a megnyitásához első alkalommal egyszeri engedély szükséges."
+  },
+  "batchPermissionDeclined": {
+    "message": "Az oldalak megnyitásához szükséges engedélyt elutasította."
+  },
+  "batchPanelPlan": {
+    "message": "Terv"
+  },
+  "batchPanelProgress": {
+    "message": "Folyamat"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ rögzítendő oldal",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ rögzítendő oldal",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ rögzítendő oldal (a felső korlát $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Még nincs érvényes URL"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ kihagyva: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "nem támogatott séma"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "érvénytelen"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "nincs gazdagép"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "ismétlődés"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "üres"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "korlát felett ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ kész",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ kész, $FAILED$ sikertelen",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ kész — befejezve",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ kész, $FAILED$ sikertelen — befejezve",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "megnyitás"
+  },
+  "batchJobTimedOut": {
+    "message": "időtúllépés"
+  },
+  "batchJobNoSession": {
+    "message": "nincs rögzítési munkamenet"
+  },
+  "batchJobFailed": {
+    "message": "a rögzítés nem sikerült"
+  },
+  "batchJobError": {
+    "message": "rögzítési hiba"
+  },
+  "regionHintDrag": {
+    "message": "Húzással jelöljön ki egy területet — $ESC$ a megszakításhoz",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Kattintson a rögzítendő elemre — $ESC$ a megszakításhoz",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "A böngésző saját oldalai — a Beállítások, a Bővítmények és az Új lap — minden bővítmény elől el vannak zárva. Próbálja ki a FullShotot egy hagyományos weboldalon."
+  },
+  "errRestrictedDevtools": {
+    "message": "A DevTools ablakait bővítmény nem tudja rögzíteni. Ezekhez használja a számítógépe saját képernyőkép-készítőjét."
+  },
+  "errRestrictedViewSource": {
+    "message": "A forráskódot mutató oldalak nem rögzíthetők. Rögzítse inkább magát az oldalt."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "A bővítmények oldalait — a FullShot sajátjait is beleértve — a böngésző védi, ezért nem rögzíthetők."
+  },
+  "errRestrictedWebstore": {
+    "message": "A Chrome Webáruház nem engedi, hogy bővítmények olvassák az oldalait, ezért ez nem rögzíthető."
+  },
+  "errRestrictedGeneric": {
+    "message": "Ezt az oldalt a böngésző védi, ezért nem rögzíthető."
+  },
+  "errWrongTab": {
+    "message": "A rögzítés leállt — lapot váltott. Hagyja ezt az oldalt előtérben, amíg a FullShot be nem fejezi."
+  },
+  "errGeneric": {
+    "message": "A rögzítés véget ért, mielőtt befejeződött volna. Próbálja meg újra."
+  },
+  "errBusy": {
+    "message": "Ezen a lapon már fut egy rögzítés."
+  },
+  "errBlocked": {
+    "message": "Ez az oldal nem rögzíthető (böngészőkorlátozás)."
+  },
+  "errNoStart": {
+    "message": "A FullShot nem tudott elindulni ezen az oldalon. Töltse újra az oldalt, és próbálja meg ismét."
+  },
+  "errCrash": {
+    "message": "A rögzítés váratlanul leállt. Próbálja meg újra."
+  },
+  "errUnknownMessage": {
+    "message": "Ismeretlen üzenet."
+  },
+  "errQuota": {
+    "message": "A böngésző korlátozza, milyen gyorsan lehet oldalakat lefényképezni. Várjon egy kicsit, és próbálja meg újra."
+  },
+  "errFrameHandover": {
+    "message": "A böngésző félúton abbahagyta a képernyő átadását. Várjon néhány másodpercet, és próbálja meg újra."
+  },
+  "errLostTab": {
+    "message": "A rögzítés elvesztette a lap nyomát. Töltse újra az oldalt, és próbálja meg ismét."
+  },
+  "errStoppedEarly": {
+    "message": "A rögzítés leállt, mielőtt befejeződött volna."
+  },
+  "errStorageFull": {
+    "message": "Nincs több hely a rögzítés tárolására. Töröljön néhány képernyőképet az előzményekből, majd próbálja újra."
+  },
+  "reasonGeneric": {
+    "message": "nem érkezett indoklás. Próbálja meg újra."
+  },
+  "reasonDecodeFailed": {
+    "message": "ezt a képernyőképet nem sikerült dekódolni."
+  },
+  "reasonTooLarge": {
+    "message": "a kép túl nagy ahhoz, hogy itt exportálni lehessen."
+  },
+  "toastCopiedClipboard": {
+    "message": "Vágólapra másolva"
+  },
+  "toastCopyFailed": {
+    "message": "A másolás nem sikerült — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Az exportálás nem sikerült — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ mentve",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ mentve  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ kB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

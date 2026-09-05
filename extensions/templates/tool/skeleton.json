@@ -1,0 +1,31 @@
+{
+  "README": "PROVENANCE. Which version of _skeleton this tree came from, and when. It is the only thing that makes the question 'which of the 67 tools has the fixed packager?' answerable at all — without it, the answer requires reading 1,600 lines of inherited test code per tool and guessing which differences were deliberate. TEMPLATE.md step 0 tells you to stamp `tool` and `copiedAt` the moment you copy the folder; `node tools/audit-fleet.mjs` reads this file in every tool and reports what has drifted.",
+
+  "skeletonVersion": "1.1.0",
+  "tool": "",
+  "copiedAt": "",
+
+  "NOTES": {
+    "skeletonVersion": "set by the SKELETON, not by you. Never edit it in a tool: it records which version you copied FROM, which is exactly the fact the fleet audit needs. It is bumped in _skeleton itself, and CHANGELOG-skeleton.md says what changed.",
+    "tool": "your tool's folder name. Empty here because _skeleton is not a tool.",
+    "copiedAt": "an ISO date, the day you copied the folder. Empty here for the same reason.",
+    "inherited": "The files below are the ones a tool is expected NOT to edit — they are the shared substrate, and the fleet audit compares their content against the current skeleton. Editing one is allowed; it just has to be a decision somebody can see, rather than 67 copies quietly diverging."
+  },
+
+  "inherited": [
+    "test/harness.js",
+    "test/browser/smoke.mjs",
+    "lib/settings.js",
+    "lib/storage.js",
+    "lib/jobs.js",
+    "pages/common.js",
+    "pages/common.css",
+    "publish/pack.mjs",
+    "publish/verify-package.node.js",
+    "publish/verify-firefox-package.node.js",
+    "publish/bump-version.mjs",
+    "publish/preflight.mjs",
+    "publish/shots.mjs",
+    "_locales/make-locales.mjs"
+  ]
+}

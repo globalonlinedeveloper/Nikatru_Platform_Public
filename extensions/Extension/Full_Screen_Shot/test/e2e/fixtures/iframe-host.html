@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — the content is a same-origin iframe; the shell is a nav bar</title>
+<!-- SPEC E12 / §7.1 A — "the worst of the set". collectPIIBoxes walks
+     document.body only, so the shell's nav supplies `fed > 0` and
+     `placed > 0` with no matches, and the whole capture reaches
+     `read-no-match` -> pixels "baked" while an email sits in the picture.
+     This is not a reach limit. The pipeline already opens this frame and grows
+     it to full content height (capture.js:531) so its pixels are certainly in
+     the image; the walk simply never descends into contentDocument.
+     The frame is declared short on purpose — the growth is the pipeline's, and
+     it must show up in the delivered PNG. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 16px/1.5 system-ui, sans-serif; }
+  #nav { background: rgb(35, 45, 70); color: #fff; padding: 18px 24px; }
+  #sub { background: rgb(60, 78, 118); color: #eef; padding: 12px 24px; }
+  .band { height: 240px; background: rgb(236, 239, 247); }
+  iframe { display: block; width: 100%; height: 300px; border: 0; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div id="nav">Statements &nbsp; Payments &nbsp; Transfers &nbsp; Cards &nbsp; Profile &nbsp; Sign out</div>
+  <div id="sub">Your documents are shown below. Download or print from the viewer.</div>
+  <div class="band"></div>
+  <iframe src="./iframe-child.html" title="Statement viewer"></iframe>
+  <div class="band"></div>
+  <div id="bottom"></div>
+</body>
+</html>

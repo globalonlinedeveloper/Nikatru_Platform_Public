@@ -1,0 +1,10 @@
+{
+  "_comment": "DELTA LOCALE. Only the keys where British English differs from _locales/en. Everything else is inherited by walking the chain in make-locales.mjs and materialised into a COMPLETE _locales/en_GB/messages.json — nothing here relies on the browser's own locale fallback. Keys starting with _ are ignored by the generator: they are never requested, because expectedKeys() is derived from the English file.",
+  "editorCustomColor": "Custom colour",
+  "optionsShortcutsDesc": "Full page: $KEYFULL$ · Visible: $KEYVISIBLE$. Customise at $URL$",
+  "optionsUnrollVirtual": "Unroll virtualised lists",
+  "scrollclipProgressFinalizing": "Finalising…",
+  "optionsRedactPIIDesc": "Scans the text a page exposes for emails, phone numbers, credit-card numbers, National Insurance numbers and API keys, and paints a solid block over what it matches in the saved image. It cannot read text drawn as pixels — a canvas, an image, a PDF, a video frame. Detection runs on your device; nothing is ever sent anywhere. Full-page (document-scroll) captures; the block is permanent, so review the result yourself.",
+  "optionsPaperLetter": "Letter (US)",
+  "optionsPaperLegal": "Legal (US)"
+}

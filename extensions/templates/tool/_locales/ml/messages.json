@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — എന്നെ മാറ്റുക",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "എന്നെ മാറ്റുക — ഒരു വാക്യം, ഒരൊറ്റ ലക്ഷ്യം, 132 അക്ഷരമോ അതിൽ കുറവോ, പരസ്യഭാഷ വേണ്ട.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — എന്നെ മാറ്റുക",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "തീം മാറ്റുക",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "ഓപ്ഷനുകൾ",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "സജീവ ടാബ്",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "വായിക്കുന്നു…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "ശീർഷകം പകർത്തുക",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "സജീവ ടാബ് വീണ്ടും വായിക്കുക",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "അടയ്ക്കുക",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "പകർത്തി",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "പകർത്താനായില്ല — പകരം Ctrl+C അമർത്തുക",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "അവസാനത്തെ $ACTION$ പരാജയപ്പെട്ടു — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "അവസാനത്തെ $ACTION$ പരാജയപ്പെട്ടു — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "ശീർഷകം വായിക്കൽ",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "പകർത്തൽ",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "ഡാറ്റ മായ്ക്കൽ",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "പ്രവർത്തനം",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "ഇത് പൂർത്തിയാകുന്നതിനു മുൻപ് എന്തോ ഒന്ന് ഇതിനെ നിർത്തി. വീണ്ടും ശ്രമിക്കുക.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "ഈ ടാബിൽ ഇപ്പോൾത്തന്നെ ഒരു ജോലി നടക്കുന്നുണ്ട്.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "ഈ പേജ് ബ്രൗസർ സംരക്ഷിക്കുന്നു; അത് വായിക്കാൻ അനുമതിയില്ല.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "സജീവമായ ടാബൊന്നും കണ്ടെത്തിയില്ല.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "ഈ പേജിൽ വായിക്കാൻ ശീർഷകമൊന്നുമില്ല.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "റദ്ദാക്കി.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "തിരിച്ചറിയാത്ത ആന്തരിക സന്ദേശം.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "ജോലി തീരുന്നതിനു മുൻപ് ആ ടാബ് അടച്ചു.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "എക്സ്റ്റൻഷൻ മറുപടി നൽകിയില്ല.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "ഒരു മറുപടിയും തിരികെ വന്നില്ല.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "ക്രമീകരണങ്ങൾ, എക്സ്റ്റൻഷനുകൾ, പുതിയ ടാബ് തുടങ്ങിയ ബ്രൗസർ പേജുകൾ വായിക്കാൻ ഒരു എക്സ്റ്റൻഷനെയും ബ്രൗസർ അനുവദിക്കുന്നില്ല. ഇത് ഒരു സാധാരണ വെബ് പേജിൽ പരീക്ഷിക്കുക.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "DevTools വിൻഡോകൾ വായിക്കാൻ എക്സ്റ്റൻഷനുകൾക്ക് അനുമതിയില്ല.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "ഉറവിടം കാണിക്കുന്ന (view-source) പേജുകൾ വായിക്കാൻ എക്സ്റ്റൻഷനുകൾക്ക് അനുമതിയില്ല. പകരം പേജ് തന്നെ പരീക്ഷിക്കുക.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "ഈ എക്സ്റ്റൻഷന്റെ സ്വന്തം പേജുകൾ ഉൾപ്പെടെ, എക്സ്റ്റൻഷൻ പേജുകളെ ബ്രൗസർ സംരക്ഷിക്കുന്നു.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store അതിന്റെ പേജുകൾ എക്സ്റ്റൻഷനുകൾ വായിക്കുന്നത് തടയുന്നു.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "ലോക്കൽ ഫയലുകൾക്ക് ഒരു അധിക അനുമതി വേണം. നിങ്ങളുടെ ബ്രൗസറിന്റെ എക്സ്റ്റൻഷനുകൾ പേജ് തുറന്ന്, ഈ എക്സ്റ്റൻഷൻ കണ്ടെത്തി, “ഫയൽ URL-കളിലേക്കുള്ള ആക്‌സസ് അനുവദിക്കുക” എന്നത് ഓണാക്കുക.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "ഈ പേജ് ലോഡായില്ല, അതിനാൽ ഇപ്പോൾ വായിക്കാൻ ഒന്നുമില്ല.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "ഇത് ബ്രൗസറിൽ തന്നെയുള്ള PDF വ്യൂവറാണ്. ഇതിനുള്ളിലുള്ളത് എക്സ്റ്റൻഷനുകൾക്ക് വായിക്കാനാവില്ല — PDF ഒരു സാധാരണ ടാബിൽ തുറക്കുക അല്ലെങ്കിൽ ആദ്യം ഡൗൺലോഡ് ചെയ്യുക.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "ഈ പേജ് തുറന്ന സൈറ്റ് അതിനെ സാൻഡ്‌ബോക്സിൽ ഇട്ടിരിക്കുന്നു, അതിനാൽ എക്സ്റ്റൻഷനുകൾക്ക് അത് വായിക്കാനാവില്ല.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "ആഡ്-ഓണുകളുടെ സൈറ്റ് അതിന്റെ പേജുകൾ എക്സ്റ്റൻഷനുകൾ വായിക്കുന്നത് തടയുന്നു.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "ഈ ഉപകരണത്തിൽ സ്ഥലമില്ല, അതിനാൽ ഒന്നും സംരക്ഷിക്കപ്പെട്ടില്ല. ഓപ്ഷനുകളിൽ സൂക്ഷിച്ച ചില വരികൾ ഇല്ലാതാക്കി വീണ്ടും ശ്രമിക്കുക.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "ഇതിന് വളരെ സമയമെടുത്തതിനാൽ ഇത് നിർത്തി. ഒന്നും ബാക്കിയായിട്ടില്ല.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "സമന്വയിപ്പിച്ച നിങ്ങളുടെ ക്രമീകരണങ്ങളിൽ സൂക്ഷിക്കാൻ ആ മൂല്യം വളരെ നീളമുള്ളതാണ്. ചെറുതൊന്ന് പരീക്ഷിക്കുക.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "ആ ക്രമീകരണം സംരക്ഷിക്കാനായില്ല. അൽപ്പം കാത്തിരുന്ന് വീണ്ടും ശ്രമിക്കുക.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "ഓപ്ഷനുകൾ — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · ഓപ്ഷനുകൾ",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "ഓപ്ഷനുകൾ",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "സ്വയമേവ സംരക്ഷിക്കപ്പെടും. നിങ്ങളുടെ ബ്രൗസറിന്റെ സമന്വയം ഓണാണെങ്കിൽ, നിങ്ങളുടെ ക്രമീകരണങ്ങൾ നിങ്ങളുടെ ബ്രൗസർ പ്രൊഫൈലിനൊപ്പം സഞ്ചരിക്കും — അവ ഒരിക്കലും ഞങ്ങൾക്ക് അയയ്ക്കപ്പെടുന്നില്ല.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "പെരുമാറ്റം",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "തുറക്കുമ്പോൾ പകർത്തുക",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "പോപ്പ്-അപ്പ് തുറന്ന ഉടനെ ഫലം ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തുന്നു.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "ഈ ഉപകരണത്തിൽ മാത്രം ചരിത്രം സൂക്ഷിക്കുക",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "സ്ഥിരസ്ഥിതിയായി ഇത് ഓഫാണ്. ഓണാക്കിയാൽ, ഫലങ്ങൾ ഈ ഉപകരണത്തിൽ മാത്രം സൂക്ഷിക്കപ്പെടും, താഴെ പട്ടികയായി കാണാം, എപ്പോൾ വേണമെങ്കിലും ഇല്ലാതാക്കാം.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "ചരിത്രത്തിന്റെ പരിധി",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "പട്ടിക ഇതിലും നീളമാകുമ്പോൾ ഏറ്റവും പഴയ വരികൾ എന്നെന്നേക്കുമായി ഇല്ലാതാക്കപ്പെടും.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "ഇതിലും പഴയ വരികൾ ഇല്ലാതാക്കുക",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "ദിവസങ്ങൾ. പഴയ വരികൾ പശ്ചാത്തലത്തിൽ സ്വയമേവ നീക്കം ചെയ്യപ്പെടും. ചരിത്രപരിധി അവയെ ഒഴിവാക്കുന്നതുവരെ വരികൾ സൂക്ഷിക്കാൻ 0 നൽകുക.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "തീം",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "സ്ഥിരസ്ഥിതിയായി നിങ്ങളുടെ സിസ്റ്റത്തെ പിന്തുടരുന്നു.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "സിസ്റ്റം",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "ഇളം",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "ഇരുണ്ട",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "നിങ്ങളുടെ ഡാറ്റ",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "ഈ ഉപകരണത്തിൽ ഒന്നും സൂക്ഷിച്ചിട്ടില്ല.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "ഈ ഉപകരണത്തിൽ $COUNT$ വരികൾ സൂക്ഷിച്ചിട്ടുണ്ട്. അവയിൽ ഒന്നും ഈ ഉപകരണം വിട്ട് പുറത്തേക്ക് പോകുന്നില്ല.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "ഈ ഉപകരണത്തിൽ $COUNT$ വരി സൂക്ഷിച്ചിട്ടുണ്ട്. അത് ഈ ഉപകരണം വിട്ട് പുറത്തേക്ക് പോകുന്നില്ല.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "ഈ ഉപകരണത്തിൽ $COUNT$ വരികൾ സൂക്ഷിച്ചിട്ടുണ്ട്. അവയിൽ ഒന്നും ഈ ഉപകരണം വിട്ട് പുറത്തേക്ക് പോകുന്നില്ല.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "ഈ ഉപകരണത്തിൽ $COUNT$ വരികൾ സൂക്ഷിച്ചിട്ടുണ്ട്. അവയിൽ ഒന്നും ഈ ഉപകരണം വിട്ട് പുറത്തേക്ക് പോകുന്നില്ല.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "ഈ ഉപകരണത്തിൽ $COUNT$ വരികൾ സൂക്ഷിച്ചിട്ടുണ്ട്. അവയിൽ ഒന്നും ഈ ഉപകരണം വിട്ട് പുറത്തേക്ക് പോകുന്നില്ല.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "ഈ ഉപകരണത്തിൽ $COUNT$ വരികൾ സൂക്ഷിച്ചിട്ടുണ്ട്. അവയിൽ ഒന്നും ഈ ഉപകരണം വിട്ട് പുറത്തേക്ക് പോകുന്നില്ല.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "സ്ഥിരം: ഇത് മായ്ക്കില്ലെന്ന് ബ്രൗസർ ഉറപ്പു നൽകിയിട്ടുണ്ട്.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "ഉറപ്പില്ല: ഉപകരണത്തിൽ സ്ഥലം കുറഞ്ഞാൽ ബ്രൗസർ ഇത് സ്വയം മായ്ച്ചേക്കാം. ഒരു ബാക്കപ്പ് എക്സ്പോർട്ട് ചെയ്യുക.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "സൂക്ഷിച്ച ഡാറ്റ നിലനിർത്തുമോ എന്ന് ഈ ബ്രൗസർ പറയുന്നില്ല, അതിനാൽ അത് താൽക്കാലികമായി കണക്കാക്കി ഒരു ബാക്കപ്പ് എക്സ്പോർട്ട് ചെയ്യുക.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$-ൽ $USED$ ഉപയോഗത്തിലാണ്.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "ഇല്ലാതാക്കുക",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ എന്നതിൽ നിന്നുള്ള വരി ഇല്ലാതാക്കുക",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "എല്ലാം എക്സ്പോർട്ട് ചെയ്യുക",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "സൂക്ഷിച്ച എല്ലാ വരികളും ഈ ഉപകരണത്തിലെ ഒരൊറ്റ JSON ഫയലിലേക്ക് സംരക്ഷിക്കുന്നു. ഒന്നും അപ്‌ലോഡ് ചെയ്യപ്പെടുന്നില്ല.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "എല്ലാം എക്സ്പോർട്ട് ചെയ്യുക",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "എല്ലാം ഇല്ലാതാക്കുക",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "സൂക്ഷിച്ച എല്ലാ വരികളും ഈ ഉപകരണത്തിൽ നിന്ന് നീക്കം ചെയ്യുന്നു. ക്രമീകരണങ്ങൾ അതേപടി നിലനിൽക്കും.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "എല്ലാം ഇല്ലാതാക്കുക",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "ക്രമീകരണങ്ങൾ പുനഃസജ്ജമാക്കുക",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "ഈ പേജിലെ എല്ലാ ക്രമീകരണവും അതിന്റെ സ്ഥിരസ്ഥിതിയിലേക്ക് മടക്കുകയും സമന്വയിപ്പിച്ച നിങ്ങളുടെ ബ്രൗസർ പ്രൊഫൈലിൽ നിന്ന് അവ നീക്കുകയും ചെയ്യുന്നു. സൂക്ഷിച്ച വരികൾ അതേപടി നിലനിൽക്കും.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "ക്രമീകരണങ്ങൾ പുനഃസജ്ജമാക്കുക",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "പ്രശ്നം അറിയിക്കൽ",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "പ്രശ്ന റിപ്പോർട്ട് തയ്യാറാക്കുക",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "ഈ എക്സ്റ്റൻഷന്റെ അവസ്ഥ വിവരിക്കുന്ന ഒരു ചെറിയ ഫയൽ ഉണ്ടാക്കുന്നു. അത് സംരക്ഷിക്കുന്നതിനു മുൻപ് അതിൽ എന്താണുള്ളതെന്ന് നിങ്ങൾ തന്നെ കാണും, ഒന്നും എവിടേക്കും അയയ്ക്കപ്പെടുന്നില്ല.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "റിപ്പോർട്ട് തയ്യാറാക്കുക",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "കുറിച്ച്",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — എന്നെ മാറ്റുക",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "ഈ ഉപകരണം കൃത്യമായി എന്തു ചെയ്യുന്നു എന്നു പറയുന്ന ഒരു വാക്യം. ഇത് അതിന്റെ ജോലി നിങ്ങളുടെ ഉപകരണത്തിൽ തന്നെ ചെയ്യുന്നു: അക്കൗണ്ട് ഇല്ല, ട്രാക്കിംഗ് ഇല്ല, നെറ്റ്‌വർക്ക് കോളുകൾ ഇല്ല, ഞങ്ങൾക്ക് ഒന്നും അയയ്ക്കുന്നില്ല.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "സംരക്ഷിച്ചു",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "എല്ലാം ഇല്ലാതാക്കി",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "ഇല്ലാതാക്കാനായില്ല — വീണ്ടും ശ്രമിക്കുക",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "ആ ക്രമീകരണം സംരക്ഷിക്കാനായില്ല",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "എക്സ്പോർട്ട് സംരക്ഷിച്ചു",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "ഫയൽ സംരക്ഷിക്കാനായില്ല",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "വരി ഇല്ലാതാക്കി",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "ക്രമീകരണങ്ങൾ പുനഃസജ്ജമാക്കി",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "ക്രമീകരണങ്ങൾ പുനഃസജ്ജമാക്കാനായില്ല",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "റിപ്പോർട്ട് സംരക്ഷിച്ചു",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "റദ്ദാക്കുക",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "എല്ലാം ഇല്ലാതാക്കണോ?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "സൂക്ഷിച്ച എല്ലാ വരികളും ഈ ഉപകരണത്തിൽ നിന്ന് നീക്കം ചെയ്യപ്പെടും. നിങ്ങളുടെ ക്രമീകരണങ്ങൾ അതേപടി നിലനിൽക്കും. ഇത് പഴയപടിയാക്കാൻ കഴിയില്ല.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "എല്ലാ ക്രമീകരണവും പുനഃസജ്ജമാക്കണോ?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "ഈ പേജിലെ എല്ലാ മുൻഗണനയും അതിന്റെ സ്ഥിരസ്ഥിതിയിലേക്ക് മടങ്ങുകയും സമന്വയിപ്പിച്ച നിങ്ങളുടെ ബ്രൗസർ പ്രൊഫൈലിൽ നിന്ന് നീക്കപ്പെടുകയും ചെയ്യും. സൂക്ഷിച്ച നിങ്ങളുടെ വരികൾ അതേപടി നിലനിൽക്കും. ഇത് പഴയപടിയാക്കാൻ കഴിയില്ല.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "ഈ പ്രശ്ന റിപ്പോർട്ട് സംരക്ഷിക്കണോ?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "ഫയലിൽ ഉണ്ടാകുന്നത് ഇത്രമാത്രം. അതിൽ പേജ് വിലാസങ്ങളില്ല, പേജിലെ എഴുത്തില്ല, നിങ്ങൾ പകർത്തിയവയൊന്നുമില്ല. ഒന്നും എവിടേക്കും അയയ്ക്കുന്നില്ല — ഫയൽ ഈ ഉപകരണത്തിൽ തന്നെ സംരക്ഷിക്കപ്പെടുന്നു, അത് പങ്കിടണോ വേണ്ടയോ എന്നത് നിങ്ങളുടെ ഇഷ്ടം.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "റിപ്പോർട്ട് സംരക്ഷിക്കുക",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "അജ്ഞാത വിൻഡോ — ഈ ഫലം നിങ്ങളുടെ ചരിത്രത്തിൽ സംരക്ഷിച്ചിട്ടില്ല.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "സൈറ്റ് ആക്‌സസ്",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "എല്ലാ സൈറ്റിലേക്കുമുള്ള ആക്‌സസ്",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "ടൂൾബാർ ബട്ടൺ ക്ലിക്ക് ചെയ്യാത്ത പേജുകളിലും പ്രവർത്തിക്കുന്ന സവിശേഷതകൾക്ക് മാത്രമേ ഇത് വേണ്ടൂ. ഇവിടെ വച്ചുതന്നെ, എപ്പോൾ വേണമെങ്കിലും നിങ്ങൾക്ക് ഇത് തിരിച്ചെടുക്കാം.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "ആക്‌സസ് നൽകുക",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "ആക്‌സസ് പിൻവലിക്കുക",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "നിങ്ങൾ സന്ദർശിക്കുന്ന എല്ലാ സൈറ്റും ഈ എക്സ്റ്റൻഷന് ഇപ്പോൾ വായിക്കാനാകും.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "ഈ എക്സ്റ്റൻഷന്റെ ടൂൾബാർ ബട്ടൺ നിങ്ങൾ ക്ലിക്ക് ചെയ്ത ശേഷം മാത്രമേ അതിന് ഒരു ടാബ് വായിക്കാനാകൂ.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "ആക്‌സസ് നൽകി",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "ആക്‌സസ് നൽകിയിട്ടില്ല",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "ആക്‌സസ് പിൻവലിച്ചു",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "ആ ആക്‌സസ് പിൻവലിക്കാനായില്ല",
+    "description": "en: Could not revoke that access"
+  }
+}

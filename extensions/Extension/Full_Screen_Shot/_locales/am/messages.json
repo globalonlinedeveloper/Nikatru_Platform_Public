@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - የሙሉ ገጽ ቅጽበታዊ እይታ"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "ሙሉ ገጽን፣ የሚታየውን አካባቢ፣ የተመረጠን ክልል ወይም ማንኛውንም አካል ይቅረጹ። በዘመናዊ የገጽ ክፍፍል አርትዑ፣ ማብራሪያ ያክሉ እና እንደ PNG፣ JPEG፣ WebP ወይም PDF ወደ ውጭ ይላኩ።"
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - ገጹን ይቅረጹ (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "ሙሉ ገጽ ይቅረጹ"
+  },
+  "commandCaptureVisible": {
+    "message": "የሚታየውን አካባቢ ይቅረጹ"
+  },
+  "commandCaptureRegion": {
+    "message": "የተመረጠውን ክልል ይቅረጹ"
+  },
+  "commandCaptureElement": {
+    "message": "የገጽ አካል ይቅረጹ (ለመምረጥ ጠቅ ያድርጉ)"
+  },
+  "popupToggleTheme": {
+    "message": "ገጽታ ቀይር"
+  },
+  "popupModeFullTitle": {
+    "message": "ሙሉ ገጽ"
+  },
+  "popupModeFullSub": {
+    "message": "ገጹን ሁሉ አሸብልሎ ይቀርጻል"
+  },
+  "popupModeVisibleTitle": {
+    "message": "የሚታይ አካባቢ"
+  },
+  "popupModeVisibleSub": {
+    "message": "በማያ ገጹ ላይ ያለው ብቻ"
+  },
+  "popupModeRegionTitle": {
+    "message": "የተመረጠ ክልል"
+  },
+  "popupModeRegionSub": {
+    "message": "አካባቢ ለመምረጥ ይጎትቱ"
+  },
+  "popupModeElementTitle": {
+    "message": "አካል"
+  },
+  "popupModeElementSub": {
+    "message": "በገጹ ላይ ማንኛውንም አካል ጠቅ ያድርጉ"
+  },
+  "popupModeDelayedTitle": {
+    "message": "የዘገየ ቀረጻ"
+  },
+  "popupModeDelayedSub": {
+    "message": "ከቆጠራ በኋላ ሙሉ ገጽ"
+  },
+  "popupDelayLabel": {
+    "message": "የመዘግየት ሰከንዶች"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ ሰ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "የሚሸበልሉ ፓነሎችን እና iframeዎችን አስፋ"
+  },
+  "popupExpandToggleTip": {
+    "message": "የውስጥ ተሸብላይ ፓነሎችን እና iframeዎችን እንደታዩ ከመቅረጽ ይልቅ እስከ ሙሉ ይዘታቸው ያሰፋቸዋል። ከሌላ ጣቢያ የመጡ ፍሬሞች አንድ ጊዜ ተጨማሪ ፈቃድ ይጠይቃሉ።"
+  },
+  "popupDismiss": {
+    "message": "አስወግድ"
+  },
+  "popupLastErrorFailed": {
+    "message": "የመጨረሻው $MODE$ አልተሳካም — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "የመጨረሻው $MODE$ አልተሳካም — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "የሙሉ ገጽ ቀረጻ"
+  },
+  "popupModeNameVisible": {
+    "message": "የሚታየው አካባቢ ቀረጻ"
+  },
+  "popupModeNameRegion": {
+    "message": "የክልል ቀረጻ"
+  },
+  "popupModeNameElement": {
+    "message": "የአካል ቀረጻ"
+  },
+  "popupModeNameGeneric": {
+    "message": "ቀረጻ"
+  },
+  "popupNoActiveTab": {
+    "message": "ንቁ ትር አልተገኘም።"
+  },
+  "popupCaptureFailedToStart": {
+    "message": "ቀረጻው መጀመር አልቻለም።"
+  },
+  "popupLinkHistory": {
+    "message": "ታሪክ"
+  },
+  "popupLinkBatch": {
+    "message": "ጥቅል"
+  },
+  "popupLinkOptions": {
+    "message": "አማራጮች"
+  },
+  "optionsPageTitle": {
+    "message": "አማራጮች — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · አማራጮች"
+  },
+  "optionsHeading": {
+    "message": "አማራጮች"
+  },
+  "optionsLead": {
+    "message": "ለውጦች በራስ-ሰር ይቀመጡና ከአሳሽ መገለጫዎ ጋር ይመሳሰላሉ።"
+  },
+  "optionsSectionImage": {
+    "message": "ምስል"
+  },
+  "optionsFormat": {
+    "message": "ቅርጸት"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ ጥራት አያጣም፤ $JPEG$ ያነሰ ነው፤ $WEBP$ በተመሳሳይ ጥራት ትንሹ ነው።",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "የ$JPEG$ / $WEBP$ ጥራት",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "የፋይል ስም አብነት"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "ቦታ ያዢዎች፦ $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "ቀረጻ"
+  },
+  "optionsCaptureDelay": {
+    "message": "በእያንዳንዱ ደረጃ ተጨማሪ መዘግየት"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "ከእያንዳንዱ ሽብልል በኋላ የሚጠበቁ ሚሊሰከንዶች። ለዘገዩና በእንቅስቃሴ ለተሞሉ ገጾች ከፍ ያድርጉ።"
+  },
+  "optionsHideFixed": {
+    "message": "ቋሚና ተጣባቂ አካላትን ደብቅ"
+  },
+  "optionsHideFixedDesc": {
+    "message": "ራስጌዎች በእያንዳንዱ ማያ ገጽ ላይ እንዳይደጋገሙ ይከለክላል (አንድ ጊዜ ብቻ ከላይ ይታያሉ)።"
+  },
+  "optionsPreScroll": {
+    "message": "የዘገየ ይዘት ለመጫን አስቀድሞ አሸብልል"
+  },
+  "optionsPreScrollDesc": {
+    "message": "ከመቅረጹ በፊት ገጹን አንድ ጊዜ ያሸበልላል። ይዘገያል፣ ግን ዘግይተው የሚጫኑ ምስሎችን ይይዛል።"
+  },
+  "optionsAdaptiveWait": {
+    "message": "ምስሎች እስኪፈቱ ጠብቅ"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "ዘግይተው የሚጫኑ ምስሎች ከእያንዳንዱ ፍሬም በፊት መፈታታቸውን እንዲጨርሱ ያደርጋል፤ በዚህም ጥቁር ወይም ባዶ ሆነው አይቀረጹም።"
+  },
+  "optionsHideOverlays": {
+    "message": "ባነሮችንና ብቅ-ባዮችን ደብቅ"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "ከመቅረጹ በፊት የኩኪ/ፈቃድ ባነሮችን፣ የደንበኝነት መስኮቶችንና \"መተግበሪያውን ያውርዱ\" ብቅ-ባዮችን ያስወግዳል፣ እንዲሁም በብቅ-ባይ የተቆለፉ ገጾችን ይከፍታል። በኋላ ሁሉም ወደ ነበረበት ይመለሳል።"
+  },
+  "optionsExpandInner": {
+    "message": "ተሸብላይ ይዘትን አስፋ"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "የውስጥ ፓነሎችንና iframeዎችን በትክክል እንደታዩ ከመቅረጽ ይልቅ ከራሳቸው ጠርዝ በታች የተደበቀውን ይዘት እንዲያሳዩ ያሰፋቸዋል።"
+  },
+  "optionsExpandPermRow": {
+    "message": "የሌላ ጣቢያ ፍሬሞች"
+  },
+  "optionsExpandPermAllow": {
+    "message": "ፍቀድ"
+  },
+  "optionsExpandPermGranted": {
+    "message": "ፈቃድ ተሰጥቷል — ከሌሎች ጣቢያዎች የመጡ ፍሬሞችም ይሰፋሉ።"
+  },
+  "optionsExpandPermMissing": {
+    "message": "ያለ \"$PERMISSION$\" ፈቃድ፣ ከሌላ ጣቢያ የመጡ ፍሬሞች እንደታዩ ይቀረጻሉ። ፓነሎችና የተመሳሳይ ጣቢያ iframeዎች ሁልጊዜ ይሰራሉ።",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "ምናባዊ ዝርዝሮችን ዘርጋ"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "በማያ ገጹ ላይ ያሉትን ረድፎች ብቻ ሳይሆን ሙሉ ይዘታቸውን ለመቅረጽ በመስኮት-ተኮር ምግቦች ($LIB1$ / $LIB2$ ዓይነት) ደረጃ በደረጃ ያልፋል። በጣም ረጃጅም ዝርዝሮች ላይ ይዘገያል።",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "በጠቅታ የሚከፈት ይዘትን አስፋ"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "ከመቅረጹ በፊት የተጣጠፉ $DETAILS$ አካላትን፣ ንቁ ያልሆኑ ትሮችን፣ አኮርዲዮኖችንና \"ተጨማሪ አሳይ\" ክፍሎችን ይከፍታል፣ ከዚያም ወደ ነበሩበት ይመልሳቸዋል። ከጠቅታ ጀርባ የተደበቀ ይዘትን ያሳያል።",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "\"$BUTTONTEXT$\" አዝራሮችን ጠቅ አድርግ",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "\"load more\" / \"show more\" አዝራሮችን ጠቅ ያደርጋል፣ አዲሱ ይዘት እስኪጫን ይጠብቃል፣ ይህንንም ምግቡ እስኪያልቅ ደጋግሞ ይሰራል። ከላይ ካለው አማራጭ በተለየ ይህ በገጹ ላይ ገና የሌለ ይዘት ያመጣል፤ የተጫነው ይዘት ከቀረጻው በኋላም ይቀራል።"
+  },
+  "optionsInfiniteScroll": {
+    "message": "ማለቂያ የሌላቸውን ምግቦች ለመጫን አሸብልል"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "\"load more\" አዝራር ለሌላቸው ምግቦች፦ እስከ ታች ያሸበልላል እና ቀጣዩ ገጽ እስኪጫን ይጠብቃል፣ ይህንንም ምግቡ ማደግ እስኪያቆም ደጋግሞ ይሰራል (ገደብ አለው፣ ስለዚህ ማለቂያ የሌላቸው ምግቦች አይታደኑም)። የተጫነው ይዘት ከቀረጻው በኋላም ይቀራል።"
+  },
+  "optionsWaitStable": {
+    "message": "ይዘቱ መጫኑን እስኪጨርስ ጠብቅ"
+  },
+  "optionsWaitStableDesc": {
+    "message": "ከመቅረጹ በፊት የአጽም/ቦታ ያዢ ጫኚዎች (aria-busy አካባቢዎች፣ የሚብለጨለጩ ሳጥኖች) በእውነተኛው ይዘት እስኪተኩ ይጠብቃል፤ በዚህም በገጹ መሃል የሚከሰት \"በመጫን ላይ…\" እንደ ግራጫ ሳጥን አይቀረጽም። ገደብ አለው፣ ስለዚህ የተጣበቀ ጫኚ ቀረጻውን አያንጠለጥልም።"
+  },
+  "optionsRedactPII": {
+    "message": "ሚስጥራዊ መረጃን በራስ-ሰር ደብቅ"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "ገጹ የሚያጋልጠውን ጽሑፍ ለኢሜይሎች፣ ለስልክ ቁጥሮች፣ ለክሬዲት ካርድ ቁጥሮች፣ ለብሔራዊ መታወቂያ ቁጥሮችና ለAPI ቁልፎች ይቃኛል፣ በተቀመጠው ምስል ላይም ከዚህ ጋር በተዛመደው ላይ ሙሉ ሳጥን ይሳልበታል። እንደ ሥዕል የተሳለን ጽሑፍ ማንበብ አይችልም — ካንቫስ፣ ምስል፣ PDF፣ የቪዲዮ ፍሬም። ማወቁ በመሣሪያዎ ላይ ይከናወናል፤ ምንም ነገር ወደ የትም ፈጽሞ አይላክም። ለሙሉ ገጽ (የሰነድ ሽብልል) ቀረጻዎች ነው፤ ሳጥኑ ቋሚ ስለሆነ ውጤቱን እርስዎ ይመልከቱ።"
+  },
+  "optionsMaxPageHeight": {
+    "message": "ከፍተኛ የገጽ ቁመት"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "ማለቂያ ለሌላቸው ምግቦች የደህንነት ገደብ (CSS px)።"
+  },
+  "optionsSectionPdf": {
+    "message": "የPDF ውጭ ላኪ"
+  },
+  "optionsPdfPaper": {
+    "message": "ነባሪ የወረቀት መጠን"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" አንዱን ገጽ በትክክል የቅጽበታዊ እይታው መጠን ያደርገዋል።",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "የምስል መጠን"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "አቅጣጫ"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "ለቋሚ የወረቀት መጠኖች።"
+  },
+  "optionsOrientationPortrait": {
+    "message": "ቁመታዊ"
+  },
+  "optionsOrientationLandscape": {
+    "message": "አግድም"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "ብልህ የገጽ ክፍፍል"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "የጽሑፍ መስመሮች በግማሽ እንዳይቆረጡ በእያንዳንዱ የገጽ መሸጋገሪያ አጠገብ ክፍት ቦታ ይፈልጋል።"
+  },
+  "optionsPdfStamp": {
+    "message": "URL እና ቀን አትም"
+  },
+  "optionsPdfStampDesc": {
+    "message": "የገጹን URL እና የቀረጻውን ቀን በእያንዳንዱ የPDF ገጽ ግርጌ ላይ ያክላል።"
+  },
+  "optionsSectionDownload": {
+    "message": "ማውረድ"
+  },
+  "optionsSaveDirectory": {
+    "message": "ማህደር"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "ለቅጽበታዊ እይታዎችዎ በ$DOWNLOADS$ ስር ያለ ንዑስ ማህደር፣ ለምሳሌ $EXAMPLE$። ባዶ = $DOWNLOADS$።",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(ውርዶች)"
+  },
+  "optionsSaveAs": {
+    "message": "የ\"በሌላ ስም አስቀምጥ\" መስኮት"
+  },
+  "optionsSaveAsDesc": {
+    "message": "በዝምታ ከማውረድ ይልቅ እያንዳንዱ ፋይል የት እንደሚቀመጥ ይጠይቃል።"
+  },
+  "optionsClipboardFit": {
+    "message": "የቅንጥብ ሰሌዳ ቅጂዎችን ከመተግበሪያ ገደቦች ጋር አጣጥም"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "ከ$PIXELS$ ፒክሰል በላይ የሆኑ ቅጂዎችን ያሳንሳል፤ በዚህም ወደ $APP$ እና መሰሎቹ መለጠፍ ይሰራል።",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "የስራ ፍሰት"
+  },
+  "optionsAutoDownload": {
+    "message": "ከቀረጻ በኋላ በራስ-ሰር አውርድ"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "ቀረጻው ሲጠናቀቅ ምስሉን ወዲያውኑ ያስቀምጣል።"
+  },
+  "optionsAutoOpenEditor": {
+    "message": "ከቀረጻ በኋላ አርታዒውን ክፈት"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "በቀጥታ ወደ ማብራሪያ መጨመር ይሂዱ (ለአንድ ክፍል ቀረጻዎች ብቻ)።"
+  },
+  "optionsTheme": {
+    "message": "ገጽታ"
+  },
+  "optionsThemeDesc": {
+    "message": "ለብቅ-ባዩና ለሁሉም የFullShot ገጾች።"
+  },
+  "optionsThemeSystem": {
+    "message": "ሲስተም"
+  },
+  "optionsThemeLight": {
+    "message": "ብሩህ"
+  },
+  "optionsThemeDark": {
+    "message": "ጨለማ"
+  },
+  "optionsShortcuts": {
+    "message": "የቁልፍ ሰሌዳ አቋራጮች"
+  },
+  "optionsShortcutsDesc": {
+    "message": "ሙሉ ገጽ፦ $KEYFULL$ · የሚታይ፦ $KEYVISIBLE$። በ$URL$ ያብጁ",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "ተቀምጧል ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "የእርስዎ ውሂብ"
+  },
+  "optionsStorage": {
+    "message": "ማከማቻ"
+  },
+  "optionsStorageUsage": {
+    "message": "በዚህ መሣሪያ ላይ ከ$QUOTA$ ውስጥ $USED$ ጥቅም ላይ ውሏል።",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "ይህ አሳሽ FullShot ምን ያህል ቦታ እንደሚይዝ አይገልጽም።"
+  },
+  "optionsStorageKept": {
+    "message": "የእርስዎ ቅጽበታዊ ገጽ እይታዎች ይቀመጣሉ፦ አሳሹ ቦታ ለማስለቀቅ አይሰርዛቸውም።"
+  },
+  "optionsStorageAtRisk": {
+    "message": "የእርስዎ ቅጽበታዊ ገጽ እይታዎች በአሳሹ “best effort” ማከማቻ ውስጥ ናቸው፤ ቦታ ለማስለቀቅ ሊጠራረግ ይችላል።"
+  },
+  "optionsStorageKeep": {
+    "message": "ውሂቤን አስቀምጥ"
+  },
+  "optionsExport": {
+    "message": "ሁሉንም ላክ"
+  },
+  "optionsExportDesc": {
+    "message": "ቅንብሮችዎን እና የቅጽበታዊ ገጽ እይታዎችዎን ዝርዝር የያዘ አንድ ፋይል ይጽፋል። በዚህ መሣሪያ ላይ ይቀመጣል፤ ወደ የትም አይላክም።"
+  },
+  "optionsExportImages": {
+    "message": "ምስሎችን አካትት"
+  },
+  "optionsExportImagesDesc": {
+    "message": "ምስሎቹ ራሳቸው፤ መጠኑን ሙሉ በሙሉ ማለት ይቻላል የሚይዙት እነሱ ናቸው። ያለ እነሱ ፋይሉ ቅጽበታዊ ገጽ እይታዎችዎን ይዘረዝራል እንጂ አንዱንም አይይዝም።"
+  },
+  "optionsExportSize": {
+    "message": "የፋይል መጠን፦ በግምት $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "የቀረ ውሂብ"
+  },
+  "optionsSweepDesc": {
+    "message": "የተቋረጠ ቀረጻ ለማንኛውም ቅጽበታዊ ገጽ እይታ የማይሆኑ ክፈፎችን በዲስክ ላይ ሊተው ይችላል። በማንኛውም ገጽ ላይ አይታዩም፤ ስለዚህ ማንኛውም ገጽ ሊሰርዛቸው አይችልም። ይህ አግኝቶ ያስወግዳቸዋል።"
+  },
+  "optionsSweepBtn": {
+    "message": "አግኝና አስወግድ"
+  },
+  "optionsSweepResult": {
+    "message": "ተወግዷል። የጸዱ ቀረጻዎች፦ $COUNT$ · የተለቀቀ ቦታ፦ $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "ምንም አልቀረም፦ የተከማቸው ሁሉ እርስዎ ሊያዩት የሚችሉት ቅጽበታዊ ገጽ እይታ ነው።"
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "ቅንብሮችን ዳግም አስጀምር"
+  },
+  "optionsResetDesc": {
+    "message": "የዚህን ገጽ እያንዳንዱን ቅንብር ወደ መጀመሪያው እሴቱ ይመልሳል። ቅጽበታዊ ገጽ እይታዎችዎ አይነኩም።"
+  },
+  "optionsResetBtn": {
+    "message": "ዳግም አስጀምር"
+  },
+  "optionsResetConfirm": {
+    "message": "ሁሉንም የFullShot ቅንብሮች ወደ ነባሪ እሴቶቻቸው ይመለሱ? ቅጽበታዊ ገጽ እይታዎችዎ አይነኩም።"
+  },
+  "optionsResetDone": {
+    "message": "ቅንብሮች ወደ ነባሪ እሴቶቻቸው ተመልሰዋል።"
+  },
+  "optionsDeleteAll": {
+    "message": "ሁሉንም ሰርዝ"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "በታሪክዎ ውስጥ ያለውን እያንዳንዱን ቅጽበታዊ ገጽ እይታ እና የተቋረጡ ቀረጻዎች ያስቀሩትን ሁሉ ያስወግዳል። ቅንብሮችዎ እንዳሉ ይቆያሉ።"
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "FullShot በዚህ መሣሪያ ላይ ያከማቸውን ሁሉ ይሰረዝ?\n\nበታሪክዎ ውስጥ ያሉ ቅጽበታዊ ገጽ እይታዎች፦ $COUNT$\nከተቋረጡ ቀረጻዎች የቀሩ፦ $LEFTOVER$\nየሚለቀቅ ቦታ፦ $SIZE$\n\nቅንብሮችዎ አይነኩም። ይህ መቀልበስ አይቻልም።",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "ተሰርዟል። FullShot አሁን በዚህ መሣሪያ ላይ ምንም ቅጽበታዊ ገጽ እይታ አያከማችም።"
+  },
+  "resultPageTitle": {
+    "message": "ቅጽበታዊ እይታ — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "ቅዳ"
+  },
+  "resultCopyTip": {
+    "message": "ምስሉን ወደ ቅንጥብ ሰሌዳ ቅዳ"
+  },
+  "resultEdit": {
+    "message": "አርትዕ"
+  },
+  "resultEditTip": {
+    "message": "በአርታዒ ውስጥ ክፈት"
+  },
+  "resultBeautify": {
+    "message": "አሳምር"
+  },
+  "resultBeautifyTip": {
+    "message": "አሳምር — ለማጋራት ፍሬምና ዳራ"
+  },
+  "resultClip": {
+    "message": "ክሊፕ"
+  },
+  "resultClipTip": {
+    "message": "የሽብልል ክሊፕ — ተንቀሳቃሽ $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "የPDF ወረቀት መጠን"
+  },
+  "resultPaperOption": {
+    "message": "PDF፦ $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "አውርድ"
+  },
+  "resultDeleteTip": {
+    "message": "ቅጽበታዊ እይታውን ሰርዝ"
+  },
+  "resultHistoryTip": {
+    "message": "የቅጽበታዊ እይታዎች ታሪክ"
+  },
+  "resultProgressAssembling": {
+    "message": "ቅጽበታዊ እይታዎ በመገጣጠም ላይ…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "$COUNT$ ፍሬም በመፍታት ላይ…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$ ፍሬሞችን በመፍታት ላይ…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "ክፍል $INDEX$ በመስፋት ላይ…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "ከ~$TOTAL$ ውስጥ ክፍል $INDEX$ በመስፋት ላይ…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "በማስቀመጥ ላይ…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "ጠቃሚ ምክር፦ ምስሉን በቀጥታ ወደ ዴስክቶፕዎ ይጎትቱት፣ ወይም $DOWNLOAD$ ይጠቀሙ።",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "እዚህ ምንም የለም"
+  },
+  "resultEmptyBody": {
+    "message": "ይህ ቅጽበታዊ እይታ ከእንግዲህ የለም።"
+  },
+  "resultOpenHistory": {
+    "message": "ታሪክ ክፈት"
+  },
+  "resultSomethingWrong": {
+    "message": "የሆነ ስህተት ተከስቷል — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "ከ$TOTAL$ ውስጥ ክፍል $INDEX$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "ክፍሉን አውርድ"
+  },
+  "resultEditPart": {
+    "message": "ክፍሉን አርትዕ"
+  },
+  "resultClipPart": {
+    "message": "የክፍሉ ክሊፕ"
+  },
+  "resultPartAlt": {
+    "message": "የቅጽበታዊ እይታ ክፍል $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ በማውረድ ላይ",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "ይህ ቅጽበታዊ እይታ በቋሚነት ይሰረዝ?"
+  },
+  "resultDeleted": {
+    "message": "ቅጽበታዊ እይታው ተሰርዟል።"
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "ይህ ቅጽበታዊ እይታ በጣም ረጅም ስለሆነ እንደ አንድ ሊነበብ የሚችል ምስል መለጠፍ አይቻልም፤ ስለዚህ $COPY$ የመላውን ገጽ አነስ ተደርጎ የተሠራ አጠቃላይ እይታ ወደ ቅንጥብ ሰሌዳ ያስቀምጣል። በውስጡ ያለው ትንሽ ጽሑፍ ሊነበብ አይችልም።",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "ክፍል $INDEX$ ወደ ቅንጥብ ሰሌዳ ተቀድቷል",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF በመገንባት ላይ…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF ወርዷል ($COUNT$ ገጽ)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF ወርዷል ($COUNT$ ገጾች)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF አልተሳካም — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "አርታዒ — FullShot"
+  },
+  "editorBackTip": {
+    "message": "ወደ ቅጽበታዊ እይታው ተመለስ"
+  },
+  "editorToolSelect": {
+    "message": "ምረጥ / አንቀሳቅስ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "ቁረጥ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "ብዕር ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "አድማቂ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "መስመር ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "ቀስት ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "አራት ማዕዘን ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "ኤሊፕስ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "ጽሑፍ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "አደብዝዝ / ፒክሰላይዝ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "በቁጥር የተሰየመ ደረጃ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "የኢሞጂ ማህተም ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "ብጁ ቀለም"
+  },
+  "editorStrokeTip": {
+    "message": "የመስመር ውፍረት"
+  },
+  "editorStrokeThin": {
+    "message": "ቀጭን"
+  },
+  "editorStrokeMedium": {
+    "message": "መካከለኛ"
+  },
+  "editorStrokeThick": {
+    "message": "ወፍራም"
+  },
+  "editorSizeTip": {
+    "message": "የጽሑፍ / ኢሞጂ መጠን"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "ቀልብስ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "ድገም ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "አሳንስ (-)"
+  },
+  "editorZoomInTip": {
+    "message": "አጉላ (+)"
+  },
+  "editorZoomFit": {
+    "message": "አስማማ"
+  },
+  "editorZoomTipToHundred": {
+    "message": "ከመስኮቱ ጋር ተስማምቷል — ለ100% ጠቅ ያድርጉ"
+  },
+  "editorZoomTipToFit": {
+    "message": "ከመስኮቱ ጋር ለማስማማት ጠቅ ያድርጉ"
+  },
+  "editorExport": {
+    "message": "ወደ ውጭ ላክ"
+  },
+  "editorExportCopy": {
+    "message": "ወደ ቅንጥብ ሰሌዳ ቅዳ"
+  },
+  "editorExportImage": {
+    "message": "የ$FORMAT$ ምስል",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "የ$FORMAT$ ሰነድ",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "አስቀምጥ"
+  },
+  "editorSaveTip": {
+    "message": "ለውጦችን ወደ ታሪክ አስቀምጥ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "ተጨማሪ"
+  },
+  "editorMenuFiles": {
+    "message": "ወደ ታሪክ ሂድ"
+  },
+  "editorMenuOptions": {
+    "message": "ወደ አማራጮች ሂድ"
+  },
+  "editorMenuShortcuts": {
+    "message": "የቁልፍ ሰሌዳ አቋራጮች"
+  },
+  "editorCropApply": {
+    "message": "ቁረጣውን ተግብር"
+  },
+  "editorCropCancel": {
+    "message": "ይቅር"
+  },
+  "editorShortcutsHeading": {
+    "message": "የቁልፍ ሰሌዳ አቋራጮች"
+  },
+  "editorShortcutTools": {
+    "message": "መሣሪያዎችን ምረጥ"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "ቀልብስ / ድገም"
+  },
+  "editorShortcutSave": {
+    "message": "ወደ ታሪክ አስቀምጥ"
+  },
+  "editorShortcutZoom": {
+    "message": "አሳንስ / አጉላ"
+  },
+  "editorShortcutDelete": {
+    "message": "የተመረጠውን ነገር አስወግድ"
+  },
+  "editorShortcutEscape": {
+    "message": "ምርጫን አንሳ / ቁረጣን ይቅር"
+  },
+  "editorShortcutsClose": {
+    "message": "ዝጋ"
+  },
+  "editorNotFound": {
+    "message": "ቅጽበታዊ እይታው አልተገኘም"
+  },
+  "editorToastDownloaded": {
+    "message": "ወርዷል"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF ወርዷል"
+  },
+  "editorToastSaved": {
+    "message": "ወደ ታሪክ ተቀምጧል"
+  },
+  "historyPageTitle": {
+    "message": "ታሪክ — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · ታሪክ"
+  },
+  "historySearchPlaceholder": {
+    "message": "ርዕስ ወይም URL ይፈልጉ…"
+  },
+  "historySelectAll": {
+    "message": "ሁሉንም ምረጥ"
+  },
+  "historyClearSelection": {
+    "message": "ምርጫን አጽዳ"
+  },
+  "historyDownloadSelected": {
+    "message": "የተመረጡትን አውርድ"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "አውርድ ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "የተመረጡትን ሰርዝ"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "ሰርዝ ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "እስካሁን ቅጽበታዊ እይታዎች የሉም"
+  },
+  "historyEmptyBody": {
+    "message": "የሚቀርጿቸው እይታዎች እዚህ ይታያሉ። ለመጀመር በመሣሪያ አሞሌዎ ላይ ያለውን የFullShot አዶ ጠቅ ያድርጉ።"
+  },
+  "historyNoMatchesTitle": {
+    "message": "ተመሳሳይ የለም"
+  },
+  "historyNoMatchesBody": {
+    "message": "ከ\"$QUERY$\" ጋር የሚዛመድ ቅጽበታዊ እይታ የለም።",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ ቅጽበታዊ እይታ · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ ቅጽበታዊ እይታዎች · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "ከ$COUNT$ ቅጽበታዊ እይታ ውስጥ $SHOWN$ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "ከ$COUNT$ ቅጽበታዊ እይታዎች ውስጥ $SHOWN$ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "ምረጥ"
+  },
+  "historyCardOpen": {
+    "message": "ክፈት"
+  },
+  "historyCardEdit": {
+    "message": "አርትዕ"
+  },
+  "historyCardDownloadTip": {
+    "message": "አውርድ"
+  },
+  "historyCardDeleteTip": {
+    "message": "ሰርዝ"
+  },
+  "historyCardOpenOriginal": {
+    "message": "ዋናውን ገጽ ክፈት"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ ክፍሎች",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "ቅጽበታዊ እይታ"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "ይህ ቅጽበታዊ እይታ ይሰረዝ?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "$COUNT$ ቅጽበታዊ እይታ በቋሚነት ይሰረዝ?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "$COUNT$ ቅጽበታዊ እይታዎች በቋሚነት ይሰረዙ?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "$COUNT$ ቅጽበታዊ እይታ በማውረድ ላይ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "$COUNT$ ቅጽበታዊ እይታዎችን በማውረድ ላይ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "ተሰርዟል"
+  },
+  "beautifyPageTitle": {
+    "message": "አሳምር — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "አሳምር"
+  },
+  "actionBack": {
+    "message": "ተመለስ"
+  },
+  "commonLoading": {
+    "message": "በመጫን ላይ…"
+  },
+  "beautifyFieldSize": {
+    "message": "መጠን"
+  },
+  "beautifyPresetAuto": {
+    "message": "ራስ-ሰር"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "ካሬ"
+  },
+  "beautifyPresetPortrait": {
+    "message": "ቁመታዊ"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "ዳራ"
+  },
+  "beautifyBgSlate": {
+    "message": "ሸክላ ግራጫ"
+  },
+  "beautifyBgGraphite": {
+    "message": "ግራፋይት"
+  },
+  "beautifyBgSky": {
+    "message": "ሰማያዊ"
+  },
+  "beautifyBgSunset": {
+    "message": "የፀሐይ መጥለቂያ"
+  },
+  "beautifyBgGrape": {
+    "message": "ወይን"
+  },
+  "beautifyBgMint": {
+    "message": "ሚንት አረንጓዴ"
+  },
+  "beautifyFieldPadding": {
+    "message": "የውስጥ ክፍተት"
+  },
+  "beautifyFieldRadius": {
+    "message": "የማዕዘን ክብነት"
+  },
+  "beautifyFieldEffects": {
+    "message": "ውጤቶች"
+  },
+  "beautifyShadow": {
+    "message": "ጥላ"
+  },
+  "beautifyWindowFrame": {
+    "message": "የመስኮት ፍሬም"
+  },
+  "beautifyFieldExport": {
+    "message": "ወደ ውጭ ላክ"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "የሽብልል ክሊፕ — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "የሽብልል ክሊፕ"
+  },
+  "scrollclipFieldFormat": {
+    "message": "ቅርጸት"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ በሁሉም ቦታ ይጫወታል። $WEBM$ ያነሰና ለስላሳ ነው (በአሳሽዎ ውስጥ በቀጥታ ይቀዳል)።",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "የውጤት ስፋት"
+  },
+  "scrollclipFieldDensity": {
+    "message": "ጥግግት"
+  },
+  "scrollclipDensityHint": {
+    "message": "ከፍ ያለ ጥግግት ይበልጥ ጥርት ያለ ውጤት ይሰጣል (ወደ ምንጩ ጥራት የቀረበ) — ፋይሉ ይበልጣል።"
+  },
+  "scrollclipFieldShape": {
+    "message": "ቅርጽ"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "የሽብልል ፍጥነት (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "የፍሬም መጠን (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "እንቅስቃሴ"
+  },
+  "scrollclipBounce": {
+    "message": "መመለስ (ወደ ላይ መልሶ ማሸብለል)"
+  },
+  "scrollclipLoop": {
+    "message": "ያለማቋረጥ ድገም"
+  },
+  "scrollclipCopyFrame": {
+    "message": "ፍሬም ቅዳ"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "የፖስተር (የላይኛውን) ፍሬም እንደ $FORMAT$ ቅዳ",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ፍሬም · $SECONDS$ ሰ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ፍሬሞች · $SECONDS$ ሰ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "ፍሬሞችን በመሳል ላይ… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$ በመቀየር ላይ… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "በማጠናቀቅ ላይ…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ በመቅዳት ላይ…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "በመቅዳት ላይ…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ እዚህ አይደገፍም — እንደ $GIF$ ወደ ውጭ በመላክ ላይ",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "የፖስተር ፍሬም ተቀድቷል"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — የጥቅል ቀረጻ"
+  },
+  "batchHeading": {
+    "message": "የጥቅል ቀረጻ"
+  },
+  "batchIntro": {
+    "message": "URLዎችን በአንድ መስመር አንድ አድርገው ይለጥፉ። FullShot እያንዳንዱን ገጽ ይከፍታል፣ የሙሉ ገጽ ቅጽበታዊ እይታ ወደ ታሪክዎ ይቀርጻል፣ ከዚያም ወደ ቀጣዩ ይሄዳል — በአንድ ጊዜ እስከ $MAX$ ድረስ። ቀረጻዎቹ በታሪክዎ ውስጥ ይታያሉ፤ ማንኛውንም ለማየት፣ ለማረም ወይም ወደ ውጭ ለመላክ $OPENLINK$ ጠቅ ያድርጉ።",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "ሁሉንም ቅረጽ"
+  },
+  "batchPermissionHint": {
+    "message": "እነዚህን ገጾች መክፈት በመጀመሪያው ጊዜ አንድ ጊዜ የሚሰጥ ፈቃድ ይፈልጋል።"
+  },
+  "batchPermissionDeclined": {
+    "message": "እነዚያን ገጾች የመክፈት ፈቃድ ተከልክሏል።"
+  },
+  "batchPanelPlan": {
+    "message": "እቅድ"
+  },
+  "batchPanelProgress": {
+    "message": "ሂደት"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ ገጽ ለመቅረጽ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ ገጾች ለመቅረጽ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ ገጾች ለመቅረጽ (በ$MAX$ ተገድቧል)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "እስካሁን ትክክለኛ URL የለም"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ ተዘለሉ፦ $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "ያልተደገፈ ዘዴ"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "ልክ ያልሆነ"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "አስተናጋጅ የለም"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "ድግግሞሽ"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "ባዶ"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "ከገደብ በላይ ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ ተጠናቋል",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ ተጠናቋል፣ $FAILED$ አልተሳካም",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ ተጠናቋል — ተጠናቅቋል",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ ተጠናቋል፣ $FAILED$ አልተሳካም — ተጠናቅቋል",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "ክፈት"
+  },
+  "batchJobTimedOut": {
+    "message": "የቀረጻ ጊዜ አልፏል"
+  },
+  "batchJobNoSession": {
+    "message": "የቀረጻ ክፍለ ጊዜ የለም"
+  },
+  "batchJobFailed": {
+    "message": "ቀረጻ አልተሳካም"
+  },
+  "batchJobError": {
+    "message": "የቀረጻ ስህተት"
+  },
+  "regionHintDrag": {
+    "message": "ክልል ለመምረጥ ይጎትቱ — ለመሰረዝ $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "ለመቅረጽ አንድ አካል ጠቅ ያድርጉ — ለመሰረዝ $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "እንደ ቅንብሮች፣ ቅጥያዎችና አዲስ ትር ያሉ የአሳሽ ገጾች ለማንኛውም ቅጥያ ክልክል ናቸው። FullShotን በተለመደ የድር ገጽ ላይ ይሞክሩ።"
+  },
+  "errRestrictedDevtools": {
+    "message": "የDevTools መስኮቶች በቅጥያ ሊቀረጹ አይችሉም። ለእነሱ የኮምፒውተርዎን የራሱን የቀረጻ መሣሪያ ይጠቀሙ።"
+  },
+  "errRestrictedViewSource": {
+    "message": "የምንጭ ኮድ ማሳያ ገጾች ሊቀረጹ አይችሉም። በምትኩ ገጹን ራሱን ይቅረጹ።"
+  },
+  "errRestrictedExtensionPage": {
+    "message": "የFullShot የራሱን ጨምሮ የቅጥያ ገጾች በአሳሹ የተጠበቁ ናቸው፣ ስለዚህ ሊቀረጹ አይችሉም።"
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store ቅጥያዎች ገጾቹን እንዲያነቡ አይፈቅድም፣ ስለዚህ ይህ ገጽ ሊቀረጽ አይችልም።"
+  },
+  "errRestrictedGeneric": {
+    "message": "ይህ ገጽ በአሳሹ የተጠበቀ ስለሆነ ሊቀረጽ አይችልም።"
+  },
+  "errWrongTab": {
+    "message": "ቀረጻው ቆሟል — ትር ቀይረዋል። FullShot እስኪጨርስ ድረስ ይህን ገጽ ከፊት ያኑሩት።"
+  },
+  "errGeneric": {
+    "message": "ቀረጻው ሳይጠናቀቅ ቆመ። እባክዎ እንደገና ይሞክሩ።"
+  },
+  "errBusy": {
+    "message": "በዚህ ትር ውስጥ አስቀድሞ ቀረጻ በመካሄድ ላይ ነው።"
+  },
+  "errBlocked": {
+    "message": "ይህ ገጽ ሊቀረጽ አይችልም (የአሳሽ ገደብ)።"
+  },
+  "errNoStart": {
+    "message": "FullShot በዚህ ገጽ ላይ መጀመር አልቻለም። ገጹን እንደገና ጭነው ይሞክሩ።"
+  },
+  "errCrash": {
+    "message": "ቀረጻው ባልተጠበቀ ሁኔታ ቆመ። እባክዎ እንደገና ይሞክሩ።"
+  },
+  "errUnknownMessage": {
+    "message": "ያልታወቀ መልእክት።"
+  },
+  "errQuota": {
+    "message": "አሳሹ ገጾች የሚቀረጹበትን ፍጥነት እየገደበ ነው። ጥቂት ቆይተው እንደገና ይሞክሩ።"
+  },
+  "errFrameHandover": {
+    "message": "አሳሹ በመሃል ላይ ማያ ገጹን ማስረከብ አቆመ። ጥቂት ሰከንዶች ቆይተው እንደገና ይሞክሩ።"
+  },
+  "errLostTab": {
+    "message": "ቀረጻው የዚህን ትር ዱካ አጣ። ገጹን እንደገና ጭነው ይሞክሩ።"
+  },
+  "errStoppedEarly": {
+    "message": "ቀረጻው ሳይጠናቀቅ ተቋረጠ።"
+  },
+  "errStorageFull": {
+    "message": "ይህን ቀረጻ ለማከማቸት ቦታ አልቀረም። ከታሪክዎ ጥቂት ቅጽበታዊ ገጽ እይታዎችን ሰርዘው እንደገና ይሞክሩ።"
+  },
+  "reasonGeneric": {
+    "message": "ምንም ምክንያት አልተሰጠም። እባክዎ እንደገና ይሞክሩ።"
+  },
+  "reasonDecodeFailed": {
+    "message": "ያ ቅጽበታዊ እይታ ሊፈታ አልቻለም።"
+  },
+  "reasonTooLarge": {
+    "message": "ምስሉ እዚህ ወደ ውጭ ለመላክ በጣም ትልቅ ነው።"
+  },
+  "toastCopiedClipboard": {
+    "message": "ወደ ቅንጥብ ሰሌዳ ተቀድቷል"
+  },
+  "toastCopyFailed": {
+    "message": "መቅዳት አልተሳካም — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "ወደ ውጭ መላክ አልተሳካም — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ ተቀምጧል",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ ተቀምጧል  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ ባ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ ኪባ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ ሜባ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ ጊባ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

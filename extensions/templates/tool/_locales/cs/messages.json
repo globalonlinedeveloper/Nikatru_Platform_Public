@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — nahraď mě",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "NAHRAĎ MĚ — jedna věta, jeden účel, nejvýše 132 znaků, žádný marketing.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — nahraď mě",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Přepnout motiv",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Možnosti",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktivní panel",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Čtení…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopírovat název",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Znovu přečíst aktivní panel",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Zavřít",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Zkopírováno",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kopírování se nepovedlo — stiskněte Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Poslední akce „$ACTION$“ selhala — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Poslední akce „$ACTION$“ selhala — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "čtení názvu",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopírování",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "mazání dat",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "spuštění",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Něco to zastavilo dřív, než to skončilo. Zkuste to prosím znovu.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Tento panel už je zaneprázdněný.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Tuto stránku chrání prohlížeč a nelze ji přečíst.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Nebyl nalezen žádný aktivní panel.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Tato stránka nemá název, který by šel přečíst.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Zrušeno.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Neznámá zpráva.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Ten panel byl zavřen dřív, než práce skončila.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Rozšíření neodpovědělo.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Nic se nevrátilo.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Stránky prohlížeče jako Nastavení, Rozšíření a Nový panel jsou zapovězené každému rozšíření. Zkuste to na běžné webové stránce.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Okna nástrojů pro vývojáře jsou rozšířením zapovězená.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Stránky se zdrojovým kódem jsou rozšířením zapovězené. Zkuste místo toho samotnou stránku.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Stránky rozšíření, včetně stránek tohoto rozšíření, chrání prohlížeč.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store brání rozšířením ve čtení svých stránek.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Místní soubory potřebují jedno další oprávnění. Otevřete stránku rozšíření ve svém prohlížeči, najděte toto rozšíření a zapněte „Povolit přístup k adresám URL souborů“.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Tato stránka se nenačetla, takže zatím není co číst.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Toto je vestavěný prohlížeč PDF. Rozšíření dovnitř nevidí — otevřete PDF v běžném panelu nebo si ho nejdřív stáhněte.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Tuto stránku uzavřel do sandboxu web, který ji otevřel, takže ji rozšíření nemohou číst.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Web s doplňky brání rozšířením ve čtení svých stránek.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Toto zařízení nemá místo, takže se nic neuložilo. Smažte v Možnostech pár uložených řádků a zkuste to znovu.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Trvalo to příliš dlouho a bylo to zastaveno. Nic po tom nezůstalo.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Tato hodnota je příliš dlouhá pro vaše synchronizovaná nastavení. Zkuste kratší.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Toto nastavení se nepodařilo uložit. Chvíli počkejte a zkuste to znovu.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Možnosti — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Možnosti",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Možnosti",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Ukládá se automaticky. Pokud máte zapnutou synchronizaci prohlížeče, nastavení cestují s vaším profilem prohlížeče — nám se neposílají nikdy.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Chování",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Zkopírovat při otevření",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Zkopírovat výsledek do schránky hned, jak se okno otevře.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Vést místní historii",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Ve výchozím stavu vypnuto. Když je zapnuto, výsledky se ukládají jen na tomto zařízení, jsou vypsané níže a kdykoli se dají smazat.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Limit historie",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Nejstarší řádky zmizí, jakmile je seznam delší než tohle číslo.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Mazat řádky starší než",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dny. Staré řádky se odstraňují automaticky na pozadí. Nastavte 0, aby řádky zůstaly, dokud je nevytlačí limit historie.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Motiv",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Ve výchozím stavu se řídí systémem.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Systémový",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Světlý",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tmavý",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Vaše data",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Na tomto zařízení není uloženo nic.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Na tomto zařízení jsou uloženy $COUNT$ řádky. Nic z nich neodchází.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Na tomto zařízení je uložen $COUNT$ řádek. Nic z něj neodchází.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Na tomto zařízení jsou uloženy $COUNT$ řádky. Nic z nich neodchází.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Na tomto zařízení jsou uloženy $COUNT$ řádky. Nic z nich neodchází.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Na tomto zařízení je uloženo $COUNT$ řádku. Nic z nich neodchází.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Na tomto zařízení je uloženo $COUNT$ řádků. Nic z nich neodchází.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Trvalé: prohlížeč slíbil, že to nesmaže.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Bez záruky: prohlížeč to může smazat sám, pokud zařízení dojde místo. Vyexportujte si zálohu.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Tento prohlížeč neříká, zda uložená data zůstanou, ber je tedy jako dočasná a vyexportuj si zálohu.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Využito $USED$ z $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Smazat",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Smazat řádek z $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Vyexportovat vše",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Uloží každý uložený řádek do jediného souboru JSON na tomto zařízení. Nic se nikam nenahrává.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Vyexportovat vše",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Smazat vše",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Odstraní z tohoto zařízení každý uložený řádek. Nastavení zůstávají.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Smazat vše",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Obnovit nastavení",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Vrátí každé nastavení na této stránce na výchozí hodnotu a odebere je z vašeho synchronizovaného profilu prohlížeče. Uložené řádky zůstávají.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Obnovit nastavení",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Nahlásit problém",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Připravit hlášení o problému",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Vytvoří malý soubor popisující stav tohoto rozšíření. Ještě před uložením přesně vidíte, co v něm je, a nikam se nic neodesílá.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Připravit hlášení",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "O rozšíření",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — nahraď mě",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Jedna věta, která přesně říká, co tento nástroj dělá. Pracuje na vašem zařízení: žádný účet, žádné sledování, žádná síťová volání, nic se neposílá nám.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Uloženo",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Vše smazáno",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Mazání se nepovedlo — zkuste to znovu",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Toto nastavení se nepodařilo uložit",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Export uložen",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Soubor se nepodařilo uložit",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Řádek smazán",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Nastavení obnovena",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Nastavení se nepodařilo obnovit",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Hlášení uloženo",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Zrušit",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Smazat vše?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Každý uložený řádek bude z tohoto zařízení odstraněn. Vaše nastavení zůstanou. Tohle nejde vzít zpět.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Obnovit všechna nastavení?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Každá předvolba na této stránce se vrátí na výchozí hodnotu a zmizí z vašeho synchronizovaného profilu prohlížeče. Vaše uložené řádky zůstanou. Tohle nejde vzít zpět.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Uložit toto hlášení o problému?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Tohle je vše, co soubor bude obsahovat. Nejsou v něm žádné adresy stránek, žádný text stránek ani nic, co jste zachytili. Nikam se nic neodesílá — soubor se uloží na toto zařízení a jen vy rozhodnete, zda ho budete sdílet.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Uložit hlášení",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Anonymní okno — tento výsledek se do vaší historie neuložil.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Přístup k webům",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Přístup ke všem webům",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Potřebují ho jen funkce, které pracují na stránkách, kde jste neklikli na tlačítko na liště. Kdykoli ho tady můžete odebrat.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Udělit přístup",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Odebrat přístup",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Toto rozšíření teď může číst každý web, který navštívíte.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Toto rozšíření může panel přečíst až poté, co kliknete na jeho tlačítko na liště.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Přístup udělen",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Přístup nebyl udělen",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Přístup odebrán",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Tento přístup se nepodařilo odebrat",
+    "description": "en: Could not revoke that access"
+  }
+}

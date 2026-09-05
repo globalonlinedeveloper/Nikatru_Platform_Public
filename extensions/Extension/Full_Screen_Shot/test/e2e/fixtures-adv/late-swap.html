@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Account</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  #slot { min-height: 120px; }
+  .sentinel { color: #55606e; font-size: 13px; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Overview</a><a href="#">Payments</a><a href="#">Profile</a>
+  <span>Account centre</span>
+</nav>
+<main>
+  <h1>Account centre</h1>
+
+  <!-- THE TRIGGER.
+
+       First attempt was an own-property accessor on `textContent`, fired by the
+       scan's own `fsOwnLeafText` read — deterministic by construction. It never
+       fired, and the reason is worth writing down because it will catch the
+       next person too: a content script runs in an ISOLATED WORLD, and an
+       expando or property override installed by page script is not visible
+       there. Nothing a page defines in JS can observe the scan directly.
+
+       What DOES cross the boundary is the DOM itself. `injectCaptureCss()`
+       appends `<style id="__fullshot-css">` to documentElement (capture.js:163,
+       called at 1626) before the pre-scroll passes and therefore before the
+       scan, so it is a reliable "a capture has begun" marker but not a
+       "the scan has finished" one. The pre-scroll phase between them
+       (preScrollPass / loadMore / infiniteScrollPass / waitStable /
+       unrollVirtual) is what the delay below is waiting out.
+
+       So this is timed, and it is therefore SELF-VALIDATING rather than
+       trusted: if the change had beaten the scan the paragraph would have
+       MATCHED, so `matched === 0` together with `fired === true` and the
+       colour surviving into the PNG is what makes the finding real. Any other
+       combination reports as inconclusive and is not graded. -->
+  <div class="sentinel" id="sentinel">Session restored.</div>
+
+  <p class="filler">Your recent activity is shown below. Details load as the page
+  is read.</p>
+
+  <div class="spacer"></div>
+  <div class="card">
+    <h2>Statement history</h2>
+    <p class="filler">Twelve statements available. Older statements are archived
+    after seven years and can be requested from support.</p>
+  </div>
+  <div class="spacer"></div>
+
+  <div class="card">
+    <h2>Payment details</h2>
+    <div id="slot"><span class="filler">Loading account details…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Preferences</h2>
+    <p class="filler">Paperless billing is on. Marketing email is off. The account
+    is in good standing and nothing is overdue.</p>
+  </div>
+  <div class="spacer"></div>
+</main>
+
+<script src="_late.js"></script>
+<script>
+  fsLateFixture('late-swap', function (slot) {
+    if (slot.querySelector('.m-email')) return;      /* idempotent: re-applied every frame */
+    var a = document.createElement('span');
+    a.className = 'm m-email';
+    a.textContent = 'rajasekar@nikatru.com';
+    var b = document.createElement('span');
+    b.className = 'm m-card';
+    b.textContent = '4111 1111 1111 1111';
+    slot.replaceChildren(a, document.createElement('br'), b);
+  });
+</script>
+</body>
+</html>

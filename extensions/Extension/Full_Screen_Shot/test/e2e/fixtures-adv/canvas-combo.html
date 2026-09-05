@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ledger</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  canvas { display: block; border: 1px solid #d9dde6; background: #fff; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">File</a><a href="#">Edit</a><a href="#">View</a><a href="#">Insert</a>
+  <a href="#">Format</a><a href="#">Data</a><a href="#">Tools</a><a href="#">Help</a>
+  <span>Ledger — shared with the team</span>
+</nav>
+<main>
+  <h1>Q3 ledger</h1>
+
+  <!-- COMBINATION: §5.2's canvas application, §7.1 E's off-screen accessibility
+       text, and a genuinely text-rich chrome, on one page.
+
+       The chrome supplies `placed > 0` and a few hundred characters, exactly as
+       §7.4 predicts for a real canvas app; the sr-only paragraph inflates
+       `chars` further with text that is not in the picture; the document body
+       is canvas and holds the only sensitive thing on the page. -->
+  <p class="sr">Spreadsheet region. Column A contains the customer name, column B
+  the contact address, column C the payment reference and column D the settled
+  amount in pounds sterling. Rows one through twelve are shown. Use the arrow
+  keys to move between cells. Press enter to edit the selected cell. The sheet
+  was last edited eleven minutes ago and is shared with four collaborators who
+  can each comment on the contents.</p>
+
+  <canvas id="sheet" width="820" height="260"></canvas>
+
+  <div class="card">
+    <h2>Sheet notes</h2>
+    <p class="filler">Figures are provisional until the quarter closes. Do not
+    circulate outside the finance group.</p>
+    <p class="filler">The reconciliation runs nightly and any variance is raised
+    with the account owner the following morning.</p>
+  </div>
+</main>
+<script>
+(function () {
+  window.__fsFixture = { kind: 'canvas-combo' };
+  var c = document.getElementById('sheet');
+  var x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
+  x.strokeStyle = '#e0e3ea';
+  for (var i = 0; i <= 6; i++) { x.beginPath(); x.moveTo(0, i * 40 + 0.5); x.lineTo(c.width, i * 40 + 0.5); x.stroke(); }
+  x.font = '700 17px Consolas, "Courier New", monospace';
+  x.fillStyle = '#2a2a2a';
+  x.fillText('Customer', 12, 26);
+  x.fillText('Contact', 220, 26);
+  x.fillText('Reference', 560, 26);
+  x.fillStyle = '#2a2a2a';
+  x.fillText('Nikatru Ltd', 12, 66);
+  x.fillStyle = 'rgb(255, 90, 90)';
+  x.fillText('rajasekar@nikatru.com', 220, 66);
+  x.fillStyle = '#2a2a2a';
+  x.fillText('INV-40112', 560, 66);
+  x.fillStyle = '#2a2a2a';
+  x.fillText('Halder GmbH', 12, 106);
+  x.fillStyle = 'rgb(90, 130, 255)';
+  x.fillText('4111 1111 1111 1111', 220, 106);
+  x.fillStyle = '#2a2a2a';
+  x.fillText('INV-40113', 560, 106);
+})();
+</script>
+</body>
+</html>

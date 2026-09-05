@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — मुझे बदलें",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "मुझे बदलें — एक वाक्य, एक उद्देश्य, 132 वर्ण या उससे कम, कोई विज्ञापनी भाषा नहीं।",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — मुझे बदलें",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "थीम बदलें",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "विकल्प",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "सक्रिय टैब",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "पढ़ा जा रहा है…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "शीर्षक कॉपी करें",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "सक्रिय टैब को दोबारा पढ़ें",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "बंद करें",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "कॉपी हो गया",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "कॉपी नहीं हो सका — इसके बजाय Ctrl+C दबाएँ",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "पिछली $ACTION$ विफल रही — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "पिछली $ACTION$ विफल रही — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "शीर्षक पढ़ना",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "कॉपी करना",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "डेटा मिटाना",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "चलाना",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "पूरा होने से पहले ही किसी चीज़ ने इसे रोक दिया। कृपया दोबारा कोशिश करें।",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "यह टैब पहले से ही व्यस्त है।",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "यह पेज ब्राउज़र द्वारा सुरक्षित है और इसे पढ़ा नहीं जा सकता।",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "कोई सक्रिय टैब नहीं मिला।",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "इस पेज पर पढ़ने के लिए कोई शीर्षक नहीं है।",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "रद्द कर दिया गया।",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "अज्ञात संदेश।",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "काम पूरा होने से पहले ही वह टैब बंद हो गया।",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "एक्सटेंशन ने जवाब नहीं दिया।",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "कुछ भी वापस नहीं आया।",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "सेटिंग्स, एक्सटेंशन और नया टैब जैसे ब्राउज़र के पेज हर एक्सटेंशन के लिए वर्जित हैं। इसे किसी सामान्य वेब पेज पर आज़माएँ।",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "डेवलपर टूल की विंडो एक्सटेंशनों के लिए वर्जित है।",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "स्रोत देखने वाले पेज एक्सटेंशनों के लिए वर्जित हैं। इसके बजाय पेज को ही आज़माएँ।",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "एक्सटेंशनों के पेज, इस एक्सटेंशन के अपने पेज सहित, ब्राउज़र द्वारा सुरक्षित हैं।",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome वेब स्टोर एक्सटेंशनों को अपने पेज पढ़ने से रोकता है।",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "स्थानीय फ़ाइलों के लिए एक अतिरिक्त अनुमति चाहिए। अपने ब्राउज़र का एक्सटेंशन पेज खोलें, इस एक्सटेंशन को ढूँढ़ें और “फ़ाइल URL तक पहुँच की अनुमति दें” चालू करें।",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "यह पेज लोड ही नहीं हुआ, इसलिए अभी पढ़ने के लिए कुछ नहीं है।",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "यह ब्राउज़र में बना हुआ PDF व्यूअर है। एक्सटेंशन इसके भीतर नहीं पढ़ सकते — PDF को किसी सामान्य टैब में खोलें या पहले डाउनलोड कर लें।",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "जिस साइट ने यह पेज खोला, उसने इसे सैंडबॉक्स में रखा है, इसलिए एक्सटेंशन इसे नहीं पढ़ सकते।",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "ऐड-ऑन साइट एक्सटेंशनों को अपने पेज पढ़ने से रोकती है।",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "इस डिवाइस में जगह नहीं बची, इसलिए कुछ भी सहेजा नहीं गया। विकल्पों में जाकर कुछ संग्रहीत पंक्तियाँ हटाएँ और दोबारा कोशिश करें।",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "इसमें बहुत समय लग गया, इसलिए इसे रोक दिया गया। पीछे कुछ भी नहीं बचा।",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "वह मान आपकी सिंक की गई सेटिंग्स में रखने के लिए बहुत लंबा है। कोई छोटा मान आज़माएँ।",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "वह सेटिंग सहेजी नहीं जा सकी। थोड़ा रुककर दोबारा कोशिश करें।",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "विकल्प — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · विकल्प",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "विकल्प",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "अपने आप सहेजा जाता है। अगर आपके ब्राउज़र का सिंक चालू है तो आपकी सेटिंग्स आपकी ब्राउज़र प्रोफ़ाइल के साथ चलती हैं — वे हमें कभी नहीं भेजी जातीं।",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "व्यवहार",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "खुलते ही कॉपी करें",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "पॉपअप खुलते ही परिणाम को क्लिपबोर्ड में कॉपी कर दें।",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "स्थानीय इतिहास रखें",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "डिफ़ॉल्ट रूप से बंद। चालू होने पर परिणाम केवल इसी डिवाइस पर संग्रहीत होते हैं, नीचे दिखते हैं, और कभी भी हटाए जा सकते हैं।",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "इतिहास की सीमा",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "सूची इससे लंबी होते ही सबसे पुरानी पंक्तियाँ हटा दी जाती हैं।",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "इससे पुरानी पंक्तियाँ हटाएँ",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "दिन। पुरानी पंक्तियाँ पृष्ठभूमि में अपने आप हट जाती हैं। 0 रखें तो पंक्तियाँ तब तक बनी रहेंगी जब तक इतिहास की सीमा उन्हें न हटा दे।",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "थीम",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "डिफ़ॉल्ट रूप से आपके सिस्टम का अनुसरण करती है।",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "सिस्टम",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "हल्की",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "गहरी",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "आपका डेटा",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "इस डिवाइस पर कुछ भी संग्रहीत नहीं है।",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "इस डिवाइस पर $COUNT$ पंक्तियाँ संग्रहीत हैं। इनमें से कुछ भी बाहर नहीं जाता।",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "इस डिवाइस पर $COUNT$ पंक्ति संग्रहीत है। इसमें से कुछ भी बाहर नहीं जाता।",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "इस डिवाइस पर $COUNT$ पंक्तियाँ संग्रहीत हैं। इनमें से कुछ भी बाहर नहीं जाता।",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "इस डिवाइस पर $COUNT$ पंक्तियाँ संग्रहीत हैं। इनमें से कुछ भी बाहर नहीं जाता।",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "इस डिवाइस पर $COUNT$ पंक्तियाँ संग्रहीत हैं। इनमें से कुछ भी बाहर नहीं जाता।",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "इस डिवाइस पर $COUNT$ पंक्तियाँ संग्रहीत हैं। इनमें से कुछ भी बाहर नहीं जाता।",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "टिकाऊ: ब्राउज़र ने इसे न मिटाने का वादा किया है।",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "यथासंभव: डिवाइस में जगह कम पड़ने पर ब्राउज़र इसे अपने आप मिटा सकता है। एक बैकअप निर्यात कर लें।",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "यह ब्राउज़र नहीं बताता कि संग्रहीत डेटा बचा रहेगा या नहीं, इसलिए इसे अस्थायी मानें और एक बैकअप निर्यात कर लें।",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$ में से $USED$ का उपयोग।",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "हटाएँ",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ की पंक्ति हटाएँ",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "सब कुछ निर्यात करें",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "हर संग्रहीत पंक्ति को इसी डिवाइस पर एक JSON फ़ाइल में सहेजता है। कुछ भी अपलोड नहीं होता।",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "सब कुछ निर्यात करें",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "सब कुछ हटाएँ",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "इस डिवाइस से हर संग्रहीत पंक्ति हटा देता है। सेटिंग्स बनी रहती हैं।",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "सब कुछ हटाएँ",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "सेटिंग्स रीसेट करें",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "इस पेज की हर सेटिंग को उसके डिफ़ॉल्ट पर लौटाता है और उन्हें आपकी सिंक की गई ब्राउज़र प्रोफ़ाइल से हटा देता है। संग्रहीत पंक्तियाँ बनी रहती हैं।",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "सेटिंग्स रीसेट करें",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "समस्या की सूचना दें",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "समस्या रिपोर्ट तैयार करें",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "इस एक्सटेंशन की स्थिति बताने वाली एक छोटी फ़ाइल बनाता है। सहेजने से पहले आप ठीक-ठीक देखते हैं कि उसमें क्या है, और कुछ भी कहीं नहीं भेजा जाता।",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "रिपोर्ट तैयार करें",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "परिचय",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — मुझे बदलें",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "एक वाक्य जो ठीक-ठीक बताता है कि यह उपकरण क्या करता है। यह अपना काम आपके डिवाइस पर करता है: कोई खाता नहीं, कोई ट्रैकिंग नहीं, कोई नेटवर्क कॉल नहीं, हमें कुछ भी नहीं भेजा जाता।",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "सहेजा गया",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "सब कुछ हटा दिया गया",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "हटाया नहीं जा सका — दोबारा कोशिश करें",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "वह सेटिंग सहेजी नहीं जा सकी",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "निर्यात सहेजा गया",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "फ़ाइल सहेजी नहीं जा सकी",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "पंक्ति हटा दी गई",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "सेटिंग्स रीसेट हो गईं",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "सेटिंग्स रीसेट नहीं हो सकीं",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "रिपोर्ट सहेजी गई",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "रद्द करें",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "सब कुछ हटाएँ?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "हर संग्रहीत पंक्ति इस डिवाइस से हटा दी जाएगी। आपकी सेटिंग्स बनी रहेंगी। इसे पूर्ववत नहीं किया जा सकता।",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "हर सेटिंग रीसेट करें?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "इस पेज की हर पसंद अपने डिफ़ॉल्ट पर लौट जाएगी और आपकी सिंक की गई ब्राउज़र प्रोफ़ाइल से हट जाएगी। आपकी संग्रहीत पंक्तियाँ बनी रहेंगी। इसे पूर्ववत नहीं किया जा सकता।",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "यह समस्या रिपोर्ट सहेजें?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "फ़ाइल में बस इतना ही होगा। उसमें न कोई पेज का पता है, न पेज का कोई पाठ, और न ही आपके द्वारा कैप्चर की गई कोई चीज़। कुछ भी कहीं नहीं भेजा जाता — फ़ाइल इसी डिवाइस पर सहेजी जाती है और उसे साझा करना या न करना आपका फ़ैसला है।",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "रिपोर्ट सहेजें",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "निजी विंडो — यह परिणाम आपके इतिहास में सहेजा नहीं गया।",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "साइट पहुँच",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "हर साइट तक पहुँच",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "यह केवल उन सुविधाओं के लिए चाहिए जो उन पेजों पर काम करती हैं जहाँ आपने टूलबार बटन नहीं दबाया। आप इसे यहीं से कभी भी वापस ले सकते हैं।",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "पहुँच दें",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "पहुँच वापस लें",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "इस समय यह एक्सटेंशन आपकी देखी जाने वाली हर साइट पढ़ सकता है।",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "यह एक्सटेंशन किसी टैब को तभी पढ़ सकता है जब आप टूलबार में इसका बटन दबाते हैं।",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "पहुँच दे दी गई",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "पहुँच नहीं दी गई",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "पहुँच वापस ले ली गई",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "वह पहुँच वापस नहीं ली जा सकी",
+    "description": "en: Could not revoke that access"
+  }
+}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>giveup — a match whose blocks straddle the 2000-box ceiling</title>
+<!-- THE BOX CEILING, ARRANGED SO IT CUTS A MATCH IN HALF.
+
+     1999 single-rect emails in document order fill `out` to exactly 1999.
+     The 2000th match is a card number in a container narrow enough to break it
+     across two lines, so it PRODUCES two client rects and the cap lets exactly
+     one of them be emitted.
+
+     That is the shape round 9 was about: the roll-up used to grade this match
+     against the block that arrived and call it covered. What must be true now:
+       matched          >= 2000
+       matchedComplete  false          (the ceiling stopped the pass short)
+       truncatedBy      "ceiling"
+       blocksLost       >= 1
+       painted/verified < matched      (a positive shortfall, stated)
+     and the second half of the card number is still legible in the delivered
+     PNG, which is what the shortfall is telling the reader.
+
+     The marker colour rides on the token itself so a pixel count measures the
+     token and not the row padding. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 6px/6px monospace; }
+  .e { display: inline-block; width: 92px; height: 6px; overflow: hidden;
+       white-space: nowrap; color: rgb(255, 90, 90); }
+  #wrapbox { width: 78px; margin: 24px 0 0 0; font: 18px/22px monospace;
+             color: rgb(90, 130, 255); word-break: normal; }
+  #tail { height: 40px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div id="grid"></div>
+  <!-- one match, two client rects: the container is narrower than the number -->
+  <div id="wrapbox">4111 1111 1111 1111</div>
+  <div id="tail"></div>
+<script>
+/* 1999 leaves, each holding exactly one email and nothing else. `nowrap` plus a
+   fixed width keeps every one of them to a single client rect, so the running
+   box count is the match count and the cap lands where this fixture says. */
+(function () {
+  const g = document.getElementById('grid');
+  let html = '';
+  for (let i = 1; i <= 1999; i++) html += '<span class="e">u' + i + '@e.co</span>';
+  g.innerHTML = html;
+  window.__fsFixture = { emails: 1999, wrapped: 1 };
+})();
+</script>
+</body>
+</html>

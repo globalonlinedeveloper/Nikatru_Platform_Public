@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>giveup — a block too large for the read-back's area budget</title>
+<!-- THE READ-BACK'S AREA BUDGET (FS_VERIFY_MAX_PX = 4,000,000).
+
+     One card number set at 3,600 px. The block painted over it clips to the
+     canvas width, so its on-canvas area is about 1280 x 4324 = 5.5 Mpx — past
+     the per-band budget, which REFUSES it rather than sampling it. A second,
+     ordinary email is matched, painted and read back normally.
+
+     What must be true:
+       matched          2
+       painted          2
+       verifiedOpaque   1        (a positive shortfall of 1)
+       blocksUnread     >= 1
+     and every surface must say the block was DRAWN AND NOT READ BACK, which is
+     a different fact from "read and found wanting" — the second is what
+     verifiedOpaque already reports. The pixels really are black; the product's
+     position is that it did not confirm that, and it must say so.
+
+     `overflow: hidden` on the leaf keeps the overflowing glyphs out of the
+     document's scroll width, so the capture stays 1,280 px wide. The leaf's own
+     overflow is not part of the ancestor clip test, which walks upward. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 16px/22px system-ui, sans-serif; }
+  #control { color: rgb(255, 90, 90); font: 20px/24px monospace; padding: 8px; }
+  #huge { color: rgb(90, 130, 255); font: 3600px/1.2 monospace;
+          width: 1200px; overflow: hidden; white-space: nowrap; }
+  #tail { height: 60px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div id="control">small@example.com</div>
+  <div id="huge">4111111111111111</div>
+  <div id="tail"></div>
+</body>
+</html>

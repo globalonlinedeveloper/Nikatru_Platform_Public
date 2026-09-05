@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — korvaa minut",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "KORVAA MINUT — yksi lause, yksi tarkoitus, enintään 132 merkkiä, ei markkinointia.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — korvaa minut",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Vaihda teemaa",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Asetukset",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktiivinen välilehti",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Luetaan…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopioi otsikko",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Lue aktiivinen välilehti uudelleen",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Sulje",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Kopioitu",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kopiointi ei onnistunut — paina sen sijaan Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Viimeisin $ACTION$ epäonnistui — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Viimeisin $ACTION$ epäonnistui — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "otsikon luku",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopiointi",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "tietojen poisto",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "suoritus",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Jokin keskeytti tämän ennen kuin se valmistui. Yritä uudelleen.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Tämä välilehti on jo varattu.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Selain suojaa tämän sivun, eivätkä laajennukset saa lukea sitä.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Aktiivista välilehteä ei löytynyt.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Tällä sivulla ei ole otsikkoa, jota lukea.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Peruutettu.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Tuntematon viesti.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Kyseinen välilehti suljettiin ennen kuin työ valmistui.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Laajennus ei vastannut.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Mitään ei palautunut.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Selaimen omat sivut, kuten Asetukset, Laajennukset ja Uusi välilehti, ovat kaikilta laajennuksilta kiellettyjä. Kokeile tavallisella verkkosivulla.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Kehittäjän työkalujen ikkunat ovat laajennuksilta kiellettyjä.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Sivun lähdekoodisivut ovat laajennuksilta kiellettyjä. Kokeile sen sijaan itse sivua.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Laajennusten sivut, myös tämän laajennuksen omat, ovat selaimen suojaamia.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store estää laajennuksia lukemasta sivujaan.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Paikalliset tiedostot vaativat yhden lisäoikeuden. Avaa selaimen Laajennukset-sivu, etsi tämä laajennus ja ota käyttöön ”Salli pääsy tiedostojen URL-osoitteisiin”.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Tämä sivu ei latautunut, joten luettavaa ei vielä ole.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Tämä on selaimen sisäänrakennettu PDF-katselin. Laajennukset eivät pysty lukemaan sen sisältöä — avaa PDF tavallisessa välilehdessä tai lataa se ensin.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Sivun avannut sivusto on eristänyt sen hiekkalaatikkoon, joten laajennukset eivät voi lukea sitä.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Lisäosasivusto estää laajennuksia lukemasta sivujaan.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Tästä laitteesta on loppunut tila, joten mitään ei tallennettu. Poista joitakin tallennettuja rivejä kohdassa Asetukset ja yritä uudelleen.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Tämä kesti liian kauan ja pysäytettiin. Mitään ei jäänyt jäljelle.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Tuo arvo on liian pitkä tallennettavaksi synkronoituihin asetuksiisi. Kokeile lyhyempää.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Tätä asetusta ei voitu tallentaa. Odota hetki ja yritä uudelleen.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Asetukset — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Asetukset",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Asetukset",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Tallennetaan automaattisesti. Jos selaimesi synkronointi on käytössä, asetuksesi kulkevat selainprofiilisi mukana — niitä ei koskaan lähetetä meille.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Toiminta",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopioi avattaessa",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopioi tulos leikepöydälle heti, kun ponnahdusikkuna avautuu.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Säilytä paikallista historiaa",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Oletuksena pois käytöstä. Kun asetus on käytössä, tulokset tallennetaan vain tähän laitteeseen, ne näkyvät alla ja ne voi poistaa milloin tahansa.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Historian raja",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Vanhimmat rivit poistetaan, kun luettelo on tätä pidempi.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Poista rivit, jotka ovat vanhempia kuin",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Päivää. Vanhat rivit poistetaan automaattisesti taustalla. Aseta 0, jos haluat säilyttää rivit siihen asti, kunnes historian raja poistaa ne.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Teema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Seuraa oletuksena järjestelmääsi.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Järjestelmä",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Vaalea",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tumma",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Omat tietosi",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Tähän laitteeseen ei ole tallennettu mitään.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ riviä on tallennettu tähän laitteeseen. Mikään ei poistu siitä.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ rivi on tallennettu tähän laitteeseen. Mikään ei poistu siitä.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ riviä on tallennettu tähän laitteeseen. Mikään ei poistu siitä.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ riviä on tallennettu tähän laitteeseen. Mikään ei poistu siitä.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ riviä on tallennettu tähän laitteeseen. Mikään ei poistu siitä.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ riviä on tallennettu tähän laitteeseen. Mikään ei poistu siitä.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Pysyvä: selain on luvannut, ettei se tyhjennä näitä.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Ei takeita: selain voi tyhjentää nämä omin päin, jos laitteen tila käy vähiin. Vie varmuuskopio.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Tämä selain ei kerro, säilyvätkö tallennetut tiedot, joten käsittele niitä väliaikaisina ja vie varmuuskopio.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Käytössä $USED$ / $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Poista",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Poista rivi lähteestä $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Vie kaikki",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Tallentaa jokaisen tallennetun rivin yhteen JSON-tiedostoon tässä laitteessa. Mitään ei lähetetä verkkoon.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Vie kaikki",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Poista kaikki",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Poistaa jokaisen tallennetun rivin tästä laitteesta. Asetukset säilytetään.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Poista kaikki",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Palauta asetukset",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Palauttaa jokaisen tämän sivun asetuksen oletusarvoonsa ja poistaa ne synkronoidusta selainprofiilistasi. Tallennetut rivit säilytetään.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Palauta asetukset",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Ilmoita ongelmasta",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Valmistele ongelmaraportti",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Rakentaa pienen tiedoston, joka kuvaa tämän laajennuksen tilan. Näet tarkalleen, mitä siinä on, ennen kuin se tallennetaan, eikä mitään lähetetä minnekään.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Valmistele raportti",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Tietoja",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — korvaa minut",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Yksi lause, joka kertoo tarkalleen, mitä tämä työkalu tekee. Se tekee työnsä laitteellasi: ei tiliä, ei seurantaa, ei verkkopyyntöjä, mitään ei lähetetä meille.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Tallennettu",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Kaikki poistettu",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Poistaminen ei onnistunut — yritä uudelleen",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Asetuksen tallennus ei onnistunut",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Vienti tallennettu",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Tiedoston tallennus ei onnistunut",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Rivi poistettu",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Asetukset palautettu",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Asetusten palautus ei onnistunut",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Raportti tallennettu",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Peruuta",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Poistetaanko kaikki?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Jokainen tallennettu rivi poistetaan tästä laitteesta. Asetuksesi säilytetään. Tätä ei voi perua.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Palautetaanko kaikki asetukset?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Jokainen tämän sivun asetus palautuu oletusarvoonsa ja poistetaan synkronoidusta selainprofiilistasi. Tallennetut rivisi säilytetään. Tätä ei voi perua.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Tallennetaanko tämä ongelmaraportti?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Tässä on kaikki, mitä tiedosto tulee sisältämään. Siinä ei ole sivujen osoitteita, ei sivujen tekstiä eikä mitään kaappaamaasi. Mitään ei lähetetä minnekään — tiedosto tallennetaan tähän laitteeseen, ja sinä päätät, jaatko sen.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Tallenna raportti",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Incognito-ikkuna — tätä tulosta ei tallennettu historiaasi.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Sivustojen käyttöoikeus",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Käyttöoikeus kaikkiin sivustoihin",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Tarvitaan vain niihin toimintoihin, jotka toimivat sivuilla, joilla et ole napsauttanut työkalupalkin painiketta. Voit peruuttaa sen milloin tahansa täältä.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Myönnä käyttöoikeus",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Peruuta käyttöoikeus",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Tämä laajennus voi tällä hetkellä lukea kaikki sivustot, joilla käyt.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Tämä laajennus voi lukea välilehden vasta, kun napsautat sen työkalupalkin painiketta.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Käyttöoikeus myönnetty",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Käyttöoikeutta ei myönnetty",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Käyttöoikeus peruutettu",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Käyttöoikeuden peruutus ei onnistunut",
+    "description": "en: Could not revoke that access"
+  }
+}

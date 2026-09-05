@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — PII under a height:0 overflow:hidden ancestor, and under opacity:0</title>
+<!-- SPEC E13 / §7.1 B + C. §6.3 calls this the sharpest of the new fixtures:
+     "if E13 is green before clauses 5-6 exist, the check is reading the fixture,
+     rather than the layout."
+     Why it is sharp: a leaf inside a height:0 overflow:hidden ancestor is laid
+     out NORMALLY. getBoundingClientRect does not apply ancestor clipping, so
+     the leaf's rect is full size and its font-size agrees with it. Clause 4
+     (rect vs font-size) passes. Only a walk of the ancestor chain (clause 5)
+     sees the clip. The same is true for ancestor opacity:0 — the child's
+     computed `visibility` is still `visible` (clause 6).
+     Both hidden blocks hold real matches, so this page also exercises the
+     other half: a match inside an unplaced span must NOT emit a box that gets
+     painted and verified and carries the capture to `blocks-painted`
+     (`boxesFromUnplaced === 0`, §2.6). -->
+<style>
+  html, body { margin: 0; background: #fff; font: 18px/1.6 system-ui, sans-serif; }
+  .visible { padding: 26px 24px; background: rgb(244, 246, 252); color: #223; }
+  /* the collapsed accordion / closed dropdown / off-canvas nav family */
+  .accordion { height: 0; overflow: hidden; }
+  /* the SEO-text / pre-animation / FOUC-guard family */
+  .faded { opacity: 0; }
+  .secret { padding: 24px; font-size: 20px; }
+  .s1 { background: rgb(255, 90, 90); color: #300; }
+  .s2 { background: rgb(90, 200, 120); color: #031; }
+  .band { height: 280px; background: rgb(232, 236, 246); }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div class="visible">Quarterly operations summary. Throughput held steady across all three regions and no incidents were escalated beyond the duty desk during the period under review.</div>
+
+  <div class="accordion">
+    <div class="secret s1">Collapsed panel — escalation contact jane.doe@example.com</div>
+  </div>
+
+  <div class="faded">
+    <div class="secret s2">Pre-animation copy — duty desk +1 (555) 123-4567</div>
+  </div>
+
+  <div class="visible">The remainder of this page is ordinary visible prose so that at least one span is genuinely placed. Without it the page would be textless and would land somewhere else entirely.</div>
+  <div class="band"></div>
+  <div class="visible">Nothing in either hidden block above is in the picture. Both are real matches all the same, and both are being read by the detector.</div>
+  <div class="band"></div>
+  <div id="bottom"></div>
+</body>
+</html>

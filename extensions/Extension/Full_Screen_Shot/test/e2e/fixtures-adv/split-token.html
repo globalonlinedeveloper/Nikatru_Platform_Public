@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statement</title>
+<link rel="stylesheet" href="_kit.css">
+</head>
+<body>
+<nav>
+  <a href="#">Accounts</a><a href="#">Statements</a><a href="#">Transfers</a>
+  <span>Last login yesterday</span>
+</nav>
+<main>
+  <h1>Statement</h1>
+  <p class="filler">This statement covers the current billing period. Amounts shown
+  include tax where applicable.</p>
+
+  <div class="card">
+    <h2>Payment method</h2>
+
+    <!-- SHAPE §7.1 H / §5.1: each fragment is its own childless leaf, so each is
+         fed SEPARATELY and no fragment matches. The reader sees one card number
+         and one email. The detector is handed six strings and matches nothing. -->
+    <p><span class="m m-card">4111 </span><span class="m m-card">1111 </span><span class="m m-card">1111 </span><span class="m m-card">1111</span></p>
+
+    <p><span class="m m-email">rajasekar</span><span class="m m-email">@</span><span class="m m-email">nikatru.com</span></p>
+
+    <!-- and the SVG tspan arrangement the spec names in the same breath -->
+    <svg width="420" height="34" aria-hidden="true">
+      <text x="2" y="24" font-family="Consolas, monospace" font-size="19" font-weight="700" fill="rgb(160,110,255)"><tspan>123-</tspan><tspan>45-</tspan><tspan>6789</tspan></text>
+    </svg>
+  </div>
+
+  <div class="card">
+    <h2>Transactions</h2>
+    <p class="filler">Coffee, seven pounds. Books, twelve pounds. Transport, four
+    pounds. Groceries, thirty one pounds.</p>
+    <p class="filler">No disputed items in this period. Interest was not charged.</p>
+  </div>
+</main>
+</body>
+</html>

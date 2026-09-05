@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — late image must not capture black (adaptive decode)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #2A3A96; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  #hero { display: block; width: 100%; height: 200px; background: #000; }   /* black until the image paints */
+  #block { height: 1200px; background: #B4B4C0; padding: 16px 20px; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 16px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 470px; max-height: 220px; overflow-y: auto; z-index: 30;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — a lazily-assigned hero image must be decoded before capture (not black). Press Alt+Shift+P.</div>
+<img id="hero" alt="hero">
+<div id="block">Content below the hero image.</div>
+<div id="bottom">PAGE BOTTOM MARKER.</div>
+<div id="scoreboard">Waiting for capture… press Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const hero = $('hero'), board = $('scoreboard');
+  // a solid green image (SVG data URL), assigned LATE to mimic a lazy/late-loading hero
+  const GREEN = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='200'>" +
+                "<rect width='1200' height='200' fill='%2300ff88'/></svg>";
+  setTimeout(() => { hero.src = GREEN; }, 250);
+
+  const S = { decoded: false, sawIncomplete: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (hero.complete && hero.naturalWidth > 0) S.decoded = true; else S.sawIncomplete = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(report, 600);
+    }
+  }, 70);
+
+  function line(l, ok) { return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + l + '\n'; }
+  function report() {
+    const rows = [['hero image was decoded (complete) during capture', S.decoded]];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'LATE-IMAGE RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: the hero band is GREEN (the decoded image), not a black tile.';
+    console.log('FSLATEIMAGE', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

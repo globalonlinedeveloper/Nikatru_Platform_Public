@@ -1,0 +1,195 @@
+/* The popup keeps its own palette because its surfaces are not the pages' —
+   its background is pure white rather than --bg over --panel — but the TOKENS
+   are the ones pages/common.css declares, and they hold the same values. Two
+   stylesheets that drift are two stylesheets where one of them is wrong.
+
+   --accent-text exists because one colour cannot do two jobs at these
+   luminances. --accent is a SURFACE and a boundary (the focus ring here);
+   --accent-text is accent-coloured INK on an ordinary background — the mode
+   pictograms and the footer link on hover. In the dark theme the surface value
+   read as ink measures 3.88:1 against --bg, under the 4.5:1 AA floor for 12px
+   text; the ink value measures 7.64:1. Both are graded, in both themes, by the
+   contrast section of test/editor-sim.node.js, which parses these very blocks.
+
+   --fg2 moved #6b6b80 -> #67677c in the same pass that moved it in
+   pages/common.css: 4.74 -> 5.02 on --bg2, and the mode subtitle on a hovered
+   row from 4.52 (a rounding error away from failing) to 4.79. */
+:root {
+  --bg: #ffffff;
+  --bg2: #f4f4f7;
+  --fg: #1c1c28;
+  --fg2: #67677c;
+  --line: #e4e4ec;
+  --accent: #4f46e5;
+  --accent-text: #4f46e5;
+  --accent-fg: #ffffff;
+  --hover: #eeeefa;
+}
+:root[data-theme="dark"] {
+  --bg: #17171f;
+  --bg2: #20202b;
+  --fg: #ececf2;
+  --fg2: #9a9ab0;
+  --line: #2e2e3c;
+  --accent: #6a61ef;
+  --accent-text: #a5a0fa;
+  --accent-fg: #ffffff;
+  --hover: #262637;
+}
+/* The same dark theme for a profile that never touched the toggle. It has to
+   declare the SAME tokens: one missing here is a popup that is AA under the
+   toggle and not AA out of the box, which is the harder failure to notice
+   because nobody clicks anything to reach it. Asserted, not trusted. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #17171f; --bg2: #20202b; --fg: #ececf2; --fg2: #9a9ab0;
+    --line: #2e2e3c; --accent: #6a61ef; --accent-text: #a5a0fa;
+    --accent-fg: #ffffff; --hover: #262637;
+  }
+}
+
+/* A FOCUS RING THE USER CAN SEE, on every control in this window. :focus-visible
+   only, so a mouse click does not paint a ring nobody asked for, and an outline
+   rather than a box-shadow so it survives forced-colors mode. Measured: the
+   accent clears the 3:1 that WCAG 1.4.11 asks of a focus indicator against
+   every surface it can land on here — the window, a panel and the failure box —
+   in both themes. The numbers are computed from these declarations and printed
+   by test/editor-sim.node.js rather than restated here, so they cannot go stale
+   when the palette moves. */
+.mode:focus-visible,
+.icon-btn:focus-visible,
+.mode-select:focus-visible,
+.footer a:focus-visible,
+.expand-toggle input:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+/* The checkbox is the focusable thing; the label is what a sighted user is
+   looking at. Both have to react, or the ring appears to belong to nothing. */
+.expand-toggle:focus-within { border-color: var(--accent); color: var(--fg); }
+
+/* Direction from the loaded locale — see the long note in pages/common.css.
+   The popup does not share that stylesheet, so it repeats the one declaration
+   rather than the reasoning. */
+html { direction: __MSG_@@bidi_dir__; }
+/* Keyboard shortcuts are punctuation-heavy ASCII: "Alt+Shift+P" comes out
+   backwards in an RTL paragraph unless it is isolated and pinned LTR. */
+kbd, code { direction: ltr; unicode-bidi: isolate; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+body {
+  width: 300px;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  /* see pages/common.css: one long compound noun would otherwise widen the
+     popup or paint outside it */
+  overflow-wrap: break-word;
+}
+
+.header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.title { font-weight: 700; font-size: 14px; flex: 1; }
+.icon-btn {
+  border: none; background: none; color: var(--fg2);
+  font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.icon-btn:hover { background: var(--hover); color: var(--fg); }
+
+.modes { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.mode {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 10px;
+  border: 1px solid transparent; border-radius: 10px;
+  background: none; color: var(--fg);
+  cursor: pointer; text-align: start;
+}
+.mode:hover { background: var(--hover); border-color: var(--line); }
+
+/* The delayed-capture row. The <select> used to be a child of the <button>,
+   which is invalid HTML and made the dropdown unreachable as its own control;
+   it is now a sibling laid over the same spot, and the button reserves room for
+   it. Absolute rather than a flex sibling so the hover highlight still covers
+   the whole row exactly as it did before — inset-inline-end, so the dropdown
+   stays on the trailing edge in either writing direction. translateY is the
+   vertical axis only and does not flip. */
+.mode-row { position: relative; display: flex; }
+.mode-row .mode { flex: 1; padding-inline-end: 54px; }
+.mode-select {
+  position: absolute; inset-inline-end: 10px;
+  inset-block-start: 50%; transform: translateY(-50%);
+}
+
+.mode-icon {
+  width: 30px; height: 30px; flex: none;
+  display: grid; place-items: center;
+  background: var(--bg2); border-radius: 8px;
+  /* ink on --bg2, not a surface — see the note on --accent-text. */
+  font-size: 15px; color: var(--accent-text);
+}
+.mode-text { flex: 1; display: flex; flex-direction: column; }
+.mode-text b { font-size: 13px; }
+.mode-text small { color: var(--fg2); font-size: 11px; }
+kbd {
+  font: 10px monospace; color: var(--fg2);
+  background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 4px;
+}
+select {
+  background: var(--bg2); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 2px 4px; font-size: 11px;
+}
+
+.expand-toggle {
+  display: flex; align-items: center; gap: 7px;
+  margin: 0 8px 8px; padding: 7px 10px;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 8px;
+  font-size: 11.5px; color: var(--fg2); cursor: pointer;
+}
+.expand-toggle:hover { color: var(--fg); border-color: var(--accent); }
+.expand-toggle input { accent-color: var(--accent); margin: 0; flex: none; }
+
+.err {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin: 0 12px 8px; padding: 8px 10px;
+  background: #fee2e2; color: #991b1b;
+  border-radius: 8px; font-size: 12px;
+}
+:root[data-theme="dark"] .err { background: #3b1d1d; color: #fca5a5; }
+/* The dismiss cross inherits the note's colour rather than the toolbar grey the
+   base .icon-btn uses — it sits on the red panel, not on the header. Lives here
+   because popup.html carries no inline styles anywhere else.
+
+   It used to be `float: right`, then flex `order: 1`. Float has no logical form
+   that is safe to rely on, and `order` was only ever undoing a markup order
+   that put the cross BEFORE its own message. That markup order was itself the
+   problem: #err is now a live region, and an assertive region announces its
+   children in DOM order, so the cross was being read out ahead of the failure
+   it dismisses — and Tab reached it before the message too. The button now
+   comes last in the markup, which makes the reading order, the focus order and
+   the visual order one order, and leaves nothing for `order` to correct.
+   Flex still handles the direction: no physical edge is named anywhere. */
+.err .icon-btn {
+  flex: none; color: inherit;
+  margin-block-start: -2px; margin-inline-end: -4px;
+}
+/* min-width:0 or a long unbroken origin in the failure note pushes the cross
+   out of the panel instead of wrapping. */
+#errText { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.footer {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px; border-top: 1px solid var(--line);
+}
+.footer a { color: var(--fg2); text-decoration: none; font-size: 12px; }
+.footer a:hover { color: var(--accent-text); }
+/* --line measured 1.26:1 light and 1.33:1 dark against the footer — a visible
+   glyph nobody with low vision could see. It carries no information (it is
+   marked aria-hidden, and the links either side are the content), but a
+   character on screen is text, and the cheapest honest answer is the colour the
+   links beside it already use. */
+.dot { color: var(--fg2); }

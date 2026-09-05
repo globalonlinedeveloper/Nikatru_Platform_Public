@@ -1,0 +1,3 @@
+{
+  "_comment": "DELTA LOCALE, chained en_US -> en. _locales/en is already written in US English, so this file is deliberately EMPTY of overrides. It exists so that _locales/en_US/messages.json is materialised as a complete file rather than left absent: the Chrome Web Store lists en_US as a locale of its own, and an extension that offers 'English (United States)' with no file behaves differently in the store listing from one that ships an identical copy. Do not delete this file to 'save space' — its emptiness is the statement."
+}

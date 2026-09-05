@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Booking</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  .tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+  .tabs button { font: inherit; padding: 7px 14px; border: 1px solid #d9dde6; background: #eef1f6; border-radius: 6px 6px 0 0; }
+  .tabs button[aria-selected="true"] { background: #fff; border-bottom-color: #fff; font-weight: 600; }
+  .stack { position: relative; height: 190px; }
+  .panel {
+    position: absolute; inset: 0;
+    background: #fff; border: 1px solid #d9dde6; border-radius: 0 7px 7px 7px;
+    padding: 16px 18px;
+  }
+  /* THE SHAPE, and it is not a <details> quirk.
+     `content-visibility: hidden` is the standard way to keep an inactive tab
+     panel's state alive while skipping its rendering, and it is also what
+     Chrome's UA stylesheet applies to a closed <details>. Both panels occupy
+     the SAME rect, so a block computed from the hidden panel's layout lands on
+     top of the visible one. */
+  .panel[hidden-cv] { content-visibility: hidden; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Bookings</a><a href="#">Travellers</a><a href="#">Receipts</a>
+  <span>Trip planner</span>
+</nav>
+<main>
+  <h1>Booking BK-7741</h1>
+  <p class="filler">Two tabs. Only the first is rendered; the second keeps its
+  state but is skipped by the renderer.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true">Itinerary</button>
+    <button role="tab" aria-selected="false">Traveller</button>
+  </div>
+
+  <!-- ORDER MATTERS AND IT IS A FIXTURE FIX, NOT A CHOICE OF SHAPE.
+       `content-visibility: hidden` skips a subtree's CONTENTS; the element
+       keeps its own background and border. With the hidden panel painted last
+       its opaque white box covered the visible one, and the "visible text was
+       destroyed" check was then measuring my own fixture rather than the
+       product. Hidden panel first, visible panel on top: now the only thing
+       that can remove the visible panel's text is the bake.
+
+       The two panels share a vertical rhythm on purpose, so the hidden panel's
+       email lands at the same y as the visible panel's marker line. -->
+  <div class="stack">
+    <section class="panel" id="p2" role="tabpanel" hidden-cv>
+      <h2>Traveller</h2>
+      <p>Contact</p>
+      <p><span class="m m-email">rajasekar@nikatru.com</span></p>
+    </section>
+
+    <section class="panel" id="p1" role="tabpanel">
+      <h2>Itinerary</h2>
+      <p>Seat 14A confirmed. One checked bag.</p>
+      <p><span class="m m-phone">GATE B12 BOARDS 1840</span></p>
+    </section>
+  </div>
+
+  <div class="card">
+    <h2>Changes</h2>
+    <p class="filler">Date changes are free up to twenty four hours before
+    departure. Name changes are not permitted on this fare.</p>
+  </div>
+</main>
+</body>
+</html>

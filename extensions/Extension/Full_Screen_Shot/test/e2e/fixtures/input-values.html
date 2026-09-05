@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — PII only in input values, placeholders and a chosen option</title>
+<!-- SPEC §7.1 E / E15. "A form holding an account number is the canonical
+     redaction target." Every readable string on this page is rendered from an
+     attribute or a form value:
+       - <input value>          rendered, not in textContent
+       - <input placeholder>    rendered, not in textContent
+       - <select>'s chosen <option>  rendered by the select; the <option>'s own
+         box is 0x0 while it is closed, so even the one element that DOES have
+         a text node cannot be placed
+     `fsOwnLeafText` reads textContent of childless elements and no attributes,
+     so `fed` should be at or near zero and `placed` zero — while a human reads
+     three pieces of PII straight off the image.
+     No <label> text, no legend, no caption: one visible character of ordinary
+     text would put `placed > 0` and move the state. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 18px/1.5 system-ui, sans-serif; }
+  .band { height: 260px; background: rgb(235, 238, 246); }
+  .field { padding: 22px; }
+  .f1 { background: rgb(255, 90, 90); }
+  .f2 { background: rgb(90, 200, 120); }
+  .f3 { background: rgb(90, 130, 255); }
+  input, select { font: 22px/1.4 ui-monospace, monospace; width: 640px; padding: 10px 12px; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div class="band"></div>
+  <div class="field f1"><input type="text" value="jane.doe@example.com" aria-label="account email" readonly></div>
+  <div class="field f2"><input type="text" placeholder="+1 (555) 123-4567" aria-label="contact number"></div>
+  <div class="field f3">
+    <select aria-label="card on file">
+      <option selected>4242 4242 4242 4242</option>
+      <option>4111 1111 1111 1111</option>
+    </select>
+  </div>
+  <div class="band"></div>
+  <div class="band"></div>
+  <div id="bottom"></div>
+</body>
+</html>

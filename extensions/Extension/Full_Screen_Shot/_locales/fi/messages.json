@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot – koko sivun kuvakaappaus"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Kaappaa koko sivu, näkyvä alue, valittu alue tai elementti. Muokkaa, lisää merkinnät ja vie muodossa PNG, JPEG, WebP tai PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – kaappaa sivu (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Kaappaa koko sivu"
+  },
+  "commandCaptureVisible": {
+    "message": "Kaappaa näkyvä alue"
+  },
+  "commandCaptureRegion": {
+    "message": "Kaappaa valittu alue"
+  },
+  "commandCaptureElement": {
+    "message": "Kaappaa sivun elementti (valitse napsauttamalla)"
+  },
+  "popupToggleTheme": {
+    "message": "Vaihda teemaa"
+  },
+  "popupModeFullTitle": {
+    "message": "Koko sivu"
+  },
+  "popupModeFullSub": {
+    "message": "Vieritä ja kaappaa koko sivu"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Näkyvä alue"
+  },
+  "popupModeVisibleSub": {
+    "message": "Vain se, mikä näkyy nyt"
+  },
+  "popupModeRegionTitle": {
+    "message": "Valittu alue"
+  },
+  "popupModeRegionSub": {
+    "message": "Valitse alue vetämällä"
+  },
+  "popupModeElementTitle": {
+    "message": "Elementti"
+  },
+  "popupModeElementSub": {
+    "message": "Napsauta mitä tahansa sivun elementtiä"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Viivästetty kaappaus"
+  },
+  "popupModeDelayedSub": {
+    "message": "Koko sivu lähtölaskennan jälkeen"
+  },
+  "popupDelayLabel": {
+    "message": "Viive sekunteina"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Laajenna vieritettävät paneelit ja iframet"
+  },
+  "popupExpandToggleTip": {
+    "message": "Laajenna sisemmät vieritettävät paneelit ja iframet koko sisältöönsä sen sijaan, että ne kaapattaisiin sellaisina kuin ne näkyvät. Toisilta sivustoilta tulevat kehykset pyytävät lisäkäyttöoikeuden yhden kerran."
+  },
+  "popupDismiss": {
+    "message": "Sulje"
+  },
+  "popupLastErrorFailed": {
+    "message": "Viimeisin $MODE$ epäonnistui – $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Viimeisin $MODE$ epäonnistui – $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "koko sivun kaappaus"
+  },
+  "popupModeNameVisible": {
+    "message": "näkyvän alueen kaappaus"
+  },
+  "popupModeNameRegion": {
+    "message": "aluekaappaus"
+  },
+  "popupModeNameElement": {
+    "message": "elementtikaappaus"
+  },
+  "popupModeNameGeneric": {
+    "message": "kaappaus"
+  },
+  "popupNoActiveTab": {
+    "message": "Aktiivista välilehteä ei löytynyt."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Kaappausta ei saatu käynnistettyä."
+  },
+  "popupLinkHistory": {
+    "message": "Historia"
+  },
+  "popupLinkBatch": {
+    "message": "Eräajo"
+  },
+  "popupLinkOptions": {
+    "message": "Asetukset"
+  },
+  "optionsPageTitle": {
+    "message": "Asetukset – FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Asetukset"
+  },
+  "optionsHeading": {
+    "message": "Asetukset"
+  },
+  "optionsLead": {
+    "message": "Muutokset tallentuvat automaattisesti ja synkronoituvat selainprofiiliisi."
+  },
+  "optionsSectionImage": {
+    "message": "Kuva"
+  },
+  "optionsFormat": {
+    "message": "Muoto"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ on häviötön, $JPEG$ on pienempi ja $WEBP$ on pienin samalla laadulla.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$- ja $WEBP$-laatu",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Tiedostonimen malli"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Paikkamerkit: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Kaappaus"
+  },
+  "optionsCaptureDelay": {
+    "message": "Lisäviive vaihetta kohden"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Millisekuntia odotusta jokaisen vierityksen jälkeen. Nosta arvoa hitailla, animaatiorikkailla sivuilla."
+  },
+  "optionsHideFixed": {
+    "message": "Piilota kiinnitetyt ja tarttuvat elementit"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Estää ylätunnisteita toistumasta joka ruudussa (näkyy vain ylhäällä)."
+  },
+  "optionsPreScroll": {
+    "message": "Esivieritä laiskasti latautuva sisältö näkyviin"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Vierittää koko sivun kerran läpi ennen kaappausta. Hitaampaa, mutta saa mukaan vasta vieritettäessä latautuvat kuvat."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Odota kuvien purkamista"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Antaa myöhään latautuvien kuvien purkautua loppuun ennen jokaista ruutua, jotta ne eivät päädy mustina tai tyhjinä laatikoina."
+  },
+  "optionsHideOverlays": {
+    "message": "Piilota banderollit ja ponnahdusikkunat"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Poistaa eväste- ja suostumusbanderollit, uutiskirjeikkunat ja ”lataa sovellus” -ponnahdukset ennen kaappausta ja vapauttaa sivut, jotka ikkuna on jäädyttänyt. Palautetaan jälkeenpäin."
+  },
+  "optionsExpandInner": {
+    "message": "Laajenna vieritettävä sisältö"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Kasvattaa sisemmät paneelit ja iframet niin, että myös niiden oman reunan alle jäävä sisältö näkyy, sen sijaan että ne kaapattaisiin täsmälleen sellaisina kuin ne näkyvät."
+  },
+  "optionsExpandPermRow": {
+    "message": "Toisten sivustojen kehykset"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Salli"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Käyttöoikeus myönnetty – myös toisten sivustojen kehykset laajennetaan."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Ilman käyttöoikeutta ”$PERMISSION$” toisten sivustojen kehykset kaapataan sellaisina kuin ne näkyvät. Paneelit ja saman sivuston iframet toimivat aina.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Pura virtualisoidut listat"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Käy läpi renderöinti-ikkunaa käyttävät syötteet ($LIB1$- ja $LIB2$-tyyliset) ja kaappaa niiden koko sisällön, ei vain ruudulla näkyviä rivejä. Hitaampaa hyvin pitkissä listoissa.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Avaa napsautuksen takana oleva sisältö"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Avaa suljetut $DETAILS$-elementit, taustavälilehdet, haitarit ja ”näytä lisää” -osiot ennen kaappausta ja palauttaa ne jälkeenpäin. Paljastaa napsautuksen taakse piilotetun sisällön.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Napsauta ”$BUTTONTEXT$” -painikkeita",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Napsauttaa ”load more”- ja ”show more” -painikkeita ja odottaa uuden sisällön latautumista yhä uudelleen, kunnes syöte on käyty loppuun. Toisin kuin yllä oleva asetus tämä hakee sisältöä, jota sivulla ei vielä ole, ja ladattu sisältö jää sivulle kaappauksen jälkeen."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Vieritä ja lataa loputtomat syötteet"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Syötteille, joissa ei ole ”load more” -painiketta: vierittää alas ja odottaa seuraavaa erää yhä uudelleen, kunnes syöte lakkaa kasvamasta (rajattuna, jotta loputtomia syötteitä ei jahdata ikuisesti). Ladattu sisältö jää sivulle kaappauksen jälkeen."
+  },
+  "optionsWaitStable": {
+    "message": "Odota, että sisältö on latautunut"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Odottaa, että luuranko- ja paikkamerkkilataimet (aria-busy-alueet, kimaltavat laatikot) korvautuvat oikealla sisällöllä ennen kaappausta, jottei kesken sivun oleva ”ladataan…”-vaihe päädy kuvaan harmaina laatikoina. Rajattuna, jottei jumiin jäänyt latauspyörä jumita kaappausta."
+  },
+  "optionsRedactPII": {
+    "message": "Peitä arkaluonteiset tiedot automaattisesti"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Etsii sivun näyttämästä tekstistä sähköpostiosoitteita, puhelinnumeroita, maksukorttinumeroita, henkilötunnuksia ja API-avaimia ja maalaa umpinaisen palkin sen päälle, mikä osui, tallennettuun kuvaan. Se ei osaa lukea pikseleinä piirrettyä tekstiä – kangasta, kuvaa, PDF-tiedostoa, videoruutua. Tunnistus tehdään laitteellasi; mitään ei koskaan lähetetä minnekään. Koskee koko sivun (asiakirjan vierityksen) kaappauksia; palkki on pysyvä, joten tarkista lopputulos itse."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Sivun enimmäiskorkeus"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Turvaraja (CSS px) loputtomasti vierittyville syötteille."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF-vienti"
+  },
+  "optionsPdfPaper": {
+    "message": "Oletuspaperikoko"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "”$IMAGESIZE$” tekee sivusta täsmälleen kuvakaappauksen kokoisen.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Kuvan koko"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Suunta"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Koskee kiinteitä paperikokoja."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Pysty"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Vaaka"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Älykäs sivunjako"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Etsii jokaisen sivunvaihdon läheltä visuaalisen välin, jottei tekstirivejä katkaista keskeltä."
+  },
+  "optionsPdfStamp": {
+    "message": "Leimaa URL ja päivämäärä"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Lisää sivun URL-osoitteen ja kaappauspäivän jokaisen PDF-sivun alatunnisteeseen."
+  },
+  "optionsSectionDownload": {
+    "message": "Lataus"
+  },
+  "optionsSaveDirectory": {
+    "message": "Kansio"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Alikansio kansiossa $DOWNLOADS$ kuvakaappauksillesi, esim. $EXAMPLE$. Tyhjä = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "”Tallenna nimellä” -valintaikkuna"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Kysy jokaisen tiedoston tallennuspaikka sen sijaan, että lataus tapahtuisi huomaamatta."
+  },
+  "optionsClipboardFit": {
+    "message": "Sovita leikepöytäkopiot sovellusten rajoihin"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Pienentää yli $PIXELS$ pikselin kopiot, jotta liittäminen sovelluksiin kuten $APP$ onnistuu.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Työnkulku"
+  },
+  "optionsAutoDownload": {
+    "message": "Lataa automaattisesti kaappauksen jälkeen"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Tallentaa kuvan heti, kun kaappaus valmistuu."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Avaa editori kaappauksen jälkeen"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Siirry suoraan merkintöjen tekoon (vain yksiosaiset kaappaukset)."
+  },
+  "optionsTheme": {
+    "message": "Teema"
+  },
+  "optionsThemeDesc": {
+    "message": "Koskee ponnahdusikkunaa ja kaikkia FullShot-sivuja."
+  },
+  "optionsThemeSystem": {
+    "message": "Järjestelmä"
+  },
+  "optionsThemeLight": {
+    "message": "Vaalea"
+  },
+  "optionsThemeDark": {
+    "message": "Tumma"
+  },
+  "optionsShortcuts": {
+    "message": "Pikanäppäimet"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Koko sivu: $KEYFULL$ · Näkyvä: $KEYVISIBLE$. Muokkaa osoitteessa $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Tallennettu ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Omat tietosi"
+  },
+  "optionsStorage": {
+    "message": "Tallennustila"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ / $QUOTA$ käytössä tällä laitteella.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Tämä selain ei kerro, kuinka paljon tilaa FullShot käyttää."
+  },
+  "optionsStorageKept": {
+    "message": "Kuvakaappauksesi säilytetään: selain ei poista niitä vapauttaakseen tilaa."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Kuvakaappauksesi ovat selaimen parhaan yrityksen tallennustilassa, jonka se voi tyhjentää vapauttaakseen tilaa."
+  },
+  "optionsStorageKeep": {
+    "message": "Säilytä tietoni"
+  },
+  "optionsExport": {
+    "message": "Vie kaikki"
+  },
+  "optionsExportDesc": {
+    "message": "Kirjoittaa yhden tiedoston, jossa ovat asetuksesi ja luettelo kuvakaappauksistasi. Se tallennetaan tälle laitteelle eikä sitä lähetetä mihinkään."
+  },
+  "optionsExportImages": {
+    "message": "Sisällytä kuvat"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Itse kuvat, jotka muodostavat lähes koko koon. Ilman niitä tiedosto luettelee kuvakaappauksesi mutta ei sisällä niistä yhtäkään."
+  },
+  "optionsExportSize": {
+    "message": "Tiedoston koko: noin $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Jäljelle jääneet tiedot"
+  },
+  "optionsSweepDesc": {
+    "message": "Keskeytynyt kuvaus voi jättää levylle ruutuja, jotka eivät kuulu mihinkään kuvakaappaukseen. Ne eivät näy millään sivulla, joten mikään sivu ei voi poistaa niitä. Tämä etsii ja poistaa ne."
+  },
+  "optionsSweepBtn": {
+    "message": "Etsi ja poista"
+  },
+  "optionsSweepResult": {
+    "message": "Poistettu. Siivotut kuvaukset: $COUNT$ · Vapautunut tila: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Mitään ei jäänyt jäljelle: kaikki tallennettu kuuluu kuvakaappaukseen, jonka näet."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Palauta asetukset"
+  },
+  "optionsResetDesc": {
+    "message": "Palauttaa jokaisen tämän sivun asetuksen arvoon, jolla se toimitettiin. Kuvakaappauksiisi ei kosketa."
+  },
+  "optionsResetBtn": {
+    "message": "Palauta"
+  },
+  "optionsResetConfirm": {
+    "message": "Palautetaanko kaikki FullShotin asetukset oletusarvoihinsa? Kuvakaappauksiisi tämä ei vaikuta."
+  },
+  "optionsResetDone": {
+    "message": "Asetukset ovat taas oletusarvoissaan."
+  },
+  "optionsDeleteAll": {
+    "message": "Poista kaikki"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Poistaa kaikki historiasi kuvakaappaukset ja kaiken, mitä keskeytyneet kuvaukset ovat jättäneet. Asetuksesi jäävät ennalleen."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Poistetaanko kaikki, mitä FullShot on tallentanut tälle laitteelle?\n\nKuvakaappauksia historiassasi: $COUNT$\nKeskeytyneiden kuvausten jäänteitä: $LEFTOVER$\nVapautuva tila: $SIZE$\n\nAsetuksiisi tämä ei vaikuta. Tätä ei voi perua.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Poistettu. FullShot ei enää säilytä kuvakaappauksia tällä laitteella."
+  },
+  "resultPageTitle": {
+    "message": "Kuvakaappaus – FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ – FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopioi"
+  },
+  "resultCopyTip": {
+    "message": "Kopioi kuva leikepöydälle"
+  },
+  "resultEdit": {
+    "message": "Muokkaa"
+  },
+  "resultEditTip": {
+    "message": "Avaa editorissa"
+  },
+  "resultBeautify": {
+    "message": "Kaunista"
+  },
+  "resultBeautifyTip": {
+    "message": "Kaunista – kehys ja tausta jakamista varten"
+  },
+  "resultClip": {
+    "message": "Klippi"
+  },
+  "resultClipTip": {
+    "message": "Vieritysklippi – animoitu $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF:n paperikoko"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Lataa"
+  },
+  "resultDeleteTip": {
+    "message": "Poista kuvakaappaus"
+  },
+  "resultHistoryTip": {
+    "message": "Kuvakaappausten historia"
+  },
+  "resultProgressAssembling": {
+    "message": "Kootaan kuvakaappaustasi…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Puretaan $COUNT$ ruutu…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Puretaan $COUNT$ ruutua…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Yhdistetään osaa $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Yhdistetään osaa $INDEX$ / noin $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Tallennetaan…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Vinkki: vedä kuva suoraan työpöydälle tai käytä painiketta $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Täällä ei ole mitään"
+  },
+  "resultEmptyBody": {
+    "message": "Tätä kuvakaappausta ei ole enää olemassa."
+  },
+  "resultOpenHistory": {
+    "message": "Avaa historia"
+  },
+  "resultSomethingWrong": {
+    "message": "Jokin meni pieleen – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Osa $INDEX$ / $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Lataa osa"
+  },
+  "resultEditPart": {
+    "message": "Muokkaa osaa"
+  },
+  "resultClipPart": {
+    "message": "Klippaa osa"
+  },
+  "resultPartAlt": {
+    "message": "Kuvakaappauksen osa $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Ladataan $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Poistetaanko tämä kuvakaappaus pysyvästi?"
+  },
+  "resultDeleted": {
+    "message": "Kuvakaappaus poistettu."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Tämä kuvakaappaus on liian korkea liitettäväksi yhtenä luettavana kuvana, joten $COPY$ vie leikepöydälle pienennetyn yleiskuvan koko sivusta. Sen pieni teksti ei ole luettavissa.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Osa $INDEX$ kopioitiin leikepöydälle",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Muodostetaan PDF:ää…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF ladattu ($COUNT$ sivu)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF ladattu ($COUNT$ sivua)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF epäonnistui – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editori – FullShot"
+  },
+  "editorBackTip": {
+    "message": "Takaisin kuvakaappaukseen"
+  },
+  "editorToolSelect": {
+    "message": "Valitse/siirrä ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Rajaa ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Kynä ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Korostuskynä ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Viiva ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Nuoli ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Suorakulmio ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Ellipsi ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Teksti ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Sumennus/pikselöinti ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Numeroitu vaihe ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Emoji-leima ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Oma väri"
+  },
+  "editorStrokeTip": {
+    "message": "Viivan paksuus"
+  },
+  "editorStrokeThin": {
+    "message": "Ohut"
+  },
+  "editorStrokeMedium": {
+    "message": "Keskipaksu"
+  },
+  "editorStrokeThick": {
+    "message": "Paksu"
+  },
+  "editorSizeTip": {
+    "message": "Tekstin/emojin koko"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Kumoa ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Tee uudelleen ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Loitonna (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Lähennä (+)"
+  },
+  "editorZoomFit": {
+    "message": "Sovita"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Sovitettu ikkunaan – napsauta, niin saat 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Napsauta, niin kuva sovitetaan ikkunaan"
+  },
+  "editorExport": {
+    "message": "Vie"
+  },
+  "editorExportCopy": {
+    "message": "Kopioi leikepöydälle"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$-kuva",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$-dokumentti",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Tallenna"
+  },
+  "editorSaveTip": {
+    "message": "Tallenna muutokset historiaan ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Lisää"
+  },
+  "editorMenuFiles": {
+    "message": "Siirry historiaan"
+  },
+  "editorMenuOptions": {
+    "message": "Siirry asetuksiin"
+  },
+  "editorMenuShortcuts": {
+    "message": "Pikanäppäimet"
+  },
+  "editorCropApply": {
+    "message": "Käytä rajausta"
+  },
+  "editorCropCancel": {
+    "message": "Peruuta"
+  },
+  "editorShortcutsHeading": {
+    "message": "Pikanäppäimet"
+  },
+  "editorShortcutTools": {
+    "message": "Valitse työkalu"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Kumoa / tee uudelleen"
+  },
+  "editorShortcutSave": {
+    "message": "Tallenna historiaan"
+  },
+  "editorShortcutZoom": {
+    "message": "Loitonna / lähennä"
+  },
+  "editorShortcutDelete": {
+    "message": "Poista valittu objekti"
+  },
+  "editorShortcutEscape": {
+    "message": "Poista valinta / peruuta rajaus"
+  },
+  "editorShortcutsClose": {
+    "message": "Sulje"
+  },
+  "editorNotFound": {
+    "message": "Kuvakaappausta ei löytynyt"
+  },
+  "editorToastDownloaded": {
+    "message": "Ladattu"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF ladattu"
+  },
+  "editorToastSaved": {
+    "message": "Tallennettu historiaan"
+  },
+  "historyPageTitle": {
+    "message": "Historia – FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Historia"
+  },
+  "historySearchPlaceholder": {
+    "message": "Hae otsikosta tai URL-osoitteesta…"
+  },
+  "historySelectAll": {
+    "message": "Valitse kaikki"
+  },
+  "historyClearSelection": {
+    "message": "Tyhjennä valinta"
+  },
+  "historyDownloadSelected": {
+    "message": "Lataa valitut"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Lataa ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Poista valitut"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Poista ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Ei vielä kuvakaappauksia"
+  },
+  "historyEmptyBody": {
+    "message": "Ottamasi kaappaukset ilmestyvät tähän. Aloita napsauttamalla työkalurivin FullShot-kuvaketta."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Ei osumia"
+  },
+  "historyNoMatchesBody": {
+    "message": "Mikään kuvakaappaus ei vastaa hakua ”$QUERY$”.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ kuvakaappaus · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ kuvakaappausta · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ / $COUNT$ kuvakaappaus · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ / $COUNT$ kuvakaappauksesta · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Valitse"
+  },
+  "historyCardOpen": {
+    "message": "Avaa"
+  },
+  "historyCardEdit": {
+    "message": "Muokkaa"
+  },
+  "historyCardDownloadTip": {
+    "message": "Lataa"
+  },
+  "historyCardDeleteTip": {
+    "message": "Poista"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Avaa alkuperäinen sivu"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ osaa",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Kuvakaappaus"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Poistetaanko tämä kuvakaappaus?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Poistetaanko $COUNT$ kuvakaappaus pysyvästi?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Poistetaanko $COUNT$ kuvakaappausta pysyvästi?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Ladataan $COUNT$ kuvakaappaus",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Ladataan $COUNT$ kuvakaappausta",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Poistettu"
+  },
+  "beautifyPageTitle": {
+    "message": "Kaunista – FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Kaunista"
+  },
+  "actionBack": {
+    "message": "Takaisin"
+  },
+  "commonLoading": {
+    "message": "Ladataan…"
+  },
+  "beautifyFieldSize": {
+    "message": "Koko"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automaattinen"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Neliö"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Pysty"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Tausta"
+  },
+  "beautifyBgSlate": {
+    "message": "Liuske"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafiitti"
+  },
+  "beautifyBgSky": {
+    "message": "Taivas"
+  },
+  "beautifyBgSunset": {
+    "message": "Auringonlasku"
+  },
+  "beautifyBgGrape": {
+    "message": "Viinirypäle"
+  },
+  "beautifyBgMint": {
+    "message": "Minttu"
+  },
+  "beautifyFieldPadding": {
+    "message": "Reunustila"
+  },
+  "beautifyFieldRadius": {
+    "message": "Kulmien pyöristys"
+  },
+  "beautifyFieldEffects": {
+    "message": "Tehosteet"
+  },
+  "beautifyShadow": {
+    "message": "Varjo"
+  },
+  "beautifyWindowFrame": {
+    "message": "Ikkunakehys"
+  },
+  "beautifyFieldExport": {
+    "message": "Vienti"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Vieritysklippi – FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Vieritysklippi"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Muoto"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ toistuu kaikkialla. $WEBM$ on pienempi ja sulavampi (tallennetaan suoraan omassa selaimessasi).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Tuloksen leveys"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Tiheys"
+  },
+  "scrollclipDensityHint": {
+    "message": "Suurempi tiheys tuottaa terävämmän tuloksen (lähempänä lähteen tarkkuutta) – mutta suuremman tiedoston."
+  },
+  "scrollclipFieldShape": {
+    "message": "Muotosuhde"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Vieritysnopeus (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Kuvataajuus (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Liike"
+  },
+  "scrollclipBounce": {
+    "message": "Kimmoke (vieritä takaisin ylös)"
+  },
+  "scrollclipLoop": {
+    "message": "Toista loputtomasti"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopioi ruutu"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopioi ylin aloitusruutu muodossa $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ruutu · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ruutua · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Piirretään ruutuja… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Koodataan $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Viimeistellään…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Tallennetaan $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Tallennetaan…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ ei ole tuettu tässä – viedään $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Aloitusruutu kopioitiin"
+  },
+  "batchPageTitle": {
+    "message": "FullShot – eräkaappaus"
+  },
+  "batchHeading": {
+    "message": "Eräkaappaus"
+  },
+  "batchIntro": {
+    "message": "Liitä URL-osoitteet, yksi riviä kohden. FullShot avaa jokaisen sivun, kaappaa koko sivun historiaasi ja siirtyy seuraavaan – enintään $MAX$ kerrallaan. Kaappaukset ilmestyvät historiaan; napsauta $OPENLINK$, kun haluat katsoa, muokata tai viedä jonkin niistä.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Kaappaa kaikki"
+  },
+  "batchPermissionHint": {
+    "message": "Näiden sivujen avaaminen vaatii ensimmäisellä kerralla kertaluonteisen käyttöoikeuden."
+  },
+  "batchPermissionDeclined": {
+    "message": "Käyttöoikeus näiden sivujen avaamiseen evättiin."
+  },
+  "batchPanelPlan": {
+    "message": "Suunnitelma"
+  },
+  "batchPanelProgress": {
+    "message": "Eteneminen"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ sivu kaapattavana",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ sivua kaapattavana",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ sivua kaapattavana (rajattu määrään $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Ei vielä kelvollisia URL-osoitteita"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ ohitettu: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "protokollaa ei tueta"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "virheellinen"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "ei isäntänimeä"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "kaksoiskappale"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "tyhjä"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "yli rajan ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ valmiina",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ valmiina, $FAILED$ epäonnistui",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ valmiina – valmis",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ valmiina, $FAILED$ epäonnistui – valmis",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "avaa"
+  },
+  "batchJobTimedOut": {
+    "message": "kaappaus aikakatkaistiin"
+  },
+  "batchJobNoSession": {
+    "message": "ei kaappausistuntoa"
+  },
+  "batchJobFailed": {
+    "message": "kaappaus epäonnistui"
+  },
+  "batchJobError": {
+    "message": "virhe kaappauksessa"
+  },
+  "regionHintDrag": {
+    "message": "Valitse alue vetämällä – $ESC$ peruuttaa",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Kaappaa elementti napsauttamalla sitä – $ESC$ peruuttaa",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Selaimen omat sivut, kuten Asetukset, Laajennukset ja Uusi välilehti, ovat kaikilta laajennuksilta suljettuja. Kokeile FullShotia tavallisella verkkosivulla."
+  },
+  "errRestrictedDevtools": {
+    "message": "Laajennus ei voi kaapata DevTools-ikkunoita. Käytä niihin tietokoneesi omaa kuvakaappaustyökalua."
+  },
+  "errRestrictedViewSource": {
+    "message": "Lähdekoodisivuja ei voi kaapata. Kaappaa sen sijaan itse sivu."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Laajennusten sivut, myös FullShotin omat, ovat selaimen suojaamia eikä niitä voi kaapata."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store estää laajennuksia lukemasta sivujaan, joten tätä sivua ei voi kaapata."
+  },
+  "errRestrictedGeneric": {
+    "message": "Tämä sivu on selaimen suojaama eikä sitä voi kaapata."
+  },
+  "errWrongTab": {
+    "message": "Kaappaus keskeytyi – vaihdoit välilehteä. Pidä tämä sivu edessä, kunnes FullShot on valmis."
+  },
+  "errGeneric": {
+    "message": "Kaappaus keskeytyi ennen valmistumista. Yritä uudelleen."
+  },
+  "errBusy": {
+    "message": "Tällä välilehdellä on jo kaappaus käynnissä."
+  },
+  "errBlocked": {
+    "message": "Tätä sivua ei voi kaapata (selaimen rajoitus)."
+  },
+  "errNoStart": {
+    "message": "FullShot ei voinut käynnistyä tällä sivulla. Lataa sivu uudelleen ja yritä uudestaan."
+  },
+  "errCrash": {
+    "message": "Kaappaus keskeytyi odottamatta. Yritä uudelleen."
+  },
+  "errUnknownMessage": {
+    "message": "Tuntematon viesti."
+  },
+  "errQuota": {
+    "message": "Selain rajoittaa, kuinka nopeasti sivuja voi valokuvata. Odota hetki ja yritä uudelleen."
+  },
+  "errFrameHandover": {
+    "message": "Selain lakkasi luovuttamasta näkymää kesken kaiken. Odota muutama sekunti ja yritä uudelleen."
+  },
+  "errLostTab": {
+    "message": "Kaappaus menetti yhteyden tähän välilehteen. Lataa sivu uudelleen ja yritä uudestaan."
+  },
+  "errStoppedEarly": {
+    "message": "Kaappaus pysäytettiin ennen valmistumista."
+  },
+  "errStorageFull": {
+    "message": "Tilaa ei ole enää jäljellä tämän kuvauksen tallentamiseen. Poista joitakin kuvakaappauksia historiastasi ja yritä uudelleen."
+  },
+  "reasonGeneric": {
+    "message": "syytä ei ilmoitettu. Yritä uudelleen."
+  },
+  "reasonDecodeFailed": {
+    "message": "kyseistä kuvakaappausta ei voitu purkaa."
+  },
+  "reasonTooLarge": {
+    "message": "kuva on liian suuri vietäväksi tässä."
+  },
+  "toastCopiedClipboard": {
+    "message": "Kopioitu leikepöydälle"
+  },
+  "toastCopyFailed": {
+    "message": "Kopiointi epäonnistui – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Vienti epäonnistui – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Tallennettu $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Tallennettu $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ t",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ kt",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ Mt",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ Gt",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

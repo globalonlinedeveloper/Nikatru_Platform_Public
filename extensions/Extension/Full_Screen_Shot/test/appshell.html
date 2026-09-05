@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot app-shell test (internal scroll)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 14px/1.5 system-ui, sans-serif; }
+  /* App shell: document does NOT scroll — the main pane does (Gmail/ChatGPT layout). */
+  #shell { display: flex; flex-direction: column; height: 100vh; }
+  header { height: 64px; background: #3355EE; color: #fff; display: flex; align-items: center; padding: 0 16px; flex: none; }
+  #row { flex: 1; display: flex; min-height: 0; }
+  #sidebar { width: 220px; flex: none; overflow-y: auto; background: #E8E8EC; }
+  #sidebar .item { height: 40px; padding: 8px 12px; border-bottom: 1px solid #d5d5dc; color: #333; }
+  #pane { flex: 1; overflow-y: auto; background: #fff; }
+  footer { height: 24px; flex: none; background: #444450; color: #ddd; font-size: 11px; text-align: center; }
+  #toolbar { position: sticky; top: 0; height: 48px; background: #FF3333; color: #fff; padding: 12px; z-index: 5; }
+  .block { height: 300px; border-bottom: 2px dashed #eee; padding: 10px; color: #777; }
+  #chatlist { height: 300px; overflow-y: auto; border: 2px solid #888; margin: 16px; }
+  #chatlist .msg { height: 72px; padding: 8px 12px; border-bottom: 1px solid #eee; }
+  #deep { height: 120px; background: #00FF88; font-weight: 700; padding: 10px; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 10px; }
+  #fab { position: fixed; right: 26px; bottom: 60px; width: 64px; height: 64px; border-radius: 50%; background: #FF00FF; z-index: 9; }
+  #scoreboard { background: #111; color: #eee; font: 12px/1.6 monospace; white-space: pre-wrap; padding: 10px 14px; max-height: 180px; overflow-y: auto; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="shell">
+  <header>FullShot app-shell test — press Alt+Shift+P. The DOCUMENT does not scroll; only the main pane below does.</header>
+  <div id="row">
+    <aside id="sidebar"></aside>
+    <main id="pane">
+      <div id="scoreboard">Waiting for capture… scroll this pane somewhere first, scroll the sidebar too, then press Alt+Shift+P.
+The capture must contain: this scoreboard once, the red toolbar once, all 12 content blocks, the full expanded chat list with its green DEEP marker, and the blue BOTTOM marker. The sidebar rail is unrolled from its top (v1.4.0): items 1…40 run down its column, white below the last one — and after the capture it is restored to exactly where you left it.</div>
+      <div id="toolbar">sticky in-pane toolbar — must appear exactly ONCE in the capture</div>
+      <div id="blocksA"></div>
+      <div id="chatlist"></div>
+      <div id="blocksB"></div>
+      <div id="bottom">PANE BOTTOM MARKER — must be the last content band in the capture</div>
+    </main>
+  </div>
+  <footer>app footer — must appear ONCE at the very bottom of the capture</footer>
+</div>
+<div id="fab"></div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  /* build content */
+  for (let i = 0; i < 40; i++) {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.textContent = 'Sidebar item ' + (i + 1);
+    $('sidebar').appendChild(d);
+  }
+  function blocks(host, n, base) {
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement('div');
+      d.className = 'block';
+      d.textContent = 'content block ' + (base + i + 1);
+      d.style.background = 'hsl(' + (210 + i * 8) + ', 60%, ' + (92 - i * 2) + '%)';
+      host.appendChild(d);
+    }
+  }
+  blocks($('blocksA'), 5, 0);
+  blocks($('blocksB'), 7, 5);
+  for (let i = 0; i < 14; i++) {
+    const m = document.createElement('div');
+    m.className = 'msg';
+    m.textContent = 'chat message ' + (i + 1) + ' — scrolled away inside an inner list';
+    $('chatlist').appendChild(m);
+  }
+  const deep = document.createElement('div');
+  deep.id = 'deep';
+  deep.textContent = 'CHAT DEEP MARKER — visible in the capture only if the inner list was expanded';
+  $('chatlist').appendChild(deep);
+
+  /* realistic pre-capture state */
+  const pane = $('pane'), sidebar = $('sidebar'), chat = $('chatlist');
+  pane.scrollTop = 400;
+  sidebar.scrollTop = 300;
+  chat.scrollTop = 250;
+
+  /* self-grading */
+  const S = {
+    paneBottom: false, toolbarNeutralized: false, toolbarBlanked: false,
+    fabHidden: false, chatExpanded: false, sidebarUnrolled: false,
+    restoredPane: null, restoredSidebar: null, restoredChat: null,
+    restoredFab: null, windowPinned: false
+  };
+  let phase = 'idle';
+  const board = $('scoreboard');
+  const hiddenNow = el => {
+    const cs = getComputedStyle(el);
+    return cs.visibility === 'hidden' || Number(cs.opacity) === 0;
+  };
+
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (pane.scrollTop + pane.clientHeight > pane.scrollHeight - 60) S.paneBottom = true;
+      const tb = getComputedStyle($('toolbar'));
+      if (pane.scrollTop > 100 && tb.position === 'static') S.toolbarNeutralized = true;
+      if (hiddenNow($('toolbar'))) S.toolbarBlanked = true;
+      if (pane.scrollTop > 100 && hiddenNow($('fab'))) S.fabHidden = true;
+      if (chat.clientHeight > 900) S.chatExpanded = true;
+      // v1.4.0 side pass: the rail must be scrolled through to its end
+      if (sidebar.scrollTop >= sidebar.scrollHeight - sidebar.clientHeight - 2) S.sidebarUnrolled = true;
+      if (window.scrollY === 0) S.windowPinned = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        // ±1.5px: scroll offsets quantize to device pixels at fractional zoom
+        S.restoredPane = Math.abs(pane.scrollTop - 400) <= 1.5;
+        S.restoredSidebar = Math.abs(sidebar.scrollTop - 300) <= 1.5;
+        S.restoredChat = Math.abs(chat.scrollTop - 250) <= 1.5;
+        S.restoredFab = !hiddenNow($('fab')) && getComputedStyle($('toolbar')).position === 'sticky';
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok, expl) {
+    const cls = ok ? 'pass' : 'fail';
+    return '<b class="' + cls + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + (expl ? '  — ' + expl : '') + '\n';
+  }
+
+  function report() {
+    const rows = [
+      ['pane scrolled to its bottom (full internal content captured)', S.paneBottom],
+      ['sticky toolbar neutralized after frame 1 (static, not blanked)', S.toolbarNeutralized && !S.toolbarBlanked],
+      ['fixed FAB hidden after frame 1', S.fabHidden],
+      ['inner chat list expanded (deep marker capturable)', S.chatExpanded],
+      ['sidebar rail unrolled by the side pass (v1.4.0)', S.sidebarUnrolled],
+      ['window pinned to top during capture', S.windowPinned],
+      ['pane scroll restored (400 ±1.5)', S.restoredPane],
+      ['sidebar scroll restored (300 ±1.5)', S.restoredSidebar],
+      ['chat scroll restored (250 ±1.5)', S.restoredChat],
+      ['FAB visible + toolbar sticky again', S.restoredFab]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML =
+      'APP-SHELL RESULT — ' + (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: header + this scoreboard + red toolbar appear ONCE at the top; ' +
+      'sidebar unrolled from item 1 down its column (white below item 40); all 12 blocks present; ' +
+      'green CHAT DEEP MARKER present; blue PANE BOTTOM MARKER near the end; footer ONCE at the very bottom; FAB ONCE.';
+    console.log('FSAPPSHELL', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Expand the scrollable panels and the iframes on the inside so they are full of content, instead of capturing the image as it is seen. Frames from other websites will ask for an additional permission one time.",
+  "optionsLead": "Changes will be saved automatically, and synced to your browser profile.",
+  "optionsExpandPermGranted": "Permission has been obtained — frames from other websites will be expanded as well.",
+  "optionsExpandPermMissing": "If there is no \"read all websites\" permission, frames from other websites will be captured only as they are seen. As for panels and iframes from the same website, they always still work.",
+  "optionsRedactPIIDesc": "Scans the text the web page reveals in order to find e-mails, telephone numbers, credit card numbers, national identity numbers and API keys, then paints a solid block over what matches in the saved picture. Text that is drawn as pixels cannot be read, whether it is a canvas, an image, a PDF or a video frame. The detection works on your device. No data at all is ever sent out to anywhere. It can be used with whole-page captures (scrolling the whole document) and this block cannot be removed, so you should check the result yourself every time.",
+  "scrollclipFormatHint": "GIF can be played anywhere. As for WebM, the file is smaller and it is smoother (recorded live in your browser).",
+  "batchPermissionHint": "Opening these pages requires asking for a one-time-only permission on the first use.",
+  "batchPermissionDeclined": "The permission to open those pages was refused."
+}

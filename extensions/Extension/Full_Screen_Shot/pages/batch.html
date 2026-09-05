@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Every user-visible string carries data-i18n (text) and KEEPS its English as
+     the fallback: pages/batch.js substitutes on load, and a key that does not
+     resolve leaves the English standing. Chrome does not substitute __MSG__
+     inside HTML, which is why the key travels in an attribute and not the text.
+     The pass lives in batch.js rather than pages/common.js because this page
+     deliberately loads neither common.css nor common.js — see the note below.
+     Not marked, deliberately: the textarea's placeholder, which is a list of
+     RFC 2606 example addresses — input SHAPE, not prose, and the same three
+     addresses a reader of any language would paste over. It has no key in
+     _locales/en/messages.json and none was invented for it; it is exempted by
+     name in the BARE_OK table of test/i18n-sim.node.js, where the exemption is
+     reviewable next to the five others in the product. -->
+<title data-i18n="batchPageTitle">FullShot — Batch capture</title>
+<style>
+  /* batch.html deliberately does not share pages/common.css, and Chrome does
+     NOT substitute __MSG_@@bidi_dir__ inside an inline <style> — substitution
+     happens in manifest.json and in .css FILES only. So this page's direction
+     is set by pages/batch.js on the dir attribute, one paint later, and this
+     rule only says "inherit whatever landed there". Recorded because the
+     obvious copy-paste of the common.css line would silently do nothing. */
+  /* ---- this page's own palette --------------------------------------------
+     `color-scheme: light dark` tells the browser it may flip Canvas and
+     CanvasText underneath this page — and it does, to roughly #121212 on
+     #ffffff text. Every colour below used to be a hard-coded light-theme
+     value under that declaration, so in a dark profile the page painted
+     #4f46e5 filenames and #6b7280 body copy on near-black: 2.98:1 and 3.88:1,
+     both under AA, and the greys were the ones carrying the row numbers and
+     the permission hint. Two blocks now, and test/a11y-sim.node.js computes
+     every one of these against BOTH of the browser's own canvases.
+     Tokens rather than literals because that is the only way the dark half
+     can exist at all — this page shares no stylesheet with the rest of the
+     product (see the note above the title) and has to carry its own.
+     (No angle-bracketed tag names in this comment: test/i18n-sim.node.js walks
+     the file with a tag scanner and one inside a CSS comment opens an element
+     that is never closed.) */
+  :root {
+    color-scheme: light dark;
+    --bq-sub: #5b6270;        /* the intro paragraph            6.13:1 */
+    --bq-label: #5f6570;      /* panel headings, row numbers    5.86:1 */
+    --bq-link: #4338ca;       /* derived filename, "open" link  7.90:1 */
+    --bq-btn: #4f46e5;
+    --bq-btn-fg: #ffffff;     /* on --bq-btn                    6.29:1 */
+    --bq-btn-off: #6b7280;    /* disabled: exempt from 1.4.3, still legible */
+    --bq-skip: #8a4a06;       /* the skipped-URLs line          6.86:1 */
+    --bq-done: #15803d;       /* a finished row                 5.02:1 */
+    --bq-error: #c81e1e;      /* a failed row                   5.74:1 */
+    --bq-busy: #8a5206;       /* the row being captured         6.38:1 */
+    --bq-line: #767b85;       /* the textarea's only boundary   4.25:1 */
+    --bq-rule: rgba(90,95,110,.30);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bq-sub: #a8adb8;      /*  8.33:1 */
+      --bq-label: #a1a7b3;    /*  7.76:1 */
+      --bq-link: #a5a0fa;     /*  8.04:1 */
+      --bq-btn: #6a61ef;      /*  white on it: 4.60:1 */
+      --bq-btn-fg: #ffffff;
+      --bq-btn-off: #8c93a1;
+      --bq-skip: #f0a860;     /*  9.34:1 */
+      --bq-done: #4ade80;     /* 10.75:1 */
+      --bq-error: #f87171;    /*  6.77:1 */
+      --bq-busy: #fbbf24;     /* 11.22:1 */
+      --bq-line: #767b85;     /*  4.41:1 */
+      --bq-rule: rgba(160,166,180,.30);
+    }
+  }
+  /* This page declares no transition and no animation, so there is nothing for
+     a reduce query to switch off. Recorded rather than left blank: "no
+     @media (prefers-reduced-motion) here" should read as a checked fact. */
+  body { font: 14px/1.5 system-ui, -apple-system, sans-serif; margin: 0; padding: 26px; max-width: 860px; overflow-wrap: break-word; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  p.sub { color: var(--bq-sub); margin: 0 0 16px; }
+  /* No shared stylesheet means no shared focus ring either. Same shape as the
+     one in pages/common.css: :focus-visible so a mouse click paints nothing,
+     2px offset so the ring on the filled button lands on the page behind it
+     rather than on the button's own indigo. */
+  :where(a[href], button, input, select, textarea):focus-visible {
+    outline: 2px solid var(--bq-btn);
+    outline-offset: 2px;
+  }
+  /* The box holds URLs the user pastes: LTR whatever the chrome is doing. */
+  textarea { width: 100%; box-sizing: border-box; min-height: 150px; font: 13px/1.45 ui-monospace, SFMono-Regular, monospace; padding: 11px; border: 1px solid var(--bq-line); border-radius: 9px; resize: vertical; background: Canvas; color: CanvasText; direction: ltr; }
+  .bar { display: flex; gap: 12px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+  button { font: 600 14px system-ui; padding: 9px 20px; border: 0; border-radius: 9px; background: var(--bq-btn); color: var(--bq-btn-fg); cursor: pointer; }
+  button:disabled { background: var(--bq-btn-off); cursor: default; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 10px; }
+  @media (max-width: 680px) { .cols { grid-template-columns: 1fr; } }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--bq-label); margin: 0 0 8px; }
+  .bq-count { font-weight: 600; margin-bottom: 6px; }
+  .bq-row { display: flex; gap: 9px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--bq-rule); font-size: 12px; }
+  .bq-n { color: var(--bq-label); min-width: 20px; text-align: end; }
+  /* A URL and a derived filename are the USER's, and both are punctuation-heavy:
+     pinned LTR and isolated so an RTL chrome cannot reorder them. */
+  .bq-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    direction: ltr; unicode-bidi: isolate; }
+  .bq-fn { color: var(--bq-link); font-family: ui-monospace, monospace; font-size: 11px;
+    direction: ltr; unicode-bidi: isolate; }
+  .bq-st { min-width: 60px; text-align: end; }
+  .bq-st a { color: var(--bq-link); }
+  .bq-skip { color: var(--bq-skip); margin-top: 9px; font-size: 12px; }
+  .bq-done .bq-st { color: var(--bq-done); }
+  .bq-error .bq-st { color: var(--bq-error); }
+  .bq-capturing .bq-url { font-weight: 600; }
+  .bq-capturing .bq-st { color: var(--bq-busy); }
+</style>
+</head>
+<body>
+<!-- ACCESSIBILITY. The textarea is named by the heading and described by the
+     paragraph under it, rather than by its placeholder: a placeholder is not
+     a label — it vanishes the moment there is text in the box, which on this
+     page is always — and the two strings that WOULD label it already exist
+     and are already translated in all 55 locales. aria-labelledby /
+     aria-describedby spend them a second time instead of inventing a key.
+     The two count lines are declared here, empty, and written into by
+     batch.js: a live region has to be in the document before its text
+     arrives, and rebuilding the element each render (which is what the script
+     used to do) means there is no region for the browser to be watching. -->
+  <main>
+  <h1 id="bqTitle" data-i18n="batchHeading">Batch capture</h1>
+  <!-- Two substitutions, and neither may be glued on: $MAX$ is the cap the pure
+       core enforces, and $OPENLINK$ has to READ the same as the link at the end
+       of a finished row, so it is the translation of batchRowOpen rather than a
+       literal. batch.js rewrites data-i18n-args with both before the pass runs;
+       the values here are what a page with no script would show. The word is a
+       plain substitution and no longer a <b>, because an element carrying a
+       message may not contain elements — the pass writes textContent. -->
+  <p class="sub" id="bqIntro" data-i18n="batchIntro" data-i18n-args="50,open">Paste URLs, one per line. FullShot opens each page, captures a full-page screenshot into your history, then moves on — up to 50 at a time. Captures appear in your history; click open to view, edit or export any of them.</p>
+  <!-- The placeholder is three example addresses (example.com / example.org /
+       news.example are reserved by RFC 2606 and resolve nowhere). It has no key
+       in the English file, so it stays as authored rather than be invented
+       here; see the report accompanying this change. -->
+  <textarea id="bqUrls" aria-labelledby="bqTitle" aria-describedby="bqIntro"
+            placeholder="https://example.com&#10;example.org/pricing&#10;https://news.example/article"></textarea>
+  <div class="bar">
+    <button id="bqRun" type="button" disabled aria-describedby="bqHint" data-i18n="batchRun">Capture all</button>
+    <span id="bqHint" style="color:var(--bq-label);font-size:12px" data-i18n="batchPermissionHint">Opening these pages needs one-time permission the first time.</span>
+  </div>
+  <div class="cols">
+    <!-- The COUNT is the live region, never the list under it. Announcing the
+         list would read every row again on every progress message; the count
+         is the one line that says what changed. -->
+    <div class="panel"><h2 id="bqPlanTitle" data-i18n="batchPanelPlan">Plan</h2>
+      <div class="bq-count" id="bqPlanCount" role="status" aria-live="polite"></div>
+      <div id="bqPlan" aria-labelledby="bqPlanTitle"></div></div>
+    <div class="panel"><h2 id="bqProgressTitle" data-i18n="batchPanelProgress">Progress</h2>
+      <div class="bq-count" id="bqProgressCount" role="status" aria-live="polite"></div>
+      <div id="bqProgress" aria-labelledby="bqProgressTitle"></div></div>
+  </div>
+  </main>
+  <script src="batch.js"></script>
+</body>
+</html>

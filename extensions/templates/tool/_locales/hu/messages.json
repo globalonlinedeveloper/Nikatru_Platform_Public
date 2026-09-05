@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — cseréld le",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "CSERÉLD LE — egy mondat, egy cél, legfeljebb 132 karakter, marketing nélkül.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — cseréld le",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Téma váltása",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Beállítások",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktív lap",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Olvasás…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Cím másolása",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Az aktív lap újraolvasása",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Bezárás",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Másolva",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "A másolás nem sikerült — nyomja meg a Ctrl+C billentyűt",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "A legutóbbi művelet („$ACTION$”) nem sikerült — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "A legutóbbi művelet („$ACTION$”) nem sikerült — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "címolvasás",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "másolás",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "adattörlés",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "futtatás",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Valami megállította, mielőtt befejeződött volna. Kérjük, próbálja újra.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Ez a lap már foglalt.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Ezt az oldalt a böngésző védi, és nem engedélyezi az olvasását.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Nem található aktív lap.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Ennek az oldalnak nincs olvasható címe.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Megszakítva.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Ismeretlen üzenet.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Azt a lapot bezárták, mielőtt a munka befejeződött volna.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "A bővítmény nem válaszolt.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Semmi nem érkezett vissza.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "A böngésző oldalai – például a Beállítások, a Bővítmények és az Új lap – minden bővítmény elől el vannak zárva. Próbálja meg egy szokásos weboldalon.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "A fejlesztői eszközök ablakai el vannak zárva a bővítmények elől.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "A forráskódot megjelenítő oldalak el vannak zárva a bővítmények elől. Próbálja meg inkább magán az oldalon.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "A bővítmények oldalait – köztük ennek a bővítménynek a sajátjait is – a böngésző védi.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "A Chrome Internetes áruház nem engedi a bővítményeknek, hogy elolvassák az oldalait.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "A helyi fájlokhoz egy további engedély kell. Nyissa meg a böngésző Bővítmények oldalát, keresse meg ezt a bővítményt, és kapcsolja be a „Hozzáférés engedélyezése a fájl-URL-ekhez” beállítást.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Ez az oldal nem töltődött be, így még nincs mit olvasni.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Ez a böngésző beépített PDF-megjelenítője. A bővítmények nem tudnak belelátni — nyissa meg a PDF-et egy szokásos lapon, vagy előbb töltse le.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Ezt az oldalt az azt megnyitó webhely homokozóba zárta, ezért a bővítmények nem tudják olvasni.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "A kiegészítők webhelye nem engedi a bővítményeknek, hogy elolvassák az oldalait.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Ezen az eszközön elfogyott a hely, ezért semmi nem lett elmentve. Töröljön néhány tárolt sort a Beállításokban, és próbálja újra.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Ez túl sokáig tartott, ezért leállt. Semmi nem maradt utána.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Ez az érték túl hosszú ahhoz, hogy a szinkronizált beállításokban tárolható legyen. Próbáljon meg egy rövidebbet.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Ezt a beállítást nem sikerült elmenteni. Várjon egy pillanatot, és próbálja újra.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Beállítások — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Beállítások",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Beállítások",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Automatikusan mentődik. Ha a böngésző szinkronizálása be van kapcsolva, a beállításai a böngészőprofiljával együtt utaznak — hozzánk soha nem jutnak el.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Viselkedés",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Másolás megnyitáskor",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Az eredmény a vágólapra kerül, amint a felugró ablak megnyílik.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Helyi előzmények vezetése",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Alapértelmezés szerint kikapcsolva. Bekapcsolva az eredmények kizárólag ezen az eszközön tárolódnak, alább jelennek meg, és bármikor törölhetők.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Előzménykorlát",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "A legrégebbi sorok kiesnek, amint a lista ennél hosszabb lesz.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Ennél régebbi sorok törlése",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Nap. A régi sorok automatikusan, a háttérben törlődnek. Állítsa 0-ra, hogy a sorok addig maradjanak, amíg az előzménykorlát ki nem ejti őket.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Téma",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Alapértelmezés szerint a rendszert követi.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Rendszer",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Világos",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Sötét",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Az Ön adatai",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Ezen az eszközön semmi nincs tárolva.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ sor van tárolva ezen az eszközön. Semmi nem hagyja el az eszközt.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ sor van tárolva ezen az eszközön. Semmi nem hagyja el az eszközt.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ sor van tárolva ezen az eszközön. Semmi nem hagyja el az eszközt.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ sor van tárolva ezen az eszközön. Semmi nem hagyja el az eszközt.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ sor van tárolva ezen az eszközön. Semmi nem hagyja el az eszközt.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ sor van tárolva ezen az eszközön. Semmi nem hagyja el az eszközt.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Tartós: a böngésző megígérte, hogy ezt nem törli.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Nincs rá garancia: a böngésző magától is törölheti ezt, ha az eszközön kevés a hely. Exportáljon biztonsági másolatot.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Ez a böngésző nem árulja el, hogy a tárolt adatok megmaradnak-e, ezért tekintse őket ideiglenesnek, és exportáljon biztonsági másolatot.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Használatban: $USED$ / $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Törlés",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "A(z) $ORIGIN$ sorának törlése",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Minden exportálása",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Minden tárolt sort egyetlen JSON fájlba ment ezen az eszközön. Semmi nem kerül feltöltésre.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Minden exportálása",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Minden törlése",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Eltávolít minden tárolt sort erről az eszközről. A beállítások megmaradnak.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Minden törlése",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Beállítások visszaállítása",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Az oldal minden beállítását visszaállítja az alapértelmezettre, és eltávolítja őket a szinkronizált böngészőprofiljából. A tárolt sorok megmaradnak.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Beállítások visszaállítása",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Probléma bejelentése",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Hibajelentés összeállítása",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Egy kis fájlt készít, amely leírja a bővítmény állapotát. Mentés előtt pontosan látja, mi van benne, és semmi nem kerül elküldésre sehová.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Jelentés összeállítása",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Névjegy",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — cseréld le",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Egy mondat arról, hogy pontosan mit csinál ez az eszköz. A munkáját az Ön eszközén végzi: nincs fiók, nincs nyomkövetés, nincsenek hálózati hívások, és semmi nem jut el hozzánk.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Mentve",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Minden törölve",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "A törlés nem sikerült — próbálja újra",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "A beállítást nem sikerült menteni",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Az exportálás mentve",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "A fájlt nem sikerült menteni",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Sor törölve",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Beállítások visszaállítva",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "A beállításokat nem sikerült visszaállítani",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Jelentés mentve",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Mégse",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Töröljünk mindent?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Minden tárolt sor eltávolításra kerül erről az eszközről. A beállításai megmaradnak. Ezt nem lehet visszavonni.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Visszaállítjuk az összes beállítást?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Az oldal minden beállítása visszaáll az alapértelmezettre, és eltávolítjuk őket a szinkronizált böngészőprofiljából. A tárolt sorai megmaradnak. Ezt nem lehet visszavonni.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Mentsük ezt a hibajelentést?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Ez minden, amit a fájl tartalmazni fog. Nincsenek benne oldalcímek, nincs benne oldalszöveg, és nincs benne semmi, amit rögzített. Semmi nem kerül elküldésre sehová — a fájl ezen az eszközön tárolódik, és Önön múlik, megosztja-e.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Jelentés mentése",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Inkognitóablak — ez az eredmény nem került mentésre az előzményekbe.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Webhely-hozzáférés",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Hozzáférés minden webhelyhez",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Csak azokhoz a funkciókhoz kell, amelyek olyan oldalakon működnek, ahol nem kattintott az eszköztár gombjára. Bármikor visszavonhatja, itt.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Hozzáférés megadása",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Hozzáférés visszavonása",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Ez a bővítmény jelenleg minden meglátogatott webhelyet el tud olvasni.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Ez a bővítmény csak azután tud elolvasni egy lapot, hogy rákattintott az eszköztárban lévő gombjára.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Hozzáférés megadva",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "A hozzáférés nem lett megadva",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Hozzáférés visszavonva",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Ezt a hozzáférést nem sikerült visszavonni",
+    "description": "en: Could not revoke that access"
+  }
+}

@@ -1,0 +1,147 @@
+name: "🧩 Report a bad page"
+description: A page that didn't capture correctly — cut off, blank, duplicated, endless…
+title: "[bad page] "
+labels: ["bad-page", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Capture bugs are almost always about *one specific page*. These extensions
+        collect no analytics of any kind, so nothing about your page reaches us
+        unless you type it here — which is why the URL matters more than anything
+        else on this form. With it, the page usually becomes a permanent test
+        fixture, and that class of bug never comes back.
+
+        **Before attaching a screenshot, look at it and cover anything personal.**
+        The extension's redaction is a head start, not a clearance: it covers text
+        it matched, it cannot see the finished picture, and you can. Check the
+        image yourself. Public URLs only, please.
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which extension?
+      options:
+        - FullShot (fullshot)
+        - Something else / not listed
+    validations: { required: true }
+
+  - type: input
+    id: url
+    attributes:
+      label: Page URL (public pages only)
+      description: >-
+        The single most useful field on this form. Without a URL a capture bug is
+        usually not reproducible at all. If the page is behind a login, give the
+        public URL of an equivalent page and say so below.
+      placeholder: https://example.com/some/page
+    validations: { required: true }
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: What went wrong?
+      multiple: true
+      options:
+        - Capture is cut off / stops partway down
+        - Content is duplicated or repeated
+        - Result is blank / white / black
+        - It scrolled forever and never finished
+        - It captured the wrong scrolling area (inner pane vs whole page)
+        - Sticky header / footer / side rail repeated on every slice
+        - Lazy images missing or still blurry placeholders
+        - Fonts, colours or layout wrong in the result
+        - Redaction missed something, or redacted the wrong thing
+        - Extension error / nothing happened at all
+        - Something else
+    validations: { required: true }
+
+  - type: dropdown
+    id: pagetype
+    attributes:
+      label: What kind of page is it?
+      description: This is what decides where the capture looks for the scrolling area.
+      options:
+        - Ordinary article / blog / docs
+        - App shell (inner pane scrolls, the page itself doesn't)
+        - Infinite scroll / feed
+        - Virtualized list or table (rows recycle as you scroll)
+        - Single-page app with routing
+        - PDF / canvas / WebGL viewer
+        - Behind a login (please say which product)
+        - Other
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Which capture mode?
+      options:
+        - Full page
+        - Visible area
+        - Selected region
+        - Element
+        - Delayed capture
+        - Batch URLs
+        - Scroll clip (GIF / WebM)
+        - Other / not listed
+    validations: { required: true }
+
+  # The two labels below are quoted from FullShot's own options page. A form that
+  # quotes a setting by a name the product does not use sends the reader looking
+  # for a switch that isn't there, and they answer "no" to a question about a
+  # setting that was on.
+  - type: checkboxes
+    id: expand
+    attributes:
+      label: Options in use
+      options:
+        - label: '"Expand scrollable content" was switched on.'
+        - label: '"Expand interaction-gated content" was switched on.'
+        - label: The page has iframes from another site.
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what did you get?
+      placeholder: |
+        Expected: the whole article, about 4 screens tall.
+        Got: the first screen repeated three times, then it stopped.
+    validations: { required: true }
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshot of the *result* (drag & drop) — redacted
+      description: The broken output is far more useful than a photo of the page.
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: Problem report (optional — no extension here offers one yet)
+      description: >-
+        Where an extension's Options page has a "Report a problem" section, its
+        "Prepare a report" button builds a small file describing the extension's
+        state, shows you exactly what is in it, and saves it to your device —
+        nothing is transmitted. No extension in this repository surfaces that
+        button today, FullShot included, so unless you can see the section, skip
+        this field: the answers above are enough.
+      render: text
+
+  - type: input
+    id: env
+    attributes:
+      label: Browser + version, OS, extension version
+      placeholder: "Chrome 141 · Windows 11 · FullShot 1.10.1"
+    validations: { required: true }
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: The URL is public (no login), or I've described what's behind the login.
+          required: true
+        - label: I removed personal data from anything I attached.
+          required: true
+        - label: I tried it in a clean profile with other extensions disabled.
+        - label: You may add this page (or a reduced copy of it) to the test suite.

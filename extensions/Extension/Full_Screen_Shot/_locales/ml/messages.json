@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - പൂർണ്ണ പേജ് സ്ക്രീൻ ക്യാപ്ചർ"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "പൂർണ്ണ പേജ്, കാണുന്ന ഭാഗം, തിരഞ്ഞെടുത്ത പ്രദേശം, ഏതു ഘടകവും പകർത്തുക. എഡിറ്റ് ചെയ്ത് PNG, JPEG, WebP, PDF ആയി എക്സ്പോർട്ട് ചെയ്യുക."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - പേജ് ക്യാപ്ചർ ചെയ്യുക (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "പൂർണ്ണ പേജ് ക്യാപ്ചർ ചെയ്യുക"
+  },
+  "commandCaptureVisible": {
+    "message": "കാണുന്ന ഭാഗം ക്യാപ്ചർ ചെയ്യുക"
+  },
+  "commandCaptureRegion": {
+    "message": "തിരഞ്ഞെടുത്ത പ്രദേശം ക്യാപ്ചർ ചെയ്യുക"
+  },
+  "commandCaptureElement": {
+    "message": "പേജിലെ ഒരു ഘടകം ക്യാപ്ചർ ചെയ്യുക (ക്ലിക്ക് ചെയ്ത് തിരഞ്ഞെടുക്കുക)"
+  },
+  "popupToggleTheme": {
+    "message": "തീം മാറ്റുക"
+  },
+  "popupModeFullTitle": {
+    "message": "പൂർണ്ണ പേജ്"
+  },
+  "popupModeFullSub": {
+    "message": "സ്ക്രോൾ ചെയ്ത് മുഴുവൻ പേജും എടുക്കുക"
+  },
+  "popupModeVisibleTitle": {
+    "message": "കാണുന്ന ഭാഗം"
+  },
+  "popupModeVisibleSub": {
+    "message": "സ്ക്രീനിൽ ഉള്ളത് മാത്രം"
+  },
+  "popupModeRegionTitle": {
+    "message": "തിരഞ്ഞെടുത്ത പ്രദേശം"
+  },
+  "popupModeRegionSub": {
+    "message": "വലിച്ച് ഒരു ഭാഗം തിരഞ്ഞെടുക്കുക"
+  },
+  "popupModeElementTitle": {
+    "message": "ഘടകം"
+  },
+  "popupModeElementSub": {
+    "message": "പേജിലെ ഏതു ഘടകത്തിലും ക്ലിക്ക് ചെയ്യുക"
+  },
+  "popupModeDelayedTitle": {
+    "message": "വൈകിയുള്ള ക്യാപ്ചർ"
+  },
+  "popupModeDelayedSub": {
+    "message": "എണ്ണം തീർന്ന ശേഷം പൂർണ്ണ പേജ്"
+  },
+  "popupDelayLabel": {
+    "message": "കാത്തിരിക്കേണ്ട സെക്കൻഡുകൾ"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ സെ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "സ്ക്രോൾ ചെയ്യുന്ന പാനലുകളും iframe‌കളും വികസിപ്പിക്കുക"
+  },
+  "popupExpandToggleTip": {
+    "message": "അകത്തെ സ്ക്രോൾ പാനലുകളും iframe‌കളും കാണുന്നതുപോലെ എടുക്കാതെ, അവയുടെ മുഴുവൻ ഉള്ളടക്കവും കാണുംവിധം വികസിപ്പിക്കുന്നു. മറ്റു സൈറ്റുകളിലെ ഫ്രെയിമുകൾക്കായി ഒരിക്കൽ മാത്രം അധിക അനുമതി ചോദിക്കും."
+  },
+  "popupDismiss": {
+    "message": "അടയ്ക്കുക"
+  },
+  "popupLastErrorFailed": {
+    "message": "അവസാനത്തെ $MODE$ പരാജയപ്പെട്ടു — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "അവസാനത്തെ $MODE$ പരാജയപ്പെട്ടു — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "പൂർണ്ണ പേജ് ക്യാപ്ചർ"
+  },
+  "popupModeNameVisible": {
+    "message": "കാണുന്ന ഭാഗത്തിന്റെ ക്യാപ്ചർ"
+  },
+  "popupModeNameRegion": {
+    "message": "പ്രദേശ ക്യാപ്ചർ"
+  },
+  "popupModeNameElement": {
+    "message": "ഘടക ക്യാപ്ചർ"
+  },
+  "popupModeNameGeneric": {
+    "message": "ക്യാപ്ചർ"
+  },
+  "popupNoActiveTab": {
+    "message": "സജീവമായ ടാബ് ഒന്നും കണ്ടെത്തിയില്ല."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "ക്യാപ്ചർ ആരംഭിക്കാനായില്ല."
+  },
+  "popupLinkHistory": {
+    "message": "ചരിത്രം"
+  },
+  "popupLinkBatch": {
+    "message": "ബാച്ച്"
+  },
+  "popupLinkOptions": {
+    "message": "ഓപ്ഷനുകൾ"
+  },
+  "optionsPageTitle": {
+    "message": "ഓപ്ഷനുകൾ — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · ഓപ്ഷനുകൾ"
+  },
+  "optionsHeading": {
+    "message": "ഓപ്ഷനുകൾ"
+  },
+  "optionsLead": {
+    "message": "മാറ്റങ്ങൾ സ്വയമേവ സേവ് ചെയ്യപ്പെടുകയും നിങ്ങളുടെ ബ്രൗസർ പ്രൊഫൈലുമായി സമന്വയിപ്പിക്കപ്പെടുകയും ചെയ്യും."
+  },
+  "optionsSectionImage": {
+    "message": "ചിത്രം"
+  },
+  "optionsFormat": {
+    "message": "ഫോർമാറ്റ്"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ നഷ്ടരഹിതം; $JPEG$ ചെറുത്; ഒരേ നിലവാരത്തിൽ $WEBP$ ഏറ്റവും ചെറുത്.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ നിലവാരം",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "ഫയൽ പേരിന്റെ ടെംപ്ലേറ്റ്"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "പ്ലേസ്ഹോൾഡറുകൾ: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "ക്യാപ്ചർ"
+  },
+  "optionsCaptureDelay": {
+    "message": "ഓരോ ഘട്ടത്തിലും അധിക കാത്തിരിപ്പ്"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "ഓരോ സ്ക്രോളിനു ശേഷവും കാത്തിരിക്കേണ്ട മില്ലിസെക്കൻഡുകൾ. വേഗം കുറഞ്ഞ, ആനിമേഷൻ കൂടുതലുള്ള പേജുകൾക്ക് ഇത് കൂട്ടുക."
+  },
+  "optionsHideFixed": {
+    "message": "സ്ഥിരവും ഒട്ടിനിൽക്കുന്നതുമായ ഘടകങ്ങൾ മറയ്ക്കുക"
+  },
+  "optionsHideFixedDesc": {
+    "message": "ഓരോ സ്ക്രീനിലും ഹെഡ്ഡറുകൾ വീണ്ടും വീണ്ടും വരുന്നത് തടയുന്നു (മുകളിൽ ഒരിക്കൽ മാത്രം കാണിക്കും)."
+  },
+  "optionsPreScroll": {
+    "message": "വൈകി ലോഡ് ചെയ്യുന്ന ഉള്ളടക്കത്തിനായി മുൻകൂട്ടി സ്ക്രോൾ ചെയ്യുക"
+  },
+  "optionsPreScrollDesc": {
+    "message": "ക്യാപ്ചർ ചെയ്യുന്നതിനു മുൻപ് പേജ് ഒരിക്കൽ സ്ക്രോൾ ചെയ്യുന്നു. വേഗം കുറവാണ്, പക്ഷേ വൈകി ലോഡ് ചെയ്യുന്ന ചിത്രങ്ങൾ പിടിക്കും."
+  },
+  "optionsAdaptiveWait": {
+    "message": "ചിത്രങ്ങൾ പൂർണ്ണമായി തെളിയുന്നതുവരെ കാത്തിരിക്കുക"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "ഓരോ ഫ്രെയിമിനും മുൻപ് വൈകിയ ചിത്രങ്ങൾ പൂർണ്ണമായി തെളിയാൻ അനുവദിക്കുന്നു; അതിനാൽ അവ കറുത്തതോ ശൂന്യമോ ആയ കള്ളികളായി ക്യാപ്ചർ ചെയ്യപ്പെടില്ല."
+  },
+  "optionsHideOverlays": {
+    "message": "ബാനറുകളും പോപ്പ്-അപ്പുകളും മറയ്ക്കുക"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "ക്യാപ്ചറിനു മുൻപ് കുക്കി/സമ്മത ബാനറുകൾ, വാർത്താക്കുറിപ്പ് മോഡലുകൾ, \"ആപ്പ് നേടൂ\" പോപ്പ്-അപ്പുകൾ എന്നിവ നീക്കം ചെയ്യുന്നു, ഒരു മോഡൽ മരവിപ്പിച്ച പേജുകളെ സ്വതന്ത്രമാക്കുകയും ചെയ്യുന്നു. ശേഷം എല്ലാം പുനഃസ്ഥാപിക്കും."
+  },
+  "optionsExpandInner": {
+    "message": "സ്ക്രോൾ ചെയ്യുന്ന ഉള്ളടക്കം വികസിപ്പിക്കുക"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "അകത്തെ പാനലുകളും iframe‌കളും കാണുന്നതുപോലെ എടുക്കാതെ, അവയ്ക്കുള്ളിൽ താഴെ ഒളിഞ്ഞിരിക്കുന്ന ഉള്ളടക്കവും കാണുംവിധം വികസിപ്പിക്കുന്നു."
+  },
+  "optionsExpandPermRow": {
+    "message": "മറ്റു സൈറ്റുകളിലെ ഫ്രെയിമുകൾ"
+  },
+  "optionsExpandPermAllow": {
+    "message": "അനുവദിക്കുക"
+  },
+  "optionsExpandPermGranted": {
+    "message": "അനുമതി നൽകി — മറ്റു സൈറ്റുകളിലെ ഫ്രെയിമുകളും വികസിപ്പിക്കപ്പെടും."
+  },
+  "optionsExpandPermMissing": {
+    "message": "\"$PERMISSION$\" അനുമതിയില്ലാതെ, മറ്റു സൈറ്റുകളിലെ ഫ്രെയിമുകൾ കാണുന്നതുപോലെ തന്നെ ക്യാപ്ചർ ചെയ്യപ്പെടും. പാനലുകളും അതേ സൈറ്റിലെ iframe‌കളും എപ്പോഴും പ്രവർത്തിക്കും.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "വെർച്വലൈസ്ഡ് ലിസ്റ്റുകൾ നിവർത്തുക"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "സ്ക്രീനിലുള്ള വരികൾ മാത്രമല്ല, മുഴുവൻ ഉള്ളടക്കവും ക്യാപ്ചർ ചെയ്യാൻ render-window ഫീഡുകളിലൂടെ ($LIB1$ / $LIB2$ ശൈലി) ഘട്ടംഘട്ടമായി നീങ്ങുന്നു. വളരെ നീണ്ട ലിസ്റ്റുകളിൽ വേഗം കുറയും.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "ക്ലിക്ക് ചെയ്താൽ മാത്രം തുറക്കുന്ന ഉള്ളടക്കം വികസിപ്പിക്കുക"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "ക്യാപ്ചറിനു മുൻപ് അടച്ചിട്ട $DETAILS$, നിഷ്ക്രിയ ടാബുകൾ, അക്കോർഡിയനുകൾ, \"കൂടുതൽ കാണിക്കുക\" വിഭാഗങ്ങൾ എന്നിവ തുറന്ന്, ശേഷം പുനഃസ്ഥാപിക്കുന്നു. ഒരു ക്ലിക്കിനു പിന്നിൽ ഒളിഞ്ഞിരിക്കുന്ന ഉള്ളടക്കം വെളിപ്പെടുത്തുന്നു.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "\"$BUTTONTEXT$\" ബട്ടണുകളിൽ ക്ലിക്ക് ചെയ്യുക",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "\"load more\" / \"show more\" ബട്ടണുകളിൽ ക്ലിക്ക് ചെയ്ത്, ഫീഡ് തീരുന്നതുവരെ പുതിയ ഉള്ളടക്കം ലോഡ് ആകാൻ വീണ്ടും വീണ്ടും കാത്തിരിക്കുന്നു. മുകളിലെ ഓപ്ഷനിൽ നിന്ന് വ്യത്യസ്തമായി, ഇത് പേജിൽ ഇതുവരെ ഇല്ലാത്ത ഉള്ളടക്കം കൊണ്ടുവരുന്നു; ലോഡ് ചെയ്ത ഉള്ളടക്കം ക്യാപ്ചറിനു ശേഷവും അവിടെത്തന്നെ നിലനിൽക്കും."
+  },
+  "optionsInfiniteScroll": {
+    "message": "അനന്തമായ ഫീഡുകൾ ലോഡ് ചെയ്യാൻ സ്ക്രോൾ ചെയ്യുക"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "\"load more\" ബട്ടൺ ഇല്ലാത്ത ഫീഡുകൾക്ക്: താഴേക്ക് സ്ക്രോൾ ചെയ്ത്, ഫീഡ് വളരുന്നത് നിലയ്ക്കുന്നതുവരെ അടുത്ത പേജ് ലോഡ് ആകാൻ വീണ്ടും വീണ്ടും കാത്തിരിക്കുന്നു (പരിധിയോടെ, അതിനാൽ അവസാനിക്കാത്ത ഫീഡുകളുടെ പിന്നാലെ പോകില്ല). ലോഡ് ചെയ്ത ഉള്ളടക്കം ക്യാപ്ചറിനു ശേഷവും നിലനിൽക്കും."
+  },
+  "optionsWaitStable": {
+    "message": "ഉള്ളടക്കം പൂർണ്ണമായി ലോഡ് ആകുന്നതുവരെ കാത്തിരിക്കുക"
+  },
+  "optionsWaitStableDesc": {
+    "message": "സ്കെലിറ്റൺ / പ്ലേസ്ഹോൾഡർ ലോഡറുകൾ (aria-busy മേഖലകൾ, തിളങ്ങുന്ന കള്ളികൾ) യഥാർത്ഥ ഉള്ളടക്കം കൊണ്ട് മാറ്റപ്പെടുന്നതുവരെ ക്യാപ്ചർ വൈകിപ്പിക്കുന്നു; അതിനാൽ പേജിന്റെ നടുവിലെ \"ലോഡ് ചെയ്യുന്നു…\" ചാരനിറത്തിലുള്ള കള്ളികളായി പതിയില്ല. പരിധിയുണ്ട്, അതിനാൽ കുടുങ്ങിയ ഒരു സ്പിന്നർ ക്യാപ്ചർ നിർത്തിക്കളയില്ല."
+  },
+  "optionsRedactPII": {
+    "message": "സ്വകാര്യ വിവരങ്ങൾ സ്വയമേവ മറയ്ക്കുക"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "ഇമെയിലുകൾ, ഫോൺ നമ്പറുകൾ, ക്രെഡിറ്റ് കാർഡ് നമ്പറുകൾ, ദേശീയ തിരിച്ചറിയൽ നമ്പറുകൾ, API കീകൾ എന്നിവയ്ക്കായി പേജ് വെളിപ്പെടുത്തുന്ന ടെക്സ്റ്റ് പരിശോധിച്ച്, പൊരുത്തപ്പെട്ടതിനു മുകളിൽ സേവ് ചെയ്യുന്ന ചിത്രത്തിൽ ഒരു കട്ടിയുള്ള കള്ളി വരയ്ക്കുന്നു. പിക്സലുകളായി വരച്ച ടെക്സ്റ്റ് ഇതിനു വായിക്കാനാവില്ല — ക്യാൻവാസ്, ചിത്രം, PDF, വീഡിയോ ഫ്രെയിം. കണ്ടെത്തൽ നിങ്ങളുടെ ഉപകരണത്തിൽ തന്നെ നടക്കുന്നു; ഒന്നും എവിടേക്കും അയയ്ക്കുന്നില്ല. പൂർണ്ണ പേജ് (ഡോക്യുമെന്റ്-സ്ക്രോൾ) ക്യാപ്ചറുകൾക്ക് മാത്രം; ആ കള്ളി ശാശ്വതമാണ്, അതിനാൽ ഫലം നിങ്ങൾ തന്നെ പരിശോധിക്കുക."
+  },
+  "optionsMaxPageHeight": {
+    "message": "പരമാവധി പേജ് ഉയരം"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "അനന്ത സ്ക്രോൾ ഫീഡുകൾക്കുള്ള സുരക്ഷാ പരിധി (CSS px)."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF എക്സ്പോർട്ട്"
+  },
+  "optionsPdfPaper": {
+    "message": "സ്ഥിരസ്ഥിതി പേപ്പർ വലുപ്പം"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" ഒരു പേജിനെ സ്ക്രീൻഷോട്ടിന്റെ അതേ വലുപ്പത്തിലാക്കുന്നു.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "ചിത്രത്തിന്റെ വലുപ്പം"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "ദിശ"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "സ്ഥിര പേപ്പർ വലുപ്പങ്ങൾക്ക് മാത്രം."
+  },
+  "optionsOrientationPortrait": {
+    "message": "കുത്തനെ"
+  },
+  "optionsOrientationLandscape": {
+    "message": "വിലങ്ങനെ"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "സ്മാർട്ട് പേജ് വിഭജനം"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "ഓരോ പേജ് വിഭജനത്തിനും അടുത്ത് ഒരു ഒഴിഞ്ഞ ഇടം തിരയുന്നു, അതിനാൽ ടെക്സ്റ്റ് വരികൾ പാതിയായി മുറിയില്ല."
+  },
+  "optionsPdfStamp": {
+    "message": "URL & തീയതി പതിപ്പിക്കുക"
+  },
+  "optionsPdfStampDesc": {
+    "message": "ഓരോ PDF പേജിന്റെയും അടിക്കുറിപ്പിൽ പേജിന്റെ URL ഉം ക്യാപ്ചർ ചെയ്ത തീയതിയും ചേർക്കുന്നു."
+  },
+  "optionsSectionDownload": {
+    "message": "ഡൗൺലോഡ്"
+  },
+  "optionsSaveDirectory": {
+    "message": "ഫോൾഡർ"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "നിങ്ങളുടെ സ്ക്രീൻഷോട്ടുകൾക്കായി $DOWNLOADS$ എന്നതിനുള്ളിൽ ഒരു ഉപഫോൾഡർ, ഉദാ. $EXAMPLE$. ഒഴിച്ചിട്ടാൽ = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "\"ഇങ്ങനെ സേവ് ചെയ്യുക\" ഡയലോഗ്"
+  },
+  "optionsSaveAsDesc": {
+    "message": "നിശ്ശബ്ദമായി ഡൗൺലോഡ് ചെയ്യുന്നതിനു പകരം, ഓരോ ഫയലും എവിടെ സേവ് ചെയ്യണമെന്ന് ചോദിക്കുന്നു."
+  },
+  "optionsClipboardFit": {
+    "message": "ക്ലിപ്പ്ബോർഡ് പകർപ്പുകൾ ആപ്പ് പരിധികൾക്ക് ഒതുക്കുക"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "$PIXELS$ പിക്സലിനു മുകളിലുള്ള പകർപ്പുകൾ ചെറുതാക്കുന്നു, അതിനാൽ $APP$ പോലുള്ളവയിൽ ഒട്ടിക്കുന്നത് പ്രവർത്തിക്കും.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "പ്രവർത്തനക്രമം"
+  },
+  "optionsAutoDownload": {
+    "message": "ക്യാപ്ചറിനു ശേഷം സ്വയമേവ ഡൗൺലോഡ് ചെയ്യുക"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "ക്യാപ്ചർ പൂർത്തിയാകുമ്പോൾ ചിത്രം ഉടനെ സേവ് ചെയ്യുന്നു."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "ക്യാപ്ചറിനു ശേഷം എഡിറ്റർ തുറക്കുക"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "നേരിട്ട് അടയാളപ്പെടുത്തലിലേക്ക് കടക്കുന്നു (ഒറ്റഭാഗ ക്യാപ്ചറുകൾക്ക് മാത്രം)."
+  },
+  "optionsTheme": {
+    "message": "തീം"
+  },
+  "optionsThemeDesc": {
+    "message": "പോപ്പ്-അപ്പിനും എല്ലാ FullShot പേജുകൾക്കും."
+  },
+  "optionsThemeSystem": {
+    "message": "സിസ്റ്റം"
+  },
+  "optionsThemeLight": {
+    "message": "ഇളം"
+  },
+  "optionsThemeDark": {
+    "message": "കടും"
+  },
+  "optionsShortcuts": {
+    "message": "കീബോർഡ് കുറുക്കുവഴികൾ"
+  },
+  "optionsShortcutsDesc": {
+    "message": "പൂർണ്ണ പേജ്: $KEYFULL$ · കാണുന്ന ഭാഗം: $KEYVISIBLE$. $URL$ എന്നിടത്ത് മാറ്റാം",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "സേവ് ചെയ്തു ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "നിങ്ങളുടെ ഡാറ്റ"
+  },
+  "optionsStorage": {
+    "message": "സംഭരണം"
+  },
+  "optionsStorageUsage": {
+    "message": "ഈ ഉപകരണത്തിൽ $QUOTA$ ൽ $USED$ ഉപയോഗത്തിലാണ്.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "FullShot എത്ര സ്ഥലം ഉപയോഗിക്കുന്നു എന്ന് ഈ ബ്രൗസർ അറിയിക്കുന്നില്ല."
+  },
+  "optionsStorageKept": {
+    "message": "നിങ്ങളുടെ സ്ക്രീൻഷോട്ടുകൾ നിലനിർത്തും: സ്ഥലം ഒഴിവാക്കാൻ ബ്രൗസർ അവ മായ്ക്കില്ല."
+  },
+  "optionsStorageAtRisk": {
+    "message": "നിങ്ങളുടെ സ്ക്രീൻഷോട്ടുകൾ ബ്രൗസറിന്റെ best-effort സംഭരണത്തിലാണ്; സ്ഥലം ഒഴിവാക്കാൻ അത് മായ്ക്കപ്പെടാം."
+  },
+  "optionsStorageKeep": {
+    "message": "എന്റെ ഡാറ്റ നിലനിർത്തുക"
+  },
+  "optionsExport": {
+    "message": "എല്ലാം കയറ്റുമതി ചെയ്യുക"
+  },
+  "optionsExportDesc": {
+    "message": "നിങ്ങളുടെ ക്രമീകരണങ്ങളും സ്ക്രീൻഷോട്ട് പട്ടികയും അടങ്ങിയ ഒരൊറ്റ ഫയൽ എഴുതുന്നു. അത് ഈ ഉപകരണത്തിൽത്തന്നെ സൂക്ഷിക്കും, എങ്ങോട്ടും അയയ്ക്കില്ല."
+  },
+  "optionsExportImages": {
+    "message": "ചിത്രങ്ങളും ഉൾപ്പെടുത്തുക"
+  },
+  "optionsExportImagesDesc": {
+    "message": "ചിത്രങ്ങൾ തന്നെ — വലുപ്പത്തിന്റെ ഏതാണ്ട് മുഴുവനും അവയാണ്. അവയില്ലാതെ ഫയൽ നിങ്ങളുടെ സ്ക്രീൻഷോട്ടുകൾ പട്ടികപ്പെടുത്തും, പക്ഷേ ഒന്നും ഉൾക്കൊള്ളില്ല."
+  },
+  "optionsExportSize": {
+    "message": "ഫയൽ വലുപ്പം: ഏകദേശം $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "ബാക്കിയായ ഡാറ്റ"
+  },
+  "optionsSweepDesc": {
+    "message": "ഇടയ്ക്കു നിന്നുപോയ ക്യാപ്ചർ, ഒരു സ്ക്രീൻഷോട്ടിനും ഉൾപ്പെടാത്ത ഫ്രെയിമുകൾ ഡിസ്കിൽ അവശേഷിപ്പിച്ചേക്കാം. അവ ഒരു പേജിലും കാണില്ല, അതിനാൽ ഒരു പേജിൽനിന്നും മായ്ക്കാനും കഴിയില്ല. ഇത് അവ കണ്ടെത്തി നീക്കംചെയ്യുന്നു."
+  },
+  "optionsSweepBtn": {
+    "message": "കണ്ടെത്തി നീക്കുക"
+  },
+  "optionsSweepResult": {
+    "message": "നീക്കി. വൃത്തിയാക്കിയ ക്യാപ്ചറുകൾ: $COUNT$ · ഒഴിവായ സ്ഥലം: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "ഒന്നും ബാക്കിയില്ല: സംഭരിച്ചിരിക്കുന്നതെല്ലാം നിങ്ങൾക്കു കാണാവുന്ന ഒരു സ്ക്രീൻഷോട്ടിന്റേതാണ്."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "ക്രമീകരണങ്ങൾ പുനഃസജ്ജമാക്കുക"
+  },
+  "optionsResetDesc": {
+    "message": "ഈ പേജിലെ ഓരോ ക്രമീകരണവും അതിന്റെ ആദ്യ മൂല്യത്തിലേക്കു മടക്കുന്നു. നിങ്ങളുടെ സ്ക്രീൻഷോട്ടുകളെ തൊടില്ല."
+  },
+  "optionsResetBtn": {
+    "message": "പുനഃസജ്ജമാക്കുക"
+  },
+  "optionsResetConfirm": {
+    "message": "FullShot ന്റെ എല്ലാ ക്രമീകരണങ്ങളും സ്ഥിരമൂല്യത്തിലേക്കു മടക്കണോ? നിങ്ങളുടെ സ്ക്രീൻഷോട്ടുകളെ ബാധിക്കില്ല."
+  },
+  "optionsResetDone": {
+    "message": "ക്രമീകരണങ്ങൾ വീണ്ടും സ്ഥിരമൂല്യങ്ങളിലായി."
+  },
+  "optionsDeleteAll": {
+    "message": "എല്ലാം ഇല്ലാതാക്കുക"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "നിങ്ങളുടെ ചരിത്രത്തിലെ എല്ലാ സ്ക്രീൻഷോട്ടുകളും, നിന്നുപോയ ക്യാപ്ചറുകൾ ബാക്കിവച്ചതെല്ലാം നീക്കംചെയ്യുന്നു. നിങ്ങളുടെ ക്രമീകരണങ്ങൾ അതേപടി നിലനിൽക്കും."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "FullShot ഈ ഉപകരണത്തിൽ സംഭരിച്ചതെല്ലാം ഇല്ലാതാക്കണോ?\n\nനിങ്ങളുടെ ചരിത്രത്തിലെ സ്ക്രീൻഷോട്ടുകൾ: $COUNT$\nനിന്നുപോയ ക്യാപ്ചറുകളുടെ അവശിഷ്ടങ്ങൾ: $LEFTOVER$\nഇതുവഴി ഒഴിവാകുന്ന സ്ഥലം: $SIZE$\n\nനിങ്ങളുടെ ക്രമീകരണങ്ങളെ ബാധിക്കില്ല. ഇത് പഴയപടിയാക്കാനാവില്ല.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "ഇല്ലാതാക്കി. FullShot ഇപ്പോൾ ഈ ഉപകരണത്തിൽ ഒരു സ്ക്രീൻഷോട്ടും സൂക്ഷിക്കുന്നില്ല."
+  },
+  "resultPageTitle": {
+    "message": "സ്ക്രീൻഷോട്ട് — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "പകർത്തുക"
+  },
+  "resultCopyTip": {
+    "message": "ചിത്രം ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തുക"
+  },
+  "resultEdit": {
+    "message": "എഡിറ്റ്"
+  },
+  "resultEditTip": {
+    "message": "എഡിറ്ററിൽ തുറക്കുക"
+  },
+  "resultBeautify": {
+    "message": "മോടിയാക്കുക"
+  },
+  "resultBeautifyTip": {
+    "message": "മോടിയാക്കുക — പങ്കിടാൻ ഫ്രെയിമും പശ്ചാത്തലവും"
+  },
+  "resultClip": {
+    "message": "ക്ലിപ്പ്"
+  },
+  "resultClipTip": {
+    "message": "സ്ക്രോൾ ക്ലിപ്പ് — ആനിമേറ്റഡ് $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF പേപ്പർ വലുപ്പം"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "ഡൗൺലോഡ്"
+  },
+  "resultDeleteTip": {
+    "message": "സ്ക്രീൻഷോട്ട് ഇല്ലാതാക്കുക"
+  },
+  "resultHistoryTip": {
+    "message": "സ്ക്രീൻഷോട്ട് ചരിത്രം"
+  },
+  "resultProgressAssembling": {
+    "message": "നിങ്ങളുടെ സ്ക്രീൻഷോട്ട് കൂട്ടിച്ചേർക്കുന്നു…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "$COUNT$ ഫ്രെയിം വായിക്കുന്നു…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$ ഫ്രെയിമുകൾ വായിക്കുന്നു…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "$INDEX$-ാം ഭാഗം തുന്നിച്ചേർക്കുന്നു…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "~$TOTAL$ ൽ $INDEX$-ാം ഭാഗം തുന്നിച്ചേർക്കുന്നു…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "സേവ് ചെയ്യുന്നു…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "നുറുങ്ങ്: ചിത്രം നേരിട്ട് നിങ്ങളുടെ ഡെസ്ക്ടോപ്പിലേക്ക് വലിച്ചിടാം, അല്ലെങ്കിൽ $DOWNLOAD$ ഉപയോഗിക്കാം.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "ഇവിടെ ഒന്നുമില്ല"
+  },
+  "resultEmptyBody": {
+    "message": "ഈ സ്ക്രീൻഷോട്ട് ഇനി നിലവിലില്ല."
+  },
+  "resultOpenHistory": {
+    "message": "ചരിത്രം തുറക്കുക"
+  },
+  "resultSomethingWrong": {
+    "message": "എന്തോ കുഴപ്പം സംഭവിച്ചു — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "ഭാഗം $INDEX$ / $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "ഭാഗം ഡൗൺലോഡ് ചെയ്യുക"
+  },
+  "resultEditPart": {
+    "message": "ഭാഗം എഡിറ്റ് ചെയ്യുക"
+  },
+  "resultClipPart": {
+    "message": "ഭാഗം ക്ലിപ്പ് ചെയ്യുക"
+  },
+  "resultPartAlt": {
+    "message": "സ്ക്രീൻഷോട്ടിന്റെ $INDEX$-ാം ഭാഗം",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ ഡൗൺലോഡ് ചെയ്യുന്നു",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "ഈ സ്ക്രീൻഷോട്ട് ശാശ്വതമായി ഇല്ലാതാക്കണോ?"
+  },
+  "resultDeleted": {
+    "message": "സ്ക്രീൻഷോട്ട് ഇല്ലാതാക്കി."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "ഈ ക്യാപ്ചർ വളരെ നീളമുള്ളതിനാൽ വായിക്കാവുന്ന ഒറ്റ ചിത്രമായി ഒട്ടിക്കാൻ കഴിയില്ല, അതിനാൽ $COPY$ പേജ് മുഴുവന്റെയും ചെറുതാക്കിയ ഒരു അവലോകനം ക്ലിപ്പ്ബോർഡിൽ ഇടുന്നു. അതിലെ ചെറിയ അക്ഷരങ്ങൾ വായിക്കാനാകില്ല.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "$INDEX$-ാം ഭാഗം ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തി",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF തയ്യാറാക്കുന്നു…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF ഡൗൺലോഡ് ചെയ്തു ($COUNT$ പേജ്)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF ഡൗൺലോഡ് ചെയ്തു ($COUNT$ പേജുകൾ)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF പരാജയപ്പെട്ടു — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "എഡിറ്റർ — FullShot"
+  },
+  "editorBackTip": {
+    "message": "സ്ക്രീൻഷോട്ടിലേക്ക് മടങ്ങുക"
+  },
+  "editorToolSelect": {
+    "message": "തിരഞ്ഞെടുക്കുക / നീക്കുക ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "വെട്ടിച്ചുരുക്കുക ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "പേന ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "ഹൈലൈറ്റർ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "വര ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "അമ്പ് ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "ദീർഘചതുരം ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "ദീർഘവൃത്തം ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "ടെക്സ്റ്റ് ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "മങ്ങിക്കുക / പിക്സലേറ്റ് ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "അക്കമിട്ട ഘട്ടം ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "ഇമോജി മുദ്ര ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "ഇഷ്ട നിറം"
+  },
+  "editorStrokeTip": {
+    "message": "വരയുടെ കനം"
+  },
+  "editorStrokeThin": {
+    "message": "നേർത്തത്"
+  },
+  "editorStrokeMedium": {
+    "message": "ഇടത്തരം"
+  },
+  "editorStrokeThick": {
+    "message": "കട്ടിയുള്ളത്"
+  },
+  "editorSizeTip": {
+    "message": "ടെക്സ്റ്റ് / ഇമോജി വലുപ്പം"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "പഴയപടിയാക്കുക ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "വീണ്ടും ചെയ്യുക ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "ചെറുതാക്കുക (-)"
+  },
+  "editorZoomInTip": {
+    "message": "വലുതാക്കുക (+)"
+  },
+  "editorZoomFit": {
+    "message": "ഒതുക്കുക"
+  },
+  "editorZoomTipToHundred": {
+    "message": "വിൻഡോയ്ക്ക് ഒതുക്കി — 100% നായി ക്ലിക്ക് ചെയ്യുക"
+  },
+  "editorZoomTipToFit": {
+    "message": "വിൻഡോയ്ക്ക് ഒതുക്കാൻ ക്ലിക്ക് ചെയ്യുക"
+  },
+  "editorExport": {
+    "message": "എക്സ്പോർട്ട്"
+  },
+  "editorExportCopy": {
+    "message": "ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തുക"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ ചിത്രം",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ രേഖ",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "സേവ്"
+  },
+  "editorSaveTip": {
+    "message": "മാറ്റങ്ങൾ ചരിത്രത്തിലേക്ക് സേവ് ചെയ്യുക ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "കൂടുതൽ"
+  },
+  "editorMenuFiles": {
+    "message": "ചരിത്രത്തിലേക്ക് പോകുക"
+  },
+  "editorMenuOptions": {
+    "message": "ഓപ്ഷനുകളിലേക്ക് പോകുക"
+  },
+  "editorMenuShortcuts": {
+    "message": "കീബോർഡ് കുറുക്കുവഴികൾ"
+  },
+  "editorCropApply": {
+    "message": "വെട്ടിച്ചുരുക്കൽ പ്രയോഗിക്കുക"
+  },
+  "editorCropCancel": {
+    "message": "റദ്ദാക്കുക"
+  },
+  "editorShortcutsHeading": {
+    "message": "കീബോർഡ് കുറുക്കുവഴികൾ"
+  },
+  "editorShortcutTools": {
+    "message": "ഉപകരണങ്ങൾ തിരഞ്ഞെടുക്കൽ"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "പഴയപടിയാക്കുക / വീണ്ടും ചെയ്യുക"
+  },
+  "editorShortcutSave": {
+    "message": "ചരിത്രത്തിലേക്ക് സേവ് ചെയ്യുക"
+  },
+  "editorShortcutZoom": {
+    "message": "ചെറുതാക്കുക / വലുതാക്കുക"
+  },
+  "editorShortcutDelete": {
+    "message": "തിരഞ്ഞെടുത്ത വസ്തു നീക്കം ചെയ്യുക"
+  },
+  "editorShortcutEscape": {
+    "message": "തിരഞ്ഞെടുപ്പ് ഒഴിവാക്കുക / വെട്ടിച്ചുരുക്കൽ റദ്ദാക്കുക"
+  },
+  "editorShortcutsClose": {
+    "message": "അടയ്ക്കുക"
+  },
+  "editorNotFound": {
+    "message": "സ്ക്രീൻഷോട്ട് കണ്ടെത്തിയില്ല"
+  },
+  "editorToastDownloaded": {
+    "message": "ഡൗൺലോഡ് ചെയ്തു"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF ഡൗൺലോഡ് ചെയ്തു"
+  },
+  "editorToastSaved": {
+    "message": "ചരിത്രത്തിലേക്ക് സേവ് ചെയ്തു"
+  },
+  "historyPageTitle": {
+    "message": "ചരിത്രം — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · ചരിത്രം"
+  },
+  "historySearchPlaceholder": {
+    "message": "തലക്കെട്ടോ URL ഓ തിരയുക…"
+  },
+  "historySelectAll": {
+    "message": "എല്ലാം തിരഞ്ഞെടുക്കുക"
+  },
+  "historyClearSelection": {
+    "message": "തിരഞ്ഞെടുപ്പ് മായ്ക്കുക"
+  },
+  "historyDownloadSelected": {
+    "message": "തിരഞ്ഞെടുത്തവ ഡൗൺലോഡ് ചെയ്യുക"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "ഡൗൺലോഡ് ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "തിരഞ്ഞെടുത്തവ ഇല്ലാതാക്കുക"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "ഇല്ലാതാക്കുക ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "ഇതുവരെ സ്ക്രീൻഷോട്ടുകളൊന്നുമില്ല"
+  },
+  "historyEmptyBody": {
+    "message": "നിങ്ങൾ എടുക്കുന്ന ക്യാപ്ചറുകൾ ഇവിടെ കാണാം. തുടങ്ങാൻ ടൂൾബാറിലെ FullShot ഐക്കണിൽ ക്ലിക്ക് ചെയ്യുക."
+  },
+  "historyNoMatchesTitle": {
+    "message": "പൊരുത്തങ്ങളൊന്നുമില്ല"
+  },
+  "historyNoMatchesBody": {
+    "message": "\"$QUERY$\" എന്നതിനോട് പൊരുത്തപ്പെടുന്ന സ്ക്രീൻഷോട്ടുകളില്ല.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ട് · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ടുകൾ · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ടിൽ $SHOWN$ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ടുകളിൽ $SHOWN$ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "തിരഞ്ഞെടുക്കുക"
+  },
+  "historyCardOpen": {
+    "message": "തുറക്കുക"
+  },
+  "historyCardEdit": {
+    "message": "എഡിറ്റ്"
+  },
+  "historyCardDownloadTip": {
+    "message": "ഡൗൺലോഡ്"
+  },
+  "historyCardDeleteTip": {
+    "message": "ഇല്ലാതാക്കുക"
+  },
+  "historyCardOpenOriginal": {
+    "message": "യഥാർത്ഥ പേജ് തുറക്കുക"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ ഭാഗങ്ങൾ",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "സ്ക്രീൻഷോട്ട്"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "ഈ സ്ക്രീൻഷോട്ട് ഇല്ലാതാക്കണോ?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ട് ശാശ്വതമായി ഇല്ലാതാക്കണോ?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ടുകൾ ശാശ്വതമായി ഇല്ലാതാക്കണോ?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ട് ഡൗൺലോഡ് ചെയ്യുന്നു",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "$COUNT$ സ്ക്രീൻഷോട്ടുകൾ ഡൗൺലോഡ് ചെയ്യുന്നു",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "ഇല്ലാതാക്കി"
+  },
+  "beautifyPageTitle": {
+    "message": "മോടിയാക്കുക — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "മോടിയാക്കുക"
+  },
+  "actionBack": {
+    "message": "പിന്നോട്ട്"
+  },
+  "commonLoading": {
+    "message": "ലോഡ് ചെയ്യുന്നു…"
+  },
+  "beautifyFieldSize": {
+    "message": "വലുപ്പം"
+  },
+  "beautifyPresetAuto": {
+    "message": "സ്വയം"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "ചതുരം"
+  },
+  "beautifyPresetPortrait": {
+    "message": "കുത്തനെ"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "പശ്ചാത്തലം"
+  },
+  "beautifyBgSlate": {
+    "message": "സ്ലേറ്റ്"
+  },
+  "beautifyBgGraphite": {
+    "message": "ഗ്രാഫൈറ്റ്"
+  },
+  "beautifyBgSky": {
+    "message": "ആകാശം"
+  },
+  "beautifyBgSunset": {
+    "message": "അസ്തമയം"
+  },
+  "beautifyBgGrape": {
+    "message": "മുന്തിരി"
+  },
+  "beautifyBgMint": {
+    "message": "പുതിന"
+  },
+  "beautifyFieldPadding": {
+    "message": "അരികിലെ ഇട"
+  },
+  "beautifyFieldRadius": {
+    "message": "മൂലയുടെ വളവ്"
+  },
+  "beautifyFieldEffects": {
+    "message": "ഇഫക്റ്റുകൾ"
+  },
+  "beautifyShadow": {
+    "message": "നിഴൽ"
+  },
+  "beautifyWindowFrame": {
+    "message": "വിൻഡോ ഫ്രെയിം"
+  },
+  "beautifyFieldExport": {
+    "message": "എക്സ്പോർട്ട്"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "സ്ക്രോൾ ക്ലിപ്പ് — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "സ്ക്രോൾ ക്ലിപ്പ്"
+  },
+  "scrollclipFieldFormat": {
+    "message": "ഫോർമാറ്റ്"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ എല്ലായിടത്തും പ്ലേ ചെയ്യും. $WEBM$ ചെറുതും മിനുസമുള്ളതുമാണ് (നിങ്ങളുടെ ബ്രൗസറിൽ തന്നെ നേരിട്ട് റെക്കോർഡ് ചെയ്യുന്നു).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "ഔട്ട്പുട്ട് വീതി"
+  },
+  "scrollclipFieldDensity": {
+    "message": "സാന്ദ്രത"
+  },
+  "scrollclipDensityHint": {
+    "message": "ഉയർന്ന സാന്ദ്രത കൂടുതൽ വ്യക്തമായി വരയ്ക്കുന്നു (യഥാർത്ഥ റെസലൂഷനോട് അടുത്ത്) — ഫയൽ വലുതാകും."
+  },
+  "scrollclipFieldShape": {
+    "message": "ആകൃതി"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "സ്ക്രോൾ വേഗം (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "ഫ്രെയിം നിരക്ക് (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "ചലനം"
+  },
+  "scrollclipBounce": {
+    "message": "തിരിച്ചുവരവ് (മുകളിലേക്ക് വീണ്ടും സ്ക്രോൾ ചെയ്യുക)"
+  },
+  "scrollclipLoop": {
+    "message": "എന്നും ആവർത്തിക്കുക"
+  },
+  "scrollclipCopyFrame": {
+    "message": "ഫ്രെയിം പകർത്തുക"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "പോസ്റ്റർ (മുകളിലെ) ഫ്രെയിം $FORMAT$ ആയി പകർത്തുക",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ഫ്രെയിം · $SECONDS$ സെ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ ഫ്രെയിമുകൾ · $SECONDS$ സെ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "ഫ്രെയിമുകൾ വരയ്ക്കുന്നു… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$ എൻകോഡ് ചെയ്യുന്നു… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "അവസാനിപ്പിക്കുന്നു…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ റെക്കോർഡ് ചെയ്യുന്നു…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "റെക്കോർഡ് ചെയ്യുന്നു…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "ഇവിടെ $WEBM$ പിന്തുണയ്ക്കുന്നില്ല — $GIF$ ആയി എക്സ്പോർട്ട് ചെയ്യുന്നു",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "പോസ്റ്റർ ഫ്രെയിം പകർത്തി"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — ബാച്ച് ക്യാപ്ചർ"
+  },
+  "batchHeading": {
+    "message": "ബാച്ച് ക്യാപ്ചർ"
+  },
+  "batchIntro": {
+    "message": "URL‌കൾ ഓരോ വരിയിൽ ഒന്നായി ഒട്ടിക്കുക. FullShot ഓരോ പേജും തുറന്ന്, പൂർണ്ണ പേജ് സ്ക്രീൻഷോട്ട് നിങ്ങളുടെ ചരിത്രത്തിലേക്ക് സേവ് ചെയ്ത്, അടുത്തതിലേക്ക് നീങ്ങുന്നു — ഒരു തവണ പരമാവധി $MAX$. ക്യാപ്ചറുകൾ നിങ്ങളുടെ ചരിത്രത്തിൽ കാണാം; ഏതെങ്കിലും കാണാനോ എഡിറ്റ് ചെയ്യാനോ എക്സ്പോർട്ട് ചെയ്യാനോ $OPENLINK$ ക്ലിക്ക് ചെയ്യുക.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "എല്ലാം ക്യാപ്ചർ ചെയ്യുക"
+  },
+  "batchPermissionHint": {
+    "message": "ഈ പേജുകൾ തുറക്കാൻ ആദ്യ തവണ ഒരിക്കൽ മാത്രം അനുമതി വേണം."
+  },
+  "batchPermissionDeclined": {
+    "message": "ആ പേജുകൾ തുറക്കാനുള്ള അനുമതി നിരസിക്കപ്പെട്ടു."
+  },
+  "batchPanelPlan": {
+    "message": "പദ്ധതി"
+  },
+  "batchPanelProgress": {
+    "message": "പുരോഗതി"
+  },
+  "batchPlanCountOne": {
+    "message": "ക്യാപ്ചർ ചെയ്യേണ്ട $COUNT$ പേജ്",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "ക്യാപ്ചർ ചെയ്യേണ്ട $COUNT$ പേജുകൾ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "ക്യാപ്ചർ ചെയ്യേണ്ട $COUNT$ പേജുകൾ ($MAX$ വരെ മാത്രം)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "ഇതുവരെ സാധുവായ URL‌കളൊന്നുമില്ല"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ ഒഴിവാക്കി: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "പിന്തുണയ്ക്കാത്ത സ്കീം"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "അസാധു"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "ഹോസ്റ്റ് ഇല്ല"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "ആവർത്തനം"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "ശൂന്യം"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "പരിധി കടന്നു ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ പൂർത്തിയായി",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ പൂർത്തിയായി, $FAILED$ പരാജയം",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ പൂർത്തിയായി — തീർന്നു",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ പൂർത്തിയായി, $FAILED$ പരാജയം — തീർന്നു",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "തുറക്കുക"
+  },
+  "batchJobTimedOut": {
+    "message": "ക്യാപ്ചർ സമയം കഴിഞ്ഞു"
+  },
+  "batchJobNoSession": {
+    "message": "ക്യാപ്ചർ സെഷൻ ഇല്ല"
+  },
+  "batchJobFailed": {
+    "message": "ക്യാപ്ചർ പരാജയപ്പെട്ടു"
+  },
+  "batchJobError": {
+    "message": "ക്യാപ്ചർ പിശക്"
+  },
+  "regionHintDrag": {
+    "message": "ഒരു പ്രദേശം തിരഞ്ഞെടുക്കാൻ വലിക്കുക — റദ്ദാക്കാൻ $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "ക്യാപ്ചർ ചെയ്യേണ്ട ഘടകത്തിൽ ക്ലിക്ക് ചെയ്യുക — റദ്ദാക്കാൻ $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "ക്രമീകരണങ്ങൾ, വിപുലീകരണങ്ങൾ, പുതിയ ടാബ് തുടങ്ങിയ ബ്രൗസറിന്റെ സ്വന്തം പേജുകൾ ഒരു വിപുലീകരണത്തിനും ലഭ്യമല്ല. FullShot ഒരു സാധാരണ വെബ് പേജിൽ പരീക്ഷിക്കുക."
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools വിൻഡോകൾ ഒരു വിപുലീകരണത്തിനും ക്യാപ്ചർ ചെയ്യാനാവില്ല. അതിനായി നിങ്ങളുടെ കമ്പ്യൂട്ടറിന്റെ സ്വന്തം സ്ക്രീൻഷോട്ട് ഉപകരണം ഉപയോഗിക്കുക."
+  },
+  "errRestrictedViewSource": {
+    "message": "സോഴ്സ് കാണിക്കുന്ന പേജുകൾ ക്യാപ്ചർ ചെയ്യാനാവില്ല. പകരം പേജ് തന്നെ ക്യാപ്ചർ ചെയ്യുക."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "FullShot‌ന്റെ സ്വന്തം പേജുകൾ ഉൾപ്പെടെ വിപുലീകരണ പേജുകൾ ബ്രൗസർ സംരക്ഷിക്കുന്നു, അതിനാൽ അവ ക്യാപ്ചർ ചെയ്യാനാവില്ല."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store അതിന്റെ പേജുകൾ വിപുലീകരണങ്ങൾ വായിക്കുന്നത് തടയുന്നു, അതിനാൽ ഇത് ക്യാപ്ചർ ചെയ്യാനാവില്ല."
+  },
+  "errRestrictedGeneric": {
+    "message": "ഈ പേജ് ബ്രൗസർ സംരക്ഷിക്കുന്നു, അതിനാൽ ഇത് ക്യാപ്ചർ ചെയ്യാനാവില്ല."
+  },
+  "errWrongTab": {
+    "message": "ക്യാപ്ചർ നിന്നു — നിങ്ങൾ ടാബ് മാറ്റി. FullShot പൂർത്തിയാകുന്നതുവരെ ഈ പേജ് മുന്നിൽ വയ്ക്കുക."
+  },
+  "errGeneric": {
+    "message": "ക്യാപ്ചർ പൂർത്തിയാകും മുൻപേ നിന്നു. ദയവായി വീണ്ടും ശ്രമിക്കുക."
+  },
+  "errBusy": {
+    "message": "ഈ ടാബിൽ ഇതിനകം ഒരു ക്യാപ്ചർ നടക്കുന്നുണ്ട്."
+  },
+  "errBlocked": {
+    "message": "ഈ പേജ് ക്യാപ്ചർ ചെയ്യാനാവില്ല (ബ്രൗസർ നിയന്ത്രണം)."
+  },
+  "errNoStart": {
+    "message": "ഈ പേജിൽ FullShot ആരംഭിക്കാനായില്ല. പേജ് വീണ്ടും ലോഡ് ചെയ്ത് ശ്രമിക്കുക."
+  },
+  "errCrash": {
+    "message": "ക്യാപ്ചർ അപ്രതീക്ഷിതമായി നിന്നു. ദയവായി വീണ്ടും ശ്രമിക്കുക."
+  },
+  "errUnknownMessage": {
+    "message": "അജ്ഞാതമായ സന്ദേശം."
+  },
+  "errQuota": {
+    "message": "പേജുകൾ എത്ര വേഗത്തിൽ പകർത്താമെന്ന് ബ്രൗസർ പരിമിതപ്പെടുത്തുന്നു. അൽപ്പനേരം കാത്തിരുന്ന് വീണ്ടും ശ്രമിക്കുക."
+  },
+  "errFrameHandover": {
+    "message": "പാതിവഴിയിൽ സ്ക്രീൻ കൈമാറുന്നത് ബ്രൗസർ നിർത്തി. കുറച്ച് സെക്കൻഡ് കാത്തിരുന്ന് വീണ്ടും ശ്രമിക്കുക."
+  },
+  "errLostTab": {
+    "message": "ക്യാപ്ചറിന് ഈ ടാബുമായുള്ള ബന്ധം നഷ്ടപ്പെട്ടു. പേജ് വീണ്ടും ലോഡ് ചെയ്ത് ശ്രമിക്കുക."
+  },
+  "errStoppedEarly": {
+    "message": "ക്യാപ്ചർ പൂർത്തിയാകും മുൻപേ നിർത്തി."
+  },
+  "errStorageFull": {
+    "message": "ഈ ക്യാപ്ചർ സംഭരിക്കാൻ സ്ഥലമില്ല. നിങ്ങളുടെ ചരിത്രത്തിൽനിന്ന് കുറച്ച് സ്ക്രീൻഷോട്ടുകൾ ഇല്ലാതാക്കി വീണ്ടും ശ്രമിക്കുക."
+  },
+  "reasonGeneric": {
+    "message": "കാരണമൊന്നും നൽകിയിട്ടില്ല. ദയവായി വീണ്ടും ശ്രമിക്കുക."
+  },
+  "reasonDecodeFailed": {
+    "message": "ആ സ്ക്രീൻഷോട്ട് വായിക്കാനായില്ല."
+  },
+  "reasonTooLarge": {
+    "message": "ഇവിടെ എക്സ്പോർട്ട് ചെയ്യാനാവാത്തത്ര വലുതാണ് ചിത്രം."
+  },
+  "toastCopiedClipboard": {
+    "message": "ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തി"
+  },
+  "toastCopyFailed": {
+    "message": "പകർത്തൽ പരാജയപ്പെട്ടു — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "എക്സ്പോർട്ട് പരാജയപ്പെട്ടു — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ സേവ് ചെയ്തു",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ സേവ് ചെയ്തു  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — sr-only / aria-label on an otherwise textless page</title>
+<!-- SPEC E1 / §4.4. The page's ONLY strings are screen-reader text. Nothing a
+     human can read is in the picture. Real layout is what makes this fixture
+     work: Chromium gives the sr-only span a 1x1 rect and a 16px font-size, and
+     the disagreement between those two numbers is the whole measurement. A sim
+     cannot produce that disagreement because both numbers come from the same
+     hand-written literal.
+     NOTE: no scoreboard, no visible caption, no inline <script> in the body —
+     one visible character would make `placed > 0` and change the state. -->
+<style>
+  html, body { margin: 0; background: #eef2ff; }
+  .band { height: 300px; }
+  .b1 { background: rgb(120, 140, 220); }
+  .b2 { background: rgb(200, 210, 245); }
+  .b3 { background: rgb(90, 110, 200); }
+  /* the classic Bootstrap/Tailwind sr-only: clipped to nothing, still 16px */
+  .sr-clip {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    font-size: 16px; line-height: 1.4;
+  }
+  /* the other common spelling: 1px box, overflow hidden, no clip */
+  .sr-box { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; font-size: 16px; }
+  /* and the off-canvas spelling */
+  .sr-off { position: absolute; left: -9999px; top: 0; font-size: 16px; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <span class="sr-clip">Support contact jane.doe@example.com for account help</span>
+  <span class="sr-box">Billing hotline +1 (555) 123-4567 open weekdays</span>
+  <span class="sr-off">Reference card 4242 4242 4242 4242 on file</span>
+  <div class="band b1" aria-label="Call +1 (555) 987-6543 for the duty desk"></div>
+  <div class="band b2" aria-label="Account holder jane.doe@example.com"></div>
+  <div class="band b3" title="Card 4242 4242 4242 4242"></div>
+  <div class="band b2"></div>
+  <div class="band b1"></div>
+  <div id="bottom"></div>
+</body>
+</html>

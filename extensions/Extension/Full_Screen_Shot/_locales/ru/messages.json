@@ -1,0 +1,2335 @@
+{
+  "appName": {
+    "message": "FullShot — снимок всей страницы"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Снимайте всю страницу, видимую область, участок или элемент. Редактируйте, помечайте и экспортируйте в PNG, JPEG, WebP или PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot — снять страницу (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Снять всю страницу"
+  },
+  "commandCaptureVisible": {
+    "message": "Снять видимую область"
+  },
+  "commandCaptureRegion": {
+    "message": "Снять выделенный участок"
+  },
+  "commandCaptureElement": {
+    "message": "Снять элемент страницы (щёлкните, чтобы выбрать)"
+  },
+  "popupToggleTheme": {
+    "message": "Сменить тему"
+  },
+  "popupModeFullTitle": {
+    "message": "Вся страница"
+  },
+  "popupModeFullSub": {
+    "message": "Прокрутить и снять страницу целиком"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Видимая область"
+  },
+  "popupModeVisibleSub": {
+    "message": "Только то, что на экране"
+  },
+  "popupModeRegionTitle": {
+    "message": "Выделенный участок"
+  },
+  "popupModeRegionSub": {
+    "message": "Потяните, чтобы выбрать область"
+  },
+  "popupModeElementTitle": {
+    "message": "Элемент"
+  },
+  "popupModeElementSub": {
+    "message": "Щёлкните любой элемент на странице"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Снимок с задержкой"
+  },
+  "popupModeDelayedSub": {
+    "message": "Вся страница после обратного отсчёта"
+  },
+  "popupDelayLabel": {
+    "message": "Задержка в секундах"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ с",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Разворачивать прокручиваемые панели и iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "Увеличивает внутренние прокручиваемые панели и iframe до полного содержимого вместо съёмки в том виде, как они видны. Для фреймов с других сайтов один раз запрашивается дополнительное разрешение."
+  },
+  "popupDismiss": {
+    "message": "Скрыть"
+  },
+  "popupLastErrorFailed": {
+    "message": "Последняя $MODE$ не удалась — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Последняя $MODE$ не удалась — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "съёмка всей страницы"
+  },
+  "popupModeNameVisible": {
+    "message": "съёмка видимой области"
+  },
+  "popupModeNameRegion": {
+    "message": "съёмка участка"
+  },
+  "popupModeNameElement": {
+    "message": "съёмка элемента"
+  },
+  "popupModeNameGeneric": {
+    "message": "съёмка"
+  },
+  "popupNoActiveTab": {
+    "message": "Активная вкладка не найдена."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Не удалось начать съёмку."
+  },
+  "popupLinkHistory": {
+    "message": "История"
+  },
+  "popupLinkBatch": {
+    "message": "Пакет"
+  },
+  "popupLinkOptions": {
+    "message": "Настройки"
+  },
+  "optionsPageTitle": {
+    "message": "Настройки — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Настройки"
+  },
+  "optionsHeading": {
+    "message": "Настройки"
+  },
+  "optionsLead": {
+    "message": "Изменения сохраняются автоматически и синхронизируются с профилем вашего браузера."
+  },
+  "optionsSectionImage": {
+    "message": "Изображение"
+  },
+  "optionsFormat": {
+    "message": "Формат"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ — без потерь, $JPEG$ — компактнее, $WEBP$ — самый маленький при сопоставимом качестве.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Качество $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Шаблон имени файла"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Подстановки: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Съёмка"
+  },
+  "optionsCaptureDelay": {
+    "message": "Дополнительная пауза на каждом шаге"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Сколько миллисекунд ждать после каждой прокрутки. Увеличьте для медленных страниц с обилием анимации."
+  },
+  "optionsHideFixed": {
+    "message": "Скрывать фиксированные и «липкие» элементы"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Не даёт шапкам повторяться на каждом экране (показываются один раз сверху)."
+  },
+  "optionsPreScroll": {
+    "message": "Предварительно прокрутить для отложенного содержимого"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Один раз прокручивает страницу перед съёмкой. Медленнее, зато подхватывает отложенно загружаемые изображения."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Ждать декодирования изображений"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Даёт запоздалым и отложенным изображениям дозагрузиться перед каждым кадром, чтобы они не попали в снимок чёрными или пустыми плитками."
+  },
+  "optionsHideOverlays": {
+    "message": "Скрывать баннеры и всплывающие окна"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Убирает перед съёмкой баннеры о cookie и согласии, окна подписки и предложения «установите приложение», а также разблокирует страницы, замороженные модальным окном. После съёмки всё восстанавливается."
+  },
+  "optionsExpandInner": {
+    "message": "Разворачивать прокручиваемое содержимое"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Увеличивает внутренние панели и iframe, чтобы показать содержимое, скрытое ниже их собственной границы, вместо съёмки ровно в том виде, как они видны."
+  },
+  "optionsExpandPermRow": {
+    "message": "Фреймы с других сайтов"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Разрешить"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Разрешение выдано — фреймы с других сайтов тоже разворачиваются."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Без разрешения «$PERMISSION$» фреймы с других сайтов снимаются в том виде, как они видны. Панели и iframe того же сайта работают всегда.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Разворачивать виртуализированные списки"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Проходит по лентам с окном отрисовки (в духе $LIB1$ / $LIB2$), чтобы снять всё их содержимое целиком, а не только строки на экране. На очень длинных списках медленнее.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Разворачивать содержимое, скрытое до действия"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Перед съёмкой раскрывает свёрнутые $DETAILS$, неактивные вкладки, аккордеоны и блоки «показать ещё», а затем возвращает всё как было. Показывает содержимое, спрятанное за щелчком.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Нажимать кнопки «$BUTTONTEXT$»",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Раз за разом нажимает кнопки «загрузить ещё» и «показать больше» и ждёт загрузки нового содержимого, пока лента не закончится. В отличие от настройки выше, здесь подгружается содержимое, которого на странице ещё нет; загруженное остаётся и после съёмки."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Прокручивать бесконечные ленты"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Для лент без кнопки «загрузить ещё»: раз за разом прокручивает вниз и ждёт следующую порцию, пока лента не перестанет расти (с ограничением, чтобы не гнаться за бесконечной лентой). Загруженное остаётся и после съёмки."
+  },
+  "optionsWaitStable": {
+    "message": "Ждать полной загрузки содержимого"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Ждёт, пока скелетоны и заглушки загрузки (области aria-busy, мерцающие блоки) сменятся настоящим содержимым, чтобы «загрузка…» посреди страницы не попала в снимок серыми прямоугольниками. С ограничением, чтобы зависший индикатор не заблокировал съёмку."
+  },
+  "optionsRedactPII": {
+    "message": "Автоматически закрашивать конфиденциальные данные"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Ищет в тексте, который открывает страница, адреса эл. почты, номера телефонов, номера банковских карт, номера соцстрахования и ключи API и закрашивает сплошным блоком то, что совпало, в сохраняемом изображении. Текст, нарисованный пикселями, прочитать не может — холст, изображение, PDF, кадр видео. Распознавание выполняется на вашем устройстве; ничего и никогда никуда не отправляется. Работает для снимков всей страницы (прокрутка документа); блок необратим, поэтому проверьте результат сами."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Максимальная высота страницы"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Предохранительный предел (CSS-пиксели) для лент с бесконечной прокруткой."
+  },
+  "optionsSectionPdf": {
+    "message": "Экспорт в PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Размер бумаги по умолчанию"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "«$IMAGESIZE$» делает страницу ровно такого размера, как снимок.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Размер изображения"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Ориентация"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Для фиксированных размеров бумаги."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Книжная"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Альбомная"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Умное разбиение на страницы"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Ищет визуальный просвет рядом с каждым разрывом страницы, чтобы строки текста не разрезались пополам."
+  },
+  "optionsPdfStamp": {
+    "message": "Проставлять URL и дату"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Добавляет URL страницы и дату съёмки в нижний колонтитул каждой страницы PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Загрузка"
+  },
+  "optionsSaveDirectory": {
+    "message": "Папка"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Вложенная папка в $DOWNLOADS$ для ваших снимков, например $EXAMPLE$. Пусто — прямо в $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Загрузки)"
+  },
+  "optionsSaveAs": {
+    "message": "Диалог «Сохранить как»"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Спрашивать, куда сохранять каждый файл, вместо тихой загрузки."
+  },
+  "optionsClipboardFit": {
+    "message": "Подгонять копии в буфере под ограничения приложений"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Уменьшает копии свыше $PIXELS$ пикселей, чтобы вставка в $APP$ и подобные работала.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Рабочий процесс"
+  },
+  "optionsAutoDownload": {
+    "message": "Автоматически загружать после съёмки"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Сохраняет изображение сразу по завершении съёмки."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Открывать редактор после съёмки"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Сразу переходить к пометкам (только для снимков из одной части)."
+  },
+  "optionsTheme": {
+    "message": "Тема"
+  },
+  "optionsThemeDesc": {
+    "message": "Для всплывающего окна и всех страниц FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Системная"
+  },
+  "optionsThemeLight": {
+    "message": "Светлая"
+  },
+  "optionsThemeDark": {
+    "message": "Тёмная"
+  },
+  "optionsShortcuts": {
+    "message": "Сочетания клавиш"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Вся страница: $KEYFULL$ · Видимая область: $KEYVISIBLE$. Настроить можно на $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Сохранено ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Ваши данные"
+  },
+  "optionsStorage": {
+    "message": "Хранилище"
+  },
+  "optionsStorageUsage": {
+    "message": "Использовано $USED$ из $QUOTA$ на этом устройстве.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Этот браузер не сообщает, сколько места занимает FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Ваши скриншоты сохраняются: браузер не удалит их, чтобы освободить место."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Ваши скриншоты находятся в хранилище браузера по принципу «best effort», которое он может очистить, чтобы освободить место."
+  },
+  "optionsStorageKeep": {
+    "message": "Сохранить мои данные"
+  },
+  "optionsExport": {
+    "message": "Экспортировать всё"
+  },
+  "optionsExportDesc": {
+    "message": "Записывает один файл с вашими настройками и списком ваших скриншотов. Он сохраняется на это устройство и никуда не отправляется."
+  },
+  "optionsExportImages": {
+    "message": "Включить изображения"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Сами изображения, на которые приходится почти весь размер. Без них файл перечисляет ваши скриншоты, но не содержит ни одного из них."
+  },
+  "optionsExportSize": {
+    "message": "Размер файла: около $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Оставшиеся данные"
+  },
+  "optionsSweepDesc": {
+    "message": "Прерванный захват может оставить на диске кадры, не принадлежащие ни одному скриншоту. Они не отображаются ни на одной странице, поэтому ни одна страница не может их удалить. Это находит и удаляет их."
+  },
+  "optionsSweepBtn": {
+    "message": "Найти и удалить"
+  },
+  "optionsSweepResult": {
+    "message": "Удалено. Очищенные захваты: $COUNT$ · Освобождено места: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Ничего не осталось: всё сохранённое принадлежит скриншоту, который вы видите."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Сбросить настройки"
+  },
+  "optionsResetDesc": {
+    "message": "Возвращает каждую настройку на этой странице к исходному значению. Ваши скриншоты не затрагиваются."
+  },
+  "optionsResetBtn": {
+    "message": "Сбросить"
+  },
+  "optionsResetConfirm": {
+    "message": "Вернуть все настройки FullShot к значениям по умолчанию? Ваши скриншоты это не затронет."
+  },
+  "optionsResetDone": {
+    "message": "Настройки вернулись к значениям по умолчанию."
+  },
+  "optionsDeleteAll": {
+    "message": "Удалить всё"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Удаляет все скриншоты из вашей истории и всё, что осталось от прерванных захватов. Ваши настройки остаются прежними."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Удалить всё, что FullShot сохранил на этом устройстве?\n\nСкриншотов в вашей истории: $COUNT$\nОстатков от прерванных захватов: $LEFTOVER$\nБудет освобождено места: $SIZE$\n\nВаши настройки это не затронет. Отменить это действие нельзя.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Удалено. FullShot больше не хранит скриншоты на этом устройстве."
+  },
+  "resultPageTitle": {
+    "message": "Снимок — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Копировать"
+  },
+  "resultCopyTip": {
+    "message": "Скопировать изображение в буфер обмена"
+  },
+  "resultEdit": {
+    "message": "Редактировать"
+  },
+  "resultEditTip": {
+    "message": "Открыть в редакторе"
+  },
+  "resultBeautify": {
+    "message": "Оформить"
+  },
+  "resultBeautifyTip": {
+    "message": "Оформить — рамка и фон для публикации"
+  },
+  "resultClip": {
+    "message": "Клип"
+  },
+  "resultClipTip": {
+    "message": "Клип прокрутки — анимированный $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Размер бумаги PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Скачать"
+  },
+  "resultDeleteTip": {
+    "message": "Удалить снимок"
+  },
+  "resultHistoryTip": {
+    "message": "История снимков"
+  },
+  "resultProgressAssembling": {
+    "message": "Собираем ваш снимок…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Декодируется $COUNT$ кадр…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingFew": {
+    "message": "Декодируется $COUNT$ кадра…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingMany": {
+    "message": "Декодируется $COUNT$ кадров…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Декодируется $COUNT$ кадра…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Сшивается часть $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Сшивается часть $INDEX$ из ~$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Сохранение…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$ × $HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Совет: перетащите изображение прямо на рабочий стол или воспользуйтесь кнопкой $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Здесь ничего нет"
+  },
+  "resultEmptyBody": {
+    "message": "Этого снимка больше не существует."
+  },
+  "resultOpenHistory": {
+    "message": "Открыть историю"
+  },
+  "resultSomethingWrong": {
+    "message": "Что-то пошло не так — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Часть $INDEX$ из $TOTAL$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Скачать часть"
+  },
+  "resultEditPart": {
+    "message": "Редактировать часть"
+  },
+  "resultClipPart": {
+    "message": "Клип из части"
+  },
+  "resultPartAlt": {
+    "message": "Часть снимка $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Скачивается $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Удалить этот снимок безвозвратно?"
+  },
+  "resultDeleted": {
+    "message": "Снимок удалён."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredFew": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredMany": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Этот снимок слишком высокий, чтобы вставить его одним читаемым изображением, поэтому $COPY$ помещает в буфер обмена уменьшенный обзор всей страницы. Мелкий текст на нём прочитать не удастся.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Часть $INDEX$ скопирована в буфер обмена",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Создаётся PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF скачан ($COUNT$ страница)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneFew": {
+    "message": "PDF скачан ($COUNT$ страницы)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneMany": {
+    "message": "PDF скачан ($COUNT$ страниц)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF скачан ($COUNT$ страницы)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "Не удалось создать PDF — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Редактор — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Назад к снимку"
+  },
+  "editorToolSelect": {
+    "message": "Выделить / переместить ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Обрезать ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Карандаш ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Маркер ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Линия ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Стрелка ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Прямоугольник ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Эллипс ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Текст ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Размытие / пикселизация ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Нумерованный шаг ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Штамп-эмодзи ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Свой цвет"
+  },
+  "editorStrokeTip": {
+    "message": "Толщина линии"
+  },
+  "editorStrokeThin": {
+    "message": "Тонкая"
+  },
+  "editorStrokeMedium": {
+    "message": "Средняя"
+  },
+  "editorStrokeThick": {
+    "message": "Толстая"
+  },
+  "editorSizeTip": {
+    "message": "Размер текста / эмодзи"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Отменить ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Вернуть ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Уменьшить (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Увеличить (+)"
+  },
+  "editorZoomFit": {
+    "message": "Вписать"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Вписать в окно — щёлкните для 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Щёлкните, чтобы вписать в окно"
+  },
+  "editorExport": {
+    "message": "Экспорт"
+  },
+  "editorExportCopy": {
+    "message": "Копировать в буфер обмена"
+  },
+  "editorExportImage": {
+    "message": "Изображение $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Документ $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Сохранить"
+  },
+  "editorSaveTip": {
+    "message": "Сохранить изменения в историю ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Ещё"
+  },
+  "editorMenuFiles": {
+    "message": "Перейти в историю"
+  },
+  "editorMenuOptions": {
+    "message": "Перейти к настройкам"
+  },
+  "editorMenuShortcuts": {
+    "message": "Сочетания клавиш"
+  },
+  "editorCropApply": {
+    "message": "Применить обрезку"
+  },
+  "editorCropCancel": {
+    "message": "Отмена"
+  },
+  "editorShortcutsHeading": {
+    "message": "Сочетания клавиш"
+  },
+  "editorShortcutTools": {
+    "message": "Выбор инструментов"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Отменить / вернуть"
+  },
+  "editorShortcutSave": {
+    "message": "Сохранить в историю"
+  },
+  "editorShortcutZoom": {
+    "message": "Уменьшить / увеличить"
+  },
+  "editorShortcutDelete": {
+    "message": "Удалить выбранный объект"
+  },
+  "editorShortcutEscape": {
+    "message": "Снять выделение / отменить обрезку"
+  },
+  "editorShortcutsClose": {
+    "message": "Закрыть"
+  },
+  "editorNotFound": {
+    "message": "Снимок не найден"
+  },
+  "editorToastDownloaded": {
+    "message": "Скачано"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF скачан"
+  },
+  "editorToastSaved": {
+    "message": "Сохранено в историю"
+  },
+  "historyPageTitle": {
+    "message": "История — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · История"
+  },
+  "historySearchPlaceholder": {
+    "message": "Поиск по названию или URL…"
+  },
+  "historySelectAll": {
+    "message": "Выбрать все"
+  },
+  "historyClearSelection": {
+    "message": "Снять выделение"
+  },
+  "historyDownloadSelected": {
+    "message": "Скачать выбранные"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Скачать ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Удалить выбранные"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Удалить ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Снимков пока нет"
+  },
+  "historyEmptyBody": {
+    "message": "Сделанные снимки появятся здесь. Щёлкните значок FullShot на панели инструментов, чтобы начать."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Совпадений нет"
+  },
+  "historyNoMatchesBody": {
+    "message": "Нет снимков, соответствующих «$QUERY$».",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ снимок · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFew": {
+    "message": "$COUNT$ снимка · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountMany": {
+    "message": "$COUNT$ снимков · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ снимка · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ из $COUNT$ снимка · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredFew": {
+    "message": "$SHOWN$ из $COUNT$ снимков · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredMany": {
+    "message": "$SHOWN$ из $COUNT$ снимков · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ из $COUNT$ снимка · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Выбрать"
+  },
+  "historyCardOpen": {
+    "message": "Открыть"
+  },
+  "historyCardEdit": {
+    "message": "Редактировать"
+  },
+  "historyCardDownloadTip": {
+    "message": "Скачать"
+  },
+  "historyCardDeleteTip": {
+    "message": "Удалить"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Открыть исходную страницу"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$ · частей: $COUNT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Снимок"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Удалить этот снимок?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Удалить безвозвратно $COUNT$ снимок?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyFew": {
+    "message": "Удалить безвозвратно $COUNT$ снимка?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyMany": {
+    "message": "Удалить безвозвратно $COUNT$ снимков?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Удалить безвозвратно $COUNT$ снимка?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Скачивается $COUNT$ снимок",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingFew": {
+    "message": "Скачивается $COUNT$ снимка",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingMany": {
+    "message": "Скачивается $COUNT$ снимков",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Скачивается $COUNT$ снимка",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Удалено"
+  },
+  "beautifyPageTitle": {
+    "message": "Оформление — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Оформление"
+  },
+  "actionBack": {
+    "message": "Назад"
+  },
+  "commonLoading": {
+    "message": "Загрузка…"
+  },
+  "beautifyFieldSize": {
+    "message": "Размер"
+  },
+  "beautifyPresetAuto": {
+    "message": "Авто"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200 × 630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Квадрат"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Вертикальный"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Фон"
+  },
+  "beautifyBgSlate": {
+    "message": "Сланец"
+  },
+  "beautifyBgGraphite": {
+    "message": "Графит"
+  },
+  "beautifyBgSky": {
+    "message": "Небо"
+  },
+  "beautifyBgSunset": {
+    "message": "Закат"
+  },
+  "beautifyBgGrape": {
+    "message": "Виноград"
+  },
+  "beautifyBgMint": {
+    "message": "Мята"
+  },
+  "beautifyFieldPadding": {
+    "message": "Отступ"
+  },
+  "beautifyFieldRadius": {
+    "message": "Скругление углов"
+  },
+  "beautifyFieldEffects": {
+    "message": "Эффекты"
+  },
+  "beautifyShadow": {
+    "message": "Тень"
+  },
+  "beautifyWindowFrame": {
+    "message": "Рамка окна"
+  },
+  "beautifyFieldExport": {
+    "message": "Экспорт"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Клип прокрутки — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Клип прокрутки"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Формат"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ воспроизводится везде. $WEBM$ компактнее и плавнее (записывается вживую в вашем браузере).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Ширина на выходе"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Плотность"
+  },
+  "scrollclipDensityHint": {
+    "message": "Чем выше плотность, тем чётче результат (ближе к исходному разрешению) — и тем больше файл."
+  },
+  "scrollclipFieldShape": {
+    "message": "Форма"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Скорость прокрутки (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Частота кадров (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Движение"
+  },
+  "scrollclipBounce": {
+    "message": "С возвратом (прокрутка обратно наверх)"
+  },
+  "scrollclipLoop": {
+    "message": "Повторять бесконечно"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Копировать кадр"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Скопировать заглавный (верхний) кадр как $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ кадр · $SECONDS$ с",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsFew": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ кадра · $SECONDS$ с",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsMany": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ кадров · $SECONDS$ с",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ кадра · $SECONDS$ с",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Отрисовка кадров… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Кодирование $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Завершение…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Запись $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Идёт запись…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ здесь не поддерживается — экспортируем $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Заглавный кадр скопирован"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — пакетная съёмка"
+  },
+  "batchHeading": {
+    "message": "Пакетная съёмка"
+  },
+  "batchIntro": {
+    "message": "Вставьте адреса, по одному в строке. FullShot откроет каждую страницу, снимет её целиком в вашу историю и перейдёт к следующей — не более $MAX$ за раз. Снимки появятся в истории; нажмите $OPENLINK$, чтобы просмотреть, отредактировать или экспортировать любой из них.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Снять все"
+  },
+  "batchPermissionHint": {
+    "message": "Чтобы открыть эти страницы, при первом запуске потребуется разовое разрешение."
+  },
+  "batchPermissionDeclined": {
+    "message": "В разрешении открыть эти страницы было отказано."
+  },
+  "batchPanelPlan": {
+    "message": "План"
+  },
+  "batchPanelProgress": {
+    "message": "Ход выполнения"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ страница к съёмке",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountFew": {
+    "message": "$COUNT$ страницы к съёмке",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountMany": {
+    "message": "$COUNT$ страниц к съёмке",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ страницы к съёмке",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ страниц к съёмке (ограничено $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Пока нет корректных адресов"
+  },
+  "batchSkipped": {
+    "message": "Пропущено: $COUNT$ — $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "неподдерживаемая схема"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "некорректный"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "нет узла"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "дубликат"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "пусто"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "сверх лимита ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ готово",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ готово, $FAILED$ с ошибкой",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ готово — завершено",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ готово, $FAILED$ с ошибкой — завершено",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "открыть"
+  },
+  "batchJobTimedOut": {
+    "message": "время съёмки истекло"
+  },
+  "batchJobNoSession": {
+    "message": "нет сессии съёмки"
+  },
+  "batchJobFailed": {
+    "message": "съёмка не удалась"
+  },
+  "batchJobError": {
+    "message": "ошибка съёмки"
+  },
+  "regionHintDrag": {
+    "message": "Потяните, чтобы выделить участок — $ESC$ для отмены",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Щёлкните элемент, чтобы снять его — $ESC$ для отмены",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Страницы браузера — «Настройки», «Расширения», новая вкладка — закрыты для любых расширений. Попробуйте FullShot на обычной веб-странице."
+  },
+  "errRestrictedDevtools": {
+    "message": "Расширение не может снимать окна DevTools. Воспользуйтесь встроенным инструментом снимков экрана вашего компьютера."
+  },
+  "errRestrictedViewSource": {
+    "message": "Страницы с исходным кодом снять нельзя. Снимите вместо этого саму страницу."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Страницы расширений, включая собственные страницы FullShot, защищены браузером и не могут быть сняты."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store запрещает расширениям читать свои страницы, поэтому эту страницу снять нельзя."
+  },
+  "errRestrictedGeneric": {
+    "message": "Эта страница защищена браузером и не может быть снята."
+  },
+  "errWrongTab": {
+    "message": "Съёмка остановлена — вы переключили вкладку. Держите эту страницу на переднем плане, пока FullShot не закончит."
+  },
+  "errGeneric": {
+    "message": "Съёмка прервалась, не дойдя до конца. Попробуйте ещё раз."
+  },
+  "errBusy": {
+    "message": "На этой вкладке уже идёт съёмка."
+  },
+  "errBlocked": {
+    "message": "Эту страницу нельзя снять (ограничение браузера)."
+  },
+  "errNoStart": {
+    "message": "FullShot не смог запуститься на этой странице. Перезагрузите страницу и попробуйте снова."
+  },
+  "errCrash": {
+    "message": "Съёмка неожиданно прервалась. Попробуйте ещё раз."
+  },
+  "errUnknownMessage": {
+    "message": "Неизвестное сообщение."
+  },
+  "errQuota": {
+    "message": "Браузер ограничивает частоту съёмки страниц. Подождите немного и попробуйте снова."
+  },
+  "errFrameHandover": {
+    "message": "Браузер перестал передавать изображение на полпути. Подождите несколько секунд и попробуйте снова."
+  },
+  "errLostTab": {
+    "message": "Съёмка потеряла эту вкладку. Перезагрузите страницу и попробуйте снова."
+  },
+  "errStoppedEarly": {
+    "message": "Съёмка была остановлена, не дойдя до конца."
+  },
+  "errStorageFull": {
+    "message": "Больше нет места для сохранения этого захвата. Удалите несколько скриншотов из истории и повторите попытку."
+  },
+  "reasonGeneric": {
+    "message": "причина не указана. Попробуйте ещё раз."
+  },
+  "reasonDecodeFailed": {
+    "message": "этот снимок не удалось декодировать."
+  },
+  "reasonTooLarge": {
+    "message": "изображение слишком велико для экспорта здесь."
+  },
+  "toastCopiedClipboard": {
+    "message": "Скопировано в буфер обмена"
+  },
+  "toastCopyFailed": {
+    "message": "Не удалось скопировать — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Не удалось экспортировать — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Сохранено: $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Сохранено: $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ Б",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ КБ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ МБ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ ГБ",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

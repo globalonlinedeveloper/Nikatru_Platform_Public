@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — udskift mig",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "UDSKIFT MIG — én sætning, ét formål, højst 132 tegn, ingen markedsføring.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — udskift mig",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Skift tema",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Indstillinger",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktiv fane",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Læser…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopiér titel",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Læs den aktive fane igen",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Luk",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Kopieret",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kunne ikke kopiere — tryk Ctrl+C i stedet",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Seneste $ACTION$ mislykkedes — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Seneste $ACTION$ mislykkedes — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "titellæsning",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopiering",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "datasletning",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "kørsel",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Noget stoppede det her, før det blev færdigt. Prøv igen.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Denne fane er allerede optaget.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Denne side er beskyttet af browseren, og udvidelser må ikke læse den.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Der blev ikke fundet nogen aktiv fane.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Denne side har ingen titel at læse.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Annulleret.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Ukendt besked.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Den fane blev lukket, før arbejdet var færdigt.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Udvidelsen svarede ikke.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Der kom intet tilbage.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Browserens egne sider som Indstillinger, Udvidelser og Ny fane er forbudt område for alle udvidelser. Prøv det på en almindelig webside.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Udviklerværktøjernes vinduer er forbudt område for udvidelser.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Kildekodesider er forbudt område for udvidelser. Prøv siden selv i stedet.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Udvidelsers sider, også denne udvidelses egne, er beskyttet af browseren.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store forhindrer udvidelser i at læse sine sider.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Lokale filer kræver én ekstra tilladelse. Åbn browserens side Udvidelser, find denne udvidelse, og slå »Tillad adgang til fil-URL'er« til.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Denne side blev ikke indlæst, så der er endnu ikke noget at læse.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Dette er browserens indbyggede PDF-fremviser. Udvidelser kan ikke læse inde i den — åbn PDF-filen i en almindelig fane, eller hent den først.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Denne side er sandkasset af det websted, der åbnede den, så udvidelser kan ikke læse den.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Webstedet for tilføjelser forhindrer udvidelser i at læse sine sider.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Denne enhed er løbet tør for plads, så intet blev gemt. Slet nogle gemte rækker under Indstillinger, og prøv igen.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Det her tog for lang tid og blev stoppet. Der blev ikke efterladt noget.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Den værdi er for lang til at blive gemt i dine synkroniserede indstillinger. Prøv en kortere.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Den indstilling kunne ikke gemmes. Vent et øjeblik, og prøv igen.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Indstillinger — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Indstillinger",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Indstillinger",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Gemmes automatisk. Hvis browserens synkronisering er slået til, følger dine indstillinger med din browserprofil — de sendes aldrig til os.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Adfærd",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopiér ved åbning",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopiér resultatet til udklipsholderen, så snart pop op-vinduet åbnes.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Gem en lokal historik",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Slået fra som standard. Når den er slået til, gemmes resultaterne kun på denne enhed, vises nedenfor og kan slettes når som helst.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Historikgrænse",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "De ældste rækker fjernes, når listen bliver længere end det her.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Slet rækker ældre end",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dage. Gamle rækker fjernes automatisk i baggrunden. Sæt 0 for at beholde rækker, indtil historikgrænsen fjerner dem.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Følger som standard dit system.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "System",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Lyst",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Mørkt",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Dine data",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Der er ikke gemt noget på denne enhed.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ rækker er gemt på denne enhed. Intet forlader den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ række er gemt på denne enhed. Intet forlader den.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ rækker er gemt på denne enhed. Intet forlader den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ rækker er gemt på denne enhed. Intet forlader den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ rækker er gemt på denne enhed. Intet forlader den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ rækker er gemt på denne enhed. Intet forlader den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Vedvarende: browseren har lovet ikke at rydde det her.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Uden garanti: browseren kan selv rydde det her, hvis enheden får for lidt plads. Eksportér en sikkerhedskopi.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Denne browser oplyser ikke, om gemte data bliver bevaret, så behandl dem som midlertidige, og eksportér en sikkerhedskopi.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Bruger $USED$ af $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Slet",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Slet rækken fra $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Eksportér alt",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Gemmer hver gemt række i én JSON-fil på denne enhed. Intet uploades.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Eksportér alt",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Slet alt",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Fjerner hver gemt række fra denne enhed. Indstillingerne bevares.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Slet alt",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Nulstil indstillinger",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Sætter hver indstilling på denne side tilbage til standarden og fjerner dem fra din synkroniserede browserprofil. Gemte rækker bevares.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Nulstil indstillinger",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Rapportér et problem",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Forbered en problemrapport",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Bygger en lille fil, der beskriver denne udvidelses tilstand. Du ser præcis, hvad der står i den, før den gemmes, og intet sendes nogen steder hen.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Forbered en rapport",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Om",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — udskift mig",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Én sætning, der siger præcis, hvad dette værktøj gør. Det udfører sit arbejde på din enhed: ingen konto, ingen sporing, ingen netværkskald, intet sendes til os.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Gemt",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Alt er slettet",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Kunne ikke slette — prøv igen",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Kunne ikke gemme den indstilling",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Eksporten er gemt",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Kunne ikke gemme filen",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Rækken er slettet",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Indstillingerne er nulstillet",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Kunne ikke nulstille indstillingerne",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Rapporten er gemt",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Annuller",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Slet alt?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Hver gemt række fjernes fra denne enhed. Dine indstillinger bevares. Det kan ikke fortrydes.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Nulstil alle indstillinger?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Hver indstilling på denne side vender tilbage til standarden og fjernes fra din synkroniserede browserprofil. Dine gemte rækker bevares. Det kan ikke fortrydes.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Gem denne problemrapport?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Det her er alt, hvad filen kommer til at indeholde. Den indeholder ingen sideadresser, ingen sidetekst og intet, du har fanget. Intet sendes nogen steder hen — filen gemmes på denne enhed, og det er dig, der bestemmer, om den skal deles.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Gem rapporten",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Inkognitovindue — dette resultat blev ikke gemt i din historik.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Webstedsadgang",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Adgang til alle websteder",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Kræves kun til de funktioner, der virker på sider, hvor du ikke har klikket på knappen i værktøjslinjen. Du kan når som helst tage den tilbage her.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Giv adgang",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Tilbagekald adgang",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Denne udvidelse kan i øjeblikket læse alle websteder, du besøger.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Denne udvidelse kan først læse en fane, når du har klikket på dens knap i værktøjslinjen.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Adgang givet",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Adgang blev ikke givet",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Adgang tilbagekaldt",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Kunne ikke tilbagekalde den adgang",
+    "description": "en: Could not revoke that access"
+  }
+}

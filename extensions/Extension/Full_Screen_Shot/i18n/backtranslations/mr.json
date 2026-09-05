@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Instead of capturing the inner scrolling panels and iframes the way they look, make them as big as their entire text. For frames on other sites one additional permission is asked only once.",
+  "optionsLead": "Changes are saved automatically and are synced into your browser profile.",
+  "optionsExpandPermGranted": "Permission obtained — the frames on other sites are expanded as well.",
+  "optionsExpandPermMissing": "If the \"read all websites\" permission is not there, then frames on other sites are captured just the way they look. Panels and iframes on that same site always work.",
+  "optionsRedactPIIDesc": "In the text the page discloses it searches for e-mails, telephone numbers, credit card numbers, national identity numbers (SSN) and API keys and places a solid black block over what matched, in the image being saved. It cannot read text drawn as pixels — canvas, image, PDF, video frame. This recognition runs on your own device; nothing at all is ever sent anywhere. This applies to captures of the whole page (document-scroll); the block is permanent, so check the result yourself.",
+  "scrollclipFormatHint": "GIF runs everywhere. WebM is small and more smooth (it is recorded live right in your browser).",
+  "batchPermissionHint": "To open these pages a permission is needed only once, the first time.",
+  "batchPermissionDeclined": "The permission to open those pages was refused."
+}

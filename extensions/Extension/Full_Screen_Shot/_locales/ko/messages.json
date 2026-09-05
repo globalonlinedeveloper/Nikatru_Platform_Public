@@ -1,0 +1,2020 @@
+{
+  "appName": {
+    "message": "FullShot – 전체 페이지 스크린샷"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "전체 페이지, 보이는 영역, 지정 영역, 특정 요소를 캡처하세요. 편집하고 주석을 달아 PNG, JPEG, WebP, PDF로 내보낼 수 있으며 페이지도 알아서 나눠 줍니다."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – 페이지 캡처 (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "전체 페이지 캡처"
+  },
+  "commandCaptureVisible": {
+    "message": "보이는 영역 캡처"
+  },
+  "commandCaptureRegion": {
+    "message": "선택한 영역 캡처"
+  },
+  "commandCaptureElement": {
+    "message": "페이지 요소 캡처(클릭해서 선택)"
+  },
+  "popupToggleTheme": {
+    "message": "테마 전환"
+  },
+  "popupModeFullTitle": {
+    "message": "전체 페이지"
+  },
+  "popupModeFullSub": {
+    "message": "스크롤하며 페이지 전체를 캡처"
+  },
+  "popupModeVisibleTitle": {
+    "message": "보이는 영역"
+  },
+  "popupModeVisibleSub": {
+    "message": "화면에 보이는 부분만"
+  },
+  "popupModeRegionTitle": {
+    "message": "선택한 영역"
+  },
+  "popupModeRegionSub": {
+    "message": "드래그해서 영역 지정"
+  },
+  "popupModeElementTitle": {
+    "message": "요소"
+  },
+  "popupModeElementSub": {
+    "message": "페이지의 아무 요소나 클릭"
+  },
+  "popupModeDelayedTitle": {
+    "message": "지연 캡처"
+  },
+  "popupModeDelayedSub": {
+    "message": "카운트다운 후 전체 페이지"
+  },
+  "popupDelayLabel": {
+    "message": "지연 시간(초)"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$초",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "스크롤 패널과 iframe 펼치기"
+  },
+  "popupExpandToggleTip": {
+    "message": "내부 스크롤 패널과 iframe을 보이는 그대로가 아니라 내용 전체가 담기도록 키웁니다. 다른 사이트의 프레임은 추가 권한을 한 번만 요청합니다."
+  },
+  "popupDismiss": {
+    "message": "닫기"
+  },
+  "popupLastErrorFailed": {
+    "message": "마지막 $MODE$ 실패 – $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "마지막 $MODE$ 실패 – $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "전체 페이지 캡처"
+  },
+  "popupModeNameVisible": {
+    "message": "보이는 영역 캡처"
+  },
+  "popupModeNameRegion": {
+    "message": "영역 캡처"
+  },
+  "popupModeNameElement": {
+    "message": "요소 캡처"
+  },
+  "popupModeNameGeneric": {
+    "message": "캡처"
+  },
+  "popupNoActiveTab": {
+    "message": "활성 탭을 찾을 수 없습니다."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "캡처를 시작하지 못했습니다."
+  },
+  "popupLinkHistory": {
+    "message": "기록"
+  },
+  "popupLinkBatch": {
+    "message": "일괄"
+  },
+  "popupLinkOptions": {
+    "message": "설정"
+  },
+  "optionsPageTitle": {
+    "message": "설정 – FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · 설정"
+  },
+  "optionsHeading": {
+    "message": "설정"
+  },
+  "optionsLead": {
+    "message": "변경 사항은 자동으로 저장되어 브라우저 프로필에 동기화됩니다."
+  },
+  "optionsSectionImage": {
+    "message": "이미지"
+  },
+  "optionsFormat": {
+    "message": "형식"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$는 무손실, $JPEG$는 더 작고, $WEBP$는 비슷한 품질에서 가장 작습니다.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ 품질",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "파일 이름 서식"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "자리표시자: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "캡처"
+  },
+  "optionsCaptureDelay": {
+    "message": "단계마다 추가 대기"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "스크롤할 때마다 기다릴 밀리초입니다. 느리거나 애니메이션이 많은 페이지에서는 값을 올리세요."
+  },
+  "optionsHideFixed": {
+    "message": "고정·부착 요소 숨기기"
+  },
+  "optionsHideFixedDesc": {
+    "message": "머리글이 화면마다 반복되지 않게 합니다(맨 위에 한 번만 표시)."
+  },
+  "optionsPreScroll": {
+    "message": "미리 스크롤해서 지연 콘텐츠 불러오기"
+  },
+  "optionsPreScrollDesc": {
+    "message": "캡처 전에 페이지를 한 번 훑습니다. 느리지만 지연 로딩 이미지를 놓치지 않습니다."
+  },
+  "optionsAdaptiveWait": {
+    "message": "이미지 디코딩 기다리기"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "늦게 오거나 지연 로딩되는 이미지가 각 프레임 전에 디코딩을 마치게 해서, 검은색이나 빈 타일로 찍히지 않게 합니다."
+  },
+  "optionsHideOverlays": {
+    "message": "배너와 팝업 숨기기"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "캡처 전에 쿠키·동의 배너, 뉴스레터 모달, ‘앱 받기’ 팝업을 없애고, 모달 때문에 멈춘 페이지를 풀어 줍니다. 캡처 후에는 원래대로 돌려놓습니다."
+  },
+  "optionsExpandInner": {
+    "message": "스크롤되는 내용 펼치기"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "내부 패널과 iframe을 키워, 그 안쪽 경계 아래에 숨어 있던 내용까지 보여 줍니다. 보이는 그대로 캡처하지 않습니다."
+  },
+  "optionsExpandPermRow": {
+    "message": "다른 사이트의 프레임"
+  },
+  "optionsExpandPermAllow": {
+    "message": "허용"
+  },
+  "optionsExpandPermGranted": {
+    "message": "권한이 부여되었습니다 – 다른 사이트의 프레임도 펼쳐집니다."
+  },
+  "optionsExpandPermMissing": {
+    "message": "‘$PERMISSION$’ 권한이 없으면 다른 사이트의 프레임은 보이는 그대로 캡처됩니다. 패널과 같은 사이트의 iframe은 언제나 동작합니다.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "가상화 목록 펼치기"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "렌더링 창 방식의 피드($LIB1$ / $LIB2$ 계열)를 차례로 넘기며 화면에 보이는 행뿐 아니라 내용 전체를 캡처합니다. 아주 긴 목록에서는 느립니다.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "조작해야 나오는 내용 펼치기"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "캡처 전에 접힌 $DETAILS$, 비활성 탭, 아코디언, ‘더 보기’ 영역을 열었다가 다시 되돌립니다. 클릭 뒤에 숨어 있던 내용을 드러냅니다.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "‘$BUTTONTEXT$’ 버튼 클릭",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "‘더 불러오기’·‘더 보기’ 버튼을 누르고 새 내용이 실릴 때까지 기다리기를 피드가 끝날 때까지 반복합니다. 위 설정과 달리 아직 페이지에 없는 내용을 가져오며, 불러온 내용은 캡처 후에도 남습니다."
+  },
+  "optionsInfiniteScroll": {
+    "message": "스크롤해서 무한 피드 불러오기"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "‘더 불러오기’ 버튼이 없는 피드용입니다. 맨 아래까지 스크롤하고 다음 쪽을 기다리기를 피드가 더 늘지 않을 때까지 반복합니다(한도가 있어 끝없는 피드를 계속 좇지는 않습니다). 불러온 내용은 캡처 후에도 남습니다."
+  },
+  "optionsWaitStable": {
+    "message": "내용이 다 실릴 때까지 기다리기"
+  },
+  "optionsWaitStableDesc": {
+    "message": "스켈레톤·자리표시 로딩 표시(aria-busy 영역, 반짝이는 블록)가 실제 내용으로 바뀔 때까지 기다렸다가 캡처합니다. 페이지 중간의 ‘불러오는 중…’이 회색 자리표시로 찍히지 않습니다. 한도가 있어 멈춘 로딩 표시 때문에 캡처가 멎지는 않습니다."
+  },
+  "optionsRedactPII": {
+    "message": "민감한 정보 자동 가리기"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "페이지가 드러내는 텍스트에서 이메일 주소, 전화번호, 신용카드 번호, 주민등록번호, API 키를 찾아 일치한 부분을 저장되는 이미지에서 불투명한 블록으로 덮습니다. 픽셀로 그려진 텍스트는 읽지 못합니다 — 캔버스, 이미지, PDF, 동영상 프레임. 탐지는 사용자의 기기 안에서만 이뤄지며, 어떤 것도 어디로도 전송되지 않습니다. 전체 페이지(문서 스크롤) 캡처에 적용되며, 블록은 되돌릴 수 없으니 결과를 직접 확인하세요."
+  },
+  "optionsMaxPageHeight": {
+    "message": "최대 페이지 높이"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "무한 스크롤 피드를 위한 안전 상한(CSS px)입니다."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF 내보내기"
+  },
+  "optionsPdfPaper": {
+    "message": "기본 용지 크기"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "‘$IMAGESIZE$’를 고르면 한 페이지가 스크린샷과 정확히 같은 크기가 됩니다.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "이미지 크기"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "레터"
+  },
+  "optionsPaperLegal": {
+    "message": "리걸"
+  },
+  "optionsPdfOrientation": {
+    "message": "방향"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "고정 용지 크기에 적용됩니다."
+  },
+  "optionsOrientationPortrait": {
+    "message": "세로"
+  },
+  "optionsOrientationLandscape": {
+    "message": "가로"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "스마트 페이지 나누기"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "페이지가 나뉘는 자리 근처에서 시각적 여백을 찾아 글줄이 가운데서 잘리지 않게 합니다."
+  },
+  "optionsPdfStamp": {
+    "message": "URL과 날짜 찍기"
+  },
+  "optionsPdfStampDesc": {
+    "message": "PDF 각 페이지 아래쪽에 페이지 URL과 캡처 날짜를 넣습니다."
+  },
+  "optionsSectionDownload": {
+    "message": "다운로드"
+  },
+  "optionsSaveDirectory": {
+    "message": "폴더"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "스크린샷을 넣을 $DOWNLOADS$ 아래 하위 폴더입니다(예: $EXAMPLE$). 비워 두면 $DOWNLOADS$에 바로 저장됩니다.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(다운로드)"
+  },
+  "optionsSaveAs": {
+    "message": "‘다른 이름으로 저장’ 대화상자"
+  },
+  "optionsSaveAsDesc": {
+    "message": "말없이 내려받지 않고 파일마다 저장 위치를 묻습니다."
+  },
+  "optionsClipboardFit": {
+    "message": "클립보드 복사본을 앱 한도에 맞추기"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "$PIXELS$픽셀이 넘는 복사본을 줄여 $APP$ 등에 붙여 넣을 수 있게 합니다.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "작업 흐름"
+  },
+  "optionsAutoDownload": {
+    "message": "캡처 후 자동 다운로드"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "캡처가 끝나면 곧바로 이미지를 저장합니다."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "캡처 후 편집기 열기"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "곧장 주석 작업으로 넘어갑니다(한 장짜리 캡처만)."
+  },
+  "optionsTheme": {
+    "message": "테마"
+  },
+  "optionsThemeDesc": {
+    "message": "팝업과 모든 FullShot 페이지에 적용됩니다."
+  },
+  "optionsThemeSystem": {
+    "message": "시스템"
+  },
+  "optionsThemeLight": {
+    "message": "밝게"
+  },
+  "optionsThemeDark": {
+    "message": "어둡게"
+  },
+  "optionsShortcuts": {
+    "message": "키보드 단축키"
+  },
+  "optionsShortcutsDesc": {
+    "message": "전체 페이지: $KEYFULL$ · 보이는 영역: $KEYVISIBLE$. $URL$에서 바꿀 수 있습니다",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "저장됨 ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "내 데이터"
+  },
+  "optionsStorage": {
+    "message": "저장 공간"
+  },
+  "optionsStorageUsage": {
+    "message": "이 기기에서 $QUOTA$ 중 $USED$ 사용 중입니다.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "이 브라우저는 FullShot이 사용하는 공간을 알려주지 않습니다."
+  },
+  "optionsStorageKept": {
+    "message": "스크린샷이 유지됩니다. 브라우저가 공간 확보를 위해 삭제하지 않습니다."
+  },
+  "optionsStorageAtRisk": {
+    "message": "스크린샷이 브라우저의 최선 노력(best effort) 저장소에 있습니다. 공간 확보를 위해 삭제될 수 있습니다."
+  },
+  "optionsStorageKeep": {
+    "message": "내 데이터 유지"
+  },
+  "optionsExport": {
+    "message": "전체 내보내기"
+  },
+  "optionsExportDesc": {
+    "message": "설정과 스크린샷 목록을 담은 파일 하나를 씁니다. 이 기기에 저장되며 어디로도 전송되지 않습니다."
+  },
+  "optionsExportImages": {
+    "message": "이미지 포함"
+  },
+  "optionsExportImagesDesc": {
+    "message": "이미지 자체이며 용량의 대부분을 차지합니다. 포함하지 않으면 파일에는 스크린샷 목록만 있고 이미지는 하나도 들어가지 않습니다."
+  },
+  "optionsExportSize": {
+    "message": "파일 크기: 약 $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "남은 데이터"
+  },
+  "optionsSweepDesc": {
+    "message": "캡처가 중단되면 어떤 스크린샷에도 속하지 않는 프레임이 디스크에 남을 수 있습니다. 어떤 페이지에도 나타나지 않으므로 어떤 페이지에서도 삭제할 수 없습니다. 이 기능이 그것들을 찾아 제거합니다."
+  },
+  "optionsSweepBtn": {
+    "message": "찾아서 제거"
+  },
+  "optionsSweepResult": {
+    "message": "제거했습니다. 정리한 캡처: $COUNT$ · 확보한 공간: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "남은 것이 없습니다. 저장된 모든 것은 볼 수 있는 스크린샷에 속합니다."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "설정 초기화"
+  },
+  "optionsResetDesc": {
+    "message": "이 페이지의 모든 설정을 처음 값으로 되돌립니다. 스크린샷은 건드리지 않습니다."
+  },
+  "optionsResetBtn": {
+    "message": "초기화"
+  },
+  "optionsResetConfirm": {
+    "message": "FullShot의 모든 설정을 기본값으로 되돌릴까요? 스크린샷에는 영향을 주지 않습니다."
+  },
+  "optionsResetDone": {
+    "message": "설정이 기본값으로 되돌아갔습니다."
+  },
+  "optionsDeleteAll": {
+    "message": "전체 삭제"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "기록에 있는 모든 스크린샷과 중단된 캡처가 남긴 모든 것을 제거합니다. 설정은 그대로 유지됩니다."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "FullShot이 이 기기에 저장한 모든 것을 삭제할까요?\n\n기록의 스크린샷: $COUNT$\n중단된 캡처의 잔여물: $LEFTOVER$\n확보되는 공간: $SIZE$\n\n설정에는 영향을 주지 않습니다. 이 작업은 되돌릴 수 없습니다.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "삭제했습니다. FullShot은 이제 이 기기에 스크린샷을 저장하지 않습니다."
+  },
+  "resultPageTitle": {
+    "message": "스크린샷 – FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ – FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "복사"
+  },
+  "resultCopyTip": {
+    "message": "이미지를 클립보드에 복사"
+  },
+  "resultEdit": {
+    "message": "편집"
+  },
+  "resultEditTip": {
+    "message": "편집기에서 열기"
+  },
+  "resultBeautify": {
+    "message": "꾸미기"
+  },
+  "resultBeautifyTip": {
+    "message": "꾸미기 – 공유용 프레임과 배경"
+  },
+  "resultClip": {
+    "message": "클립"
+  },
+  "resultClipTip": {
+    "message": "스크롤 클립 – 움직이는 $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF 용지 크기"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "다운로드"
+  },
+  "resultDeleteTip": {
+    "message": "스크린샷 삭제"
+  },
+  "resultHistoryTip": {
+    "message": "스크린샷 기록"
+  },
+  "resultProgressAssembling": {
+    "message": "스크린샷을 합치는 중…"
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$개 프레임을 디코딩하는 중…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "$INDEX$번째 조각을 잇는 중…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "약 $TOTAL$개 중 $INDEX$번째 조각을 잇는 중…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "저장하는 중…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "팁: 이미지를 바탕화면으로 바로 끌어다 놓거나 $DOWNLOAD$를 쓰세요.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "아무것도 없습니다"
+  },
+  "resultEmptyBody": {
+    "message": "이 스크린샷은 더 이상 존재하지 않습니다."
+  },
+  "resultOpenHistory": {
+    "message": "기록 열기"
+  },
+  "resultSomethingWrong": {
+    "message": "문제가 발생했습니다 – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "$TOTAL$개 중 $INDEX$번째 조각 · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "조각 다운로드"
+  },
+  "resultEditPart": {
+    "message": "조각 편집"
+  },
+  "resultClipPart": {
+    "message": "조각으로 클립 만들기"
+  },
+  "resultPartAlt": {
+    "message": "스크린샷 $INDEX$번째 조각",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ 다운로드 중",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "이 스크린샷을 영구히 삭제할까요?"
+  },
+  "resultDeleted": {
+    "message": "스크린샷을 삭제했습니다."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "이 캡처는 너무 길어서 읽을 수 있는 한 장의 이미지로 붙여넣을 수 없습니다. 그래서 $COPY$는 페이지 전체를 축소한 개요를 클립보드에 넣습니다. 그 안의 작은 글자는 읽을 수 없습니다.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "$INDEX$번째 조각을 클립보드에 복사했습니다",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF를 만드는 중…"
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF를 다운로드했습니다($COUNT$쪽)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF 실패 – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "편집기 – FullShot"
+  },
+  "editorBackTip": {
+    "message": "스크린샷으로 돌아가기"
+  },
+  "editorToolSelect": {
+    "message": "선택 / 이동 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "자르기 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "펜 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "형광펜 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "선 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "화살표 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "사각형 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "타원 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "텍스트 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "흐리게 / 모자이크 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "번호 단계 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "이모지 스탬프 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "사용자 지정 색"
+  },
+  "editorStrokeTip": {
+    "message": "선 굵기"
+  },
+  "editorStrokeThin": {
+    "message": "얇게"
+  },
+  "editorStrokeMedium": {
+    "message": "보통"
+  },
+  "editorStrokeThick": {
+    "message": "굵게"
+  },
+  "editorSizeTip": {
+    "message": "텍스트 / 이모지 크기"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "실행 취소 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "다시 실행 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "축소 (-)"
+  },
+  "editorZoomInTip": {
+    "message": "확대 (+)"
+  },
+  "editorZoomFit": {
+    "message": "맞춤"
+  },
+  "editorZoomTipToHundred": {
+    "message": "창에 맞춤 – 클릭하면 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "클릭하면 창에 맞춥니다"
+  },
+  "editorExport": {
+    "message": "내보내기"
+  },
+  "editorExportCopy": {
+    "message": "클립보드에 복사"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ 이미지",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ 문서",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "저장"
+  },
+  "editorSaveTip": {
+    "message": "변경 사항을 기록에 저장 ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "더 보기"
+  },
+  "editorMenuFiles": {
+    "message": "기록으로 가기"
+  },
+  "editorMenuOptions": {
+    "message": "설정으로 가기"
+  },
+  "editorMenuShortcuts": {
+    "message": "키보드 단축키"
+  },
+  "editorCropApply": {
+    "message": "자르기 적용"
+  },
+  "editorCropCancel": {
+    "message": "취소"
+  },
+  "editorShortcutsHeading": {
+    "message": "키보드 단축키"
+  },
+  "editorShortcutTools": {
+    "message": "도구 선택"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "실행 취소 / 다시 실행"
+  },
+  "editorShortcutSave": {
+    "message": "기록에 저장"
+  },
+  "editorShortcutZoom": {
+    "message": "축소 / 확대"
+  },
+  "editorShortcutDelete": {
+    "message": "선택한 개체 제거"
+  },
+  "editorShortcutEscape": {
+    "message": "선택 해제 / 자르기 취소"
+  },
+  "editorShortcutsClose": {
+    "message": "닫기"
+  },
+  "editorNotFound": {
+    "message": "스크린샷을 찾을 수 없습니다"
+  },
+  "editorToastDownloaded": {
+    "message": "다운로드했습니다"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF를 다운로드했습니다"
+  },
+  "editorToastSaved": {
+    "message": "기록에 저장했습니다"
+  },
+  "historyPageTitle": {
+    "message": "기록 – FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · 기록"
+  },
+  "historySearchPlaceholder": {
+    "message": "제목이나 URL 검색…"
+  },
+  "historySelectAll": {
+    "message": "모두 선택"
+  },
+  "historyClearSelection": {
+    "message": "선택 해제"
+  },
+  "historyDownloadSelected": {
+    "message": "선택 항목 다운로드"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "다운로드 ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "선택 항목 삭제"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "삭제 ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "아직 스크린샷이 없습니다"
+  },
+  "historyEmptyBody": {
+    "message": "찍은 캡처가 여기에 나타납니다. 도구 모음의 FullShot 아이콘을 눌러 시작하세요."
+  },
+  "historyNoMatchesTitle": {
+    "message": "일치하는 항목 없음"
+  },
+  "historyNoMatchesBody": {
+    "message": "‘$QUERY$’와 일치하는 스크린샷이 없습니다.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "스크린샷 $COUNT$개 · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "스크린샷 $COUNT$개 중 $SHOWN$개 · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "선택"
+  },
+  "historyCardOpen": {
+    "message": "열기"
+  },
+  "historyCardEdit": {
+    "message": "편집"
+  },
+  "historyCardDownloadTip": {
+    "message": "다운로드"
+  },
+  "historyCardDeleteTip": {
+    "message": "삭제"
+  },
+  "historyCardOpenOriginal": {
+    "message": "원래 페이지 열기"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · 조각 $COUNT$개",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "스크린샷"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "이 스크린샷을 삭제할까요?"
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "스크린샷 $COUNT$개를 영구히 삭제할까요?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "스크린샷 $COUNT$개를 다운로드하는 중",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "삭제했습니다"
+  },
+  "beautifyPageTitle": {
+    "message": "꾸미기 – FullShot"
+  },
+  "beautifyHeading": {
+    "message": "꾸미기"
+  },
+  "actionBack": {
+    "message": "뒤로"
+  },
+  "commonLoading": {
+    "message": "불러오는 중…"
+  },
+  "beautifyFieldSize": {
+    "message": "크기"
+  },
+  "beautifyPresetAuto": {
+    "message": "자동"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "정사각형"
+  },
+  "beautifyPresetPortrait": {
+    "message": "세로형"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "배경"
+  },
+  "beautifyBgSlate": {
+    "message": "슬레이트"
+  },
+  "beautifyBgGraphite": {
+    "message": "그래파이트"
+  },
+  "beautifyBgSky": {
+    "message": "스카이"
+  },
+  "beautifyBgSunset": {
+    "message": "선셋"
+  },
+  "beautifyBgGrape": {
+    "message": "그레이프"
+  },
+  "beautifyBgMint": {
+    "message": "민트"
+  },
+  "beautifyFieldPadding": {
+    "message": "여백"
+  },
+  "beautifyFieldRadius": {
+    "message": "모서리 둥글기"
+  },
+  "beautifyFieldEffects": {
+    "message": "효과"
+  },
+  "beautifyShadow": {
+    "message": "그림자"
+  },
+  "beautifyWindowFrame": {
+    "message": "창 프레임"
+  },
+  "beautifyFieldExport": {
+    "message": "내보내기"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "스크롤 클립 – FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "스크롤 클립"
+  },
+  "scrollclipFieldFormat": {
+    "message": "형식"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$는 어디서나 재생됩니다. $WEBM$은 더 작고 부드럽습니다(사용 중인 브라우저 안에서 실시간으로 녹화됩니다).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "출력 너비"
+  },
+  "scrollclipFieldDensity": {
+    "message": "밀도"
+  },
+  "scrollclipDensityHint": {
+    "message": "밀도가 높을수록 더 또렷하지만(원본 해상도에 가까워집니다) 파일은 커집니다."
+  },
+  "scrollclipFieldShape": {
+    "message": "모양"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "스크롤 속도 (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "프레임 속도 (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "움직임"
+  },
+  "scrollclipBounce": {
+    "message": "되돌아오기(맨 위로 다시 스크롤)"
+  },
+  "scrollclipLoop": {
+    "message": "계속 반복"
+  },
+  "scrollclipCopyFrame": {
+    "message": "프레임 복사"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "표지(맨 위) 프레임을 $FORMAT$로 복사",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · 프레임 $COUNT$개 · $SECONDS$초",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "프레임을 그리는 중… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$로 인코딩하는 중… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "마무리하는 중…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ 녹화 중…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "녹화 중…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "여기서는 $WEBM$을 지원하지 않습니다 – $GIF$로 내보냅니다",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "표지 프레임을 복사했습니다"
+  },
+  "batchPageTitle": {
+    "message": "FullShot – 일괄 캡처"
+  },
+  "batchHeading": {
+    "message": "일괄 캡처"
+  },
+  "batchIntro": {
+    "message": "URL을 한 줄에 하나씩 붙여 넣으세요. FullShot이 각 페이지를 열어 전체 페이지 스크린샷을 기록에 담고 다음으로 넘어갑니다 – 한 번에 최대 $MAX$개까지. 캡처는 기록에 나타나며, $OPENLINK$를 누르면 보거나 편집하거나 내보낼 수 있습니다.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "모두 캡처"
+  },
+  "batchPermissionHint": {
+    "message": "이 페이지들을 열려면 처음 한 번 일회성 권한이 필요합니다."
+  },
+  "batchPermissionDeclined": {
+    "message": "그 페이지들을 열 권한이 거부되었습니다."
+  },
+  "batchPanelPlan": {
+    "message": "계획"
+  },
+  "batchPanelProgress": {
+    "message": "진행 상황"
+  },
+  "batchPlanCountOther": {
+    "message": "캡처할 페이지 $COUNT$개",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "캡처할 페이지 $COUNT$개(최대 $MAX$개로 제한)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "아직 유효한 URL이 없습니다"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$개 건너뜀: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "지원되지 않는 스킴"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "잘못됨"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "호스트 없음"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "중복"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "비어 있음"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "한도 초과 ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ 완료",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ 완료, $FAILED$개 실패",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ 완료 – 끝",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ 완료, $FAILED$개 실패 – 끝",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "열기"
+  },
+  "batchJobTimedOut": {
+    "message": "캡처 시간 초과"
+  },
+  "batchJobNoSession": {
+    "message": "캡처 세션 없음"
+  },
+  "batchJobFailed": {
+    "message": "캡처 실패"
+  },
+  "batchJobError": {
+    "message": "캡처 오류"
+  },
+  "regionHintDrag": {
+    "message": "드래그해서 영역 선택 – 취소는 $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "요소를 클릭하면 캡처됩니다 – 취소는 $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "설정, 확장 프로그램, 새 탭 같은 브라우저 페이지는 모든 확장 프로그램에 금지되어 있습니다. 일반 웹페이지에서 FullShot을 사용해 보세요."
+  },
+  "errRestrictedDevtools": {
+    "message": "확장 프로그램은 개발자 도구 창을 캡처할 수 없습니다. 컴퓨터에 내장된 스크린샷 도구를 쓰세요."
+  },
+  "errRestrictedViewSource": {
+    "message": "소스 보기 페이지는 캡처할 수 없습니다. 대신 페이지 자체를 캡처하세요."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "FullShot 자체 페이지를 포함해 확장 프로그램 페이지는 브라우저가 보호하고 있어 캡처할 수 없습니다."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome 웹 스토어는 확장 프로그램이 자기 페이지를 읽지 못하게 막고 있어 이 페이지는 캡처할 수 없습니다."
+  },
+  "errRestrictedGeneric": {
+    "message": "이 페이지는 브라우저가 보호하고 있어 캡처할 수 없습니다."
+  },
+  "errWrongTab": {
+    "message": "캡처가 중단되었습니다 – 탭을 바꾸셨습니다. FullShot이 끝날 때까지 이 페이지를 앞에 두세요."
+  },
+  "errGeneric": {
+    "message": "캡처가 끝나기 전에 멈췄습니다. 다시 시도해 주세요."
+  },
+  "errBusy": {
+    "message": "이 탭에서는 이미 캡처가 진행 중입니다."
+  },
+  "errBlocked": {
+    "message": "이 페이지는 캡처할 수 없습니다(브라우저 제한)."
+  },
+  "errNoStart": {
+    "message": "FullShot이 이 페이지에서 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요."
+  },
+  "errCrash": {
+    "message": "캡처가 예기치 않게 멈췄습니다. 다시 시도해 주세요."
+  },
+  "errUnknownMessage": {
+    "message": "알 수 없는 메시지입니다."
+  },
+  "errQuota": {
+    "message": "브라우저가 페이지를 찍는 속도를 제한하고 있습니다. 잠시 기다렸다가 다시 시도하세요."
+  },
+  "errFrameHandover": {
+    "message": "브라우저가 도중에 화면 넘겨주기를 멈췄습니다. 몇 초 기다렸다가 다시 시도하세요."
+  },
+  "errLostTab": {
+    "message": "캡처가 이 탭을 놓쳤습니다. 페이지를 새로고침한 뒤 다시 시도하세요."
+  },
+  "errStoppedEarly": {
+    "message": "캡처가 끝나기 전에 중단되었습니다."
+  },
+  "errStorageFull": {
+    "message": "이 캡처를 저장할 공간이 없습니다. 기록에서 스크린샷을 몇 개 삭제한 뒤 다시 시도하세요."
+  },
+  "reasonGeneric": {
+    "message": "이유가 제공되지 않았습니다. 다시 시도해 주세요."
+  },
+  "reasonDecodeFailed": {
+    "message": "그 스크린샷을 디코딩할 수 없었습니다."
+  },
+  "reasonTooLarge": {
+    "message": "이미지가 너무 커서 여기서는 내보낼 수 없습니다."
+  },
+  "toastCopiedClipboard": {
+    "message": "클립보드에 복사했습니다"
+  },
+  "toastCopyFailed": {
+    "message": "복사 실패 – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "내보내기 실패 – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ 저장됨",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ 저장됨  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

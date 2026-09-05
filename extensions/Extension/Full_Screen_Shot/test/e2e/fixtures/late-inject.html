@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — text injected after the scan, during the capture</title>
+<!-- Task shape: "text injected after load". Spec relatives: §2.3 (drift and
+     deferred rendering) and §7.2's `movedUncovered`.
+     Two mechanisms, because the spec's two mitigations cover different things:
+       SWAP   — a span that EXISTS at scan time with innocuous text, whose text
+                is replaced with a card number mid-capture. §2.3(a) re-measures
+                MATCHED spans; this span did not match at scan time, so it is
+                not in that set. §2.3(b) re-measures spans that were unplaced
+                for `degenerate`; this one was placed. It is in neither set.
+       INSERT — a node that DOES NOT EXIST at scan time and is appended
+                mid-capture. It was never a span, so it is in neither set
+                either.
+
+     TIMING, which is the hard part and was got wrong twice before this
+     version. A one-shot change at a fixed delay is a coin flip: the frame
+     covering these blocks may already have been grabbed, and then the fixture
+     proves nothing while looking like a finding. So:
+       - the two target blocks sit ~2400px down, in one of the LAST frames the
+         scroll loop grabs, and
+       - the change is applied CONTINUOUSLY from marker+2600ms for as long as
+         the capture is running, so whenever that frame is taken the post-scan
+         state is what gets photographed.
+     The fixture still reports its own timings, and `matched` in the ledger is
+     the independent check on whether the change beat the scan: if the swap had
+     landed BEFORE collectPIIBoxes, the card would have matched. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 18px/1.6 system-ui, sans-serif; }
+  .band { height: 400px; background: rgb(238, 241, 249); }
+  .prose { padding: 24px; color: #223; }
+  /* #swap starts NEUTRAL and turns marker-coloured at the moment its text is
+     replaced, so the colour appearing in the delivered PNG proves the
+     POST-SCAN state was captured — a background that was there all along would
+     prove only that the row existed. */
+  #swap { padding: 26px 24px; min-height: 110px; background: rgb(238, 241, 249); color: #012;
+          font: 600 20px/1.6 ui-monospace, monospace; }
+  .late { padding: 26px 24px; min-height: 110px; background: rgb(255, 120, 200); color: #300;
+          font: 600 20px/1.6 ui-monospace, monospace; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var F = window.__fsFixture = {
+    kind: 'late-inject',
+    captureSeenAt: null, firstAppliedAt: null, applyCount: 0,
+    swapPresentAtEnd: false, insertPresentAtEnd: false
+  };
+  var t0 = Date.now();
+  var seenAt = null;
+
+  function apply() {
+    var swap = document.getElementById('swap');
+    if (swap && swap.textContent.indexOf('4242') === -1) {
+      swap.textContent = 'Card on file 4242 4242 4242 4242 — written after the scan';
+      swap.style.background = 'rgb(0, 200, 200)';
+    }
+    if (!document.querySelector('.late')) {
+      var d = document.createElement('div');
+      d.className = 'late';
+      d.textContent = 'Escalation contact jane.doe@example.com — appended after the scan';
+      document.getElementById('lateHost').appendChild(d);
+    }
+    if (F.firstAppliedAt === null) F.firstAppliedAt = Date.now() - t0;
+    F.applyCount++;
+    F.swapPresentAtEnd = /4242 4242 4242 4242/.test(document.getElementById('swap').textContent);
+    F.insertPresentAtEnd = !!document.querySelector('.late');
+  }
+
+  /* The capture injects its own stylesheet into the page; redact-e2e.html
+     already keys off exactly this marker. It is the only signal a fixture has
+     that the engine has started, and it is the honest reference point for
+     "after the scan". */
+  setInterval(function () {
+    var running = !!document.getElementById('__fullshot-css');
+    if (running && seenAt === null) { seenAt = Date.now(); F.captureSeenAt = seenAt - t0; }
+    if (seenAt !== null && Date.now() - seenAt > 2600) apply();
+  }, 120);
+});
+</script>
+</head>
+<body>
+  <div class="prose">Operations digest. The two blocks near the bottom of this page change while the capture is running: one has its text replaced, the other does not exist yet.</div>
+  <div class="band"></div>
+  <div class="prose">Filler prose so that ordinary placed text exists and the page is not textless. Nothing in this paragraph matches any of the five patterns.</div>
+  <div class="band"></div>
+  <div class="prose">More filler. The targets are deliberately far down the document so the scroll loop reaches them late, long after the scan has finished.</div>
+  <div class="band"></div>
+  <div class="band"></div>
+  <div id="swap">Loading account details…</div>
+  <div id="lateHost"></div>
+  <div id="bottom"></div>
+</body>
+</html>

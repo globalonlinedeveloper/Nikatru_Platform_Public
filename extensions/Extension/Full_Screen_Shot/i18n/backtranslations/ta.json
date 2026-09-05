@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Instead of catching the inner scrolling panels and iframes the way they appear, it expands them enough for their whole content to be visible. For frames of other sites an additional permission will be asked only one time.",
+  "optionsLead": "Changes will be saved automatically and will be synchronised with your browser profile.",
+  "optionsExpandPermGranted": "Permission was granted — frames of other sites will also be expanded.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission, frames of other sites will be caught just the way they appear. Panels and iframes of that same site will always work.",
+  "optionsRedactPIIDesc": "For e-mails, telephone numbers, credit card numbers, national identity numbers and API keys it searches in the text the page exposes, and draws a solid bar over what matched, in the image being saved. Text drawn as picture dots cannot be read by it — canvas, image, PDF, video frame. The detection runs on your device itself; nothing at all is ever sent anywhere. Only for whole-page (document scrolling) captures; the bar is permanent, so check the result yourself.",
+  "scrollclipFormatHint": "GIF will run everywhere. WebM is both smaller and smoother (it is recorded directly in your browser itself).",
+  "batchPermissionHint": "To open these pages, a permission will be needed one time, only on the first occasion.",
+  "batchPermissionDeclined": "The permission to open those pages was refused."
+}

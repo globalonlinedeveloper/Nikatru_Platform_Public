@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot torture test</title>
+<style>
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #222; }
+  .grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+  main { padding: 8px 16px 0 0; }
+  .block { height: 500px; border-top: 2px dashed #ddd; padding: 6px; color: #888; }
+  #scoreboard { padding: 12px 16px; background: #111; color: #eee; font: 13px/1.7 monospace; white-space: pre-wrap; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; } #scoreboard b.wait { color: #fbbf24; }
+  h1 { font-size: 18px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<div id="scoreboard">FullShot torture test — turn ON "Expand scrollable panels &amp; iframes" in the FullShot popup, then press Alt+Shift+P (full-page capture). Results appear here after the capture finishes.</div>
+
+<div class="grid">
+  <!-- Reddit-style left rail: web component, OPEN shadow root, sticky nav that
+       scrolls internally, with a sticky-bottom copyright bar whose child forces
+       visibility:visible (the exact combination that leaked in captures). -->
+  <fs-test-rail></fs-test-rail>
+
+  <main>
+    <h1>FullShot engine torture page</h1>
+    <p>Replicates: shadow-DOM sticky-wrapper&gt;scroller rail (Reddit pattern) ·
+    sticky-bottom bar with visibility override · fixed FAB behind a
+    25,000-element DOM (walk-budget test) · inner scroll panel ·
+    same-origin iframe · cross-origin iframe · 5-screen page.</p>
+
+    <!-- inner scroll panel; deep content marker #00FF88 -->
+    <div id="panel" style="height:300px;overflow-y:auto;border:1px solid #ccc">
+      <div style="height:900px;padding:6px">panel content (scrolled-away)…</div>
+      <div style="height:120px;background:#00FF88;font-weight:700;padding:6px">PANEL DEEP MARKER (must appear in capture when expansion is ON)</div>
+    </div>
+
+    <!-- same-origin iframe; deep marker #88FF00 -->
+    <iframe id="soifr" style="width:90%;height:300px;border:1px solid #999;display:block;margin:20px 0"
+      srcdoc="<body style='margin:0'><div style='height:1300px;padding:6px'>iframe scrolled-away content…</div><div style='height:120px;background:#88FF00;font-weight:700;padding:6px'>IFRAME DEEP MARKER</div></body>"></iframe>
+
+    <!-- cross-origin iframe (structural: capture must not break; expands only
+         with the optional all-sites permission) -->
+    <iframe id="xoifr" src="https://example.org/" style="width:90%;height:200px;display:block;margin:20px 0;border:1px solid #999"></iframe>
+
+    <div class="block">content block 1</div><div class="block">content block 2</div>
+    <div class="block">content block 3</div><div class="block">content block 4</div>
+    <div class="block">content block 5</div><div class="block">content block 6</div>
+  </main>
+</div>
+
+<!-- bottom-of-page marker #0088FF -->
+<div style="height:120px;background:#0088FF;color:#fff;font-weight:700;padding:8px">PAGE BOTTOM MARKER</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---- Reddit-style rail (open shadow root) ---- */
+  const rail = document.querySelector('fs-test-rail');
+  const r = rail.attachShadow({ mode: 'open' });
+  // Reddit left-rail pattern: sticky WRAPPER (100vh, clipping) around the
+  // actual scroller — the case that failed on reddit.com before 1.2.4.
+  r.innerHTML =
+    '<div id="wrap" style="position:sticky;top:0;height:100vh;overflow:hidden">' +
+      '<div id="nav" style="height:100%;overflow-y:auto;background:#FF8800">' +
+        '<div style="height:2600px;padding:8px;font-weight:700">STICKY NAV TOP (shadow DOM)' +
+          '<div style="margin-top:2450px">STICKY NAV BOTTOM (only visible if expanded)</div>' +
+        '</div>' +
+        '<div id="copy" style="position:sticky;bottom:0;background:#8800FF;color:#fff;height:48px;padding:4px">' +
+          '<span style="visibility:visible!important">© FSTEST Inc. (sticky-bottom + visibility override)</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  const wrap = r.getElementById('wrap');
+  const nav = r.getElementById('nav');
+  const copy = r.getElementById('copy');
+
+  /* ---- 25k hidden elements, then the FAB in a late shadow root ---- */
+  const filler = document.createElement('div');
+  filler.style.display = 'none';
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < 25000; i++) frag.appendChild(document.createElement('span'));
+  filler.appendChild(frag);
+  document.body.appendChild(filler);
+
+  const fabHost = document.createElement('fs-test-fab');
+  document.body.appendChild(fabHost);
+  const f = fabHost.attachShadow({ mode: 'open' });
+  f.innerHTML =
+    '<div id="fab" style="position:fixed;right:24px;bottom:24px;width:64px;height:64px;border-radius:50%;background:#FF00FF">' +
+      '<i style="visibility:visible!important;display:block;width:100%;height:100%;background:#FF00FF;border-radius:50%"></i>' +
+    '</div>';
+  const fab = f.getElementById('fab');
+
+  /* ---- realistic pre-capture state ---- */
+  const panel = document.getElementById('panel');
+  const soifr = document.getElementById('soifr');
+  panel.scrollTop = 200;
+  nav.scrollTop = 150;
+
+  /* ---- instrumentation ---- */
+  const S = {
+    navExpanded: false, wrapStatic: false, copyShown: false, copyEverHidden: false, fabHidden: false,
+    panelExpanded: false, iframeExpanded: false, scrolledToBottom: false,
+    restoredNav: null, restoredPanelScroll: null, restoredNavScroll: null,
+    restoredFabVisible: null, restoredIframeH: null, frames: 0
+  };
+  let phase = 'idle';
+  const board = document.getElementById('scoreboard');
+
+  function hiddenNow(el) {
+    const cs = getComputedStyle(el);
+    return cs.visibility === 'hidden' || Number(cs.opacity) === 0;
+  }
+
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      S.frames++;
+      if (nav.clientHeight > 2000) S.navExpanded = true;
+      if (getComputedStyle(wrap).position === 'static') S.wrapStatic = true;
+      if (window.scrollY > 100) {
+        if (hiddenNow(copy)) S.copyEverHidden = true; else S.copyShown = true;
+      }
+      if (window.scrollY > 100 && hiddenNow(fab)) S.fabHidden = true;
+      if (panel.clientHeight > 900) S.panelExpanded = true;
+      if (soifr.clientHeight > 1200) S.iframeExpanded = true;
+      if (window.scrollY + innerHeight > document.documentElement.scrollHeight - 200) S.scrolledToBottom = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.restoredNav = nav.clientHeight <= innerHeight + 20 && getComputedStyle(wrap).position === 'sticky';
+        // ±1.5px tolerance: at fractional zoom/DPR (Windows 125%) scrollTop
+        // quantizes to device pixels — 150 css px stores as 149.6 or 150.4,
+        // so strict equality would report a false FAIL.
+        S.restoredPanelScroll = Math.abs(panel.scrollTop - 200) <= 1.5;
+        S.restoredNavScroll = Math.abs(nav.scrollTop - 150) <= 1.5;
+        S.restoredFabVisible = !hiddenNow(fab) && !hiddenNow(copy);
+        S.restoredIframeH = Math.round(soifr.getBoundingClientRect().height) <= 320;
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok, expl) {
+    const cls = ok === null ? 'wait' : ok ? 'pass' : 'fail';
+    const txt = ok === null ? '…' : ok ? 'PASS' : 'FAIL';
+    return '<b class="' + cls + '">' + txt + '</b>  ' + label + (expl ? '  — ' + expl : '') + '\n';
+  }
+
+  function report() {
+    const copyOk = S.copyShown && !S.copyEverHidden;
+    const anyFail = [S.navExpanded, S.wrapStatic, copyOk, S.fabHidden, S.panelExpanded,
+      S.iframeExpanded, S.scrolledToBottom, S.restoredNav, S.restoredPanelScroll,
+      S.restoredNavScroll, S.restoredFabVisible, S.restoredIframeH].some(v => v === false);
+    board.innerHTML =
+      'FULLSHOT TORTURE RESULT — ' + (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      '--- during capture ---\n' +
+      line('sticky shadow nav expanded to full content', S.navExpanded) +
+      line('sticky wrapper switched sticky→static (no travel)', S.wrapStatic) +
+      line('© bar kept visible in expanded nav (neutralized sticky = content)', copyOk) +
+      line('fixed FAB hidden after frame 1 (behind 25k elements — walk budget)', S.fabHidden) +
+      line('inner panel expanded (deep marker capturable)', S.panelExpanded) +
+      line('same-origin iframe expanded', S.iframeExpanded) +
+      line('page scrolled to bottom', S.scrolledToBottom) +
+      '--- after capture (restore) ---\n' +
+      line('nav back to sticky 100vh', S.restoredNav) +
+      line('panel scroll position restored (200)', S.restoredPanelScroll) +
+      line('nav scroll position restored (150)', S.restoredNavScroll) +
+      line('FAB and © visible again', S.restoredFabVisible) +
+      line('iframe height restored (~300)', S.restoredIframeH) +
+      '\nAlso verify the downloaded image: nav appears ONCE fully expanded; FAB appears ONCE (first frame); ' +
+      '© bar appears ONCE at the very bottom of the expanded nav; ' +
+      'green PANEL marker, lime IFRAME marker and blue BOTTOM marker are all present.';
+    console.log('FSTEST', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

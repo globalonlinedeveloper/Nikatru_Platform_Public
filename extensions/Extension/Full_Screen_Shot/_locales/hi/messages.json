@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - पूरे पेज का स्क्रीन कैप्चर"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "पूरा पेज, दिखने वाला हिस्सा, कोई क्षेत्र या कोई भी एलिमेंट कैप्चर करें। एनोटेट करें और PNG, JPEG, WebP या PDF में एक्सपोर्ट करें।"
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - पेज कैप्चर करें (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "पूरा पेज कैप्चर करें"
+  },
+  "commandCaptureVisible": {
+    "message": "दिखने वाला हिस्सा कैप्चर करें"
+  },
+  "commandCaptureRegion": {
+    "message": "चुना गया क्षेत्र कैप्चर करें"
+  },
+  "commandCaptureElement": {
+    "message": "पेज का कोई एलिमेंट कैप्चर करें (चुनने के लिए क्लिक करें)"
+  },
+  "popupToggleTheme": {
+    "message": "थीम बदलें"
+  },
+  "popupModeFullTitle": {
+    "message": "पूरा पेज"
+  },
+  "popupModeFullSub": {
+    "message": "स्क्रॉल करके पूरा पेज लें"
+  },
+  "popupModeVisibleTitle": {
+    "message": "दिखने वाला हिस्सा"
+  },
+  "popupModeVisibleSub": {
+    "message": "सिर्फ़ जो स्क्रीन पर है"
+  },
+  "popupModeRegionTitle": {
+    "message": "चुना गया क्षेत्र"
+  },
+  "popupModeRegionSub": {
+    "message": "खींचकर क्षेत्र चुनें"
+  },
+  "popupModeElementTitle": {
+    "message": "एलिमेंट"
+  },
+  "popupModeElementSub": {
+    "message": "पेज के किसी भी एलिमेंट पर क्लिक करें"
+  },
+  "popupModeDelayedTitle": {
+    "message": "विलंबित कैप्चर"
+  },
+  "popupModeDelayedSub": {
+    "message": "गिनती के बाद पूरा पेज"
+  },
+  "popupDelayLabel": {
+    "message": "देरी के सेकंड"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ सेकंड",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "स्क्रॉल होने वाले पैनल और iframe फैलाएँ"
+  },
+  "popupExpandToggleTip": {
+    "message": "भीतर के स्क्रॉल होने वाले पैनल और iframe को, जैसा दिख रहा है वैसा कैप्चर करने के बजाय उनकी पूरी सामग्री जितना बड़ा करें। दूसरी साइट के फ़्रेम के लिए एक अतिरिक्त अनुमति एक बार माँगी जाती है।"
+  },
+  "popupDismiss": {
+    "message": "बंद करें"
+  },
+  "popupLastErrorFailed": {
+    "message": "पिछला $MODE$ विफल रहा — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "पिछला $MODE$ विफल रहा — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "पूरे पेज का कैप्चर"
+  },
+  "popupModeNameVisible": {
+    "message": "दिखने वाले हिस्से का कैप्चर"
+  },
+  "popupModeNameRegion": {
+    "message": "क्षेत्र कैप्चर"
+  },
+  "popupModeNameElement": {
+    "message": "एलिमेंट कैप्चर"
+  },
+  "popupModeNameGeneric": {
+    "message": "कैप्चर"
+  },
+  "popupNoActiveTab": {
+    "message": "कोई सक्रिय टैब नहीं मिला।"
+  },
+  "popupCaptureFailedToStart": {
+    "message": "कैप्चर शुरू नहीं हो सका।"
+  },
+  "popupLinkHistory": {
+    "message": "इतिहास"
+  },
+  "popupLinkBatch": {
+    "message": "बैच"
+  },
+  "popupLinkOptions": {
+    "message": "विकल्प"
+  },
+  "optionsPageTitle": {
+    "message": "विकल्प — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · विकल्प"
+  },
+  "optionsHeading": {
+    "message": "विकल्प"
+  },
+  "optionsLead": {
+    "message": "बदलाव अपने आप सहेजे जाते हैं और आपकी ब्राउज़र प्रोफ़ाइल में सिंक हो जाते हैं।"
+  },
+  "optionsSectionImage": {
+    "message": "इमेज"
+  },
+  "optionsFormat": {
+    "message": "फ़ॉर्मैट"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ में गुणवत्ता बिल्कुल नहीं घटती; $JPEG$ छोटा होता है; समान गुणवत्ता पर $WEBP$ सबसे छोटा है।",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ गुणवत्ता",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "फ़ाइल नाम का टेम्पलेट"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "प्लेसहोल्डर: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "कैप्चर"
+  },
+  "optionsCaptureDelay": {
+    "message": "हर चरण पर अतिरिक्त देरी"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "हर स्क्रॉल के बाद कितने मिलीसेकंड रुकना है। धीमे और ज़्यादा एनिमेशन वाले पेजों के लिए इसे बढ़ाएँ।"
+  },
+  "optionsHideFixed": {
+    "message": "फ़िक्स्ड और स्टिकी एलिमेंट छिपाएँ"
+  },
+  "optionsHideFixedDesc": {
+    "message": "हेडर हर स्क्रीन पर दोहराए नहीं जाते (सिर्फ़ ऊपर एक बार दिखता है)।"
+  },
+  "optionsPreScroll": {
+    "message": "देर से लोड होने वाली सामग्री के लिए पहले स्क्रॉल करें"
+  },
+  "optionsPreScrollDesc": {
+    "message": "कैप्चर से पहले पूरे पेज को एक बार स्क्रॉल करता है। धीमा है, पर देर से लोड होने वाली इमेज पकड़ लेता है।"
+  },
+  "optionsAdaptiveWait": {
+    "message": "इमेज डिकोड होने का इंतज़ार करें"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "हर फ़्रेम से पहले देर से आने वाली इमेज को पूरी तरह डिकोड होने देता है, ताकि वे काले या खाली टुकड़ों की तरह कैप्चर न हों।"
+  },
+  "optionsHideOverlays": {
+    "message": "बैनर और पॉप-अप छिपाएँ"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "कैप्चर से पहले कुकी/सहमति बैनर, न्यूज़लेटर मोडल और “ऐप डाउनलोड करें” जैसे पॉप-अप हटा देता है, और मोडल से जमे हुए पेज को फिर से चलने लायक बनाता है। बाद में सब पहले जैसा कर दिया जाता है।"
+  },
+  "optionsExpandInner": {
+    "message": "स्क्रॉल होने वाली सामग्री फैलाएँ"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "भीतर के पैनल और iframe को इतना बड़ा करता है कि उनके अपने दायरे से नीचे छिपी सामग्री भी दिखे, बजाय उन्हें जैसा दिख रहा है वैसा ही कैप्चर करने के।"
+  },
+  "optionsExpandPermRow": {
+    "message": "दूसरी साइट के फ़्रेम"
+  },
+  "optionsExpandPermAllow": {
+    "message": "अनुमति दें"
+  },
+  "optionsExpandPermGranted": {
+    "message": "अनुमति मिल गई — दूसरी साइटों के फ़्रेम भी फैलाए जाते हैं।"
+  },
+  "optionsExpandPermMissing": {
+    "message": "“$PERMISSION$” अनुमति के बिना, दूसरी साइट के फ़्रेम जैसे दिखते हैं वैसे ही कैप्चर होते हैं। पैनल और उसी साइट के iframe हमेशा काम करते हैं।",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "वर्चुअलाइज़्ड सूचियाँ खोलें"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "रेंडर-विंडो वाली फ़ीड ($LIB1$ / $LIB2$ जैसी) में चरण-दर-चरण चलकर सिर्फ़ स्क्रीन पर दिख रही पंक्तियाँ नहीं, बल्कि उनकी पूरी सामग्री कैप्चर करता है। बहुत लंबी सूचियों में धीमा।",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "क्लिक पर खुलने वाली सामग्री फैलाएँ"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "कैप्चर से पहले बंद $DETAILS$, निष्क्रिय टैब, अकॉर्डियन और “और दिखाएँ” वाले हिस्से खोल देता है, फिर उन्हें पहले जैसा कर देता है। क्लिक के पीछे छिपी सामग्री सामने आ जाती है।",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "“$BUTTONTEXT$” बटन क्लिक करें",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "“load more” / “show more” बटन बार-बार क्लिक करता है और नई सामग्री लोड होने का इंतज़ार करता है, जब तक फ़ीड ख़त्म न हो जाए। ऊपर वाले विकल्प से अलग, यह वह सामग्री लाता है जो अभी पेज पर है ही नहीं; लोड हुई सामग्री कैप्चर के बाद भी बनी रहती है।"
+  },
+  "optionsInfiniteScroll": {
+    "message": "अंतहीन फ़ीड लोड करने के लिए स्क्रॉल करें"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "जिन फ़ीड में “load more” बटन नहीं होता उनके लिए: बार-बार सबसे नीचे तक स्क्रॉल करके अगला हिस्सा लोड होने का इंतज़ार करता है, जब तक फ़ीड बढ़ना बंद न कर दे (एक सीमा तय है, ताकि कभी न ख़त्म होने वाली फ़ीड के पीछे न भागा जाए)। लोड हुई सामग्री कैप्चर के बाद भी बनी रहती है।"
+  },
+  "optionsWaitStable": {
+    "message": "सामग्री पूरी लोड होने का इंतज़ार करें"
+  },
+  "optionsWaitStableDesc": {
+    "message": "कैप्चर से पहले स्केलेटन / प्लेसहोल्डर लोडर (aria-busy क्षेत्र, शिमर ब्लॉक) की जगह असली सामग्री आने का इंतज़ार करता है, ताकि बीच में “लोड हो रहा है…” वाला बदलाव धूसर प्लेसहोल्डर की तरह कैप्चर न हो जाए। इसकी भी एक सीमा है, इसलिए अटका हुआ स्पिनर कैप्चर को लटकाए नहीं रखेगा।"
+  },
+  "optionsRedactPII": {
+    "message": "संवेदनशील जानकारी अपने आप छिपाएँ"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "पेज जो टेक्स्ट उजागर करता है उसमें ईमेल, फ़ोन नंबर, क्रेडिट-कार्ड नंबर, राष्ट्रीय पहचान संख्या (SSN) और API कुंजियाँ खोजकर सहेजी गई इमेज में जो मिलता है उस पर ठोस काला ब्लॉक लगा देता है। पिक्सल के रूप में खींचा गया टेक्स्ट यह नहीं पढ़ सकता — कैनवस, इमेज, PDF, वीडियो फ़्रेम। पहचान आपके ही डिवाइस पर चलती है; कुछ भी कभी कहीं नहीं भेजा जाता। यह पूरे पेज (डॉक्यूमेंट-स्क्रॉल) वाले कैप्चर पर लागू होता है; ब्लॉक स्थायी है, इसलिए नतीजा खुद जाँच लें।"
+  },
+  "optionsMaxPageHeight": {
+    "message": "अधिकतम पेज ऊँचाई"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "अंतहीन-स्क्रॉल वाली फ़ीड के लिए सुरक्षा सीमा (CSS px)।"
+  },
+  "optionsSectionPdf": {
+    "message": "PDF एक्सपोर्ट"
+  },
+  "optionsPdfPaper": {
+    "message": "डिफ़ॉल्ट पेपर आकार"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "“$IMAGESIZE$” चुनने पर एक पेज ठीक स्क्रीनशॉट जितना बड़ा बनता है।",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "इमेज का आकार"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "लेटर"
+  },
+  "optionsPaperLegal": {
+    "message": "लीगल"
+  },
+  "optionsPdfOrientation": {
+    "message": "दिशा"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "तय पेपर आकारों के लिए।"
+  },
+  "optionsOrientationPortrait": {
+    "message": "पोर्ट्रेट"
+  },
+  "optionsOrientationLandscape": {
+    "message": "लैंडस्केप"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "स्मार्ट पेज विभाजन"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "हर पेज-विराम के पास खाली जगह ढूँढ़ता है ताकि टेक्स्ट की पंक्तियाँ बीच से न कटें।"
+  },
+  "optionsPdfStamp": {
+    "message": "URL और तारीख़ छापें"
+  },
+  "optionsPdfStampDesc": {
+    "message": "हर PDF पेज के नीचे पेज का URL और कैप्चर की तारीख़ जोड़ देता है।"
+  },
+  "optionsSectionDownload": {
+    "message": "डाउनलोड"
+  },
+  "optionsSaveDirectory": {
+    "message": "फ़ोल्डर"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "आपके स्क्रीनशॉट के लिए $DOWNLOADS$ के अंदर एक सब-फ़ोल्डर, जैसे $EXAMPLE$। खाली छोड़ने पर = $DOWNLOADS$।",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(डाउनलोड)"
+  },
+  "optionsSaveAs": {
+    "message": "“इस रूप में सहेजें” डायलॉग"
+  },
+  "optionsSaveAsDesc": {
+    "message": "चुपचाप डाउनलोड करने के बजाय हर फ़ाइल के लिए पूछें कि उसे कहाँ सहेजना है।"
+  },
+  "optionsClipboardFit": {
+    "message": "क्लिपबोर्ड कॉपी को ऐप की सीमा में लाएँ"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "$PIXELS$ पिक्सेल से बड़ी कॉपी को छोटा कर देता है, ताकि $APP$ वग़ैरह में पेस्ट हो सके।",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "वर्कफ़्लो"
+  },
+  "optionsAutoDownload": {
+    "message": "कैप्चर के बाद अपने आप डाउनलोड करें"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "कैप्चर पूरा होते ही इमेज सहेज देता है।"
+  },
+  "optionsAutoOpenEditor": {
+    "message": "कैप्चर के बाद एडिटर खोलें"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "सीधे एनोटेट करने पर पहुँचें (सिर्फ़ एक हिस्से वाले कैप्चर में)।"
+  },
+  "optionsTheme": {
+    "message": "थीम"
+  },
+  "optionsThemeDesc": {
+    "message": "पॉपअप और सभी FullShot पेजों के लिए।"
+  },
+  "optionsThemeSystem": {
+    "message": "सिस्टम"
+  },
+  "optionsThemeLight": {
+    "message": "लाइट"
+  },
+  "optionsThemeDark": {
+    "message": "डार्क"
+  },
+  "optionsShortcuts": {
+    "message": "कीबोर्ड शॉर्टकट"
+  },
+  "optionsShortcutsDesc": {
+    "message": "पूरा पेज: $KEYFULL$ · दिखने वाला हिस्सा: $KEYVISIBLE$। बदलने के लिए $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "सहेजा गया ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "आपका डेटा"
+  },
+  "optionsStorage": {
+    "message": "संग्रहण"
+  },
+  "optionsStorageUsage": {
+    "message": "इस डिवाइस पर $QUOTA$ में से $USED$ उपयोग में है।",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "यह ब्राउज़र नहीं बताता कि FullShot कितनी जगह ले रहा है।"
+  },
+  "optionsStorageKept": {
+    "message": "आपके स्क्रीनशॉट सुरक्षित रहेंगे: ब्राउज़र जगह खाली करने के लिए उन्हें नहीं हटाएगा।"
+  },
+  "optionsStorageAtRisk": {
+    "message": "आपके स्क्रीनशॉट ब्राउज़र के best-effort संग्रह में हैं, जिसे वह जगह खाली करने के लिए मिटा सकता है।"
+  },
+  "optionsStorageKeep": {
+    "message": "मेरा डेटा रखें"
+  },
+  "optionsExport": {
+    "message": "सब कुछ निर्यात करें"
+  },
+  "optionsExportDesc": {
+    "message": "एक ही फ़ाइल लिखता है जिसमें आपकी सेटिंग और आपके स्क्रीनशॉट की सूची होती है। यह इसी डिवाइस पर सहेजी जाती है और कहीं नहीं भेजी जाती।"
+  },
+  "optionsExportImages": {
+    "message": "छवियाँ शामिल करें"
+  },
+  "optionsExportImagesDesc": {
+    "message": "छवियाँ स्वयं, जो लगभग पूरा आकार बनाती हैं। इनके बिना फ़ाइल आपके स्क्रीनशॉट की सूची देती है, पर कोई छवि नहीं रखती।"
+  },
+  "optionsExportSize": {
+    "message": "फ़ाइल का आकार: लगभग $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "बचा हुआ डेटा"
+  },
+  "optionsSweepDesc": {
+    "message": "बीच में रुका हुआ कैप्चर डिस्क पर ऐसे फ़्रेम छोड़ सकता है जो किसी स्क्रीनशॉट के नहीं हैं। वे किसी पेज पर नहीं दिखते, इसलिए कोई पेज उन्हें हटा भी नहीं सकता। यह उन्हें ढूँढ़कर हटा देता है।"
+  },
+  "optionsSweepBtn": {
+    "message": "ढूँढ़ें और हटाएँ"
+  },
+  "optionsSweepResult": {
+    "message": "हटा दिया गया। साफ़ किए गए कैप्चर: $COUNT$ · खाली हुई जगह: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "कुछ भी बचा नहीं है: संग्रहित सब कुछ किसी ऐसे स्क्रीनशॉट का है जिसे आप देख सकते हैं।"
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "सेटिंग रीसेट करें"
+  },
+  "optionsResetDesc": {
+    "message": "इस पेज की हर सेटिंग को उसके मूल मान पर लौटा देता है। आपके स्क्रीनशॉट को छुआ नहीं जाता।"
+  },
+  "optionsResetBtn": {
+    "message": "रीसेट करें"
+  },
+  "optionsResetConfirm": {
+    "message": "FullShot की हर सेटिंग को डिफ़ॉल्ट मान पर लौटाएँ? आपके स्क्रीनशॉट पर कोई असर नहीं होगा।"
+  },
+  "optionsResetDone": {
+    "message": "सेटिंग वापस डिफ़ॉल्ट मानों पर आ गई हैं।"
+  },
+  "optionsDeleteAll": {
+    "message": "सब कुछ मिटाएँ"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "आपके इतिहास का हर स्क्रीनशॉट और रुके हुए कैप्चर का छोड़ा हुआ सब कुछ हटा देता है। आपकी सेटिंग जैसी हैं वैसी ही रहती हैं।"
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "FullShot ने इस डिवाइस पर जो कुछ संग्रहित किया है, वह सब मिटाएँ?\n\nआपके इतिहास में स्क्रीनशॉट: $COUNT$\nरुके हुए कैप्चर के अवशेष: $LEFTOVER$\nइससे खाली होगी जगह: $SIZE$\n\nआपकी सेटिंग पर कोई असर नहीं होगा। इसे पूर्ववत नहीं किया जा सकता।",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "मिटा दिया गया। FullShot अब इस डिवाइस पर कोई स्क्रीनशॉट संग्रहित नहीं करता।"
+  },
+  "resultPageTitle": {
+    "message": "स्क्रीनशॉट — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "कॉपी"
+  },
+  "resultCopyTip": {
+    "message": "इमेज क्लिपबोर्ड पर कॉपी करें"
+  },
+  "resultEdit": {
+    "message": "एडिट"
+  },
+  "resultEditTip": {
+    "message": "एडिटर में खोलें"
+  },
+  "resultBeautify": {
+    "message": "सजाएँ"
+  },
+  "resultBeautifyTip": {
+    "message": "सजाएँ — शेयर करने के लिए फ़्रेम और बैकग्राउंड"
+  },
+  "resultClip": {
+    "message": "क्लिप"
+  },
+  "resultClipTip": {
+    "message": "स्क्रॉल क्लिप — एनिमेटेड $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF पेपर आकार"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "डाउनलोड"
+  },
+  "resultDeleteTip": {
+    "message": "स्क्रीनशॉट हटाएँ"
+  },
+  "resultHistoryTip": {
+    "message": "स्क्रीनशॉट इतिहास"
+  },
+  "resultProgressAssembling": {
+    "message": "आपका स्क्रीनशॉट जोड़ा जा रहा है…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "$COUNT$ फ़्रेम डिकोड हो रहा है…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$ फ़्रेम डिकोड हो रहे हैं…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "हिस्सा $INDEX$ जोड़ा जा रहा है…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "लगभग $TOTAL$ में से हिस्सा $INDEX$ जोड़ा जा रहा है…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "सहेजा जा रहा है…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "सुझाव: इमेज को सीधे अपने डेस्कटॉप पर खींच लें, या $DOWNLOAD$ का इस्तेमाल करें।",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "यहाँ कुछ नहीं है"
+  },
+  "resultEmptyBody": {
+    "message": "यह स्क्रीनशॉट अब मौजूद नहीं है।"
+  },
+  "resultOpenHistory": {
+    "message": "इतिहास खोलें"
+  },
+  "resultSomethingWrong": {
+    "message": "कुछ गड़बड़ हो गई — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "$TOTAL$ में से हिस्सा $INDEX$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "हिस्सा डाउनलोड करें"
+  },
+  "resultEditPart": {
+    "message": "हिस्सा एडिट करें"
+  },
+  "resultClipPart": {
+    "message": "हिस्से की क्लिप"
+  },
+  "resultPartAlt": {
+    "message": "स्क्रीनशॉट का हिस्सा $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ डाउनलोड हो रहा है",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "यह स्क्रीनशॉट हमेशा के लिए हटाएँ?"
+  },
+  "resultDeleted": {
+    "message": "स्क्रीनशॉट हटा दिया गया।"
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "यह कैप्चर इतना लंबा है कि इसे एक ही पठनीय छवि के रूप में चिपकाया नहीं जा सकता, इसलिए $COPY$ पूरे पृष्ठ का छोटा किया गया अवलोकन क्लिपबोर्ड पर रखता है। इसमें मौजूद छोटा टेक्स्ट पढ़ा नहीं जा सकेगा।",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "हिस्सा $INDEX$ क्लिपबोर्ड पर कॉपी हो गया",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF बनाया जा रहा है…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF डाउनलोड हो गया ($COUNT$ पेज)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF डाउनलोड हो गया ($COUNT$ पेज)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF नहीं बन सका — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "एडिटर — FullShot"
+  },
+  "editorBackTip": {
+    "message": "स्क्रीनशॉट पर वापस"
+  },
+  "editorToolSelect": {
+    "message": "चुनें / खिसकाएँ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "क्रॉप ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "पेन ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "हाइलाइटर ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "रेखा ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "तीर ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "आयत ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "अंडाकार ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "टेक्स्ट ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "धुँधला / पिक्सेलेट ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "क्रमांकित चरण ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "इमोजी स्टैंप ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "मनचाहा रंग"
+  },
+  "editorStrokeTip": {
+    "message": "रेखा की मोटाई"
+  },
+  "editorStrokeThin": {
+    "message": "पतली"
+  },
+  "editorStrokeMedium": {
+    "message": "मध्यम"
+  },
+  "editorStrokeThick": {
+    "message": "मोटी"
+  },
+  "editorSizeTip": {
+    "message": "टेक्स्ट / इमोजी का आकार"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "पहले जैसा करें ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "फिर से करें ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "छोटा करें (-)"
+  },
+  "editorZoomInTip": {
+    "message": "बड़ा करें (+)"
+  },
+  "editorZoomFit": {
+    "message": "फ़िट"
+  },
+  "editorZoomTipToHundred": {
+    "message": "विंडो में फ़िट — 100% के लिए क्लिक करें"
+  },
+  "editorZoomTipToFit": {
+    "message": "विंडो में फ़िट करने के लिए क्लिक करें"
+  },
+  "editorExport": {
+    "message": "एक्सपोर्ट"
+  },
+  "editorExportCopy": {
+    "message": "क्लिपबोर्ड पर कॉपी करें"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ इमेज",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ दस्तावेज़",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "सहेजें"
+  },
+  "editorSaveTip": {
+    "message": "बदलाव इतिहास में सहेजें ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "और"
+  },
+  "editorMenuFiles": {
+    "message": "इतिहास पर जाएँ"
+  },
+  "editorMenuOptions": {
+    "message": "विकल्प पर जाएँ"
+  },
+  "editorMenuShortcuts": {
+    "message": "कीबोर्ड शॉर्टकट"
+  },
+  "editorCropApply": {
+    "message": "क्रॉप लागू करें"
+  },
+  "editorCropCancel": {
+    "message": "रद्द करें"
+  },
+  "editorShortcutsHeading": {
+    "message": "कीबोर्ड शॉर्टकट"
+  },
+  "editorShortcutTools": {
+    "message": "टूल चुनें"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "पहले जैसा / फिर से"
+  },
+  "editorShortcutSave": {
+    "message": "इतिहास में सहेजें"
+  },
+  "editorShortcutZoom": {
+    "message": "छोटा / बड़ा करें"
+  },
+  "editorShortcutDelete": {
+    "message": "चुनी हुई चीज़ हटाएँ"
+  },
+  "editorShortcutEscape": {
+    "message": "चयन हटाएँ / क्रॉप रद्द करें"
+  },
+  "editorShortcutsClose": {
+    "message": "बंद करें"
+  },
+  "editorNotFound": {
+    "message": "स्क्रीनशॉट नहीं मिला"
+  },
+  "editorToastDownloaded": {
+    "message": "डाउनलोड हो गया"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF डाउनलोड हो गया"
+  },
+  "editorToastSaved": {
+    "message": "इतिहास में सहेजा गया"
+  },
+  "historyPageTitle": {
+    "message": "इतिहास — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · इतिहास"
+  },
+  "historySearchPlaceholder": {
+    "message": "शीर्षक या URL खोजें…"
+  },
+  "historySelectAll": {
+    "message": "सभी चुनें"
+  },
+  "historyClearSelection": {
+    "message": "चयन हटाएँ"
+  },
+  "historyDownloadSelected": {
+    "message": "चुने हुए डाउनलोड करें"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "डाउनलोड ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "चुने हुए हटाएँ"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "हटाएँ ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "अभी कोई स्क्रीनशॉट नहीं"
+  },
+  "historyEmptyBody": {
+    "message": "आपके लिए गए कैप्चर यहाँ दिखेंगे। शुरू करने के लिए टूलबार में FullShot आइकन पर क्लिक करें।"
+  },
+  "historyNoMatchesTitle": {
+    "message": "कुछ नहीं मिला"
+  },
+  "historyNoMatchesBody": {
+    "message": "“$QUERY$” से कोई स्क्रीनशॉट मेल नहीं खाता।",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ स्क्रीनशॉट · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ स्क्रीनशॉट · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$COUNT$ में से $SHOWN$ स्क्रीनशॉट · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$COUNT$ में से $SHOWN$ स्क्रीनशॉट · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "चुनें"
+  },
+  "historyCardOpen": {
+    "message": "खोलें"
+  },
+  "historyCardEdit": {
+    "message": "एडिट"
+  },
+  "historyCardDownloadTip": {
+    "message": "डाउनलोड"
+  },
+  "historyCardDeleteTip": {
+    "message": "हटाएँ"
+  },
+  "historyCardOpenOriginal": {
+    "message": "मूल पेज खोलें"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ हिस्से",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "स्क्रीनशॉट"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "यह स्क्रीनशॉट हटाएँ?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "$COUNT$ स्क्रीनशॉट हमेशा के लिए हटाएँ?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "$COUNT$ स्क्रीनशॉट हमेशा के लिए हटाएँ?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "$COUNT$ स्क्रीनशॉट डाउनलोड हो रहा है",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "$COUNT$ स्क्रीनशॉट डाउनलोड हो रहे हैं",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "हटा दिए गए"
+  },
+  "beautifyPageTitle": {
+    "message": "सजाएँ — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "सजाएँ"
+  },
+  "actionBack": {
+    "message": "वापस"
+  },
+  "commonLoading": {
+    "message": "लोड हो रहा है…"
+  },
+  "beautifyFieldSize": {
+    "message": "आकार"
+  },
+  "beautifyPresetAuto": {
+    "message": "अपने आप"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "वर्गाकार"
+  },
+  "beautifyPresetPortrait": {
+    "message": "पोर्ट्रेट"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "बैकग्राउंड"
+  },
+  "beautifyBgSlate": {
+    "message": "स्लेटी"
+  },
+  "beautifyBgGraphite": {
+    "message": "ग्रेफ़ाइट"
+  },
+  "beautifyBgSky": {
+    "message": "आसमानी"
+  },
+  "beautifyBgSunset": {
+    "message": "सूर्यास्त"
+  },
+  "beautifyBgGrape": {
+    "message": "अंगूरी"
+  },
+  "beautifyBgMint": {
+    "message": "पुदीना"
+  },
+  "beautifyFieldPadding": {
+    "message": "किनारों की जगह"
+  },
+  "beautifyFieldRadius": {
+    "message": "कोनों की गोलाई"
+  },
+  "beautifyFieldEffects": {
+    "message": "इफ़ेक्ट"
+  },
+  "beautifyShadow": {
+    "message": "परछाईं"
+  },
+  "beautifyWindowFrame": {
+    "message": "विंडो फ़्रेम"
+  },
+  "beautifyFieldExport": {
+    "message": "एक्सपोर्ट"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "स्क्रॉल क्लिप — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "स्क्रॉल क्लिप"
+  },
+  "scrollclipFieldFormat": {
+    "message": "फ़ॉर्मैट"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ हर जगह चलता है। $WEBM$ छोटा और ज़्यादा स्मूद होता है (आपके ब्राउज़र में ही लाइव रिकॉर्ड होता है)।",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "आउटपुट चौड़ाई"
+  },
+  "scrollclipFieldDensity": {
+    "message": "घनत्व"
+  },
+  "scrollclipDensityHint": {
+    "message": "ज़्यादा घनत्व पर तस्वीर साफ़ बनती है (स्रोत रिज़ॉल्यूशन के करीब) — पर फ़ाइल बड़ी होती है।"
+  },
+  "scrollclipFieldShape": {
+    "message": "आकार-अनुपात"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "स्क्रॉल गति (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "फ़्रेम दर (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "चाल"
+  },
+  "scrollclipBounce": {
+    "message": "बाउंस (वापस ऊपर तक स्क्रॉल)"
+  },
+  "scrollclipLoop": {
+    "message": "हमेशा दोहराएँ"
+  },
+  "scrollclipCopyFrame": {
+    "message": "फ़्रेम कॉपी करें"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "पोस्टर (सबसे ऊपर वाला) फ़्रेम $FORMAT$ के रूप में कॉपी करें",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ फ़्रेम · $SECONDS$ सेकंड",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ फ़्रेम · $SECONDS$ सेकंड",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "फ़्रेम बनाए जा रहे हैं… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$ एन्कोड हो रहा है… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "अंतिम रूप दिया जा रहा है…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ रिकॉर्ड हो रहा है…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "रिकॉर्ड हो रहा है…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "यहाँ $WEBM$ समर्थित नहीं है — $GIF$ में एक्सपोर्ट किया जा रहा है",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "पोस्टर फ़्रेम कॉपी हो गया"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — बैच कैप्चर"
+  },
+  "batchHeading": {
+    "message": "बैच कैप्चर"
+  },
+  "batchIntro": {
+    "message": "हर पंक्ति में एक URL चिपकाएँ। FullShot हर पेज खोलता है, पूरे पेज का स्क्रीनशॉट आपके इतिहास में सहेजता है और आगे बढ़ जाता है — एक बार में $MAX$ तक। कैप्चर आपके इतिहास में दिखते हैं; उनमें से किसी को देखने, एडिट करने या एक्सपोर्ट करने के लिए $OPENLINK$ पर क्लिक करें।",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "सभी कैप्चर करें"
+  },
+  "batchPermissionHint": {
+    "message": "ये पेज खोलने के लिए पहली बार एक-बार की अनुमति चाहिए होती है।"
+  },
+  "batchPermissionDeclined": {
+    "message": "उन पेजों को खोलने की अनुमति नहीं दी गई।"
+  },
+  "batchPanelPlan": {
+    "message": "योजना"
+  },
+  "batchPanelProgress": {
+    "message": "प्रगति"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ पेज कैप्चर करना है",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ पेज कैप्चर करने हैं",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ पेज कैप्चर करने हैं ($MAX$ की सीमा तक)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "अभी कोई मान्य URL नहीं"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ छोड़े गए: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "असमर्थित स्कीम"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "अमान्य"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "कोई होस्ट नहीं"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "दोहराव"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "खाली"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "सीमा से ज़्यादा ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ पूरे",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ पूरे, $FAILED$ विफल",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ पूरे — समाप्त",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ पूरे, $FAILED$ विफल — समाप्त",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "खोलें"
+  },
+  "batchJobTimedOut": {
+    "message": "कैप्चर का समय ख़त्म"
+  },
+  "batchJobNoSession": {
+    "message": "कोई कैप्चर सत्र नहीं"
+  },
+  "batchJobFailed": {
+    "message": "कैप्चर विफल"
+  },
+  "batchJobError": {
+    "message": "कैप्चर में गड़बड़ी"
+  },
+  "regionHintDrag": {
+    "message": "क्षेत्र चुनने के लिए खींचें — रद्द करने के लिए $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "कैप्चर करने के लिए किसी एलिमेंट पर क्लिक करें — रद्द करने के लिए $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "सेटिंग, एक्सटेंशन और नया टैब जैसे ब्राउज़र के अपने पेज हर एक्सटेंशन के लिए वर्जित हैं। FullShot को किसी सामान्य वेब पेज पर आज़माएँ।"
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools विंडो को कोई एक्सटेंशन कैप्चर नहीं कर सकता। उनके लिए अपने कंप्यूटर का अपना स्क्रीनशॉट टूल इस्तेमाल करें।"
+  },
+  "errRestrictedViewSource": {
+    "message": "पेज का सोर्स दिखाने वाले पेज कैप्चर नहीं किए जा सकते। इसके बजाय पेज को ही कैप्चर करें।"
+  },
+  "errRestrictedExtensionPage": {
+    "message": "एक्सटेंशन के पेज, FullShot के अपने पेज सहित, ब्राउज़र द्वारा सुरक्षित हैं और कैप्चर नहीं किए जा सकते।"
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome वेब स्टोर एक्सटेंशन को अपने पेज पढ़ने नहीं देता, इसलिए यह पेज कैप्चर नहीं हो सकता।"
+  },
+  "errRestrictedGeneric": {
+    "message": "यह पेज ब्राउज़र द्वारा सुरक्षित है और कैप्चर नहीं किया जा सकता।"
+  },
+  "errWrongTab": {
+    "message": "कैप्चर रुक गया — आपने टैब बदल दिया। FullShot का काम पूरा होने तक यह पेज सामने रखें।"
+  },
+  "errGeneric": {
+    "message": "कैप्चर पूरा होने से पहले ही रुक गया। कृपया फिर से कोशिश करें।"
+  },
+  "errBusy": {
+    "message": "इस टैब में पहले से एक कैप्चर चल रहा है।"
+  },
+  "errBlocked": {
+    "message": "यह पेज कैप्चर नहीं किया जा सकता (ब्राउज़र की पाबंदी)।"
+  },
+  "errNoStart": {
+    "message": "FullShot इस पेज पर शुरू नहीं हो सका। पेज फिर से लोड करें और दोबारा कोशिश करें।"
+  },
+  "errCrash": {
+    "message": "कैप्चर अचानक रुक गया। कृपया फिर से कोशिश करें।"
+  },
+  "errUnknownMessage": {
+    "message": "अज्ञात संदेश।"
+  },
+  "errQuota": {
+    "message": "ब्राउज़र यह सीमित कर रहा है कि पेजों की तस्वीर कितनी तेज़ी से ली जा सकती है। थोड़ा रुककर फिर कोशिश करें।"
+  },
+  "errFrameHandover": {
+    "message": "ब्राउज़र ने बीच में ही स्क्रीन देना बंद कर दिया। कुछ सेकंड रुककर फिर कोशिश करें।"
+  },
+  "errLostTab": {
+    "message": "कैप्चर इस टैब का पता खो बैठा। पेज फिर से लोड करें और दोबारा कोशिश करें।"
+  },
+  "errStoppedEarly": {
+    "message": "कैप्चर पूरा होने से पहले ही रोक दिया गया।"
+  },
+  "errStorageFull": {
+    "message": "इस कैप्चर को संग्रहित करने के लिए जगह नहीं बची है। अपने इतिहास से कुछ स्क्रीनशॉट हटाएँ और फिर कोशिश करें।"
+  },
+  "reasonGeneric": {
+    "message": "कोई कारण नहीं बताया गया। कृपया फिर से कोशिश करें।"
+  },
+  "reasonDecodeFailed": {
+    "message": "वह स्क्रीनशॉट डिकोड नहीं हो सका।"
+  },
+  "reasonTooLarge": {
+    "message": "यह इमेज इतनी बड़ी है कि यहाँ एक्सपोर्ट नहीं हो सकती।"
+  },
+  "toastCopiedClipboard": {
+    "message": "क्लिपबोर्ड पर कॉपी हो गया"
+  },
+  "toastCopyFailed": {
+    "message": "कॉपी नहीं हो सका — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "एक्सपोर्ट नहीं हो सका — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ सहेजा गया",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ सहेजा गया  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+# NIKATRU — browser extension factory · root .gitattributes
+#
+# WHY THIS FILE EXISTS
+#
+# Git for Windows installs with core.autocrlf=true. Without this file, the
+# first clone on a second machine checks every text file out with CRLF endings.
+# Nothing looks broken — the extensions still load, the simulations still pass —
+# but every shipped file's bytes differ from the bytes that were audited, the
+# packaging script produces an archive with a different hash from the one that
+# was reviewed, and the "restore byte-identical, verify the hash" doctrine these
+# tools are graded by is quietly false on that machine only.
+#
+# That is the failure shape this project keeps getting bitten by: a claim that
+# stays green locally while being wrong somewhere nobody looked. One line
+# prevents it.
+#
+# Extension/Full_Screen_Shot/ carries its own .gitattributes repeating the same
+# `* text=auto eol=lf` line for its own subtree. Attributes resolve per PATTERN,
+# not per file: the nested file wins only for the patterns it states, and this
+# root file still governs that subtree for everything it does not state —
+# including the *.webm, *.ps1 and *.cmd lines.
+#
+# The nested file also marks its binaries `-text` where this one uses `binary`.
+# ⚠️ THE OLD EXPLANATION OF THAT DIFFERENCE WAS BACKWARDS AND IS WORTH CORRECTING
+# RATHER THAN DELETING, because it is the kind of wrong that reads as reassuring.
+# It said `binary` is `-text -diff`, so "images there stay diffable as text".
+# Measured with `git check-attr text diff merge`:
+#
+#   `binary`  →  text: unset        diff: unset        merge: unset
+#   `-text`   →  text: unset        diff: unspecified  merge: unspecified
+#
+# So `binary` is the three-part macro `-text -diff -merge`, and the difference
+# that matters is `-merge`: under the nested file's `-text`, git will attempt a
+# textual three-way merge on a conflicting PNG or zip and write conflict markers
+# into it. The claimed difference does not exist — measured, a NUL-bearing file
+# (which is every real image) renders as "Binary files … differ" under `-text`
+# exactly as it does under `binary`, because git's NUL sniffing decides that and
+# no attribute overrides it. `-text` restores a readable diff only for a file with
+# no NUL byte in it at all.
+#
+# This mattered because .githooks/pre-commit's content gate reads the rendered
+# diff, so both markings used to blind it — the `binary` block below did so even
+# for pure ASCII. That is fixed in the scanner, not here: the hook now passes
+# `--text`, which overrides both the attribute and the NUL sniffing, and its
+# self-test stages a token inside a `binary`-marked *.png and asserts the refusal.
+# Fixing it here instead would have meant dropping `-merge` from every binary in
+# the repository to make a grep work, which is the wrong file paying the cost.
+
+# Normalise to LF in the repository AND on checkout, on every platform,
+# regardless of the cloner's core.autocrlf setting.
+* text=auto eol=lf
+
+# PowerShell and cmd are the two formats that genuinely want CRLF on Windows.
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binaries: never line-ending-converted, never diffed as text.
+# `text=auto` already infers this from NUL bytes; stating it removes the
+# inference, so an archive whose first bytes happen to look textual cannot be
+# misclassified and mangled.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.zip   binary
+*.xpi   binary
+*.crx   binary
+*.webm  binary
+*.woff  binary
+*.woff2 binary
+
+# The session log is append-only and long, so it is collapsed by default rather
+# than left to drown a pull request diff.
+#
+# ⚠️ THE PATTERN IS ANCHORED TO ONE PATH ON PURPOSE, AND THE BARE `HANDOFF.md` IT
+# REPLACES WAS A CONTRADICTION, NOT A CONVENIENCE. A bare pattern matches
+# HANDOFF.md at any depth, and every OTHER depth is a per-extension session log
+# that .gitignore excludes from this repository entirely. So the old line said
+# "still versioned, still reviewable" about the exact class of document the ignore
+# file was written to withhold — two mechanisms committed the same day asserting
+# opposite policies about the same filename. `linguist-generated=true` is a
+# rendering hint for TRACKED files and is simply inert on an ignored one, so the
+# contradiction cost nothing at runtime and misled every reader instead.
+#
+# templates/tool/HANDOFF.md is the one HANDOFF.md this repository does track: the
+# skeleton's unfilled scaffold, deliberately public, carried by the matching
+# negation in .gitignore. Naming it in full means this attribute now applies to
+# exactly the file it describes, and a future HANDOFF.md that appears somewhere
+# else gets no endorsement it should not have.
+templates/tool/HANDOFF.md linguist-generated=true

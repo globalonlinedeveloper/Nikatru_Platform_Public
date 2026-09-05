@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- A popup has no visible title bar, but a screen reader announces the
+     document title when the window opens — without one it announces the file
+     name. appShortName is the key the header already spends. -->
+<title data-i18n="appShortName">FullShot</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<!-- Every user-visible string carries data-i18n (text) or data-i18n-attr
+     (a named attribute), and KEEPS its English as the fallback: popup.js
+     substitutes on load, and a key that does not resolve leaves the English
+     standing. Chrome does not substitute __MSG__ inside HTML, which is why the
+     key travels in an attribute rather than in the text node.
+     Not marked, deliberately: the icon glyphs (◐ ⬇ ▣ ⬚ ◉ ⏱ ✕) and the · dots,
+     which are symbols and read the same in every language; <kbd> shortcuts,
+     which are keyboard literals and must never be translated; and
+     <option value>, which is an enum the settings are stored as.
+
+     ACCESSIBILITY. Three things changed here and each is a real defect, not a
+     polish item:
+
+     1. The delay <select> lived INSIDE the delayed-capture <button>. A control
+        nested in a control is invalid HTML and the browser's own repair of it
+        is unpredictable — the accessible name of the button swallowed the
+        dropdown, and reaching the dropdown by keyboard meant landing on a
+        button that fires a capture. It is now a SIBLING, positioned over the
+        same spot, so the two controls are two controls.
+     2. The failure box is a live region. It is the only place a capture that
+        failed from a keyboard shortcut can ever be reported, and it was
+        appearing silently. role="alert" is the assertive one on purpose: a
+        capture the user asked for did not happen.
+     3. The dismiss cross now comes AFTER the message in the DOM, so the reading
+        order, the focus order and the announced order are the same order as the
+        visual one. That also retires the `order: 1` the stylesheet needed to
+        undo the old arrangement.
+
+     The pictograms are marked aria-hidden rather than left to be read out: each
+     sits beside its own text label, so a screen reader announcing "down arrow,
+     Full page, Scroll and capture entire page" is reading the decoration
+     twice. The <kbd> chords get the same treatment and come back as
+     aria-keyshortcuts, which is what ARIA has for exactly this and which a
+     screen reader announces as a shortcut rather than as trailing prose. -->
+<div class="header">
+  <img src="../icons/icon32.png" alt="" width="20" height="20">
+  <span class="title" data-i18n="appShortName">FullShot</span>
+  <button id="themeBtn" class="icon-btn" title="Toggle theme"
+          data-i18n-attr="title:popupToggleTheme; aria-label:popupToggleTheme">◐</button>
+</div>
+
+<div class="modes">
+  <button class="mode" data-mode="full" aria-keyshortcuts="Alt+Shift+P">
+    <span class="mode-icon" aria-hidden="true">⬇</span>
+    <span class="mode-text">
+      <b data-i18n="popupModeFullTitle">Full page</b>
+      <small data-i18n="popupModeFullSub">Scroll &amp; capture entire page</small>
+    </span>
+    <kbd aria-hidden="true">Alt+Shift+P</kbd>
+  </button>
+
+  <button class="mode" data-mode="visible" aria-keyshortcuts="Alt+Shift+V">
+    <span class="mode-icon" aria-hidden="true">▣</span>
+    <span class="mode-text">
+      <b data-i18n="popupModeVisibleTitle">Visible area</b>
+      <small data-i18n="popupModeVisibleSub">Just what's on screen</small>
+    </span>
+    <kbd aria-hidden="true">Alt+Shift+V</kbd>
+  </button>
+
+  <button class="mode" data-mode="region">
+    <span class="mode-icon" aria-hidden="true">⬚</span>
+    <span class="mode-text">
+      <b data-i18n="popupModeRegionTitle">Selected region</b>
+      <small data-i18n="popupModeRegionSub">Drag to choose an area</small>
+    </span>
+  </button>
+
+  <button class="mode" data-mode="element">
+    <span class="mode-icon" aria-hidden="true">◉</span>
+    <span class="mode-text">
+      <b data-i18n="popupModeElementTitle">Element</b>
+      <small data-i18n="popupModeElementSub">Click any element on the page</small>
+    </span>
+  </button>
+
+  <div class="mode-row">
+    <button class="mode" data-mode="delayed">
+      <span class="mode-icon" aria-hidden="true">⏱</span>
+      <span class="mode-text">
+        <b data-i18n="popupModeDelayedTitle">Delayed capture</b>
+        <small data-i18n="popupModeDelayedSub">Full page after countdown</small>
+      </span>
+    </button>
+    <select id="delaySel" class="mode-select" title="Delay seconds"
+            data-i18n-attr="title:popupDelayLabel; aria-label:popupDelayLabel">
+      <option value="3" data-i18n="popupDelaySeconds" data-i18n-args="3">3s</option>
+      <option value="5" data-i18n="popupDelaySeconds" data-i18n-args="5">5s</option>
+      <option value="10" data-i18n="popupDelaySeconds" data-i18n-args="10">10s</option>
+    </select>
+  </div>
+</div>
+
+<label class="expand-toggle" title="Grow inner scrollable panels and iframes to their full content instead of capturing them as seen. Cross-site frames ask for an extra permission once." data-i18n-attr="title:popupExpandToggleTip">
+  <input type="checkbox" id="expandInner">
+  <span data-i18n="popupExpandToggle">Expand scrollable panels &amp; iframes</span>
+</label>
+
+<div id="err" class="err" role="alert" aria-live="assertive" aria-atomic="true" hidden><span id="errText"></span><button id="errDismiss" class="icon-btn" title="Dismiss" aria-label="Dismiss" data-i18n-attr="title:popupDismiss; aria-label:popupDismiss">✕</button></div>
+
+<div class="footer">
+  <a href="#" id="historyLink" data-i18n="popupLinkHistory">History</a>
+  <span class="dot" aria-hidden="true">·</span>
+  <a href="#" id="batchLink" data-i18n="popupLinkBatch">Batch</a>
+  <span class="dot" aria-hidden="true">·</span>
+  <a href="#" id="optionsLink" data-i18n="popupLinkOptions">Options</a>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

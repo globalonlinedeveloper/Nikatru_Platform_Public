@@ -1,0 +1,484 @@
+#!/usr/bin/env bash
+# NIKATRU — the last gate before history.
+#
+# INSTALL (once per clone — hooks are not cloned):
+#
+#     git config core.hooksPath .githooks
+#
+# AND CHECK THE MODE BIT, which git DOES record and a clone DOES reproduce:
+# `git ls-files -s .githooks/pre-commit` must print 100755. If it prints 100644,
+# run `git update-index --chmod=+x .githooks/pre-commit` and commit that. On Linux
+# and macOS a hook without the executable bit is skipped in silence
+# (CONTRIBUTING.md:91) — everything below is decoration on those platforms until
+# the bit is set, and nothing announces it.
+#
+# WHAT IT DOES. Three checks. The first two are in the order a secret usually
+# arrives; the third is a different class of leak that has already happened here.
+#
+#   1. a staged PATH that looks like a credential file  (secrets.env, .pem, id_rsa …)
+#   2. a staged DIFF containing a token-shaped or key-shaped string
+#   3. a staged PATH that is an owner-private planning or session document
+#
+# WHY GATES 1 AND 2 BOTH. .gitignore is a filter, not a gate: `git add -f` defeats
+# it, and so does a file that no ignore rule happens to name. This runs on what is
+# actually staged, which is the only list that matters. It is a net, not a permit —
+# `--no-verify` bypasses it, and an ignored file is still on disk one careless
+# `add -f` away from a public remote.
+#
+# WHY GATE 3 EXISTS AT ALL. Four planning documents were committed here on
+# 2026-08-14, and a fifth — an agent session-resume note — was not even noticed,
+# because every word in it is ordinary technical vocabulary and both gates above
+# look for credentials. Sensitivity lives in a document's SUBJECT, not its
+# vocabulary, and the filename is the only part of a subject a gate can read
+# cheaply. .gitignore names the same class; this is the copy `add -f` cannot walk
+# past.
+#
+# WHY THE PATTERNS LOOK ODD. `github[_]pat_` and `-----BEGIN [A-Z ]*PRIVATE KEY-----`
+# are written so that THIS FILE DOES NOT MATCH ITSELF. A hook whose own source
+# contains a literal token prefix blocks the commit that installs the hook, and
+# the natural "fix" is to exempt the hook from its own check — which is a hole
+# straight through the middle of the guard. A character class costs one bracket
+# pair and matches every real token just the same. Every pattern added since obeys
+# the same rule: the literal is always followed by `[`, which is outside its own
+# class, and `t_body 'this hook is committable'` below is the assertion that keeps
+# it true.
+#
+# THE ONE FALSE POSITIVE, STATED RATHER THAN PATCHED. The diff scan sees removed
+# lines too, so a commit that DELETES an already-committed secret is also
+# refused. That is the right default: deleting it in a later commit does not
+# remove it from history, and treating the deletion as the fix is how an exposed
+# credential ends up un-rotated. If you are genuinely cleaning up, rotate the
+# credential first, then commit the removal with --no-verify.
+#
+# WHY THERE IS NO `set -o pipefail`, THOUGH THE MISSING-PIPEFAIL SHAPE IS EXACTLY
+# WHAT USED TO BE WRONG HERE. Both gates used to read `if <producer> | grep -q …`,
+# whose status is the LAST stage's — so a producer that died reported the grep's
+# "no match" and the hook passed with a live token staged. Measured: with a PAT
+# staged and `GIT_EXTERNAL_DIFF=/nonexistent/difft` (an ordinary developer config
+# with a stale path), `git diff --cached -U0` exited 128 and printed nothing, and
+# the hook exited 0. `set -o pipefail` looks like the one-line answer and is the
+# WRONG one — it INVERTS these gates. `grep -q` exits at the first match, the
+# producer is killed by SIGPIPE, pipefail promotes 141 to the pipeline status, and
+# the `if` goes false. Measured here, bash 5.3.9:
+#     set -o pipefail; yes | grep -q y; echo $?              → 141
+#     set -o pipefail; if yes | grep -q y; then …            → the else branch
+# So a gate that had just FOUND a secret would stop blocking. The fix is instead
+# to remove the pipes from the decision path entirely: every producer writes to a
+# file and is status-checked on its own line, and grep is read as the three-way
+# answer it actually is (0 matched / 1 clean / >=2 the scanner itself failed).
+#
+# PROVE IT WORKS — four lines, in a throwaway repository, not this one:
+#
+#     git init /tmp/hooktest && cd /tmp/hooktest
+#     git config core.hooksPath <path-to>/.githooks
+#     printf 'token = github%s\n' '_pat_11ABCDEFGHIJKLMNOPQRSTUV' > leak.txt
+#     git add leak.txt && git commit -m x     # must fail with exit 1
+#
+# Or run the self-check:
+#
+#     bash .githooks/pre-commit --self-test
+#
+# It checks the patterns AND the plumbing that feeds them. The plumbing half is
+# not optional decoration: the version of this file that shipped blind to every
+# binary-classified blob had a completely green self-test, because the self-test
+# only ever piped literal strings through the regexes and never once ran
+# `git diff`. It tested the pattern, not the thing the pattern reads.
+#
+# WHAT IT COSTS, measured on this host so nobody has to guess: the gates add about
+# 0.4 s to a commit (0.45 s → 0.83 s on a small tree) — the price of writing each
+# producer to a file and checking its status instead of piping it. The self-test
+# takes about 17 s, because it builds a repository and runs this file ten times;
+# that is a long pause, not a hang.
+set -u
+
+# ------------------------------------------------------------- preconditions --
+# A gate that cannot run must refuse, not pass. Measured: with a PAT staged and
+# PATH set to git's own directory (git present, grep absent), the old hook printed
+# `grep: command not found` twice and exited 0.
+for tool in git grep mktemp; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    printf 'pre-commit: %s not found — refusing a check that cannot run.\n' "$tool" >&2
+    exit 1
+  }
+done
+
+# Paths that are credential files by name. Kept at parity with the secrets block
+# in .gitignore, because the header above claims this gate backstops that block
+# and a backstop narrower than the thing it backs is a claim, not a control.
+PATHS_RE='secrets\.env|(^|/)\.env($|\.)|upload-token|\.pem$|\.p12$|\.key$|\.crx$|id_rsa|secrets\.json|_PAT($|[^A-Za-z])|(^|/)\.claude/'
+
+# Content that is a credential by shape.
+CONTENT_RE='ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|github[_]pat_|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.|1//[0-9A-Za-z_-]{30,}'
+
+# Documents that are owner-private by subject. Matched on the basename, because
+# the subject is what the name declares and the directory is not part of it.
+DOCS_RE='(^|/)(ROADMAP|GIT-SETUP|HANDOFF|SESSION-[^/]*|[^/]*-PLAN|[^/]*-PROMPT)\.md$'
+
+# The one carve-out, and note its shape: fully anchored, case-SENSITIVE, one
+# byte-for-byte path. `templates/tool/HANDOFF.md` is the skeleton's unfilled
+# scaffold — a template artefact a stamped tool needs, not a session log — and
+# .gitignore carries the matching negation. Contrast the `secrets.env.example`
+# note further down: a carve-out spelled as a WORD is a hole, because an author
+# picks the word. A carve-out spelled as a PATH is picked by the repository.
+DOCS_OK_RE='^templates/tool/HANDOFF\.md$'
+
+# ---------------------------------------------------------------- self-test --
+# Samples are assembled at run time from fragments, so no literal credential
+# prefix appears in this file's own bytes. Both directions are checked: a guard
+# that cannot report "clean" is not a guard, it is a wall.
+if [ "${1:-}" = '--self-test' ]; then
+  fails=0
+  t_path() { # name, sample, expect(0=blocked,1=allowed)
+    printf '%s\n' "$2" | grep -Eiq "$PATHS_RE"; got=$?
+    if [ "$got" -eq "$3" ]; then printf 'ok    %s\n' "$1"
+    else printf 'FAIL  %s  (path check returned %s, wanted %s)\n' "$1" "$got" "$3"; fails=$((fails+1)); fi
+  }
+  t_body() {
+    printf '%s\n' "$2" | grep -Eq "$CONTENT_RE"; got=$?
+    if [ "$got" -eq "$3" ]; then printf 'ok    %s\n' "$1"
+    else printf 'FAIL  %s  (content check returned %s, wanted %s)\n' "$1" "$got" "$3"; fails=$((fails+1)); fi
+  }
+  t_doc() { # composed exactly as gate 3 composes it: carve-out first, then match
+    printf '%s\n' "$2" | grep -Ev "$DOCS_OK_RE" | grep -Eiq "$DOCS_RE"; got=$?
+    if [ "$got" -eq "$3" ]; then printf 'ok    %s\n' "$1"
+    else printf 'FAIL  %s  (docs check returned %s, wanted %s)\n' "$1" "$got" "$3"; fails=$((fails+1)); fi
+  }
+
+  fine_grained='github'"$(printf '_pat_')"'11ABCDEFGHIJKLMNOPQRSTUV'
+  classic='ghp_'"$(printf 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7')"
+  privkey='-----BEGIN RSA PRIVATE KEY'"$(printf -- '-----')"
+  aws='AKIA'"$(printf 'IOSFODNN7EXAMPLE')"
+  gcp='AIza'"$(printf 'SyB1c2D3e4F5g6H7i8J9k0L1m2N3o4P5q6R')"
+  jwt='eyJ'"$(printf 'hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc')"
+  cws='1//'"$(printf '04aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789')"
+
+  echo '--- paths that must be refused'
+  t_path 'Extension/My_Tool/.claude/secrets.env' 'Extension/My_Tool/.claude/secrets.env' 0
+  t_path 'root .env'                             '.env'                                  0
+  t_path 'publish/upload-token.json'             'publish/upload-token.json'             0
+  t_path 'signing key .pem'                      'keys/webstore.pem'                     0
+  t_path 'ssh key id_rsa'                        'home/id_rsa'                           0
+  # Added after a measurement: each of these is named by the .gitignore secrets
+  # block, so each was a file the header claimed this gate caught and it did not.
+  # All seven committed cleanly through `git add -f` against the previous pattern.
+  t_path '.env.local'                            '.env.local'                            0
+  t_path '.env.production'                       '.env.production'                       0
+  t_path 'secrets.json'                          'secrets.json'                          0
+  t_path 'a nested secrets.json'                 'config/app.secrets.json'               0
+  t_path 'a signing .key'                        'keys/webstore.key'                     0
+  t_path 'GITHUB_PAT.txt'                        'GITHUB_PAT.txt'                        0
+  t_path 'anything under .claude/'               '.claude/settings.json'                 0
+  t_path 'a packed extension'                    'app.crx'                               0
+
+  # KNOWN, DELIBERATE: `secrets\.env` is unanchored, so an empty-valued
+  # `secrets.env.example` placeholder is refused too, even though .gitignore
+  # deliberately un-ignores example files. The pattern is left strict rather
+  # than carved out — a carve-out for "example" is a word an author controls,
+  # and this is the one gate that should not be talkable-into. Commit such a
+  # placeholder once with --no-verify, after reading it.
+  t_path 'the example placeholder is ALSO refused' '.claude/secrets.env.example' 0
+  # And the same ruling, applied consistently, now that the pattern reaches every
+  # `.env.<something>`: `.env.example` is refused as well. It used to be allowed
+  # only because `(^|/)\.env$` could not see past the dot, which is the same
+  # anchor that let `.env.local` through. .gitignore un-ignores `.env.example` on
+  # purpose, so committing it takes one `--no-verify` — the price of not writing a
+  # word-shaped exception into the one gate that must not have one.
+  t_path 'the dotenv example is ALSO refused'      '.env.example'                0
+
+  echo '--- paths that must be allowed'
+  t_path 'a manifest'          'Extension/My_Tool/manifest.json'          1
+  t_path 'a locale catalogue'  'Extension/My_Tool/_locales/en/messages.json' 1
+  # These three pin down `_PAT`. Gate 1 greps case-INSENSITIVELY, so a bare
+  # `_PAT` also matches `_path`, `_patch` and `_pattern` — measured, a bare
+  # `_PAT` blocked all three of these. In a JavaScript extension factory that is
+  # not a hypothetical filename, and a guard that blocks ordinary source is a
+  # guard someone switches off. Hence `_PAT($|[^A-Za-z])`.
+  t_path 'url_path.js is not a PAT'   'core/lib/url_path.js'      1
+  t_path 'zip_patch.mjs is not a PAT' 'scripts/lib/zip_patch.mjs' 1
+  t_path 'net_patterns.js is not a PAT' 'test/net_patterns.js'    1
+
+  echo '--- content that must be refused'
+  t_body 'fine-grained PAT'    "PAT=$fine_grained"     0
+  t_body 'classic PAT'         "token: $classic"       0
+  t_body 'private key header'  "$privkey"              0
+  # An extension factory handles store credentials, so the shapes it will
+  # actually meet are not only GitHub's.
+  t_body 'AWS access key id'   "AWS_ACCESS_KEY_ID=$aws" 0
+  t_body 'Google API key'      "key: $gcp"              0
+  t_body 'a JWT'               "Authorization: Bearer $jwt" 0
+  t_body 'store OAuth refresh' "refresh_token=$cws"     0
+
+  echo '--- content that must be allowed'
+  t_body 'ordinary source'     'const NET = /fetch|XMLHttpRequest|WebSocket/;'      1
+  t_body 'prose about tokens'  'The hook refuses classic and fine-grained PATs.'    1
+  t_body 'this hook is committable' "CONTENT_RE='$CONTENT_RE'"                      1
+  # The JWT shape is base64-of-JSON with two dots. Requiring the SECOND dotted
+  # segment is what keeps it off ordinary base64 payloads, of which an image
+  # pipeline has many.
+  t_body 'ordinary base64'     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB' 1
+  t_body 'a bare // comment'   'return 1 // 0 is not a token'                       1
+
+  echo '--- documents that must be refused'
+  t_doc 'the session-resume note' 'Extension/Full_Screen_Shot/RESUME-PROMPT.md'          0
+  t_doc 'a roadmap'               'Extension/My_Tool/ROADMAP.md'                         0
+  t_doc 'the git-setup note'      'Extension/My_Tool/GIT-SETUP.md'                       0
+  t_doc "a tool's session log"    'Extension/My_Tool/HANDOFF.md'                         0
+  t_doc 'a numbered session log'  'docs/SESSION-14.md'                                   0
+  t_doc 'a feature plan'          'Extension/My_Tool/V2-FEATURE-COMPLETE-PLAN.md'        0
+  # Lower case, because on a case-insensitive checkout it is the SAME document and
+  # on a case-sensitive one it is the same document class. This case is what makes
+  # the `-i` on gate 3 load-bearing rather than decorative.
+  t_doc 'a lower-case roadmap'    'Extension/My_Tool/roadmap.md'                         0
+  # The carve-out is exactly one path wide, and this is the assertion that says so.
+  t_doc 'the carve-out does not travel' 'Extension/My_Tool/templates/tool/HANDOFF.md'    0
+
+  echo '--- documents that must be allowed'
+  t_doc "the skeleton's scaffold" 'templates/tool/HANDOFF.md'                            1
+  # A normative protocol spec, deliberately public. It ends in ENVELOPE.md, not
+  # HANDOFF.md, and this case is here so a future widening of DOCS_RE trips over
+  # it rather than over a contributor.
+  t_doc 'the ai-handoff spec'     'Extension/Full_Screen_Shot/AI-HANDOFF-ENVELOPE.md'    1
+  t_doc 'an ordinary readme'      'templates/tool/README.md'                             1
+  t_doc 'the store playbook'      'docs/STORE-PLAYBOOK.md'                               1
+  t_doc 'the migration note'      'MIGRATION.md'                                         1
+
+  # ----------------------------------------------------------- the plumbing --
+  # Everything above tests the PATTERNS. What follows tests the thing that FEEDS
+  # them, which is the half that was missing and the reason a hole shipped: the
+  # regexes were always right, and `git diff` simply stopped handing them the
+  # bytes. Each case stages real bytes in a throwaway repository and runs THIS
+  # file, exit code and all.
+  SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+  # Absolute, because one case below runs with an empty PATH and env would
+  # otherwise fail to find the interpreter rather than the hook failing to find
+  # its tools — two different failures with one exit code between them.
+  BASHBIN=$(command -v bash) || BASHBIN=bash
+  plumb=$(mktemp -d 2>/dev/null) || plumb=''
+  if [ -z "$plumb" ] || ! git init -q "$plumb" >/dev/null 2>&1; then
+    printf 'FAIL  the plumbing fixture could not be built — this self-test certified NOTHING about git diff.\n'
+    fails=$((fails+1))
+  else
+    git -C "$plumb" config user.email 'selftest@localhost' >/dev/null 2>&1
+    git -C "$plumb" config user.name  'selftest'           >/dev/null 2>&1
+    printf '*.png binary\n' > "$plumb/.gitattributes"
+
+    t_hook() { # name, expect-exit, [VAR=value …]
+      hook_name=$1; hook_want=$2; shift 2
+      hook_out=$(cd "$plumb" && env "$@" "$BASHBIN" "$SELF" 2>&1)
+      hook_got=$?      # its own line: `$?` is consumed by the next command that runs
+      if [ "$hook_got" -eq "$hook_want" ]; then printf 'ok    %s\n' "$hook_name"
+      else printf 'FAIL  %s  (hook exited %s, wanted %s)\n' "$hook_name" "$hook_got" "$hook_want"; fails=$((fails+1)); fi
+    }
+    p_reset() { git -C "$plumb" reset -q >/dev/null 2>&1; rm -f "$plumb/leak"* "$plumb/ok.md" "$plumb/RESUME-PROMPT.md" "$plumb/roadmap.md"; rm -rf "$plumb/icons" "$plumb/templates"; }
+
+    # A file git classifies binary from its NUL bytes. The rendered diff says
+    # "Binary files … differ" and the token never reaches grep — that was the hole.
+    p_reset
+    printf 'const PAT="%s";\n\0\0\ntail\n' "$fine_grained" > "$plumb/leak-nul.js"
+    git -C "$plumb" add -f leak-nul.js >/dev/null 2>&1
+    t_hook 'a token in a NUL-bearing file' 1
+    # The naming loop runs a SECOND diff of its own, so it needs `--text` for the
+    # same reason and fails independently. This assertion has to be made on a
+    # binary-classified file or it cannot fail: measured, dropping `--text` from
+    # the loop alone leaves an ordinary source file named exactly as before, and
+    # the hook then refuses correctly while printing an empty list of files.
+    case $hook_out in
+      *leak-nul.js*) printf 'ok    the refusal names a binary-classified file\n' ;;
+      *) printf 'FAIL  the refusal names a binary-classified file  (stderr did not mention leak-nul.js)\n'; fails=$((fails+1)) ;;
+    esac
+
+    # A file git classifies binary from .gitattributes, with no NUL byte in it at
+    # all. `binary` is the macro `-text -diff -merge`, and it is the `-diff` half
+    # that blinds gate 2 — pure ASCII, still unreadable.
+    p_reset
+    mkdir -p "$plumb/icons"
+    printf 'PAT=%s\n' "$fine_grained" > "$plumb/icons/icon16.png"
+    git -C "$plumb" add -f icons/icon16.png >/dev/null 2>&1
+    t_hook 'a token in a `binary`-marked path' 1
+
+    # A broken external diff driver: git exits 128 and prints no diff at all.
+    p_reset
+    printf 'const PAT="%s";\n' "$fine_grained" > "$plumb/leak.js"
+    git -C "$plumb" add -f leak.js >/dev/null 2>&1
+    t_hook 'a producer that died mid-gate' 1 GIT_EXTERNAL_DIFF=/nonexistent/difft
+
+    # The straightforward case, which must still fail closed AND still name the
+    # file. Naming used to break independently of blocking: the reporting loop
+    # ran its own diff, so a fix applied to the decision alone refused correctly
+    # while printing an empty list.
+    p_reset
+    printf 'const PAT="%s";\n' "$fine_grained" > "$plumb/leak.js"
+    git -C "$plumb" add -f leak.js >/dev/null 2>&1
+    t_hook 'a token in ordinary source' 1
+    case $hook_out in
+      *leak.js*) printf 'ok    the refusal names the file\n' ;;
+      *) printf 'FAIL  the refusal names the file  (stderr did not mention leak.js)\n'; fails=$((fails+1)) ;;
+    esac
+
+    # Gate 3 through the real plumbing, both directions.
+    p_reset
+    printf 'Resume development.\n' > "$plumb/RESUME-PROMPT.md"
+    git -C "$plumb" add -f RESUME-PROMPT.md >/dev/null 2>&1
+    t_hook 'a staged session-resume note' 1
+
+    p_reset
+    mkdir -p "$plumb/templates/tool"
+    printf '# HANDOFF\n' > "$plumb/templates/tool/HANDOFF.md"
+    git -C "$plumb" add -f templates/tool/HANDOFF.md >/dev/null 2>&1
+    t_hook "the skeleton's scaffold still commits" 0
+
+    # A gate that cannot run must refuse rather than pass. Run against an empty
+    # PATH, so `command -v git` fails: bash itself is invoked by absolute path,
+    # because a PATH assignment is applied BEFORE the command it prefixes is
+    # looked up, and `env PATH=/nonexistent bash …` therefore fails to find bash
+    # and exits 127 — a number that looks like a refusal and is not one. The
+    # message is asserted too, for the same reason.
+    p_reset
+    printf 'const PAT="%s";\n' "$fine_grained" > "$plumb/leak.js"
+    git -C "$plumb" add -f leak.js >/dev/null 2>&1
+    t_hook 'a hook with no tools on PATH' 1 PATH=/nonexistent
+    case $hook_out in
+      *'refusing a check that cannot run'*) printf 'ok    …and says why rather than exiting 127\n' ;;
+      *) printf 'FAIL  …and says why rather than exiting 127  (got: %s)\n' "$hook_out"; fails=$((fails+1)) ;;
+    esac
+
+    # The same, one tool at a time — because the precondition is a LIST and a
+    # list can lose an entry without losing its shape. A directory holding a stub
+    # named `git` and nothing else is enough: the check is `command -v`, so the
+    # stub need not work, and this reproduces the original defect exactly (git
+    # present, grep absent, a live token staged, and the old hook exiting 0).
+    mkdir -p "$plumb/fakebin"
+    printf '#!/bin/sh\nexit 0\n' > "$plumb/fakebin/git"; chmod +x "$plumb/fakebin/git"
+    t_hook 'a hook with git but no grep' 1 "PATH=$plumb/fakebin"
+    case $hook_out in
+      *'grep not found'*) printf 'ok    …and names the tool it is missing\n' ;;
+      *) printf 'FAIL  …and names the tool it is missing  (got: %s)\n' "$hook_out"; fails=$((fails+1)) ;;
+    esac
+
+    # A scanner that RUNS and then errors — the case `command -v` cannot see.
+    # grep answers 2 for a bad pattern or an unreadable input, and a gate that
+    # reads 2 as "no match" reports clean while having read nothing.
+    #
+    # The stub fails on ONE file, the staged diff, and hands everything else to
+    # the real grep. A stub that failed on every file would prove nothing about
+    # which guard is holding: measured, a blanket-failing grep still produces exit
+    # 1 with the `>=2` guard REMOVED, because a later gate then refuses for its
+    # own reasons and the assertion passes against a broken hook. Narrowing the
+    # injection to the one file gate 2 reads is what makes this able to fail.
+    mkdir -p "$plumb/failgrep"
+    { printf '#!/bin/sh\n'
+      printf 'for a in "$@"; do case $a in *body) exit 2;; esac; done\n'
+      printf 'exec %s "$@"\n' "$(command -v grep)"
+    } > "$plumb/failgrep/grep"; chmod +x "$plumb/failgrep/grep"
+    p_reset
+    printf 'const PAT="%s";\n' "$fine_grained" > "$plumb/leak.js"
+    git -C "$plumb" add -f leak.js >/dev/null 2>&1
+    t_hook 'a scanner that errors mid-scan' 1 "PATH=$plumb/failgrep:$PATH"
+    case $hook_out in
+      *'the scanner failed'*) printf 'ok    …and says the scanner failed, not that the tree is clean\n' ;;
+      *) printf 'FAIL  …and says the scanner failed, not that the tree is clean  (got: %s)\n' "$hook_out"; fails=$((fails+1)) ;;
+    esac
+
+    # Gate 3 meeting the case the pattern tests structurally cannot cover: they
+    # call grep with `-i` themselves, so they go on passing when the GATE loses
+    # its own `-i`. Only a staged lower-case filename notices.
+    p_reset
+    printf 'Roadmap.\n' > "$plumb/roadmap.md"
+    git -C "$plumb" add -f roadmap.md >/dev/null 2>&1
+    t_hook 'a lower-case planning document' 1
+
+    # And the direction that matters just as much: an ordinary commit must pass.
+    # A gate that refuses everything is not a gate either.
+    p_reset
+    printf '# ok\n' > "$plumb/ok.md"
+    git -C "$plumb" add -f ok.md >/dev/null 2>&1
+    t_hook 'an ordinary staged file' 0
+
+    rm -rf "$plumb"
+  fi
+
+  if [ "$fails" -eq 0 ]; then echo; echo 'self-test: all checks behaved as specified.'; exit 0; fi
+  echo; echo "self-test: $fails check(s) misbehaved. Do not trust this hook until they pass."
+  exit 1
+fi
+
+# ------------------------------------------------------------- the producers --
+# Every producer writes to a file and is status-checked on its own line. Nothing
+# in a decision path is a pipeline: see the pipefail note in the header for why
+# the obvious one-line alternative would invert both gates.
+work=$(mktemp -d) || { echo 'pre-commit: no temp directory. Refusing.' >&2; exit 1; }
+trap 'rm -rf "$work"' EXIT
+
+# --diff-filter=d EXCLUDES deletions, and that is load-bearing rather than tidy.
+# Without it the path gates refuse a commit whose whole purpose is REMOVING a
+# private document — measured 2026-08-15, when this hook's first real run blocked
+# the deletion of Extension/Full_Screen_Shot/RESUME-PROMPT.md. A path that is
+# leaving the tree cannot leak; refusing it makes the only correct remedy
+# unreachable and teaches --no-verify, which is the habit this file exists to
+# prevent. Renames still appear (R) under their NEW name, which is the one that
+# ships.
+git diff --cached --name-only --diff-filter=d > "$work/names" || {
+  echo 'pre-commit: git could not list the staged paths. Refusing.' >&2; exit 1; }
+
+# --text is what makes gate 2 able to read a blob git considers binary — both the
+# NUL-sniffed kind and the .gitattributes-declared kind. Without it the diff reads
+# "Binary files … differ" and a token inside a .png, a .zip or any file carrying a
+# stray NUL is invisible to a grep that reports "clean".
+git diff --cached -U0 --text > "$work/body" || {
+  echo 'pre-commit: git diff failed — a broken diff.external or GIT_EXTERNAL_DIFF?' >&2
+  echo 'Refusing: a gate that cannot read the diff has not checked it.' >&2
+  exit 1; }
+
+# grep answers with three values, not two: 0 = matched, 1 = did not match,
+# >=2 = grep itself failed (bad regex, unreadable input). Only 0 and 1 are
+# answers, and reading ">=2" as "clean" is how a check stops checking in silence.
+scan() { # scan <regex> <file> [extra grep flags…] → 0 matched, 1 clean; never returns otherwise
+  scan_re=$1; scan_file=$2; shift 2
+  grep -E "$@" -q -e "$scan_re" -- "$scan_file"
+  scan_rc=$?
+  [ "$scan_rc" -le 1 ] && return "$scan_rc"
+  printf 'pre-commit: the scanner failed (grep exit %s on %s). Refusing.\n' "$scan_rc" "$scan_file" >&2
+  exit 1
+}
+
+# -------------------------------------------------------------------- gate 1 --
+if scan "$PATHS_RE" "$work/names" -i; then
+  echo 'pre-commit: a staged path looks like a credential. Refusing.' >&2
+  grep -Ei -e "$PATHS_RE" -- "$work/names" >&2
+  exit 1
+fi
+
+# -------------------------------------------------------------------- gate 2 --
+if scan "$CONTENT_RE" "$work/body"; then
+  echo 'pre-commit: a token-shaped string is in the staged diff. Refusing.' >&2
+  # Name the files, never echo the match — a secret printed to a terminal is a
+  # secret in scrollback, in a screenshot, and in a pasted bug report. This loop
+  # only chooses which NAMES to print; the refusal is already decided and `exit 1`
+  # below is unconditional, so nothing here is load-bearing for the verdict.
+  while IFS= read -r f; do
+    if git diff --cached -U0 --text -- "$f" | grep -Eq "$CONTENT_RE"; then
+      printf '  %s\n' "$f" >&2
+    fi
+  done < "$work/names"
+  echo 'If the credential is real: rotate it first. Removing it from the tree does not remove it from history.' >&2
+  exit 1
+fi
+
+# -------------------------------------------------------------------- gate 3 --
+# The carve-out is applied first and case-sensitively, so the list gate 3 grades
+# is the staged list minus exactly one known-public path.
+grep -Ev -e "$DOCS_OK_RE" -- "$work/names" > "$work/docnames"
+docs_rc=$?
+[ "$docs_rc" -le 1 ] || {
+  printf 'pre-commit: the scanner failed (grep exit %s on the staged path list). Refusing.\n' "$docs_rc" >&2
+  exit 1; }
+
+if scan "$DOCS_RE" "$work/docnames" -i; then
+  echo 'pre-commit: a staged path is an owner-private planning or session document. Refusing.' >&2
+  grep -Ei -e "$DOCS_RE" -- "$work/docnames" >&2
+  echo 'These live in the private corpus. If this one is genuinely public, add the exact path' >&2
+  echo 'to DOCS_OK_RE and to .gitignore, with a self-test case — not a --no-verify habit.' >&2
+  exit 1
+fi
+
+exit 0

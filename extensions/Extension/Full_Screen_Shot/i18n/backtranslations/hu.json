@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "It opens the inner scrollable panels and iframes out to their full content before recording, instead of photographing them the way they look. For frames originating from other websites the browser asks once for a further permission.",
+  "optionsLead": "The modifications are saved automatically, and are synchronised with your browser profile.",
+  "optionsExpandPermGranted": "The permission has been given — the frames originating from other websites also unfold.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission the frames originating from other websites get into the picture the way they look. The panels and the iframes originating from the same website always work.",
+  "optionsRedactPIIDesc": "It combs through the text published by the page for e-mail addresses, telephone numbers, bank card numbers, personal identifiers and API keys, and on the saved image covers with a solid patch that which it matched. It cannot read text that is drawn as picture elements — a canvas, an image, a PDF, a video frame. The recognition runs on your device; nothing is ever sent anywhere. It works with full-page (document-scrolling) recordings; the patch is definitive, so look over the result yourself.",
+  "scrollclipFormatHint": "GIF can be played everywhere. WebM is smaller and smoother (the recording is made live, in your browser).",
+  "batchPermissionHint": "Opening these pages requires a one-off permission on the first occasion.",
+  "batchPermissionDeclined": "The permission necessary to open the pages was refused."
+}

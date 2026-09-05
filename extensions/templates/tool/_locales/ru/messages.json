@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — замени меня",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ЗАМЕНИ МЕНЯ — одно предложение, одна цель, не больше 132 символов, без маркетинга.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — замени меня",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Сменить тему",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Настройки",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Активная вкладка",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Чтение…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Копировать заголовок",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Прочитать активную вкладку заново",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Закрыть",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Скопировано",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Не удалось скопировать — нажмите Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Последнее действие «$ACTION$» не удалось — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Последнее действие «$ACTION$» не удалось — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "чтение заголовка",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "копирование",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "очистка данных",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "запуск",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Что-то прервало работу до её завершения. Попробуйте ещё раз.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Эта вкладка уже занята.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Эта страница защищена браузером, и прочитать её нельзя.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Активная вкладка не найдена.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "На этой странице нет заголовка, который можно прочитать.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Отменено.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Неизвестное сообщение.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Та вкладка была закрыта до того, как работа завершилась.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Расширение не ответило.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Ничего не вернулось.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Страницы браузера — настройки, расширения, новая вкладка — закрыты для любого расширения. Попробуйте на обычной веб-странице.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Окна инструментов разработчика закрыты для расширений.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Страницы с исходным кодом закрыты для расширений. Попробуйте саму страницу.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Страницы расширений, включая страницы самого этого расширения, защищены браузером.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Интернет-магазин Chrome не даёт расширениям читать свои страницы.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Локальным файлам нужно одно дополнительное разрешение. Откройте страницу расширений браузера, найдите это расширение и включите «Разрешить доступ к файлам по URL».",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Эта страница не загрузилась, поэтому читать пока нечего.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Это встроенный просмотрщик PDF. Расширения не могут читать внутри него — откройте PDF в обычной вкладке или сначала скачайте его.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Эту страницу изолировал сайт, который её открыл, поэтому расширения не могут её прочитать.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Сайт дополнений не даёт расширениям читать свои страницы.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "На этом устройстве закончилось место, поэтому ничего не сохранено. Удалите несколько сохранённых строк в настройках и попробуйте снова.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Это заняло слишком много времени и было остановлено. После этого ничего не осталось.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Это значение слишком длинное для синхронизируемых настроек. Попробуйте покороче.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Не удалось сохранить эту настройку. Подождите немного и попробуйте снова.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Настройки — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Настройки",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Настройки",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Сохраняется автоматически. Если синхронизация браузера включена, настройки путешествуют вместе с профилем браузера — нам они не отправляются никогда.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Поведение",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Копировать при открытии",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Копировать результат в буфер обмена сразу при открытии окна.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Вести локальную историю",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "По умолчанию выключено. Когда включено, результаты хранятся только на этом устройстве, перечислены ниже и могут быть удалены в любой момент.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Предел истории",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Самые старые строки отбрасываются, когда список становится длиннее этого числа.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Удалять строки старше",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Дней. Старые строки удаляются автоматически в фоне. Поставьте 0, чтобы хранить строки, пока их не вытеснит предел истории.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Тема",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "По умолчанию следует за системой.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Системная",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Светлая",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Тёмная",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Ваши данные",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "На этом устройстве ничего не хранится.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ строки хранятся на этом устройстве. Они никуда не уходят.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ строка хранится на этом устройстве. Она никуда не уходит.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ строки хранятся на этом устройстве. Они никуда не уходят.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ строки хранятся на этом устройстве. Они никуда не уходят.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ строк хранится на этом устройстве. Они никуда не уходят.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ строки хранится на этом устройстве. Они никуда не уходят.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Надёжно: браузер пообещал это не стирать.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Без гарантий: браузер может стереть это сам, если на устройстве кончится место. Экспортируйте резервную копию.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Этот браузер не сообщает, сохранятся ли записанные данные, поэтому считайте их временными и экспортируйте резервную копию.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Занято $USED$ из $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Удалить",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Удалить строку с $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Экспортировать всё",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Сохраняет все хранящиеся строки в один файл JSON на этом устройстве. Ничего никуда не выгружается.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Экспортировать всё",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Удалить всё",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Удаляет с этого устройства все хранящиеся строки. Настройки сохраняются.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Удалить всё",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Сбросить настройки",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Возвращает каждую настройку на этой странице к значению по умолчанию и удаляет их из синхронизируемого профиля браузера. Сохранённые строки остаются.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Сбросить настройки",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Сообщить о проблеме",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Подготовить отчёт о проблеме",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Создаёт небольшой файл с описанием состояния этого расширения. Вы видите ровно то, что в нём есть, до сохранения, и никуда ничего не отправляется.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Подготовить отчёт",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "О расширении",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — замени меня",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Одно предложение о том, что именно делает этот инструмент. Он работает на вашем устройстве: без аккаунта, без слежки, без сетевых запросов, нам ничего не отправляется.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Сохранено",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Всё удалено",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Не удалось удалить — попробуйте снова",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Не удалось сохранить эту настройку",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Экспорт сохранён",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Не удалось сохранить файл",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Строка удалена",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Настройки сброшены",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Не удалось сбросить настройки",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Отчёт сохранён",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Отмена",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Удалить всё?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Все хранящиеся строки будут удалены с этого устройства. Ваши настройки останутся. Это нельзя отменить.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Сбросить все настройки?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Каждый параметр на этой странице вернётся к значению по умолчанию и будет удалён из синхронизируемого профиля браузера. Ваши сохранённые строки останутся. Это нельзя отменить.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Сохранить этот отчёт о проблеме?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Это всё, что будет в файле. В нём нет ни адресов страниц, ни текста страниц, ни чего-либо, что вы записали. Никуда ничего не отправляется — файл сохраняется на этом устройстве, и только вам решать, делиться им или нет.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Сохранить отчёт",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Приватное окно — этот результат не сохранён в вашей истории.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Доступ к сайтам",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Доступ ко всем сайтам",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Нужен только функциям, которые работают на страницах, где вы не нажимали кнопку на панели инструментов. Отозвать его можно в любой момент, прямо здесь.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Предоставить доступ",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Отозвать доступ",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Сейчас это расширение может читать все сайты, которые вы посещаете.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Это расширение может прочитать вкладку только после того, как вы нажмёте его кнопку на панели инструментов.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Доступ предоставлен",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Доступ не предоставлен",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Доступ отозван",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Не удалось отозвать этот доступ",
+    "description": "en: Could not revoke that access"
+  }
+}

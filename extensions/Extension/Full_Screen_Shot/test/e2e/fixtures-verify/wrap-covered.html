@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>privacy-verify — a wrapped token, wholly covered, and no alarm</title>
+<!-- THE HONEST WRAPPED PAGE, AND IT EXISTS TO GRADE THE SUITE.
+
+     fixtures-verify/wrap-cancel.html is the page where a wrapped token's
+     surplus block CANCELS a real miss. This is its control: the same wrap,
+     with nothing uncovered anywhere on the page.
+
+       one card number in a column too narrow to hold it
+         -> 1 detector match, TWO client rects, two blocks, both painted,
+            both read back opaque
+       nothing else that matches any of the five patterns
+
+     Expected ledger: matched 1, painted 1, verifiedOpaque 1, and TWO blocks in
+     the delivered image. The flat stats line renders and the bolded shortfall
+     sentence does not, because nothing is uncovered.
+
+     WHY THE SUITE NEEDS IT. check B4 asserted `meta.piiCount > acts.verifiedOpaque`
+     implies the alarm — BLOCKS on the left of the comparison, MATCHES on the
+     right — inside the very file used to certify that the product had stopped
+     mixing those units. It was green only because no fixture in this corpus
+     wrapped a token while covering everything: on this page the old form reads
+     2 > 1 and demands an alarm about a capture in which nothing whatever went
+     wrong. A check that is green only while the defect it grades is present
+     teaches the defect to whoever reads the suite next.
+
+     The card rides a marker colour (rgb(90,130,255)) so "covered or not" is
+     decidable from the delivered PNG rather than from the log, and the two
+     wrapped lines are spaced (line-height 2.4) so a connected-component count
+     can tell two blocks from one tall one. No content-visibility, no shadow
+     root, no iframe: this page's whole job is to be ORDINARY. -->
+<style>
+  html, body { margin: 0; background: #fff; color: #1c2333; font: 17px/1.6 system-ui, sans-serif; }
+  header { background: rgb(35, 45, 70); color: #fff; padding: 24px 28px; font: 600 24px/1.3 system-ui, sans-serif; }
+  .prose { max-width: 900px; padding: 18px 28px; }
+  /* THE WRAP. 210px of content box against a 22px monospace card number forces
+     Range.getClientRects to return two rects for one match. */
+  #narrow { width: 210px; padding: 20px 28px; }
+  #narrow .mark { font: 600 22px/2.4 ui-monospace, monospace; }
+  .card { background: rgb(90, 130, 255); color: #0b2a6b; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+<header>Billing record — a wrapped token and nothing else</header>
+<div class="prose">The card number below sits in a column too narrow to hold it, so the matched token occupies two wrapped lines and the bake emits one block per line. One match, two blocks, and both of them covered: the counts a person reads are in matches, so this page must report one matched and one covered, and must not report a shortfall.</div>
+<div id="narrow">Card on file: <span class="mark card">4242 4242 4242 4242</span></div>
+<div class="prose">Nothing else on this page matches any of the five patterns. Order 1234 5678 9012 3456 is a Luhn-invalid decoy and stays exactly where it is.</div>
+<div class="prose">Reference AB-2211 covers the current billing period. Renewal is handled by the duty rota and needs no contact details in this record.</div>
+<div id="bottom"></div>
+</body>
+</html>

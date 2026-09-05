@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — skeleton → data swap</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #1E325A; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  .skeleton { height: 100px; background: #D2D2D8; margin: 0; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+  .real { height: 100px; background: #50A078; color: #012; padding: 12px 20px; }
+  .real.deep { background: #00D27A; color: #013; font-weight: 700; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 12px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 480px; max-height: 220px; overflow-y: auto; z-index: 20;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — skeleton→data swap. Turn ON "Wait for content to finish loading", then press Alt+Shift+P.</div>
+<div id="data" aria-busy="true"></div>
+<div id="bottom">PAGE BOTTOM MARKER — appears once at the very end.</div>
+<div id="scoreboard">Waiting for capture… enable waitStable in options, then Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const data = $('data'), board = $('scoreboard');
+  const N = 24, DEEP_IX = 22;
+
+  function skeleton() {
+    data.setAttribute('aria-busy', 'true');
+    data.innerHTML = '';
+    for (let i = 0; i < 6; i++) {           // 6 grey placeholder blocks = 600px
+      const s = document.createElement('div');
+      s.className = 'skeleton';
+      data.appendChild(s);
+    }
+  }
+  function realData() {
+    data.innerHTML = '';
+    for (let i = 0; i < N; i++) {            // 24 real rows = 2400px, taller than the skeleton
+      const d = document.createElement('div');
+      d.className = 'real' + (i === DEEP_IX ? ' deep' : '');
+      d.textContent = (i === DEEP_IX)
+        ? 'DEEP REAL ITEM #' + (i + 1) + ' — only present once the loader resolves'
+        : 'Real content row #' + (i + 1);
+      data.appendChild(d);
+    }
+    data.setAttribute('aria-busy', 'false');   // app: data landed, clear the loader
+  }
+  skeleton();
+  setTimeout(realData, 250);   // network-like resolve (< the engine's 3s stability cap)
+
+  // ---- self-grading scoreboard ----
+  const S = { settled: false, stayed: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (data.getAttribute('aria-busy') === 'false' && data.children.length >= N) S.settled = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.stayed = data.getAttribute('aria-busy') === 'false' && data.children.length >= N;
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok) {
+    return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + '\n';
+  }
+  function report() {
+    const rows = [
+      ['loader resolved to real content by capture time (engine waited for stability)', S.settled],
+      ['real content left in place after capture (honest boundary — not un-resolved)', S.stayed]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'SKELETON RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: full green content with the DEEP row, no grey placeholders, then the blue BOTTOM marker.';
+    console.log('FSSKELETON', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

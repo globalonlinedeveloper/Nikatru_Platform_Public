@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — zamijeni me",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ZAMIJENI ME — jedna rečenica, jedna svrha, najviše 132 znaka, bez marketinga.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — zamijeni me",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Promijeni temu",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Opcije",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktivna kartica",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Čitanje…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopiraj naslov",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Ponovno pročitaj aktivnu karticu",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Odbaci",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Kopirano",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kopiranje nije uspjelo — pritisnite Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Posljednja radnja „$ACTION$” nije uspjela — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Posljednja radnja „$ACTION$” nije uspjela — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "čitanje naslova",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopiranje",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "brisanje podataka",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "izvođenje",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Nešto je to zaustavilo prije nego što je dovršeno. Pokušajte ponovno.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Ova je kartica već zauzeta.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Ovu stranicu štiti preglednik i nije ju dopušteno čitati.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Nije pronađena nijedna aktivna kartica.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Ova stranica nema naslov koji bi se mogao pročitati.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Otkazano.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Nepoznata poruka.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Ta je kartica zatvorena prije nego što je posao dovršen.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Proširenje nije odgovorilo.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Ništa se nije vratilo.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Stranice preglednika poput Postavki, Proširenja i Nove kartice zabranjene su svakom proširenju. Pokušajte na običnoj web-stranici.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Prozori alata za razvojne programere zabranjeni su proširenjima.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Stranice s prikazom izvornog koda zabranjene su proširenjima. Pokušajte umjesto toga na samoj stranici.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Stranice proširenja, uključujući i vlastite stranice ovog proširenja, štiti preglednik.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store sprječava proširenja da čitaju njegove stranice.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Lokalne datoteke traže još jedno dopuštenje. Otvorite stranicu Proširenja u pregledniku, pronađite ovo proširenje i uključite „Dopusti pristup URL-ovima datoteka”.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Ova se stranica nije učitala pa još nema ničega za čitanje.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Ovo je PDF preglednik ugrađen u preglednik. Proširenja ne mogu čitati unutar njega — otvorite PDF u običnoj kartici ili ga najprije preuzmite.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Ovu je stranicu web-mjesto koje ju je otvorilo izoliralo u sandbox, pa je proširenja ne mogu čitati.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Web-mjesto s dodacima sprječava proširenja da čitaju njegove stranice.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Na ovom uređaju nema mjesta pa ništa nije spremljeno. Izbrišite nekoliko pohranjenih redaka u Opcijama i pokušajte ponovno.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Ovo je trajalo predugo i zaustavljeno je. Ništa nije ostalo iza toga.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Ta je vrijednost predugačka za pohranu u vašim sinkroniziranim postavkama. Pokušajte s kraćom.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Ta se postavka nije mogla spremiti. Pričekajte trenutak i pokušajte ponovno.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Opcije — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Opcije",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Opcije",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Sprema se automatski. Ako je sinkronizacija preglednika uključena, vaše postavke putuju s vašim profilom preglednika — nama se ne šalju nikada.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Ponašanje",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopiraj pri otvaranju",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopiraj rezultat u međuspremnik čim se skočni prozor otvori.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Vodi lokalnu povijest",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Prema zadanome isključeno. Kada je uključeno, rezultati se pohranjuju samo na ovom uređaju, navedeni su ispod i mogu se izbrisati u svakom trenutku.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Ograničenje povijesti",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Najstariji se retci odbacuju čim popis postane dulji od ovoga.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Izbriši retke starije od",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dana. Stari se retci automatski uklanjaju u pozadini. Postavite 0 da retci ostanu dok ih ne odbaci ograničenje povijesti.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Prema zadanome slijedi vaš sustav.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sustav",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Svijetla",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tamna",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Vaši podaci",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Na ovom uređaju nije pohranjeno ništa.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ redaka pohranjeno je na ovom uređaju. Ništa ne napušta uređaj.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ redak pohranjen je na ovom uređaju. Ništa ne napušta uređaj.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ redaka pohranjeno je na ovom uređaju. Ništa ne napušta uređaj.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ retka pohranjena su na ovom uređaju. Ništa ne napušta uređaj.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ redaka pohranjeno je na ovom uređaju. Ništa ne napušta uređaj.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ redaka pohranjeno je na ovom uređaju. Ništa ne napušta uređaj.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Trajno: preglednik je obećao da ovo neće obrisati.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Bez jamstva: preglednik ovo može obrisati sam ako uređaju ponestane prostora. Izvezite sigurnosnu kopiju.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Ovaj preglednik ne kaže hoće li pohranjeni podaci biti sačuvani, pa ih smatrajte privremenima i izvezite sigurnosnu kopiju.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ U upotrebi $USED$ od $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Izbriši",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Izbriši redak s $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Izvezi sve",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Sprema svaki pohranjeni redak u jednu JSON datoteku na ovom uređaju. Ništa se ne prenosi na internet.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Izvezi sve",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Izbriši sve",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Uklanja svaki pohranjeni redak s ovog uređaja. Postavke ostaju.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Izbriši sve",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Vrati zadane postavke",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Vraća svaku postavku na ovoj stranici na zadanu vrijednost i uklanja ih iz vašeg sinkroniziranog profila preglednika. Pohranjeni retci ostaju.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Vrati zadane postavke",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Prijavi problem",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Pripremi izvješće o problemu",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Izrađuje malu datoteku koja opisuje stanje ovog proširenja. Prije spremanja točno vidite što je u njoj i ništa se nikamo ne šalje.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Pripremi izvješće",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "O proširenju",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — zamijeni me",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Jedna rečenica koja točno kaže što ovaj alat radi. Svoj posao obavlja na vašem uređaju: bez računa, bez praćenja, bez mrežnih poziva, nama se ne šalje ništa.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Spremljeno",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Sve izbrisano",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Brisanje nije uspjelo — pokušajte ponovno",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Ta se postavka nije mogla spremiti",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Izvoz spremljen",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Datoteka se nije mogla spremiti",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Redak izbrisan",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Postavke vraćene na zadano",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Postavke se nisu mogle vratiti na zadano",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Izvješće spremljeno",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Odustani",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Izbrisati sve?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Svaki pohranjeni redak uklanja se s ovog uređaja. Vaše postavke ostaju. Ovo se ne može poništiti.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Vratiti sve postavke na zadano?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Svaka se postavka na ovoj stranici vraća na zadanu vrijednost i uklanja iz vašeg sinkroniziranog profila preglednika. Vaši pohranjeni retci ostaju. Ovo se ne može poništiti.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Spremiti ovo izvješće o problemu?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Ovo je sve što će datoteka sadržavati. U njoj nema nikakvih adresa stranica, nikakvog teksta stranica ni ičega što ste snimili. Ništa se nikamo ne šalje — datoteka se sprema na ovaj uređaj i samo vi odlučujete hoćete li je podijeliti.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Spremi izvješće",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Anonimni prozor — ovaj rezultat nije spremljen u vašu povijest.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Pristup web-mjestima",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Pristup svim web-mjestima",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Potreban je samo za značajke koje rade na stranicama na kojima niste kliknuli gumb na alatnoj traci. Možete ga oduzeti u svakom trenutku, ovdje.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Dodijeli pristup",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Oduzmi pristup",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Ovo proširenje trenutačno može čitati svako web-mjesto koje posjetite.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Ovo proširenje može pročitati karticu tek nakon što kliknete njegov gumb na alatnoj traci.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Pristup dodijeljen",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Pristup nije dodijeljen",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Pristup oduzet",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Taj se pristup nije mogao oduzeti",
+    "description": "en: Could not revoke that access"
+  }
+}

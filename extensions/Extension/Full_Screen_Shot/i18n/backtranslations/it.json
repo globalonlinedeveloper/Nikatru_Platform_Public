@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Enlarges the inner scrollable panels and the iframes up to their complete content, instead of capturing them as they appear. For frames from other sites an additional authorisation is requested one single time.",
+  "optionsLead": "Changes are saved automatically and synchronised with your browser profile.",
+  "optionsExpandPermGranted": "Authorisation granted: frames from other sites are expanded too.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" authorisation, frames from other sites are captured as they appear. Panels and same-site iframes always work.",
+  "optionsRedactPIIDesc": "Analyses the text the page exposes, looking for e-mail addresses, telephone numbers, credit card numbers, tax codes and API keys, and covers with a solid block that which corresponds in the saved image. It cannot read text drawn as pixels: a canvas, an image, a PDF, a video frame. The detection is executed on your device; nothing is ever sent anywhere. Applies to whole-page captures (document scrolling); the block is permanent, so check the result yourself.",
+  "scrollclipFormatHint": "GIF plays everywhere. WebM is lighter and smoother (recorded live in your browser).",
+  "batchPermissionHint": "Opening these pages requires a one-time authorisation, the first time.",
+  "batchPermissionDeclined": "The authorisation to open those pages was refused."
+}

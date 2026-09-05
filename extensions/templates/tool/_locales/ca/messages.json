@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — substitueix-me",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "SUBSTITUEIX-ME: una frase, un propòsit, 132 caràcters o menys, sense màrqueting.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — substitueix-me",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Canvia el tema",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Opcions",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Pestanya activa",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "S’està llegint…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Copia el títol",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Torna a llegir la pestanya activa",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Descarta",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "S’ha copiat",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "No s’ha pogut copiar: prem Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "L’última $ACTION$ ha fallat: $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "L’última $ACTION$ ha fallat: $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "lectura del títol",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "còpia",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "supressió de dades",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "execució",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Alguna cosa ho ha aturat abans d’acabar. Torna-ho a provar.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Aquesta pestanya ja està ocupada.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "El navegador protegeix aquesta pàgina i no en permet la lectura.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "No s’ha trobat cap pestanya activa.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Aquesta pàgina no té cap títol per llegir.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "S’ha cancel·lat.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Missatge desconegut.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Aquella pestanya s’ha tancat abans que la tasca acabés.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "L’extensió no ha respost.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "No ha tornat res.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Les pàgines del navegador, com ara Configuració, Extensions i la pàgina Pestanya nova, estan vetades a totes les extensions. Prova-ho en una pàgina web normal.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Les finestres de les eines per a desenvolupadors estan vetades a les extensions.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Les pàgines de codi font estan vetades a les extensions. Prova amb la pàgina mateixa.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "El navegador protegeix les pàgines d’extensió, incloses les d’aquesta mateixa extensió.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "El Chrome Web Store impedeix que les extensions llegeixin les seves pàgines.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Els fitxers locals necessiten un permís addicional. Obre la pàgina d’extensions del navegador, busca aquesta extensió i activa «Permet l’accés als URL de fitxers».",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Aquesta pàgina no s’ha carregat, així que encara no hi ha res per llegir.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Això és el visualitzador de PDF integrat del navegador. Les extensions no en poden llegir el contingut: obre el PDF en una pestanya normal o baixa’l primer.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "El lloc que ha obert aquesta pàgina l’ha aïllada en un espai de proves, de manera que les extensions no la poden llegir.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "El lloc de complements impedeix que les extensions llegeixin les seves pàgines.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Aquest dispositiu s’ha quedat sense espai, així que no s’ha desat res. Suprimeix algunes files desades a Opcions i torna-ho a provar.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Això ha trigat massa i s’ha aturat. No ha quedat res enrere.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Aquest valor és massa llarg per desar-lo a la configuració sincronitzada. Prova’n un de més curt.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Aquesta opció no s’ha pogut desar. Espera un moment i torna-ho a provar.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Opcions — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Opcions",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Opcions",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Es desa automàticament. Si tens activada la sincronització del navegador, la configuració viatja amb el teu perfil del navegador; no se’ns envia mai.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Comportament",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Copia en obrir",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Copia el resultat al porta-retalls tan bon punt s’obre la finestra emergent.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Desa un historial local",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Desactivat per defecte. Quan s’activa, els resultats es desen només en aquest dispositiu, es mostren a sota i es poden suprimir en qualsevol moment.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Límit de l’historial",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Les files més antigues es descarten quan la llista supera aquest nombre.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Suprimeix les files anteriors a",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dies. Les files antigues s’eliminen automàticament en segon pla. Posa 0 per conservar-les fins que el límit de l’historial les descarti.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Per defecte, segueix el sistema.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sistema",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Clar",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Fosc",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Les teves dades",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "No hi ha res desat en aquest dispositiu.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Hi ha $COUNT$ files desades en aquest dispositiu. No en surt res.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Hi ha $COUNT$ fila desada en aquest dispositiu. No en surt res.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Hi ha $COUNT$ files desades en aquest dispositiu. No en surt res.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Hi ha $COUNT$ files desades en aquest dispositiu. No en surt res.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Hi ha $COUNT$ files desades en aquest dispositiu. No en surt res.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Hi ha $COUNT$ files desades en aquest dispositiu. No en surt res.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Persistent: el navegador ha promès que no ho esborrarà.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Sense garanties: el navegador pot esborrar-ho pel seu compte si el dispositiu es queda sense espai. Exporta’n una còpia de seguretat.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Aquest navegador no diu si les dades desades es conservaran, així que tracta-les com a temporals i exporta’n una còpia de seguretat.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ S’utilitzen $USED$ de $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Suprimeix",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Suprimeix la fila de $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Exporta-ho tot",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Escriu totes les files desades en un únic fitxer JSON en aquest dispositiu. No es puja res.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Exporta-ho tot",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Suprimeix-ho tot",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Elimina d’aquest dispositiu totes les files desades. La configuració es conserva.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Suprimeix-ho tot",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Restableix la configuració",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Torna tota la configuració d’aquesta pàgina als valors per defecte i l’elimina del teu perfil del navegador sincronitzat. Les files desades es conserven.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Restableix la configuració",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Informa d’un problema",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Prepara un informe del problema",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Crea un fitxer petit que descriu l’estat d’aquesta extensió. Veus exactament què conté abans que es desi, i no s’envia res enlloc.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Prepara un informe",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Quant a",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — substitueix-me",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Una frase que diu exactament què fa aquesta eina. Fa la feina al teu dispositiu: sense compte, sense seguiment, sense connexions de xarxa, no se’ns envia res.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "S’ha desat",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "S’ha suprimit tot",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "No s’ha pogut suprimir: torna-ho a provar",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "No s’ha pogut desar aquesta opció",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Exportació desada",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "No s’ha pogut desar el fitxer",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Fila suprimida",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Configuració restablerta",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "No s’ha pogut restablir la configuració",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Informe desat",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Cancel·la",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Vols suprimir-ho tot?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "S’eliminen d’aquest dispositiu totes les files desades. La teva configuració es conserva. Això no es pot desfer.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Vols restablir tota la configuració?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Cada preferència d’aquesta pàgina torna al seu valor per defecte i s’elimina del teu perfil del navegador sincronitzat. Les teves files desades es conserven. Això no es pot desfer.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Vols desar aquest informe del problema?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Això és tot el que contindrà el fitxer. No inclou cap adreça de pàgina, ni cap text de pàgina, ni res del que hagis capturat. No s’envia res enlloc: el fitxer es desa en aquest dispositiu i ets lliure de compartir-lo o no.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Desa l’informe",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Finestra d’incògnit: aquest resultat no s’ha desat a l’historial.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Accés als llocs",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Accés a tots els llocs",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Només cal per a les funcions que actuen en pàgines on no has fet clic al botó de la barra d’eines. El pots retirar quan vulguis, aquí mateix.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Concedeix l’accés",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Revoca l’accés",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Actualment, aquesta extensió pot llegir tots els llocs que visites.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Aquesta extensió només pot llegir una pestanya després que facis clic al seu botó de la barra d’eines.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Accés concedit",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "No s’ha concedit l’accés",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Accés revocat",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "No s’ha pogut revocar aquest accés",
+    "description": "en: Could not revoke that access"
+  }
+}

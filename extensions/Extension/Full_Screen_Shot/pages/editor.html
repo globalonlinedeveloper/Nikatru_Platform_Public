@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title data-i18n="editorPageTitle">Editor — FullShot</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .tgroup {
+    display: flex; align-items: center; gap: 2px;
+    padding: 2px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg);
+  }
+  .tool {
+    width: 34px; height: 32px;
+    display: grid; place-items: center;
+    border: none; border-radius: 8px;
+    background: none; color: var(--fg);
+    font-size: 15px; cursor: pointer;
+  }
+  .tool:hover { background: var(--bg2); }
+  /* --accent-fg, not a hard #fff: pages/common.css owns the pairing, and it is
+     graded there at 4.5:1 against --accent in both themes (4.60:1 dark, 6.29:1
+     light). A literal here would be a second opinion that nothing re-measures
+     the day the accent moves — and the dark accent moved during this very
+     release, from #6d64f0 (4.44:1, a real AA failure) to #6a61ef. */
+  .tool.active { background: var(--accent); color: var(--accent-fg); }
+  .tool:disabled { opacity: .4; cursor: default; }
+
+  .swatch {
+    width: 22px; height: 22px; border-radius: 50%;
+    /* The ring was --line (#e2e2ea): 1.29:1 against the white panel, which made
+       the WHITE swatch an invisible control — a 1.4.11 failure, because that
+       boundary is the only thing that says a control is there at all.
+       --control-line is the token pages/common.css declares for exactly this
+       job ("a boundary that IS the control"): 3.57:1 light, 3.51:1 dark, both
+       clear of the 3:1 the rule asks. */
+    border: 2px solid var(--panel); outline: 1px solid var(--control-line);
+    cursor: pointer; padding: 0;
+  }
+  .swatch.active { outline: 2px solid var(--accent); }
+  #customColor { width: 26px; height: 26px; border: none; background: none; cursor: pointer; padding: 0; }
+
+  .sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar label { font-size: 12px; color: var(--fg2); }
+
+  #stage {
+    flex: 1; overflow: auto;
+    display: grid; place-items: center;
+    padding: 26px;
+    background:
+      repeating-conic-gradient(var(--bg2) 0% 25%, transparent 0% 50%) 0 0 / 22px 22px,
+      var(--bg);
+  }
+  #canvasWrap { position: relative; box-shadow: var(--shadow); line-height: 0; }
+  #canvas { background: #fff; cursor: crosshair; }
+
+  #textInput {
+    position: absolute; display: none;
+    background: transparent; color: inherit;
+    border: 1.5px dashed var(--accent); border-radius: 4px;
+    outline: none; resize: none; overflow: hidden;
+    font-weight: 600; font-family: system-ui, sans-serif;
+    padding: 2px; min-width: 60px; min-height: 1.2em;
+    z-index: 5;
+  }
+
+  /* Centred without naming an edge — see the note on #fs-toast in common.css. */
+  #cropBar {
+    position: fixed; inset-block-end: 26px; inset-inline: 0;
+    width: fit-content; margin-inline: auto;
+    display: none; gap: 8px; z-index: 20;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 8px; box-shadow: var(--shadow);
+  }
+  #cropBar.show { display: flex; }
+
+  #emojiPop {
+    position: absolute; display: none; z-index: 30;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 8px; box-shadow: var(--shadow);
+    grid-template-columns: repeat(6, 34px);
+  }
+  #emojiPop.show { display: grid; }
+  #emojiPop button {
+    width: 34px; height: 34px; font-size: 19px;
+    border: none; background: none; border-radius: 8px; cursor: pointer;
+  }
+  #emojiPop button:hover { background: var(--bg2); }
+
+  #loading { flex: 1; display: grid; place-items: center; color: var(--fg2); }
+
+  /* `right: 0` anchored these to the physical right edge. Under RTL the
+     toolbar flips but the menu did not: measured, the Export menu's centre
+     landed at x = -2 on a 1280px viewport — off the screen — and dragged 97px
+     of horizontal scroll onto the page with it. inset-inline-end pins it to
+     the button's own trailing edge in either direction. */
+  #moreMenu, #exportMenu {
+    position: absolute; inset-inline-end: 0; inset-block-start: 40px;
+    display: none; z-index: 40;
+    min-width: 190px; max-width: min(280px, 90vw);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 6px; box-shadow: var(--shadow);
+  }
+  #moreMenu.show, #exportMenu.show { display: block; }
+  #moreMenu button, #exportMenu button {
+    display: block; width: 100%; text-align: start;
+    padding: 9px 12px; border: none; border-radius: 8px;
+    background: none; color: var(--fg);
+    font: 13px system-ui, sans-serif; cursor: pointer;
+  }
+  #moreMenu button:hover, #exportMenu button:hover { background: var(--bg2); }
+
+  #shortcutsPop {
+    position: fixed; inset: 0; z-index: 60;
+    display: none; place-items: center;
+    background: rgba(0,0,0,.45);
+  }
+  #shortcutsPop.show { display: grid; }
+  #shortcutsPop .box {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 24px; max-width: 420px;
+    box-shadow: var(--shadow); font-size: 13px;
+  }
+  #shortcutsPop h3 { margin: 0 0 10px; font-size: 15px; }
+  #shortcutsPop table { border-collapse: collapse; width: 100%; }
+  #shortcutsPop td { padding: 3px 0; color: var(--fg2); }
+  #shortcutsPop td:first-child { color: var(--fg); font-weight: 600; padding-inline-end: 18px; white-space: nowrap; }
+  /* The left column is a list of key chords — ASCII punctuation that reorders
+     in an RTL paragraph. Same treatment as <kbd>. */
+  #shortcutsPop td:first-child { direction: ltr; unicode-bidi: isolate; text-align: start; }
+  /* The chords themselves are now <kbd>, which is what they always were: a
+     keyboard literal that must never be translated, and which common.css
+     already isolates LTR. The rule above stays for the separators BETWEEN
+     them (" / "), which are bare punctuation and belong to the cell. <kbd>'s
+     browser default is monospace; this table is not, and the look here is the
+     table's. */
+  #shortcutsPop kbd { font: inherit; }
+  #shortcutsClose-row { margin-block-start: 14px; text-align: end; }
+
+  /* ---- the drawing surface is a COORDINATE SYSTEM, not text ----
+     #canvas must never be mirrored. editor.js maps a pointer with
+     (e.clientX - canvas.getBoundingClientRect().left), which is viewport
+     geometry and is already direction-agnostic; a transform: scaleX(-1) here
+     "to make RTL feel right" would silently invert every annotation, every
+     crop rectangle and every exported pixel. The stage AROUND it may mirror
+     freely — it is centred, so nothing moves.
+
+     THE SAME RULE NOW COVERS THE ARROW KEYS. ArrowRight nudges +x in IMAGE
+     space in every locale: editor.js reads no direction anywhere, and the key
+     is bound to a sign, not to "the leading edge". A crop confirmed in Arabic
+     has to be the same rectangle as the one confirmed in English, because it
+     is the same saved shot. Graded in test/editor-sim.node.js under
+     "canvas geometry never mirrors". */
+  #canvasWrap, #canvas { direction: ltr; }
+
+  /* ---- accessibility ----------------------------------------------------
+     Announced but never painted. The editor tells a screen reader which tool
+     is live, what was just placed, where a selection moved to and what the
+     pending crop measures; none of that has anywhere to go on a canvas, which
+     is one opaque bitmap to the accessibility tree. clip-path over `clip`
+     because clip is deprecated, and white-space:nowrap so a long sentence is
+     not collapsed into one announced character per line. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+
+  /* A FOCUS RING THE USER CAN SEE. :focus-visible only, so a pointer click
+     does not paint a ring nobody asked for, and outline (not box-shadow) so it
+     survives forced-colors mode. outline-offset pushes the ring OFF the
+     control onto the surface behind it, which is what keeps it legible on the
+     one control that is itself accent-coloured: the active tool chip. A ring
+     drawn AT the chip's edge would be accent on accent, 1.00:1.
+     The ratios are not restated here — they are computed from the shipped
+     custom properties and printed by test/editor-sim.node.js under
+     "contrast: computed ratios", so they cannot go stale when the palette
+     moves. Every one clears the 3:1 that SC 1.4.11 asks, in both themes. */
+  .toolbar .tool:focus-visible,
+  .toolbar .btn:focus-visible,
+  .toolbar .ctl:focus-visible,
+  .swatch:focus-visible,
+  #customColor:focus-visible,
+  #cropBar .btn:focus-visible,
+  #shortcutsPop .btn:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  /* Inside a menu or the emoji sheet the ring goes INWARD: an outward ring on a
+     full-width row is clipped by the panel it lives in. */
+  #moreMenu button:focus-visible,
+  #exportMenu button:focus-visible,
+  #emojiPop button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: -2px;
+  }
+  /* The canvas ring sits 3px clear of the image so it is never read against
+     arbitrary screenshot pixels — at that offset it lands on the stage's
+     chequerboard, not on the shot.
+     Deliberately :focus and not :focus-visible: everywhere else a ring after a
+     mouse click is noise, but here the arrow keys, Enter and Delete only do
+     anything while the canvas holds focus, so the ring is the answer to "why
+     did my arrow key just scroll the page?" — it has to be there however focus
+     arrived. */
+  #canvas:focus { outline: 3px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<!-- Every user-visible string carries data-i18n (text) or data-i18n-attr (a
+     named attribute) and KEEPS its English as the fallback: pages/common.js
+     substitutes on load, and a key that does not resolve leaves the English
+     standing. Chrome does not substitute __MSG__ inside HTML, which is why the
+     key travels in an attribute rather than in the text node. Same shape as
+     popup/popup.html, the worked example.
+
+     Not marked, deliberately: the icon glyphs (← ➤ ⛶ ✏ 🖍 ╱ ↗ ▭ ◯ T ▒ ① 😀 ⬇
+     📋 🖼 📄 💾 ⋮ 🗂 ⚙ ⌨ ◐ − + ↶ ↷), which are pictograms and read the same in
+     every language; <kbd> chords, which are keyboard literals — a translated
+     shortcut is a shortcut that no longer works; and <option value>, which is
+     the enum the setting is stored as (only the option TEXT is keyed).
+
+     The two emoji-presentation selectors are written as &#65039; rather than
+     pasted: U+FE0F is invisible in every editor, and this project already
+     spells its invisible characters from their code points (see FS_LRI in
+     pages/common.js). The browser decodes the reference, so the pencil and
+     crayon render exactly as before — verified in Chromium, U+270F+U+FE0F and
+     U+1F58D+U+FE0F, the same two code points as before this pass.
+
+     TWO OF THOSE GLYPHS NEEDED AN EXPLICIT EXEMPTION. The tier's icon rule is
+     "digits, punctuation and symbols only", and T is a Latin letter (Lu) while
+     ① is a circled numeral (No) — both icons, neither inside the character
+     classes the rule spells. There is no message key for an icon, and dressing
+     them up (a numeric character reference, a CSS ::before, a <kbd> the Blur
+     tool would not also get) would hide a visible glyph from a scanner whose
+     job is to find visible glyphs. They are exempted by name in the BARE_OK
+     table of test/i18n-sim.node.js instead, which is the rule's own answer and
+     keeps the decision reviewable in one place. Both buttons still carry
+     data-i18n-attr="title:…", so what the button DOES is translated in all 55
+     even though the pictogram on its face is not.
+
+     ACCESSIBILITY, AND WHY IT IS SPELLED THE WAY IT IS.
+     Every control on this toolbar shows a pictogram, so its accessible NAME
+     cannot come from its own text — "pencil emoji" is not "Pen". Each one
+     therefore carries aria-label alongside title, pointing at THE SAME
+     EXISTING KEY: one string, translated once, spent twice. No new message key
+     was invented in this markup, because a key that does not exist in
+     _locales/en/messages.json is a silent English element in 55 languages and
+     test/i18n-sim.node.js is right to fail it. The handful of sentences this
+     pass genuinely needs (the live-region announcements) are resolved in
+     pages/editor.js through msg(key, subs, english), which degrades to the
+     English fallback until the keys land; they are listed in the handoff.
+
+     aria-keyshortcuts is NOT translated and never should be — it is the same
+     kind of literal as <kbd>. A screen reader announces it verbatim, and a
+     shortcut announced in Hindi is a shortcut that does not work.
+
+     The tool buttons are aria-pressed toggles rather than a radiogroup: the
+     twelve of them are split across two visual .tgroup boxes, and a radiogroup
+     that spans two elements has to be faked with aria-owns, which reorders the
+     accessibility tree away from the DOM. Toggle buttons say the same thing
+     ("Pen, pressed") with nothing to keep in sync. -->
+<div class="toolbar">
+  <!-- href is a real destination from the markup, not only after boot(): an
+       <a> with no href is not in the tab order at all, so on the not-found
+       path this control used to be unreachable by keyboard. boot() overwrites
+       it with the shot's own result page. -->
+  <a class="btn icon" id="backBtn" href="history.html" title="Back to screenshot"
+     data-i18n-attr="title:editorBackTip; aria-label:editorBackTip">←</a>
+
+  <div class="tgroup">
+    <button class="tool" data-tool="select" title="Select / move (V)" aria-pressed="false" aria-keyshortcuts="V"
+            data-i18n-attr="title:editorToolSelect; aria-label:editorToolSelect">➤</button>
+    <button class="tool" data-tool="crop" title="Crop (C)" aria-pressed="false" aria-keyshortcuts="C"
+            data-i18n-attr="title:editorToolCrop; aria-label:editorToolCrop">⛶</button>
+  </div>
+
+  <div class="tgroup">
+    <button class="tool active" data-tool="pen" title="Pen (P)" aria-pressed="true" aria-keyshortcuts="P"
+            data-i18n-attr="title:editorToolPen; aria-label:editorToolPen">✏&#65039;</button>
+    <button class="tool" data-tool="hl" title="Highlighter (H)" aria-pressed="false" aria-keyshortcuts="H"
+            data-i18n-attr="title:editorToolHighlighter; aria-label:editorToolHighlighter">🖍&#65039;</button>
+    <button class="tool" data-tool="line" title="Line (L)" aria-pressed="false" aria-keyshortcuts="L"
+            data-i18n-attr="title:editorToolLine; aria-label:editorToolLine">╱</button>
+    <button class="tool" data-tool="arrow" title="Arrow (A)" aria-pressed="false" aria-keyshortcuts="A"
+            data-i18n-attr="title:editorToolArrow; aria-label:editorToolArrow">↗</button>
+    <button class="tool" data-tool="rect" title="Rectangle (R)" aria-pressed="false" aria-keyshortcuts="R"
+            data-i18n-attr="title:editorToolRect; aria-label:editorToolRect">▭</button>
+    <button class="tool" data-tool="ellipse" title="Ellipse (O)" aria-pressed="false" aria-keyshortcuts="O"
+            data-i18n-attr="title:editorToolEllipse; aria-label:editorToolEllipse">◯</button>
+    <button class="tool" data-tool="text" title="Text (T)" aria-pressed="false" aria-keyshortcuts="T"
+            data-i18n-attr="title:editorToolText; aria-label:editorToolText">T</button>
+    <button class="tool" data-tool="blur" title="Blur / pixelate (B)" aria-pressed="false" aria-keyshortcuts="B"
+            data-i18n-attr="title:editorToolBlur; aria-label:editorToolBlur">▒</button>
+    <button class="tool" data-tool="num" title="Numbered step (N)" aria-pressed="false" aria-keyshortcuts="N"
+            data-i18n-attr="title:editorToolNum; aria-label:editorToolNum">①</button>
+    <button class="tool" data-tool="emoji" id="emojiToolBtn" title="Emoji stamp (E)"
+            aria-pressed="false" aria-keyshortcuts="E"
+            aria-haspopup="true" aria-expanded="false" aria-controls="emojiPop"
+            data-i18n-attr="title:editorToolEmoji; aria-label:editorToolEmoji">😀</button>
+  </div>
+
+  <!-- One tab stop, arrow keys inside: eight swatches as eight tab stops would
+       put the whole palette between the tool bar and the export button. The
+       swatches themselves are built by editor.js, which sets role="radio",
+       aria-checked and the roving tabindex. -->
+  <div class="tgroup" id="colors" role="radiogroup"></div>
+  <input type="color" id="customColor" value="#ef4444" title="Custom color"
+         data-i18n-attr="title:editorCustomColor; aria-label:editorCustomColor">
+
+  <select class="ctl" id="strokeSel" title="Stroke width"
+          data-i18n-attr="title:editorStrokeTip; aria-label:editorStrokeTip">
+    <option value="2" data-i18n="editorStrokeThin">Thin</option>
+    <option value="4" selected data-i18n="editorStrokeMedium">Medium</option>
+    <option value="7" data-i18n="editorStrokeThick">Thick</option>
+  </select>
+  <select class="ctl" id="sizeSel" title="Text / emoji size"
+          data-i18n-attr="title:editorSizeTip; aria-label:editorSizeTip">
+    <option value="18" data-i18n="editorSizeS">S</option>
+    <option value="28" selected data-i18n="editorSizeM">M</option>
+    <option value="44" data-i18n="editorSizeL">L</option>
+    <option value="72" data-i18n="editorSizeXL">XL</option>
+  </select>
+
+  <div class="sep" aria-hidden="true"></div>
+  <!-- The visible face of these two is a glyph plus a live count ("↶ (3)"),
+       which updateUndoButtons() rewrites. The count is useful on screen and
+       noise in an announcement, so the accessible name is the tooltip's key and
+       the count stays visual. aria-keyshortcuts carries the chord the tooltip
+       already spells. -->
+  <div class="tgroup">
+    <button class="tool" id="undoBtn" title="Undo (Ctrl+Z)" aria-keyshortcuts="Control+Z"
+            data-i18n-attr="title:editorUndoTip; aria-label:editorUndoTip"
+            style="width:auto;padding:0 8px;font-size:13px">↶ (0)</button>
+    <button class="tool" id="redoBtn" title="Redo (Ctrl+Y)" aria-keyshortcuts="Control+Y Control+Shift+Z"
+            data-i18n-attr="title:editorRedoTip; aria-label:editorRedoTip"
+            style="width:auto;padding:0 8px;font-size:13px">↷ (0)</button>
+  </div>
+  <div class="tgroup">
+    <button class="tool" id="zoomOutBtn" title="Zoom out (-)" aria-keyshortcuts="-"
+            data-i18n-attr="title:editorZoomOutTip; aria-label:editorZoomOutTip">−</button>
+    <!-- Both halves of this button are replaced the moment a shot loads:
+         layout() writes the scale as a percentage and picks the tooltip for the
+         state it just entered. The markup carries the FIRST of those two
+         states — fit — so the tooltip a user sees during the load spinner is
+         already the one layout() is about to set, in their own language. -->
+    <button class="tool" id="zoomBtn" title="Fit to window — click for 100%"
+            data-i18n="editorZoomFit" data-i18n-attr="title:editorZoomTipToHundred"
+            style="width:auto;padding:0 8px;font-size:12.5px">Fit</button>
+    <button class="tool" id="zoomInBtn" title="Zoom in (+)" aria-keyshortcuts="+"
+            data-i18n-attr="title:editorZoomInTip; aria-label:editorZoomInTip">+</button>
+  </div>
+
+  <span class="spacer"></span>
+
+  <div style="position:relative">
+    <button class="btn" id="exportBtn"
+            aria-haspopup="true" aria-expanded="false" aria-controls="exportMenu"><span aria-hidden="true">⬇</span><span data-i18n="editorExport">Export</span></button>
+    <!-- role="menu" + roving focus, driven from pages/editor.js: the trigger
+         opens the sheet AND moves focus into it, Up/Down and Home/End walk the
+         items, Escape closes and hands focus back to the trigger. Without that
+         the sheet was a mouse-only surface — reachable by Tab, but only after
+         tabbing through everything behind it, and with nothing to say it had
+         opened. -->
+    <div id="exportMenu" role="menu">
+      <!-- PNG / JPEG / WebP / PDF are format names, never translated: each is a
+           literal substitution the markup carries, so the message decides where
+           in the sentence it lands. -->
+      <button id="copyBtn" role="menuitem" tabindex="-1"><span aria-hidden="true">📋</span> <span data-i18n="editorExportCopy">Copy to clipboard</span></button>
+      <button id="pngBtn" role="menuitem" tabindex="-1"><span aria-hidden="true">🖼</span> <span data-i18n="editorExportImage" data-i18n-args="PNG">PNG image</span></button>
+      <button id="jpgBtn" role="menuitem" tabindex="-1"><span aria-hidden="true">🖼</span> <span data-i18n="editorExportImage" data-i18n-args="JPEG">JPEG image</span></button>
+      <button id="webpBtn" role="menuitem" tabindex="-1"><span aria-hidden="true">🖼</span> <span data-i18n="editorExportImage" data-i18n-args="WebP">WebP image</span></button>
+      <button id="pdfBtn" role="menuitem" tabindex="-1"><span aria-hidden="true">📄</span> <span data-i18n="editorExportDocument" data-i18n-args="PDF">PDF document</span></button>
+    </div>
+  </div>
+  <button class="btn primary" id="saveBtn" title="Save changes to history (Ctrl+S)" aria-keyshortcuts="Control+S"
+          data-i18n-attr="title:editorSaveTip"><span aria-hidden="true">💾</span><span data-i18n="editorSave">Save</span></button>
+  <div style="position:relative">
+    <button class="btn icon" id="moreBtn" title="More"
+            aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu"
+            data-i18n-attr="title:editorMoreTip; aria-label:editorMoreTip">⋮</button>
+    <div id="moreMenu" role="menu">
+      <button id="mFiles" role="menuitem" tabindex="-1"><span aria-hidden="true">🗂</span> <span data-i18n="editorMenuFiles">Go to History</span></button>
+      <button id="mOptions" role="menuitem" tabindex="-1"><span aria-hidden="true">⚙</span> <span data-i18n="editorMenuOptions">Go to Options</span></button>
+      <button id="mShortcuts" role="menuitem" tabindex="-1"><span aria-hidden="true">⌨</span> <span data-i18n="editorMenuShortcuts">Keyboard shortcuts</span></button>
+    </div>
+  </div>
+  <button class="btn icon" id="themeBtn" title="Toggle theme"
+          data-i18n-attr="title:popupToggleTheme; aria-label:popupToggleTheme">◐</button>
+</div>
+
+<div id="loading"><div class="spin"></div></div>
+
+<div id="stage" hidden>
+  <div id="canvasWrap">
+    <!-- role="application" is the deliberate choice, not the default one. A
+         bare <canvas> is one opaque bitmap to the accessibility tree and a
+         screen reader's browse mode swallows the arrow keys before the page
+         sees them — which is exactly the keys this editor now spends on
+         placing and nudging annotations. role="application" hands them over.
+         tabindex="0" puts the surface in the tab order at all; before this it
+         could not be reached without a mouse. Its accessible name and the
+         running commentary both come from pages/editor.js, through msg(). -->
+    <canvas id="canvas" tabindex="0" role="application"></canvas>
+    <textarea id="textInput" rows="1" spellcheck="false"
+              data-i18n-attr="aria-label:editorToolText"></textarea>
+    <div id="emojiPop"></div>
+  </div>
+</div>
+
+<!-- The one place the editor speaks. polite, not assertive: these are running
+     confirmations of what the user just did, and an assertive region would
+     interrupt them mid-key. aria-atomic because "Rectangle moved to 120, 90"
+     only means anything whole. It is EMPTY in the markup on purpose — a live
+     region has to already exist in the DOM when its text changes, or the change
+     is not a change. -->
+<p id="a11yStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+
+<div id="cropBar" role="group">
+  <button class="btn primary" id="cropApply" aria-keyshortcuts="Enter" data-i18n="editorCropApply">Apply crop</button>
+  <button class="btn" id="cropCancel" aria-keyshortcuts="Escape" data-i18n="editorCropCancel">Cancel</button>
+</div>
+
+<div id="shortcutsPop" role="dialog" aria-modal="true" aria-labelledby="shortcutsHeading">
+  <div class="box">
+    <h3 id="shortcutsHeading" data-i18n="editorShortcutsHeading">Keyboard shortcuts</h3>
+    <!-- editor.js appends three more rows to this table at boot — the keyboard
+         cursor, the nudge step and the crop resize. They are built in JS rather
+         than written here because their descriptions have no key in
+         _locales/en/messages.json yet, and a data-i18n naming a key that does
+         not exist is a silently-English row in 55 languages. The moment the
+         keys land those rows move up here with no code change. -->
+    <table id="shortcutsTable">
+      <tr><td><kbd>V</kbd> <kbd>C</kbd> <kbd>P</kbd> <kbd>H</kbd> <kbd>L</kbd> <kbd>A</kbd>
+              <kbd>R</kbd> <kbd>O</kbd> <kbd>T</kbd> <kbd>B</kbd> <kbd>N</kbd> <kbd>E</kbd></td>
+          <td data-i18n="editorShortcutTools">Select tools</td></tr>
+      <tr><td><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></td>
+          <td data-i18n="editorShortcutUndoRedo">Undo / redo</td></tr>
+      <tr><td><kbd>Ctrl+S</kbd></td>
+          <td data-i18n="editorShortcutSave">Save to history</td></tr>
+      <tr><td><kbd>−</kbd> / <kbd>+</kbd></td>
+          <td data-i18n="editorShortcutZoom">Zoom out / in</td></tr>
+      <tr><td><kbd>Delete</kbd></td>
+          <td data-i18n="editorShortcutDelete">Remove selected object</td></tr>
+      <tr><td><kbd>Esc</kbd></td>
+          <td data-i18n="editorShortcutEscape">Deselect / cancel crop</td></tr>
+      <tr><td><kbd>Enter</kbd></td>
+          <td data-i18n="editorCropApply">Apply crop</td></tr>
+    </table>
+    <div id="shortcutsClose-row">
+      <button class="btn" id="shortcutsClose" data-i18n="editorShortcutsClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="db.js"></script>
+<script src="common.js"></script>
+<script src="pdf.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>

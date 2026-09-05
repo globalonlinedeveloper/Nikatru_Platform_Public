@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — înlocuiește-mă",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ÎNLOCUIEȘTE-MĂ — o frază, un scop, cel mult 132 de caractere, fără marketing.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — înlocuiește-mă",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Comută tema",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Opțiuni",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Fila activă",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Se citește…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Copiază titlul",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Citește din nou fila activă",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Închide",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Copiat",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Copierea nu a reușit — apăsați Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Ultima acțiune „$ACTION$” a eșuat — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Ultima acțiune „$ACTION$” a eșuat — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "citire a titlului",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "copiere",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "ștergere a datelor",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "rulare",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Ceva a oprit această operațiune înainte să se termine. Încercați din nou.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Această filă este deja ocupată.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Această pagină este protejată de browser și nu are voie să fie citită.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Nu a fost găsită nicio filă activă.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Această pagină nu are un titlu care să poată fi citit.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Anulat.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Mesaj necunoscut.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Fila respectivă a fost închisă înainte ca lucrul să se termine.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Extensia nu a răspuns.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Nu a venit nimic înapoi.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Paginile browserului, precum Setări, Extensii și pagina Filă nouă, sunt interzise oricărei extensii. Încercați pe o pagină web obișnuită.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Ferestrele instrumentelor pentru dezvoltatori sunt interzise extensiilor.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Paginile cu sursa afișată sunt interzise extensiilor. Încercați în schimb pagina în sine.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Paginile extensiilor, inclusiv cele proprii ale acestei extensii, sunt protejate de browser.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Magazinul web Chrome nu permite extensiilor să îi citească paginile.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Fișierele locale au nevoie de o permisiune în plus. Deschideți pagina Extensii a browserului, găsiți această extensie și activați „Permite accesul la adresele URL ale fișierelor”.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Această pagină nu s-a încărcat, așa că nu există încă nimic de citit.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Acesta este vizualizatorul PDF încorporat în browser. Extensiile nu pot citi în interiorul lui — deschideți fișierul PDF într-o filă obișnuită sau descărcați-l mai întâi.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Această pagină a fost izolată în sandbox de site-ul care a deschis-o, așa că extensiile nu o pot citi.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Site-ul de suplimente nu permite extensiilor să îi citească paginile.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Acest dispozitiv nu mai are spațiu, așa că nu s-a salvat nimic. Ștergeți câteva rânduri stocate din Opțiuni și încercați din nou.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "A durat prea mult și a fost oprit. Nu a rămas nimic în urmă.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Valoarea este prea lungă pentru a fi stocată în setările dumneavoastră sincronizate. Încercați una mai scurtă.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Setarea nu a putut fi salvată. Așteptați un moment și încercați din nou.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Opțiuni — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Opțiuni",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Opțiuni",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Se salvează automat. Dacă sincronizarea browserului este activată, setările călătoresc împreună cu profilul dumneavoastră de browser — nouă nu ne sunt trimise niciodată.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Comportament",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Copiere la deschidere",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Copiază rezultatul în clipboard imediat ce fereastra pop-up se deschide.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Păstrează un istoric local",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Dezactivat implicit. Când este activat, rezultatele sunt stocate doar pe acest dispozitiv, sunt listate mai jos și pot fi șterse oricând.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Limita istoricului",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Cele mai vechi rânduri sunt eliminate de îndată ce lista depășește această valoare.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Șterge rândurile mai vechi de",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Zile. Rândurile vechi sunt eliminate automat, în fundal. Setați 0 pentru ca rândurile să rămână până când le elimină limita istoricului.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Temă",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Implicit urmează sistemul dumneavoastră.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sistem",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Luminoasă",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Întunecată",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Datele dumneavoastră",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Pe acest dispozitiv nu este stocat nimic.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ de rânduri sunt stocate pe acest dispozitiv. Nimic nu părăsește dispozitivul.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ rând este stocat pe acest dispozitiv. Nimic nu părăsește dispozitivul.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ de rânduri sunt stocate pe acest dispozitiv. Nimic nu părăsește dispozitivul.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ rânduri sunt stocate pe acest dispozitiv. Nimic nu părăsește dispozitivul.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ de rânduri sunt stocate pe acest dispozitiv. Nimic nu părăsește dispozitivul.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ de rânduri sunt stocate pe acest dispozitiv. Nimic nu părăsește dispozitivul.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Durabil: browserul a promis că nu va șterge aceste date.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Fără garanție: browserul poate șterge singur aceste date dacă dispozitivul rămâne fără spațiu. Exportați o copie de rezervă.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Acest browser nu spune dacă datele stocate vor fi păstrate, așa că tratați-le ca temporare și exportați o copie de rezervă.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Se folosesc $USED$ din $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Șterge",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Șterge rândul de la $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Exportă tot",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Salvează fiecare rând stocat într-un singur fișier JSON pe acest dispozitiv. Nu se încarcă nimic online.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Exportă tot",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Șterge tot",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Elimină de pe acest dispozitiv fiecare rând stocat. Setările sunt păstrate.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Șterge tot",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Resetează setările",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Readuce fiecare setare de pe această pagină la valoarea implicită și le elimină din profilul dumneavoastră de browser sincronizat. Rândurile stocate sunt păstrate.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Resetează setările",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Raportați o problemă",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Pregătește un raport de problemă",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Creează un fișier mic care descrie starea acestei extensii. Vedeți exact ce conține înainte de a fi salvat și nu se trimite nimic nicăieri.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Pregătește un raport",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Despre",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — înlocuiește-mă",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "O frază care spune exact ce face acest instrument. Își face treaba pe dispozitivul dumneavoastră: fără cont, fără urmărire, fără apeluri de rețea, nimic nu ne este trimis nouă.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Salvat",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Tot a fost șters",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Ștergerea nu a reușit — încercați din nou",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Setarea nu a putut fi salvată",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Export salvat",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Fișierul nu a putut fi salvat",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Rând șters",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Setări resetate",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Setările nu au putut fi resetate",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Raport salvat",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Anulează",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Ștergeți tot?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Fiecare rând stocat este eliminat de pe acest dispozitiv. Setările dumneavoastră sunt păstrate. Această acțiune nu poate fi anulată.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Resetați toate setările?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Fiecare preferință de pe această pagină revine la valoarea implicită și este eliminată din profilul dumneavoastră de browser sincronizat. Rândurile dumneavoastră stocate sunt păstrate. Această acțiune nu poate fi anulată.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Salvați acest raport de problemă?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Acesta este tot ce va conține fișierul. Nu conține adrese de pagini, nu conține text din pagini și nu conține nimic din ce ați capturat. Nu se trimite nimic nicăieri — fișierul este salvat pe acest dispozitiv și dumneavoastră decideți dacă îl distribuiți sau nu.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Salvează raportul",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Fereastră incognito — acest rezultat nu a fost salvat în istoricul dumneavoastră.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Acces la site-uri",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Acces la toate site-urile",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Este necesar doar pentru funcțiile care lucrează pe pagini unde nu ați apăsat butonul din bara de instrumente. Îl puteți retrage oricând, de aici.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Acordă acces",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Retrage accesul",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Această extensie poate citi în prezent fiecare site pe care îl vizitați.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Această extensie poate citi o filă doar după ce apăsați butonul ei din bara de instrumente.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Acces acordat",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Accesul nu a fost acordat",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Acces retras",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Accesul nu a putut fi retras",
+    "description": "en: Could not revoke that access"
+  }
+}

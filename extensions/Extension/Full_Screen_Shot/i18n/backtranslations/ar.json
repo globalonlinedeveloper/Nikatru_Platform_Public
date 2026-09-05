@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Expanding the inner scrollable panels and the iframes so that they show their content in full instead of capturing them as they appear. As for frames from other sites, they request an extra permission one time.",
+  "optionsLead": "Changes are saved automatically and are synchronised with your personal profile in the browser.",
+  "optionsExpandPermGranted": "The permission has been granted - frames coming from other sites are expanded as well.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission, frames coming from other sites are captured as they appear. As for panels and iframes from the same site, they always work.",
+  "optionsRedactPIIDesc": "Inspects the text that the page exposes, searching for e-mail addresses, telephone numbers, credit card numbers, social security numbers and programming interface keys, and places an opaque block over what it matches in the saved image. And it cannot read text drawn as pixels — a drawing canvas, or an image, or a PDF page, or a video frame. Detection takes place on your device; and nothing at all is ever sent to any party. Applies to full-page (document scroll) captures; and the block is permanent and cannot be undone, so review the result yourself.",
+  "scrollclipFormatHint": "The GIF format works everywhere. As for WebM, it is smaller in size and smoother (it is recorded directly inside your browser).",
+  "batchPermissionHint": "Opening these pages requires a permission for one time only on the first occasion.",
+  "batchPermissionDeclined": "The permission to open those pages was refused."
+}

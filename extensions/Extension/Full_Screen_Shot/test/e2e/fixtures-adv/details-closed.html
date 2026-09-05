@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Help centre</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  details { background: #fff; border: 1px solid #d9dde6; border-radius: 7px; padding: 12px 14px; margin: 0 0 10px; }
+  summary { cursor: pointer; font-weight: 600; color: #1d2b45; }
+  details p { margin: 10px 0 0; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Help</a><a href="#">Guides</a><a href="#">Contact</a>
+  <span>Help centre</span>
+</nav>
+<main>
+  <h1>Frequently asked questions</h1>
+  <p class="filler">Answers to the questions we are asked most often. Open a
+  question to read the answer.</p>
+
+  <!-- THE OPPOSITE FAILURE, which nobody is watching. A collapsed <details> is
+       one of the most ordinary shapes on the web. Its content gets
+       `content-visibility: hidden` from the UA stylesheet, so the leaf is fed,
+       matches, and produces no rectangle at all — `matchedNoBox`, which breaks
+       scanOk and sets severity `exposed`.
+
+       Nothing is exposed. The address is not in the picture. If this page draws
+       the loud sentence and the toast, the design is spending its alarm budget
+       on a closed accordion, and §7.2's "warning becomes wallpaper" arrives
+       from inside the spec rather than from a page shape nobody imagined. -->
+  <details>
+    <summary>How do I reset my password?</summary>
+    <p>Use the reset link on the sign-in screen. The link is valid for one hour.</p>
+  </details>
+
+  <details>
+    <summary>How do I contact support?</summary>
+    <p>Write to <span class="m m-email">rajasekar@nikatru.com</span> and quote your
+    reference number. We answer within one working day.</p>
+  </details>
+
+  <details>
+    <summary>Where can I find my invoices?</summary>
+    <p>Invoices are under Billing in the account menu. They are kept for seven years.</p>
+  </details>
+
+  <div class="card">
+    <h2>Still stuck?</h2>
+    <p class="filler">Our guides cover set-up, billing, permissions and exports.
+    Most questions are answered there within a couple of minutes.</p>
+    <p class="filler">Service status is published separately and is updated during
+    any incident.</p>
+  </div>
+</main>
+</body>
+</html>

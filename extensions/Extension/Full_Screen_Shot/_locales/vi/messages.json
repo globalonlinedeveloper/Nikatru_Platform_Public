@@ -1,0 +1,2020 @@
+{
+  "appName": {
+    "message": "FullShot - Chụp ảnh màn hình toàn trang"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Chụp toàn trang, vùng hiển thị, vùng chọn hoặc bất kỳ phần tử nào. Chỉnh sửa, chú thích và xuất ra PNG, JPEG, WebP hoặc PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - Chụp trang (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Chụp toàn trang"
+  },
+  "commandCaptureVisible": {
+    "message": "Chụp vùng hiển thị"
+  },
+  "commandCaptureRegion": {
+    "message": "Chụp vùng đã chọn"
+  },
+  "commandCaptureElement": {
+    "message": "Chụp một phần tử trên trang (bấm để chọn)"
+  },
+  "popupToggleTheme": {
+    "message": "Đổi giao diện"
+  },
+  "popupModeFullTitle": {
+    "message": "Toàn trang"
+  },
+  "popupModeFullSub": {
+    "message": "Cuộn và chụp trọn cả trang"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Vùng hiển thị"
+  },
+  "popupModeVisibleSub": {
+    "message": "Chỉ những gì đang thấy trên màn hình"
+  },
+  "popupModeRegionTitle": {
+    "message": "Vùng đã chọn"
+  },
+  "popupModeRegionSub": {
+    "message": "Kéo để khoanh một vùng"
+  },
+  "popupModeElementTitle": {
+    "message": "Phần tử"
+  },
+  "popupModeElementSub": {
+    "message": "Bấm vào bất kỳ phần tử nào trên trang"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Chụp có hẹn giờ"
+  },
+  "popupModeDelayedSub": {
+    "message": "Chụp toàn trang sau khi đếm ngược"
+  },
+  "popupDelayLabel": {
+    "message": "Số giây chờ"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ giây",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Mở rộng bảng cuộn và iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "Nới các bảng cuộn và iframe bên trong ra hết nội dung, thay vì chụp đúng như đang thấy. Khung từ trang web khác sẽ hỏi thêm một quyền, chỉ một lần duy nhất."
+  },
+  "popupDismiss": {
+    "message": "Bỏ qua"
+  },
+  "popupLastErrorFailed": {
+    "message": "Lần $MODE$ gần nhất thất bại — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Lần $MODE$ gần nhất thất bại — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "chụp toàn trang"
+  },
+  "popupModeNameVisible": {
+    "message": "chụp vùng hiển thị"
+  },
+  "popupModeNameRegion": {
+    "message": "chụp vùng chọn"
+  },
+  "popupModeNameElement": {
+    "message": "chụp phần tử"
+  },
+  "popupModeNameGeneric": {
+    "message": "chụp ảnh"
+  },
+  "popupNoActiveTab": {
+    "message": "Không tìm thấy thẻ nào đang mở."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Không khởi động được quá trình chụp."
+  },
+  "popupLinkHistory": {
+    "message": "Lịch sử"
+  },
+  "popupLinkBatch": {
+    "message": "Hàng loạt"
+  },
+  "popupLinkOptions": {
+    "message": "Tùy chọn"
+  },
+  "optionsPageTitle": {
+    "message": "Tùy chọn — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Tùy chọn"
+  },
+  "optionsHeading": {
+    "message": "Tùy chọn"
+  },
+  "optionsLead": {
+    "message": "Thay đổi được lưu tự động và đồng bộ vào hồ sơ trình duyệt của bạn."
+  },
+  "optionsSectionImage": {
+    "message": "Hình ảnh"
+  },
+  "optionsFormat": {
+    "message": "Định dạng"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ không mất dữ liệu; $JPEG$ nhẹ hơn; $WEBP$ nhẹ nhất ở chất lượng tương đương.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Chất lượng $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Mẫu tên tệp"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Phần giữ chỗ: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Chụp ảnh"
+  },
+  "optionsCaptureDelay": {
+    "message": "Chờ thêm sau mỗi bước"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Số mili giây chờ sau mỗi lần cuộn. Hãy tăng lên với những trang chậm hoặc nhiều hiệu ứng động."
+  },
+  "optionsHideFixed": {
+    "message": "Ẩn phần tử cố định và dính"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Không để phần đầu trang lặp lại ở mọi khung hình (chỉ hiện một lần ở trên cùng)."
+  },
+  "optionsPreScroll": {
+    "message": "Cuộn trước để tải nội dung tải chậm"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Cuộn hết trang một lượt trước khi chụp. Chậm hơn nhưng bắt được cả những ảnh tải chậm."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Chờ ảnh giải mã xong"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Để những ảnh về muộn hoặc tải chậm kịp giải mã trước mỗi khung hình, nhờ vậy chúng không bị chụp thành ô đen hay ô trống."
+  },
+  "optionsHideOverlays": {
+    "message": "Ẩn biểu ngữ và cửa sổ bật lên"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Gỡ biểu ngữ cookie/đồng ý, hộp đăng ký bản tin và cửa sổ \"tải ứng dụng\" trước khi chụp, đồng thời mở khóa những trang đang bị một hộp thoại giữ cứng. Sau đó mọi thứ được khôi phục."
+  },
+  "optionsExpandInner": {
+    "message": "Mở rộng nội dung cuộn được"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Nới các bảng và iframe bên trong để lộ nội dung nằm khuất bên dưới vùng cuộn của chính chúng, thay vì chụp y hệt như đang thấy."
+  },
+  "optionsExpandPermRow": {
+    "message": "Khung từ trang web khác"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Cho phép"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Đã cấp quyền — khung từ những trang web khác cũng được mở rộng."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Nếu không có quyền \"$PERMISSION$\", khung từ trang web khác chỉ được chụp đúng như đang thấy. Các bảng và iframe cùng trang web thì luôn hoạt động bình thường.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Trải danh sách ảo hóa"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Đi lần lượt qua những nguồn cấp chỉ dựng phần đang nhìn thấy (kiểu $LIB1$ / $LIB2$) để chụp trọn nội dung, chứ không chỉ vài hàng trên màn hình. Chậm hơn hẳn với danh sách rất dài.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Mở nội dung phải bấm mới hiện"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Bung các $DETAILS$ đang thu gọn, các thẻ chưa mở, khối xếp lớp và mục \"xem thêm\" trước khi chụp, rồi trả lại như cũ. Nhờ vậy thấy được nội dung nấp sau một cú bấm.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Bấm nút \"$BUTTONTEXT$\"",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Bấm nút \"tải thêm\" / \"xem thêm\" rồi chờ nội dung mới hiện ra, lặp đi lặp lại cho tới khi nguồn cấp hết bài. Khác với tùy chọn ở trên, cách này kéo về cả nội dung chưa hề có trên trang; phần đã tải vẫn ở lại sau khi chụp xong."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Cuộn để tải nguồn cấp vô tận"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Dành cho nguồn cấp không có nút \"tải thêm\": cuộn xuống cuối rồi chờ trang tiếp theo, lặp lại cho tới khi nguồn cấp không dài thêm nữa (có giới hạn, nên không đuổi theo những dòng tin bất tận). Phần đã tải vẫn ở lại sau khi chụp xong."
+  },
+  "optionsWaitStable": {
+    "message": "Chờ nội dung tải xong"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Chờ các khung xương / ô giữ chỗ (vùng aria-busy, khối nhấp nháy) được thay bằng nội dung thật rồi mới chụp, để một chỗ \"đang tải…\" giữa trang không biến thành mảng xám trong ảnh. Có giới hạn thời gian, nên một vòng xoay bị kẹt cũng không làm treo cả lần chụp."
+  },
+  "optionsRedactPII": {
+    "message": "Tự động che thông tin nhạy cảm"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Quét văn bản mà trang phơi bày để tìm địa chỉ email, số điện thoại, số thẻ tín dụng, số định danh cá nhân và khóa API, rồi phủ một khối đặc lên phần khớp được trong ảnh được lưu. Văn bản vẽ ra dưới dạng điểm ảnh thì nó không đọc được — một canvas, một hình ảnh, một tệp PDF, một khung hình video. Việc nhận diện chạy ngay trên thiết bị của bạn; không có gì được gửi đi bất cứ đâu. Áp dụng cho ảnh chụp toàn trang (cuộn cả tài liệu); khối che là vĩnh viễn, nên hãy tự xem lại kết quả."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Chiều cao trang tối đa"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Ngưỡng an toàn (px CSS) cho những nguồn cấp cuộn vô tận."
+  },
+  "optionsSectionPdf": {
+    "message": "Xuất PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Khổ giấy mặc định"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" tạo một trang đúng bằng kích thước ảnh chụp.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Theo ảnh"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Hướng giấy"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Chỉ áp dụng cho khổ giấy cố định."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Dọc"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Ngang"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Ngắt trang thông minh"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Tìm một khoảng trống gần mỗi chỗ ngắt trang để dòng chữ không bị cắt đôi."
+  },
+  "optionsPdfStamp": {
+    "message": "Đóng dấu URL và ngày"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Thêm URL của trang và ngày chụp vào chân mỗi trang PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Tải xuống"
+  },
+  "optionsSaveDirectory": {
+    "message": "Thư mục"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Thư mục con trong $DOWNLOADS$ để chứa ảnh chụp, ví dụ $EXAMPLE$. Để trống = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Tải xuống)"
+  },
+  "optionsSaveAs": {
+    "message": "Hộp thoại \"Lưu thành\""
+  },
+  "optionsSaveAsDesc": {
+    "message": "Hỏi nơi lưu từng tệp thay vì tải xuống lặng lẽ."
+  },
+  "optionsClipboardFit": {
+    "message": "Thu nhỏ bản sao chép cho vừa giới hạn của ứng dụng"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Thu nhỏ những bản sao vượt quá $PIXELS$ pixel để dán được vào $APP$ và các ứng dụng tương tự.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Quy trình"
+  },
+  "optionsAutoDownload": {
+    "message": "Tự động tải xuống sau khi chụp"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Lưu ảnh ngay khi lần chụp kết thúc."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Mở trình chỉnh sửa sau khi chụp"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Vào thẳng phần chú thích (chỉ với ảnh không bị chia phần)."
+  },
+  "optionsTheme": {
+    "message": "Giao diện"
+  },
+  "optionsThemeDesc": {
+    "message": "Áp dụng cho cửa sổ bật lên và mọi trang của FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Theo hệ thống"
+  },
+  "optionsThemeLight": {
+    "message": "Sáng"
+  },
+  "optionsThemeDark": {
+    "message": "Tối"
+  },
+  "optionsShortcuts": {
+    "message": "Phím tắt"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Toàn trang: $KEYFULL$ · Vùng hiển thị: $KEYVISIBLE$. Tùy chỉnh tại $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Đã lưu ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Dữ liệu của bạn"
+  },
+  "optionsStorage": {
+    "message": "Bộ nhớ"
+  },
+  "optionsStorageUsage": {
+    "message": "Đã dùng $USED$ trên tổng số $QUOTA$ ở thiết bị này.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Trình duyệt này không cho biết FullShot đang chiếm bao nhiêu dung lượng."
+  },
+  "optionsStorageKept": {
+    "message": "Ảnh chụp của bạn được giữ lại: trình duyệt sẽ không xoá chúng để lấy lại dung lượng."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Ảnh chụp của bạn nằm trong bộ nhớ “nỗ lực tối đa” của trình duyệt, nơi trình duyệt có thể xoá để lấy lại dung lượng."
+  },
+  "optionsStorageKeep": {
+    "message": "Giữ dữ liệu của tôi"
+  },
+  "optionsExport": {
+    "message": "Xuất mọi thứ"
+  },
+  "optionsExportDesc": {
+    "message": "Ghi một tệp duy nhất chứa cài đặt và danh sách ảnh chụp của bạn. Tệp được lưu trên thiết bị này và không gửi đi đâu cả."
+  },
+  "optionsExportImages": {
+    "message": "Kèm theo hình ảnh"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Chính là các hình ảnh, chiếm gần như toàn bộ dung lượng. Không có chúng, tệp chỉ liệt kê ảnh chụp của bạn mà không chứa tấm nào."
+  },
+  "optionsExportSize": {
+    "message": "Kích thước tệp: khoảng $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Dữ liệu còn sót"
+  },
+  "optionsSweepDesc": {
+    "message": "Một lần chụp bị gián đoạn có thể để lại trên đĩa những khung hình không thuộc về ảnh chụp nào. Chúng không xuất hiện trên trang nào, nên không trang nào xoá được. Chức năng này tìm và xoá chúng."
+  },
+  "optionsSweepBtn": {
+    "message": "Tìm và xoá"
+  },
+  "optionsSweepResult": {
+    "message": "Đã xoá. Số lần chụp được dọn: $COUNT$ · Dung lượng giải phóng: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Không còn gì sót lại: mọi thứ được lưu đều thuộc về một ảnh chụp mà bạn nhìn thấy."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Đặt lại cài đặt"
+  },
+  "optionsResetDesc": {
+    "message": "Đưa mọi cài đặt trên trang này về giá trị ban đầu. Ảnh chụp của bạn không bị đụng đến."
+  },
+  "optionsResetBtn": {
+    "message": "Đặt lại"
+  },
+  "optionsResetConfirm": {
+    "message": "Đưa mọi cài đặt của FullShot về giá trị mặc định? Ảnh chụp của bạn không bị ảnh hưởng."
+  },
+  "optionsResetDone": {
+    "message": "Các cài đặt đã trở về giá trị mặc định."
+  },
+  "optionsDeleteAll": {
+    "message": "Xoá mọi thứ"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Xoá mọi ảnh chụp trong lịch sử và mọi thứ do các lần chụp bị gián đoạn để lại. Cài đặt của bạn vẫn giữ nguyên."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Xoá mọi thứ FullShot đã lưu trên thiết bị này?\n\nẢnh chụp trong lịch sử: $COUNT$\nPhần sót lại từ các lần chụp bị gián đoạn: $LEFTOVER$\nDung lượng được giải phóng: $SIZE$\n\nCài đặt của bạn không bị ảnh hưởng. Không thể hoàn tác.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Đã xoá. FullShot hiện không lưu ảnh chụp nào trên thiết bị này."
+  },
+  "resultPageTitle": {
+    "message": "Ảnh chụp màn hình — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Sao chép"
+  },
+  "resultCopyTip": {
+    "message": "Sao chép ảnh vào bảng nhớ tạm"
+  },
+  "resultEdit": {
+    "message": "Chỉnh sửa"
+  },
+  "resultEditTip": {
+    "message": "Mở trong trình chỉnh sửa"
+  },
+  "resultBeautify": {
+    "message": "Làm đẹp"
+  },
+  "resultBeautifyTip": {
+    "message": "Làm đẹp — thêm khung và nền để chia sẻ"
+  },
+  "resultClip": {
+    "message": "Clip"
+  },
+  "resultClipTip": {
+    "message": "Clip cuộn trang — $GIF$ / $WEBM$ động",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Khổ giấy PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Tải xuống"
+  },
+  "resultDeleteTip": {
+    "message": "Xóa ảnh chụp"
+  },
+  "resultHistoryTip": {
+    "message": "Lịch sử ảnh chụp"
+  },
+  "resultProgressAssembling": {
+    "message": "Đang ghép ảnh chụp của bạn…"
+  },
+  "resultProgressDecodingOther": {
+    "message": "Đang giải mã $COUNT$ khung hình…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Đang ghép phần $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Đang ghép phần $INDEX$ trong khoảng $TOTAL$ phần…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Đang lưu…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Mẹo: kéo thẳng ảnh ra màn hình nền, hoặc dùng $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Chẳng có gì ở đây"
+  },
+  "resultEmptyBody": {
+    "message": "Ảnh chụp này không còn nữa."
+  },
+  "resultOpenHistory": {
+    "message": "Mở lịch sử"
+  },
+  "resultSomethingWrong": {
+    "message": "Đã có trục trặc — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Phần $INDEX$ trên $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Tải phần này"
+  },
+  "resultEditPart": {
+    "message": "Sửa phần này"
+  },
+  "resultClipPart": {
+    "message": "Tạo clip từ phần này"
+  },
+  "resultPartAlt": {
+    "message": "Ảnh chụp phần $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Đang tải xuống $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Xóa vĩnh viễn ảnh chụp này?"
+  },
+  "resultDeleted": {
+    "message": "Đã xóa ảnh chụp."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Ảnh chụp này quá cao để dán thành một hình ảnh đọc được duy nhất, nên $COPY$ đặt lên bảng nhớ tạm một bản xem tổng quát đã thu nhỏ của toàn trang. Chữ nhỏ trong đó sẽ không đọc được.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Đã sao chép phần $INDEX$ vào bảng nhớ tạm",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Đang tạo PDF…"
+  },
+  "resultToastPdfDoneOther": {
+    "message": "Đã tải PDF ($COUNT$ trang)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "Tạo PDF thất bại — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Trình chỉnh sửa — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Quay lại ảnh chụp"
+  },
+  "editorToolSelect": {
+    "message": "Chọn / di chuyển ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Cắt ảnh ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Bút vẽ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Bút dạ quang ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Đường thẳng ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Mũi tên ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Hình chữ nhật ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Hình bầu dục ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Văn bản ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Làm mờ / che ô vuông ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Đánh số bước ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Dán biểu tượng cảm xúc ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Màu tùy chỉnh"
+  },
+  "editorStrokeTip": {
+    "message": "Độ dày nét"
+  },
+  "editorStrokeThin": {
+    "message": "Mảnh"
+  },
+  "editorStrokeMedium": {
+    "message": "Vừa"
+  },
+  "editorStrokeThick": {
+    "message": "Dày"
+  },
+  "editorSizeTip": {
+    "message": "Cỡ chữ / biểu tượng cảm xúc"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Hoàn tác ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Làm lại ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Thu nhỏ (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Phóng to (+)"
+  },
+  "editorZoomFit": {
+    "message": "Vừa khung"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Vừa cửa sổ — bấm để xem ở 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "Bấm để vừa cửa sổ"
+  },
+  "editorExport": {
+    "message": "Xuất"
+  },
+  "editorExportCopy": {
+    "message": "Sao chép vào bảng nhớ tạm"
+  },
+  "editorExportImage": {
+    "message": "Ảnh $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Tài liệu $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Lưu"
+  },
+  "editorSaveTip": {
+    "message": "Lưu thay đổi vào lịch sử ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Thêm"
+  },
+  "editorMenuFiles": {
+    "message": "Tới Lịch sử"
+  },
+  "editorMenuOptions": {
+    "message": "Tới Tùy chọn"
+  },
+  "editorMenuShortcuts": {
+    "message": "Phím tắt"
+  },
+  "editorCropApply": {
+    "message": "Áp dụng cắt"
+  },
+  "editorCropCancel": {
+    "message": "Hủy"
+  },
+  "editorShortcutsHeading": {
+    "message": "Phím tắt"
+  },
+  "editorShortcutTools": {
+    "message": "Chọn công cụ"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Hoàn tác / làm lại"
+  },
+  "editorShortcutSave": {
+    "message": "Lưu vào lịch sử"
+  },
+  "editorShortcutZoom": {
+    "message": "Thu nhỏ / phóng to"
+  },
+  "editorShortcutDelete": {
+    "message": "Xóa đối tượng đang chọn"
+  },
+  "editorShortcutEscape": {
+    "message": "Bỏ chọn / hủy cắt ảnh"
+  },
+  "editorShortcutsClose": {
+    "message": "Đóng"
+  },
+  "editorNotFound": {
+    "message": "Không tìm thấy ảnh chụp"
+  },
+  "editorToastDownloaded": {
+    "message": "Đã tải xuống"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "Đã tải PDF"
+  },
+  "editorToastSaved": {
+    "message": "Đã lưu vào lịch sử"
+  },
+  "historyPageTitle": {
+    "message": "Lịch sử — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Lịch sử"
+  },
+  "historySearchPlaceholder": {
+    "message": "Tìm theo tiêu đề hoặc URL…"
+  },
+  "historySelectAll": {
+    "message": "Chọn tất cả"
+  },
+  "historyClearSelection": {
+    "message": "Bỏ chọn hết"
+  },
+  "historyDownloadSelected": {
+    "message": "Tải mục đã chọn"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Tải xuống ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Xóa mục đã chọn"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Xóa ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Chưa có ảnh chụp nào"
+  },
+  "historyEmptyBody": {
+    "message": "Những ảnh bạn chụp sẽ hiện ở đây. Bấm biểu tượng FullShot trên thanh công cụ để bắt đầu."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Không có kết quả nào"
+  },
+  "historyNoMatchesBody": {
+    "message": "Không có ảnh chụp nào khớp với \"$QUERY$\".",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ ảnh chụp · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ trên $COUNT$ ảnh chụp · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Chọn"
+  },
+  "historyCardOpen": {
+    "message": "Mở"
+  },
+  "historyCardEdit": {
+    "message": "Sửa"
+  },
+  "historyCardDownloadTip": {
+    "message": "Tải xuống"
+  },
+  "historyCardDeleteTip": {
+    "message": "Xóa"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Mở trang gốc"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ phần",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Ảnh chụp màn hình"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Xóa ảnh chụp này?"
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Xóa vĩnh viễn $COUNT$ ảnh chụp?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Đang tải xuống $COUNT$ ảnh chụp",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Đã xóa"
+  },
+  "beautifyPageTitle": {
+    "message": "Làm đẹp — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Làm đẹp"
+  },
+  "actionBack": {
+    "message": "Quay lại"
+  },
+  "commonLoading": {
+    "message": "Đang tải…"
+  },
+  "beautifyFieldSize": {
+    "message": "Kích thước"
+  },
+  "beautifyPresetAuto": {
+    "message": "Tự động"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Vuông"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Dọc"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Nền"
+  },
+  "beautifyBgSlate": {
+    "message": "Xám đá"
+  },
+  "beautifyBgGraphite": {
+    "message": "Than chì"
+  },
+  "beautifyBgSky": {
+    "message": "Xanh trời"
+  },
+  "beautifyBgSunset": {
+    "message": "Hoàng hôn"
+  },
+  "beautifyBgGrape": {
+    "message": "Tím nho"
+  },
+  "beautifyBgMint": {
+    "message": "Xanh bạc hà"
+  },
+  "beautifyFieldPadding": {
+    "message": "Lề trong"
+  },
+  "beautifyFieldRadius": {
+    "message": "Bo góc"
+  },
+  "beautifyFieldEffects": {
+    "message": "Hiệu ứng"
+  },
+  "beautifyShadow": {
+    "message": "Đổ bóng"
+  },
+  "beautifyWindowFrame": {
+    "message": "Khung cửa sổ"
+  },
+  "beautifyFieldExport": {
+    "message": "Xuất"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Clip cuộn trang — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Clip cuộn trang"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Định dạng"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ phát được ở mọi nơi. $WEBM$ nhẹ hơn và mượt hơn (được ghi trực tiếp ngay trong trình duyệt của bạn).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Chiều rộng đầu ra"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Mật độ điểm ảnh"
+  },
+  "scrollclipDensityHint": {
+    "message": "Mật độ càng cao thì hình càng nét (càng sát độ phân giải gốc) — nhưng tệp cũng càng nặng."
+  },
+  "scrollclipFieldShape": {
+    "message": "Hình dạng"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Tốc độ cuộn (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Tốc độ khung hình (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Chuyển động"
+  },
+  "scrollclipBounce": {
+    "message": "Dội lại (cuộn ngược lên đầu)"
+  },
+  "scrollclipLoop": {
+    "message": "Lặp mãi mãi"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Sao chép khung hình"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Sao chép khung hình bìa (trên cùng) dưới dạng $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ khung hình · $SECONDS$ giây",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Đang dựng khung hình… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Đang mã hóa $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Đang hoàn tất…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Đang ghi $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Đang ghi…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "Ở đây không hỗ trợ $WEBM$ — sẽ xuất ra $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Đã sao chép khung hình bìa"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Chụp hàng loạt"
+  },
+  "batchHeading": {
+    "message": "Chụp hàng loạt"
+  },
+  "batchIntro": {
+    "message": "Dán các URL, mỗi dòng một địa chỉ. FullShot mở lần lượt từng trang, chụp toàn trang vào lịch sử của bạn rồi đi tiếp — tối đa $MAX$ trang mỗi lượt. Ảnh chụp sẽ xuất hiện trong lịch sử; bấm $OPENLINK$ để xem, sửa hoặc xuất bất kỳ ảnh nào.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Chụp tất cả"
+  },
+  "batchPermissionHint": {
+    "message": "Việc mở những trang này cần một quyền chỉ hỏi một lần duy nhất, ở lần chạy đầu tiên."
+  },
+  "batchPermissionDeclined": {
+    "message": "Quyền mở những trang đó đã bị từ chối."
+  },
+  "batchPanelPlan": {
+    "message": "Kế hoạch"
+  },
+  "batchPanelProgress": {
+    "message": "Tiến độ"
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ trang chờ chụp",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ trang chờ chụp (giới hạn ở $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Chưa có URL hợp lệ nào"
+  },
+  "batchSkipped": {
+    "message": "Đã bỏ qua $COUNT$: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "giao thức không hỗ trợ"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "không hợp lệ"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "thiếu tên máy chủ"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "trùng lặp"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "để trống"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "vượt giới hạn ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "Xong $DONE$/$TOTAL$",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "Xong $DONE$/$TOTAL$, $FAILED$ thất bại",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "Xong $DONE$/$TOTAL$ — hoàn tất",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "Xong $DONE$/$TOTAL$, $FAILED$ thất bại — hoàn tất",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "mở"
+  },
+  "batchJobTimedOut": {
+    "message": "chụp quá thời gian chờ"
+  },
+  "batchJobNoSession": {
+    "message": "không có phiên chụp"
+  },
+  "batchJobFailed": {
+    "message": "chụp thất bại"
+  },
+  "batchJobError": {
+    "message": "lỗi khi chụp"
+  },
+  "regionHintDrag": {
+    "message": "Kéo để khoanh một vùng — nhấn $ESC$ để hủy",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Bấm vào phần tử muốn chụp — nhấn $ESC$ để hủy",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Các trang của trình duyệt như Cài đặt, Tiện ích và trang Thẻ mới đều nằm ngoài tầm với của mọi tiện ích. Hãy thử FullShot trên một trang web thông thường."
+  },
+  "errRestrictedDevtools": {
+    "message": "Tiện ích không thể chụp cửa sổ Công cụ dành cho nhà phát triển. Với những cửa sổ đó, hãy dùng công cụ chụp màn hình của chính máy bạn."
+  },
+  "errRestrictedViewSource": {
+    "message": "Không thể chụp trang xem mã nguồn. Hãy chụp chính trang web đó."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Các trang tiện ích, kể cả trang của chính FullShot, được trình duyệt bảo vệ nên không thể chụp."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store không cho tiện ích đọc các trang của mình, vì vậy không thể chụp trang này."
+  },
+  "errRestrictedGeneric": {
+    "message": "Trang này được trình duyệt bảo vệ nên không thể chụp."
+  },
+  "errWrongTab": {
+    "message": "Đã dừng chụp — bạn vừa chuyển thẻ. Hãy giữ trang này ở phía trước cho tới khi FullShot làm xong."
+  },
+  "errGeneric": {
+    "message": "Quá trình chụp dừng lại trước khi hoàn tất. Vui lòng thử lại."
+  },
+  "errBusy": {
+    "message": "Thẻ này đã có một lần chụp đang chạy."
+  },
+  "errBlocked": {
+    "message": "Không thể chụp trang này (trình duyệt hạn chế)."
+  },
+  "errNoStart": {
+    "message": "FullShot không khởi động được trên trang này. Hãy tải lại trang rồi thử lại."
+  },
+  "errCrash": {
+    "message": "Quá trình chụp dừng đột ngột. Vui lòng thử lại."
+  },
+  "errUnknownMessage": {
+    "message": "Thông điệp không xác định."
+  },
+  "errQuota": {
+    "message": "Trình duyệt đang hạn chế tốc độ chụp ảnh trang. Hãy chờ một lát rồi thử lại."
+  },
+  "errFrameHandover": {
+    "message": "Trình duyệt ngừng bàn giao hình ảnh giữa chừng. Hãy chờ vài giây rồi thử lại."
+  },
+  "errLostTab": {
+    "message": "Quá trình chụp đã mất dấu thẻ này. Hãy tải lại trang rồi thử lại."
+  },
+  "errStoppedEarly": {
+    "message": "Quá trình chụp đã bị dừng trước khi hoàn tất."
+  },
+  "errStorageFull": {
+    "message": "Không còn chỗ để lưu lần chụp này. Hãy xoá bớt vài ảnh chụp trong lịch sử rồi thử lại."
+  },
+  "reasonGeneric": {
+    "message": "không có lý do nào được đưa ra. Vui lòng thử lại."
+  },
+  "reasonDecodeFailed": {
+    "message": "không giải mã được ảnh chụp đó."
+  },
+  "reasonTooLarge": {
+    "message": "ảnh quá lớn để xuất ở đây."
+  },
+  "toastCopiedClipboard": {
+    "message": "Đã sao chép vào bảng nhớ tạm"
+  },
+  "toastCopyFailed": {
+    "message": "Sao chép thất bại — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Xuất thất bại — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Đã lưu $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Đã lưu $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

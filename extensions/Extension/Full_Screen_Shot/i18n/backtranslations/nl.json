@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Enlarge scrollable panels and iframes to their complete content instead of recording them as they stand in view. Frames from other sites ask one time for an extra permission.",
+  "optionsLead": "Changes are saved automatically and synchronised with your browser profile.",
+  "optionsExpandPermGranted": "Permission granted — frames from other sites are unfolded as well.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission, frames from other sites are recorded as they stand in view. Panels and iframes from the same site always work.",
+  "optionsRedactPIIDesc": "Searches the text the page gives away for e-mail addresses, telephone numbers, credit card numbers, citizen service numbers and API keys and puts a dense block over what corresponds, in the saved image. Text that is drawn as pixels it cannot read — a canvas, an image, a PDF, a video picture. The recognition runs on your device; nothing is ever sent anywhere. Only with recordings of the whole page (document scroll); the block is permanent, so check the result yourself.",
+  "scrollclipFormatHint": "GIF plays back everywhere. WebM is smaller and more fluid (recorded live in your own browser).",
+  "batchPermissionHint": "For the opening of these pages, permission is needed one time, the first time.",
+  "batchPermissionDeclined": "The permission to open those pages has been refused."
+}

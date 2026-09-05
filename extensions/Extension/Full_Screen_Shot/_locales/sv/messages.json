@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot – skärmbild av hela sidan"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Fånga hela sidan, det synliga området, ett utsnitt eller element. Redigera, kommentera och exportera som PNG, JPEG, WebP eller PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – fånga sidan (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Fånga hela sidan"
+  },
+  "commandCaptureVisible": {
+    "message": "Fånga det synliga området"
+  },
+  "commandCaptureRegion": {
+    "message": "Fånga markerat utsnitt"
+  },
+  "commandCaptureElement": {
+    "message": "Fånga ett element på sidan (klicka för att välja)"
+  },
+  "popupToggleTheme": {
+    "message": "Byt tema"
+  },
+  "popupModeFullTitle": {
+    "message": "Hela sidan"
+  },
+  "popupModeFullSub": {
+    "message": "Rulla och fånga hela sidan"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Synligt område"
+  },
+  "popupModeVisibleSub": {
+    "message": "Bara det som syns nu"
+  },
+  "popupModeRegionTitle": {
+    "message": "Markerat utsnitt"
+  },
+  "popupModeRegionSub": {
+    "message": "Dra för att välja ett område"
+  },
+  "popupModeElementTitle": {
+    "message": "Element"
+  },
+  "popupModeElementSub": {
+    "message": "Klicka på ett element på sidan"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Fördröjd fångst"
+  },
+  "popupModeDelayedSub": {
+    "message": "Hela sidan efter nedräkning"
+  },
+  "popupDelayLabel": {
+    "message": "Fördröjning i sekunder"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Expandera rullningsbara paneler och iframes"
+  },
+  "popupExpandToggleTip": {
+    "message": "Expandera inre rullningsbara paneler och iframes till hela innehållet i stället för att fånga dem som de syns. Ramar från andra webbplatser begär en extra behörighet en enda gång."
+  },
+  "popupDismiss": {
+    "message": "Stäng"
+  },
+  "popupLastErrorFailed": {
+    "message": "Senaste $MODE$ misslyckades – $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Senaste $MODE$ misslyckades – $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "fångst av hela sidan"
+  },
+  "popupModeNameVisible": {
+    "message": "fångst av det synliga området"
+  },
+  "popupModeNameRegion": {
+    "message": "utsnittsfångst"
+  },
+  "popupModeNameElement": {
+    "message": "elementfångst"
+  },
+  "popupModeNameGeneric": {
+    "message": "fångst"
+  },
+  "popupNoActiveTab": {
+    "message": "Hittade ingen aktiv flik."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Fångsten kunde inte startas."
+  },
+  "popupLinkHistory": {
+    "message": "Historik"
+  },
+  "popupLinkBatch": {
+    "message": "Batch"
+  },
+  "popupLinkOptions": {
+    "message": "Inställningar"
+  },
+  "optionsPageTitle": {
+    "message": "Inställningar – FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Inställningar"
+  },
+  "optionsHeading": {
+    "message": "Inställningar"
+  },
+  "optionsLead": {
+    "message": "Ändringar sparas automatiskt och synkroniseras med din webbläsarprofil."
+  },
+  "optionsSectionImage": {
+    "message": "Bild"
+  },
+  "optionsFormat": {
+    "message": "Format"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ är förlustfritt, $JPEG$ är mindre och $WEBP$ är minst vid samma kvalitet.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Kvalitet för $JPEG$ och $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Mall för filnamn"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Platshållare: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Fångst"
+  },
+  "optionsCaptureDelay": {
+    "message": "Extra väntetid per steg"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Millisekunder att vänta efter varje rullning. Höj värdet på långsamma, animationstunga sidor."
+  },
+  "optionsHideFixed": {
+    "message": "Dölj fasta och klistrade element"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Hindrar att sidhuvuden upprepas på varje skärmbild (visas bara högst upp)."
+  },
+  "optionsPreScroll": {
+    "message": "Förrulla för att ladda fördröjt innehåll"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Rullar igenom hela sidan en gång före fångsten. Långsammare, men fångar bilder som laddas först när de syns."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Vänta på att bilder avkodas"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Låter sena bilder avkodas färdigt före varje bildruta, så att de inte fångas som svarta eller tomma rutor."
+  },
+  "optionsHideOverlays": {
+    "message": "Dölj banderoller och popup-fönster"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Tar bort cookie- och samtyckesbanderoller, nyhetsbrevsrutor och ”hämta appen”-popupfönster före fångsten, och låser upp sidor som en ruta har frusit. Återställs efteråt."
+  },
+  "optionsExpandInner": {
+    "message": "Expandera rullningsbart innehåll"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Expanderar inre paneler och iframes så att innehåll under deras egen kant kommer med, i stället för att fånga dem exakt som de syns."
+  },
+  "optionsExpandPermRow": {
+    "message": "Ramar från andra webbplatser"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Tillåt"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Behörighet beviljad – ramar från andra webbplatser expanderas också."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Utan behörigheten ”$PERMISSION$” fångas ramar från andra webbplatser som de syns. Paneler och iframes från samma webbplats fungerar alltid.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Rulla ut virtualiserade listor"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Stegar igenom flöden med renderingsfönster (i stil med $LIB1$ / $LIB2$) så att hela innehållet kommer med, inte bara raderna på skärmen. Långsammare i mycket långa listor.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Expandera innehåll som kräver ett klick"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Öppnar hopfällda $DETAILS$, inaktiva flikar, dragspel och ”visa mer”-avsnitt före fångsten och stänger dem igen efteråt. Visar innehåll som annars är gömt bakom ett klick.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Klicka på ”$BUTTONTEXT$”-knappar",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Klickar på ”load more”- och ”show more”-knappar och väntar på att det nya innehållet laddas, om och om igen, tills flödet är uttömt. Till skillnad från inställningen ovan hämtar det här innehåll som ännu inte finns på sidan, och det laddade innehållet ligger kvar efter fångsten."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Rulla för att ladda oändliga flöden"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "För flöden utan ”load more”-knapp: rullar till botten och väntar på nästa omgång, om och om igen, tills flödet slutar växa (med en gräns, så att oändliga flöden inte jagas i evighet). Det laddade innehållet ligger kvar efter fångsten."
+  },
+  "optionsWaitStable": {
+    "message": "Vänta tills innehållet har laddats färdigt"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Väntar på att skelett- och platshållarladdare (aria-busy-områden, skimrande block) ersätts av det riktiga innehållet före fångsten, så att ett ”laddar…”-byte mitt på sidan inte fångas som grå platshållare. Med en gräns, så att en fastnad snurra inte blockerar fångsten."
+  },
+  "optionsRedactPII": {
+    "message": "Maskera känsliga uppgifter automatiskt"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Söker igenom texten som sidan visar upp efter e-postadresser, telefonnummer, kortnummer, personnummer och API-nycklar och lägger ett heltäckande fält över det som träffade, i den sparade bilden. Text som är ritad som pixlar kan den inte läsa – en canvas, en bild, en PDF, en videoruta. Igenkänningen körs på din enhet; ingenting skickas någonsin någonstans. Gäller fångster av hela sidan (dokumentrullning); fältet är permanent, så granska resultatet själv."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Största sidhöjd"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Säkerhetsgräns (CSS px) för flöden med oändlig rullning."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF-export"
+  },
+  "optionsPdfPaper": {
+    "message": "Standardpappersstorlek"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "”$IMAGESIZE$” gör sidan exakt lika stor som skärmbilden.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Bildstorlek"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientering"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Gäller fasta pappersstorlekar."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Stående"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Liggande"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Smart siduppdelning"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Letar efter en visuell lucka nära varje sidbrytning så att textrader inte delas mitt itu."
+  },
+  "optionsPdfStamp": {
+    "message": "Stämpla URL och datum"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Lägger sidans URL och fångstdatum längst ned på varje PDF-sida."
+  },
+  "optionsSectionDownload": {
+    "message": "Nedladdning"
+  },
+  "optionsSaveDirectory": {
+    "message": "Mapp"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Undermapp i $DOWNLOADS$ för dina skärmbilder, t.ex. $EXAMPLE$. Tom = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialogrutan ”Spara som”"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Fråga var varje fil ska sparas i stället för att ladda ned den utan vidare."
+  },
+  "optionsClipboardFit": {
+    "message": "Anpassa kopior till andra appars gränser"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Skalar ned kopior över $PIXELS$ pixlar så att inklistring i $APP$ med flera fungerar.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Arbetsflöde"
+  },
+  "optionsAutoDownload": {
+    "message": "Ladda ned automatiskt efter fångst"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Sparar bilden direkt när en fångst är klar."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Öppna redigeraren efter fångst"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Gå direkt vidare till att kommentera (endast fångster i en enda del)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Gäller popup-fönstret och alla FullShot-sidor."
+  },
+  "optionsThemeSystem": {
+    "message": "System"
+  },
+  "optionsThemeLight": {
+    "message": "Ljust"
+  },
+  "optionsThemeDark": {
+    "message": "Mörkt"
+  },
+  "optionsShortcuts": {
+    "message": "Kortkommandon"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Hela sidan: $KEYFULL$ · Synligt: $KEYVISIBLE$. Anpassa dem på $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Sparat ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Dina data"
+  },
+  "optionsStorage": {
+    "message": "Lagring"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ av $QUOTA$ används på den här enheten.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Den här webbläsaren uppger inte hur mycket utrymme FullShot använder."
+  },
+  "optionsStorageKept": {
+    "message": "Dina skärmbilder behålls: webbläsaren rensar dem inte för att frigöra utrymme."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Dina skärmbilder ligger i webbläsarens best effort-lagring, som den kan rensa för att frigöra utrymme."
+  },
+  "optionsStorageKeep": {
+    "message": "Behåll mina data"
+  },
+  "optionsExport": {
+    "message": "Exportera allt"
+  },
+  "optionsExportDesc": {
+    "message": "Skriver en enda fil med dina inställningar och listan över dina skärmbilder. Den sparas på den här enheten och skickas ingenstans."
+  },
+  "optionsExportImages": {
+    "message": "Ta med bilderna"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Själva bilderna, som utgör nästan hela storleken. Utan dem listar filen dina skärmbilder men innehåller ingen av dem."
+  },
+  "optionsExportSize": {
+    "message": "Filstorlek: ungefär $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Kvarlämnade data"
+  },
+  "optionsSweepDesc": {
+    "message": "En avbruten inspelning kan lämna bildrutor på disken som inte hör till någon skärmbild. De syns på ingen sida, så ingen sida kan ta bort dem. Det här hittar dem och tar bort dem."
+  },
+  "optionsSweepBtn": {
+    "message": "Sök och ta bort"
+  },
+  "optionsSweepResult": {
+    "message": "Borttaget. Uppstädade inspelningar: $COUNT$ · Frigjort utrymme: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Inget är kvar: allt som lagras hör till en skärmbild du kan se."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Återställ inställningar"
+  },
+  "optionsResetDesc": {
+    "message": "Sätter tillbaka varje inställning på den här sidan till värdet den levererades med. Dina skärmbilder rörs inte."
+  },
+  "optionsResetBtn": {
+    "message": "Återställ"
+  },
+  "optionsResetConfirm": {
+    "message": "Vill du återställa alla FullShot-inställningar till standardvärdena? Dina skärmbilder påverkas inte."
+  },
+  "optionsResetDone": {
+    "message": "Inställningarna är tillbaka på sina standardvärden."
+  },
+  "optionsDeleteAll": {
+    "message": "Radera allt"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Tar bort alla skärmbilder i din historik och allt som avbrutna inspelningar har lämnat efter sig. Dina inställningar förblir som de är."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Vill du radera allt som FullShot har lagrat på den här enheten?\n\nSkärmbilder i din historik: $COUNT$\nRester från avbrutna inspelningar: $LEFTOVER$\nUtrymme som frigörs: $SIZE$\n\nDina inställningar påverkas inte. Detta går inte att ångra.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Raderat. FullShot lagrar nu inga skärmbilder på den här enheten."
+  },
+  "resultPageTitle": {
+    "message": "Skärmbild – FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ – FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopiera"
+  },
+  "resultCopyTip": {
+    "message": "Kopiera bilden till urklipp"
+  },
+  "resultEdit": {
+    "message": "Redigera"
+  },
+  "resultEditTip": {
+    "message": "Öppna i redigeraren"
+  },
+  "resultBeautify": {
+    "message": "Försköna"
+  },
+  "resultBeautifyTip": {
+    "message": "Försköna – ram och bakgrund för delning"
+  },
+  "resultClip": {
+    "message": "Klipp"
+  },
+  "resultClipTip": {
+    "message": "Rullklipp – animerad $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Pappersstorlek för PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Ladda ned"
+  },
+  "resultDeleteTip": {
+    "message": "Ta bort skärmbild"
+  },
+  "resultHistoryTip": {
+    "message": "Historik över skärmbilder"
+  },
+  "resultProgressAssembling": {
+    "message": "Sätter ihop din skärmbild…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Avkodar $COUNT$ bildruta…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Avkodar $COUNT$ bildrutor…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Fogar ihop del $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Fogar ihop del $INDEX$ av ca $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Sparar…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Tips: dra bilden direkt till skrivbordet, eller använd $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Inget här"
+  },
+  "resultEmptyBody": {
+    "message": "Den här skärmbilden finns inte längre."
+  },
+  "resultOpenHistory": {
+    "message": "Öppna historiken"
+  },
+  "resultSomethingWrong": {
+    "message": "Något gick fel – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Del $INDEX$ av $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Ladda ned del"
+  },
+  "resultEditPart": {
+    "message": "Redigera del"
+  },
+  "resultClipPart": {
+    "message": "Klipp del"
+  },
+  "resultPartAlt": {
+    "message": "Skärmbild, del $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Laddar ned $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Vill du ta bort den här skärmbilden permanent?"
+  },
+  "resultDeleted": {
+    "message": "Skärmbilden har tagits bort."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Den här skärmbilden är för hög för att klistras in som en enda läsbar bild, så $COPY$ lägger en förminskad översikt över hela sidan i urklipp. Liten text i den går inte att läsa.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Del $INDEX$ har kopierats till urklipp",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Bygger PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF nedladdad ($COUNT$ sida)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF nedladdad ($COUNT$ sidor)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF misslyckades – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Redigerare – FullShot"
+  },
+  "editorBackTip": {
+    "message": "Tillbaka till skärmbilden"
+  },
+  "editorToolSelect": {
+    "message": "Markera/flytta ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Beskär ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Penna ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Överstrykningspenna ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Linje ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Pil ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Rektangel ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Ellips ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Text ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Oskärpa/pixelering ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Numrerat steg ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Emoji-stämpel ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Egen färg"
+  },
+  "editorStrokeTip": {
+    "message": "Linjetjocklek"
+  },
+  "editorStrokeThin": {
+    "message": "Tunn"
+  },
+  "editorStrokeMedium": {
+    "message": "Mellan"
+  },
+  "editorStrokeThick": {
+    "message": "Tjock"
+  },
+  "editorSizeTip": {
+    "message": "Text-/emojistorlek"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Ångra ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Gör om ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Zooma ut (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Zooma in (+)"
+  },
+  "editorZoomFit": {
+    "message": "Anpassa"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Anpassad till fönstret – klicka för 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Klicka för att anpassa till fönstret"
+  },
+  "editorExport": {
+    "message": "Exportera"
+  },
+  "editorExportCopy": {
+    "message": "Kopiera till urklipp"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$-bild",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$-dokument",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Spara"
+  },
+  "editorSaveTip": {
+    "message": "Spara ändringar i historiken ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Mer"
+  },
+  "editorMenuFiles": {
+    "message": "Gå till Historik"
+  },
+  "editorMenuOptions": {
+    "message": "Gå till Inställningar"
+  },
+  "editorMenuShortcuts": {
+    "message": "Kortkommandon"
+  },
+  "editorCropApply": {
+    "message": "Använd beskärning"
+  },
+  "editorCropCancel": {
+    "message": "Avbryt"
+  },
+  "editorShortcutsHeading": {
+    "message": "Kortkommandon"
+  },
+  "editorShortcutTools": {
+    "message": "Välj verktyg"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Ångra/gör om"
+  },
+  "editorShortcutSave": {
+    "message": "Spara i historiken"
+  },
+  "editorShortcutZoom": {
+    "message": "Zooma ut/in"
+  },
+  "editorShortcutDelete": {
+    "message": "Ta bort markerat objekt"
+  },
+  "editorShortcutEscape": {
+    "message": "Avmarkera / avbryt beskärning"
+  },
+  "editorShortcutsClose": {
+    "message": "Stäng"
+  },
+  "editorNotFound": {
+    "message": "Skärmbilden hittades inte"
+  },
+  "editorToastDownloaded": {
+    "message": "Nedladdad"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF nedladdad"
+  },
+  "editorToastSaved": {
+    "message": "Sparad i historiken"
+  },
+  "historyPageTitle": {
+    "message": "Historik – FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Historik"
+  },
+  "historySearchPlaceholder": {
+    "message": "Sök i titel eller URL…"
+  },
+  "historySelectAll": {
+    "message": "Markera alla"
+  },
+  "historyClearSelection": {
+    "message": "Rensa markering"
+  },
+  "historyDownloadSelected": {
+    "message": "Ladda ned markerade"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Ladda ned ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Ta bort markerade"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Ta bort ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Inga skärmbilder ännu"
+  },
+  "historyEmptyBody": {
+    "message": "De bilder du tar dyker upp här. Klicka på FullShot-ikonen i verktygsfältet för att komma i gång."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Inga träffar"
+  },
+  "historyNoMatchesBody": {
+    "message": "Inga skärmbilder matchar ”$QUERY$”.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ skärmbild · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ skärmbilder · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ av $COUNT$ skärmbild · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ av $COUNT$ skärmbilder · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Markera"
+  },
+  "historyCardOpen": {
+    "message": "Öppna"
+  },
+  "historyCardEdit": {
+    "message": "Redigera"
+  },
+  "historyCardDownloadTip": {
+    "message": "Ladda ned"
+  },
+  "historyCardDeleteTip": {
+    "message": "Ta bort"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Öppna den ursprungliga sidan"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ delar",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Skärmbild"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Vill du ta bort den här skärmbilden?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Vill du ta bort $COUNT$ skärmbild permanent?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Vill du ta bort $COUNT$ skärmbilder permanent?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Laddar ned $COUNT$ skärmbild",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Laddar ned $COUNT$ skärmbilder",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Borttagna"
+  },
+  "beautifyPageTitle": {
+    "message": "Försköna – FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Försköna"
+  },
+  "actionBack": {
+    "message": "Tillbaka"
+  },
+  "commonLoading": {
+    "message": "Laddar…"
+  },
+  "beautifyFieldSize": {
+    "message": "Storlek"
+  },
+  "beautifyPresetAuto": {
+    "message": "Auto"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Kvadrat"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Stående"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Bakgrund"
+  },
+  "beautifyBgSlate": {
+    "message": "Skiffer"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Himmel"
+  },
+  "beautifyBgSunset": {
+    "message": "Solnedgång"
+  },
+  "beautifyBgGrape": {
+    "message": "Vindruva"
+  },
+  "beautifyBgMint": {
+    "message": "Mynta"
+  },
+  "beautifyFieldPadding": {
+    "message": "Marginal runt bilden"
+  },
+  "beautifyFieldRadius": {
+    "message": "Hörnradie"
+  },
+  "beautifyFieldEffects": {
+    "message": "Effekter"
+  },
+  "beautifyShadow": {
+    "message": "Skugga"
+  },
+  "beautifyWindowFrame": {
+    "message": "Fönsterram"
+  },
+  "beautifyFieldExport": {
+    "message": "Export"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Rullklipp – FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Rullklipp"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Format"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ spelas upp överallt. $WEBM$ är mindre och mjukare (spelas in direkt i din webbläsare).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Bredd på resultatet"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Täthet"
+  },
+  "scrollclipDensityHint": {
+    "message": "Högre täthet ger skarpare resultat (närmare källans upplösning) – men större fil."
+  },
+  "scrollclipFieldShape": {
+    "message": "Form"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Rullningshastighet (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Bildfrekvens (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Rörelse"
+  },
+  "scrollclipBounce": {
+    "message": "Studs (rulla tillbaka upp)"
+  },
+  "scrollclipLoop": {
+    "message": "Upprepa i oändlighet"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopiera bildruta"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopiera den översta startbildrutan som $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ bildruta · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ bildrutor · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Renderar bildrutor… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Kodar $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Slutför…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Spelar in $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Spelar in…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ stöds inte här – exporterar $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Startbildrutan har kopierats"
+  },
+  "batchPageTitle": {
+    "message": "FullShot – batchfångst"
+  },
+  "batchHeading": {
+    "message": "Batchfångst"
+  },
+  "batchIntro": {
+    "message": "Klistra in webbadresser, en per rad. FullShot öppnar varje sida, fångar hela sidan till din historik och går vidare – upp till $MAX$ åt gången. Fångsterna hamnar i historiken; klicka på $OPENLINK$ för att visa, redigera eller exportera dem.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Fånga alla"
+  },
+  "batchPermissionHint": {
+    "message": "Att öppna de här sidorna kräver en engångsbehörighet första gången."
+  },
+  "batchPermissionDeclined": {
+    "message": "Behörigheten att öppna de sidorna nekades."
+  },
+  "batchPanelPlan": {
+    "message": "Plan"
+  },
+  "batchPanelProgress": {
+    "message": "Förlopp"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ sida att fånga",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ sidor att fånga",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ sidor att fånga (begränsat till $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Inga giltiga webbadresser ännu"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ överhoppade: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "protokollet stöds inte"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "ogiltig"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "saknar värdnamn"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "dubblett"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "tom"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "över gränsen ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ klara",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ klara, $FAILED$ misslyckades",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ klara – färdigt",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ klara, $FAILED$ misslyckades – färdigt",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "öppna"
+  },
+  "batchJobTimedOut": {
+    "message": "fångsten tog för lång tid"
+  },
+  "batchJobNoSession": {
+    "message": "ingen fångstsession"
+  },
+  "batchJobFailed": {
+    "message": "fångsten misslyckades"
+  },
+  "batchJobError": {
+    "message": "fel under fångsten"
+  },
+  "regionHintDrag": {
+    "message": "Dra för att markera ett utsnitt – $ESC$ avbryter",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Klicka på ett element för att fånga det – $ESC$ avbryter",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Webbläsarens egna sidor som Inställningar, Tillägg och Ny flik är stängda för alla tillägg. Prova FullShot på en vanlig webbsida."
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools-fönster kan inte fångas av ett tillägg. Använd datorns eget skärmbildsverktyg för dem."
+  },
+  "errRestrictedViewSource": {
+    "message": "Sidor med källkodsvisning kan inte fångas. Fånga själva sidan i stället."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Tilläggens sidor, inklusive FullShots egna, skyddas av webbläsaren och kan inte fångas."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store hindrar tillägg från att läsa sina sidor, så den här går inte att fånga."
+  },
+  "errRestrictedGeneric": {
+    "message": "Den här sidan skyddas av webbläsaren och kan inte fångas."
+  },
+  "errWrongTab": {
+    "message": "Fångsten avbröts – du bytte flik. Låt den här sidan ligga överst tills FullShot är klar."
+  },
+  "errGeneric": {
+    "message": "Fångsten avbröts innan den blev klar. Försök igen."
+  },
+  "errBusy": {
+    "message": "En fångst pågår redan i den här fliken."
+  },
+  "errBlocked": {
+    "message": "Den här sidan går inte att fånga (begränsning i webbläsaren)."
+  },
+  "errNoStart": {
+    "message": "FullShot kunde inte starta på den här sidan. Läs in sidan på nytt och försök igen."
+  },
+  "errCrash": {
+    "message": "Fångsten avbröts oväntat. Försök igen."
+  },
+  "errUnknownMessage": {
+    "message": "Okänt meddelande."
+  },
+  "errQuota": {
+    "message": "Webbläsaren begränsar hur snabbt sidor får fotograferas. Vänta ett ögonblick och försök igen."
+  },
+  "errFrameHandover": {
+    "message": "Webbläsaren slutade lämna över skärmen halvvägs. Vänta några sekunder och försök igen."
+  },
+  "errLostTab": {
+    "message": "Fångsten tappade bort den här fliken. Läs in sidan på nytt och försök igen."
+  },
+  "errStoppedEarly": {
+    "message": "Fångsten stoppades innan den blev klar."
+  },
+  "errStorageFull": {
+    "message": "Det finns inget utrymme kvar för att lagra den här inspelningen. Radera några skärmbilder från din historik och försök igen."
+  },
+  "reasonGeneric": {
+    "message": "ingen orsak angavs. Försök igen."
+  },
+  "reasonDecodeFailed": {
+    "message": "den skärmbilden gick inte att avkoda."
+  },
+  "reasonTooLarge": {
+    "message": "bilden är för stor för att exporteras här."
+  },
+  "toastCopiedClipboard": {
+    "message": "Kopierad till urklipp"
+  },
+  "toastCopyFailed": {
+    "message": "Kopieringen misslyckades – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Exporten misslyckades – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Sparade $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Sparade $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

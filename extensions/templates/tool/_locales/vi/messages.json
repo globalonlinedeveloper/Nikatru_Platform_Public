@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — hãy thay tôi",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "HÃY THAY TÔI — một câu, một mục đích, tối đa 132 ký tự, không quảng cáo.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — hãy thay tôi",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Đổi giao diện",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Tùy chọn",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Thẻ đang mở",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Đang đọc…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Sao chép tiêu đề",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Đọc lại thẻ đang mở",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Đóng",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Đã sao chép",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Không sao chép được — hãy nhấn Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Lần $ACTION$ gần nhất thất bại — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Lần $ACTION$ gần nhất thất bại — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "đọc tiêu đề",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "sao chép",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "xóa dữ liệu",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "chạy",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Có gì đó đã dừng việc này trước khi xong. Vui lòng thử lại.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Thẻ này đang bận.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Trang này được trình duyệt bảo vệ và không thể đọc được.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Không tìm thấy thẻ nào đang mở.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Trang này không có tiêu đề để đọc.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Đã hủy.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Thông điệp không xác định.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Thẻ đó đã bị đóng trước khi công việc hoàn tất.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Tiện ích không trả lời.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Không có gì trở về.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Các trang của trình duyệt như Cài đặt, Tiện ích và trang Thẻ mới đều cấm mọi tiện ích. Hãy thử trên một trang web bình thường.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Cửa sổ công cụ dành cho nhà phát triển cấm các tiện ích.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Trang xem mã nguồn cấm các tiện ích. Hãy thử chính trang đó.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Trang của tiện ích, kể cả trang của chính tiện ích này, được trình duyệt bảo vệ.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store chặn tiện ích đọc các trang của nó.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Tệp cục bộ cần thêm một quyền. Hãy mở trang tiện ích của trình duyệt, tìm tiện ích này và bật “Cho phép truy cập URL tệp”.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Trang này chưa tải, nên chưa có gì để đọc.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Đây là trình xem PDF tích hợp của trình duyệt. Tiện ích không đọc được bên trong — hãy mở tệp PDF trong một thẻ bình thường hoặc tải xuống trước.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Trang này bị trang web mở nó cách ly, nên tiện ích không đọc được.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Trang tiện ích bổ trợ chặn tiện ích đọc các trang của nó.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Thiết bị này đã hết dung lượng, nên không có gì được lưu. Hãy xóa bớt vài dòng đã lưu trong Tùy chọn rồi thử lại.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Việc này quá lâu và đã bị dừng. Không còn gì sót lại.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Giá trị đó quá dài để lưu vào cài đặt được đồng bộ của bạn. Hãy thử giá trị ngắn hơn.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Không lưu được cài đặt đó. Hãy đợi một lát rồi thử lại.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Tùy chọn — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Tùy chọn",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Tùy chọn",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Tự động lưu. Nếu trình duyệt của bạn bật đồng bộ, cài đặt sẽ đi theo hồ sơ trình duyệt của bạn — và không bao giờ được gửi cho chúng tôi.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Hành vi",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Sao chép khi mở",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Sao chép kết quả vào bảng nhớ tạm ngay khi cửa sổ bật lên mở ra.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Giữ lịch sử cục bộ",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Mặc định tắt. Khi bật, kết quả chỉ được lưu trên thiết bị này, liệt kê bên dưới, và có thể xóa bất cứ lúc nào.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Giới hạn lịch sử",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Những dòng cũ nhất bị bỏ đi khi danh sách dài hơn con số này.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Xóa các dòng cũ hơn",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Ngày. Dòng cũ được tự động xóa ở chế độ nền. Đặt 0 để giữ các dòng cho tới khi giới hạn lịch sử loại bỏ chúng.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Giao diện",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Mặc định theo hệ thống của bạn.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Hệ thống",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Sáng",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tối",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Dữ liệu của bạn",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Không có gì được lưu trên thiết bị này.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ dòng được lưu trên thiết bị này. Không có gì rời khỏi đây.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ dòng được lưu trên thiết bị này. Không có gì rời khỏi đây.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ dòng được lưu trên thiết bị này. Không có gì rời khỏi đây.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ dòng được lưu trên thiết bị này. Không có gì rời khỏi đây.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ dòng được lưu trên thiết bị này. Không có gì rời khỏi đây.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ dòng được lưu trên thiết bị này. Không có gì rời khỏi đây.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Bền: trình duyệt đã hứa không xóa dữ liệu này.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Không bảo đảm: trình duyệt có thể tự xóa dữ liệu này nếu thiết bị sắp hết dung lượng. Hãy xuất một bản sao lưu.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Trình duyệt này không cho biết dữ liệu đã lưu có được giữ lại hay không, nên hãy coi là tạm thời và xuất một bản sao lưu.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Đang dùng $USED$ trong $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Xóa",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Xóa dòng của $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Xuất mọi thứ",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Lưu mọi dòng đã lưu vào một tệp JSON duy nhất trên thiết bị này. Không có gì được tải lên.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Xuất mọi thứ",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Xóa mọi thứ",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Gỡ mọi dòng đã lưu khỏi thiết bị này. Cài đặt được giữ nguyên.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Xóa mọi thứ",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Đặt lại cài đặt",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Đưa mọi cài đặt trên trang này về giá trị mặc định và gỡ chúng khỏi hồ sơ trình duyệt được đồng bộ của bạn. Các dòng đã lưu được giữ nguyên.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Đặt lại cài đặt",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Báo lỗi",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Chuẩn bị báo cáo lỗi",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Tạo một tệp nhỏ mô tả trạng thái của tiện ích này. Bạn thấy chính xác những gì trong đó trước khi lưu, và không có gì được gửi đi đâu cả.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Chuẩn bị báo cáo",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Giới thiệu",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — hãy thay tôi",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Một câu nói chính xác công cụ này làm gì. Nó làm việc trên thiết bị của bạn: không tài khoản, không theo dõi, không gọi mạng, không gửi gì cho chúng tôi.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Đã lưu",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Đã xóa mọi thứ",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Không xóa được — hãy thử lại",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Không lưu được cài đặt đó",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Đã lưu bản xuất",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Không lưu được tệp",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Đã xóa dòng",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Đã đặt lại cài đặt",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Không đặt lại được cài đặt",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Đã lưu báo cáo",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Hủy",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Xóa mọi thứ?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Mọi dòng đã lưu sẽ bị gỡ khỏi thiết bị này. Cài đặt của bạn được giữ nguyên. Không thể hoàn tác.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Đặt lại mọi cài đặt?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Mọi tùy chọn trên trang này trở về giá trị mặc định và bị gỡ khỏi hồ sơ trình duyệt được đồng bộ của bạn. Các dòng đã lưu của bạn được giữ nguyên. Không thể hoàn tác.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Lưu báo cáo lỗi này?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Đây là toàn bộ nội dung tệp sẽ có. Tệp không chứa địa chỉ trang, không chứa văn bản trang và không chứa bất cứ thứ gì bạn đã chụp. Không có gì được gửi đi đâu cả — tệp được lưu trên thiết bị này và bạn tự quyết định có chia sẻ hay không.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Lưu báo cáo",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Cửa sổ ẩn danh — kết quả này không được lưu vào lịch sử của bạn.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Quyền truy cập trang web",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Truy cập mọi trang web",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Chỉ cần cho những tính năng chạy trên các trang mà bạn chưa bấm nút trên thanh công cụ. Bạn có thể thu hồi bất cứ lúc nào, ngay tại đây.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Cấp quyền",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Thu hồi quyền",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Hiện tiện ích này có thể đọc mọi trang web bạn ghé thăm.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Tiện ích này chỉ đọc được một thẻ sau khi bạn bấm nút của nó trên thanh công cụ.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Đã cấp quyền",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Quyền chưa được cấp",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Đã thu hồi quyền",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Không thu hồi được quyền đó",
+    "description": "en: Could not revoke that access"
+  }
+}

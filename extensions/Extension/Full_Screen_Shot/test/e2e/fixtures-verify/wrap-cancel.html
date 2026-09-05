@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>privacy-verify — a covered-looking ledger over an uncovered match</title>
+<!-- THE HYPOTHESIS THIS FIXTURE EXISTS TO TEST.
+
+     REDACTION-CLAIM-SPEC.md §2.1 says three numbers tell the story without
+     anyone summarising them, and §3.4 makes ONE of the three variants the
+     design's only alarm: "painted < matched OR verifiedOpaque < painted"
+     renders the bolded shortfall sentence. Every other outcome renders a flat
+     stats line.
+
+     But the two numbers are counted in DIFFERENT UNITS.
+       `matched` is incremented once per DETECTOR MATCH  (capture.js L.matched += matches.length)
+       `painted` is incremented once per EMITTED BOX     (result.js  bake.painted++ per bakeBox)
+     and one match emits one box PER CLIENT RECT — `fsTokenRects` runs
+     Range.getClientRects over the token span, which returns one rect per
+     WRAPPED LINE.
+
+     So a card number that wraps across two lines contributes matched 1 /
+     painted 2, and that surplus can CANCEL a genuine shortfall elsewhere on
+     the page. This page arranges exactly that cancellation:
+
+       TOP     one card number in a column narrow enough to wrap  -> 1 matched, 2 boxes
+       BOTTOM  one email inside a deep `content-visibility: auto`
+               section, unlaid-out at scan time                   -> 1 matched, 0 boxes
+
+     Predicted ledger: matched 2, painted 2, verifiedOpaque 2 — which selects
+     the FLAT variant, not the alarm, while the email is plainly legible in the
+     delivered PNG. The product knows a match was not covered and the sentence
+     that exists to say so does not fire.
+
+     The email rides a tight marker span (rgb(255,90,90)) so "covered or not"
+     is decidable from the delivered image rather than from the log. The card
+     rides its own (rgb(90,130,255)). Section index and depth are copied from
+     fixtures/contentvis.html, which established that index 18 of 24 is far
+     enough down to stay unlaid-out at scan time in real Chromium.
+
+     The generator lives in <head> so no body <script> changes what `fed`
+     counts — the same reason contentvis.html does it. -->
+<style>
+  html, body { margin: 0; background: #fff; color: #1c2333; font: 17px/1.6 system-ui, sans-serif; }
+  header { background: rgb(35, 45, 70); color: #fff; padding: 24px 28px; font: 600 24px/1.3 system-ui, sans-serif; }
+  .prose { max-width: 900px; padding: 18px 28px; }
+
+  /* THE WRAP. 210px of content box against a 22px monospace card number forces
+     Range.getClientRects to return two rects for one match. line-height is 2.4
+     so the two blocks do not touch — a connected-component count in the
+     delivered image has to be able to tell them apart, or the measurement
+     cannot distinguish "two boxes" from "one tall box". */
+  #narrow { width: 210px; padding: 20px 28px; }
+  #narrow .mark { font: 600 22px/2.4 ui-monospace, monospace; }
+  .card  { background: rgb(90, 130, 255); color: #0b2a6b; }
+  .email { background: rgb(255, 90, 90); color: #300; }
+
+  section { content-visibility: auto; contain-intrinsic-size: 0 520px; padding: 24px; }
+  section:nth-of-type(odd)  { background: rgb(236, 240, 250); }
+  section:nth-of-type(even) { background: rgb(226, 232, 246); }
+  section.secret { background: rgb(160, 110, 255); color: #10002b; }
+  h2 { margin: 0 0 12px; font-size: 22px; }
+  p { margin: 0 0 14px; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var TOPICS = ['Provisioning', 'Rotation', 'Backups', 'Monitoring', 'Capacity', 'Change control',
+    'Retention', 'Indexing', 'Sharding', 'Failover', 'Quotas', 'Throttling', 'Auditing',
+    'Encryption', 'Peering', 'Caching', 'Compaction', 'Escalation', 'Deprecation',
+    'Migration', 'Telemetry', 'Sampling', 'Archival', 'Decommissioning'];
+  var BODY = [
+    'Requests are queued per region and drained by the scheduler in arrival order. Retries are capped and the backoff is exponential with jitter.',
+    'Operators may pin a queue for maintenance; pinned queues drain but accept nothing new until they are released by the duty rota.',
+    'Every surface emits the same three counters so dashboards can be built once and reused across teams without a second integration.',
+    'Headroom is reviewed monthly against the ninety-fifth percentile rather than the mean, because the mean has never once predicted an outage here.'
+  ];
+  var host = document.getElementById('sections');
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < TOPICS.length; i++) {
+    var s = document.createElement('section');
+    var h = document.createElement('h2');
+    h.textContent = TOPICS[i];
+    s.appendChild(h);
+    if (TOPICS[i] === 'Escalation') {
+      s.className = 'secret';
+      var p1 = document.createElement('p');
+      var m = document.createElement('span');
+      m.className = 'mark email';
+      m.textContent = 'jane.doe@example.com';
+      p1.appendChild(document.createTextNode('Out-of-hours escalation goes to '));
+      p1.appendChild(m);
+      var p2 = document.createElement('p');
+      p2.textContent = 'This section is off-screen and unlaid-out at scan time, and fully rendered by the time the last frame is grabbed.';
+      s.appendChild(p1); s.appendChild(p2);
+    } else {
+      for (var k = 0; k < 3; k++) {
+        var p = document.createElement('p');
+        p.textContent = BODY[(i + k) % BODY.length];
+        s.appendChild(p);
+      }
+    }
+    frag.appendChild(s);
+  }
+  host.appendChild(frag);
+});
+</script>
+</head>
+<body>
+<header>Billing record — wrap/shortfall cancellation</header>
+<div class="prose">One card number below sits in a column too narrow to hold it, so the matched token occupies two wrapped lines and the bake emits one block per line. One email far below sits in a content-visibility section that is not laid out when the scan runs, so it is matched and never boxed.</div>
+<div id="narrow">Card on file: <span class="mark card">4242 4242 4242 4242</span></div>
+<div class="prose">Everything between here and the escalation section is filler whose only job is distance.</div>
+<div id="sections"></div>
+<div id="bottom"></div>
+</body>
+</html>

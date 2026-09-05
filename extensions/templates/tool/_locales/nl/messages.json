@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — vervang mij",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "VERVANG MIJ — één zin, één doel, 132 tekens of minder, geen marketing.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — vervang mij",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Thema wisselen",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Opties",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Actief tabblad",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Bezig met lezen…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Titel kopiëren",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Het actieve tabblad opnieuw lezen",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Sluiten",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Gekopieerd",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kopiëren lukte niet — druk in plaats daarvan op Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Laatste $ACTION$ mislukt — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Laatste $ACTION$ mislukt — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "titel lezen",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopiëren",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "gegevens wissen",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "uitvoeren",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Iets heeft dit gestopt voordat het klaar was. Probeer het opnieuw.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Dit tabblad is al bezig.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Deze pagina wordt door de browser beschermd en kan niet worden gelezen.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Er is geen actief tabblad gevonden.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Deze pagina heeft geen titel om te lezen.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Geannuleerd.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Onbekend bericht.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Dat tabblad werd gesloten voordat het werk klaar was.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "De extensie gaf geen antwoord.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Er kwam niets terug.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Browserpagina’s zoals Instellingen, Extensies en de pagina Nieuw tabblad zijn voor elke extensie verboden terrein. Probeer het op een gewone webpagina.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "DevTools-vensters zijn verboden terrein voor extensies.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Broncodepagina’s zijn verboden terrein voor extensies. Probeer in plaats daarvan de pagina zelf.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Extensiepagina’s, ook die van deze extensie zelf, worden door de browser beschermd.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "De Chrome Web Store belet extensies zijn pagina’s te lezen.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Lokale bestanden vragen één extra toestemming. Open de extensiepagina van je browser, zoek deze extensie op en zet ‘Toegang tot bestands-URL’s toestaan’ aan.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Deze pagina is niet geladen, dus er valt nog niets te lezen.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Dit is de ingebouwde pdf-viewer van de browser. Extensies kunnen daarin niet lezen — open de pdf in een gewoon tabblad of download hem eerst.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Deze pagina is door de site die haar opende in een sandbox gezet, dus extensies kunnen haar niet lezen.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "De add-onsite belet extensies zijn pagina’s te lezen.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Dit apparaat heeft geen ruimte meer, dus er is niets opgeslagen. Verwijder een paar opgeslagen rijen bij Opties en probeer het opnieuw.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Dit duurde te lang en is gestopt. Er is niets achtergebleven.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Die waarde is te lang voor je gesynchroniseerde instellingen. Probeer een kortere.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Die instelling kon niet worden opgeslagen. Wacht even en probeer het opnieuw.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Opties — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Opties",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Opties",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Wordt automatisch opgeslagen. Staat de synchronisatie van je browser aan, dan reizen je instellingen mee met je browserprofiel — ze worden nooit naar ons gestuurd.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Gedrag",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopiëren bij openen",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopieer het resultaat naar het klembord zodra de pop-up opengaat.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Lokale geschiedenis bijhouden",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Standaard uit. Staat het aan, dan worden resultaten alleen op dit apparaat opgeslagen, hieronder getoond, en zijn ze op elk moment te verwijderen.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Limiet van de geschiedenis",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "De oudste rijen vervallen zodra de lijst langer wordt dan dit.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Rijen verwijderen die ouder zijn dan",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dagen. Oude rijen worden op de achtergrond automatisch verwijderd. Zet op 0 om rijen te bewaren tot de limiet van de geschiedenis ze laat vervallen.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Thema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Volgt standaard je systeem.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Systeem",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Licht",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Donker",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Jouw gegevens",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Er is niets opgeslagen op dit apparaat.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ rijen staan opgeslagen op dit apparaat. Er gaat niets weg.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ rij staat opgeslagen op dit apparaat. Er gaat niets weg.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ rijen staan opgeslagen op dit apparaat. Er gaat niets weg.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ rijen staan opgeslagen op dit apparaat. Er gaat niets weg.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ rijen staan opgeslagen op dit apparaat. Er gaat niets weg.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ rijen staan opgeslagen op dit apparaat. Er gaat niets weg.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Duurzaam: de browser heeft beloofd dit niet te wissen.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Geen garantie: de browser kan dit uit zichzelf wissen als het apparaat weinig ruimte overhoudt. Exporteer een back-up.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Deze browser zegt niet of opgeslagen gegevens bewaard blijven; behandel ze dus als tijdelijk en exporteer een back-up.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $USED$ van $QUOTA$ in gebruik.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Verwijderen",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "De rij van $ORIGIN$ verwijderen",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Alles exporteren",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Slaat elke opgeslagen rij op in één JSON-bestand op dit apparaat. Er wordt niets geüpload.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Alles exporteren",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Alles verwijderen",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Verwijdert elke opgeslagen rij van dit apparaat. De instellingen blijven staan.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Alles verwijderen",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Instellingen herstellen",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Zet elke instelling op deze pagina terug op de standaardwaarde en verwijdert ze uit je gesynchroniseerde browserprofiel. Opgeslagen rijen blijven staan.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Instellingen herstellen",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Een probleem melden",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Een probleemrapport voorbereiden",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Maakt een klein bestand dat de toestand van deze extensie beschrijft. Je ziet precies wat erin staat voordat het wordt opgeslagen, en er wordt niets ergens naartoe gestuurd.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Een rapport voorbereiden",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Over",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — vervang mij",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Eén zin die precies zegt wat dit hulpmiddel doet. Het werkt op je eigen apparaat: geen account, geen tracking, geen netwerkverkeer, niets dat naar ons gaat.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Opgeslagen",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Alles verwijderd",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Verwijderen lukte niet — probeer het opnieuw",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Die instelling kon niet worden opgeslagen",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Export opgeslagen",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Het bestand kon niet worden opgeslagen",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Rij verwijderd",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Instellingen hersteld",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "De instellingen konden niet worden hersteld",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Rapport opgeslagen",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Annuleren",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Alles verwijderen?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Elke opgeslagen rij wordt van dit apparaat verwijderd. Je instellingen blijven staan. Dit kan niet ongedaan worden gemaakt.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Alle instellingen herstellen?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Elke voorkeur op deze pagina gaat terug naar de standaardwaarde en wordt uit je gesynchroniseerde browserprofiel verwijderd. Je opgeslagen rijen blijven staan. Dit kan niet ongedaan worden gemaakt.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Dit probleemrapport opslaan?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Dit is alles wat het bestand zal bevatten. Er staan geen pagina-adressen in, geen paginatekst en niets van wat je hebt vastgelegd. Er wordt niets ergens naartoe gestuurd — het bestand blijft op dit apparaat en jij bepaalt of je het deelt.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Het rapport opslaan",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Incognitovenster — dit resultaat is niet in je geschiedenis opgeslagen.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Sitetoegang",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Toegang tot alle sites",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Alleen nodig voor de functies die werken op pagina’s waar je niet op de werkbalkknop hebt geklikt. Je kunt de toegang hier op elk moment weer intrekken.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Toegang geven",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Toegang intrekken",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Deze extensie kan op dit moment elke site lezen die je bezoekt.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Deze extensie kan een tabblad pas lezen nadat je op haar werkbalkknop klikt.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Toegang gegeven",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "De toegang is niet gegeven",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Toegang ingetrokken",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Die toegang kon niet worden ingetrokken",
+    "description": "en: Could not revoke that access"
+  }
+}

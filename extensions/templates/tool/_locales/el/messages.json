@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — αντικατάστησέ με",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ΑΝΤΙΚΑΤΑΣΤΗΣΕ ΜΕ — μία πρόταση, ένας σκοπός, έως 132 χαρακτήρες, χωρίς μάρκετινγκ.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — αντικατάστησέ με",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Εναλλαγή θέματος",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Επιλογές",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Ενεργή καρτέλα",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Ανάγνωση…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Αντιγραφή τίτλου",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Νέα ανάγνωση της ενεργής καρτέλας",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Κλείσιμο",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Αντιγράφηκε",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Η αντιγραφή δεν έγινε — πατήστε Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Η τελευταία ενέργεια «$ACTION$» απέτυχε — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Η τελευταία ενέργεια «$ACTION$» απέτυχε — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "ανάγνωση τίτλου",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "αντιγραφή",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "διαγραφή δεδομένων",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "εκτέλεση",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Κάτι το σταμάτησε πριν ολοκληρωθεί. Δοκιμάστε ξανά.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Αυτή η καρτέλα είναι ήδη απασχολημένη.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Αυτή η σελίδα προστατεύεται από το πρόγραμμα περιήγησης και δεν μπορεί να διαβαστεί.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Δεν βρέθηκε ενεργή καρτέλα.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Αυτή η σελίδα δεν έχει τίτλο για ανάγνωση.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Ακυρώθηκε.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Άγνωστο μήνυμα.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Εκείνη η καρτέλα έκλεισε πριν ολοκληρωθεί η εργασία.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Η επέκταση δεν απάντησε.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Δεν επέστρεψε τίποτα.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Οι σελίδες του προγράμματος περιήγησης, όπως οι Ρυθμίσεις, οι Επεκτάσεις και η Νέα καρτέλα, είναι απαγορευμένες για κάθε επέκταση. Δοκιμάστε το σε μια κανονική ιστοσελίδα.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Τα παράθυρα των εργαλείων προγραμματιστή είναι απαγορευμένα για τις επεκτάσεις.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Οι σελίδες προβολής πηγαίου κώδικα είναι απαγορευμένες για τις επεκτάσεις. Δοκιμάστε την ίδια τη σελίδα.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Οι σελίδες επεκτάσεων, ακόμη και της ίδιας αυτής επέκτασης, προστατεύονται από το πρόγραμμα περιήγησης.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Το Chrome Web Store εμποδίζει τις επεκτάσεις να διαβάζουν τις σελίδες του.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Τα τοπικά αρχεία χρειάζονται μία επιπλέον άδεια. Ανοίξτε τη σελίδα επεκτάσεων του προγράμματος περιήγησης, βρείτε αυτή την επέκταση και ενεργοποιήστε την «Να επιτρέπεται η πρόσβαση σε URL αρχείων».",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Αυτή η σελίδα δεν φορτώθηκε, οπότε δεν υπάρχει ακόμη κάτι να διαβαστεί.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Αυτό είναι το ενσωματωμένο πρόγραμμα προβολής PDF. Οι επεκτάσεις δεν μπορούν να διαβάσουν μέσα του — ανοίξτε το PDF σε κανονική καρτέλα ή κατεβάστε το πρώτα.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Αυτή η σελίδα απομονώθηκε από τον ιστότοπο που την άνοιξε, οπότε οι επεκτάσεις δεν μπορούν να τη διαβάσουν.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Ο ιστότοπος των πρόσθετων εμποδίζει τις επεκτάσεις να διαβάζουν τις σελίδες του.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Αυτή η συσκευή δεν έχει χώρο, οπότε δεν αποθηκεύτηκε τίποτα. Διαγράψτε μερικές αποθηκευμένες γραμμές στις Επιλογές και δοκιμάστε ξανά.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Αυτό άργησε πολύ και σταμάτησε. Δεν έμεινε τίποτα πίσω.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Αυτή η τιμή είναι πολύ μεγάλη για τις συγχρονισμένες ρυθμίσεις σας. Δοκιμάστε μικρότερη.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Αυτή η ρύθμιση δεν αποθηκεύτηκε. Περιμένετε λίγο και δοκιμάστε ξανά.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Επιλογές — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Επιλογές",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Επιλογές",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Αποθηκεύεται αυτόματα. Αν ο συγχρονισμός του προγράμματος περιήγησης είναι ενεργός, οι ρυθμίσεις σας ταξιδεύουν μαζί με το προφίλ σας — σε εμάς δεν στέλνονται ποτέ.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Συμπεριφορά",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Αντιγραφή κατά το άνοιγμα",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Αντιγραφή του αποτελέσματος στο πρόχειρο μόλις ανοίξει το αναδυόμενο παράθυρο.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Τήρηση τοπικού ιστορικού",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Ανενεργό από προεπιλογή. Όταν είναι ενεργό, τα αποτελέσματα αποθηκεύονται μόνο σε αυτή τη συσκευή, εμφανίζονται παρακάτω και διαγράφονται όποτε θέλετε.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Όριο ιστορικού",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Οι παλαιότερες γραμμές πέφτουν μόλις η λίστα ξεπεράσει αυτόν τον αριθμό.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Διαγραφή γραμμών παλαιότερων από",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Ημέρες. Οι παλιές γραμμές αφαιρούνται αυτόματα στο παρασκήνιο. Βάλτε 0 για να μένουν ώσπου να τις διώξει το όριο ιστορικού.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Θέμα",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Από προεπιλογή ακολουθεί το σύστημά σας.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Σύστημα",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Ανοιχτό",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Σκούρο",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Τα δεδομένα σας",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Σε αυτή τη συσκευή δεν είναι αποθηκευμένο τίποτα.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ γραμμές είναι αποθηκευμένες σε αυτή τη συσκευή. Τίποτα δεν φεύγει από εδώ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ γραμμή είναι αποθηκευμένη σε αυτή τη συσκευή. Τίποτα δεν φεύγει από εδώ.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ γραμμές είναι αποθηκευμένες σε αυτή τη συσκευή. Τίποτα δεν φεύγει από εδώ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ γραμμές είναι αποθηκευμένες σε αυτή τη συσκευή. Τίποτα δεν φεύγει από εδώ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ γραμμές είναι αποθηκευμένες σε αυτή τη συσκευή. Τίποτα δεν φεύγει από εδώ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ γραμμές είναι αποθηκευμένες σε αυτή τη συσκευή. Τίποτα δεν φεύγει από εδώ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Ανθεκτικό: το πρόγραμμα περιήγησης υποσχέθηκε να μην τα σβήσει.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Χωρίς εγγύηση: το πρόγραμμα περιήγησης μπορεί να τα σβήσει μόνο του αν η συσκευή μείνει από χώρο. Εξαγάγετε αντίγραφο ασφαλείας.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Αυτό το πρόγραμμα περιήγησης δεν λέει αν τα αποθηκευμένα δεδομένα θα διατηρηθούν, οπότε θεωρήστε τα προσωρινά και εξαγάγετε αντίγραφο ασφαλείας.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Σε χρήση $USED$ από $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Διαγραφή",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Διαγραφή της γραμμής από $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Εξαγωγή όλων",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Αποθηκεύει κάθε αποθηκευμένη γραμμή σε ένα αρχείο JSON σε αυτή τη συσκευή. Τίποτα δεν ανεβαίνει.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Εξαγωγή όλων",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Διαγραφή όλων",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Αφαιρεί κάθε αποθηκευμένη γραμμή από αυτή τη συσκευή. Οι ρυθμίσεις διατηρούνται.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Διαγραφή όλων",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Επαναφορά ρυθμίσεων",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Επαναφέρει κάθε ρύθμιση αυτής της σελίδας στην προεπιλογή της και τις αφαιρεί από το συγχρονισμένο προφίλ του προγράμματος περιήγησης. Οι αποθηκευμένες γραμμές διατηρούνται.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Επαναφορά ρυθμίσεων",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Αναφορά προβλήματος",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Προετοιμασία αναφοράς προβλήματος",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Δημιουργεί ένα μικρό αρχείο που περιγράφει την κατάσταση αυτής της επέκτασης. Βλέπετε ακριβώς τι περιέχει πριν αποθηκευτεί, και δεν στέλνεται τίποτα πουθενά.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Προετοιμασία αναφοράς",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Σχετικά",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — αντικατάστησέ με",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Μία πρόταση που λέει ακριβώς τι κάνει αυτό το εργαλείο. Δουλεύει στη συσκευή σας: χωρίς λογαριασμό, χωρίς παρακολούθηση, χωρίς κλήσεις δικτύου, χωρίς να στέλνεται τίποτα σε εμάς.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Αποθηκεύτηκε",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Διαγράφηκαν όλα",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Η διαγραφή δεν έγινε — δοκιμάστε ξανά",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Αυτή η ρύθμιση δεν αποθηκεύτηκε",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Η εξαγωγή αποθηκεύτηκε",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Το αρχείο δεν αποθηκεύτηκε",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Η γραμμή διαγράφηκε",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Οι ρυθμίσεις επαναφέρθηκαν",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Οι ρυθμίσεις δεν επαναφέρθηκαν",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Η αναφορά αποθηκεύτηκε",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Άκυρο",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Διαγραφή όλων;",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Κάθε αποθηκευμένη γραμμή αφαιρείται από αυτή τη συσκευή. Οι ρυθμίσεις σας διατηρούνται. Αυτό δεν αναιρείται.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Επαναφορά κάθε ρύθμισης;",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Κάθε προτίμηση αυτής της σελίδας επιστρέφει στην προεπιλογή της και αφαιρείται από το συγχρονισμένο προφίλ του προγράμματος περιήγησης. Οι αποθηκευμένες γραμμές σας διατηρούνται. Αυτό δεν αναιρείται.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Αποθήκευση αυτής της αναφοράς;",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Αυτά είναι όλα όσα θα περιέχει το αρχείο. Δεν έχει διευθύνσεις σελίδων, ούτε κείμενο σελίδων, ούτε τίποτα από όσα έχετε καταγράψει. Δεν στέλνεται τίποτα πουθενά — το αρχείο αποθηκεύεται σε αυτή τη συσκευή και εσείς αποφασίζετε αν θα το μοιραστείτε.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Αποθήκευση αναφοράς",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Παράθυρο ιδιωτικής περιήγησης — αυτό το αποτέλεσμα δεν αποθηκεύτηκε στο ιστορικό σας.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Πρόσβαση σε ιστότοπους",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Πρόσβαση σε κάθε ιστότοπο",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Χρειάζεται μόνο για τις λειτουργίες που δουλεύουν σε σελίδες όπου δεν πατήσατε το κουμπί της γραμμής εργαλείων. Μπορείτε να την πάρετε πίσω όποτε θέλετε, από εδώ.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Παραχώρηση πρόσβασης",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Ανάκληση πρόσβασης",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Αυτή τη στιγμή η επέκταση μπορεί να διαβάζει κάθε ιστότοπο που επισκέπτεστε.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Αυτή η επέκταση μπορεί να διαβάσει μια καρτέλα μόνο αφού πατήσετε το κουμπί της στη γραμμή εργαλείων.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Η πρόσβαση παραχωρήθηκε",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Η πρόσβαση δεν παραχωρήθηκε",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Η πρόσβαση ανακλήθηκε",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Αυτή η πρόσβαση δεν ανακλήθηκε",
+    "description": "en: Could not revoke that access"
+  }
+}

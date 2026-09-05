@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — same-origin iframe payload</title>
+<!-- Marker convention as in control-pii: the coloured span wraps the PII token
+     alone (the bake paints the matched substring's rect), line-height 1, and
+     no text colour within tolerance of the block colour. The tall
+     `#framebottom` band proves the pipeline grew the frame to its full content
+     height independently of whether anything was covered. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 18px/1.6 system-ui, sans-serif; }
+  .row { padding: 24px 22px; min-height: 90px; font: 600 20px/1.6 ui-monospace, monospace; }
+  .mark { font: 600 20px/1 ui-monospace, monospace; }
+  .email { background: rgb(255, 90, 90); color: #300; }
+  .phone { background: rgb(90, 200, 120); color: #031; }
+  .card  { background: rgb(90, 130, 255); color: #0b2a6b; }
+  .filler { background: rgb(244, 246, 252); color: #334; padding: 24px 22px; }
+  #framebottom { height: 220px; background: rgb(120, 220, 220); }
+</style>
+</head>
+<body>
+  <div class="row">Statement recipient: <span class="mark email">jane.doe@example.com</span></div>
+  <div class="filler">This document is embedded from the same origin. The capture pipeline grows it to its full content height, so every row below is certainly in the delivered image.</div>
+  <div class="row">Servicing line: <span class="mark phone">+1 (555) 123-4567</span></div>
+  <div class="filler">Nothing here is cross-origin and nothing here is behind a closed door. The contentDocument is readable from the parent with no permission at all.</div>
+  <div class="row">Card on file: <span class="mark card">4242 4242 4242 4242</span></div>
+  <div class="filler">End of embedded statement.</div>
+  <div id="framebottom"></div>
+</body>
+</html>

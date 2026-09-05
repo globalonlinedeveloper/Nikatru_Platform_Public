@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — aizstāj mani",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "AIZSTĀJ MANI — viens teikums, viens mērķis, ne vairāk kā 132 rakstzīmes, bez reklāmas.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — aizstāj mani",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Mainīt motīvu",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Opcijas",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktīvā cilne",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Nolasa…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopēt nosaukumu",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Vēlreiz nolasīt aktīvo cilni",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Aizvērt",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Nokopēts",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Neizdevās nokopēt — tā vietā nospiediet Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Pēdējā $ACTION$ neizdevās — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Pēdējā $ACTION$ neizdevās — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "nosaukuma nolasīšana",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopēšana",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "datu dzēšana",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "izpilde",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Kaut kas to apturēja, pirms tas tika pabeigts. Lūdzu, mēģiniet vēlreiz.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Šī cilne jau ir aizņemta.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Šo lapu aizsargā pārlūks, un paplašinājumiem nav atļauts to lasīt.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Netika atrasta neviena aktīva cilne.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Šai lapai nav nosaukuma, ko nolasīt.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Atcelts.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Nezināms ziņojums.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Šī cilne tika aizvērta, pirms darbs tika pabeigts.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Paplašinājums neatbildēja.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Nekas netika saņemts atpakaļ.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Pārlūka lapas, piemēram, Iestatījumi, Paplašinājumi un Jauna cilne, ir liegtas ikvienam paplašinājumam. Mēģiniet to parastā tīmekļa lapā.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Izstrādātāja rīku logi ir liegti paplašinājumiem.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Pirmkoda skata lapas ir liegtas paplašinājumiem. Tā vietā mēģiniet pašu lapu.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Paplašinājumu lapas, tostarp šī paša paplašinājuma lapas, aizsargā pārlūks.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store neļauj paplašinājumiem lasīt savas lapas.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Lokāliem failiem nepieciešama viena papildu atļauja. Atveriet pārlūka lapu Paplašinājumi, atrodiet šo paplašinājumu un ieslēdziet „Atļaut piekļuvi failu URL“.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Šī lapa netika ielādēta, tāpēc vēl nav ko lasīt.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Šis ir pārlūka iebūvētais PDF skatītājs. Paplašinājumi nevar nolasīt tā saturu — atveriet PDF parastā cilnē vai vispirms lejupielādējiet to.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Šo lapu smilškastē ir ievietojusi vietne, kas to atvēra, tāpēc paplašinājumi to nevar lasīt.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Papildinājumu vietne neļauj paplašinājumiem lasīt savas lapas.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Šajā ierīcē pietrūka vietas, tāpēc nekas netika saglabāts. Sadaļā Opcijas izdzēsiet dažus saglabātos ierakstus un mēģiniet vēlreiz.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Tas prasīja pārāk ilgu laiku un tika apturēts. Nekas netika atstāts.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Šī vērtība ir pārāk gara, lai to glabātu jūsu sinhronizētajos iestatījumos. Mēģiniet īsāku.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Šo iestatījumu neizdevās saglabāt. Uzgaidiet brīdi un mēģiniet vēlreiz.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Opcijas — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Opcijas",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Opcijas",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Tiek saglabāts automātiski. Ja pārlūka sinhronizācija ir ieslēgta, jūsu iestatījumi ceļo līdzi jūsu pārlūka profilam — mums tie netiek sūtīti nekad.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Darbība",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopēt, atverot",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopēt rezultātu starpliktuvē, tiklīdz atveras uznirstošais logs.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Uzturēt lokālu vēsturi",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Pēc noklusējuma izslēgts. Kad ieslēgts, rezultāti tiek glabāti tikai šajā ierīcē, ir uzskaitīti tālāk un tos var izdzēst jebkurā brīdī.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Vēstures ierobežojums",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Vecākie ieraksti tiek atmesti, tiklīdz saraksts kļūst garāks par šo skaitu.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Dzēst ierakstus, kas vecāki par",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dienas. Vecie ieraksti tiek noņemti automātiski fonā. Iestatiet 0, lai ieraksti saglabātos, līdz tos noņem vēstures ierobežojums.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Motīvs",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Pēc noklusējuma seko jūsu sistēmai.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sistēma",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Gaišs",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tumšs",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Jūsu dati",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Šajā ierīcē nekas nav saglabāts.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Šajā ierīcē glabājas $COUNT$ ierakstu. Nekas neatstāj šo ierīci.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Šajā ierīcē glabājas $COUNT$ ieraksts. Nekas neatstāj šo ierīci.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Šajā ierīcē glabājas $COUNT$ ieraksti. Nekas neatstāj šo ierīci.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Šajā ierīcē glabājas $COUNT$ ieraksti. Nekas neatstāj šo ierīci.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Šajā ierīcē glabājas $COUNT$ ieraksti. Nekas neatstāj šo ierīci.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Šajā ierīcē glabājas $COUNT$ ieraksti. Nekas neatstāj šo ierīci.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Noturīgi: pārlūks ir apsolījis šos datus nedzēst.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Bez garantijas: ja ierīcē pietrūks vietas, pārlūks šos datus var izdzēst pats. Eksportējiet dublējumu.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Šis pārlūks nenorāda, vai saglabātie dati tiks paturēti, tāpēc uzskatiet tos par pagaidu datiem un eksportējiet dublējumu.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Izmantoti $USED$ no $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Dzēst",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Dzēst ierakstu no $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Eksportēt visu",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Saglabā katru saglabāto ierakstu vienā JSON failā šajā ierīcē. Nekas netiek augšupielādēts.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Eksportēt visu",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Dzēst visu",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Noņem no šīs ierīces katru saglabāto ierakstu. Iestatījumi tiek paturēti.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Dzēst visu",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Atiestatīt iestatījumus",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Atjauno katra šīs lapas iestatījuma noklusējuma vērtību un noņem tos no jūsu sinhronizētā pārlūka profila. Saglabātie ieraksti tiek paturēti.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Atiestatīt iestatījumus",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Ziņot par problēmu",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Sagatavot problēmas ziņojumu",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Izveido nelielu failu, kas apraksta šī paplašinājuma stāvokli. Jūs redzat, kas tieši tajā ir, pirms tas tiek saglabāts, un nekas netiek nekur nosūtīts.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Sagatavot ziņojumu",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Par",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — aizstāj mani",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Viens teikums, kas precīzi pasaka, ko šis rīks dara. Savu darbu tas veic jūsu ierīcē: nav konta, nav izsekošanas, nav tīkla pieprasījumu, mums netiek sūtīts nekas.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Saglabāts",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Viss izdzēsts",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Neizdevās izdzēst — mēģiniet vēlreiz",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Neizdevās saglabāt šo iestatījumu",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Eksports saglabāts",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Neizdevās saglabāt failu",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Ieraksts izdzēsts",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Iestatījumi atiestatīti",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Neizdevās atiestatīt iestatījumus",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Ziņojums saglabāts",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Atcelt",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Dzēst visu?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Katrs saglabātais ieraksts tiek noņemts no šīs ierīces. Jūsu iestatījumi tiek paturēti. To nevar atsaukt.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Atiestatīt visus iestatījumus?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Katrs šīs lapas iestatījums atgriežas pie noklusējuma vērtības un tiek noņemts no jūsu sinhronizētā pārlūka profila. Jūsu saglabātie ieraksti tiek paturēti. To nevar atsaukt.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Saglabāt šo problēmas ziņojumu?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Šis ir viss, ko fails saturēs. Tajā nav lapu adrešu, nav lapu teksta un nav nekā, ko esat tvēris. Nekas netiek nekur sūtīts — fails tiek saglabāts šajā ierīcē, un tikai jūs lemjat, vai to ar kādu dalīt.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Saglabāt ziņojumu",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Inkognito logs — šis rezultāts netika saglabāts jūsu vēsturē.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Piekļuve vietnēm",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Piekļuve visām vietnēm",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Nepieciešama tikai tām funkcijām, kas darbojas lapās, kurās neesat noklikšķinājis rīkjoslas pogu. Jūs to jebkurā brīdī varat atsaukt šeit.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Piešķirt piekļuvi",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Atsaukt piekļuvi",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Šis paplašinājums pašlaik var lasīt visas vietnes, ko apmeklējat.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Šis paplašinājums var nolasīt cilni tikai pēc tam, kad esat noklikšķinājis tā rīkjoslas pogu.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Piekļuve piešķirta",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Piekļuve netika piešķirta",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Piekļuve atsaukta",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Neizdevās atsaukt šo piekļuvi",
+    "description": "en: Could not revoke that access"
+  }
+}

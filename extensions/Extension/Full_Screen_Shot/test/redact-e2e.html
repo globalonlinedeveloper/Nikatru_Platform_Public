@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — auto-redact PII</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: #eef; }
+  #header { height: 120px; background: #1E325A; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  .row { height: 140px; padding: 16px 20px; color: #061; font-weight: 700; }
+  .email { background: rgb(255,90,90);  color:#300; }
+  .phone { background: rgb(90,200,120); color:#031; }
+  .card  { background: rgb(90,130,255); color:#001; }
+  .decoy { background: rgb(245,205,45); color:#320; }
+  #bottom { height: 152px; background: rgb(0,136,255); color:#fff; font-weight:700; padding: 12px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 520px; max-height: 220px; overflow-y: auto; z-index: 20;
+    background: #1b2b4d; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — auto-redact PII. Turn ON "Auto-redact sensitive info", then press Alt+Shift+P. The 3 sensitive rows must be blacked out in the image; the yellow decoy must NOT be.</div>
+<div class="row email">Email: jane.doe@example.com</div>
+<div class="row phone">Call +1 (555) 123-4567 today</div>
+<div class="row card">Card 4242 4242 4242 4242</div>
+<div class="row decoy">Order 1234 5678 9012 3456 (Luhn-invalid — leave me visible)</div>
+<div id="bottom">PAGE BOTTOM MARKER — appears once at the very end.</div>
+<div id="scoreboard">Waiting for capture… enable redactPII in options, then Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const board = document.getElementById('scoreboard');
+  const rows = () => Array.from(document.querySelectorAll('.row')).map(r => r.textContent);
+  const before = rows().join('|');
+  const sensitivePresent = /jane\.doe@example\.com/.test(before) &&
+                           /\+1 \(555\) 123-4567/.test(before) &&
+                           /4242 4242 4242 4242/.test(before);
+
+  // The redaction is baked into the OUTPUT image (verified by the harness that
+  // samples the PNG). The SOURCE page must be untouched — the engine only READS
+  // the DOM (leave-no-trace). This scoreboard grades exactly that property.
+  const S = { setup: sensitivePresent, sawCapture: false, unchanged: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; S.sawCapture = true; board.textContent = 'Capture in progress…'; }
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => { S.unchanged = (rows().join('|') === before); report(); }, 600);
+    }
+  }, 90);
+
+  function line(label, ok) {
+    return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + '\n';
+  }
+  function report() {
+    const checks = [
+      ['sensitive text present in the source DOM (setup)', S.setup],
+      ['capture observed', S.sawCapture],
+      ['source DOM byte-identical after capture (leave-no-trace — engine only read it)', S.unchanged]
+    ];
+    const anyFail = checks.some(c => c[1] === false);
+    board.innerHTML = 'REDACT RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      checks.map(c => line(c[0], c[1])).join('') +
+      '\nAlso verify the IMAGE: the red/green/blue rows are solid black; the yellow decoy is untouched.';
+    console.log('FSREDACT', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

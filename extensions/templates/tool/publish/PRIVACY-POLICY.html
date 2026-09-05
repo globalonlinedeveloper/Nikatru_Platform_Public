@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<!-- SKELETON — the privacy policy every tool in this family hosts.
+
+     NOT SHIPPED IN THE EXTENSION PACKAGE. This file lives under publish/, which
+     the packaging allowlist excludes and the never-list forbids. It is HOSTED
+     at a public URL and that URL goes in the Chrome Web Store listing's
+     "Privacy policy" field, which is a HARD SUBMISSION GATE: no URL, no publish
+     button, for any item that handles user data — which, since this family
+     stores what the tool produces, is every one of them.
+
+     WHY IT IS IN THE SKELETON RATHER THAN WRITTEN PER TOOL.
+     The policy content is near-identical across the family because the STORAGE
+     ARCHITECTURE is identical and ships in the skeleton: settings split between
+     browser sync and local, an origin-only failure note in session storage,
+     IndexedDB split into scratch (invisible, always cleaned) and items (listed,
+     exportable, deletable). The only per-tool variance is the tool's name, what
+     goes in `items`, and the contact address.
+
+     A policy written from scratch per tool will not match the code, and the
+     specific promises below — the note is scheme+host only, scratch never
+     outlives its job, Delete everything wipes both stores, Reset settings takes
+     the preferences back out of profile sync — are exactly the details a
+     hand-written policy gets wrong. A policy that OVERCLAIMS is worse than no
+     policy: correcting it after publication is a disclosure event, not a patch.
+
+     REPLACE EVERY ⟨PLACEHOLDER⟩. Then read the whole thing against your tool's
+     actual code, because a sentence here that your tool has made untrue is the
+     most expensive kind of bug in this repository.
+-->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — ⟨TOOL⟩</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    max-inline-size: 44rem; margin: 0 auto; padding: 2rem 1.25rem 6rem;
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 1.6rem; margin-block-end: .25rem; }
+  h2 { font-size: 1.1rem; margin-block-start: 2.25rem; }
+  .updated { opacity: .7; font-size: .9rem; margin-block-start: 0; }
+  table { border-collapse: collapse; inline-size: 100%; margin-block: 1rem; }
+  th, td { text-align: start; vertical-align: top; padding: .5rem .6rem; border-block-end: 1px solid currentColor; }
+  th { font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; opacity: .75; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>Privacy policy — ⟨TOOL⟩</h1>
+<p class="updated">Last updated ⟨DATE⟩ · applies to ⟨TOOL⟩ version ⟨VERSION⟩ and later</p>
+
+<p><strong>⟨TOOL⟩ does its work on your device. It has no account system, no
+analytics, no advertising and no server of its own. It makes no network requests
+of any kind — none to us, and none to anybody else.</strong></p>
+
+<p>That is a claim about the extension's own code, and it is enforced rather
+than asserted: the extension declares a content security policy that blocks
+outbound connections at the browser level, and its test suite fails if any
+shipped file so much as references a network API. The one thing that can carry
+data off this machine is your browser's <em>own</em> profile sync, which is
+described below, and which is yours rather than ours.</p>
+
+<h2>What ⟨TOOL⟩ stores</h2>
+
+<div class="wrap">
+<table>
+  <tr><th>What</th><th>Where</th><th>How long</th></tr>
+
+  <tr>
+    <td><strong>Your settings</strong> — the preferences on the extension's
+        Options page.</td>
+    <td>Your browser's <em>synced</em> extension storage
+        (<code>chrome.storage.sync</code>).</td>
+    <td>Until you change them, reset them, or remove the extension.</td>
+  </tr>
+
+  <tr>
+    <td><strong>Device-only settings</strong> — preferences that belong to this
+        computer rather than to you, such as whether ⟨TOOL⟩ has already asked
+        the browser to keep its stored data.</td>
+    <td>Your browser's <em>local</em> extension storage
+        (<code>chrome.storage.local</code>). These never enter profile sync.</td>
+    <td>Until you reset the settings, or remove the extension.</td>
+  </tr>
+
+  <tr>
+    <td><strong>A note about the last failure</strong>, so the extension can
+        tell you why something did not work the next time you open it. It holds
+        a reason code, a timestamp, a tab number, and the <em>scheme and host</em>
+        of the page — for example <code>https://example.com</code>. It never
+        holds a path, a query string, a page title, or anything that could carry
+        an order number, a search term or a session token.</td>
+    <td>Your browser's <em>session</em> extension storage
+        (<code>chrome.storage.session</code>), which is memory-backed and never
+        synced.</td>
+    <td>Until you dismiss it, or until you close the browser — whichever comes
+        first.</td>
+  </tr>
+
+  <tr>
+    <td><strong>Work in progress.</strong> While a job is running, ⟨TOOL⟩ writes
+        partial output to a scratch area so that a long job survives the browser
+        suspending the extension.</td>
+    <td>A local database on this device (IndexedDB).</td>
+    <td>Deleted the moment the job ends — including when it ends badly, when you
+        close the tab, when you navigate away, and when the browser shuts the
+        extension down mid-job. Anything that somehow outlives its job is deleted
+        automatically the next time the extension wakes up.</td>
+  </tr>
+
+  <tr>
+    <td><strong>⟨WHAT_ITEMS_HOLD — e.g. the pages you chose to save, and for
+        each one its title, its scheme and host, and when you saved it⟩.</strong>
+        This happens <em>only</em> if you turn on “⟨KEEP_SETTING_LABEL — e.g.
+        Keep a local history⟩”, which is off when you install ⟨TOOL⟩.</td>
+    <td>A local database on this device (IndexedDB). Listed on the Options page,
+        under “Your data”.</td>
+    <td>Until you delete it. You also control two automatic limits on the
+        Options page: a maximum number of rows, and a maximum age.</td>
+  </tr>
+</table>
+</div>
+
+<h2>What ⟨TOOL⟩ never stores</h2>
+<ul>
+  <li>Page addresses. Only a scheme and a host are ever recorded — never a path,
+      a query string or a fragment, because those are where names, order numbers,
+      search terms and session tokens live.</li>
+  <li>Credentials, cookies, form contents, or anything you type into a page.</li>
+  <li>Any identifier for you or for this installation. ⟨TOOL⟩ does not generate
+      one, and does not read one.</li>
+  <li>Browsing history. ⟨TOOL⟩ only ever looks at a tab you have pointed it at.</li>
+</ul>
+
+<h2>What leaves this device</h2>
+
+<p><strong>Nothing that ⟨TOOL⟩ sends.</strong> The extension makes no network
+requests. There is no server to receive anything.</p>
+
+<p>One thing can still travel, and it is worth being precise about it:
+<strong>your browser's own sync</strong>. If you are signed in to ⟨BROWSER⟩ with
+sync switched on, the browser replicates your extension settings to your other
+computers, through the browser vendor's infrastructure and under the browser
+vendor's privacy policy — the same way it replicates your bookmarks. That covers
+the small preferences in the first table row only. It never covers the failure
+note, the work in progress, or anything ⟨TOOL⟩ has saved for you: those are
+device-local and stay device-local.</p>
+
+<p>If you would rather nothing travelled at all, turn extension sync off in your
+browser's sync settings, or use <em>Reset settings</em> on the Options page,
+which removes ⟨TOOL⟩'s preferences from your synced browser profile.</p>
+
+<h2>Getting your data out, and deleting it</h2>
+
+<p>All of this is in the extension itself, under <strong>Options → Your
+data</strong>. None of it requires contacting us.</p>
+
+<ul>
+  <li><strong>See it.</strong> Everything ⟨TOOL⟩ has saved is listed on that
+      page, with a count.</li>
+  <li><strong>Export it.</strong> <em>Export everything</em> writes every saved
+      row to a single JSON file on this device. Nothing is uploaded.</li>
+  <li><strong>Delete one row.</strong> Each listed row has its own delete
+      button.</li>
+  <li><strong>Delete all of it.</strong> <em>Delete everything</em> empties both
+      the saved rows and the work-in-progress area, after asking you to
+      confirm.</li>
+  <li><strong>Reset your settings.</strong> <em>Reset settings</em> puts every
+      preference back to its default and removes them from your synced browser
+      profile.</li>
+  <li><strong>Remove the extension.</strong> Uninstalling ⟨TOOL⟩ makes the
+      browser delete its local database and its extension storage. Export first
+      if you want to keep anything.</li>
+</ul>
+
+<p><strong>One caution about local storage, because it is easy to assume
+otherwise.</strong> A browser may delete a site's or an extension's local data
+on its own if the device runs short of space. ⟨TOOL⟩ asks the browser for
+durable storage the first time it saves anything, and the Options page tells you
+plainly which of the two states you are in — “Durable” or “Best effort”. If it
+says best effort, export a backup.</p>
+
+<h2>Reporting a problem</h2>
+
+<p>⟨TOOL⟩ has a <em>Report a problem</em> button, and it does not send anything.
+It builds a small file describing the extension's state — its version, your
+browser's engine and major version, the counts of what is stored, and the reason
+code for the last failure — <strong>shows you the entire contents before it is
+written</strong>, and then saves it to your device. What you do with that file
+is entirely your choice. The report is assembled from a fixed list of fields
+that contains no page addresses, no page text and nothing ⟨TOOL⟩ has saved for
+you; free-text settings are reported as “(text)” rather than by value.</p>
+
+<h2>Permissions, and why each one is needed</h2>
+
+<div class="wrap">
+<table>
+  <tr><th>Permission</th><th>Why ⟨TOOL⟩ asks for it</th></tr>
+  <tr>
+    <td><code>activeTab</code></td>
+    <td>To read the tab you are currently on, at the moment you ask it to, and
+        only that tab. It grants no standing access to any site and no access to
+        tabs you have not pointed ⟨TOOL⟩ at.</td>
+  </tr>
+  <tr>
+    <td><code>storage</code></td>
+    <td>To remember your settings, and to hold the failure note described above.
+        This is browser-local storage; it is not a server.</td>
+  </tr>
+  <tr>
+    <td>⟨ANY_OTHER_PERMISSION⟩</td>
+    <td>⟨ONE SENTENCE, IN THE USER'S TERMS, SAYING WHAT IT IS FOR. It must match
+        the justification you give in the Web Store listing word for word — a
+        reviewer reads both. If you cannot write this sentence, remove the
+        permission.⟩</td>
+  </tr>
+</table>
+</div>
+
+<p>⟨TOOL⟩ requests no host permissions, so it has no standing access to any
+website.</p>
+
+<h2>Limited Use disclosure</h2>
+
+<p>⟨TOOL⟩'s use of information received from Google APIs, and any information
+obtained through the extension, adheres to the
+<a href="https://developer.chrome.com/docs/webstore/program-policies/limited-use/">Chrome
+Web Store User Data Policy</a>, including the Limited Use requirements.
+Specifically: ⟨TOOL⟩ transfers no user data anywhere; uses data only to provide
+the single user-facing feature described in its store listing; does not use user
+data for advertising, for building profiles, or for training any model; does not
+sell user data; and permits no human to read user data — there is nowhere for a
+human to read it from, because nothing is transmitted.</p>
+
+<h2>Children</h2>
+
+<p>⟨TOOL⟩ is not directed at children, collects no personal information from
+anyone, and transmits nothing.</p>
+
+<h2>Changes to this policy</h2>
+
+<p>If ⟨TOOL⟩ ever begins handling data differently, this page is updated and its
+date at the top changes before the new version ships. A change that widened what
+is stored, or that introduced any transmission, would also be described in the
+extension's release notes and in its Web Store listing.</p>
+
+<h2>Contact</h2>
+
+<p>⟨CONTACT⟩</p>
+
+</body>
+</html>

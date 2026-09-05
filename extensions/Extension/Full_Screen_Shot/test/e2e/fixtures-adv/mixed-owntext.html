@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Order confirmation</title>
+<link rel="stylesheet" href="_kit.css">
+</head>
+<body>
+<nav>
+  <a href="#">Home</a><a href="#">Orders</a><a href="#">Billing</a><a href="#">Support</a>
+  <span>Signed in as Priya</span>
+</nav>
+<main>
+  <h1>Order confirmation</h1>
+
+  <p class="filler">Thank you for your order. A summary is shown below. Delivery is
+  scheduled for the end of the week and you will receive a notification when the
+  parcel leaves the depot.</p>
+
+  <div class="card">
+    <h2>Contact details on file</h2>
+
+    <!-- SHAPE §7.1 G / §5.1: the PII sits in a BARE TEXT NODE of an element that
+         has an element child. fsOwnLeafText() returns '' for any element with
+         el.children.length, so the paragraph's own text is NEVER handed to the
+         detector. The <b> is a childless leaf and IS fed, so `fed` and `placed`
+         both rise and the page looks fully read.
+         This is the most common markup shape on the web. -->
+    <p class="owntext owntext-email"><b>Email</b> rajasekar@nikatru.com</p>
+
+    <p class="owntext owntext-card">Card on file 4111 1111 1111 1111 <em>Visa</em></p>
+
+    <p class="owntext owntext-ssn"><span>Tax ID</span> 123-45-6789</p>
+  </div>
+
+  <div class="card">
+    <h2>Delivery</h2>
+    <p class="filler">Standard shipping. No signature required. The courier will
+    leave the parcel with a neighbour if nobody is home.</p>
+    <p class="filler">Returns are accepted within thirty days of delivery, in the
+    original packaging, with the paperwork enclosed in the box.</p>
+  </div>
+
+  <div class="card">
+    <h2>Order lines</h2>
+    <p class="filler">Two items. Subtotal nineteen pounds. Shipping free.</p>
+    <p class="filler">Payment captured. Nothing further is due on this order.</p>
+  </div>
+</main>
+</body>
+</html>

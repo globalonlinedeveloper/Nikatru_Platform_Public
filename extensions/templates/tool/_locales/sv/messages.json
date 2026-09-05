@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — ersätt mig",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ERSÄTT MIG — en mening, ett syfte, högst 132 tecken, ingen marknadsföring.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — ersätt mig",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Byt tema",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Alternativ",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktiv flik",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Läser…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopiera titeln",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Läs den aktiva fliken igen",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Stäng",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Kopierat",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kunde inte kopiera — tryck Ctrl+C i stället",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Senaste $ACTION$ misslyckades — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Senaste $ACTION$ misslyckades — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "titelläsning",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopiering",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "datarensning",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "körning",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Något stoppade det här innan det blev klart. Försök igen.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Den här fliken är redan upptagen.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Den här sidan skyddas av webbläsaren och går inte att läsa.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Ingen aktiv flik hittades.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Den här sidan har ingen titel att läsa.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Avbrutet.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Okänt meddelande.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Den fliken stängdes innan arbetet blev klart.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Tillägget svarade inte.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Ingenting kom tillbaka.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Webbläsarens egna sidor som Inställningar, Tillägg och Ny flik är förbjudna för varje tillägg. Prova på en vanlig webbsida.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Utvecklarverktygens fönster är förbjudna för tillägg.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Källkodssidor är förbjudna för tillägg. Prova själva sidan i stället.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Tilläggens sidor, även det här tilläggets egna, skyddas av webbläsaren.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store hindrar tillägg från att läsa sina sidor.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Lokala filer kräver en extra behörighet. Öppna webbläsarens tilläggssida, leta upp det här tillägget och slå på ”Tillåt åtkomst till fil-URL:er”.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Den här sidan laddades inte, så det finns inget att läsa än.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Det här är webbläsarens inbyggda PDF-läsare. Tillägg kan inte läsa inuti den — öppna PDF-filen i en vanlig flik eller ladda ned den först.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Den här sidan är sandlådad av webbplatsen som öppnade den, så tillägg kan inte läsa den.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Tilläggswebbplatsen hindrar tillägg från att läsa sina sidor.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Enheten har slut på utrymme, så ingenting sparades. Radera några lagrade rader under Alternativ och försök igen.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Det här tog för lång tid och stoppades. Ingenting lämnades kvar.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Det värdet är för långt för dina synkade inställningar. Prova ett kortare.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Den inställningen kunde inte sparas. Vänta en stund och försök igen.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Alternativ — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Alternativ",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Alternativ",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Sparas automatiskt. Om webbläsarens synkning är på följer dina inställningar med din webbläsarprofil — de skickas aldrig till oss.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Beteende",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopiera vid öppning",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopiera resultatet till urklipp så snart popupen öppnas.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Håll en lokal historik",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Av som standard. När den är på lagras resultaten bara på den här enheten, listas nedan och kan raderas när som helst.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Historikgräns",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "De äldsta raderna faller bort när listan blir längre än så här.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Radera rader äldre än",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dagar. Gamla rader tas bort automatiskt i bakgrunden. Sätt 0 för att behålla rader tills historikgränsen tar bort dem.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Följer ditt system som standard.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "System",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Ljust",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Mörkt",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Dina data",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Ingenting är lagrat på den här enheten.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ rader är lagrade på den här enheten. Ingenting lämnar den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ rad är lagrad på den här enheten. Ingenting lämnar den.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ rader är lagrade på den här enheten. Ingenting lämnar den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ rader är lagrade på den här enheten. Ingenting lämnar den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ rader är lagrade på den här enheten. Ingenting lämnar den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ rader är lagrade på den här enheten. Ingenting lämnar den.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Beständigt: webbläsaren har lovat att inte rensa det här.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Utan garanti: webbläsaren kan rensa det här på eget bevåg om enheten får ont om utrymme. Exportera en säkerhetskopia.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Den här webbläsaren säger inte om lagrade data behålls, så behandla dem som tillfälliga och exportera en säkerhetskopia.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Använder $USED$ av $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Radera",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Radera raden från $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Exportera allt",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Sparar varje lagrad rad i en enda JSON-fil på den här enheten. Ingenting laddas upp.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Exportera allt",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Radera allt",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Tar bort varje lagrad rad från den här enheten. Inställningarna behålls.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Radera allt",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Återställ inställningarna",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Sätter tillbaka varje inställning på den här sidan till sitt standardvärde och tar bort dem från din synkade webbläsarprofil. Lagrade rader behålls.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Återställ inställningarna",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Rapportera ett problem",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Förbered en problemrapport",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Bygger en liten fil som beskriver tilläggets tillstånd. Du ser exakt vad som finns i den innan den sparas, och ingenting skickas någonstans.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Förbered en rapport",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Om",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — ersätt mig",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "En mening som säger exakt vad det här verktyget gör. Det arbetar på din enhet: inget konto, ingen spårning, inga nätverksanrop, ingenting skickas till oss.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Sparat",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Allting raderat",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Kunde inte radera — försök igen",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Kunde inte spara den inställningen",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Exporten sparad",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Kunde inte spara filen",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Raden raderad",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Inställningarna återställda",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Kunde inte återställa inställningarna",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Rapporten sparad",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Avbryt",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Radera allting?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Varje lagrad rad tas bort från den här enheten. Dina inställningar behålls. Det här går inte att ångra.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Återställa varje inställning?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Varje inställning på den här sidan går tillbaka till sitt standardvärde och tas bort från din synkade webbläsarprofil. Dina lagrade rader behålls. Det här går inte att ångra.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Spara den här problemrapporten?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Det här är allt filen kommer att innehålla. Den har inga sidadresser, ingen sidtext och ingenting du har fångat. Ingenting skickas någonstans — filen sparas på den här enheten och det är du som avgör om den ska delas.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Spara rapporten",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Privat fönster — det här resultatet sparades inte i din historik.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Webbplatsåtkomst",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Åtkomst till alla webbplatser",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Behövs bara för funktioner som arbetar på sidor där du inte har klickat på verktygsfältsknappen. Du kan ta tillbaka den när som helst, här.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Ge åtkomst",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Återkalla åtkomst",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Just nu kan det här tillägget läsa varje webbplats du besöker.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Det här tillägget kan läsa en flik först när du klickar på dess knapp i verktygsfältet.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Åtkomst given",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Åtkomsten gavs inte",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Åtkomst återkallad",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Kunde inte återkalla den åtkomsten",
+    "description": "en: Could not revoke that access"
+  }
+}

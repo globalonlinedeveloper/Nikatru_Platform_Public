@@ -1,0 +1,2230 @@
+{
+  "appName": {
+    "message": "FullShot – visas lapas ekrānuzņēmums"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Uzņemiet visu lapu, redzamo apgabalu, izvēlētu apgabalu vai elementu. Rediģējiet, anotējiet un eksportējiet PNG, JPEG, WebP, PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – uzņemt lapu (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Uzņemt visu lapu"
+  },
+  "commandCaptureVisible": {
+    "message": "Uzņemt redzamo apgabalu"
+  },
+  "commandCaptureRegion": {
+    "message": "Uzņemt izvēlēto apgabalu"
+  },
+  "commandCaptureElement": {
+    "message": "Uzņemt lapas elementu (noklikšķiniet, lai izvēlētos)"
+  },
+  "popupToggleTheme": {
+    "message": "Mainīt motīvu"
+  },
+  "popupModeFullTitle": {
+    "message": "Visa lapa"
+  },
+  "popupModeFullSub": {
+    "message": "Ritināt un uzņemt visu lapu"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Redzamais apgabals"
+  },
+  "popupModeVisibleSub": {
+    "message": "Tikai tas, kas ir ekrānā"
+  },
+  "popupModeRegionTitle": {
+    "message": "Izvēlēts apgabals"
+  },
+  "popupModeRegionSub": {
+    "message": "Velciet, lai izvēlētos apgabalu"
+  },
+  "popupModeElementTitle": {
+    "message": "Elements"
+  },
+  "popupModeElementSub": {
+    "message": "Noklikšķiniet uz jebkura lapas elementa"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Aizkavēta uzņemšana"
+  },
+  "popupModeDelayedSub": {
+    "message": "Visa lapa pēc atskaites"
+  },
+  "popupDelayLabel": {
+    "message": "Aizkaves sekundes"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Izvērst ritināmos paneļus un iframe elementus"
+  },
+  "popupExpandToggleTip": {
+    "message": "Izvērsiet iekšējos ritināmos paneļus un iframe elementus līdz visam to saturam, nevis uzņemiet tos tādus, kādi tie redzami. Citu vietņu ietvari vienu reizi pieprasa papildu atļauju."
+  },
+  "popupDismiss": {
+    "message": "Aizvērt"
+  },
+  "popupLastErrorFailed": {
+    "message": "Pēdējā $MODE$ neizdevās – $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Pēdējā $MODE$ neizdevās – $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "visas lapas uzņemšana"
+  },
+  "popupModeNameVisible": {
+    "message": "redzamā apgabala uzņemšana"
+  },
+  "popupModeNameRegion": {
+    "message": "apgabala uzņemšana"
+  },
+  "popupModeNameElement": {
+    "message": "elementa uzņemšana"
+  },
+  "popupModeNameGeneric": {
+    "message": "uzņemšana"
+  },
+  "popupNoActiveTab": {
+    "message": "Nav atrasta neviena aktīva cilne."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Neizdevās sākt uzņemšanu."
+  },
+  "popupLinkHistory": {
+    "message": "Vēsture"
+  },
+  "popupLinkBatch": {
+    "message": "Pakete"
+  },
+  "popupLinkOptions": {
+    "message": "Iestatījumi"
+  },
+  "optionsPageTitle": {
+    "message": "Iestatījumi – FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Iestatījumi"
+  },
+  "optionsHeading": {
+    "message": "Iestatījumi"
+  },
+  "optionsLead": {
+    "message": "Izmaiņas tiek saglabātas automātiski un sinhronizētas ar jūsu pārlūka profilu."
+  },
+  "optionsSectionImage": {
+    "message": "Attēls"
+  },
+  "optionsFormat": {
+    "message": "Formāts"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ ir bez zudumiem, $JPEG$ ir mazāks, bet $WEBP$ ir vismazākais pie līdzīgas kvalitātes.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ un $WEBP$ kvalitāte",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Faila nosaukuma veidne"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Vietturi: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Uzņemšana"
+  },
+  "optionsCaptureDelay": {
+    "message": "Papildu aizkave katrā solī"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Cik milisekundes gaidīt pēc katras ritināšanas. Palieliniet lēnās, ar animācijām bagātās lapās."
+  },
+  "optionsHideFixed": {
+    "message": "Slēpt fiksētos un lipīgos elementus"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Neļauj galvenēm atkārtoties katrā ekrānā (tās parādās tikai augšā)."
+  },
+  "optionsPreScroll": {
+    "message": "Iepriekš ritināt, lai ielādētu atlikto saturu"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Pirms uzņemšanas vienreiz izritina visu lapu. Lēnāk, taču tiek iegūti attēli, kas ielādējas tikai ritinot."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Gaidīt attēlu dekodēšanu"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Ļauj vēlu ielādētiem attēliem pabeigt dekodēšanu pirms katra kadra, lai tie neparādītos kā melni vai tukši laukumi."
+  },
+  "optionsHideOverlays": {
+    "message": "Slēpt reklāmkarogus un uznirstošos logus"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Pirms uzņemšanas noņem sīkdatņu un piekrišanas joslas, jaunumu vēstuļu logus un „iegūstiet lietotni“ uznirstošos logus, kā arī atbrīvo lapas, kuras logs ir iesaldējis. Pēc tam viss tiek atjaunots."
+  },
+  "optionsExpandInner": {
+    "message": "Izvērst ritināmo saturu"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Paplašina iekšējos paneļus un iframe elementus, lai parādītu saturu, kas paslēpts zem to pašu malas, nevis uzņem tos tieši tādus, kādi tie redzami."
+  },
+  "optionsExpandPermRow": {
+    "message": "Citu vietņu ietvari"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Atļaut"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Atļauja piešķirta – tiek izvērsti arī citu vietņu ietvari."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Bez atļaujas „$PERMISSION$“ citu vietņu ietvari tiek uzņemti tādi, kādi tie redzami. Paneļi un tās pašas vietnes iframe elementi darbojas vienmēr.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Izritināt virtualizētos sarakstus"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Soli pa solim iziet cauri plūsmām ar renderēšanas logu ($LIB1$ / $LIB2$ stilā), lai uzņemtu visu to saturu, nevis tikai ekrānā redzamās rindas. Ļoti garos sarakstos lēnāk.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Izvērst saturu, kas atveras ar klikšķi"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Pirms uzņemšanas atver sakļautus $DETAILS$ elementus, neaktīvas cilnes, akordeonus un „rādīt vairāk“ sadaļas, pēc tam tos atjauno. Atklāj saturu, kas paslēpts aiz klikšķa.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Klikšķināt „$BUTTONTEXT$“ pogas",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Klikšķina „load more“ un „show more“ pogas un gaida jaunā satura ielādi atkal un atkal, līdz plūsma ir izsmelta. Atšķirībā no iepriekšējā iestatījuma šis ielādē saturu, kura lapā vēl nav, un ielādētais saturs pēc uzņemšanas paliek."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Ritināt, lai ielādētu bezgalīgas plūsmas"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Plūsmām bez „load more“ pogas: ritina līdz apakšai un gaida nākamās daļas ielādi atkal un atkal, līdz plūsma vairs neaug (ar ierobežojumu, lai bezgalīgas plūsmas netiktu dzītas bezgalīgi). Ielādētais saturs pēc uzņemšanas paliek."
+  },
+  "optionsWaitStable": {
+    "message": "Gaidīt, līdz saturs ir ielādēts"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Pirms uzņemšanas gaida, līdz skeleta un vietturu ielādētāji (aria-busy apgabali, mirdzoši bloki) tiek aizstāti ar īsto saturu, lai „ielādē…“ posms lapas vidū neparādītos kā pelēki laukumi. Ar ierobežojumu, lai iestrēdzis indikators nebloķētu uzņemšanu."
+  },
+  "optionsRedactPII": {
+    "message": "Automātiski aizklāt sensitīvu informāciju"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Pārmeklē tekstu, ko lapa atklāj, meklējot e-pasta adreses, tālruņa numurus, maksājumu karšu numurus, personas kodus un API atslēgas, un saglabātajā attēlā ar viendabīgu joslu pārklāj to, kas atbilda. Tekstu, kas uzzīmēts kā pikseļi, tā nespēj izlasīt – audeklu, attēlu, PDF, videokadru. Atpazīšana notiek jūsu ierīcē; nekas nekad netiek nekur nosūtīts. Attiecas uz visas lapas (dokumenta ritināšanas) uzņēmumiem; josla ir neatgriezeniska, tāpēc pārskatiet rezultātu paši."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Maksimālais lapas augstums"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Drošības ierobežojums (CSS px) bezgalīgas ritināšanas plūsmām."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF eksports"
+  },
+  "optionsPdfPaper": {
+    "message": "Noklusējuma papīra izmērs"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "„$IMAGESIZE$“ padara lappusi tieši tik lielu, cik ir ekrānuzņēmums.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Attēla izmērs"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientācija"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Attiecas uz fiksētiem papīra izmēriem."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Portrets"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Ainava"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Vieda sadalīšana lappusēs"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Meklē vizuālu atstarpi katra lappuses pārtraukuma tuvumā, lai teksta rindas netiktu pārgrieztas uz pusēm."
+  },
+  "optionsPdfStamp": {
+    "message": "Iespiest URL un datumu"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Katras PDF lappuses kājenē pievieno lapas URL un uzņemšanas datumu."
+  },
+  "optionsSectionDownload": {
+    "message": "Lejupielāde"
+  },
+  "optionsSaveDirectory": {
+    "message": "Mape"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Apakšmape mapē $DOWNLOADS$ jūsu ekrānuzņēmumiem, piemēram, $EXAMPLE$. Tukšs = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialoglodziņš „Saglabāt kā“"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Jautāt, kur saglabāt katru failu, nevis lejupielādēt klusējot."
+  },
+  "optionsClipboardFit": {
+    "message": "Pielāgot kopijas lietotņu ierobežojumiem"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Samazina kopijas, kas pārsniedz $PIXELS$ pikseļu, lai ielīmēšana lietotnē $APP$ un tamlīdzīgās darbotos.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Darbplūsma"
+  },
+  "optionsAutoDownload": {
+    "message": "Automātiski lejupielādēt pēc uzņemšanas"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Saglabā attēlu uzreiz, tiklīdz uzņemšana ir pabeigta."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Atvērt redaktoru pēc uzņemšanas"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Uzreiz pāriet pie anotēšanas (tikai vienas daļas uzņēmumiem)."
+  },
+  "optionsTheme": {
+    "message": "Motīvs"
+  },
+  "optionsThemeDesc": {
+    "message": "Attiecas uz uznirstošo logu un visām FullShot lapām."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistēmas"
+  },
+  "optionsThemeLight": {
+    "message": "Gaišs"
+  },
+  "optionsThemeDark": {
+    "message": "Tumšs"
+  },
+  "optionsShortcuts": {
+    "message": "Īsinājumtaustiņi"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Visa lapa: $KEYFULL$ · Redzamais: $KEYVISIBLE$. Pielāgojiet vietnē $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Saglabāts ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Jūsu dati"
+  },
+  "optionsStorage": {
+    "message": "Krātuve"
+  },
+  "optionsStorageUsage": {
+    "message": "Šajā ierīcē izmantoti $USED$ no $QUOTA$.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Šī pārlūkprogramma neziņo, cik daudz vietas aizņem FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Jūsu ekrānuzņēmumi tiek saglabāti: pārlūkprogramma tos nedzēsīs, lai atbrīvotu vietu."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Jūsu ekrānuzņēmumi atrodas pārlūkprogrammas “labāko pūliņu” krātuvē, kuru tā var iztīrīt, lai atbrīvotu vietu."
+  },
+  "optionsStorageKeep": {
+    "message": "Saglabāt manus datus"
+  },
+  "optionsExport": {
+    "message": "Eksportēt visu"
+  },
+  "optionsExportDesc": {
+    "message": "Ieraksta vienu failu ar jūsu iestatījumiem un ekrānuzņēmumu sarakstu. Tas tiek saglabāts šajā ierīcē un nekur netiek sūtīts."
+  },
+  "optionsExportImages": {
+    "message": "Iekļaut attēlus"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Paši attēli, kas veido gandrīz visu apjomu. Bez tiem fails uzskaita jūsu ekrānuzņēmumus, bet nesatur nevienu no tiem."
+  },
+  "optionsExportSize": {
+    "message": "Faila lielums: aptuveni $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Pāri palikušie dati"
+  },
+  "optionsSweepDesc": {
+    "message": "Pārtraukta tveršana var atstāt diskā kadrus, kas nepieder nevienam ekrānuzņēmumam. Tie neparādās nevienā lapā, tāpēc neviena lapa tos nevar izdzēst. Šī darbība tos atrod un noņem."
+  },
+  "optionsSweepBtn": {
+    "message": "Atrast un noņemt"
+  },
+  "optionsSweepResult": {
+    "message": "Noņemts. Sakoptas tveršanas: $COUNT$ · Atbrīvotā vieta: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Nekas nav palicis pāri: viss saglabātais pieder ekrānuzņēmumam, ko varat redzēt."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Atiestatīt iestatījumus"
+  },
+  "optionsResetDesc": {
+    "message": "Atgriež katru šīs lapas iestatījumu uz sākotnējo vērtību. Jūsu ekrānuzņēmumi netiek aiztikti."
+  },
+  "optionsResetBtn": {
+    "message": "Atiestatīt"
+  },
+  "optionsResetConfirm": {
+    "message": "Vai atgriezt visus FullShot iestatījumus uz noklusējuma vērtībām? Jūsu ekrānuzņēmumus tas neietekmē."
+  },
+  "optionsResetDone": {
+    "message": "Iestatījumi atgriezti uz noklusējuma vērtībām."
+  },
+  "optionsDeleteAll": {
+    "message": "Dzēst visu"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Noņem visus ekrānuzņēmumus no jūsu vēstures un visu, ko atstājušas pārtrauktās tveršanas. Jūsu iestatījumi paliek nemainīgi."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Vai dzēst visu, ko FullShot saglabājis šajā ierīcē?\n\nEkrānuzņēmumi jūsu vēsturē: $COUNT$\nPārtrauktu tveršanu atliekas: $LEFTOVER$\nAtbrīvotā vieta: $SIZE$\n\nJūsu iestatījumus tas neietekmē. To nevar atsaukt.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Izdzēsts. FullShot šajā ierīcē vairs neglabā nevienu ekrānuzņēmumu."
+  },
+  "resultPageTitle": {
+    "message": "Ekrānuzņēmums – FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ – FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopēt"
+  },
+  "resultCopyTip": {
+    "message": "Kopēt attēlu starpliktuvē"
+  },
+  "resultEdit": {
+    "message": "Rediģēt"
+  },
+  "resultEditTip": {
+    "message": "Atvērt redaktorā"
+  },
+  "resultBeautify": {
+    "message": "Izdaiļot"
+  },
+  "resultBeautifyTip": {
+    "message": "Izdaiļot – rāmis un fons kopīgošanai"
+  },
+  "resultClip": {
+    "message": "Klips"
+  },
+  "resultClipTip": {
+    "message": "Ritināšanas klips – animēts $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF papīra izmērs"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Lejupielādēt"
+  },
+  "resultDeleteTip": {
+    "message": "Dzēst ekrānuzņēmumu"
+  },
+  "resultHistoryTip": {
+    "message": "Ekrānuzņēmumu vēsture"
+  },
+  "resultProgressAssembling": {
+    "message": "Saliek jūsu ekrānuzņēmumu…"
+  },
+  "resultProgressDecodingZero": {
+    "message": "Dekodē $COUNT$ kadru…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOne": {
+    "message": "Dekodē $COUNT$ kadru…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Dekodē $COUNT$ kadrus…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Saliek $INDEX$. daļu…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Saliek $INDEX$. daļu no aptuveni $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Saglabā…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Padoms: velciet attēlu tieši uz darbvirsmu vai izmantojiet $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Šeit nekā nav"
+  },
+  "resultEmptyBody": {
+    "message": "Šis ekrānuzņēmums vairs nepastāv."
+  },
+  "resultOpenHistory": {
+    "message": "Atvērt vēsturi"
+  },
+  "resultSomethingWrong": {
+    "message": "Kaut kas nogāja greizi – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "$INDEX$. daļa no $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Lejupielādēt daļu"
+  },
+  "resultEditPart": {
+    "message": "Rediģēt daļu"
+  },
+  "resultClipPart": {
+    "message": "Veidot klipu no daļas"
+  },
+  "resultPartAlt": {
+    "message": "Ekrānuzņēmuma $INDEX$. daļa",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Lejupielādē $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Vai neatgriezeniski dzēst šo ekrānuzņēmumu?"
+  },
+  "resultDeleted": {
+    "message": "Ekrānuzņēmums ir dzēsts."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredZero": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Šis tvēriens ir pārāk augsts, lai to ielīmētu kā vienu salasāmu attēlu, tāpēc $COPY$ starpliktuvē ievieto samazinātu visas lapas pārskatu. Sīkais teksts tajā nebūs salasāms.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "$INDEX$. daļa nokopēta starpliktuvē",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Veido PDF…"
+  },
+  "resultToastPdfDoneZero": {
+    "message": "PDF lejupielādēts ($COUNT$ lappušu)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF lejupielādēts ($COUNT$ lappuse)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF lejupielādēts ($COUNT$ lappuses)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF neizdevās – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Redaktors – FullShot"
+  },
+  "editorBackTip": {
+    "message": "Atpakaļ pie ekrānuzņēmuma"
+  },
+  "editorToolSelect": {
+    "message": "Atlasīt/pārvietot ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Apgriezt ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Pildspalva ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Marķieris ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Līnija ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Bulta ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Taisnstūris ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipse ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Teksts ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Izpludināt/pikseļot ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Numurēts solis ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Emocijzīmes zīmogs ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Pielāgota krāsa"
+  },
+  "editorStrokeTip": {
+    "message": "Līnijas biezums"
+  },
+  "editorStrokeThin": {
+    "message": "Plāna"
+  },
+  "editorStrokeMedium": {
+    "message": "Vidēja"
+  },
+  "editorStrokeThick": {
+    "message": "Bieza"
+  },
+  "editorSizeTip": {
+    "message": "Teksta/emocijzīmju izmērs"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Atsaukt ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Atcelt atsaukšanu ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Tālināt (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Tuvināt (+)"
+  },
+  "editorZoomFit": {
+    "message": "Ietilpināt"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Ietilpināts logā – noklikšķiniet, lai iegūtu 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Noklikšķiniet, lai ietilpinātu logā"
+  },
+  "editorExport": {
+    "message": "Eksportēt"
+  },
+  "editorExportCopy": {
+    "message": "Kopēt starpliktuvē"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ attēls",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ dokuments",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Saglabāt"
+  },
+  "editorSaveTip": {
+    "message": "Saglabāt izmaiņas vēsturē ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Vairāk"
+  },
+  "editorMenuFiles": {
+    "message": "Pāriet uz vēsturi"
+  },
+  "editorMenuOptions": {
+    "message": "Pāriet uz iestatījumiem"
+  },
+  "editorMenuShortcuts": {
+    "message": "Īsinājumtaustiņi"
+  },
+  "editorCropApply": {
+    "message": "Lietot apgriešanu"
+  },
+  "editorCropCancel": {
+    "message": "Atcelt"
+  },
+  "editorShortcutsHeading": {
+    "message": "Īsinājumtaustiņi"
+  },
+  "editorShortcutTools": {
+    "message": "Rīku izvēle"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Atsaukt / atcelt atsaukšanu"
+  },
+  "editorShortcutSave": {
+    "message": "Saglabāt vēsturē"
+  },
+  "editorShortcutZoom": {
+    "message": "Tālināt / tuvināt"
+  },
+  "editorShortcutDelete": {
+    "message": "Noņemt atlasīto objektu"
+  },
+  "editorShortcutEscape": {
+    "message": "Noņemt atlasi / atcelt apgriešanu"
+  },
+  "editorShortcutsClose": {
+    "message": "Aizvērt"
+  },
+  "editorNotFound": {
+    "message": "Ekrānuzņēmums nav atrasts"
+  },
+  "editorToastDownloaded": {
+    "message": "Lejupielādēts"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF lejupielādēts"
+  },
+  "editorToastSaved": {
+    "message": "Saglabāts vēsturē"
+  },
+  "historyPageTitle": {
+    "message": "Vēsture – FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Vēsture"
+  },
+  "historySearchPlaceholder": {
+    "message": "Meklēt nosaukumā vai URL…"
+  },
+  "historySelectAll": {
+    "message": "Atlasīt visus"
+  },
+  "historyClearSelection": {
+    "message": "Notīrīt atlasi"
+  },
+  "historyDownloadSelected": {
+    "message": "Lejupielādēt atlasītos"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Lejupielādēt ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Dzēst atlasītos"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Dzēst ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Vēl nav neviena ekrānuzņēmuma"
+  },
+  "historyEmptyBody": {
+    "message": "Jūsu uzņemtie attēli parādīsies šeit. Lai sāktu, rīkjoslā noklikšķiniet uz FullShot ikonas."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Nav atbilstību"
+  },
+  "historyNoMatchesBody": {
+    "message": "Neviens ekrānuzņēmums neatbilst vaicājumam „$QUERY$“.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountZero": {
+    "message": "$COUNT$ ekrānuzņēmumu · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ ekrānuzņēmums · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ ekrānuzņēmumi · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredZero": {
+    "message": "$SHOWN$ no $COUNT$ ekrānuzņēmumiem · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ no $COUNT$ ekrānuzņēmuma · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ no $COUNT$ ekrānuzņēmumiem · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Atlasīt"
+  },
+  "historyCardOpen": {
+    "message": "Atvērt"
+  },
+  "historyCardEdit": {
+    "message": "Rediģēt"
+  },
+  "historyCardDownloadTip": {
+    "message": "Lejupielādēt"
+  },
+  "historyCardDeleteTip": {
+    "message": "Dzēst"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Atvērt sākotnējo lapu"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ daļas",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Ekrānuzņēmums"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Vai dzēst šo ekrānuzņēmumu?"
+  },
+  "historyConfirmDeleteManyZero": {
+    "message": "Vai neatgriezeniski dzēst $COUNT$ ekrānuzņēmumu?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Vai neatgriezeniski dzēst $COUNT$ ekrānuzņēmumu?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Vai neatgriezeniski dzēst $COUNT$ ekrānuzņēmumus?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingZero": {
+    "message": "Lejupielādē $COUNT$ ekrānuzņēmumu",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Lejupielādē $COUNT$ ekrānuzņēmumu",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Lejupielādē $COUNT$ ekrānuzņēmumus",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Dzēsts"
+  },
+  "beautifyPageTitle": {
+    "message": "Izdaiļot – FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Izdaiļot"
+  },
+  "actionBack": {
+    "message": "Atpakaļ"
+  },
+  "commonLoading": {
+    "message": "Ielādē…"
+  },
+  "beautifyFieldSize": {
+    "message": "Izmērs"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automātiski"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Kvadrāts"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Portrets"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Fons"
+  },
+  "beautifyBgSlate": {
+    "message": "Slāneklis"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafīts"
+  },
+  "beautifyBgSky": {
+    "message": "Debesis"
+  },
+  "beautifyBgSunset": {
+    "message": "Saulriets"
+  },
+  "beautifyBgGrape": {
+    "message": "Vīnoga"
+  },
+  "beautifyBgMint": {
+    "message": "Piparmētra"
+  },
+  "beautifyFieldPadding": {
+    "message": "Apmale"
+  },
+  "beautifyFieldRadius": {
+    "message": "Stūru noapaļojums"
+  },
+  "beautifyFieldEffects": {
+    "message": "Efekti"
+  },
+  "beautifyShadow": {
+    "message": "Krītoša ēna"
+  },
+  "beautifyWindowFrame": {
+    "message": "Loga rāmis"
+  },
+  "beautifyFieldExport": {
+    "message": "Eksports"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Ritināšanas klips – FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Ritināšanas klips"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Formāts"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ atskaņojas visur. $WEBM$ ir mazāks un plūstošāks (tiek ierakstīts tieši jūsu pārlūkā).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Izvades platums"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Blīvums"
+  },
+  "scrollclipDensityHint": {
+    "message": "Lielāks blīvums dod asāku rezultātu (tuvāk avota izšķirtspējai) – bet lielāku failu."
+  },
+  "scrollclipFieldShape": {
+    "message": "Forma"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Ritināšanas ātrums (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Kadru nomaiņas ātrums (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Kustība"
+  },
+  "scrollclipBounce": {
+    "message": "Atsitiens (ritināt atpakaļ uz augšu)"
+  },
+  "scrollclipLoop": {
+    "message": "Atkārtot bezgalīgi"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopēt kadru"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopēt augšējo sākuma kadru kā $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsZero": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadru · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadrs · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadri · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Renderē kadrus… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Kodē $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Pabeidz…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Ieraksta $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Ieraksta…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ šeit netiek atbalstīts – eksportē $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Sākuma kadrs nokopēts"
+  },
+  "batchPageTitle": {
+    "message": "FullShot – pakešuzņemšana"
+  },
+  "batchHeading": {
+    "message": "Pakešuzņemšana"
+  },
+  "batchIntro": {
+    "message": "Ielīmējiet URL adreses, katru savā rindā. FullShot atver katru lapu, uzņem visas lapas attēlu jūsu vēsturē un pāriet pie nākamās – līdz $MAX$ vienā reizē. Uzņēmumi parādās vēsturē; noklikšķiniet $OPENLINK$, lai tos apskatītu, rediģētu vai eksportētu.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Uzņemt visas"
+  },
+  "batchPermissionHint": {
+    "message": "Šo lapu atvēršanai pirmajā reizē ir nepieciešama vienreizēja atļauja."
+  },
+  "batchPermissionDeclined": {
+    "message": "Atļauja atvērt šīs lapas tika noraidīta."
+  },
+  "batchPanelPlan": {
+    "message": "Plāns"
+  },
+  "batchPanelProgress": {
+    "message": "Norise"
+  },
+  "batchPlanCountZero": {
+    "message": "$COUNT$ lapu uzņemšanai",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ lapa uzņemšanai",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ lapas uzņemšanai",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ lapas uzņemšanai (ierobežots līdz $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Vēl nav derīgu URL adrešu"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ izlaistas: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "neatbalstīta shēma"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "nederīga"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "nav resursdatora"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "dublikāts"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "tukša"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "pārsniedz ierobežojumu ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ pabeigtas",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ pabeigtas, $FAILED$ neizdevās",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ pabeigtas – gatavs",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ pabeigtas, $FAILED$ neizdevās – gatavs",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "atvērt"
+  },
+  "batchJobTimedOut": {
+    "message": "uzņemšanai iestājās noildze"
+  },
+  "batchJobNoSession": {
+    "message": "nav uzņemšanas sesijas"
+  },
+  "batchJobFailed": {
+    "message": "uzņemšana neizdevās"
+  },
+  "batchJobError": {
+    "message": "uzņemšanas kļūda"
+  },
+  "regionHintDrag": {
+    "message": "Velciet, lai atlasītu apgabalu – $ESC$ atceļ",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Noklikšķiniet uz elementa, lai to uzņemtu – $ESC$ atceļ",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Pārlūka lapas, piemēram, Iestatījumi, Paplašinājumi un Jaunā cilne, nav pieejamas nevienam paplašinājumam. Izmēģiniet FullShot parastā tīmekļa lapā."
+  },
+  "errRestrictedDevtools": {
+    "message": "Paplašinājums nevar uzņemt DevTools logus. Tiem izmantojiet datora paša ekrānuzņēmumu rīku."
+  },
+  "errRestrictedViewSource": {
+    "message": "Pirmkoda skata lapas nevar uzņemt. Uzņemiet pašu lapu."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Paplašinājumu lapas, tostarp paša FullShot lapas, aizsargā pārlūks, un tās nevar uzņemt."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store neļauj paplašinājumiem lasīt savas lapas, tāpēc šo lapu nevar uzņemt."
+  },
+  "errRestrictedGeneric": {
+    "message": "Šo lapu aizsargā pārlūks, un to nevar uzņemt."
+  },
+  "errWrongTab": {
+    "message": "Uzņemšana apturēta – jūs pārslēdzāt cilni. Turiet šo lapu priekšplānā, līdz FullShot pabeidz darbu."
+  },
+  "errGeneric": {
+    "message": "Uzņemšana apstājās, pirms tā bija pabeigta. Lūdzu, mēģiniet vēlreiz."
+  },
+  "errBusy": {
+    "message": "Šajā cilnē jau notiek uzņemšana."
+  },
+  "errBlocked": {
+    "message": "Šo lapu nevar uzņemt (pārlūka ierobežojums)."
+  },
+  "errNoStart": {
+    "message": "FullShot nevarēja startēt šajā lapā. Pārlādējiet lapu un mēģiniet vēlreiz."
+  },
+  "errCrash": {
+    "message": "Uzņemšana negaidīti apstājās. Lūdzu, mēģiniet vēlreiz."
+  },
+  "errUnknownMessage": {
+    "message": "Nezināms ziņojums."
+  },
+  "errQuota": {
+    "message": "Pārlūks ierobežo, cik ātri lapas drīkst fotografēt. Uzgaidiet mirkli un mēģiniet vēlreiz."
+  },
+  "errFrameHandover": {
+    "message": "Pārlūks pusceļā pārtrauca nodot ekrānu. Uzgaidiet dažas sekundes un mēģiniet vēlreiz."
+  },
+  "errLostTab": {
+    "message": "Uzņemšana pazaudēja šo cilni. Pārlādējiet lapu un mēģiniet vēlreiz."
+  },
+  "errStoppedEarly": {
+    "message": "Uzņemšana tika apturēta, pirms tā bija pabeigta."
+  },
+  "errStorageFull": {
+    "message": "Vairs nav vietas, kur saglabāt šo tveršanu. Izdzēsiet dažus ekrānuzņēmumus no vēstures un mēģiniet vēlreiz."
+  },
+  "reasonGeneric": {
+    "message": "iemesls netika norādīts. Lūdzu, mēģiniet vēlreiz."
+  },
+  "reasonDecodeFailed": {
+    "message": "šo ekrānuzņēmumu neizdevās dekodēt."
+  },
+  "reasonTooLarge": {
+    "message": "attēls ir pārāk liels, lai to šeit eksportētu."
+  },
+  "toastCopiedClipboard": {
+    "message": "Nokopēts starpliktuvē"
+  },
+  "toastCopyFailed": {
+    "message": "Kopēšana neizdevās – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Eksportēšana neizdevās – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Saglabāts $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Saglabāts $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

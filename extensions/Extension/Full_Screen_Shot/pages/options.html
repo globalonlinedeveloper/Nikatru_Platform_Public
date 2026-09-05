@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title data-i18n="optionsPageTitle">Options — FullShot</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  #wrap { max-width: 640px; margin: 0 auto; padding: 26px 18px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lead { color: var(--fg2); margin: 0 0 22px; font-size: 13px; }
+  .section {
+    background: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 4px 18px; margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .section h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--fg2); margin: 14px 0 4px;
+  }
+  /* flex-wrap so a label that outgrows the row drops its control to the next
+     line instead of shoving it off the card. Measured: with unbreakable
+     compound labels (Finnish/Tamil/German shape) nine switches left the panel
+     entirely and the page scrolled 540px sideways at 320 CSS px. */
+  .opt {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 0; border-top: 1px solid var(--line);
+  }
+  .opt:first-of-type, .section h2 + .opt { border-top: none; }
+  /* min-width:0 is the whole fix for the bleed above: a flex item defaults to
+     min-width:auto, which refuses to shrink below its longest WORD, and a
+     German or Finnish compound noun is one very long word. */
+  .opt .text { flex: 1 1 240px; min-width: 0; overflow-wrap: break-word; }
+  /* A label element, not a bold one, wherever the row HAS a control — see the
+     note at the top of the body. Bold stays for the two rows that describe
+     something rather than set it, so the selector carries both shapes and the
+     two look identical.
+     (Spelled without angle brackets on purpose: test/i18n-sim.node.js walks
+     this file with a tag scanner, and a tag name in angle brackets inside a
+     CSS comment opens an element it never closes.) */
+  .opt .text > label, .opt .text b { display: block; font-size: 13.5px; font-weight: 600; }
+  .opt .text > label { cursor: pointer; }
+  .opt .text small { color: var(--fg2); font-size: 12px; }
+  .opt select, .opt input[type="text"], .opt input[type="number"] {
+    padding: 7px 10px; border: 1px solid var(--control-line); border-radius: 9px;
+    background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif;
+    max-width: 100%;
+  }
+  .opt input[type="text"] { flex: 0 1 260px; width: 260px; min-width: 0; }
+  .opt input[type="number"] { width: 90px; }
+  .opt input[type="range"] { width: 140px; max-width: 100%; accent-color: var(--accent); }
+  .switch { position: relative; width: 40px; height: 22px; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; position: absolute; margin: 0; cursor: pointer; z-index: 1; }
+  /* The ring has to be drawn on the TRACK. `opacity: 0` applies to an
+     element's outline as well as its box, so a focus ring on this input —
+     including the browser's own — is painted at zero alpha and the switch is
+     the one control on the page a keyboard user cannot see themselves on.
+     Measured in Chromium: tabbing through the nine toggles showed nothing at
+     all before this rule. Same colour and same 2px offset as the shared ring
+     in common.css, so it reads as the same ring. */
+  .switch input:focus-visible + .track {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .switch .track {
+    position: absolute; inset: 0; border-radius: 999px;
+    background: var(--bg2); border: 1px solid var(--control-line);
+    transition: background .15s;
+  }
+  /* The knob slides along the INLINE axis, so it is animated on
+     inset-inline-start rather than translateX. translateX(18px) always moves
+     right; under RTL the track flips but the knob would not, and "on" would
+     look like "off". A `:dir(rtl){transform:translateX(-18px)}` twin would work
+     too and is one more rule to keep in step with the first. */
+  .switch .track::after {
+    content: ''; position: absolute; inset-block-start: 2px; inset-inline-start: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    transition: inset-inline-start .15s;
+  }
+  .switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
+  .switch input:checked + .track::after { inset-inline-start: 20px; }
+  /* White on --ok was 3.30:1 in the light theme and 2.28:1 in the dark one —
+     the only piece of text in the product that failed AA outright. --ok-fg is
+     the dark green common.css pairs with it: 5.18:1 and 7.49:1.
+     max-width because this pill is position:fixed and therefore reflows for
+     nobody: at 200% zoom (640 CSS px) a long translation of "Saved" simply
+     left the page. It now wraps inside the viewport instead. */
+  #saveNote {
+    position: fixed; inset-block-end: 22px; inset-inline-end: 22px;
+    background: var(--ok); color: var(--ok-fg);
+    padding: 8px 16px; border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    max-width: calc(100% - 44px);
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #saveNote.show { opacity: 1; }
+  /* This page no longer wraps its technical literals in <code>/<kbd>. See the
+     note at the top of <body>: {domain}, Alt+Shift+P and
+     chrome://extensions/shortcuts now arrive INSIDE a translated sentence, as
+     do-not-translate placeholders the message file owns, and an element that
+     carries a message may not also contain elements — the pass writes
+     textContent and would delete them. The `code, kbd, samp` rule in
+     common.css still covers the pages that do wrap theirs. */
+</style>
+</head>
+<body>
+<!-- Every user-visible string carries data-i18n (text) or data-i18n-attr
+     (a named attribute), and KEEPS its English as the fallback: pages/common.js
+     substitutes on load, and a key that does not resolve leaves the English
+     standing. Chrome does not substitute __MSG__ inside HTML, which is why the
+     key travels in an attribute rather than in the text node. Follows
+     popup/popup.html, which is the worked example.
+
+     Not marked, deliberately:
+     · the format names PNG / JPEG / WebP in the first dropdown. They are file
+       formats, not prose — the English file locks the same three words as
+       do-not-translate placeholders inside optionsFormatDesc and
+       optionsQuality, i.e. it already instructs every translator not to touch
+       them. Leaving them English is the CORRECT rendering in all 55, which is
+       why they are exempted by name in the BARE_OK table of
+       test/i18n-sim.node.js rather than given keys of their own; verified in
+       the browser under hi/ja/ar/de/ru/ta, where the dropdown reads
+       PNG/JPEG/WebP and the stored value stays png/jpeg/webp.
+     · <option value>, which is the ENUM the setting is stored as. Only the
+       option TEXT is keyed; translating a value would corrupt saved settings.
+     · the ◐ and ↳ glyphs, and alt="" on the decorative brand icon.
+
+     Three sentences lost their <code>/<kbd> chips on the way in
+     (optionsFilenameTemplateDesc, optionsSaveDirectoryDesc,
+     optionsShortcutsDesc): each message carries its literals as
+     do-not-translate placeholders and is therefore ONE flat string, and an
+     element carrying data-i18n may not contain elements. The literals still
+     hold together — a run of Latin letters and the neutral characters between
+     them resolves to one left-to-right run even inside a right-to-left
+     sentence — but they no longer get the chip background.
+
+     ACCESSIBILITY, and the two shapes it changed here.
+     · Every row that SETS something names its control: the row's title is a
+       <label for> rather than a <b>, and the explanation under it is tied on
+       with aria-describedby. Before this, all 26 controls were anonymous —
+       nine switches announced as "checkbox, unchecked" and nothing else,
+       because the words next to them were a sibling <div> the browser has no
+       reason to associate. The two rows that set nothing (the ↳ permission
+       note and the shortcuts reference) keep their <b>: a <label> pointing at
+       no control is a lie told to the accessibility tree.
+     · The switch is a <span class="switch">, not a <label>. It used to be a
+       label wrapping only the invisible input, i.e. a label whose text was
+       the empty string — which contributes an empty name and stops the real
+       <label for> from being the only one. The visible title is the label
+       now, and clicking it toggles the switch, which the old shape did not do
+       either.
+     The ⚙/◐ glyphs move inside aria-hidden spans wherever a button carries
+     one, because a button's accessible name is its CONTENT and content beats
+     title: `<button title="Options">⚙</button>` announces as the name of the
+     gear character and the title is never read. -->
+<header class="topbar">
+  <a class="brand" href="#"><img src="../icons/icon32.png" width="20" height="20" alt=""><span data-i18n="optionsBrand">FullShot · Options</span></a>
+  <span class="spacer"></span>
+  <!-- popup* keys on a page that is not the popup: these two strings exist
+       once in the English file and this topbar spends the same two words. -->
+  <a class="btn" href="history.html" data-i18n="popupLinkHistory">History</a>
+  <button class="btn icon" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle theme"
+          data-i18n-attr="title:popupToggleTheme; aria-label:popupToggleTheme"><span aria-hidden="true">◐</span></button>
+</header>
+
+<main id="wrap">
+  <h1 data-i18n="optionsHeading">Options</h1>
+  <p class="lead" data-i18n="optionsLead">Changes are saved automatically and synced to your browser profile.</p>
+
+  <div class="section">
+    <h2 data-i18n="optionsSectionImage">Image</h2>
+    <div class="opt">
+      <div class="text"><label for="imageFormat" data-i18n="optionsFormat">Format</label><small id="imageFormatDesc" data-i18n="optionsFormatDesc">PNG is lossless; JPEG is smaller; WebP is smallest at similar quality.</small></div>
+      <select id="imageFormat" aria-describedby="imageFormatDesc">
+        <option value="png">PNG</option>
+        <option value="jpeg">JPEG</option>
+        <option value="webp">WebP</option>
+      </select>
+    </div>
+    <div class="opt">
+      <!-- The percent sign belongs to the message, not to the markup: several
+           locales put it in front of the number and one puts a space before
+           it. options.js rewrites this line from the slider.
+           The read-out is NOT the slider's description: a range announces its
+           own value, and describedby here would say "92%" twice. -->
+      <div class="text"><label for="jpegQuality" data-i18n="optionsQuality">JPEG / WebP quality</label><small id="qualityVal" data-i18n="optionsQualityValue" data-i18n-args="92">92%</small></div>
+      <input type="range" id="jpegQuality" min="50" max="100" step="1">
+    </div>
+    <div class="opt">
+      <div class="text"><label for="filenameTemplate" data-i18n="optionsFilenameTemplate">Filename template</label>
+        <small id="filenameTemplateDesc" data-i18n="optionsFilenameTemplateDesc">Placeholders: {domain} {title} {date} {time} {width} {height}</small>
+      </div>
+      <input type="text" id="filenameTemplate" aria-describedby="filenameTemplateDesc">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="optionsSectionCapture">Capture</h2>
+    <div class="opt">
+      <div class="text"><label for="captureDelay" data-i18n="optionsCaptureDelay">Extra delay per step</label><small id="captureDelayDesc" data-i18n="optionsCaptureDelayDesc">Milliseconds to wait after each scroll. Raise for slow, animation-heavy pages.</small></div>
+      <input type="number" id="captureDelay" min="0" max="2000" step="50" aria-describedby="captureDelayDesc">
+    </div>
+    <div class="opt">
+      <div class="text"><label for="hideFixed" data-i18n="optionsHideFixed">Hide fixed &amp; sticky elements</label><small id="hideFixedDesc" data-i18n="optionsHideFixedDesc">Keeps headers from repeating on every screen (shown once at top).</small></div>
+      <span class="switch"><input type="checkbox" id="hideFixed" aria-describedby="hideFixedDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="preScroll" data-i18n="optionsPreScroll">Pre-scroll to load lazy content</label><small id="preScrollDesc" data-i18n="optionsPreScrollDesc">Scrolls through the page once before capturing. Slower but catches lazy-loaded images.</small></div>
+      <span class="switch"><input type="checkbox" id="preScroll" aria-describedby="preScrollDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="adaptiveWait" data-i18n="optionsAdaptiveWait">Wait for images to decode</label><small id="adaptiveWaitDesc" data-i18n="optionsAdaptiveWaitDesc">Lets late or lazy images finish decoding before each frame, so they aren't captured as black or blank tiles.</small></div>
+      <span class="switch"><input type="checkbox" id="adaptiveWait" aria-describedby="adaptiveWaitDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="hideOverlays" data-i18n="optionsHideOverlays">Hide banners &amp; pop-ups</label><small id="hideOverlaysDesc" data-i18n="optionsHideOverlaysDesc">Removes cookie/consent banners, newsletter modals and "get the app" pop-ups before capturing, and unlocks pages a modal has frozen. Restored afterward.</small></div>
+      <span class="switch"><input type="checkbox" id="hideOverlays" aria-describedby="hideOverlaysDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="expandInner" data-i18n="optionsExpandInner">Expand scrollable content</label><small id="expandInnerDesc" data-i18n="optionsExpandInnerDesc">Grows inner panels and iframes to show content hidden below their own fold, instead of capturing them exactly as seen.</small></div>
+      <span class="switch"><input type="checkbox" id="expandInner" aria-describedby="expandInnerDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt" id="expandPermRow" hidden>
+      <!-- The ↳ stays outside the keyed span: it is an indent marker, not a
+           word, and textContent would eat it. -->
+      <div class="text"><b>↳ <span data-i18n="optionsExpandPermRow">Cross-site frames</span></b><small id="expandPermNote"></small></div>
+      <button class="btn" id="expandPermBtn" type="button" hidden data-i18n="optionsExpandPermAllow">Allow</button>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="unrollVirtual" data-i18n="optionsUnrollVirtual">Unroll virtualized lists</label><small id="unrollVirtualDesc" data-i18n="optionsUnrollVirtualDesc">Steps through render-window feeds (react-window / TanStack style) to capture their full content inline, not just the rows on screen. Slower on very long lists.</small></div>
+      <span class="switch"><input type="checkbox" id="unrollVirtual" aria-describedby="unrollVirtualDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="expandInteractive" data-i18n="optionsExpandInteractive">Expand interaction-gated content</label><small id="expandInteractiveDesc" data-i18n="optionsExpandInteractiveDesc">Opens collapsed &lt;details&gt;, inactive tabs, accordions and "show more" sections before capturing, then restores them. Reveals content hidden behind a click.</small></div>
+      <span class="switch"><input type="checkbox" id="expandInteractive" aria-describedby="expandInteractiveDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="loadMore" data-i18n="optionsLoadMore">Click "Load more" buttons</label><small id="loadMoreDesc" data-i18n="optionsLoadMoreDesc">Clicks "load more" / "show more" buttons and waits for the new content to load, repeatedly, until the feed is exhausted. Unlike the option above, this fetches content that isn't on the page yet; the loaded content stays after capture.</small></div>
+      <span class="switch"><input type="checkbox" id="loadMore" aria-describedby="loadMoreDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="infiniteScroll" data-i18n="optionsInfiniteScroll">Scroll to load infinite feeds</label><small id="infiniteScrollDesc" data-i18n="optionsInfiniteScrollDesc">For feeds with no "load more" button: scrolls to the bottom and waits for the next page to load, repeatedly, until the feed stops growing (bounded, so endless feeds aren't chased). Loaded content stays after capture.</small></div>
+      <span class="switch"><input type="checkbox" id="infiniteScroll" aria-describedby="infiniteScrollDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="waitStable" data-i18n="optionsWaitStable">Wait for content to finish loading</label><small id="waitStableDesc" data-i18n="optionsWaitStableDesc">Waits for skeleton / placeholder loaders (aria-busy regions, shimmer blocks) to be replaced by the real content before capturing, so a mid-page "loading…" swap isn't captured as grey placeholders. Bounded, so a stuck spinner won't hang the capture.</small></div>
+      <span class="switch"><input type="checkbox" id="waitStable" aria-describedby="waitStableDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <!-- ACT AND LIMIT, NOT A RESULT (REDACTION-CLAIM-SPEC.md §0, §7). This row
+           used to read "Scans the page for … and paints a solid block over
+           each": two completeness claims about a page FullShot never sees whole,
+           made in the one place a user decides whether to trust the feature. It
+           now says what is read (the text the page exposes), what is covered
+           (what it matched), what is never read (anything drawn as pixels), and
+           that the person still has to look. Do not restore a quantifier here —
+           test/i18n-sim grades this string with the acts line and the review
+           dialog, and "each" / "every" / "all" are refused in the whole set. -->
+      <div class="text"><label for="redactPII" data-i18n="optionsRedactPII">Auto-redact sensitive info</label><small id="redactPIIDesc" data-i18n="optionsRedactPIIDesc">Scans the text a page exposes for emails, phone numbers, credit-card numbers, SSNs and API keys, and paints a solid block over what it matches in the saved image. It cannot read text drawn as pixels &mdash; a canvas, an image, a PDF, a video frame. Detection runs on your device; nothing is ever sent anywhere. Full-page (document-scroll) captures; the block is permanent, so review the result yourself.</small></div>
+      <span class="switch"><input type="checkbox" id="redactPII" aria-describedby="redactPIIDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="maxPageHeight" data-i18n="optionsMaxPageHeight">Max page height</label><small id="maxPageHeightDesc" data-i18n="optionsMaxPageHeightDesc">Safety cap (CSS px) for infinite-scroll feeds.</small></div>
+      <input type="number" id="maxPageHeight" min="2000" max="200000" step="1000" aria-describedby="maxPageHeightDesc">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="optionsSectionPdf">PDF export</h2>
+    <div class="opt">
+      <!-- This one sentence NAMES the first entry of the dropdown beside it, so
+           its substitution has to be that entry in the SAME language. A literal
+           in data-i18n-args would be the English word in all 55. Left empty
+           here and written once by options.js, the way #expandPermNote is —
+           its English lives in that call, not in this markup. -->
+      <div class="text"><label for="pdfPaper" data-i18n="optionsPdfPaper">Default paper size</label><small id="pdfPaperDesc"></small></div>
+      <select id="pdfPaper" aria-describedby="pdfPaperDesc">
+        <option value="auto" data-i18n="optionsPaperAuto">Image size</option>
+        <option value="a4" data-i18n="optionsPaperA4">A4</option>
+        <option value="letter" data-i18n="optionsPaperLetter">Letter</option>
+        <option value="legal" data-i18n="optionsPaperLegal">Legal</option>
+      </select>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="pdfOrientation" data-i18n="optionsPdfOrientation">Orientation</label><small id="pdfOrientationDesc" data-i18n="optionsPdfOrientationDesc">For fixed paper sizes.</small></div>
+      <select id="pdfOrientation" aria-describedby="pdfOrientationDesc">
+        <option value="portrait" data-i18n="optionsOrientationPortrait">Portrait</option>
+        <option value="landscape" data-i18n="optionsOrientationLandscape">Landscape</option>
+      </select>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="pdfSmartSplit" data-i18n="optionsPdfSmartSplit">Smart page splitting</label><small id="pdfSmartSplitDesc" data-i18n="optionsPdfSmartSplitDesc">Looks for a visual gap near each page break so lines of text aren't cut in half.</small></div>
+      <span class="switch"><input type="checkbox" id="pdfSmartSplit" aria-describedby="pdfSmartSplitDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="pdfStamp" data-i18n="optionsPdfStamp">Stamp URL &amp; date</label><small id="pdfStampDesc" data-i18n="optionsPdfStampDesc">Adds the page URL and capture date to the footer of each PDF page.</small></div>
+      <span class="switch"><input type="checkbox" id="pdfStamp" aria-describedby="pdfStampDesc"><span class="track"></span></span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="optionsSectionDownload">Download</h2>
+    <div class="opt">
+      <div class="text"><label for="saveDirectory" data-i18n="optionsSaveDirectory">Directory</label><small id="saveDirectoryDesc" data-i18n="optionsSaveDirectoryDesc">Subfolder under Downloads for your screenshots, e.g. screencaptures. Blank = Downloads.</small></div>
+      <input type="text" id="saveDirectory" placeholder="(Downloads)" aria-describedby="saveDirectoryDesc" data-i18n-attr="placeholder:optionsSaveDirectoryPlaceholder">
+    </div>
+    <div class="opt">
+      <div class="text"><label for="saveAs" data-i18n="optionsSaveAs">"Save as" dialog</label><small id="saveAsDesc" data-i18n="optionsSaveAsDesc">Ask where to save each file instead of downloading silently.</small></div>
+      <span class="switch"><input type="checkbox" id="saveAs" aria-describedby="saveAsDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="clipboardFit" data-i18n="optionsClipboardFit">Fit clipboard copies to app limits</label><small id="clipboardFitDesc" data-i18n="optionsClipboardFitDesc">Downscales copies past 25 million pixels so pasting into Google Docs &amp; co. works.</small></div>
+      <span class="switch"><input type="checkbox" id="clipboardFit" aria-describedby="clipboardFitDesc"><span class="track"></span></span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="optionsSectionWorkflow">Workflow</h2>
+    <div class="opt">
+      <div class="text"><label for="autoDownload" data-i18n="optionsAutoDownload">Auto-download after capture</label><small id="autoDownloadDesc" data-i18n="optionsAutoDownloadDesc">Immediately saves the image when a capture finishes.</small></div>
+      <span class="switch"><input type="checkbox" id="autoDownload" aria-describedby="autoDownloadDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="autoOpenEditor" data-i18n="optionsAutoOpenEditor">Open editor after capture</label><small id="autoOpenEditorDesc" data-i18n="optionsAutoOpenEditorDesc">Jump straight into annotating (single-part captures only).</small></div>
+      <span class="switch"><input type="checkbox" id="autoOpenEditor" aria-describedby="autoOpenEditorDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="theme" data-i18n="optionsTheme">Theme</label><small id="themeDesc" data-i18n="optionsThemeDesc">For the popup and all FullShot pages.</small></div>
+      <select id="theme" aria-describedby="themeDesc">
+        <option value="system" data-i18n="optionsThemeSystem">System</option>
+        <option value="light" data-i18n="optionsThemeLight">Light</option>
+        <option value="dark" data-i18n="optionsThemeDark">Dark</option>
+      </select>
+    </div>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsShortcuts">Keyboard shortcuts</b><small data-i18n="optionsShortcutsDesc">Full page: Alt+Shift+P · Visible: Alt+Shift+V. Customize at chrome://extensions/shortcuts</small></div>
+    </div>
+  </div>
+
+  <!-- YOUR DATA. publish/PRIVACY-POLICY.html §7 tells the reader they can remove
+       what FullShot keeps; this section is where that becomes true. Four rows,
+       four different promises, and each one names what it does NOT do as well —
+       "delete everything" leaves the settings alone and "reset" leaves the
+       screenshots alone, which is only obvious to the person who wrote them.
+
+       Every result line is its own role="status" region rather than one shared
+       one: they are four separate answers to four separate questions, and a
+       shared line would overwrite the answer the reader is still on. The two
+       that a keyboard user can be standing next to when the trigger disappears
+       carry tabindex="-1" so focus has somewhere deliberate to go — the same
+       shape #emptyState uses on history.html. -->
+  <div class="section">
+    <h2 data-i18n="optionsSectionData">Your data</h2>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsStorage">Storage</b>
+        <small id="storageUsage"></small>
+        <small id="storageState" role="status" aria-live="polite" tabindex="-1"></small>
+      </div>
+      <button class="btn" id="persistBtn" type="button" hidden data-i18n="optionsStorageKeep">Keep my data</button>
+    </div>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsExport">Export everything</b>
+        <small data-i18n="optionsExportDesc">Writes one file holding your settings and your screenshot list. It is saved to this device and sent nowhere.</small>
+        <small id="exportSize" role="status" aria-live="polite"></small>
+      </div>
+      <!-- editorExport: the same one word, spent twice rather than translated
+           twice. Same reasoning as the popup* keys in the topbar above. -->
+      <button class="btn" id="exportBtn" type="button" data-i18n="editorExport">Export</button>
+    </div>
+    <div class="opt">
+      <div class="text"><label for="exportImages" data-i18n="optionsExportImages">Include the images</label><small id="exportImagesDesc" data-i18n="optionsExportImagesDesc">The pictures themselves, which are nearly all of the size. Without them the file lists your screenshots but holds none of them.</small></div>
+      <span class="switch"><input type="checkbox" id="exportImages" aria-describedby="exportImagesDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsSweep">Leftover data</b>
+        <small data-i18n="optionsSweepDesc">A capture that is interrupted can leave frames on disk that belong to no screenshot. They appear on no page, so no page can delete them. This finds them and removes them.</small>
+        <small id="sweepResult" role="status" aria-live="polite"></small>
+      </div>
+      <button class="btn" id="sweepBtn" type="button" data-i18n="optionsSweepBtn">Find and remove</button>
+    </div>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsReset">Reset settings</b>
+        <small data-i18n="optionsResetDesc">Puts every setting on this page back to the value it shipped with. Your screenshots are not touched.</small>
+        <small id="resetResult" role="status" aria-live="polite"></small>
+      </div>
+      <button class="btn" id="resetBtn" type="button" data-i18n="optionsResetBtn">Reset</button>
+    </div>
+    <div class="opt">
+      <div class="text"><b data-i18n="optionsDeleteAll">Delete everything</b>
+        <small data-i18n="optionsDeleteAllDesc">Removes every screenshot in your History, and everything left behind by interrupted captures. Your settings stay as they are.</small>
+        <small id="deleteAllResult" role="status" aria-live="polite" tabindex="-1"></small>
+      </div>
+      <button class="btn danger" id="deleteAllBtn" type="button" data-i18n="optionsDeleteAll">Delete everything</button>
+    </div>
+  </div>
+</main>
+
+<!-- role="status" is what turns this pill into an announcement. It only fires
+     on a CHANGE, though, and this pill's text never used to move — options.js
+     merely toggled a class on it, which a screen reader has no way to notice.
+     save() writes the text each time now; the two halves are one feature. -->
+<div id="saveNote" role="status" aria-live="polite" data-i18n="optionsSaved">Saved ✓</div>
+
+<!-- Declared here rather than built by fsToast(), for the same reason it is
+     declared on history.html: a live region has to be in the document, and
+     empty, BEFORE the text lands in it. A <div> inserted with its message
+     already inside is the one case assistive technology may skip — which would
+     make "Saved fullshot-export-2026-08-13.json · 310.44 MB" silent for the
+     reader who most needs to know the export finished. -->
+<div id="fs-toast" role="status" aria-live="polite"></div>
+
+<!-- db.js before common.js: the Your data section reads and empties the local
+     database directly, because blobs cannot travel over runtime.sendMessage —
+     only the DECISIONS about live captures are the worker's. -->
+<script src="db.js"></script>
+<script src="common.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+{
+  "version": "0.1.0",
+  "channel": "v1",
+  "license": "MPL-2.0",
+  "summary": "Shared runtime for the extensions in this repo. Vendored into each tool as vendor/core/ — copied and hash-verified, never linked, and never named _core/ (Chrome refuses to load a package with a root path starting with '_'; _locales is the only exception).",
+
+  "versionNote": "0.1.0, not 1.0.0. The channel is v1 because the directory is the major version; the version number is a claim about how much of that channel exists, and 1 of the 11 specified v1 modules is built. It becomes 1.0.0 when the v1 surface is real, not when the directory is created.",
+
+  "modulesKeyNote": "Keys are FILE paths relative to core/, because that is what scripts/sync-core.mjs looks up: for each file it copies it reads modules[channel + '/' + relativePath] and surfaces that entry's caveat. Do not collapse v1/ui/*.* into one entry — three lookups would silently miss. The architecture's module list is coarser than this map; each specified entry carries a \"module\" field naming which of its 11 entries the file belongs to, so the count below is derivable from this data rather than asserted beside it.",
+
+  "modules": {
+    "v1/settings.js": {
+      "status": "built",
+      "specified": true,
+      "module": "v1/settings.js",
+      "owns": "Schema, defaults, the sync/local partition, migrations and change events over chrome.storage.",
+      "promotedFrom": "templates/tool/lib/settings.js",
+      "sourceSha256": "889185d1ee85b9b0d99fee91fb46ffabd3d65a930c029bc3546a7be2c0321354",
+      "caveat": "Promoted as a TEMPLATE — it still declares a tool's defaults and key lists inline, and carries PLACEHOLDER markers. Vendored core files are hash-checked and must not be hand-edited, so it is not yet drop-in vendorable. See core/README.md."
+    },
+    "v1/storage.js": {
+      "status": "built",
+      "specified": false,
+      "owns": "The skeleton's concrete IndexedDB wrapper: a scratch store and an items store, the age/count sweeps, export, quota classification and clearAll.",
+      "promotedFrom": "templates/tool/lib/storage.js",
+      "sourceSha256": "7f40a480f088fc728a895ea9e8bd0c66980fa5f0602e1d4175a1ef0ba82fbb6f",
+      "caveat": "Not the same module as v1/idb.js. idb.js is the generic primitive and is not built; this is the opinionated wrapper that exists."
+    },
+    "v1/jobs.js": {
+      "status": "built",
+      "specified": false,
+      "owns": "The in-flight job table, mirrored write-through to chrome.storage.session so it survives service-worker termination.",
+      "promotedFrom": "templates/tool/lib/jobs.js",
+      "sourceSha256": "820e3d3be269a94a65d1597665816f59f9a52564700f73e78fa6a14fc13665f5",
+      "caveat": "Not one of the enumerated v1 modules. It is here because a real implementation exists."
+    },
+
+    "v1/ns.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/ns.js",
+      "owns": "The namespace object every other core file attaches to; loads first, has no other job."
+    },
+    "v1/msg.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/msg.js",
+      "owns": "Promise-wrapped runtime messaging plus the service-worker lifetime guards: send timeouts, the onMessage router, port teardown, keepalive."
+    },
+    "v1/idb.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/idb.js",
+      "owns": "Generic IndexedDB mechanism only — open, upgrade, transaction, put, get, cursor, quota. No store schema, no retention policy."
+    },
+    "v1/download.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/download.js",
+      "owns": "Handing bytes to chrome.downloads: object-URL lifecycle, filename sanitisation including Windows reserved names, conflictAction."
+    },
+    "v1/clipboard.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/clipboard.js",
+      "owns": "Writing an image or text to the clipboard, including the focus/permission sequence and its fallbacks."
+    },
+    "v1/i18n.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/i18n.js",
+      "owns": "A chrome.i18n wrapper and the [data-i18n] DOM applier."
+    },
+    "v1/diag.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/diag.js",
+      "owns": "A local, telemetry-free error ring buffer and the redacted report it produces on demand. Never a network call."
+    },
+    "v1/detect/pii.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/detect/pii.js",
+      "owns": "Detection of sensitive strings, and only detection — how a tool renders a redaction stays in the tool."
+    },
+    "v1/imaging.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/imaging.js",
+      "owns": "Device-pixel-ratio-aware scaling, tiling, and encoding to a byte budget."
+    },
+    "v1/ui/tokens.css": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/ui/",
+      "owns": "Design tokens — colour, space, radius, type — for light and dark."
+    },
+    "v1/ui/base.css": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/ui/",
+      "owns": "Reset and layout primitives for popup and options pages."
+    },
+    "v1/ui/controls.js": {
+      "status": "planned",
+      "specified": true,
+      "module": "v1/ui/",
+      "owns": "Framework-free toggle, select, slider, section and toast controls."
+    },
+
+    "dev/fakedom.js": {
+      "status": "built",
+      "specified": false,
+      "shipped": false,
+      "owns": "Node-side fake DOM for simulations: elements, shadow roots, computed style, ranges, a window with device-pixel-ratio quantised scrolling.",
+      "promotedFrom": "Extension/Full_Screen_Shot/test/pixel-sim/fakedom.js",
+      "sourceSha256": "8479fc889ef0c2155ec7e03d4de40fcaaf9cd77e17a27dcd9e6a15ba5ad35e8e"
+    },
+    "dev/canvas2d.js": {
+      "status": "built",
+      "specified": false,
+      "shipped": false,
+      "owns": "Node-side buffer-backed canvas and 2d context subset, so a rasterised result can be graded without a browser.",
+      "promotedFrom": "Extension/Full_Screen_Shot/test/pixel-sim/canvas2d.js",
+      "sourceSha256": "14197e20f7f6fd852b78903fc6340b0a4d91e65533cbcd32eb5e1f9e46948488"
+    },
+    "dev/png.js": {
+      "status": "built",
+      "specified": false,
+      "shipped": false,
+      "owns": "Minimal 8-bit RGBA PNG writer for dumping a graded frame to disk. node:zlib only.",
+      "promotedFrom": "Extension/Full_Screen_Shot/test/pixel-sim/png.js",
+      "sourceSha256": "663c2f0e21999a78559b53942fbbdef52d2a0e124d20f39e60aeb0e9b9238337"
+    }
+  },
+
+  "counts": {
+    "countingRule": "Two units, both stated, so neither number contradicts the list beside it. The architecture enumerates 11 entries under core/v1/ — ns.js, msg.js, settings.js, idb.js, download.js, clipboard.js, i18n.js, diag.js, detect/pii.js, imaging.js, ui/ — where ui/ is ONE entry holding three files. This map keys on files, so 13 of its entries carry \"specified\": true. Derive 11 as the number of distinct \"module\" values among them; derive 13 by counting the keys. A reader who counts keys and gets 13 has not found an error.",
+    "specifiedV1Modules": 11,
+    "specifiedV1ModuleFiles": 13,
+    "specifiedV1ModulesBuilt": 1,
+    "specifiedV1ModulesNotBuilt": 10,
+    "unspecifiedV1FilesBuilt": 2,
+    "devHelpersBuilt": 3,
+    "coreTestSims": 3
+  },
+
+  "countsVerifiedBy": "core/test/coverage.node.js. Every number in `counts` above is recomputed from this file's own `modules` map and from the tree on disk, on every CI run, and a mismatch fails the core job. Mind the unit when reading a mismatch: specifiedV1Modules/Built/NotBuilt are in MODULES (11), specifiedV1ModuleFiles is in FILES (13), and counting built/not-built in the wrong unit produces 1/12 instead of 1/10 — which looks like an error in this file and is an error in the counter.",
+
+  "gaps": [
+    "CLOSED 2026-08-15 — core/test/ now holds a sim per shipped module (v1/settings.js, v1/storage.js, v1/jobs.js) plus core/test/coverage.node.js, and the 'core sims' job passes. The gate that made this a known-red is unchanged and still correct: ci.yml fails when core/ exists and core/test/*.node.js globs to nothing. What ci.yml CANNOT do is notice a FOURTH module landing with no sim — its test is `-eq 0`, so one file would have bought a permanent green — so the one-sim-per-module rule is enforced by core/test/coverage.node.js, which the same glob runs. Each sim loads the real shipped source on bare Node and carries an executed failing case: it mutates the source, reloads it, and asserts the corresponding check goes red, so an assertion that cannot fail is itself a failure. Kept here rather than deleted because the shape of the hole is the useful part: an empty loop that exits 0 is indistinguishable from a passing one, and so is a loop that stopped covering half its subject. NOTE ON A MISQUOTE THAT LIVED HERE: this entry, core/README.md and core/CHANGELOG.md all presented '::error::core/ exists but core/test/ holds no sims — every core module ships with one.' as a verbatim quotation of ci.yml. It never was; the real message -- the '::error::' inside ci.yml's 'Lint + run core sims' step -- is longer and differently punctuated. Corrected in all three.",
+    "No tool vendors core yet, so no vendored copy is hash-checked today. Extension/Full_Screen_Shot/tool.json sets \"core\": null on purpose and has no vendor/core/ directory. scripts/check-core-sync.mjs and the ci.yml gates step that runs it are wired; they currently have no subject.",
+    "v1/ns.js is not built, so there is no namespace to attach to. The three promoted modules keep the globals their sources define (SK_*/sk*, SKDB, SKJOBS) instead of a namespaced form that nothing yet defines.",
+    "v1/settings.js is not drop-in vendorable: it declares a tool's own defaults inline while vendored files are hash-checked against core.",
+    "core/dev/ duplicates three files that still live in Extension/Full_Screen_Shot/test/pixel-sim/, which is deliberate (the tool's sims require them by relative path) and was guarded by nothing but the recorded sourceSha256, which nothing recomputed. PARTIALLY CLOSED 2026-08-15: core/test/coverage.node.js now recomputes the sha256 of every promotedFrom source in this file — the three dev/ helpers and the three v1/ modules — and additionally asserts that each promoted copy still CONTAINS its source verbatim, so the header's 'byte for byte' claim is checked rather than trusted. All six matched when the check landed. What is still not guarded is the reverse direction: a change made in core/dev/ and not in the tool's copy leaves the tool's sims running different code, and no gate reads the tool's copy.",
+    "core/dev/ being outside the vendored surface is enforced in one place only: sync-core.mjs walks core/v1/** and never sees dev/. The two companion rules — no packaging allowlist may include dev/, nothing in an extension may require it — are review conventions. scripts/policy-check.mjs asserts neither."
+  ]
+}

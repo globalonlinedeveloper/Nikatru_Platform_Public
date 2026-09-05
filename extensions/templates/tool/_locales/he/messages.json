@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — החליפו אותי",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "החליפו אותי — משפט אחד, מטרה אחת, עד 132 תווים, בלי שיווק.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — החליפו אותי",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "החלפת ערכת נושא",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "אפשרויות",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "הכרטיסייה הפעילה",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "קורא…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "העתקת הכותרת",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "קריאה חוזרת של הכרטיסייה הפעילה",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "סגירה",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "הועתק",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "לא ניתן היה להעתיק — הקישו Ctrl+C במקום",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "הפעולה האחרונה, $ACTION$, נכשלה — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "הפעולה האחרונה, $ACTION$, נכשלה — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "קריאת כותרת",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "העתקה",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "מחיקת נתונים",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "הרצה",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "משהו עצר את הפעולה לפני שהסתיימה. נסו שוב.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "הכרטיסייה הזו כבר עסוקה.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "הדפדפן מגן על הדף הזה ואינו מתיר לקרוא אותו.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "לא נמצאה כרטיסייה פעילה.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "לדף הזה אין כותרת לקרוא.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "בוטל.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "הודעה לא מוכרת.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "הכרטיסייה נסגרה לפני שהעבודה הסתיימה.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "התוסף לא השיב.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "לא חזר דבר.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "דפי דפדפן כמו הגדרות, תוספים והדף 'כרטיסייה חדשה' חסומים בפני כל התוספים. נסו זאת בדף אינטרנט רגיל.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "חלונות כלי הפיתוח חסומים בפני תוספים.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "דפי הצגת מקור הדף חסומים בפני תוספים. נסו את הדף עצמו במקום זאת.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "דפי תוספים, כולל אלה של התוסף הזה עצמו, מוגנים על ידי הדפדפן.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "חנות האינטרנט של Chrome חוסמת בפני תוספים את הקריאה בדפיה.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "קבצים מקומיים דורשים הרשאה נוספת אחת. פתחו את דף התוספים של הדפדפן, מצאו את התוסף הזה והפעילו את \"אפשר גישה לכתובות URL של קבצים\".",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "הדף הזה לא נטען, ולכן אין עדיין מה לקרוא.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "זהו מציג ה-PDF המובנה של הדפדפן. תוספים אינם יכולים לקרוא בתוכו — פתחו את קובץ ה-PDF בכרטיסייה רגילה או הורידו אותו קודם.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "האתר שפתח את הדף הזה סגר אותו בארגז חול, ולכן תוספים אינם יכולים לקרוא אותו.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "אתר התוספות חוסם בפני תוספים את הקריאה בדפיו.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "אין מקום פנוי במכשיר הזה, ולכן שום דבר לא נשמר. מחקו כמה שורות שמורות באפשרויות ונסו שוב.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "הפעולה ארכה זמן רב מדי והופסקה. שום דבר לא נשאר מאחור.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "הערך הזה ארוך מדי לשמירה בהגדרות המסונכרנות שלכם. נסו ערך קצר יותר.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "ההגדרה הזו לא נשמרה. המתינו רגע ונסו שוב.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "אפשרויות — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · אפשרויות",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "אפשרויות",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "נשמר אוטומטית. אם הסנכרון של הדפדפן מופעל, ההגדרות שלכם נודדות יחד עם פרופיל הדפדפן — והן לעולם אינן נשלחות אלינו.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "התנהגות",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "העתקה בפתיחה",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "העתקת התוצאה ללוח מיד עם פתיחת החלון הקופץ.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "שמירת היסטוריה מקומית",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "כבוי כברירת מחדל. כשהוא מופעל, התוצאות נשמרות במכשיר הזה בלבד, מוצגות ברשימה שלמטה, וניתן למחוק אותן בכל רגע.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "מגבלת היסטוריה",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "השורות הישנות ביותר נמחקות ברגע שהרשימה ארוכה מהמספר הזה.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "מחיקת שורות ישנות מ־",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "ימים. שורות ישנות מוסרות אוטומטית ברקע. הזינו 0 כדי לשמור שורות עד שמגבלת ההיסטוריה תסיר אותן.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "ערכת נושא",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "עוקבת אחרי המערכת כברירת מחדל.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "מערכת",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "בהירה",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "כהה",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "הנתונים שלכם",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "שום דבר לא נשמר במכשיר הזה.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ שורות שמורות במכשיר הזה. שום דבר לא יוצא ממנו.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ שורה שמורה במכשיר הזה. שום דבר לא יוצא ממנו.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ שורות שמורות במכשיר הזה. שום דבר לא יוצא ממנו.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ שורות שמורות במכשיר הזה. שום דבר לא יוצא ממנו.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ שורות שמורות במכשיר הזה. שום דבר לא יוצא ממנו.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ שורות שמורות במכשיר הזה. שום דבר לא יוצא ממנו.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "עמיד: הדפדפן התחייב לא למחוק את הנתונים האלה.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "מאמץ מיטבי: הדפדפן עלול למחוק את הנתונים האלה מיוזמתו אם ייגמר המקום במכשיר. ייצאו גיבוי.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "הדפדפן הזה אינו מגלה אם נתונים שמורים יישמרו, לכן התייחסו אליהם כאל זמניים וייצאו גיבוי.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ בשימוש $USED$ מתוך $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "מחיקה",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "מחיקת השורה מ־$ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "ייצוא הכול",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "שומר כל שורה שמורה לקובץ JSON יחיד במכשיר הזה. שום דבר לא מועלה לשום מקום.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "ייצוא הכול",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "מחיקת הכול",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "מסיר כל שורה שמורה מהמכשיר הזה. ההגדרות נשמרות.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "מחיקת הכול",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "איפוס ההגדרות",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "מחזיר כל הגדרה בדף הזה לברירת המחדל ומסיר אותן מפרופיל הדפדפן המסונכרן שלכם. השורות השמורות נשמרות.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "איפוס ההגדרות",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "דיווח על בעיה",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "הכנת דוח בעיה",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "בונה קובץ קטן המתאר את מצב התוסף הזה. אתם רואים בדיוק מה יש בו לפני שהוא נשמר, ושום דבר לא נשלח לשום מקום.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "הכנת דוח",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "אודות",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — החליפו אותי",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "משפט אחד שאומר בדיוק מה הכלי הזה עושה. הוא עושה את עבודתו במכשיר שלכם: בלי חשבון, בלי מעקב, בלי פניות רשת, ושום דבר לא נשלח אלינו.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "נשמר",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "הכול נמחק",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "לא ניתן היה למחוק — נסו שוב",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "ההגדרה לא נשמרה",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "הייצוא נשמר",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "לא ניתן היה לשמור את הקובץ",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "השורה נמחקה",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "ההגדרות אופסו",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "לא ניתן היה לאפס את ההגדרות",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "הדוח נשמר",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "ביטול",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "למחוק את הכול?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "כל שורה שמורה תוסר מהמכשיר הזה. ההגדרות שלכם יישמרו. אי אפשר לבטל את הפעולה.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "לאפס את כל ההגדרות?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "כל העדפה בדף הזה תחזור לברירת המחדל ותוסר מפרופיל הדפדפן המסונכרן שלכם. השורות השמורות שלכם יישמרו. אי אפשר לבטל את הפעולה.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "לשמור את דוח הבעיה הזה?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "זה כל מה שהקובץ יכיל. אין בו כתובות של דפים, אין בו טקסט מדפים ואין בו שום דבר שלכדתם. שום דבר לא נשלח לשום מקום — הקובץ נשמר במכשיר הזה ואתם מחליטים אם לשתף אותו או לא.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "שמירת הדוח",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "חלון בגלישה בסתר — התוצאה הזו לא נשמרה בהיסטוריה שלכם.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "גישה לאתרים",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "גישה לכל האתרים",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "נדרשת רק לתכונות שפועלות בדפים שלא לחצתם בהם על כפתור סרגל הכלים. אפשר לבטל אותה בכל רגע, כאן.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "מתן גישה",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "ביטול הגישה",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "התוסף הזה יכול כרגע לקרוא כל אתר שאתם מבקרים בו.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "התוסף הזה יכול לקרוא כרטיסייה רק אחרי שתלחצו על הכפתור שלו בסרגל הכלים.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "הגישה ניתנה",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "הגישה לא ניתנה",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "הגישה בוטלה",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "לא ניתן היה לבטל את הגישה",
+    "description": "en: Could not revoke that access"
+  }
+}

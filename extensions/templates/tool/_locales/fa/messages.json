@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — جایگزینم کنید",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "جایگزینم کنید — یک جمله، یک هدف، حداکثر ۱۳۲ نویسه، بدون زبان تبلیغاتی.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — جایگزینم کنید",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "تغییر پوسته",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "گزینه‌ها",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "زبانهٔ فعال",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "در حال خواندن…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "کپی عنوان",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "خواندن دوبارهٔ زبانهٔ فعال",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "بستن",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "کپی شد",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "کپی نشد — به‌جای آن Ctrl+C را بزنید",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "آخرین $ACTION$ ناموفق بود — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "آخرین $ACTION$ ناموفق بود — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "خواندن عنوان",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "کپی",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "پاک‌سازی داده‌ها",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "اجرا",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "چیزی پیش از پایان کار، آن را متوقف کرد. لطفاً دوباره تلاش کنید.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "این زبانه هم‌اکنون مشغول است.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "این صفحه را مرورگر محافظت می‌کند و خواندن آن مجاز نیست.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "هیچ زبانهٔ فعالی پیدا نشد.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "این صفحه عنوانی برای خواندن ندارد.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "لغو شد.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "پیام ناشناخته.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "آن زبانه پیش از پایان کار بسته شد.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "افزونه پاسخی نداد.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "چیزی برنگشت.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "صفحه‌های مرورگر مانند تنظیمات، افزونه‌ها و صفحهٔ زبانهٔ جدید برای همهٔ افزونه‌ها ممنوع هستند. این کار را در یک صفحهٔ وب معمولی امتحان کنید.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "پنجره‌های ابزارهای توسعه‌دهنده برای افزونه‌ها ممنوع هستند.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "صفحه‌های نمایش کد منبع برای افزونه‌ها ممنوع هستند. به‌جای آن خودِ صفحه را امتحان کنید.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "صفحه‌های افزونه‌ها، از جمله صفحه‌های خودِ همین افزونه، توسط مرورگر محافظت می‌شوند.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "فروشگاه وب Chrome خواندن صفحه‌هایش را برای افزونه‌ها مسدود می‌کند.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "فایل‌های محلی به یک مجوز اضافی نیاز دارند. صفحهٔ افزونه‌های مرورگرتان را باز کنید، این افزونه را پیدا کنید و گزینهٔ «اجازه دسترسی به URLهای فایل» را روشن کنید.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "این صفحه بارگذاری نشد، بنابراین هنوز چیزی برای خواندن وجود ندارد.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "این نمایشگر PDF داخلی مرورگر است. افزونه‌ها نمی‌توانند داخل آن را بخوانند — PDF را در یک زبانهٔ معمولی باز کنید یا نخست آن را دانلود کنید.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "سایتی که این صفحه را باز کرده آن را در محیط ایزوله (sandbox) قرار داده است، بنابراین افزونه‌ها نمی‌توانند آن را بخوانند.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "سایت افزودنی‌ها خواندن صفحه‌هایش را برای افزونه‌ها مسدود می‌کند.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "فضای این دستگاه پر شده است، بنابراین هیچ چیزی ذخیره نشد. در گزینه‌ها چند ردیف ذخیره‌شده را حذف کنید و دوباره تلاش کنید.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "این کار بیش از حد طول کشید و متوقف شد. هیچ چیزی باقی نماند.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "این مقدار برای ذخیره در تنظیمات همگام‌سازی‌شدهٔ شما بیش از حد بلند است. مقدار کوتاه‌تری را امتحان کنید.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "این تنظیم ذخیره نشد. لحظه‌ای صبر کنید و دوباره تلاش کنید.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "گزینه‌ها — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · گزینه‌ها",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "گزینه‌ها",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "به‌طور خودکار ذخیره می‌شود. اگر همگام‌سازی مرورگرتان روشن باشد، تنظیمات شما همراه نمایهٔ مرورگرتان جابه‌جا می‌شوند — و هرگز برای ما فرستاده نمی‌شوند.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "رفتار",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "کپی هنگام باز شدن",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "به‌محض باز شدن پنجرهٔ بازشو، نتیجه در کلیپ‌بورد کپی می‌شود.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "نگهداری تاریخچهٔ محلی",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "به‌طور پیش‌فرض خاموش است. وقتی روشن باشد، نتیجه‌ها فقط روی همین دستگاه ذخیره می‌شوند، در فهرست زیر نشان داده می‌شوند و هر زمان که بخواهید می‌توانید آن‌ها را حذف کنید.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "سقف تاریخچه",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "به‌محض اینکه فهرست از این مقدار بلندتر شود، قدیمی‌ترین ردیف‌ها حذف می‌شوند.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "حذف ردیف‌های قدیمی‌تر از",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "روز. ردیف‌های قدیمی به‌طور خودکار و در پس‌زمینه حذف می‌شوند. برای اینکه ردیف‌ها تا رسیدن به سقف تاریخچه بمانند، مقدار را ۰ بگذارید.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "پوسته",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "به‌طور پیش‌فرض از سیستم شما پیروی می‌کند.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "سیستم",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "روشن",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "تیره",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "داده‌های شما",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "هیچ چیزی روی این دستگاه ذخیره نشده است.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ ردیف روی این دستگاه ذخیره شده است. هیچ چیزی از آن خارج نمی‌شود.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ ردیف روی این دستگاه ذخیره شده است. هیچ چیزی از آن خارج نمی‌شود.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ ردیف روی این دستگاه ذخیره شده است. هیچ چیزی از آن خارج نمی‌شود.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ ردیف روی این دستگاه ذخیره شده است. هیچ چیزی از آن خارج نمی‌شود.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ ردیف روی این دستگاه ذخیره شده است. هیچ چیزی از آن خارج نمی‌شود.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ ردیف روی این دستگاه ذخیره شده است. هیچ چیزی از آن خارج نمی‌شود.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "پایدار: مرورگر قول داده است که این داده‌ها را پاک نکند.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "بدون تضمین: اگر فضای دستگاه کم شود، مرورگر ممکن است این داده‌ها را خودش پاک کند. یک نسخهٔ پشتیبان بگیرید.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "این مرورگر نمی‌گوید که داده‌های ذخیره‌شده نگه داشته می‌شوند یا نه، پس آن‌ها را موقت در نظر بگیرید و یک نسخهٔ پشتیبان بگیرید.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ مصرف $USED$ از $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "حذف",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "حذف ردیف مربوط به $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "برون‌بری همه‌چیز",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "همهٔ ردیف‌های ذخیره‌شده را در یک فایل JSON روی همین دستگاه ذخیره می‌کند. هیچ چیزی آپلود نمی‌شود.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "برون‌بری همه‌چیز",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "حذف همه‌چیز",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "همهٔ ردیف‌های ذخیره‌شده را از این دستگاه حذف می‌کند. تنظیمات باقی می‌مانند.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "حذف همه‌چیز",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "بازنشانی تنظیمات",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "همهٔ تنظیمات این صفحه را به مقدار پیش‌فرض برمی‌گرداند و آن‌ها را از نمایهٔ همگام‌سازی‌شدهٔ مرورگرتان حذف می‌کند. ردیف‌های ذخیره‌شده باقی می‌مانند.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "بازنشانی تنظیمات",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "گزارش یک مشکل",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "آماده‌سازی گزارش مشکل",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "یک فایل کوچک می‌سازد که وضعیت این افزونه را توصیف می‌کند. پیش از ذخیره شدن، دقیقاً محتوای آن را می‌بینید و هیچ چیزی به هیچ‌جا فرستاده نمی‌شود.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "آماده‌سازی گزارش",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "درباره",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — جایگزینم کنید",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "یک جمله که دقیقاً می‌گوید این ابزار چه می‌کند. کارش را روی دستگاه شما انجام می‌دهد: بدون حساب کاربری، بدون ردیابی، بدون هیچ درخواست شبکه‌ای، و هیچ چیزی برای ما فرستاده نمی‌شود.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "ذخیره شد",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "همه‌چیز حذف شد",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "حذف نشد — دوباره تلاش کنید",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "این تنظیم ذخیره نشد",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "فایل خروجی ذخیره شد",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "فایل ذخیره نشد",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "ردیف حذف شد",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "تنظیمات بازنشانی شد",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "تنظیمات بازنشانی نشد",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "گزارش ذخیره شد",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "انصراف",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "همه‌چیز حذف شود؟",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "همهٔ ردیف‌های ذخیره‌شده از این دستگاه حذف می‌شوند. تنظیمات شما باقی می‌مانند. این کار قابل بازگشت نیست.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "همهٔ تنظیمات بازنشانی شود؟",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "همهٔ ترجیحات این صفحه به مقدار پیش‌فرض برمی‌گردند و از نمایهٔ همگام‌سازی‌شدهٔ مرورگرتان حذف می‌شوند. ردیف‌های ذخیره‌شدهٔ شما باقی می‌مانند. این کار قابل بازگشت نیست.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "این گزارش مشکل ذخیره شود؟",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "این تمام چیزی است که فایل خواهد داشت. نه نشانی هیچ صفحه‌ای در آن هست، نه متن هیچ صفحه‌ای، و نه هیچ چیزی که ثبت کرده‌اید. هیچ چیزی به هیچ‌جا فرستاده نمی‌شود — فایل روی همین دستگاه ذخیره می‌شود و خودتان تصمیم می‌گیرید آن را با کسی به اشتراک بگذارید یا نه.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "ذخیرهٔ گزارش",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "پنجرهٔ ناشناس — این نتیجه در تاریخچهٔ شما ذخیره نشد.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "دسترسی به سایت‌ها",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "دسترسی به همهٔ سایت‌ها",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "فقط برای قابلیت‌هایی لازم است که در صفحه‌هایی کار می‌کنند که دکمهٔ نوار ابزار را در آن‌ها نزده‌اید. هر زمان بخواهید می‌توانید همین‌جا آن را پس بگیرید.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "دادن دسترسی",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "لغو دسترسی",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "این افزونه هم‌اکنون می‌تواند همهٔ سایت‌هایی را که بازدید می‌کنید بخواند.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "این افزونه فقط پس از آنکه دکمهٔ آن را در نوار ابزار بزنید می‌تواند یک زبانه را بخواند.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "دسترسی داده شد",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "دسترسی داده نشد",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "دسترسی لغو شد",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "آن دسترسی لغو نشد",
+    "description": "en: Could not revoke that access"
+  }
+}

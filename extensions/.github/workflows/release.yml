@@ -1,0 +1,917 @@
+name: Release
+
+# Fires on a per-tool tag: <tool-id>-v<semver>, e.g. fullshot-v1.10.1.
+# The tool ID — not the directory — is the stable public handle, which is why
+# the tag, the zip names and the CI matrix all speak in ids. Directories can be
+# renamed; ids cannot.
+#
+# Chrome's version format is 1–4 dot-separated integers with no pre-release
+# suffix, so both a 3-part and a 4-part tag are accepted (the 4th component is
+# for store-only re-uploads that carry no source change).
+#
+# Requires the same scripts/ gates as ci.yml. Not all of them are written yet —
+# the first step below is the preflight that says which, before anything runs.
+# A release is the one place where a missing gate must stop the work entirely:
+# a published artifact cannot be un-published, and the store keeps whichever
+# package it received first.
+#
+# ── APPENDED 2026-08-25 — the paragraph above is left as written ──────────────
+# ⚠️ "THE FIRST STEP BELOW IS THE PREFLIGHT" IS NOW OFF BY TWO. Two steps were
+# added ahead of it in this change and neither displaces it in meaning: the
+# first refuses a dispatch that asked to publish, the second asserts that every
+# publishing command in this file sits behind the dry-run guard. Both are about
+# whether this run may publish AT ALL, which has to be settled before the
+# question of which gates exist is even worth asking. The preflight is still the
+# first step that inspects the repository.
+
+on:
+  push:
+    tags:
+      - '*-v[0-9]+.[0-9]+.[0-9]+'
+      - '*-v[0-9]+.[0-9]+.[0-9]+.[0-9]+'
+      # core is versioned and tagged (core-v1.0.0) but it is not a tool: it
+      # ships no package and has no store listing, so tag parsing below would
+      # go looking for a tool called "core" and fail confusingly.
+      - '!core-v*'
+
+  # ── THE PUBLISH-FREE DRY RUN ─────────────────────────────────────────────────
+  # 🔴 THIS LANE HAD NEVER EXECUTED. `git tag` is 0 in this repository and a tag
+  # may not be pushed, so every step below `push:` was written, reviewed, argued
+  # about in the comments above them — and never run by a runner. The measured
+  # bug list in this file is the evidence: `set -uo pipefail` under a shell that
+  # already had `-e`, a `tee` swallowing sha256sum's status, an AMO gate that
+  # exits 0 having opened nothing. Each was found by READING, and each is the
+  # kind of thing one execution would have shown in a second. A lane that can
+  # only be exercised by the irreversible act it performs is a lane nobody has
+  # exercised.
+  #
+  # A dispatch gives it a runner without giving it a release. Everything above
+  # the publish gate runs on real bytes — the gates, the secret scan, the sims,
+  # a real `--release` pack of both targets, the store-package check, the AMO
+  # gate on the built zip, verify-refs, web-ext, the checksums — and then the
+  # run stops, because the one step that publishes tests these inputs in its
+  # own `if:`.
+  #
+  # ⚠️ `dry_run` IS NOT A CHOICE BETWEEN DRY AND WET. A dispatch has no tag in
+  # GITHUB_REF_NAME (it carries the branch, `main`), so a dispatch that reached
+  # the publish step would create a release literally named `main`. Unchecking
+  # the box therefore REFUSES in the first step of the job rather than
+  # publishing. The input is a declared switch that must read `true`, not a
+  # second publishing path — and it is checked twice: once by that refusal, and
+  # once by the `if:` on the publishing step itself.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >-
+          Run every gate on a real build and stop before publishing. This is the
+          only mode a dispatch has: unchecking it makes the run refuse, not
+          publish. Releases come from a tag push and from nothing else.
+        type: boolean
+        required: true
+        default: true
+      tag:
+        description: >-
+          The tag this run rehearses, e.g. fullshot-v1.10.1. A dispatch has no
+          tag in GITHUB_REF_NAME, so the tool id and version are read from here.
+          Deliberately not defaulted: a stale default would rehearse a version
+          the CHANGELOG has moved past and fail in check-version, which reads
+          like a defect in the tool rather than a typo in the dispatch.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # the only write in the repo: creating the release
+      actions: read          # read-only, and it buys the ci-conclusion check
+                             # below. A `permissions:` block makes every scope
+                             # it does not name `none`.
+      # ⬜ RESIDUAL, STATED RATHER THAN GLOSSED, 2026-08-25. A dispatch writes
+      # nothing — the one step that would is fenced off — but the job token it
+      # runs under still carries this `write`, because `permissions:` takes no
+      # expression: there is no supported spelling of "read on a dispatch,
+      # write on a tag push" at job level. Narrowing it for real means splitting
+      # the publish step into a second job with its own `permissions:` and an
+      # `if:` of its own, which moves `dist/` across a job boundary through
+      # upload-artifact and changes what "the exact bytes this gate opened" can
+      # mean. That is a decision with a cost, not a cleanup, and it is left
+      # here as a named gap rather than half-done. What DOES hold today: no
+      # step reachable on a dispatch uses the token to write.
+    steps:
+      # ⚠️ FIRST, AND BEFORE THE CHECKOUT ON PURPOSE — it needs no repository to
+      # answer, and it is the answer to "may this run publish". `inputs` is
+      # empty on a `push`, so `inputs.dry_run != true` is null != true, i.e.
+      # TRUE — which is why this whole step is fenced behind the event name.
+      # Without that fence every tag push would hit this refusal and no release
+      # could ever be cut.
+      - name: A dispatch is a rehearsal, so dry_run must stay checked
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
+        run: |
+          echo "::error::dry_run was unchecked on a workflow_dispatch run. This lane publishes from a tag push and from nothing else — a dispatch carries no tag in GITHUB_REF_NAME, so a dispatched release would be created under the branch name. Re-run with dry_run checked to rehearse every gate on real bytes, or push the tag."
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: '24' }
+
+      # ── THE DRY RUN'S GUARD IS ASSERTED, NOT ASSUMED ─────────────────────────
+      # The refusal above is one half. The other half is the `if:` on the
+      # publishing step at the bottom of this file, and an `if:` is one line
+      # that a future edit can drop without any test noticing — the publishing
+      # step has never run, so nothing downstream of it can go red when its
+      # guard goes missing. This step is what notices.
+      #
+      # It reads THIS FILE and requires that `if:` on every step that is a
+      # `uses:` the exemption list does not name, or whose body carries a
+      # store-publish command or a store upload URL.
+      #
+      # ⚠️ THE PATTERN IS BUILT BY ALTERNATION SO NO LINE OF THIS BODY IS ITSELF
+      # A LITERAL PUBLISHING COMMAND. `gh release (create|upload|edit|delete)`
+      # does not match the text `gh release (create|upload|edit|delete)` — after
+      # `gh release ` the subject line has `(`, not `c`. Written the obvious way,
+      # as the four literals, this tripwire would count its own body as four
+      # unguarded publishes and could never go green. A check that quotes the
+      # string it counts counts itself.
+      #
+      # ⚠️ COMMENT LINES ARE EXCLUDED BY STRIPPING INDENTATION AND TESTING THE
+      # FIRST CHARACTER, not by an anchored regex. `^ {6,}[^#[:space:]].*<pat>`
+      # is the obvious spelling and it is WRONG: the greedy run of spaces
+      # backtracks to the last one, `[^#[:space:]]` then eats the `g` of `gh`,
+      # and `.*<pat>` has to find a SECOND copy further along the line. Measured
+      # 2026-08-25 against this file: that form returns nothing on
+      # `          gh release create "$GITHUB_REF_NAME" \` while a bare
+      # `grep -nE 'gh release (create|upload|edit|delete)'` returns it plus the
+      # prose mention in the Checksums comment — so the anchored form would have
+      # reported "0 unguarded" over a file it had not actually read.
+      #
+      # 🔴 GRADING `run:` BODY TEXT WAS THE WHOLE CHECK UNTIL 2026-08-26, AND A
+      # STEP SPELLED `uses:` HAS NO BODY TO GRADE. Measured in a scratch tree on
+      # 2026-08-26 against the old body: a step `uses: <org>/chrome-extension-
+      # upload@v5` appended with NO `if:` at all, and separately a `curl -X PUT`
+      # at a store upload URL, each printed `1 publishing command(s), all 1
+      # guarded` and EXIT 0. Both would have EXECUTED during a dry_run=true
+      # rehearsal — the one event this guard exists to make safe. So `uses:` is
+      # now DEFAULT-DENY: anything not on the exemption list must carry the
+      # guard, which is a rule an unfamiliar action name cannot walk past.
+      #
+      # ⚠️ AND EACH EXEMPTION MUST BE USED, because an exemption outlives the
+      # step it was written for and is then a standing pre-authorisation for
+      # whatever takes that name next.
+      #
+      # ⚠️ BUILTINS, NOT A `grep` PER LINE. The per-line spawn form measured
+      # over 200s on a Windows checkout of this file — too slow to rehearse by
+      # hand, and a check nobody can run by hand is a check nobody checks.
+      # `[[ =~ ]]` and `case` need `shell: bash`, which is declared above.
+      - name: Every publishing step carries the dry-run guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          allow='actions/checkout actions/setup-node'
+          pub='gh release (create|upload|edit|delete)'
+          pub="$pub"'|web-ext (sign|submit)'
+          pub="$pub"'|chrome-webstore-(upload|api)'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*addons\.mozilla\.org'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*chromewebstore\.googleapis\.com'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*googleapis\.com/upload'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*clients2\.google\.com/service/update2'
+          pub="$pub"'|https?://[A-Za-z0-9.-]*addons\.microsoftedge\.microsoft\.com'
+          guard='inputs.dry_run != true'
+          name='' ; sif='' ; suses='' ; shit=''
+          steps=0 ; found=0 ; bad=0 ; usedallow=''
+          grade() {
+            [ -n "$name" ] || return 0
+            steps=$((steps + 1))
+            why=''
+            if [ -n "$suses" ]; then
+              case " $allow " in
+                *" $suses "*) usedallow="$usedallow $suses" ;;
+                *)            why="third-party action  $suses" ;;
+              esac
+            fi
+            if [ -n "$shit" ]; then why="${why:+$why + }publishing surface  $shit"; fi
+            [ -n "$why" ] || return 0
+            found=$((found + 1))
+            # THE if: TEST IS SUBSTRING CONTAINMENT, NOT EVALUATION: it proves the text in $guard
+            # appears somewhere in the step's if:, and can prove nothing about what the expression
+            # EVALUATES to. So the one shape that defeats containment is refused outright — a `||`
+            # anywhere in the if: is a disjunction that can satisfy it without the guard, which is
+            # how `inputs.dry_run != true || true` — measured 2026-08-27 in a scratch tree — was
+            # reported GUARDED and exited 0. No step in this file legitimately needs one.
+            case "$sif" in
+              *'||'*)     printf 'UNGUARDED  %s\n             step: %s\n             its if: carries a ||, a disjunction that can satisfy it without: %s\n' "$why" "$name" "$guard"
+                          bad=$((bad + 1)) ;;
+              *"$guard"*) printf 'GUARDED    %s\n             step: %s\n' "$why" "$name" ;;
+              *)          printf 'UNGUARDED  %s\n             step: %s\n' "$why" "$name"
+                          bad=$((bad + 1)) ;;
+            esac
+          }
+          while IFS= read -r line; do
+            case "$line" in '      - '*) grade ; name=$line ; sif='' ; suses='' ; shit='' ;; esac
+            bare=${line#"${line%%[![:space:]]*}"}
+            case "$bare" in ''|'#'*) continue ;; esac
+            case "$bare" in
+              'if:'*)     sif=$bare ;;
+              '- uses:'*) suses=${bare#'- uses:'} ;;
+              'uses:'*)   suses=${bare#'uses:'} ;;
+            esac
+            suses=${suses#"${suses%%[![:space:]]*}"}
+            suses=${suses%%@*}
+            if [ -z "$shit" ] && [[ $bare =~ $pub ]]; then shit=$bare; fi
+          done < .github/workflows/release.yml
+          grade
+          if [ "$steps" -lt 10 ]; then
+            echo "::error::this step matched only $steps step boundaries in release.yml, which cannot be right — it graded almost nothing. Its step boundary is the literal six-space '      - ', so a re-indent of this file empties it. Fix the boundary; do not delete this step."
+            exit 1
+          fi
+          if [ "$found" -lt 1 ]; then
+            echo "::error::this step read $steps step boundaries in release.yml and graded NO publishing surface at all. ZERO IS NOT A PASS: a scan that finds nothing to grade has proved nothing about what this workflow publishes, and the likely cause is a publishing command respelled past the pattern above. Fix the pattern; do not delete this step while the lane still publishes."
+            exit 1
+          fi
+          for a in $allow; do
+            case " $usedallow " in *" $a "*) continue ;; esac
+            echo "::error::'$a' is on this step's exemption list but no step in release.yml uses it. An exemption outlives the step it was written for and then pre-authorises whatever takes that name next. Delete the line."
+            exit 1
+          done
+          if [ "$bad" -gt 0 ]; then
+            echo "::error::$bad of $found publishing-surface step(s) above have no if: containing '$guard'. A workflow_dispatch rehearsal would EXECUTE them."
+            exit 1
+          fi
+          echo "$steps step boundaries read; $found publishing-surface step(s), all $found behind an if:."
+
+      # Derived from this file, not listed beside it: whatever this workflow
+      # actually calls is what gets checked, so the two can never disagree.
+      #
+      # 🔴 THE PATTERN WAS WIDENED 2026-08-22 AND IT HAD TO BE, IN THE SAME
+      # CHANGE THAT ADDED THE AMO STEP BELOW. It used to read
+      # `(scripts)/[a-z0-9][a-z0-9./-]*\.(mjs|node\.js)` — lowercase-only and
+      # anchored on `scripts/` — so it could not match an `Extension/<Tool>/
+      # publish/...` path at ALL: an uppercase directory fails the character
+      # class twice over. The release would have gained a gate its own existence
+      # check was structurally blind to, which is worse than not having the
+      # gate, because the preflight would keep printing a complete inventory
+      # over an incomplete one. Measured before the widening: 12 paths found,
+      # none of them the Extension one.
+      #
+      # This is ci.yml's pattern verbatim -- the `called=$(grep -rhoE ...)` line in
+      # its "Every gate script these workflows call must exist" step -- and the
+      # narrowness there is
+      # deliberate and inherited with it: a general `<something>/publish/
+      # *.node.js` match also hits PROSE — tool-relative paths that do not
+      # resolve from the repo root — and the preflight would then fail a release
+      # over a sentence. Requiring the full `Extension/<Tool>/publish/` prefix
+      # cannot match that.
+      - name: Preflight — every gate this release runs must exist
+        shell: bash
+        run: |
+          set -euo pipefail  # 🔴 FIXED 2026-08-22; PRE-EXISTING HOLE, and the worst-placed copy of it in the repository. GitHub runs an explicit `shell: bash` as `bash --noprofile --norc -eo pipefail {0}`, so `-e` IS ALREADY ON when this body starts. This line used to read `set -uo pipefail`, which added `-u` and removed nothing — and under `-e` a command whose failure this step means to REPORT kills the shell first, so the report is dead code on the runner. `-e` is spelled out here so the flag a reader sees is the flag that is running, and every reported command below carries its own `||`. Here the reported command is the `called=` grep below: with no match it exits 1 and `-e` killed this step — so `::error::this preflight found no gate-script call in its own workflow`, the line whose job is to stop a release that was never inspected, could not print, and the step's only signal would be a red with no text on the one path that ships bytes to users. `grep -n 'release.yml:[0-9]' scripts/*.mjs` shows why the fix is spelled on existing lines rather than added above them.
+          called=$(grep -ohE '(scripts|Extension/[A-Za-z0-9_]+/publish)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(mjs|node\.js)' .github/workflows/release.yml | sort -u) || true
+          if [ -z "$called" ]; then
+            echo "::error::this preflight found no gate-script call in its own workflow — its pattern is broken, and it was about to clear a release it never inspected."
+            exit 1
+          fi
+          missing=0
+          while IFS= read -r s; do
+            if [ -f "$s" ]; then printf 'PRESENT  %s\n' "$s"
+            else printf 'ABSENT   %s\n' "$s"; missing=$((missing + 1)); fi
+          done <<< "$called"
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing gate script(s) above are ABSENT, so this tag cannot be released: the artifact would go out ungraded by checks this repository claims to run. Write them, or delete the tag."
+            exit 1
+          fi
+
+      # ⚠️ ON A DISPATCH, GITHUB_REF_NAME IS `main`. It is the ref the workflow
+      # was dispatched from, not a tag, so the split below would hand every gate
+      # an id of `main` and a version of `main` and the rehearsal would fail six
+      # steps down for a reason that has nothing to do with the release. The
+      # `tag` input carries the tag instead, and the two sources are read in
+      # separate branches so neither can silently stand in for the other.
+      #
+      # 🔴 THE INPUT IS VALIDATED BEFORE IT BECOMES `steps.tag.outputs.*`, AND
+      # THAT IS A SHELL-INJECTION FIX, NOT TIDINESS. Those outputs are
+      # interpolated as `${{ }}` straight into the `run:` bodies of six later
+      # steps — check-version, policy-check, check-core-sync, lint,
+      # check-store-metadata, the pack calls, changelog-section — where GitHub
+      # substitutes them as TEXT before bash ever sees the script. On a `push`
+      # the value comes from a ref that already matched the tag filters above,
+      # so it cannot carry a metacharacter. On a dispatch it is whatever the
+      # dispatcher typed. The regex below admits only `[a-z0-9-]` before the
+      # `-v` and digits and dots after it, so nothing that survives it can close
+      # a quote or open a subshell. The value is read through `env:` rather than
+      # interpolated into this body for the same reason — at the moment it is
+      # first handled it is still untrusted.
+      #
+      # `core-v*` is excluded here as well as in the tag filters: the filter
+      # cannot see a dispatch, and the header at the top of this file explains
+      # why core must not take this path.
+      - name: Parse tag  (fullshot-v1.10.1 → id + version)
+        id: tag
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$DISPATCH_TAG"
+            if ! printf '%s' "$TAG" | grep -qE '^[a-z0-9][a-z0-9-]*-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+              echo "::error::the tag input was '$TAG', which is not a release tag. Expected <tool-id>-v<major>.<minor>.<patch> with an optional fourth store-only component, e.g. fullshot-v1.10.1. This value is interpolated into later steps, so it is rejected here rather than passed on."
+              exit 1
+            fi
+            if [ "${TAG%%-v*}" = "core" ]; then
+              echo "::error::core is versioned and tagged but it is not a tool: it ships no package and has no store listing, so every gate below would go looking for a tool called 'core'. The push trigger excludes core-v* and a dispatch has to exclude it too, because a tag filter cannot see a dispatch."
+              exit 1
+            fi
+            echo "rehearsing $TAG (workflow_dispatch; nothing will be published)"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "id=${TAG%%-v*}"     >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#*-v}" >> "$GITHUB_OUTPUT"
+
+      # Fetched explicitly so the ancestry check below can only fail for the
+      # real reason (the tag is off-main) and never because the ref was absent.
+      - name: Tag must be reachable from main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      # 🔴 ANCESTRY IS NOT A GRADE. The step above proves this commit is on
+      # main; it does not prove anything ever graded it. `scripts/test/
+      # selftest.node.js` — the gate that grades whether the gates still bite —
+      # runs in ci.yml and NOWHERE ELSE, and this repository's main carries no
+      # branch protection and no rulesets (re-measured 2026-08-27: protection
+      # 404, rulesets []), so a commit can reach main without ci ever completing
+      # on it and a tag can then point at it. Every gate below would run and go
+      # green over gates nobody had checked still bite.
+      #
+      # 🔴 AND A RUN'S CONCLUSION IS NOT A GRADE EITHER. Until 2026-08-27 this
+      # step counted ci.yml runs at the head SHA whose conclusion was `success`
+      # and stopped there. ci.yml's `gates`, `sims` and `package` jobs each carry
+      # `if: needs.discover.outputs.count != '0'`, and `ci-required` LICENSES
+      # them as skipped when discover succeeds and selects zero tools — correctly,
+      # for a scripts-only push. Such a run concludes `success` having built and
+      # graded no package at all, so the old test cleared a tag over bytes whose
+      # per-tool gates and whose windows-latest pack leg had never run on them.
+      # The question is not whether a run succeeded but whether THESE LEGS RAN,
+      # so the jobs of the run are read and graded by name.
+      #
+      # Deliberately carries NO `if:`: a dispatch rehearsal must exercise it too,
+      # or this becomes one more step in this lane that has never executed. Each
+      # `gh api` call is checked separately from its answer, because "I could not
+      # ask" is not "it is fine" — and an EMPTY answer is refused on its own line,
+      # because a jobs list read as zero not-successes is the exact shape this
+      # step would go quietly wrong in.
+      #
+      # ⚠️ THE REHEARSAL IS TOLERATED AND THE TOLERANCE CANNOT REACH A TAG. A
+      # dispatch rehearses at main's head, whose ci run may legitimately be a
+      # zero-matrix one, so there this reports and continues rather than
+      # reddening the only mechanism this lane has for exercising itself. All
+      # three of its conditions are false on a `push`, and `push` is the only
+      # event that can publish — see the `if:` on Publish GitHub Release.
+      #
+      # 🔴 THE RULE IS EXERCISED BEFORE IT IS TRUSTED, the same way ci-required's
+      # is. No tag has ever been pushed in this repository and no release has
+      # ever been published from one, so nothing but reading would ever have told
+      # anyone this grader was wrong; the built-in cases below run on every
+      # execution, the rehearsal included.
+      - name: ci graded THIS commit, so its gate results can be trusted
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL_ID: ${{ steps.tag.outputs.id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          # ── THE RULE, ONCE ──────────────────────────────────────────────────
+          # Reads "<conclusion> <job name>" lines on stdin. Returns 0 only if the
+          # per-tool legs for $1 were PRESENT and every one of them succeeded,
+          # with at least one windows-latest pack leg among them.
+          grade() {
+            local id="$1" c n fam g=0 s=0 p=0 w=0 bad=0
+            while read -r c n; do
+              fam=''
+              case "$n" in
+                "gates · $id"|"gates · $id "*)     fam=gates ;;
+                "sims · $id"|"sims · $id "*)       fam=sims ;;
+                "package · $id"|"package · $id "*) fam=package ;;
+              esac
+              [ -n "$fam" ] || continue
+              if [ "$c" != success ]; then
+                printf '    RED  %-8s %s  (%s)\n' "$fam" "$n" "$c"
+                bad=$((bad + 1))
+                continue
+              fi
+              case "$fam" in
+                gates)   g=$((g + 1)) ;;
+                sims)    s=$((s + 1)) ;;
+                package) p=$((p + 1))
+                         case "$n" in *' · windows-latest') w=$((w + 1)) ;; esac ;;
+              esac
+            done
+            printf '    gates=%d sims=%d package=%d (windows-latest %d) not-success=%d\n' "$g" "$s" "$p" "$w" "$bad"
+            [ "$bad" -eq 0 ] && [ "$g" -ge 1 ] && [ "$s" -ge 1 ] && [ "$p" -ge 1 ] && [ "$w" -ge 1 ]
+          }
+
+          # An empty id turns every prefix above into `gates · `, which matches
+          # EVERY tool's legs — so it is refused rather than widened.
+          ID="${TOOL_ID:-}"
+          if [ -z "$ID" ]; then
+            echo "::error::the tool id is empty, so the job-name prefixes below would match any tool's legs and any ci run would clear this tag. Parse tag produced no id."
+            exit 1
+          fi
+
+          # ── THE RULE IS EXERCISED BEFORE IT IS TRUSTED ──────────────────────
+          # `|| got=RED` reads the PIPELINE's status, whose last stage is grade —
+          # which is the status wanted here, and is said out loud because a status
+          # after a pipe usually is not the one the author meant.
+          cases=0 ; bad=0
+          expect() {
+            local want="$1" label="$2" ; shift 2
+            local got=GREEN
+            printf '%s\n' "$@" | grade "$ID" >/dev/null 2>&1 || got=RED
+            cases=$((cases + 1))
+            if [ "$got" = "$want" ]; then
+              printf '  ok    %-62s -> %s\n' "$label" "$got"
+            else
+              printf '  FAIL  %-62s -> %s, expected %s\n' "$label" "$got" "$want"
+              bad=$((bad + 1))
+            fi
+          }
+          G="success gates · $ID"
+          S="success sims · $ID · node 24"
+          PU="success package · $ID · chromium · ubuntu-latest"
+          PW="success package · $ID · firefox · windows-latest"
+          OTHER="success ci-required"
+          echo "built-in cases for the rule above:"
+          expect GREEN '1. every per-tool leg ran and passed, windows included' "$G" "$S" "$PU" "$PW" "$OTHER"
+          expect RED   '2. THE DEFECT: zero matrix, the per-tool legs are absent' "$OTHER"
+          expect RED   '3. THE DEFECT, other spelling: the legs are listed skipped' "${G/success/skipped}" "${S/success/skipped}" "${PU/success/skipped}" "${PW/success/skipped}" "$OTHER"
+          expect RED   '4. the legs ran, but no windows-latest pack leg among them' "$G" "$S" "$PU" "$OTHER"
+          expect RED   '5. a leg failed' "$G" "${S/success/failure}" "$PU" "$PW" "$OTHER"
+          expect RED   '6. a sibling tool id ran green and this one did not' "success gates · $ID-pro" "success sims · $ID-pro · node 24" "success package · $ID-pro · firefox · windows-latest" "$OTHER"
+          expect RED   '7. the jobs list held nothing this rule recognises' ''
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad of $cases built-in case(s) above disagree with the rule this step is about to apply. The rule was weakened or the cases were; either way this run's verdict would mean nothing."
+            exit 1
+          fi
+          echo "$cases of $cases built-in case(s) agree with the rule."
+          echo
+
+          # ── AND NOW, THIS COMMIT ────────────────────────────────────────────
+          if ! runs=$(gh api --paginate \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=100" \
+                --jq '.workflow_runs[] | select(.conclusion == "success") | .id'); then
+            echo "::error::could not ask GitHub which ci.yml runs exist for $GITHUB_SHA. This step is the only thing between a tag and a gate result nobody produced, so it fails closed rather than assuming."
+            exit 1
+          fi
+          if [ -z "$runs" ]; then
+            echo "::error::ci.yml has no successful run for $GITHUB_SHA, so selftest.node.js never graded these gates on these bytes. Push the commit to main, let ci finish green on it, then tag."
+            exit 1
+          fi
+
+          good=''
+          for run in $runs; do
+            if ! jobs=$(gh api --paginate \
+                  "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
+                  --jq '.jobs[] | ((.conclusion // "null") + " " + .name)'); then
+              echo "::error::could not read the jobs of ci.yml run $run. Its conclusion alone does not say whether the per-tool legs ran, so this fails closed rather than falling back to it."
+              exit 1
+            fi
+            if [ -z "$jobs" ]; then
+              echo "::error::ci.yml run $run reported NO jobs. An empty list grades as zero not-successes, which is the one answer this step must never read as a pass."
+              exit 1
+            fi
+            echo "  ci.yml run $run:"
+            if grade "$ID" <<< "$jobs"; then good=$run ; break ; fi
+          done
+
+          if [ -n "$good" ]; then
+            echo "ci.yml run $good graded $GITHUB_SHA: the gates, sims and package legs for '$ID' all RAN and passed, windows-latest pack leg included."
+            exit 0
+          fi
+
+          why="no successful ci.yml run at $GITHUB_SHA actually ran the per-tool legs for '$ID'. A run whose discover selected zero tools concludes success with gates/sims/package SKIPPED — ci-required licenses that, and it clears nothing about these bytes. Push a commit ci discovers as touching '$ID', let it finish green, then tag."
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF_NAME" = main ] && [ "${DRY_RUN:-}" = true ]; then
+            echo "::notice::$why  This is a dry_run rehearsal dispatched from main, where a zero-matrix head is ordinary, so the rehearsal continues. On the push that publishes, all three of those conditions are false and this is a refusal."
+            exit 0
+          fi
+          echo "::error::$why"
+          exit 1
+
+      # 🔴 A RELEASE USED TO RUN FEWER GATES THAN A PULL REQUEST. Measured
+      # 2026-08-20 by diffing the `node scripts/*.mjs` calls in the two files:
+      # NINE things ci.yml runs did not run here, on the one path that actually
+      # ships bytes to users. A gate that grades every PR and not the release is
+      # a gate the release does not have.
+      #
+      # ⚠️ FIVE OF THE NINE ARE ADDED. The other four are named below rather
+      # than quietly omitted, because "not run here" and "forgotten" look
+      # identical six months on:
+      #   · discover.mjs        computes WHICH tools a push changed, to build
+      #                        ci's matrix. A tag names exactly one tool and this
+      #                        job already parsed it. Nothing to discover.
+      #   · publish-catalog.mjs writes the catalogue for the site. It is a
+      #                        publishing act of its own, on its own trigger; a
+      #                        release must not silently republish it.
+      #   · selftest.node.js   grades THE GATES, not the artifact. It answers
+      #                        "do these checks still bite", which is a question
+      #                        about the repository and is ci's to ask on every
+      #                        push — including this one.
+      #   · sha256.mjs         NOT missing. Its own header says so: "release.yml
+      #                        publishes the digests with coreutils `sha256sum`",
+      #                        which the Checksums step below does. sha256.mjs is
+      #                        ci's DETERMINISM helper — it hashes two independent
+      #                        builds and compares them. Adding the binary here
+      #                        without that second build would publish a digest
+      #                        twice and prove nothing new.
+      #     ⬜ The determinism CHECK itself is still ci-only. Re-running it here
+      #        would re-prove reproducibility on the exact bytes being shipped,
+      #        which is the strongest form of that claim. It is not added in this
+      #        change because it doubles the pack step, and that is a decision
+      #        with a cost rather than an oversight.
+      #
+      # 🔴 THE 2026-08-20 PARITY SURVEY ABOVE COUNTED NINE, AND IT MISSED A
+      # TENTH — through its own method, not through carelessness. It found the
+      # gap by diffing the `node scripts/*.mjs` calls in the two files, and the
+      # tool's own AMO gate is a `node Extension/<Tool>/publish/*.node.js` call,
+      # so the pattern that defined the survey's subject could not see it. It was
+      # the single largest instance of the very thing the survey was written to
+      # find: a gate ci ran on every PR and the release did not run at all. It is
+      # added below, and the count above is left as it was measured — the nine
+      # were nine `scripts/` gates and still are.
+      #
+      # Same shape as the preflight's lowercase-only pattern, and the same
+      # lesson: in this repository a check's blind spot is its `grep`, and the
+      # thing hiding in it is reliably the tool-local gate.
+      - name: Gates (manifest == CHANGELOG == tag, policy, core sync, lint, store metadata, catalogue)
+        run: |
+          node scripts/check-version.mjs ${{ steps.tag.outputs.id }} --expect ${{ steps.tag.outputs.version }}
+          node scripts/policy-check.mjs   ${{ steps.tag.outputs.id }}
+          node scripts/check-core-sync.mjs ${{ steps.tag.outputs.id }}
+          node scripts/lint.mjs ${{ steps.tag.outputs.id }}
+          node scripts/check-store-metadata.mjs ${{ steps.tag.outputs.id }}
+          node scripts/check-catalog.mjs
+
+      # Full tree, no tool argument — the same invocation ci.yml makes. A
+      # credential committed since the last PR reaches users through THIS path.
+      - name: Secret scan (full tree)
+        run: node scripts/secret-scan.mjs .
+
+      - name: Sims
+        run: node scripts/run-tests.mjs ${{ steps.tag.outputs.id }}
+
+      - name: Build all store packages
+        run: |
+          node scripts/pack.mjs ${{ steps.tag.outputs.id }} --target chromium --out dist --release
+          node scripts/pack.mjs ${{ steps.tag.outputs.id }} --target firefox  --out dist --release
+
+      # ⚠️ AFTER THE PACK, AND POINTED AT `dist` ON PURPOSE. This gate reads
+      # the BUILT archives — gecko.id, update_url, the localised store fields —
+      # and its DEFAULT_DIRS are ['publish', 'dist'], so run before the pack it
+      # would grade whatever stale zips happened to sit in publish/ and report on
+      # a release it never opened. These are the exact bytes the next step
+      # uploads.
+      # 🔴 AND IT RAN BARE, SO ITS EXIT CODE WAS THE VERDICT — WHICH THE
+      # SCRIPT ITSELF SAYS IT IS NOT. MEASURED 2026-08-25 from the repo root
+      # with no dist/: `node scripts/check-store-packages.mjs fullshot --dir
+      # dist` prints "0 store package(s) opened and graded, 0 unreadable,
+      # across 2 declared target(s).", then "ZERO PACKAGES WERE PRESENT, so
+      # this run proved nothing about any artifact." and "Read this line rather
+      # than the exit code." — and EXITS 0. Its `die()` fires only when ZERO
+      # TARGETS are declared, which is a fact about tool.json, not about dist.
+      #
+      # This is the same defect class the AMO step below already carries a
+      # wrapper for, so the wrapper here is deliberately the same shape:
+      # capture with `|| code=$?` so `-e` cannot pre-empt the report, print the
+      # output, fail on a nonzero code, and only THEN assert the positive.
+      #
+      # 🔴 THE POSITIVE IS `graded == declared`, NOT `graded > 0`, AND THAT IS
+      # THE WHOLE FIX. `> 0` passes the realistic failure, which is not an empty
+      # dist but a half-built one: the pack step above wrote the chromium zip
+      # and not the firefox one, so ONE package across TWO declared targets is
+      # graded and every assertion that ran, passed. MEASURED 2026-08-25
+      # against a real `--release` build of both FullShot packages, then with
+      # dist/fullshot-firefox.zip removed / corrupted:
+      #
+      #   dist state            the script says                 bare EXIT  this step
+      #   both zips             2 graded / 2 declared, 5 passed      0      EXIT 0
+      #   chromium zip only     1 graded / 2 declared, 3 passed      0      EXIT 1
+      #   dist present, empty   0 graded / 2 declared, 0 passed      0      EXIT 1
+      #   firefox zip corrupt   3 passed · 1 FAILED                  1      EXIT 1
+      #
+      # With the assertion weakened to `[ "$graded" -lt 1 ]` the chromium-only
+      # row goes EXIT 0 on the same fixture — so the equality is what bites,
+      # and a naive non-emptiness check would have cleared a half-built release
+      # with a green tick.
+      #
+      # ⚠️ NOT KEYED ON THE "ZERO PACKAGES WERE PRESENT" WORDING, on purpose.
+      # That is the script's FAILURE text, and the AMO step's comment below
+      # spells out why a tripwire on failure wording is worthless: it goes
+      # quietly green the day the wording changes. The tally line read here is
+      # printed on every run that reaches the end, pass or not.
+      #
+      # ⚠️ AND THIS IS THE GENERAL FIX. A missing firefox zip is caught today
+      # for exactly one tool, by the `if: steps.tag.outputs.id == 'fullshot'`
+      # AMO step below. This step carries no tool-id condition.
+      #
+      # ── APPENDED CORRECTION, 2026-08-25 — the block above is left as written ─
+      # 🔴 `[ "$graded" -ne "$declared" ]`, WHICH THE BLOCK ABOVE DESCRIBES AND
+      # WHICH THIS STEP NO LONGER USES, IS A COUNT IDENTITY, NOT A PER-TARGET
+      # ASSERTION. It compares the script's packagesGraded to its targetsGraded.
+      # Two totals agreeing says nothing about WHICH target each package
+      # belonged to, so it passes a run where one target got two packages and
+      # another got none — which is the same half-built release the block above
+      # set out to catch.
+      #
+      # DISPROOF FIXTURE, measured 2026-08-25 off-runner. dist held a real
+      # `--release` build of both FullShot packages with
+      # `browser_specific_settings` stripped from the firefox zip's
+      # manifest.json — a packer regression this repo gates against elsewhere.
+      # check-store-packages.mjs then classifies that zip as chromium and
+      # prints, verbatim:
+      #     PASS  target "chromium" — 2 package(s) graded  — Extension/Full_Screen_Shot
+      #     target "firefox" (Extension/Full_Screen_Shot): no built package found
+      #     in <dir> — nothing to grade for it in this checkout.
+      #     2 store package(s) opened and graded, 0 unreadable, across 2 declared target(s).
+      # graded == declared == 2. The step body lifted out of THIS FILE by
+      # yaml.safe_load and run under `bash --noprofile --norc` printed
+      # "graded 2 of 2 declared target(s)." and EXIT 0 — a green tick on a
+      # release with no Firefox package in it.
+      #
+      # THE REPLACEMENT COUNTS THE SCRIPT'S OWN POSITIVE PER-TARGET LINE.
+      # check-store-packages.mjs:350-358 emits exactly one line per declared
+      # target: `  PASS  target "<t>" — N package(s) graded` when N > 0, and an
+      # 8-space-indented note carrying no `PASS` when N == 0. So counting the
+      # PASS form and requiring that count == declared IS the per-target
+      # property, and `covered` can never exceed `declared`.
+      # Same harness, same two fixtures, measured 2026-08-25:
+      #   firefox zip stripped  → covered=1 declared=2, EXIT 1
+      #   both zips intact      → covered=2 declared=2, EXIT 0
+      # Keyed on the POSITIVE wording on purpose — the ⚠️ note above says why a
+      # tripwire keyed on the "no built package found" failure text is worthless.
+      - name: The built packages are uploadable
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=0
+          out=$(node scripts/check-store-packages.mjs ${{ steps.tag.outputs.id }} --dir dist 2>&1) || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "::error::check-store-packages.mjs exited $code on dist. These are the exact archives the release step below uploads to a public repository, and an upload cannot be taken back."
+            exit "$code"
+          fi
+          tally=$(printf '%s\n' "$out" | grep -oE '[0-9]+ store package\(s\) opened and graded, [0-9]+ unreadable, across [0-9]+ declared target\(s\)\.' | tail -1) || true
+          if [ -z "$tally" ]; then
+            echo "::error::the gate exited 0 but printed no 'N store package(s) opened and graded ... across K declared target(s).' tally. That line is the verdict this step reads — the script's own output says to read it rather than the exit code — so a run without it proved nothing this step could check."
+            exit 1
+          fi
+          graded=${tally%% *}
+          declared=$(printf '%s\n' "$tally" | sed -E 's/.*across ([0-9]+) declared target\(s\)\.$/\1/')
+          covered=$(printf '%s\n' "$out" | grep -cE '^  PASS  target "[^"]+".*package\(s\) graded') || true
+          if [ "$covered" -ne "$declared" ]; then
+            echo "::error::$tally  Every declared target must have had a built package OF ITS OWN opened and graded here; $covered of $declared declared target(s) did. The release step below uploads dist/*.zip, so an uncovered target is either an artifact this gate never opened or one the pack step never wrote. The two totals in that tally can agree while a target is missing, which is why this reads the script's per-target PASS lines instead."
+            exit 1
+          fi
+          echo "every declared target had a built package graded: $covered of $declared target(s), $graded package(s)."
+
+      # ── THE TOOL'S OWN AMO GATE, ON THE BYTES THIS TAG SHIPS ───────────────
+      # 🔴 THE RELEASE PATH HAD NEVER OPENED THIS GATE AT ALL. Measured
+      # 2026-08-22: `grep -n 'Extension/' .github/workflows/release.yml` returned
+      # ZERO hits, while ci.yml ran the same script in the `gates` job, in its step
+      # named "The tool's own AMO submission gate (FullShot)" —
+      # on a checkout where Extension/Full_Screen_Shot/.gitignore ignores *.zip,
+      # so it printed `SOURCE PASSES — NO PACKAGE WAS GRADED` and EXITED 0. The
+      # repository's most detailed AMO gate therefore graded no package on any
+      # path, and least of all on the one that ships one.
+      #
+      # Measured the same day against a freshly built dist zip, `--zip` EXITS 0
+      # and adds seven assertions the source limb cannot make: reads as a zip
+      # (85 entries), contains manifest.json, packaged manifest === the merged
+      # Firefox manifest at 1.10.2, contains background.js, packaged
+      # background.js guards importScripts, and no test/dev/scratch files.
+      #
+      # ⚠️ THE SCRIPT EXITS 0 WITH NO PACKAGE, SO THIS STEP CANNOT SIMPLY CALL
+      # IT. Its final line is `process.exit(FAILS ? 1 : 0)` and the missing-zip
+      # branch sets no FAILS — a vanished dist/fullshot-firefox.zip would take
+      # the source-only branch and clear the release with a green tick. Both
+      # halves below are the gate: the file must exist, AND the run must print
+      # `ALL PASS`, which the script emits only when it actually opened a
+      # package. Asserting the positive is deliberate — a tripwire keyed on the
+      # failure wording goes quietly green if that wording changes, and this one
+      # goes loudly red instead.
+      #
+      # ⚠️ "LOUDLY" WAS FALSE WHEN IT WAS WRITTEN, AND THE FIX IS ONE LINE BELOW.
+      # The body used to open `set -uo pipefail`, which does not clear the `-e`
+      # GitHub already set, so the `out=$(node ... )` capture aborted the shell
+      # the instant the gate failed. MEASURED 2026-08-22 on this exact body
+      # against a corrupt dist/fullshot-firefox.zip: under the runner's real
+      # flags, `bash --noprofile --norc -eo pipefail <body>`, EXIT 1 having
+      # printed 0 BYTES — no gate output, and not one word of the `::error::`
+      # two paragraphs below about bytes that cannot be taken back. Under a bare
+      # `bash <body>`, the shell the implementer actually tested in, EXIT 1 and
+      # 4163 bytes. So it went red, and it went SILENTLY red, which on a tag is
+      # the difference between "the AMO gate failed, here is which assertion"
+      # and a red X over an empty log at the one moment nothing can be re-run.
+      # Re-measured after the fix, same corrupt zip, same runner flags: EXIT 1
+      # and 4163 bytes, ending in that `::error::`. Against the real zip built
+      # by `pack.mjs fullshot --target firefox --release` (written without its
+      # `scripts/` prefix on purpose — the preflight above derives its set by
+      # grepping this file's TEXT), EXIT 0 and
+      # 4242 bytes ending `ALL PASS` — so it still discriminates and was not
+      # merely quieted. The sentence above is true now; it is left standing
+      # rather than deleted because the design goal it states was always right —
+      # only the shell flags were wrong.
+      #
+      # The `if:` is per-tool, mirroring ci.yml's "The tool's own AMO submission
+      # gate (FullShot)" step, and that is deliberate
+      # rather than lazy: templates/tool ships a copy of this script into every
+      # new tool, so a second tool adds a second step here instead of inheriting
+      # this one, and only tools with a `targets.firefox` need it at all. The
+      # path is a literal so the preflight above can see it — which is why that
+      # preflight's pattern had to be widened in this same change.
+      - name: The tool's own AMO submission gate, on the built zip (FullShot)
+        if: steps.tag.outputs.id == 'fullshot'
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip="dist/${{ steps.tag.outputs.id }}-firefox.zip"
+          if [ ! -f "$zip" ]; then
+            echo "::error::$zip does not exist. The pack step above was supposed to write it, so this gate would have graded the source tree and exited 0 over a release that ships a Firefox package."
+            exit 1
+          fi
+          code=0
+          out=$(node Extension/Full_Screen_Shot/publish/verify-firefox-package.node.js --zip "$zip" 2>&1) || code=$?
+          printf '%s\n' "$out"
+          if [ "$code" -ne 0 ]; then
+            echo "::error::the AMO gate exited $code on $zip. These are the exact bytes this tag would upload to addons.mozilla.org, and an accepted-but-wrong upload cannot be taken back."
+            exit "$code"
+          fi
+          if ! printf '%s\n' "$out" | grep -q '^ALL PASS$'; then
+            echo "::error::the AMO gate exited 0 but never printed ALL PASS. Its only other exit-0 path is 'SOURCE PASSES — NO PACKAGE WAS GRADED', i.e. it opened no zip and graded the source tree instead. A pass that inspected no package must not clear a release."
+            exit 1
+          fi
+
+      - name: Reference integrity + leak check on every artifact
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(dist/*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::pack.mjs produced no zips — nothing to verify, so nothing to release."
+            exit 1
+          fi
+          for z in "${zips[@]}"; do
+            echo "── $z"
+            node scripts/verify-refs.mjs --zip "$z" --strict --leaks
+          done
+
+      # web-ext reads the unpacked tree pack.mjs leaves behind. Checked first so
+      # a packer that stopped emitting it fails with that sentence rather than
+      # with web-ext's "source directory not found", which reads like a lint bug.
+      - name: web-ext lint
+        run: |
+          set -euo pipefail
+          if [ ! -d dist/unpacked-firefox ]; then
+            echo "::error::dist/unpacked-firefox does not exist — pack.mjs did not leave an unpacked Firefox tree for web-ext to lint, so the AMO package is going out ungraded."
+            exit 1
+          fi
+          # ⚠️ EXACT, NOT `web-ext@8`. A range resolves at run time, so the
+          # rehearsal and the tag push that follows it can lint under different
+          # releases of the linter and the rehearsal's green would be about a
+          # tool the publish never ran. 8.10.0 is what `web-ext@8` resolved to
+          # on 2026-08-26 (`npm view web-ext@8 version` → 8.7.0 8.7.1 8.8.0
+          # 8.9.0 8.10.0), so this pin changes no behaviour today.
+          npx --yes web-ext@8.10.0 lint --source-dir dist/unpacked-firefox --warnings-as-errors
+
+      # 🔴 THIS STEP DECLARED NO `shell:` AND ITS ONLY COMMAND WAS A PIPE, SO
+      # ITS STATUS WAS `tee`'s AND NEVER `sha256sum`'s. GitHub runs a bare
+      # `run:` as `bash -e {0}` — `-e` but NOT `-o pipefail` — and there is no
+      # `defaults:` block in this file to supply one (`grep -n '^defaults:'
+      # .github/workflows/release.yml` -> no match; `grep -n 'shell:'` found it
+      # only on the preflight and AMO steps). MEASURED 2026-08-25 on the old
+      # one-liner body in a temp tree, three dist fixtures, both shells:
+      #
+      #   dist fixture              bash -e  (the old flags)   -eo pipefail
+      #   0 zips                    EXIT 0, file 0 bytes       EXIT 1
+      #   1 hashable zip of 2       EXIT 0, file 1 line        EXIT 1
+      #   2 hashable zips of 2      EXIT 0, file 2 lines       EXIT 0
+      #
+      # ⚠️ THE ZERO-ZIP ROW IS NOT THE REACHABLE ONE, and saying otherwise
+      # would overstate this. "Reference integrity + leak check on every
+      # artifact" above already exits 1 when `dist/*.zip` matches nothing, so a
+      # wholly empty dist never gets here. The reachable row is the middle one:
+      # a PARTIAL failure, where the glob matches N zips and sha256sum can hash
+      # fewer, and the step went green having published a SHORT list.
+      #
+      # Short is the whole problem, because that list is a published claim.
+      # "Release notes from CHANGELOG" below appends "Artifacts are
+      # byte-reproducible: rebuild from this tag ... and compare
+      # SHA256SUMS.txt", and `gh release create` uploads dist/SHA256SUMS.txt to
+      # a PUBLIC release with no `--draft`. A digest file missing a zip makes
+      # that sentence a claim about bytes it does not cover, on an artifact
+      # that cannot be un-published.
+      #
+      # `shell: bash` alone fixes the DIRECTION — it makes GitHub run
+      # `bash --noprofile --norc -eo pipefail {0}` — and the middle row above is
+      # the proof. `set -euo pipefail` is spelled out anyway for the reason
+      # given at the preflight step: the flag a reader sees should be the flag
+      # that is running.
+      #
+      # The count check below is the POSITIVE half, and it deliberately does
+      # not key on sha256sum's error wording — same rule as the AMO step's
+      # `grep -q '^ALL PASS$'`: a tripwire keyed on failure text goes quietly
+      # green the day that text changes. MEASURED 2026-08-25 with pipefail
+      # removed from BOTH the body and the shell, so this check was the only
+      # thing that could bite: 1-of-2 fixture EXIT 1, 2-of-2 fixture EXIT 0.
+      # Weakened to the naive `[ "$listed" -lt 1 ]` on those same fixtures, the
+      # 1-of-2 goes EXIT 0 — so it is the EQUALITY that bites, not the
+      # non-emptiness.
+      - name: Checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::dist holds no *.zip, so SHA256SUMS.txt would be published empty beside release notes that tell readers to rebuild and compare against it."
+            exit 1
+          fi
+          sha256sum "${zips[@]}" | tee SHA256SUMS.txt
+          listed=$(grep -cE '^[0-9a-f]{64} ' SHA256SUMS.txt || true)
+          if [ "$listed" -ne "${#zips[@]}" ]; then
+            echo "::error::SHA256SUMS.txt carries $listed digest line(s) for ${#zips[@]} zip(s) in dist. Every one of those zips is uploaded to this public release under the printed claim that a rebuild can be compared against this file, and a short list makes that claim about artifacts it does not cover."
+            exit 1
+          fi
+          echo "SHA256SUMS.txt: $listed digest line(s) for ${#zips[@]} zip(s) in dist."
+
+      - name: Release notes from CHANGELOG
+        run: |
+          node scripts/changelog-section.mjs \
+            ${{ steps.tag.outputs.id }} ${{ steps.tag.outputs.version }} > notes.md
+          {
+            echo ''
+            echo '### Install'
+            echo '- Chrome Web Store / Edge Add-ons: upload `*-chromium.zip` (the identical file goes to both)'
+            echo '- Firefox (AMO): upload `*-firefox.zip`'
+            echo ''
+            echo 'Artifacts are byte-reproducible: rebuild from this tag with'
+            echo '`node scripts/pack.mjs ${{ steps.tag.outputs.id }} --target chromium --release` and compare SHA256SUMS.txt.'
+          } >> notes.md
+
+      # Store submission stays manual and owner-gated. This publishes the
+      # GitHub Release only; nothing here talks to a store.
+      #
+      # ── THIS IS THE ONE STEP A DRY RUN MUST NOT REACH ────────────────────────
+      # 🔴 IT IS ALSO THE ONLY ONE. Measured 2026-08-25 across this whole file:
+      # the executable lines carrying a publishing command are exactly one, the
+      # `gh release (create)` below — there is no store upload step and no AMO
+      # SUBMISSION step in this lane at all. The AMO step above is a verifier
+      # that opens the built zip; it uploads nothing. So the entire publishing
+      # surface of the release lane is this `if:` and this step. "Every
+      # publishing step carries the dry-run guard" near the top of the job is
+      # what keeps that sentence true as the file changes, and what will go red
+      # the day a store upload is added without one.
+      #
+      # BOTH LIMBS ARE LOAD-BEARING, AND THEY FAIL DIFFERENTLY:
+      #   · `github.event_name == 'push'` — the total guard. No dispatch can
+      #     reach this step under any input. Remove it and a dispatch with
+      #     dry_run unchecked publishes a release named `main`, carrying every
+      #     zip and SHA256SUMS.txt, to a PUBLIC repository. (The first step of
+      #     the job refuses that combination, so this limb is the second of two
+      #     independent things that would both have to be removed.)
+      #   · `inputs.dry_run != true` — the declared switch, and the one the
+      #     guard step above asserts by text. Remove it and a dispatch still
+      #     cannot publish, but the file stops SAYING it cannot: the property
+      #     survives only as an event-name coincidence that reads like a
+      #     restriction on which tags are allowed. It is also what turns the
+      #     dry-run guard step red, which is the only automated notice this
+      #     file's publishing surface has.
+      #
+      # ⚠️ `inputs.dry_run` IS NULL ON A PUSH, not false — the `inputs` context
+      # is empty for any event but a dispatch. `!= true` is therefore the
+      # correct comparison and `== false` is NOT: null == false is false, and a
+      # tag push would stop publishing releases entirely.
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.zip dist/SHA256SUMS.txt \
+            --title "${{ steps.tag.outputs.id }} v${{ steps.tag.outputs.version }}" \
+            --notes-file notes.md
+
+      # The counterpart, so a rehearsal ends in a sentence rather than in the
+      # absence of one. A skipped step is rendered the same way whether it was
+      # skipped on purpose or skipped because an earlier step died, and this
+      # lane's whole problem is that nobody has ever watched it run.
+      - name: Rehearsal complete — nothing was published
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "::notice::dry run finished. Every gate above ran on a real --release build of ${{ steps.tag.outputs.id }} v${{ steps.tag.outputs.version }}; the publish step was skipped by its if:, so no GitHub Release exists and nothing was sent to a store. Push the tag to release."

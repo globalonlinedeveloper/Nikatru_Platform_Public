@@ -1,0 +1,2230 @@
+{
+  "appName": {
+    "message": "FullShot — צילום מסך של עמוד שלם"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "צלמו עמוד שלם, את האזור הנראה, אזור מסוים או כל רכיב. ערכו, הוסיפו הערות וייצאו ל-PNG, JPEG, WebP או PDF עם חלוקה חכמה לעמודים."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot — צילום העמוד (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "צילום העמוד השלם"
+  },
+  "commandCaptureVisible": {
+    "message": "צילום האזור הנראה"
+  },
+  "commandCaptureRegion": {
+    "message": "צילום האזור שנבחר"
+  },
+  "commandCaptureElement": {
+    "message": "צילום רכיב בעמוד (לחצו כדי לבחור)"
+  },
+  "popupToggleTheme": {
+    "message": "החלפת ערכת נושא"
+  },
+  "popupModeFullTitle": {
+    "message": "עמוד שלם"
+  },
+  "popupModeFullSub": {
+    "message": "גלילה וצילום של כל העמוד"
+  },
+  "popupModeVisibleTitle": {
+    "message": "האזור הנראה"
+  },
+  "popupModeVisibleSub": {
+    "message": "רק מה שמופיע על המסך"
+  },
+  "popupModeRegionTitle": {
+    "message": "האזור שנבחר"
+  },
+  "popupModeRegionSub": {
+    "message": "גררו כדי לבחור אזור"
+  },
+  "popupModeElementTitle": {
+    "message": "רכיב"
+  },
+  "popupModeElementSub": {
+    "message": "לחצו על כל רכיב בעמוד"
+  },
+  "popupModeDelayedTitle": {
+    "message": "צילום מושהה"
+  },
+  "popupModeDelayedSub": {
+    "message": "עמוד שלם לאחר ספירה לאחור"
+  },
+  "popupDelayLabel": {
+    "message": "שניות השהיה"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ שנ׳",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "הרחבת חלוניות נגללות ומסגרות iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "הגדלת חלוניות נגללות פנימיות ומסגרות iframe עד לתוכן המלא שלהן, במקום לצלם אותן כפי שהן נראות. מסגרות מאתרים אחרים מבקשות הרשאה נוספת פעם אחת בלבד."
+  },
+  "popupDismiss": {
+    "message": "סגירה"
+  },
+  "popupLastErrorFailed": {
+    "message": "ה$MODE$ האחרון נכשל — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "ה$MODE$ האחרון נכשל — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "צילום עמוד שלם"
+  },
+  "popupModeNameVisible": {
+    "message": "צילום האזור הנראה"
+  },
+  "popupModeNameRegion": {
+    "message": "צילום אזור"
+  },
+  "popupModeNameElement": {
+    "message": "צילום רכיב"
+  },
+  "popupModeNameGeneric": {
+    "message": "צילום"
+  },
+  "popupNoActiveTab": {
+    "message": "לא נמצאה לשונית פעילה."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "הצילום לא הצליח להתחיל."
+  },
+  "popupLinkHistory": {
+    "message": "היסטוריה"
+  },
+  "popupLinkBatch": {
+    "message": "אצווה"
+  },
+  "popupLinkOptions": {
+    "message": "אפשרויות"
+  },
+  "optionsPageTitle": {
+    "message": "אפשרויות — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · אפשרויות"
+  },
+  "optionsHeading": {
+    "message": "אפשרויות"
+  },
+  "optionsLead": {
+    "message": "השינויים נשמרים אוטומטית ומסתנכרנים עם פרופיל הדפדפן שלכם."
+  },
+  "optionsSectionImage": {
+    "message": "תמונה"
+  },
+  "optionsFormat": {
+    "message": "פורמט"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ הוא ללא אובדן, $JPEG$ קטן יותר, ו-$WEBP$ הוא הקטן ביותר באיכות דומה.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "איכות $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "תבנית שם הקובץ"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "מצייני מיקום: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "צילום"
+  },
+  "optionsCaptureDelay": {
+    "message": "השהיה נוספת בכל שלב"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "מילישניות המתנה אחרי כל גלילה. הגדילו עבור עמודים איטיים ועתירי אנימציה."
+  },
+  "optionsHideFixed": {
+    "message": "הסתרת רכיבים קבועים ודביקים"
+  },
+  "optionsHideFixedDesc": {
+    "message": "מונע מכותרות לחזור על עצמן בכל מסך (מוצגות פעם אחת בראש)."
+  },
+  "optionsPreScroll": {
+    "message": "גלילה מקדימה לטעינת תוכן מושהה"
+  },
+  "optionsPreScrollDesc": {
+    "message": "גולל את העמוד פעם אחת לפני הצילום. איטי יותר, אך קולט תמונות בטעינה עצלה."
+  },
+  "optionsAdaptiveWait": {
+    "message": "המתנה לפענוח התמונות"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "מאפשר לתמונות מאוחרות או עצלות לסיים פענוח לפני כל פריים, כדי שלא ייקלטו כאריחים שחורים או ריקים."
+  },
+  "optionsHideOverlays": {
+    "message": "הסתרת באנרים וחלונות קופצים"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "מסיר לפני הצילום באנרים של עוגיות והסכמה, חלונות הרשמה לניוזלטר וחלונות «הורידו את האפליקציה», ומשחרר עמודים שחלון קופץ הקפיא. הכול מוחזר לאחר מכן."
+  },
+  "optionsExpandInner": {
+    "message": "הרחבת תוכן נגלל"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "מגדיל חלוניות פנימיות ומסגרות iframe כדי להציג תוכן שמוסתר מתחת לקצה שלהן, במקום לצלם אותן בדיוק כפי שהן נראות."
+  },
+  "optionsExpandPermRow": {
+    "message": "מסגרות מאתרים אחרים"
+  },
+  "optionsExpandPermAllow": {
+    "message": "אישור"
+  },
+  "optionsExpandPermGranted": {
+    "message": "ההרשאה ניתנה — גם מסגרות מאתרים אחרים מורחבות."
+  },
+  "optionsExpandPermMissing": {
+    "message": "ללא ההרשאה «$PERMISSION$», מסגרות מאתרים אחרים מצולמות כפי שהן נראות. חלוניות ומסגרות iframe מאותו אתר תמיד עובדות.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "פרישת רשימות מווירטואליות"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "עובר שלב אחר שלב על פידים עם חלון רינדור (בסגנון $LIB1$ / $LIB2$) כדי לצלם את כל תוכנם, ולא רק את השורות שעל המסך. איטי יותר ברשימות ארוכות מאוד.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "הרחבת תוכן שנחשף רק באינטראקציה"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "פותח לפני הצילום רכיבי $DETAILS$ מקופלים, לשוניות לא פעילות, אקורדיונים ומקטעי «הצג עוד», ואז מחזיר אותם למצבם. חושף תוכן שמסתתר מאחורי לחיצה.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "לחיצה על כפתורי «$BUTTONTEXT$»",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "לוחץ שוב ושוב על כפתורי «טען עוד» / «הצג עוד» וממתין לטעינת התוכן החדש, עד שהפיד מתמצה. בשונה מהאפשרות שמעל, פעולה זו מביאה תוכן שעדיין אינו בעמוד; התוכן שנטען נשאר גם אחרי הצילום."
+  },
+  "optionsInfiniteScroll": {
+    "message": "גלילה לטעינת פידים אינסופיים"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "לפידים ללא כפתור «טען עוד»: גולל עד הסוף וממתין לעמוד הבא, שוב ושוב, עד שהפיד מפסיק לגדול (עם תקרה, כדי שלא לרדוף אחרי פידים אינסופיים). התוכן שנטען נשאר גם אחרי הצילום."
+  },
+  "optionsWaitStable": {
+    "message": "המתנה לסיום טעינת התוכן"
+  },
+  "optionsWaitStableDesc": {
+    "message": "ממתין עד שמצייני טעינה ושלדים (אזורי aria-busy, בלוקים מהבהבים) יוחלפו בתוכן האמיתי לפני הצילום, כדי ש«בטעינה…» באמצע העמוד לא ייקלט כמלבנים אפורים. עם תקרה, כדי שסמן טעינה תקוע לא יתקע את הצילום."
+  },
+  "optionsRedactPII": {
+    "message": "הסתרה אוטומטית של מידע רגיש"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "סורק את הטקסט שהעמוד חושף ומאתר כתובות דוא״ל, מספרי טלפון, מספרי כרטיסי אשראי, מספרי זהות ומפתחות API, ומצייר מלבן אטום מעל מה שהותאם בתמונה השמורה. הוא אינו יכול לקרוא טקסט המצויר כפיקסלים — קנבס, תמונה, PDF, פריים של וידאו. הזיהוי מתבצע במכשיר שלכם; שום דבר לעולם אינו נשלח לשום מקום. חל על צילומי עמוד שלם (גלילת מסמך); המלבן קבוע ואינו הפיך, לכן בדקו את התוצאה בעצמכם."
+  },
+  "optionsMaxPageHeight": {
+    "message": "גובה עמוד מרבי"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "תקרת בטיחות (פיקסלי CSS) לפידים בגלילה אינסופית."
+  },
+  "optionsSectionPdf": {
+    "message": "ייצוא ל-PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "גודל נייר ברירת מחדל"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "האפשרות «$IMAGESIZE$» יוצרת עמוד בדיוק בגודל צילום המסך.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "גודל התמונה"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "כיוון"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "עבור גדלי נייר קבועים."
+  },
+  "optionsOrientationPortrait": {
+    "message": "לאורך"
+  },
+  "optionsOrientationLandscape": {
+    "message": "לרוחב"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "חלוקה חכמה לעמודים"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "מחפש רווח חזותי סמוך לכל מעבר עמוד כדי ששורות טקסט לא ייחתכו באמצע."
+  },
+  "optionsPdfStamp": {
+    "message": "החתמת כתובת ותאריך"
+  },
+  "optionsPdfStampDesc": {
+    "message": "מוסיף את כתובת העמוד ואת תאריך הצילום לתחתית כל עמוד ב-PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "הורדה"
+  },
+  "optionsSaveDirectory": {
+    "message": "תיקייה"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "תת-תיקייה בתוך $DOWNLOADS$ לצילומים שלכם, למשל $EXAMPLE$. ריק = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(הורדות)"
+  },
+  "optionsSaveAs": {
+    "message": "תיבת הדו-שיח «שמירה בשם»"
+  },
+  "optionsSaveAsDesc": {
+    "message": "לשאול היכן לשמור כל קובץ במקום להוריד בשקט."
+  },
+  "optionsClipboardFit": {
+    "message": "התאמת העתקים בלוח לגבולות של אפליקציות"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "מקטין העתקים מעל $PIXELS$ פיקסלים כדי שההדבקה ב-$APP$ ודומותיה תעבוד.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "תהליך עבודה"
+  },
+  "optionsAutoDownload": {
+    "message": "הורדה אוטומטית אחרי הצילום"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "שומר את התמונה מיד עם סיום הצילום."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "פתיחת העורך אחרי הצילום"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "מעבר ישיר להוספת הערות (רק בצילומים בעלי חלק אחד)."
+  },
+  "optionsTheme": {
+    "message": "ערכת נושא"
+  },
+  "optionsThemeDesc": {
+    "message": "עבור החלון הקופץ וכל עמודי FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "לפי המערכת"
+  },
+  "optionsThemeLight": {
+    "message": "בהיר"
+  },
+  "optionsThemeDark": {
+    "message": "כהה"
+  },
+  "optionsShortcuts": {
+    "message": "קיצורי מקלדת"
+  },
+  "optionsShortcutsDesc": {
+    "message": "עמוד שלם: $KEYFULL$ · אזור נראה: $KEYVISIBLE$. להתאמה אישית ב-$URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "נשמר ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "הנתונים שלך"
+  },
+  "optionsStorage": {
+    "message": "אחסון"
+  },
+  "optionsStorageUsage": {
+    "message": "בשימוש $USED$ מתוך $QUOTA$ במכשיר הזה.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "הדפדפן הזה לא מדווח כמה מקום FullShot תופס."
+  },
+  "optionsStorageKept": {
+    "message": "צילומי המסך שלך נשמרים: הדפדפן לא ימחק אותם כדי לפנות מקום."
+  },
+  "optionsStorageAtRisk": {
+    "message": "צילומי המסך שלך נמצאים באחסון «מיטב המאמץ» של הדפדפן, שהוא עשוי לנקות כדי לפנות מקום."
+  },
+  "optionsStorageKeep": {
+    "message": "לשמור את הנתונים שלי"
+  },
+  "optionsExport": {
+    "message": "לייצא הכול"
+  },
+  "optionsExportDesc": {
+    "message": "כותב קובץ אחד עם ההגדרות שלך ורשימת צילומי המסך שלך. הוא נשמר במכשיר הזה ולא נשלח לשום מקום."
+  },
+  "optionsExportImages": {
+    "message": "לכלול את התמונות"
+  },
+  "optionsExportImagesDesc": {
+    "message": "התמונות עצמן, שהן כמעט כל הנפח. בלעדיהן הקובץ מפרט את צילומי המסך שלך אך אינו מכיל אף אחד מהם."
+  },
+  "optionsExportSize": {
+    "message": "גודל הקובץ: כ־$SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "נתונים שנותרו"
+  },
+  "optionsSweepDesc": {
+    "message": "צילום שנקטע עלול להשאיר בדיסק פריימים שאינם שייכים לשום צילום מסך. הם אינם מופיעים בשום עמוד, ולכן שום עמוד אינו יכול למחוק אותם. זה מאתר ומסיר אותם."
+  },
+  "optionsSweepBtn": {
+    "message": "לאתר ולהסיר"
+  },
+  "optionsSweepResult": {
+    "message": "הוסר. צילומים שנוקו: $COUNT$ · מקום שהתפנה: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "לא נותר דבר: כל מה שמאוחסן שייך לצילום מסך שאפשר לראות."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "איפוס ההגדרות"
+  },
+  "optionsResetDesc": {
+    "message": "מחזיר כל הגדרה בעמוד הזה לערך שאיתו הגיעה. צילומי המסך שלך אינם נוגעים."
+  },
+  "optionsResetBtn": {
+    "message": "איפוס"
+  },
+  "optionsResetConfirm": {
+    "message": "להחזיר את כל הגדרות FullShot לערכי ברירת המחדל? צילומי המסך שלך לא יושפעו."
+  },
+  "optionsResetDone": {
+    "message": "ההגדרות חזרו לערכי ברירת המחדל."
+  },
+  "optionsDeleteAll": {
+    "message": "למחוק הכול"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "מסיר כל צילום מסך מההיסטוריה שלך וכל מה שהשאירו אחריהם צילומים שנקטעו. ההגדרות שלך נשארות כמו שהן."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "למחוק את כל מה ש־FullShot אחסן במכשיר הזה?\n\nצילומי מסך בהיסטוריה שלך: $COUNT$\nשאריות מצילומים שנקטעו: $LEFTOVER$\nמקום שיתפנה: $SIZE$\n\nההגדרות שלך לא יושפעו. אי אפשר לבטל את הפעולה.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "נמחק. FullShot אינו מאחסן עוד צילומי מסך במכשיר הזה."
+  },
+  "resultPageTitle": {
+    "message": "צילום מסך — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "העתקה"
+  },
+  "resultCopyTip": {
+    "message": "העתקת התמונה ללוח"
+  },
+  "resultEdit": {
+    "message": "עריכה"
+  },
+  "resultEditTip": {
+    "message": "פתיחה בעורך"
+  },
+  "resultBeautify": {
+    "message": "ייפוי"
+  },
+  "resultBeautifyTip": {
+    "message": "ייפוי — מסגרת ורקע לשיתוף"
+  },
+  "resultClip": {
+    "message": "קליפ"
+  },
+  "resultClipTip": {
+    "message": "קליפ גלילה — $GIF$ / $WEBM$ מונפש",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "גודל נייר ל-PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "הורדה"
+  },
+  "resultDeleteTip": {
+    "message": "מחיקת צילום המסך"
+  },
+  "resultHistoryTip": {
+    "message": "היסטוריית צילומי המסך"
+  },
+  "resultProgressAssembling": {
+    "message": "מרכיבים את צילום המסך שלכם…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "מפענחים פריים אחד…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingTwo": {
+    "message": "מפענחים שני פריימים…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "מפענחים $COUNT$ פריימים…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "מחברים את חלק $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "מחברים את חלק $INDEX$ מתוך כ-$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "שומרים…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$ × $HEIGHT$ פיקסלים  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "טיפ: גררו את התמונה ישירות לשולחן העבודה, או השתמשו ב-$DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "אין כאן כלום"
+  },
+  "resultEmptyBody": {
+    "message": "צילום המסך הזה כבר לא קיים."
+  },
+  "resultOpenHistory": {
+    "message": "פתיחת ההיסטוריה"
+  },
+  "resultSomethingWrong": {
+    "message": "משהו השתבש — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "חלק $INDEX$ מתוך $TOTAL$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "הורדת החלק"
+  },
+  "resultEditPart": {
+    "message": "עריכת החלק"
+  },
+  "resultClipPart": {
+    "message": "קליפ מהחלק"
+  },
+  "resultPartAlt": {
+    "message": "חלק $INDEX$ של צילום המסך",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "מורידים את $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "למחוק את צילום המסך הזה לצמיתות?"
+  },
+  "resultDeleted": {
+    "message": "צילום המסך נמחק."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredTwo": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "הצילום הזה גבוה מכדי להדביק אותו כתמונה אחת קריאה, ולכן $COPY$ מעתיק ללוח סקירה מוקטנת של העמוד כולו. טקסט קטן בה לא יהיה קריא.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "חלק $INDEX$ הועתק ללוח",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "בונים את ה-PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "ה-PDF הורד (עמוד אחד)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneTwo": {
+    "message": "ה-PDF הורד (שני עמודים)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "ה-PDF הורד ($COUNT$ עמודים)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "יצירת ה-PDF נכשלה — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "עורך — FullShot"
+  },
+  "editorBackTip": {
+    "message": "חזרה לצילום המסך"
+  },
+  "editorToolSelect": {
+    "message": "בחירה / הזזה ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "חיתוך ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "עט ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "מרקר ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "קו ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "חץ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "מלבן ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "אליפסה ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "טקסט ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "טשטוש / פיקסול ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "שלב ממוספר ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "חותמת אימוג׳י ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "צבע מותאם אישית"
+  },
+  "editorStrokeTip": {
+    "message": "עובי הקו"
+  },
+  "editorStrokeThin": {
+    "message": "דק"
+  },
+  "editorStrokeMedium": {
+    "message": "בינוני"
+  },
+  "editorStrokeThick": {
+    "message": "עבה"
+  },
+  "editorSizeTip": {
+    "message": "גודל טקסט / אימוג׳י"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "ביטול ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "ביצוע מחדש ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "הקטנה (-)"
+  },
+  "editorZoomInTip": {
+    "message": "הגדלה (+)"
+  },
+  "editorZoomFit": {
+    "message": "התאמה"
+  },
+  "editorZoomTipToHundred": {
+    "message": "התאמה לחלון — לחצו ל-100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "לחצו כדי להתאים לחלון"
+  },
+  "editorExport": {
+    "message": "ייצוא"
+  },
+  "editorExportCopy": {
+    "message": "העתקה ללוח"
+  },
+  "editorExportImage": {
+    "message": "תמונת $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "מסמך $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "שמירה"
+  },
+  "editorSaveTip": {
+    "message": "שמירת השינויים בהיסטוריה ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "עוד"
+  },
+  "editorMenuFiles": {
+    "message": "מעבר להיסטוריה"
+  },
+  "editorMenuOptions": {
+    "message": "מעבר לאפשרויות"
+  },
+  "editorMenuShortcuts": {
+    "message": "קיצורי מקלדת"
+  },
+  "editorCropApply": {
+    "message": "החלת החיתוך"
+  },
+  "editorCropCancel": {
+    "message": "ביטול"
+  },
+  "editorShortcutsHeading": {
+    "message": "קיצורי מקלדת"
+  },
+  "editorShortcutTools": {
+    "message": "בחירת כלים"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "ביטול / ביצוע מחדש"
+  },
+  "editorShortcutSave": {
+    "message": "שמירה בהיסטוריה"
+  },
+  "editorShortcutZoom": {
+    "message": "הקטנה / הגדלה"
+  },
+  "editorShortcutDelete": {
+    "message": "הסרת האובייקט שנבחר"
+  },
+  "editorShortcutEscape": {
+    "message": "ביטול בחירה / ביטול חיתוך"
+  },
+  "editorShortcutsClose": {
+    "message": "סגירה"
+  },
+  "editorNotFound": {
+    "message": "צילום המסך לא נמצא"
+  },
+  "editorToastDownloaded": {
+    "message": "הורד"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "ה-PDF הורד"
+  },
+  "editorToastSaved": {
+    "message": "נשמר בהיסטוריה"
+  },
+  "historyPageTitle": {
+    "message": "היסטוריה — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · היסטוריה"
+  },
+  "historySearchPlaceholder": {
+    "message": "חיפוש לפי כותרת או כתובת…"
+  },
+  "historySelectAll": {
+    "message": "בחירת הכול"
+  },
+  "historyClearSelection": {
+    "message": "ניקוי הבחירה"
+  },
+  "historyDownloadSelected": {
+    "message": "הורדת הנבחרים"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "הורדה ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "מחיקת הנבחרים"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "מחיקה ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "אין עדיין צילומי מסך"
+  },
+  "historyEmptyBody": {
+    "message": "הצילומים שתבצעו יופיעו כאן. לחצו על סמל FullShot בסרגל הכלים כדי להתחיל."
+  },
+  "historyNoMatchesTitle": {
+    "message": "אין תוצאות"
+  },
+  "historyNoMatchesBody": {
+    "message": "אין צילומי מסך שתואמים ל«$QUERY$».",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "צילום מסך אחד · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountTwo": {
+    "message": "שני צילומי מסך · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ צילומי מסך · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ מתוך צילום מסך אחד · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredTwo": {
+    "message": "$SHOWN$ מתוך שני צילומי מסך · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ מתוך $COUNT$ צילומי מסך · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "בחירה"
+  },
+  "historyCardOpen": {
+    "message": "פתיחה"
+  },
+  "historyCardEdit": {
+    "message": "עריכה"
+  },
+  "historyCardDownloadTip": {
+    "message": "הורדה"
+  },
+  "historyCardDeleteTip": {
+    "message": "מחיקה"
+  },
+  "historyCardOpenOriginal": {
+    "message": "פתיחת העמוד המקורי"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$ · $COUNT$ חלקים",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "צילום מסך"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "למחוק את צילום המסך הזה?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "למחוק לצמיתות צילום מסך אחד?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyTwo": {
+    "message": "למחוק לצמיתות שני צילומי מסך?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "למחוק לצמיתות $COUNT$ צילומי מסך?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "מורידים צילום מסך אחד",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingTwo": {
+    "message": "מורידים שני צילומי מסך",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "מורידים $COUNT$ צילומי מסך",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "נמחק"
+  },
+  "beautifyPageTitle": {
+    "message": "ייפוי — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "ייפוי"
+  },
+  "actionBack": {
+    "message": "חזרה"
+  },
+  "commonLoading": {
+    "message": "טוען…"
+  },
+  "beautifyFieldSize": {
+    "message": "גודל"
+  },
+  "beautifyPresetAuto": {
+    "message": "אוטומטי"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200 × 630"
+  },
+  "beautifyPresetSquare": {
+    "message": "ריבוע"
+  },
+  "beautifyPresetPortrait": {
+    "message": "לאורך"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "רקע"
+  },
+  "beautifyBgSlate": {
+    "message": "צפחה"
+  },
+  "beautifyBgGraphite": {
+    "message": "גרפיט"
+  },
+  "beautifyBgSky": {
+    "message": "שמיים"
+  },
+  "beautifyBgSunset": {
+    "message": "שקיעה"
+  },
+  "beautifyBgGrape": {
+    "message": "ענבים"
+  },
+  "beautifyBgMint": {
+    "message": "מנטה"
+  },
+  "beautifyFieldPadding": {
+    "message": "ריפוד"
+  },
+  "beautifyFieldRadius": {
+    "message": "רדיוס פינות"
+  },
+  "beautifyFieldEffects": {
+    "message": "אפקטים"
+  },
+  "beautifyShadow": {
+    "message": "צל מוטל"
+  },
+  "beautifyWindowFrame": {
+    "message": "מסגרת חלון"
+  },
+  "beautifyFieldExport": {
+    "message": "ייצוא"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ פיקסלים",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "קליפ גלילה — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "קליפ גלילה"
+  },
+  "scrollclipFieldFormat": {
+    "message": "פורמט"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ מתנגן בכל מקום. $WEBM$ קטן וחלק יותר (מוקלט בזמן אמת בתוך הדפדפן שלכם).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "רוחב הפלט"
+  },
+  "scrollclipFieldDensity": {
+    "message": "צפיפות"
+  },
+  "scrollclipDensityHint": {
+    "message": "צפיפות גבוהה יותר מפיקה תמונה חדה יותר (קרובה יותר לרזולוציית המקור) — וקובץ גדול יותר."
+  },
+  "scrollclipFieldShape": {
+    "message": "צורה"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "מהירות גלילה (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "קצב פריימים (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "תנועה"
+  },
+  "scrollclipBounce": {
+    "message": "חזרה (גלילה בחזרה למעלה)"
+  },
+  "scrollclipLoop": {
+    "message": "לולאה אינסופית"
+  },
+  "scrollclipCopyFrame": {
+    "message": "העתקת פריים"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "העתקת פריים הכרזה (העליון) כ-$FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · פריים אחד · $SECONDS$ שנ׳",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsTwo": {
+    "message": "$WIDTH$ × $HEIGHT$ · שני פריימים · $SECONDS$ שנ׳",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ פריימים · $SECONDS$ שנ׳",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "מרנדרים פריימים… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "מקודדים $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "מסיימים…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "מקליטים $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "מקליטים…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ אינו נתמך כאן — מייצאים $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "פריים הכרזה הועתק"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — צילום באצווה"
+  },
+  "batchHeading": {
+    "message": "צילום באצווה"
+  },
+  "batchIntro": {
+    "message": "הדביקו כתובות, אחת בכל שורה. FullShot פותח כל עמוד, מצלם ממנו צילום עמוד שלם אל ההיסטוריה שלכם וממשיך הלאה — עד $MAX$ בכל פעם. הצילומים מופיעים בהיסטוריה; לחצו על $OPENLINK$ כדי לצפות בכל אחד מהם, לערוך אותו או לייצא אותו.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "צילום הכול"
+  },
+  "batchPermissionHint": {
+    "message": "פתיחת העמודים האלה דורשת הרשאה חד-פעמית בפעם הראשונה."
+  },
+  "batchPermissionDeclined": {
+    "message": "ההרשאה לפתוח את העמודים האלה נדחתה."
+  },
+  "batchPanelPlan": {
+    "message": "תוכנית"
+  },
+  "batchPanelProgress": {
+    "message": "התקדמות"
+  },
+  "batchPlanCountOne": {
+    "message": "עמוד אחד לצילום",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountTwo": {
+    "message": "שני עמודים לצילום",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ עמודים לצילום",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ עמודים לצילום (מוגבל ל-$MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "אין עדיין כתובות תקינות"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ דולגו: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "סכמה לא נתמכת"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "לא תקין"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "אין מארח"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "כפילות"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "ריק"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "מעל התקרה ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ הושלמו",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ הושלמו, $FAILED$ נכשלו",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ הושלמו — סיום",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ הושלמו, $FAILED$ נכשלו — סיום",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "פתיחה"
+  },
+  "batchJobTimedOut": {
+    "message": "פג הזמן לצילום"
+  },
+  "batchJobNoSession": {
+    "message": "אין הפעלת צילום"
+  },
+  "batchJobFailed": {
+    "message": "הצילום נכשל"
+  },
+  "batchJobError": {
+    "message": "שגיאת צילום"
+  },
+  "regionHintDrag": {
+    "message": "גררו כדי לבחור אזור — $ESC$ לביטול",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "לחצו על רכיב כדי לצלם אותו — $ESC$ לביטול",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "עמודי דפדפן כמו הגדרות, תוספים והלשונית החדשה חסומים בפני כל תוסף. נסו את FullShot בעמוד אינטרנט רגיל."
+  },
+  "errRestrictedDevtools": {
+    "message": "תוסף אינו יכול לצלם חלונות של כלי המפתחים. השתמשו בכלי צילום המסך של המחשב שלכם."
+  },
+  "errRestrictedViewSource": {
+    "message": "לא ניתן לצלם עמודי הצגת קוד מקור. צלמו במקום זאת את העמוד עצמו."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "עמודי תוספים, כולל אלה של FullShot עצמו, מוגנים על ידי הדפדפן ולא ניתן לצלם אותם."
+  },
+  "errRestrictedWebstore": {
+    "message": "חנות האינטרנט של Chrome חוסמת תוספים מקריאת עמודיה, ולכן לא ניתן לצלם את העמוד הזה."
+  },
+  "errRestrictedGeneric": {
+    "message": "העמוד הזה מוגן על ידי הדפדפן ולא ניתן לצלם אותו."
+  },
+  "errWrongTab": {
+    "message": "הצילום נעצר — עברתם לשונית. השאירו את העמוד הזה בחזית עד ש-FullShot יסיים."
+  },
+  "errGeneric": {
+    "message": "הצילום נעצר לפני שהסתיים. נסו שוב."
+  },
+  "errBusy": {
+    "message": "כבר מתבצע צילום בלשונית הזו."
+  },
+  "errBlocked": {
+    "message": "לא ניתן לצלם את העמוד הזה (הגבלה של הדפדפן)."
+  },
+  "errNoStart": {
+    "message": "FullShot לא הצליח להתחיל בעמוד הזה. רעננו את העמוד ונסו שוב."
+  },
+  "errCrash": {
+    "message": "הצילום נעצר באופן בלתי צפוי. נסו שוב."
+  },
+  "errUnknownMessage": {
+    "message": "הודעה לא מוכרת."
+  },
+  "errQuota": {
+    "message": "הדפדפן מגביל את הקצב שבו אפשר לצלם עמודים. המתינו רגע ונסו שוב."
+  },
+  "errFrameHandover": {
+    "message": "הדפדפן הפסיק להעביר את המסך באמצע. המתינו כמה שניות ונסו שוב."
+  },
+  "errLostTab": {
+    "message": "הצילום איבד את הלשונית הזו. רעננו את העמוד ונסו שוב."
+  },
+  "errStoppedEarly": {
+    "message": "הצילום נעצר לפני שהסתיים."
+  },
+  "errStorageFull": {
+    "message": "לא נותר מקום לאחסן את הצילום הזה. מחק כמה צילומי מסך מההיסטוריה ונסה שוב."
+  },
+  "reasonGeneric": {
+    "message": "לא ניתנה סיבה. נסו שוב."
+  },
+  "reasonDecodeFailed": {
+    "message": "לא ניתן היה לפענח את צילום המסך הזה."
+  },
+  "reasonTooLarge": {
+    "message": "התמונה גדולה מכדי לייצא אותה כאן."
+  },
+  "toastCopiedClipboard": {
+    "message": "הועתק ללוח"
+  },
+  "toastCopyFailed": {
+    "message": "ההעתקה נכשלה — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "הייצוא נכשל — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ נשמר",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ נשמר  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ בתים",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ ק״ב",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ מ״ב",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ ג״ב",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

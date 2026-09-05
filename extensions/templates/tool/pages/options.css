@@ -1,0 +1,94 @@
+/* SKELETON — options page layout.
+
+   PAGE LAYOUT ONLY. Every colour is a token from common.css and no rule here
+   declares a hex — see the banner in common.css. The switch itself lives in
+   common.css, not here: it is a shared control, and the three things that are
+   easy to get wrong about it (forced colours, the focus ring, the direction the
+   knob travels) must not be re-derived by 67 authors.
+
+   WHY THIS IS A FILE AND NOT A <style> BLOCK IN options.html.
+
+   Two reasons, and the second is the one that would have cost a release.
+
+   1. It was the only page layout in the family that lived in markup, so the one
+      time the house look changes it would have to be hand-edited in 67 HTML
+      files instead of one stylesheet — and three of the four physical-direction
+      rules in the whole skeleton were in it.
+
+   2. It is what makes a real Content Security Policy possible. manifest.json
+      declares style-src 'self' with NO 'unsafe-inline', so the browser refuses
+      any <style> element and any style="" attribute on an extension page. That
+      is not tidiness: it is the second gate behind "untrusted text never
+      becomes markup", and it is the gate that would have caught the injection
+      this family already shipped once, where a pasted url reached innerHTML,
+      the script half was blocked by the default CSP, and the surviving <img
+      src=https://…> made a real network request out of an extension whose
+      whole listing claim is that it makes none.
+
+   So: no <style> blocks in shipped HTML, no style="" attributes, ever. Setting
+   element.style.foo from script is fine and is not what CSP blocks. */
+
+#wrap { max-inline-size: 640px; margin: 0 auto; padding: 26px 18px 80px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--fg2); margin: 0 0 22px; font-size: 13px; }
+
+.section {
+  background: var(--panel);
+  border: 1px solid var(--line); border-radius: 14px;
+  padding: 4px 18px; margin-block-end: 16px;
+  box-shadow: var(--shadow);
+}
+.section h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--fg2); margin: 14px 0 4px;
+}
+/* A whole section can be hidden as a unit — the site-access block is only shown
+   when the manifest actually declares optional host permissions. `display:
+   none` has to beat the `display: block` a browser gives a div, so it is stated
+   here rather than left to the [hidden] rule's specificity. */
+.section[hidden] { display: none; }
+
+/* flex-wrap, not a fixed two-column row: a German or Tamil setting name runs
+   40-80% longer than the English one and must be allowed to take the width and
+   push its control onto the next line rather than squash it to nothing. */
+.opt {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 0; border-block-start: 1px solid var(--line);
+}
+.opt:first-of-type, .section h2 + .opt { border-block-start: none; }
+.opt .text { flex: 1 1 16rem; min-inline-size: 0; }
+.opt .text b { display: block; font-size: 13.5px; font-weight: 600; }
+.opt .text small { color: var(--fg2); font-size: 12px; }
+.opt select, .opt input[type="number"] {
+  padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 9px;
+  background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif;
+  min-inline-size: 0;
+}
+/* ch, not px: the box is sized by how many DIGITS it must hold, which is the
+   thing that does not change between languages. */
+.opt input[type="number"] { inline-size: 9ch; }
+
+#saveNote {
+  position: fixed; inset-block-end: 22px; inset-inline-end: 22px;
+  background: var(--ok); color: var(--ok-fg);
+  padding: 8px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+#saveNote.show { opacity: 1; }
+
+#itemList { margin: 8px 0 14px; padding: 0; list-style: none; }
+#itemList li {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  padding: 7px 0; border-block-start: 1px solid var(--line); font-size: 12.5px;
+}
+#itemList .when { color: var(--fg2); font-size: 11.5px; flex: none; }
+#itemList .what { flex: 1 1 12rem; min-inline-size: 0; overflow-wrap: anywhere; }
+/* One delete per row. The list was already rendered; without this a user who
+   stored one page they regret has to destroy the whole library to remove it,
+   which in practice means they do not, and the row they regret stays. */
+#itemList .row-del {
+  flex: none; padding: 2px 8px; font-size: 11.5px; line-height: 1.6;
+}
+
+.note { color: var(--fg2); font-size: 12px; margin: 0 0 10px; }

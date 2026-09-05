@@ -1,0 +1,80 @@
+/* SKELETON — popup layout. The colour tokens live in ../pages/common.css so the
+   popup, the options page and every page you add stay one design. Nothing here
+   declares a colour: every value is a token, because a colour declared in a rule
+   is a colour nobody computed a contrast ratio for. If you need a new one, add
+   it to the token blocks in common.css and the sim will grade it.
+
+   TWO LAYOUT RULES, both gated in the sim, both learned the expensive way:
+     * nothing that holds text may `overflow: hidden` without a way to reach the
+       rest of it. German and Tamil run 40-80% longer than English; silent
+       clipping is a bug nobody reports because nobody can see it happen.
+     * every flex child that holds text gets `min-inline-size: 0`, or a long
+       word refuses to shrink and pushes the row wider than the popup. */
+
+body {
+  /* Not a hard 320px. Chrome sizes a popup to its content up to 800x600, so
+     giving it room to grow is free in English and the difference between
+     readable and clipped in the other 54 locales. */
+  inline-size: min(400px, 100vw);
+  min-inline-size: 280px;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--panel);
+}
+
+.header {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px;
+  border-block-end: 1px solid var(--line);
+}
+.header .title {
+  font-weight: 700; font-size: 14px; line-height: 1.3;
+  margin: 0; flex: 1 1 auto; min-inline-size: 0;
+}
+
+.icon-btn {
+  border: none; background: none; color: var(--fg2);
+  font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+  flex: none;
+}
+.icon-btn:hover { background: var(--bg2); color: var(--fg); }
+
+.body { padding: 12px 12px 4px; }
+.label {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--fg2); margin-block-end: 4px;
+}
+.value {
+  font-size: 13.5px; font-weight: 600; line-height: 1.35;
+  /* SCROLLS, never clips. The old rule was `max-height: 4.4em; overflow: hidden`
+     and it threw away everything past four lines with no scrollbar and no
+     indicator — in the one box that holds the tool's actual result. */
+  max-block-size: 8em; overflow-y: auto;
+}
+.origin { font-size: 11.5px; color: var(--fg2); margin-block-start: 3px; }
+
+.actions {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px;
+}
+.actions .btn { flex: 1 1 auto; min-inline-size: 0; }
+.actions .btn.icon { flex: none; }
+
+.err {
+  /* nowrap deliberately: the dismiss cross belongs on the same line as the
+     first line of the message, and .err-text wraps internally instead. */
+  display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 6px;
+  margin: 0 12px 10px; padding: 8px 10px;
+  background: var(--danger-bg); color: var(--danger-fg);
+  border-radius: 8px; font-size: 12px;
+}
+.err-text { flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
+/* The dismiss cross inherits the note's colour rather than the toolbar grey the
+   base .icon-btn uses — it sits on the red panel, not on the header. */
+.err .icon-btn { color: inherit; margin-block-start: -2px; }
+.err .icon-btn:hover { background: color-mix(in srgb, var(--danger-fg) 14%, transparent); color: inherit; }
+
+.footer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px; border-block-start: 1px solid var(--line);
+}
+.footer a { color: var(--fg2); text-decoration: none; font-size: 12px; }
+.footer a:hover { color: var(--accent); text-decoration: underline; }

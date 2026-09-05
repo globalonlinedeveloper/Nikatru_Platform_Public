@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — استبدل هذا",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "استبدل هذا — جملة واحدة وغرض واحد، بحد أقصى 132 حرفًا، بلا لغة تسويقية.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — استبدل هذا",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "تبديل المظهر",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "الخيارات",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "علامة التبويب النشطة",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "جارٍ القراءة…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "نسخ العنوان",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "إعادة قراءة علامة التبويب النشطة",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "إغلاق",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "تم النسخ",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "تعذّر النسخ — اضغط Ctrl+C بدلًا من ذلك",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "فشلت آخر عملية $ACTION$ — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "فشلت آخر عملية $ACTION$ — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "قراءة عنوان",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "نسخ",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "مسح بيانات",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "تشغيل",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "توقّف هذا قبل أن ينتهي. من فضلك حاول مرة أخرى.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "علامة التبويب هذه مشغولة بالفعل.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "هذه الصفحة محمية بواسطة المتصفح ولا يمكن قراءتها.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "لم يُعثر على علامة تبويب نشطة.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "لا يوجد في هذه الصفحة عنوان لقراءته.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "أُلغي.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "رسالة غير معروفة.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "أُغلقت علامة التبويب قبل انتهاء العمل.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "لم تستجب الإضافة.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "لم يعُد أي شيء.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "صفحات المتصفح مثل الإعدادات والإضافات وصفحة علامة التبويب الجديدة ممنوعة على كل الإضافات. جرّب هذا في صفحة ويب عادية.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "نوافذ أدوات المطوّرين ممنوعة على الإضافات.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "صفحات عرض المصدر ممنوعة على الإضافات. جرّب الصفحة نفسها بدلًا من ذلك.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "صفحات الإضافات، بما فيها صفحات هذه الإضافة نفسها، محمية بواسطة المتصفح.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "يمنع متجر Chrome الإلكتروني الإضافات من قراءة صفحاته.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "الملفات المحلية تحتاج إذنًا إضافيًا واحدًا. افتح صفحة الإضافات في متصفحك، وابحث عن هذه الإضافة، وفعّل خيار «السماح بالوصول إلى عناوين URL للملفات».",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "لم تُحمَّل هذه الصفحة، فلا يوجد ما يمكن قراءته بعد.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "هذا هو عارض PDF المدمج في المتصفح. لا تستطيع الإضافات القراءة بداخله — افتح ملف PDF في علامة تبويب عادية أو نزّله أولًا.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "هذه الصفحة معزولة في بيئة محمية بواسطة الموقع الذي فتحها، فلا تستطيع الإضافات قراءتها.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "يمنع موقع الإضافات الإضافاتِ من قراءة صفحاته.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "لا توجد مساحة كافية على هذا الجهاز، فلم يُحفظ أي شيء. احذف بعض الصفوف المخزَّنة من الخيارات ثم حاول مرة أخرى.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "استغرق هذا وقتًا أطول من اللازم فتوقّف. لم يبقَ أي أثر.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "هذه القيمة أطول من أن تُخزَّن في إعداداتك المتزامنة. جرّب قيمة أقصر.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "تعذّر حفظ هذا الإعداد. انتظر لحظة ثم حاول مرة أخرى.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "الخيارات — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · الخيارات",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "الخيارات",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "تُحفظ تلقائيًا. إذا كانت مزامنة متصفحك مفعّلة فإن إعداداتك ترافق ملف تعريف المتصفح — ولا تُرسَل إلينا أبدًا.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "السلوك",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "النسخ عند الفتح",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "انسخ النتيجة إلى الحافظة بمجرد فتح النافذة المنبثقة.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "الاحتفاظ بسجل محلي",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "مُعطَّل افتراضيًا. عند تفعيله تُخزَّن النتائج على هذا الجهاز فقط، وتُعرض أدناه، ويمكن حذفها في أي وقت.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "حد السجل",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "تُحذف أقدم الصفوف عندما تتجاوز القائمة هذا العدد.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "احذف الصفوف الأقدم من",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "بالأيام. تُزال الصفوف القديمة تلقائيًا في الخلفية. اضبط القيمة على 0 للاحتفاظ بالصفوف حتى يُسقطها حد السجل.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "المظهر",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "يتبع نظامك افتراضيًا.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "النظام",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "فاتح",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "داكن",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "بياناتك",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "لا شيء مُخزَّن على هذا الجهاز.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ صفوف مُخزَّنة على هذا الجهاز. لا يغادرها شيء.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ صف مُخزَّن على هذا الجهاز. لا يغادره شيء.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ صفان مُخزَّنان على هذا الجهاز. لا يغادرهما شيء.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ صفوف مُخزَّنة على هذا الجهاز. لا يغادرها شيء.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ صفًا مُخزَّنًا على هذا الجهاز. لا يغادره شيء.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ صف مُخزَّن على هذا الجهاز. لا يغادره شيء.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "دائم: وعد المتصفح بألّا يمسح هذه البيانات.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "أفضل جهد ممكن: قد يمسح المتصفح هذه البيانات من تلقاء نفسه إذا نفدت مساحة الجهاز. صدّر نسخة احتياطية.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "لا يوضّح هذا المتصفح ما إذا كانت البيانات المخزَّنة ستبقى، فعامِلها على أنها مؤقتة وصدّر نسخة احتياطية.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ المستخدَم $USED$ من $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "حذف",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "حذف الصف من $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "تصدير كل شيء",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "يحفظ كل صف مُخزَّن في ملف JSON واحد على هذا الجهاز. لا يُرفع أي شيء.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "تصدير كل شيء",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "حذف كل شيء",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "يزيل كل صف مُخزَّن من هذا الجهاز. تبقى الإعدادات كما هي.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "حذف كل شيء",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "إعادة ضبط الإعدادات",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "يعيد كل إعداد في هذه الصفحة إلى قيمته الافتراضية ويزيلها من ملف تعريف المتصفح المتزامن. تبقى الصفوف المخزَّنة كما هي.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "إعادة ضبط الإعدادات",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "الإبلاغ عن مشكلة",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "إعداد تقرير عن مشكلة",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "ينشئ ملفًا صغيرًا يصف حالة هذه الإضافة. ترى بالضبط ما بداخله قبل حفظه، ولا يُرسَل أي شيء إلى أي جهة.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "إعداد تقرير",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "حول",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — استبدل هذا",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "جملة واحدة تصف بالضبط ما تفعله هذه الأداة. تؤدي عملها على جهازك: بلا حساب، وبلا تتبّع، وبلا اتصالات بالشبكة، ولا يُرسَل إلينا شيء.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "تم الحفظ",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "تم حذف كل شيء",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "تعذّر الحذف — حاول مرة أخرى",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "تعذّر حفظ هذا الإعداد",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "تم حفظ التصدير",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "تعذّر حفظ الملف",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "تم حذف الصف",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "أُعيد ضبط الإعدادات",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "تعذّرت إعادة ضبط الإعدادات",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "تم حفظ التقرير",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "إلغاء",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "حذف كل شيء؟",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "ستُحذف كل الصفوف المخزَّنة من هذا الجهاز. تبقى إعداداتك كما هي. لا يمكن التراجع عن هذا.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "إعادة ضبط كل الإعدادات؟",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "يعود كل تفضيل في هذه الصفحة إلى قيمته الافتراضية ويُزال من ملف تعريف المتصفح المتزامن. تبقى صفوفك المخزَّنة كما هي. لا يمكن التراجع عن هذا.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "حفظ تقرير المشكلة هذا؟",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "هذا كل ما سيحتويه الملف. لا يحمل أي عناوين صفحات، ولا أي نص من الصفحات، ولا أي شيء التقطته. لا يُرسَل شيء إلى أي جهة — يُحفظ الملف على هذا الجهاز وأنت وحدك من يقرّر مشاركته أو عدم مشاركته.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "حفظ التقرير",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "نافذة تصفُّح متخفٍّ — لم تُحفظ هذه النتيجة في سجلّك.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "الوصول إلى المواقع",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "الوصول إلى كل المواقع",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "لا يلزم إلا للميزات التي تعمل على صفحات لم تنقر فيها زر شريط الأدوات. يمكنك سحبه في أي وقت، من هنا.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "منح الوصول",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "سحب الوصول",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "يمكن لهذه الإضافة حاليًا قراءة كل موقع تزوره.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "لا يمكن لهذه الإضافة قراءة أي تبويب إلا بعد أن تنقر زرها في شريط الأدوات.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "تم منح الوصول",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "لم يُمنَح الوصول",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "تم سحب الوصول",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "تعذّر سحب هذا الوصول",
+    "description": "en: Could not revoke that access"
+  }
+}

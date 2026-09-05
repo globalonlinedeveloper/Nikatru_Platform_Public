@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - Καταγραφή ολόκληρης σελίδας"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Καταγράψτε ολόκληρη τη σελίδα, την ορατή περιοχή, μια περιοχή ή ένα στοιχείο. Επεξεργαστείτε και εξαγάγετε σε PNG, JPEG, WebP ή PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - Καταγραφή σελίδας (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Καταγραφή ολόκληρης σελίδας"
+  },
+  "commandCaptureVisible": {
+    "message": "Καταγραφή ορατής περιοχής"
+  },
+  "commandCaptureRegion": {
+    "message": "Καταγραφή επιλεγμένης περιοχής"
+  },
+  "commandCaptureElement": {
+    "message": "Καταγραφή στοιχείου σελίδας (κάντε κλικ για επιλογή)"
+  },
+  "popupToggleTheme": {
+    "message": "Εναλλαγή θέματος"
+  },
+  "popupModeFullTitle": {
+    "message": "Όλη η σελίδα"
+  },
+  "popupModeFullSub": {
+    "message": "Κύλιση και καταγραφή όλων"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Ορατή περιοχή"
+  },
+  "popupModeVisibleSub": {
+    "message": "Μόνο ό,τι φαίνεται"
+  },
+  "popupModeRegionTitle": {
+    "message": "Επιλεγμένη περιοχή"
+  },
+  "popupModeRegionSub": {
+    "message": "Σύρετε για να επιλέξετε"
+  },
+  "popupModeElementTitle": {
+    "message": "Στοιχείο"
+  },
+  "popupModeElementSub": {
+    "message": "Κάντε κλικ σε ένα στοιχείο"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Καταγραφή με καθυστέρηση"
+  },
+  "popupModeDelayedSub": {
+    "message": "Όλη η σελίδα μετά την αντίστροφη μέτρηση"
+  },
+  "popupDelayLabel": {
+    "message": "Δευτερόλεπτα καθυστέρησης"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ δλ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Ανάπτυξη πινάκων κύλισης και iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "Αναπτύσσει τους εσωτερικούς πίνακες κύλισης και τα iframe στο πλήρες περιεχόμενό τους, αντί να τα καταγράφει όπως φαίνονται. Για πλαίσια από άλλους ιστότοπους ζητείται μία φορά μια επιπλέον άδεια."
+  },
+  "popupDismiss": {
+    "message": "Απόρριψη"
+  },
+  "popupLastErrorFailed": {
+    "message": "Η τελευταία $MODE$ απέτυχε — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Η τελευταία $MODE$ απέτυχε — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "καταγραφή ολόκληρης σελίδας"
+  },
+  "popupModeNameVisible": {
+    "message": "καταγραφή ορατής περιοχής"
+  },
+  "popupModeNameRegion": {
+    "message": "καταγραφή περιοχής"
+  },
+  "popupModeNameElement": {
+    "message": "καταγραφή στοιχείου"
+  },
+  "popupModeNameGeneric": {
+    "message": "καταγραφή"
+  },
+  "popupNoActiveTab": {
+    "message": "Δεν βρέθηκε ενεργή καρτέλα."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Η καταγραφή δεν μπόρεσε να ξεκινήσει."
+  },
+  "popupLinkHistory": {
+    "message": "Ιστορικό"
+  },
+  "popupLinkBatch": {
+    "message": "Μαζικά"
+  },
+  "popupLinkOptions": {
+    "message": "Επιλογές"
+  },
+  "optionsPageTitle": {
+    "message": "Επιλογές — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Επιλογές"
+  },
+  "optionsHeading": {
+    "message": "Επιλογές"
+  },
+  "optionsLead": {
+    "message": "Οι αλλαγές αποθηκεύονται αυτόματα και συγχρονίζονται με το προφίλ του προγράμματος περιήγησής σας."
+  },
+  "optionsSectionImage": {
+    "message": "Εικόνα"
+  },
+  "optionsFormat": {
+    "message": "Μορφή"
+  },
+  "optionsFormatDesc": {
+    "message": "Το $PNG$ είναι χωρίς απώλειες· το $JPEG$ είναι μικρότερο· το $WEBP$ είναι το μικρότερο για παρόμοια ποιότητα.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Ποιότητα $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Πρότυπο ονόματος αρχείου"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Σύμβολα κράτησης θέσης: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Καταγραφή"
+  },
+  "optionsCaptureDelay": {
+    "message": "Επιπλέον καθυστέρηση ανά βήμα"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Χιλιοστά του δευτερολέπτου αναμονής μετά από κάθε κύλιση. Αυξήστε τα σε αργές σελίδες με πολλά κινούμενα στοιχεία."
+  },
+  "optionsHideFixed": {
+    "message": "Απόκρυψη σταθερών και κολλημένων στοιχείων"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Εμποδίζει τις κεφαλίδες να επαναλαμβάνονται σε κάθε οθόνη (εμφανίζονται μία φορά, στην κορυφή)."
+  },
+  "optionsPreScroll": {
+    "message": "Προκαταρκτική κύλιση για περιεχόμενο που φορτώνει καθυστερημένα"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Κάνει μία κύλιση σε όλη τη σελίδα πριν από την καταγραφή. Πιο αργό, αλλά πιάνει τις εικόνες που φορτώνουν καθυστερημένα."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Αναμονή για την αποκωδικοποίηση των εικόνων"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Αφήνει τις καθυστερημένες εικόνες να αποκωδικοποιηθούν πριν από κάθε καρέ, ώστε να μην καταγραφούν ως μαύρα ή κενά πλαίσια."
+  },
+  "optionsHideOverlays": {
+    "message": "Απόκρυψη banner και αναδυόμενων παραθύρων"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Αφαιρεί τα banner για cookies, τα παράθυρα εγγραφής σε newsletter και τις προτροπές «κατεβάστε την εφαρμογή» πριν από την καταγραφή, και ξεκλειδώνει σελίδες που έχει παγώσει ένα modal παράθυρο. Όλα επανέρχονται μετά."
+  },
+  "optionsExpandInner": {
+    "message": "Ανάπτυξη περιεχομένου με κύλιση"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Αναπτύσσει τους εσωτερικούς πίνακες και τα iframe ώστε να φανεί το περιεχόμενο που κρύβεται κάτω από το δικό τους όριο, αντί να τα καταγράφει όπως φαίνονται."
+  },
+  "optionsExpandPermRow": {
+    "message": "Πλαίσια από άλλους ιστότοπους"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Να επιτρέπεται"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Η άδεια δόθηκε — αναπτύσσονται και τα πλαίσια από άλλους ιστότοπους."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Χωρίς την άδεια «$PERMISSION$», τα πλαίσια από άλλους ιστότοπους καταγράφονται όπως φαίνονται. Οι πίνακες και τα iframe του ίδιου ιστότοπου λειτουργούν πάντα.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Ξετύλιγμα εικονικοποιημένων λιστών"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Διατρέχει ροές με παράθυρο απόδοσης (τύπου $LIB1$ / $LIB2$) ώστε να καταγραφεί όλο το περιεχόμενό τους και όχι μόνο οι γραμμές στην οθόνη. Πιο αργό σε πολύ μεγάλες λίστες.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Ανάπτυξη περιεχομένου που κρύβεται πίσω από αλληλεπίδραση"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Ανοίγει τα συμπτυγμένα $DETAILS$, τις ανενεργές καρτέλες, τα ακορντεόν και τις ενότητες «εμφάνιση περισσότερων» πριν από την καταγραφή και μετά τα επαναφέρει. Αποκαλύπτει περιεχόμενο κρυμμένο πίσω από ένα κλικ.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Πάτημα των κουμπιών «$BUTTONTEXT$»",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Πατά τα κουμπιά «load more» / «show more» και περιμένει να φορτώσει το νέο περιεχόμενο, ξανά και ξανά, μέχρι να εξαντληθεί η ροή. Σε αντίθεση με την παραπάνω επιλογή, αυτό φέρνει περιεχόμενο που δεν υπάρχει ακόμη στη σελίδα· ό,τι φορτωθεί παραμένει και μετά την καταγραφή."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Κύλιση για ροές άπειρης φόρτωσης"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Για ροές χωρίς κουμπί «load more»: κάνει κύλιση ως το τέλος και περιμένει να φορτώσει η επόμενη παρτίδα, ξανά και ξανά, μέχρι η ροή να σταματήσει να μεγαλώνει (με όριο, ώστε να μην κυνηγάει ατέρμονες ροές). Ό,τι φορτωθεί παραμένει και μετά την καταγραφή."
+  },
+  "optionsWaitStable": {
+    "message": "Αναμονή μέχρι να ολοκληρωθεί η φόρτωση του περιεχομένου"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Περιμένει τα σκελετικά placeholder (περιοχές aria-busy, μπλοκ που τρεμοπαίζουν) να αντικατασταθούν από το πραγματικό περιεχόμενο, ώστε να μην καταγραφεί ένα γκρίζο «φόρτωση…» στη μέση της σελίδας. Με χρονικό όριο, ώστε ένας κολλημένος δείκτης να μην μπλοκάρει την καταγραφή."
+  },
+  "optionsRedactPII": {
+    "message": "Αυτόματη απόκρυψη ευαίσθητων στοιχείων"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Σαρώνει το κείμενο που εκθέτει η σελίδα για διευθύνσεις email, τηλέφωνα, αριθμούς καρτών, αριθμούς ταυτότητας και κλειδιά API και καλύπτει με συμπαγές πλαίσιο ό,τι ταιριάξει στην αποθηκευμένη εικόνα. Δεν μπορεί να διαβάσει κείμενο σχεδιασμένο ως εικονοστοιχεία — καμβά, εικόνα, PDF, καρέ βίντεο. Ο εντοπισμός γίνεται στη συσκευή σας· τίποτα δεν αποστέλλεται ποτέ πουθενά. Ισχύει για καταγραφές ολόκληρης της σελίδας (με κύλιση του εγγράφου)· η κάλυψη είναι μόνιμη, γι' αυτό ελέγξτε μόνοι σας το αποτέλεσμα."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Μέγιστο ύψος σελίδας"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Όριο ασφαλείας (CSS px) για ροές άπειρης κύλισης."
+  },
+  "optionsSectionPdf": {
+    "message": "Εξαγωγή PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Προεπιλεγμένο μέγεθος χαρτιού"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "Το «$IMAGESIZE$» κάνει τη σελίδα ακριβώς όσο το στιγμιότυπο.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Μέγεθος εικόνας"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Προσανατολισμός"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Για σταθερά μεγέθη χαρτιού."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Κατακόρυφος"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Οριζόντιος"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Έξυπνος διαχωρισμός σελίδων"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Αναζητά ένα οπτικό κενό κοντά σε κάθε αλλαγή σελίδας, ώστε να μην κόβονται στη μέση οι γραμμές του κειμένου."
+  },
+  "optionsPdfStamp": {
+    "message": "Σφραγίδα με URL και ημερομηνία"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Προσθέτει το URL της σελίδας και την ημερομηνία καταγραφής στο υποσέλιδο κάθε σελίδας PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Λήψη"
+  },
+  "optionsSaveDirectory": {
+    "message": "Φάκελος"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Υποφάκελος μέσα στο $DOWNLOADS$ για τα στιγμιότυπά σας, π.χ. $EXAMPLE$. Κενό = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Παράθυρο «Αποθήκευση ως»"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Να ρωτάει πού θα αποθηκευτεί κάθε αρχείο, αντί για σιωπηλή λήψη."
+  },
+  "optionsClipboardFit": {
+    "message": "Προσαρμογή των αντιγράφων στα όρια των εφαρμογών"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Σμικρύνει τα αντίγραφα άνω των $PIXELS$ pixel, ώστε να λειτουργεί η επικόλληση στο $APP$ και σε παρόμοιες εφαρμογές.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Ροή εργασίας"
+  },
+  "optionsAutoDownload": {
+    "message": "Αυτόματη λήψη μετά την καταγραφή"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Αποθηκεύει αμέσως την εικόνα μόλις ολοκληρωθεί η καταγραφή."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Άνοιγμα επεξεργαστή μετά την καταγραφή"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Απευθείας στον σχολιασμό (μόνο για στιγμιότυπα ενός μέρους)."
+  },
+  "optionsTheme": {
+    "message": "Θέμα"
+  },
+  "optionsThemeDesc": {
+    "message": "Για το αναδυόμενο παράθυρο και όλες τις σελίδες του FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Συστήματος"
+  },
+  "optionsThemeLight": {
+    "message": "Φωτεινό"
+  },
+  "optionsThemeDark": {
+    "message": "Σκούρο"
+  },
+  "optionsShortcuts": {
+    "message": "Συντομεύσεις πληκτρολογίου"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Όλη η σελίδα: $KEYFULL$ · Ορατή περιοχή: $KEYVISIBLE$. Αλλάξτε τις στο $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Αποθηκεύτηκε ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Τα δεδομένα σας"
+  },
+  "optionsStorage": {
+    "message": "Αποθηκευτικός χώρος"
+  },
+  "optionsStorageUsage": {
+    "message": "Χρησιμοποιούνται $USED$ από $QUOTA$ σε αυτήν τη συσκευή.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Αυτό το πρόγραμμα περιήγησης δεν αναφέρει πόσο χώρο χρησιμοποιεί το FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Τα στιγμιότυπά σας διατηρούνται: το πρόγραμμα περιήγησης δεν θα τα διαγράψει για να ελευθερώσει χώρο."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Τα στιγμιότυπά σας βρίσκονται στον αποθηκευτικό χώρο «best effort» του προγράμματος περιήγησης, τον οποίο μπορεί να αδειάσει για να ελευθερώσει χώρο."
+  },
+  "optionsStorageKeep": {
+    "message": "Διατήρηση των δεδομένων μου"
+  },
+  "optionsExport": {
+    "message": "Εξαγωγή των πάντων"
+  },
+  "optionsExportDesc": {
+    "message": "Γράφει ένα μόνο αρχείο με τις ρυθμίσεις σας και τη λίστα των στιγμιότυπών σας. Αποθηκεύεται σε αυτήν τη συσκευή και δεν αποστέλλεται πουθενά."
+  },
+  "optionsExportImages": {
+    "message": "Να συμπεριληφθούν οι εικόνες"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Οι ίδιες οι εικόνες, που αποτελούν σχεδόν όλο το μέγεθος. Χωρίς αυτές, το αρχείο απαριθμεί τα στιγμιότυπά σας αλλά δεν περιέχει κανένα."
+  },
+  "optionsExportSize": {
+    "message": "Μέγεθος αρχείου: περίπου $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Υπολείμματα δεδομένων"
+  },
+  "optionsSweepDesc": {
+    "message": "Μια λήψη που διακόπηκε μπορεί να αφήσει στον δίσκο καρέ που δεν ανήκουν σε κανένα στιγμιότυπο. Δεν εμφανίζονται σε καμία σελίδα, άρα καμία σελίδα δεν μπορεί να τα διαγράψει. Αυτό τα εντοπίζει και τα αφαιρεί."
+  },
+  "optionsSweepBtn": {
+    "message": "Εύρεση και αφαίρεση"
+  },
+  "optionsSweepResult": {
+    "message": "Αφαιρέθηκαν. Λήψεις που καθαρίστηκαν: $COUNT$ · Χώρος που ελευθερώθηκε: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Δεν απέμεινε τίποτα: ό,τι είναι αποθηκευμένο ανήκει σε ένα στιγμιότυπο που μπορείτε να δείτε."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Επαναφορά ρυθμίσεων"
+  },
+  "optionsResetDesc": {
+    "message": "Επαναφέρει κάθε ρύθμιση αυτής της σελίδας στην αρχική της τιμή. Τα στιγμιότυπά σας δεν θίγονται."
+  },
+  "optionsResetBtn": {
+    "message": "Επαναφορά"
+  },
+  "optionsResetConfirm": {
+    "message": "Να επανέλθουν όλες οι ρυθμίσεις του FullShot στις προεπιλεγμένες τιμές; Τα στιγμιότυπά σας δεν επηρεάζονται."
+  },
+  "optionsResetDone": {
+    "message": "Οι ρυθμίσεις επανήλθαν στις προεπιλεγμένες τιμές."
+  },
+  "optionsDeleteAll": {
+    "message": "Διαγραφή των πάντων"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Αφαιρεί κάθε στιγμιότυπο από το ιστορικό σας και όλα όσα άφησαν πίσω τους οι λήψεις που διακόπηκαν. Οι ρυθμίσεις σας παραμένουν ως έχουν."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Να διαγραφούν όλα όσα έχει αποθηκεύσει το FullShot σε αυτήν τη συσκευή;\n\nΣτιγμιότυπα στο ιστορικό σας: $COUNT$\nΥπολείμματα από λήψεις που διακόπηκαν: $LEFTOVER$\nΧώρος που ελευθερώνεται: $SIZE$\n\nΟι ρυθμίσεις σας δεν επηρεάζονται. Αυτό δεν αναιρείται.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Διαγράφηκαν. Το FullShot δεν αποθηκεύει πλέον στιγμιότυπα σε αυτήν τη συσκευή."
+  },
+  "resultPageTitle": {
+    "message": "Στιγμιότυπο — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Αντιγραφή"
+  },
+  "resultCopyTip": {
+    "message": "Αντιγραφή εικόνας στο πρόχειρο"
+  },
+  "resultEdit": {
+    "message": "Επεξεργασία"
+  },
+  "resultEditTip": {
+    "message": "Άνοιγμα στον επεξεργαστή"
+  },
+  "resultBeautify": {
+    "message": "Στολισμός"
+  },
+  "resultBeautifyTip": {
+    "message": "Στολισμός — πλαίσιο και φόντο για κοινοποίηση"
+  },
+  "resultClip": {
+    "message": "Κλιπ"
+  },
+  "resultClipTip": {
+    "message": "Κλιπ κύλισης — κινούμενο $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Μέγεθος χαρτιού PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Λήψη"
+  },
+  "resultDeleteTip": {
+    "message": "Διαγραφή στιγμιότυπου"
+  },
+  "resultHistoryTip": {
+    "message": "Ιστορικό στιγμιότυπων"
+  },
+  "resultProgressAssembling": {
+    "message": "Συναρμολογούμε το στιγμιότυπό σας…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Αποκωδικοποίηση $COUNT$ καρέ…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Αποκωδικοποίηση $COUNT$ καρέ…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Συρραφή του μέρους $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Συρραφή του μέρους $INDEX$ από ~$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Αποθήκευση…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Συμβουλή: σύρετε την εικόνα κατευθείαν στην επιφάνεια εργασίας ή χρησιμοποιήστε το $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Δεν υπάρχει τίποτα εδώ"
+  },
+  "resultEmptyBody": {
+    "message": "Αυτό το στιγμιότυπο δεν υπάρχει πια."
+  },
+  "resultOpenHistory": {
+    "message": "Άνοιγμα ιστορικού"
+  },
+  "resultSomethingWrong": {
+    "message": "Κάτι πήγε στραβά — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Μέρος $INDEX$ από $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Λήψη μέρους"
+  },
+  "resultEditPart": {
+    "message": "Επεξεργασία μέρους"
+  },
+  "resultClipPart": {
+    "message": "Κλιπ από το μέρος"
+  },
+  "resultPartAlt": {
+    "message": "Μέρος στιγμιότυπου $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Γίνεται λήψη του $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Οριστική διαγραφή αυτού του στιγμιότυπου;"
+  },
+  "resultDeleted": {
+    "message": "Το στιγμιότυπο διαγράφηκε."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Αυτή η λήψη είναι πολύ ψηλή για να επικολληθεί ως μία ευανάγνωστη εικόνα, γι’ αυτό το $COPY$ τοποθετεί στο πρόχειρο μια σμικρυμένη επισκόπηση ολόκληρης της σελίδας. Τα μικρά γράμματα σε αυτήν δεν θα είναι ευανάγνωστα.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Το μέρος $INDEX$ αντιγράφηκε στο πρόχειρο",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Δημιουργία PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "Έγινε λήψη του PDF ($COUNT$ σελίδα)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "Έγινε λήψη του PDF ($COUNT$ σελίδες)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "Το PDF απέτυχε — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Επεξεργαστής — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Πίσω στο στιγμιότυπο"
+  },
+  "editorToolSelect": {
+    "message": "Επιλογή / μετακίνηση ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Περικοπή ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Πένα ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Μαρκαδόρος ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Γραμμή ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Βέλος ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Ορθογώνιο ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Έλλειψη ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Κείμενο ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Θόλωση / ψηφιδοποίηση ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Αριθμημένο βήμα ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Σφραγίδα emoji ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Προσαρμοσμένο χρώμα"
+  },
+  "editorStrokeTip": {
+    "message": "Πάχος γραμμής"
+  },
+  "editorStrokeThin": {
+    "message": "Λεπτή"
+  },
+  "editorStrokeMedium": {
+    "message": "Μεσαία"
+  },
+  "editorStrokeThick": {
+    "message": "Χοντρή"
+  },
+  "editorSizeTip": {
+    "message": "Μέγεθος κειμένου / emoji"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Αναίρεση ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Επανάληψη ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Σμίκρυνση (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Μεγέθυνση (+)"
+  },
+  "editorZoomFit": {
+    "message": "Προσαρμογή"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Προσαρμογή στο παράθυρο — κάντε κλικ για 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "Κάντε κλικ για προσαρμογή στο παράθυρο"
+  },
+  "editorExport": {
+    "message": "Εξαγωγή"
+  },
+  "editorExportCopy": {
+    "message": "Αντιγραφή στο πρόχειρο"
+  },
+  "editorExportImage": {
+    "message": "Εικόνα $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Έγγραφο $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Αποθήκευση"
+  },
+  "editorSaveTip": {
+    "message": "Αποθήκευση αλλαγών στο ιστορικό ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Περισσότερα"
+  },
+  "editorMenuFiles": {
+    "message": "Μετάβαση στο Ιστορικό"
+  },
+  "editorMenuOptions": {
+    "message": "Μετάβαση στις Επιλογές"
+  },
+  "editorMenuShortcuts": {
+    "message": "Συντομεύσεις πληκτρολογίου"
+  },
+  "editorCropApply": {
+    "message": "Εφαρμογή περικοπής"
+  },
+  "editorCropCancel": {
+    "message": "Ακύρωση"
+  },
+  "editorShortcutsHeading": {
+    "message": "Συντομεύσεις πληκτρολογίου"
+  },
+  "editorShortcutTools": {
+    "message": "Επιλογή εργαλείων"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Αναίρεση / επανάληψη"
+  },
+  "editorShortcutSave": {
+    "message": "Αποθήκευση στο ιστορικό"
+  },
+  "editorShortcutZoom": {
+    "message": "Σμίκρυνση / μεγέθυνση"
+  },
+  "editorShortcutDelete": {
+    "message": "Αφαίρεση επιλεγμένου αντικειμένου"
+  },
+  "editorShortcutEscape": {
+    "message": "Αποεπιλογή / ακύρωση περικοπής"
+  },
+  "editorShortcutsClose": {
+    "message": "Κλείσιμο"
+  },
+  "editorNotFound": {
+    "message": "Το στιγμιότυπο δεν βρέθηκε"
+  },
+  "editorToastDownloaded": {
+    "message": "Έγινε λήψη"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "Έγινε λήψη του PDF"
+  },
+  "editorToastSaved": {
+    "message": "Αποθηκεύτηκε στο ιστορικό"
+  },
+  "historyPageTitle": {
+    "message": "Ιστορικό — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Ιστορικό"
+  },
+  "historySearchPlaceholder": {
+    "message": "Αναζήτηση σε τίτλο ή URL…"
+  },
+  "historySelectAll": {
+    "message": "Επιλογή όλων"
+  },
+  "historyClearSelection": {
+    "message": "Καθαρισμός επιλογής"
+  },
+  "historyDownloadSelected": {
+    "message": "Λήψη επιλεγμένων"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Λήψη ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Διαγραφή επιλεγμένων"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Διαγραφή ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Δεν υπάρχουν ακόμη στιγμιότυπα"
+  },
+  "historyEmptyBody": {
+    "message": "Τα στιγμιότυπα που παίρνετε θα εμφανίζονται εδώ. Κάντε κλικ στο εικονίδιο του FullShot στη γραμμή εργαλείων για να ξεκινήσετε."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Καμία αντιστοιχία"
+  },
+  "historyNoMatchesBody": {
+    "message": "Κανένα στιγμιότυπο δεν ταιριάζει με «$QUERY$».",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ στιγμιότυπο · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ στιγμιότυπα · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ από $COUNT$ στιγμιότυπο · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ από $COUNT$ στιγμιότυπα · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Επιλογή"
+  },
+  "historyCardOpen": {
+    "message": "Άνοιγμα"
+  },
+  "historyCardEdit": {
+    "message": "Επεξεργασία"
+  },
+  "historyCardDownloadTip": {
+    "message": "Λήψη"
+  },
+  "historyCardDeleteTip": {
+    "message": "Διαγραφή"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Άνοιγμα της αρχικής σελίδας"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ μέρη",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Στιγμιότυπο"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Διαγραφή αυτού του στιγμιότυπου;"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Οριστική διαγραφή $COUNT$ στιγμιότυπου;",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Οριστική διαγραφή $COUNT$ στιγμιότυπων;",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Γίνεται λήψη $COUNT$ στιγμιότυπου",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Γίνεται λήψη $COUNT$ στιγμιότυπων",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Έγινε διαγραφή"
+  },
+  "beautifyPageTitle": {
+    "message": "Στολισμός — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Στολισμός"
+  },
+  "actionBack": {
+    "message": "Πίσω"
+  },
+  "commonLoading": {
+    "message": "Φόρτωση…"
+  },
+  "beautifyFieldSize": {
+    "message": "Μέγεθος"
+  },
+  "beautifyPresetAuto": {
+    "message": "Αυτόματο"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Τετράγωνο"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Κατακόρυφο"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Φόντο"
+  },
+  "beautifyBgSlate": {
+    "message": "Σχιστόλιθος"
+  },
+  "beautifyBgGraphite": {
+    "message": "Γραφίτης"
+  },
+  "beautifyBgSky": {
+    "message": "Ουρανός"
+  },
+  "beautifyBgSunset": {
+    "message": "Ηλιοβασίλεμα"
+  },
+  "beautifyBgGrape": {
+    "message": "Σταφύλι"
+  },
+  "beautifyBgMint": {
+    "message": "Μέντα"
+  },
+  "beautifyFieldPadding": {
+    "message": "Περιθώριο"
+  },
+  "beautifyFieldRadius": {
+    "message": "Στρογγυλεμένες γωνίες"
+  },
+  "beautifyFieldEffects": {
+    "message": "Εφέ"
+  },
+  "beautifyShadow": {
+    "message": "Σκιά"
+  },
+  "beautifyWindowFrame": {
+    "message": "Πλαίσιο παραθύρου"
+  },
+  "beautifyFieldExport": {
+    "message": "Εξαγωγή"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Κλιπ κύλισης — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Κλιπ κύλισης"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Μορφή"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "Το $GIF$ παίζει παντού. Το $WEBM$ είναι μικρότερο και πιο ομαλό (καταγράφεται ζωντανά στο πρόγραμμα περιήγησής σας).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Πλάτος εξόδου"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Πυκνότητα"
+  },
+  "scrollclipDensityHint": {
+    "message": "Η μεγαλύτερη πυκνότητα δίνει πιο ευκρινές αποτέλεσμα (πιο κοντά στην ανάλυση της πηγής) — αλλά μεγαλύτερο αρχείο."
+  },
+  "scrollclipFieldShape": {
+    "message": "Σχήμα"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Ταχύτητα κύλισης (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Ρυθμός καρέ (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Κίνηση"
+  },
+  "scrollclipBounce": {
+    "message": "Αναπήδηση (κύλιση πίσω στην κορυφή)"
+  },
+  "scrollclipLoop": {
+    "message": "Ατέρμονη επανάληψη"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Αντιγραφή καρέ"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Αντιγραφή του πρώτου (επάνω) καρέ ως $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ καρέ · $SECONDS$ δλ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ καρέ · $SECONDS$ δλ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Απόδοση καρέ… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Κωδικοποίηση $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Οριστικοποίηση…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Εγγραφή $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Γίνεται εγγραφή…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "Το $WEBM$ δεν υποστηρίζεται εδώ — εξάγουμε $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Το πρώτο καρέ αντιγράφηκε"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Μαζική καταγραφή"
+  },
+  "batchHeading": {
+    "message": "Μαζική καταγραφή"
+  },
+  "batchIntro": {
+    "message": "Επικολλήστε URL, ένα ανά γραμμή. Το FullShot ανοίγει κάθε σελίδα, καταγράφει ένα στιγμιότυπο ολόκληρης της σελίδας στο ιστορικό σας και συνεχίζει — έως $MAX$ κάθε φορά. Τα στιγμιότυπα εμφανίζονται στο ιστορικό· κάντε κλικ στο $OPENLINK$ για να δείτε, να επεξεργαστείτε ή να εξαγάγετε οποιοδήποτε από αυτά.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Καταγραφή όλων"
+  },
+  "batchPermissionHint": {
+    "message": "Το άνοιγμα αυτών των σελίδων χρειάζεται μία εφάπαξ άδεια την πρώτη φορά."
+  },
+  "batchPermissionDeclined": {
+    "message": "Η άδεια για το άνοιγμα αυτών των σελίδων απορρίφθηκε."
+  },
+  "batchPanelPlan": {
+    "message": "Σχέδιο"
+  },
+  "batchPanelProgress": {
+    "message": "Πρόοδος"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ σελίδα για καταγραφή",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ σελίδες για καταγραφή",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ σελίδες για καταγραφή (όριο $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Δεν υπάρχουν ακόμη έγκυρα URL"
+  },
+  "batchSkipped": {
+    "message": "Παραλείφθηκαν $COUNT$: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "μη υποστηριζόμενο σχήμα"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "μη έγκυρο"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "χωρίς όνομα ιστότοπου"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "διπλότυπο"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "κενό"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "πάνω από το όριο ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ ολοκληρώθηκαν",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ ολοκληρώθηκαν, $FAILED$ απέτυχαν",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ ολοκληρώθηκαν — τέλος",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ ολοκληρώθηκαν, $FAILED$ απέτυχαν — τέλος",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "άνοιγμα"
+  },
+  "batchJobTimedOut": {
+    "message": "λήξη χρόνου καταγραφής"
+  },
+  "batchJobNoSession": {
+    "message": "καμία συνεδρία καταγραφής"
+  },
+  "batchJobFailed": {
+    "message": "η καταγραφή απέτυχε"
+  },
+  "batchJobError": {
+    "message": "σφάλμα καταγραφής"
+  },
+  "regionHintDrag": {
+    "message": "Σύρετε για να επιλέξετε περιοχή — $ESC$ για ακύρωση",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Κάντε κλικ σε ένα στοιχείο για να το καταγράψετε — $ESC$ για ακύρωση",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Οι σελίδες του προγράμματος περιήγησης, όπως οι Ρυθμίσεις, οι Επεκτάσεις και η Νέα καρτέλα, είναι απρόσιτες για κάθε επέκταση. Δοκιμάστε το FullShot σε μια κανονική ιστοσελίδα."
+  },
+  "errRestrictedDevtools": {
+    "message": "Τα παράθυρα DevTools δεν μπορούν να καταγραφούν από επέκταση. Για αυτά χρησιμοποιήστε το εργαλείο στιγμιότυπων του υπολογιστή σας."
+  },
+  "errRestrictedViewSource": {
+    "message": "Οι σελίδες προβολής πηγαίου κώδικα δεν μπορούν να καταγραφούν. Καταγράψτε την ίδια τη σελίδα."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Οι σελίδες επεκτάσεων, μαζί και οι σελίδες του ίδιου του FullShot, προστατεύονται από το πρόγραμμα περιήγησης και δεν μπορούν να καταγραφούν."
+  },
+  "errRestrictedWebstore": {
+    "message": "Το Chrome Web Store δεν επιτρέπει στις επεκτάσεις να διαβάζουν τις σελίδες του, οπότε αυτή η σελίδα δεν μπορεί να καταγραφεί."
+  },
+  "errRestrictedGeneric": {
+    "message": "Αυτή η σελίδα προστατεύεται από το πρόγραμμα περιήγησης και δεν μπορεί να καταγραφεί."
+  },
+  "errWrongTab": {
+    "message": "Η καταγραφή σταμάτησε — αλλάξατε καρτέλα. Κρατήστε αυτή τη σελίδα μπροστά μέχρι να τελειώσει το FullShot."
+  },
+  "errGeneric": {
+    "message": "Η καταγραφή σταμάτησε πριν ολοκληρωθεί. Δοκιμάστε ξανά."
+  },
+  "errBusy": {
+    "message": "Σε αυτή την καρτέλα εκτελείται ήδη μια καταγραφή."
+  },
+  "errBlocked": {
+    "message": "Αυτή η σελίδα δεν μπορεί να καταγραφεί (περιορισμός του προγράμματος περιήγησης)."
+  },
+  "errNoStart": {
+    "message": "Το FullShot δεν μπόρεσε να ξεκινήσει σε αυτή τη σελίδα. Ανανεώστε τη σελίδα και δοκιμάστε ξανά."
+  },
+  "errCrash": {
+    "message": "Η καταγραφή σταμάτησε απροσδόκητα. Δοκιμάστε ξανά."
+  },
+  "errUnknownMessage": {
+    "message": "Άγνωστο μήνυμα."
+  },
+  "errQuota": {
+    "message": "Το πρόγραμμα περιήγησης περιορίζει το πόσο γρήγορα μπορούν να φωτογραφίζονται οι σελίδες. Περιμένετε λίγο και δοκιμάστε ξανά."
+  },
+  "errFrameHandover": {
+    "message": "Το πρόγραμμα περιήγησης σταμάτησε να παραδίδει την οθόνη στη μέση της διαδικασίας. Περιμένετε λίγα δευτερόλεπτα και δοκιμάστε ξανά."
+  },
+  "errLostTab": {
+    "message": "Η καταγραφή έχασε αυτή την καρτέλα. Ανανεώστε τη σελίδα και δοκιμάστε ξανά."
+  },
+  "errStoppedEarly": {
+    "message": "Η καταγραφή σταμάτησε πριν ολοκληρωθεί."
+  },
+  "errStorageFull": {
+    "message": "Δεν υπάρχει άλλος χώρος για την αποθήκευση αυτής της λήψης. Διαγράψτε μερικά στιγμιότυπα από το ιστορικό σας και δοκιμάστε ξανά."
+  },
+  "reasonGeneric": {
+    "message": "δεν δόθηκε αιτία. Δοκιμάστε ξανά."
+  },
+  "reasonDecodeFailed": {
+    "message": "αυτό το στιγμιότυπο δεν μπόρεσε να αποκωδικοποιηθεί."
+  },
+  "reasonTooLarge": {
+    "message": "η εικόνα είναι πολύ μεγάλη για εξαγωγή εδώ."
+  },
+  "toastCopiedClipboard": {
+    "message": "Αντιγράφηκε στο πρόχειρο"
+  },
+  "toastCopyFailed": {
+    "message": "Η αντιγραφή απέτυχε — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Η εξαγωγή απέτυχε — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Αποθηκεύτηκε το $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Αποθηκεύτηκε το $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}
