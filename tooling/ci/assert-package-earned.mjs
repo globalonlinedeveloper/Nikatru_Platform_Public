@@ -239,7 +239,22 @@ for (const pkg of onDisk) {
         );
         break;
       }
-      const landed = moves.filter((r) => landsIn(r.target, ev.ledgerTarget));
+      // 🔴 THE EVIDENCE MUST NAME THE PACKAGE IT JUSTIFIES. `ledgerTarget` is
+      // free text out of a register, and until this check existed nothing tied
+      // it to `pkg`: a review registered `packages/chassis_screens` with
+      // `ledgerTarget: "packages"` and a single MOVES row landing in
+      // `packages/design_system` — EXIT 0, "7 substantiated". A shrink measured
+      // into a DIFFERENT package earned this one its place. Not exploitable on
+      // the day it shipped (the ledger held 96 rows, all STAYS, zero MOVES) and
+      // exploitable the moment the first spine unit lands a row, which is the
+      // worst shape a guard defect can have: correct today, silent tomorrow.
+      if (!landsIn(ev.ledgerTarget, pkg)) {
+        problems.push(
+          `\`${pkg}\` claims \`chassis\` via evidence.ledgerTarget \`${ev.ledgerTarget}\`, which is not \`${pkg}\` and does not sit inside it. The evidence for a package has to be about THAT package: a ledger row measuring a shrink into somewhere else substantiates that somewhere else, and reading it here lets one real measurement earn every package that names a wide enough prefix.`,
+        );
+        break;
+      }
+      const landed = moves.filter((r) => landsIn(r.target, ev.ledgerTarget) && landsIn(r.target, pkg));
       if (landed.length === 0) {
         problems.push(
           `\`${pkg}\` claims \`chassis\` via \`${ev.ledgerTarget}\`, but ${LEDGER} holds no MOVES row landing there with a NEGATIVE callSiteDelta (${moves.length} shrinking MOVES row(s) in the ledger overall). A package nothing has measurably moved into is a package NAMED, not earned — [ADR 066]'s rule is that the call site has to get smaller, and a row with a delta of zero or more is exactly the case that rule refuses.`,

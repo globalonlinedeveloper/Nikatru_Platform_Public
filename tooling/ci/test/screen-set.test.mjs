@@ -470,9 +470,17 @@ describe('assert-screen-set', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('an anchor whose screen moved into the chassis is judged there', () => {
   const CHASSIS_BODY = 'packages/chassis_screens/lib/system_screens.dart';
+  // 🔴 THE ADAPTER MUST ACTUALLY USE WHAT IT IMPORTS. Since 2026-09-05 the shared
+  // resolver refuses an import nothing references: a review proved that one unused
+  // import line was enough to widen a guard's scan and silence a deleted control.
+  // `SystemScreensShell` is declared by BOTH package variants below, so this
+  // reference is honest in the green case and in the `declaredInPackage: false`
+  // mutation alike — which is what keeps S-D2 failing for the reason it states
+  // (`NotFoundScreen` is nowhere) rather than for an unused import.
   const ADAPTER =
     "import 'package:nikatru_chassis_screens/system_screens.dart';\n\n" +
-    'class OfflineNotice extends StatelessWidget {\n  const OfflineNotice({super.key});\n}\n';
+    'class OfflineNotice extends StatelessWidget {\n  const OfflineNotice({super.key});\n\n' +
+    '  Widget build(BuildContext context) => const SystemScreensShell();\n}\n';
 
   /** The design-system file emptied into the chassis, adapter left behind.
    *  `OfflineNotice` deliberately STAYS in the adapter: one anchor resolving
@@ -484,9 +492,10 @@ describe('an anchor whose screen moved into the chassis is judged there', () => 
       mkdirSync(join(root, 'packages/chassis_screens/lib'), { recursive: true });
       writeFileSync(
         join(root, CHASSIS_BODY),
-        declaredInPackage
-          ? 'class NotFoundScreen extends StatelessWidget {\n  const NotFoundScreen({super.key});\n}\n'
-          : 'class SomethingElse extends StatelessWidget {\n  const SomethingElse({super.key});\n}\n',
+        'class SystemScreensShell extends StatelessWidget {\n  const SystemScreensShell({super.key});\n}\n' +
+          (declaredInPackage
+            ? 'class NotFoundScreen extends StatelessWidget {\n  const NotFoundScreen({super.key});\n}\n'
+            : 'class SomethingElse extends StatelessWidget {\n  const SomethingElse({super.key});\n}\n'),
       );
     }
     return root;
@@ -526,11 +535,16 @@ describe('an anchor whose screen moved into the chassis is judged there', () => 
     mkdirSync(join(root, 'packages/chassis_screens/lib'), { recursive: true });
     writeFileSync(
       join(root, 'packages/chassis_screens/lib/paywall_body.dart'),
-      'await rail.startCheckout(o);\nawait c.awaitUnlock(appId: a);\nawait funnel.onPurchaseSuccess(o.productId);\n',
+      'class PaywallBody extends StatelessWidget {\n' +
+        '  Future<void> buy(Object o, Object a, Object c) async {\n' +
+        '    await rail.startCheckout(o);\n    await c.awaitUnlock(appId: a);\n' +
+        '    await funnel.onPurchaseSuccess(o.productId);\n  }\n}\n',
     );
     writeFileSync(
       join(root, `${BRICK_LIB}/features/monetization/paywall_screen.dart`),
-      "import 'package:nikatru_chassis_screens/paywall_body.dart';\n\nclass PaywallScreen extends StatelessWidget {}\n",
+      "import 'package:nikatru_chassis_screens/paywall_body.dart';\n\n" +
+        'class PaywallScreen extends StatelessWidget {\n' +
+        '  Widget build(BuildContext context) => const PaywallBody();\n}\n',
     );
     const { code, out } = run(root);
     assert.equal(code, 0, out);
@@ -544,7 +558,9 @@ describe('an anchor whose screen moved into the chassis is judged there', () => 
     const root = tree();
     writeFileSync(
       join(root, `${BRICK_LIB}/features/monetization/paywall_screen.dart`),
-      "import 'package:nikatru_chassis_screens/paywall_body.dart';\n\nclass PaywallScreen extends StatelessWidget {}\n",
+      "import 'package:nikatru_chassis_screens/paywall_body.dart';\n\n" +
+        'class PaywallScreen extends StatelessWidget {\n' +
+        '  Widget build(BuildContext context) => const PaywallBody();\n}\n',
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);

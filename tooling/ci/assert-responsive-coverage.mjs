@@ -250,6 +250,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { CHASSIS_DIR, delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = process.argv[2] ?? process.cwd();
 
@@ -731,53 +732,18 @@ function resolveImport(R, path) {
 // this scan are all reported rather than passed over — each of them means the
 // width decision is now measured NOWHERE.
 // ════════════════════════════════════════════════════════════════════════════
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${escapeRe(CHASSIS_PKG)}/([^']+\\.dart)'`, 'g');
-
-/** Where `rel` delegates to, resolved one level. `null` = does not delegate;
- *  `{ lost }` = it does and the target could not be resolved, which the caller
- *  must report as COVERAGE LOST; `{ files }` = the package file(s) that now own
- *  this surface's width decision. The three answers are kept apart on purpose:
- *  collapsing `null` and `{ lost }` is how a resolver that stopped reaching its
- *  target starts reporting "nothing to do". */
-function delegationOf(rel) {
-  if (!existsSync(join(ROOT, rel))) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const paths = [...new Set([...read(rel).matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
-    return {
-      lost:
-        `\`${rel}\` imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths ` +
-        `(${paths.join(', ')}), so the file that now owns this surface's width decision cannot be ` +
-        'identified. This guard keys coverage by FILE and will not guess between two of them.',
-    };
-  }
-  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(ROOT, target))) {
-    return {
-      lost:
-        `\`${rel}\` delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` — ` +
-        'and that file is not on disk. The screen has been emptied into a package that does not carry it, ' +
-        'so no width is asserted for it anywhere.',
-    };
-  }
-  if (surfacesIn(target, 'package').length > 0) return { files: [target] };
-  const out = [];
-  for (const m of read(target).matchAll(/export\s+'([^':]+\.dart)'/g)) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-    if (existsSync(join(ROOT, t)) && surfacesIn(t, 'package').length > 0) out.push(t);
-  }
-  if (out.length === 0) {
-    return {
-      lost:
-        `\`${rel}\` delegates to \`${target}\`, which declares no public widget and re-exports none that ` +
-        'does. One level of barrel expansion is all this resolver does, and it found nothing to measure.',
-    };
-  }
-  return { files: out };
-}
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level. */
+const delegationOf = (rel) => resolveChassisDelegation(ROOT, rel, { describe: (r) => `\`${r}\`` });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ONE ROOT, ANALYSED. Everything below used to be top-level code over

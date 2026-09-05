@@ -81,6 +81,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = process.cwd();
 const REGISTER = 'tooling/screen-register.json';
@@ -186,9 +187,6 @@ function readAll(dir) {
 // ambiguous and refused rather than guessed; a target not on disk is a failure,
 // not a pass.
 // ─────────────────────────────────────────────────────────────────────────────
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
 const stripCode = (src) => src.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** Every `.dart` under `rel`, recursively, as paths relative to ROOT. */
@@ -211,41 +209,18 @@ function dartFilesUnder(rel) {
   return out.sort();
 }
 
-/** The chassis file(s) `rel` delegates to, resolved ONE level.
- *  `null` = no delegation · `{ lost }` = a delegation this resolver could not
- *  follow · `{ files }`. `null` and `{ lost }` are different answers on purpose:
- *  collapsing them is how a resolver that stopped reaching its target starts
- *  reporting that there was nothing to reach. */
-function delegationOf(rel) {
-  if (!existsSync(join(ROOT, rel))) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const src = stripCode(readFileSync(join(ROOT, rel), 'utf8'));
-  const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
-    return {
-      lost:
-        `imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')}), so the ` +
-        'file that now declares the screen cannot be identified. This guard names ONE file per anchor and ' +
-        'will not guess between two of them.',
-    };
-  }
-  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(ROOT, target))) {
-    return {
-      lost:
-        `delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` — and that ` +
-        'file is not on disk. The screen was emptied into a package that does not carry it.',
-    };
-  }
-  const targetSrc = stripCode(readFileSync(join(ROOT, target), 'utf8'));
-  const out = [target];
-  for (const m of targetSrc.matchAll(/export\s+'([^':]+\.dart)'/g)) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-    if (existsSync(join(ROOT, t))) out.push(t);
-  }
-  return { files: out };
-}
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level. */
+const delegationOf = (rel) => resolveChassisDelegation(ROOT, rel, { describe: () => '' });
 
 // ── THE TRIPWIRE, RE-POINTED AT THE INVARIANT IT WAS ALWAYS ABOUT ───────────
 //

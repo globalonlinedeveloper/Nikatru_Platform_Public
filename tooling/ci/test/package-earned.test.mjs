@@ -321,6 +321,62 @@ describe('assert-package-earned', () => {
       assert.match(out, /not the same as passing/);
     });
 
+    // ─────────────────────────────────────────────────────────────────────
+    // 🔴 THE EVIDENCE MUST NAME THE PACKAGE IT JUSTIFIES.
+    //
+    // `evidence.ledgerTarget` is free text out of a register, and the case
+    // above only ever exercised an HONEST one. Measured on the real tree by an
+    // independent reviewer, 2026-09-05: register `packages/chassis_screens`
+    // with `ledgerTarget: "packages"` and one MOVES row landing in
+    // `packages/design_system` with `callSiteDelta: -42` — EXIT 0, "11
+    // package(s), 7 substantiated". A shrink measured into a DIFFERENT package
+    // earned this one its place, and the widest possible prefix was the cheapest
+    // thing to write.
+    //
+    // Both halves are pinned: a ledgerTarget OUTSIDE the package is refused
+    // outright, and a ledgerTarget inside it still cannot be paid for by a row
+    // that lands elsewhere.
+    // ─────────────────────────────────────────────────────────────────────
+    const dishonest = (ledgerTarget, rows) => ({
+      extraPkgs: ['chassis_screens'],
+      ledger: { files: rows },
+      mutate: (r) => {
+        r.packageEarnReasons['packages/chassis_screens'] = {
+          reason: 'chassis',
+          evidence: { ledgerTarget },
+          detail: 'the measured destination of chassis step 4',
+        };
+        return r;
+      },
+    });
+
+    test('FAILS when evidence.ledgerTarget is a WIDER path than the package it justifies', () => {
+      const { code, out } = run(
+        tree(dishonest('packages', [{ ...MOVED, target: 'packages/design_system/lib/probe.dart', callSiteDelta: -42 }])),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /is not `packages\/chassis_screens` and does not sit inside it/);
+      assert.match(out, /a ledger row measuring a shrink into somewhere else substantiates that somewhere else/);
+    });
+
+    test('FAILS when evidence.ledgerTarget names a DIFFERENT package entirely', () => {
+      const { code, out } = run(
+        tree(dishonest('packages/design_system', [{ ...MOVED, target: 'packages/design_system/lib/probe.dart', callSiteDelta: -42 }])),
+      );
+      assert.equal(code, 1);
+      assert.match(out, /is not `packages\/chassis_screens` and does not sit inside it/);
+    });
+
+    // GREEN CONTROL for the pair above — an honest, NARROWER ledgerTarget
+    // inside the package still passes, so the two reds are not consistent with
+    // a limb that refuses every ledgerTarget.
+    test('an honest ledgerTarget NARROWER than the package still passes', () => {
+      const opts = dishonest('packages/chassis_screens/lib', [MOVED]);
+      const { code, out } = run(tree(opts));
+      assert.equal(code, 0, out);
+      assert.match(out, /5 package\(s\) substantiate a structural reason/);
+    });
+
     test('FAILS when a chassis claim names no ledgerTarget', () => {
       const { code, out } = run(
         tree({

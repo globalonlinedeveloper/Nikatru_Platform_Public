@@ -390,6 +390,8 @@ function run(o = {}) {
   write(root, `${BRICK}/lib/features/settings/settings_screen.dart`, o.settings ?? SETTINGS);
   write(root, `${BRICK}/lib/features/monetization/manage_plan_screen.dart`, o.manage ?? MANAGE);
   write(root, `${BRICK}/lib/features/monetization/paywall_screen.dart`, PAYWALL);
+  // Extra fixture files — the chassis package a delegating screen points at.
+  if (o.extraFiles) for (const [rel, body] of Object.entries(o.extraFiles)) write(root, rel, body);
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -1112,5 +1114,64 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     const r = run();
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /ASSIGNS APK SIDELOAD TO `paddle`, AND NO LIVE CHANNEL ROW CARRIES IT/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A SCREEN ON THE MONEY PATH THAT MOVED INTO THE CHASSIS PACKAGE
+// ([ADR 067] decision 2)
+//
+// §E counts the steps between the home screen and a completed purchase, and it
+// builds that count from the `context.go` edges in the template's own files.
+// [ADR 066] step 4 moves a screen body into
+// `package:nikatru_chassis_screens` — and an edge in a file this walk cannot
+// reach is not a shorter path, it is an invisible one.
+//
+// 🔴 THE EXTENSION SHIPPED WITH NO TEST. It gained 73 lines on 2026-09-05 and
+// this file gained none. UP3 is the case that matters: an import nothing
+// references must not pull a package file into the step count.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-purchase-path — a screen whose body moved into the chassis', () => {
+  const CHASSIS_REL = 'packages/chassis_screens/lib/home_body.dart';
+  const IMPORT = "import 'package:nikatru_chassis_screens/home_body.dart';\n";
+
+  /** The home screen with a PANE lifted into the chassis package, adapter left
+   *  behind at the same path. §E's edges stay where the route is; what the
+   *  resolver has to prove is that the package file JOINS the walk at all —
+   *  which is what the printed line asserts, and what it could not do before.
+   *
+   *  `used` false is the same file with the import kept and the reference gone:
+   *  the shape a review turned into EXIT 0 on the real tree. */
+  const adapter = (used) =>
+    IMPORT +
+    HOME +
+    `Widget _pane(BuildContext context) => ${used ? 'const HomeBody()' : 'const SizedBox()'};\n`;
+
+  const packageBody =
+    'class HomeBody extends StatelessWidget {\n  const HomeBody({super.key});\n' +
+    '  Widget build(BuildContext context) => const SizedBox.shrink();\n}\n';
+
+  // GREEN CONTROL — the delegation resolves, the package file joins the scan,
+  // and the guard says so. Without this every red below is consistent with a
+  // resolver that refuses every delegation.
+  test('UP1 · the delegation is followed and REPORTED, and the rail stays whole', () => {
+    const r = run({ home: adapter(true), extraFiles: { [CHASSIS_REL]: packageBody } });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /§E also read 1 chassis file\(s\) the template delegates to/);
+    assert.match(r.out, /home_body\.dart/);
+  });
+
+  test('UP2 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
+    const r = run({ home: adapter(true) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /COVERAGE LOST/);
+    assert.match(r.out, /that file is not on disk/);
+  });
+
+  // 🔴 THE EXPLOIT: an import alone is not evidence that a screen went anywhere.
+  test('UP3 · 🔴 an import the adapter never uses is refused, not followed', () => {
+    const r = run({ home: adapter(false), extraFiles: { [CHASSIS_REL]: packageBody } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /never references anything it declares \(HomeBody\)/);
   });
 });

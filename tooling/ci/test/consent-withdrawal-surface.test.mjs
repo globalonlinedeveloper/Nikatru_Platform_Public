@@ -789,3 +789,113 @@ describe('what this guard does NOT assert, said out loud', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE WITHDRAWAL CONTROL MOVED INTO THE CHASSIS PACKAGE — [ADR 067] decision 2
+//
+// [ADR 066] step 4 empties a settings screen into
+// `package:nikatru_chassis_screens` and leaves an adapter at the same path. The
+// `recordAnalyticsConsent(` call, its `granted:` toggle and the state read all
+// go with the body — and read at the adapter alone this guard reports that
+// there is nowhere in the app to turn analytics off. That is a DPDP §6(3) claim
+// made about a compliant tree, which is exactly as bad as missing a real one.
+//
+// 🔴 AND THE EXTENSION SHIPPED WITH NO TEST AT ALL. On 2026-09-05 this guard
+// gained the resolver and this file gained nothing, and an independent review
+// then measured what that cost, on the real tree, in three steps:
+//   1. `recordAnalyticsConsent(` deleted from apps/subly's settings screen
+//      → EXIT 1, "NO call to recordAnalyticsConsent( in lib/features/settings.
+//        There is nowhere in this app for a user to turn analytics back OFF."
+//   2. ONE line added — an import of a chassis file NOTHING in the adapter
+//      references — with that file holding a never-rendered free function whose
+//      body says the words → SAME TREE, EXIT 0, "1 withdrawal call site(s)".
+//   3. The same mutated tree under origin/main's copy of the guard: EXIT 1.
+// A DPDP control was silenced by an unused import. DW3 is that case.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a withdrawal control that moved into the chassis package', () => {
+  const CHASSIS_REL = 'packages/chassis_screens/lib/settings_body.dart';
+  const IMPORT = "import 'package:nikatru_chassis_screens/settings_body.dart';\n";
+
+  /** The package file the adapter delegates to. `carries` false leaves it
+   *  holding nothing but its class, so the delegation is real and the control
+   *  genuinely is nowhere. */
+  const packageBody = (carries) =>
+    'class SettingsBody {\n' +
+    '  void withdraw(WidgetRef ref) {\n' +
+    (carries
+      ? '    recordAnalyticsConsent(\n      ref,\n' +
+        '      granted: ref.read(analyticsConsentProvider) != core.ConsentStatus.granted,\n    );\n'
+      : '    return;\n') +
+    '  }\n}\n';
+
+  /** Delete every withdrawal call from apps/subly's settings screen, and
+   *  optionally hand the behaviour to a chassis file. `used` decides whether the
+   *  adapter actually references what it imports — which is the whole question. */
+  const moved = ({ inPackage = true, used = true, onDisk = true } = {}) => (root) => {
+    edit(root, SUBLY_SETTINGS, (s) => {
+      const stripped = s.split('recordAnalyticsConsent(').join('noopConsent(');
+      return IMPORT + stripped + (used ? '\nWidget shell(BuildContext c) => const SettingsBody();\n' : '');
+    });
+    if (onDisk) {
+      const p = join(root, CHASSIS_REL);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, packageBody(inPackage));
+    }
+  };
+
+  // ── GREEN CONTROL 1: the tree is untouched and a delegation is merely ADDED.
+  // The resolver runs, reads the package file, and the guard still passes — so
+  // every red below is about the mutation and not about the resolver refusing.
+  test('DW0 · an honest delegation is followed and REPORTED, and the run stays green', () => {
+    withTree(
+      (root) => {
+        edit(root, SUBLY_SETTINGS, (s) => IMPORT + s + '\nWidget shell(BuildContext c) => const SettingsBody();\n');
+        const p = join(root, CHASSIS_REL);
+        mkdirSync(dirname(p), { recursive: true });
+        writeFileSync(p, packageBody(false));
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /limbs 1-3 also read 1 chassis file\(s\) the settings tree delegates to/);
+      },
+    );
+  });
+
+  // ── GREEN CONTROL 2: the control itself moves, and is found where it landed.
+  test('DW1 · the control moves into the package and the app is still compliant', () => {
+    withTree(moved({ inPackage: true }), (r) => {
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /apps\/subly — 1 withdrawal call site\(s\)/);
+    });
+  });
+
+  // ── THE FINDING THE GUARD EXISTS FOR, THROUGH A DELEGATION.
+  test('DW2 · 🔴 the control is in NEITHER file — the DPDP finding still fires', () => {
+    withTree(moved({ inPackage: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /NO call to recordAnalyticsConsent\(/);
+      assert.match(r.stdout + r.stderr, /nowhere in this app for a user to turn analytics back OFF/);
+    });
+  });
+
+  // ── 🔴 THE EXPLOIT, REPRODUCED. Step 2 of the review's three steps: the
+  // control is deleted, the package says the words, and NOTHING references the
+  // import. This must stay EXIT 1.
+  test('DW3 · 🔴 an UNUSED chassis import does not stand in for the deleted control', () => {
+    withTree(moved({ inPackage: true, used: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /never references anything it declares \(SettingsBody\)/);
+      assert.match(r.stdout + r.stderr, /a reference is evidence/);
+    });
+  });
+
+  // ── COVERAGE LOST: a delegation that resolves to nothing is not "no
+  // delegation", which is the silent-pass shape.
+  test('DW4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
+    withTree(moved({ onDisk: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /chassis delegation could not be followed/);
+      assert.match(r.stdout + r.stderr, /that file is not on disk/);
+    });
+  });
+});

@@ -625,3 +625,85 @@ describe('a root that carries its own confirmation owes the properties itself', 
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE DELETION CONTROL MOVED INTO THE CHASSIS PACKAGE — [ADR 067] decision 2
+//
+// [ADR 066] step 4 empties a settings screen into
+// `package:nikatru_chassis_screens`, and the `.deleteAccount(` call site goes
+// with the body. Read at the adapter alone this guard reports that an app with
+// accounts ships no in-app deletion path — a store-blocking claim, made about a
+// tree that has one.
+//
+// 🔴 THE EXTENSION SHIPPED WITH NO TEST. It gained 93 lines on 2026-09-05 and
+// this file gained none. DD3 is the case that matters: an import the adapter
+// never references must NOT widen the scan, because a package file that merely
+// SAYS `.deleteAccount(` is not a deletion control a user can reach.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a deletion control that moved into the chassis package', () => {
+  const CHASSIS_REL = 'packages/chassis_screens/lib/settings_body.dart';
+  const IMPORT = "import 'package:nikatru_chassis_screens/settings_body.dart';\n";
+  const USE = '\nWidget shell(BuildContext c) => const SettingsBody();\n';
+
+  /** The package file. `carries` false makes the call genuinely absent from
+   *  both files, which is the finding this guard exists for. */
+  const packageBody = (carries) =>
+    'class SettingsBody {\n  Future<void> remove(WidgetRef ref) async {\n' +
+    (carries ? '    await repo.deleteAccount();\n' : '    return;\n') +
+    '  }\n}\n';
+
+  const moved = ({ inPackage = true, used = true, onDisk = true } = {}) => (root) => {
+    edit(root, SUBLY_SETTINGS, (s) => IMPORT + s.split('.deleteAccount(').join('.noopRemove(') + (used ? USE : ''));
+    if (onDisk) {
+      const p = join(root, CHASSIS_REL);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, packageBody(inPackage));
+    }
+  };
+
+  // GREEN CONTROL 1 — the resolver runs on an otherwise untouched tree.
+  test('DD0 · an honest delegation is followed and REPORTED, and the run stays green', () => {
+    withTree(
+      (root) => {
+        edit(root, SUBLY_SETTINGS, (s) => IMPORT + s + USE);
+        const p = join(root, CHASSIS_REL);
+        mkdirSync(dirname(p), { recursive: true });
+        writeFileSync(p, packageBody(false));
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /the settings scan also read 1 chassis file\(s\) it delegates to/);
+      },
+    );
+  });
+
+  // GREEN CONTROL 2 — the call site itself moves and is found where it landed.
+  test('DD1 · the call site moves into the package and the control is still shipped', () => {
+    withTree(moved({ inPackage: true }), (r) => {
+      assert.equal(r.status, 0, r.stderr);
+    });
+  });
+
+  test('DD2 · 🔴 the call site is in NEITHER file — the store finding still fires', () => {
+    withTree(moved({ inPackage: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /no `\.deleteAccount\(` CALL SITE/);
+    });
+  });
+
+  // 🔴 THE EXPLOIT: the call is deleted, the package says the words, and
+  // nothing in the adapter references the import.
+  test('DD3 · 🔴 an UNUSED chassis import does not stand in for the deleted call site', () => {
+    withTree(moved({ inPackage: true, used: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /never references anything it declares \(SettingsBody\)/);
+    });
+  });
+
+  test('DD4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
+    withTree(moved({ onDisk: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /that file is not on disk/);
+    });
+  });
+});

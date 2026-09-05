@@ -105,6 +105,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 // argv[2] overrides the tree, so the negative tests can mutate a COPY of the
 // real tree instead of the checkout. 🔴 THE COPY IS `git init`-ed BY THE TEST
@@ -227,34 +228,19 @@ if (GATED.size === 0) {
 // ONE LEVEL, ONE IMPORT, EVERY REFUSAL LOUD — an ambiguous or unresolvable
 // delegation is COVERAGE LOST, never a quiet fall-back to the adapter alone.
 // ─────────────────────────────────────────────────────────────────────────────
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
-
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
 /** The chassis file(s) a repo-relative file delegates to, resolved ONE level.
  *  `null` = none · `{ lost }` = could not be followed · `{ files }`. */
-function delegationOf(rel) {
-  const abs = join(REPO, rel);
-  if (!existsSync(abs)) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const paths = [
-    ...new Set([...readFileSync(abs, 'utf8').matchAll(CHASSIS_IMPORT)].map((m) => m[1])),
-  ];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
-    return { lost: `${rel} imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')})` };
-  }
-  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(REPO, target))) {
-    return { lost: `${rel} delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${target} and that file is not on disk` };
-  }
-  const out = [target];
-  for (const m of readFileSync(join(REPO, target), 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-    if (existsSync(join(REPO, t))) out.push(t);
-  }
-  return { files: out };
-}
+const delegationOf = (rel) => resolveChassisDelegation(REPO, rel, { describe: (r) => r });
 
 // ── the roots ───────────────────────────────────────────────────────────────
 const tracked = git('ls-files', '--', '*.dart').split('\n').filter(Boolean);

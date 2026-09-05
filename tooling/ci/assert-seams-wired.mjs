@@ -19,6 +19,7 @@
 import { readFileSync, statSync, existsSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const repo = process.cwd();
 let failed = false;
@@ -161,42 +162,49 @@ const rel = (f) => f.replace(repo + sep, '').replaceAll('\\', '/');
 // therefore in a scope when SOMETHING IN THAT SCOPE DELEGATES TO IT — the brick
 // still has to be the tree that reaches the caller.
 // ─────────────────────────────────────────────────────────────────────────────
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+//
+// 🔴 AND IT IS READ OFF THE RAW SOURCE, NOT OFF `bodies`. Until 2026-09-05
+// this block matched the import regex against the `bodies` map, which is
+// `stripDart(...)` — and stripDart BLANKS EVERY STRING LITERAL, which is what
+// an import path is. Measured verbatim on a mutated brick screen:
+//     RAW      first line: "import 'package:nikatru_chassis_screens/nowhere_body.dart';"
+//     STRIPPED first line: "import                                                    ;"
+//     matches in RAW: 1 · matches in STRIPPED: 0
+// So `delegatedFrom` was ALWAYS EMPTY: the resolver, the COVERAGE LOST refusal
+// and the `scope` filter below were unreachable code that read as shipped.
+// Ten sibling guards fired on an unresolvable delegation and this one exited 0
+// printing nothing — C-COVERAGE-LOST-IS-NOT-PASS verbatim, and when the first
+// screen moves it would have lost the caller silently AND green. The raw text
+// is kept beside the stripped one for exactly this reason.
+const rawOf = new Map(files.map((f) => [f, readFileSync(f, 'utf8')]));
 
 /** relative chassis file -> the relative files that delegate to it. */
 const delegatedFrom = new Map();
 {
   const lost = [];
-  for (const [f, src] of [...bodies]) {
-    CHASSIS_IMPORT.lastIndex = 0;
-    const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
-    if (paths.length === 0) continue;
-    if (paths.length > 1) {
-      lost.push(`${rel(f)} imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')})`);
+  for (const f of [...files]) {
+    const dg = resolveChassisDelegation(repo, rel(f), { describe: (r) => r });
+    if (dg === null) continue;
+    if (dg.lost) {
+      lost.push(dg.lost);
       continue;
     }
-    const targetRel = `${CHASSIS_DIR}/lib/${paths[0]}`;
-    const targetAbs = join(repo, targetRel);
-    if (!existsSync(targetAbs)) {
-      lost.push(`${rel(f)} delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${targetRel} and that file is not on disk`);
-      continue;
-    }
-    const targets = [targetRel];
-    for (const m of readFileSync(targetAbs, 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
-      const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-      if (existsSync(join(repo, t))) targets.push(t);
-    }
-    for (const t of targets) {
-      if (!bodies.has(join(repo, t))) bodies.set(join(repo, t), stripDart(readFileSync(join(repo, t), 'utf8')));
+    for (const t of dg.files) {
+      const abs = join(repo, t);
+      if (!bodies.has(abs)) {
+        rawOf.set(abs, readFileSync(abs, 'utf8'));
+        bodies.set(abs, stripDart(rawOf.get(abs)));
+      }
       if (!delegatedFrom.has(t)) delegatedFrom.set(t, new Set());
       delegatedFrom.get(t).add(rel(f));
     }
   }
   for (const why of lost) {
     fail(
-      `COVERAGE LOST — a chassis delegation could not be followed: ${why}. Every seam below is answered ` +
+      `COVERAGE LOST — a chassis delegation could not be followed: ${why} Every seam below is answered ` +
         'by WHICH FILES this scan reads, so a delegation it cannot follow is a caller it cannot see — and ' +
         'a seam with no visible caller reads exactly like a dead one.',
     );

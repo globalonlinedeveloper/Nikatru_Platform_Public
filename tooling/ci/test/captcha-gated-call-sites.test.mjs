@@ -267,3 +267,77 @@ describe('coverage — a scanner that scans nothing prints perfectly', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A GATED CALL SITE THAT MOVED INTO THE CHASSIS PACKAGE — [ADR 067] decision 2
+//
+// [ADR 066] step 4 empties a sign-in screen into
+// `package:nikatru_chassis_screens`, and every `signInWithEmail(` goes with the
+// body. Read at the adapter alone this guard sees a root with no gated call
+// sites at all — which reads exactly like a compliant one.
+//
+// 🔴 THE EXTENSION SHIPPED WITH NO TEST. It gained 75 lines on 2026-09-05 and
+// this file gained none. CD3 is the case that matters: an import nothing
+// references must not pull a package file into the scan, because a call site
+// nobody can reach is not a call site.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a gated call site that moved into the chassis package', () => {
+  const CHASSIS_REL = 'packages/chassis_screens/lib/sign_in_body.dart';
+  const IMPORT = "import 'package:nikatru_chassis_screens/sign_in_body.dart';\n";
+
+  /** `token` false is the mutation this guard exists for: the call is in the
+   *  package and it passes no usable captchaToken. */
+  const packageBody = (token) =>
+    'class SignInBody extends StatelessWidget {\n  const SignInBody({super.key});\n' +
+    // The surface must MOUNT the gate it threads a token from — a token
+    // arriving from elsewhere is the dead-seam shape this guard also refuses.
+    '  Widget build(BuildContext c) => const TurnstileGate(child: SizedBox.shrink());\n' +
+    '  Future<void> go(WidgetRef ref) async {\n' +
+    '    await repo.signInWithEmail(\n      email: e,\n      password: p,\n' +
+    (token ? '      captchaToken: await gate.token(),\n' : '      captchaToken: null,\n') +
+    '    );\n  }\n}\n';
+
+  const delegate = ({ used = true, onDisk = true, token = true } = {}) => (root) => {
+    edit(root, SUBLY_LOGIN, (s) => IMPORT + s + (used ? '\nWidget shell(BuildContext c) => const SignInBody();\n' : ''));
+    if (onDisk) {
+      const p = join(root, CHASSIS_REL);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, packageBody(token));
+    }
+  };
+
+  // GREEN CONTROL — the delegation resolves, the package file joins the scan,
+  // and its correctly-gated call site keeps the root green.
+  test('CD1 · the delegation is followed and REPORTED, and a gated call passes', () => {
+    withTree(delegate(), (r) => {
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /chassis file\(s\) it delegates to/);
+      assert.match(r.stdout, /sign_in_body\.dart/);
+    });
+  });
+
+  // 🔴 THE FINDING, THROUGH THE DELEGATION. Without the resolver this tree is
+  // green while every stamped app signs in with no captcha at all.
+  test('CD2 · 🔴 an UNGATED call site IN THE PACKAGE is found and named', () => {
+    withTree(delegate({ token: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /sign_in_body\.dart/);
+    });
+  });
+
+  // 🔴 THE EXPLOIT: an import alone is not evidence that a call site went
+  // anywhere, and it must not be read as "no delegation" either.
+  test('CD3 · 🔴 an import the adapter never uses is refused, not followed', () => {
+    withTree(delegate({ used: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /never references anything it declares \(SignInBody\)/);
+    });
+  });
+
+  test('CD4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
+    withTree(delegate({ onDisk: false }), (r) => {
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout + r.stderr, /that file is not on disk/);
+    });
+  });
+});

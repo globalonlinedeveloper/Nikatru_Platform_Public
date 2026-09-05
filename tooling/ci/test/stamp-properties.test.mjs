@@ -290,7 +290,13 @@ describe('an anchor whose line moved into the chassis is judged there', () => {
     writeFileSync(
       appPath,
       `import 'package:nikatru_chassis_screens/app_shell.dart';\n` +
-        original.split(ANCHOR).join('// moved into the chassis'),
+        // 🔴 THE ADAPTER MUST ACTUALLY USE WHAT IT IMPORTS. The shared resolver
+        // refuses an import nothing references, because a review proved on
+        // 2026-09-05 that one unused import line was enough to widen a scan and
+        // silence a deleted control. So the anchored line is replaced by a REAL
+        // use of `AppShell` — which is what a screen moving into the chassis
+        // actually looks like, and a comment would not have been.
+        original.split(ANCHOR).join('home: const AppShell(),'),
     );
     if (packageOnDisk) {
       mkdirSync(join(BASE, 'packages/chassis_screens/lib'), { recursive: true });

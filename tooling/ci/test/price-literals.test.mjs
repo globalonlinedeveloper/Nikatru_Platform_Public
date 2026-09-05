@@ -194,3 +194,66 @@ describe('assert-no-price-literals — the price comes from the rail', () => {
     assert.equal(r.code, 0, r.out);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A PAYWALL THAT MOVED INTO THE CHASSIS PACKAGE — [ADR 067] decision 2
+//
+// [ADR 066] step 4 empties the paywall screen into
+// `package:nikatru_chassis_screens`, and the price rendering goes with it.
+// Read at the adapter alone this guard sees no price at all — and a hardcoded
+// `\$2.99` in the package is a price shipped to every stamped app that nothing
+// would ever fail over.
+//
+// 🔴 THE EXTENSION SHIPPED WITH NO TEST. It gained 94 lines on 2026-09-05 and
+// this file gained none. PD2 is the one that matters: the literal is in the
+// package and the delegation is real, so the finding must fire THERE.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a paywall whose body moved into the chassis package', () => {
+  const CHASSIS_REL = 'packages/chassis_screens/lib/paywall_body.dart';
+  const IMPORT = "import 'package:nikatru_chassis_screens/paywall_body.dart';\n";
+
+  /** The adapter left behind: same path, same class, none of the body. `used`
+   *  decides whether it actually references what it imports. */
+  const adapter = (used) =>
+    IMPORT +
+    '\nclass PaywallScreen extends ConsumerStatefulWidget {\n  const PaywallScreen({super.key});\n}\n' +
+    (used ? 'Widget _row(Offering o) => const PaywallBody();\n' : 'Widget _row(Offering o) => const SizedBox();\n');
+
+  const packageBody = (literal) =>
+    'class PaywallBody extends StatelessWidget {\n' +
+    '  const PaywallBody({super.key});\n' +
+    (literal
+      ? "  Widget build(BuildContext c) => Text(r'\$2.99');\n"
+      : '  Widget build(BuildContext c) => Text(o.formattedPrice);\n') +
+    '}\n';
+
+  // GREEN CONTROL — the delegation resolves, the guard reads the package file,
+  // and a derived price there is still a derived price.
+  test('PD1 · the delegation is followed and REPORTED, and a derived price passes', () => {
+    const r = run({ paywall: adapter(true), extra: { [CHASSIS_REL]: packageBody(false) } });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /the paywall price limb also read 1 chassis file\(s\) it delegates to/);
+  });
+
+  // 🔴 THE FINDING, THROUGH THE DELEGATION. Without the resolver this tree is
+  // green and ships a hardcoded price to every stamped app.
+  test('PD2 · 🔴 a hardcoded price IN THE PACKAGE is found', () => {
+    const r = run({ paywall: adapter(true), extra: { [CHASSIS_REL]: packageBody(true) } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /paywall_body\.dart/);
+  });
+
+  // 🔴 THE EXPLOIT: an import nothing references must not widen the scan — and
+  // must not be read as "no delegation" either.
+  test('PD3 · 🔴 an import the adapter never uses is refused, not followed', () => {
+    const r = run({ paywall: adapter(false), extra: { [CHASSIS_REL]: packageBody(false) } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /never references anything it declares \(PaywallBody\)/);
+  });
+
+  test('PD4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
+    const r = run({ paywall: adapter(true) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /that file is not on disk/);
+  });
+});

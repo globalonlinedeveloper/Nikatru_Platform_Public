@@ -396,6 +396,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+import { CHASSIS_DIR as SHARED_CHASSIS_DIR, delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = process.argv[2] ?? process.cwd();
 
@@ -982,11 +983,19 @@ function resolveImport(R, path) {
 // DERIVED ROOT of this scan, both mean the same thing: the accessibility of
 // that screen is now judged NOWHERE, by a guard that would otherwise print ok.
 // ═══════════════════════════════════════════════════════════════════════════
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${escapeRe(CHASSIS_PKG)}/([^']+\\.dart)'`, 'g');
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired. What stays HERE is the
+// one thing that is this guard's own: a target with no PUBLIC WIDGET is no
+// use to a scan whose unit of coverage is a widget, so the shared answer is
+// narrowed by `surfacesIn` before it is accepted.
+const CHASSIS_DIR = SHARED_CHASSIS_DIR;
 
-/** Where `rel` delegates to, resolved one level.
+/** Where `rel` delegates to, resolved one level, NARROWED to the files that
+ *  declare a public widget.
  *
  *  Three answers, deliberately distinct — `null` (this file does not delegate),
  *  `{ lost }` (it does and the target could not be resolved, which the caller
@@ -994,42 +1003,18 @@ const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${escapeRe(CHASSIS_PKG)}/(
  *  own this surface's properties). Collapsing `null` and `{ lost }` is how a
  *  resolver that stopped reaching its target starts reporting "nothing to do". */
 function delegationOf(rel) {
-  if (!existsSync(join(ROOT, rel))) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const paths = [...new Set([...read(rel).matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
+  const d = resolveChassisDelegation(ROOT, rel, { describe: (r) => `\`${r}\`` });
+  if (d === null || d.lost) return d;
+  const withWidgets = d.files.filter((f) => surfacesIn(f, 'package').length > 0);
+  if (withWidgets.length === 0) {
     return {
       lost:
-        `\`${rel}\` imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths ` +
-        `(${paths.join(', ')}), so the file that now owns this surface's semantics cannot be identified. ` +
-        'This guard keys coverage by FILE and will not guess between two of them.',
+        `\`${rel}\` delegates to \`${d.files[0]}\`, which declares no public widget and re-exports none ` +
+        'that does. One level of barrel expansion is all this resolver does, and it found nothing to ' +
+        'judge — so the surface has no owner and nothing would ever fail over it.',
     };
   }
-  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(ROOT, target))) {
-    return {
-      lost:
-        `\`${rel}\` delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` — ` +
-        'and that file is not on disk. The screen has been emptied into a package that does not carry it, ' +
-        'so its accessibility is asserted NOWHERE by anything.',
-    };
-  }
-  if (surfacesIn(target, 'package').length > 0) return { files: [target] };
-  const out = [];
-  for (const m of read(target).matchAll(/export\s+'([^':]+\.dart)'/g)) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-    if (existsSync(join(ROOT, t)) && surfacesIn(t, 'package').length > 0) out.push(t);
-  }
-  if (out.length === 0) {
-    return {
-      lost:
-        `\`${rel}\` delegates to \`${target}\`, which declares no public widget and re-exports none that ` +
-        'does. One level of barrel expansion is all this resolver does, and it found nothing to judge — ' +
-        'so the surface has no owner and nothing would ever fail over it.',
-    };
-  }
-  return { files: out };
+  return { files: withWidgets };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

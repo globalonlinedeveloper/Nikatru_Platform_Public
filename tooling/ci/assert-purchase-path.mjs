@@ -33,6 +33,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -110,33 +111,25 @@ const ROUTER = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/router.dar
 // So the walk reads the chassis files the brick delegates to as well. This only
 // ever ADDS class bodies; an edge that existed still exists.
 // ─────────────────────────────────────────────────────────────────────────────
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
-
-/** The chassis file(s) an absolute path delegates to, resolved ONE level, as
- *  ABSOLUTE paths. `null` = none · `{ lost }` = could not be followed ·
- *  `{ files }`. The first two stay different answers on purpose. */
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) an ABSOLUTE path delegates to, as ABSOLUTE paths — §E's
+ *  `files` list is absolute, and handing it a repo-relative one reads a path
+ *  that does not exist while printing an empty name for it. */
 function delegationOf(abs) {
-  if (!existsSync(abs)) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const paths = [
-    ...new Set([...readFileSync(abs, 'utf8').matchAll(CHASSIS_IMPORT)].map((m) => m[1])),
-  ];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
-    return { lost: `imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')})` };
-  }
-  const rel = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(ROOT, rel))) {
-    return { lost: `delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to ${rel} and that file is not on disk` };
-  }
-  const out = [join(ROOT, rel)];
-  for (const m of readFileSync(join(ROOT, rel), 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
-    const t = join(ROOT, `${CHASSIS_DIR}/lib/${m[1]}`);
-    if (existsSync(t)) out.push(t);
-  }
-  return { files: out };
+  const d = resolveChassisDelegation(ROOT, abs.slice(ROOT.length + 1).replaceAll('\\', '/'), {
+    describe: () => '',
+  });
+  if (d === null || d.lost) return d;
+  return { ...d, files: d.files.map((f) => join(ROOT, f)) };
 }
 
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';

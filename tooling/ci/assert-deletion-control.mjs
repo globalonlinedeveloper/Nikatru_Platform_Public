@@ -184,6 +184,7 @@ import { join, resolve } from 'node:path';
 
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation, delegationsUnder } from './chassis-delegation.mjs';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
 const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
@@ -362,59 +363,27 @@ const coverageLost = (lines) => {
 // COVERAGE LOST. A delegation this resolver cannot follow must never read as
 // "no delegation" — that is the silent-pass shape.
 // ─────────────────────────────────────────────────────────────────────────────
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+const relTo = (abs, repoRoot) => abs.slice(repoRoot.length + 1).replaceAll('\\', '/');
 
-/** The chassis file(s) an absolute path delegates to, resolved ONE level, as
- *  paths relative to the REPOSITORY root.
- *  `null` = no delegation · `{ lost }` = a delegation that could not be followed
- *  · `{ files }`. `null` and `{ lost }` stay different answers on purpose. */
+/** The chassis file(s) an ABSOLUTE path delegates to, as REPO-RELATIVE paths. */
 function delegationOf(absFile, repoRoot) {
-  if (!existsSync(absFile)) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const src = readFileSync(absFile, 'utf8');
-  const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
-    return {
-      lost: `imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')}), so the file that now carries the behaviour cannot be identified`,
-    };
-  }
-  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(repoRoot, target))) {
-    return { lost: `delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` and that file is not on disk` };
-  }
-  const out = [target];
-  for (const m of readFileSync(join(repoRoot, target), 'utf8').matchAll(/export\s+'([^':]+\.dart)'/g)) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-    if (existsSync(join(repoRoot, t))) out.push(t);
-  }
-  return { files: out };
+  return resolveChassisDelegation(repoRoot, relTo(absFile, repoRoot), { describe: () => '' });
 }
 
 /** Every chassis file the .dart tree under `absDir` delegates to.
- *  `{ files, lost }` — `lost` is a list of refusals the caller must report. */
+ *  `{ files, lost }` — `lost` is a list of refusals the CALLER must report. */
 function chassisDelegationsUnder(absDir, repoRoot) {
-  const files = [];
-  const lost = [];
-  const walk = (d) => {
-    if (!existsSync(d)) return;
-    for (const e of listDir(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (e.name.endsWith('.dart')) {
-        const dg = delegationOf(p, repoRoot);
-        if (dg && dg.lost) {
-          lost.push(`${p} — ${dg.lost}`);
-        } else {
-          for (const f of (dg && dg.files) || []) if (!files.includes(f)) files.push(f);
-        }
-      }
-    }
-  };
-  walk(absDir);
-  return { files, lost };
+  return delegationsUnder(repoRoot, relTo(absDir, repoRoot), { describe: (r) => r });
 }
 
 const readDartTree = (dir) => {

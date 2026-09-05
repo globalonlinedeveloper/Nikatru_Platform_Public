@@ -877,37 +877,65 @@ describe('the watch — the nine pairs this guard does NOT cover, and says so', 
 describe('a caps gate that moved into the chassis is still compared', () => {
   const CHASSIS_BODY = 'packages/chassis_screens/lib/sign_in_body.dart';
 
-  /** The chassis side emptied into the package, adapter left behind. */
-  const delegating = ({ gateInPackage = true, packageOnDisk = true, forkReads = true, secondImport = false } = {}) => {
+  /** The chassis side emptied into the package, adapter left behind.
+   *
+   *  `gateInAdapter` — the adapter keeps a live `caps.<field>` read of its own.
+   *  [ADR 066]'s zero-caps tripwire is evaluated HERE and nowhere else, so this
+   *  is the flag D3 turns off.
+   *  `extraGateInPackage` — the package gates on a SECOND field the adapter
+   *  never mentions. That is what D2b uses to prove the union is real.
+   *  `adapterUsesBody` / `forkUnusedImport` — an import that is never used.
+   *  D7 and D8 are the cases the 2026-09-05 review demonstrated on the real
+   *  tree: one unused import line turned a deleted gate from EXIT 1 to EXIT 0. */
+  const delegating = ({
+    gateInAdapter = true,
+    extraGateInPackage = false,
+    packageOnDisk = true,
+    forkReads = true,
+    forkFollowsExtra = true,
+    secondImport = false,
+    adapterUsesBody = true,
+    forkUnusedImport = false,
+  } = {}) => {
     const extra = {};
     extra[CHASSIS] =
       "import 'package:flutter/material.dart';\n" +
       "import 'package:nikatru_chassis_screens/sign_in_body.dart';\n" +
       (secondImport ? "import 'package:nikatru_chassis_screens/other_body.dart';\n" : '') +
-      '\nclass SignInScreen {\n  Widget build(BuildContext context) => const SignInBody();\n}\n';
+      '\nclass SignInScreen {\n  Widget build(BuildContext context) {\n' +
+      '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
+      (gateInAdapter
+        ? '    if (caps.oauthRedirect) return const AppleButton();\n'
+        : '    if (providers.any) return const AppleButton();\n') +
+      `    return const ${adapterUsesBody ? 'SignInBody' : 'Empty'}();\n  }\n}\n`;
     if (packageOnDisk) {
       extra[CHASSIS_BODY] =
         'class SignInBody {\n  Widget build(BuildContext context) {\n' +
         '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
-        (gateInPackage
-          ? '    if (caps.oauthRedirect) return const AppleButton();\n'
-          : '    if (providers.any) return const AppleButton();\n') +
+        '    if (caps.oauthRedirect) return const AppleButton();\n' +
+        (extraGateInPackage ? '    if (caps.canNotify) return const Bell();\n' : '') +
         '    return const Empty();\n  }\n}\n';
     }
     if (secondImport) {
       extra['packages/chassis_screens/lib/other_body.dart'] =
         'class OtherBody {\n  Widget build(BuildContext context) => const Empty();\n}\n';
     }
-    if (!forkReads) {
+    if (!forkReads || !forkFollowsExtra || forkUnusedImport) {
       extra[FORK] =
+        (forkUnusedImport ? "import 'package:nikatru_chassis_screens/sign_in_body.dart';\n\n" : '') +
         'class LoginScreen {\n  Widget build(BuildContext context) {\n' +
-        '    if (providers.any) return const AppleButton();\n    return const Empty();\n  }\n}\n';
+        '    final AuthCapabilities caps = ref.watch(authCapabilitiesProvider);\n' +
+        (forkReads
+          ? '    if (caps.oauthRedirect && providers.any) return const AppleButton();\n'
+          : '    if (providers.any) return const AppleButton();\n') +
+        (extraGateInPackage && forkFollowsExtra ? '    if (caps.canNotify) return const Bell();\n' : '') +
+        '    return const Empty();\n  }\n}\n';
     }
     return tree({ extra });
   };
 
   // GREEN CONTROL.
-  test('D1 · the gate is in the package and parity still holds', () => {
+  test('D1 · the gate is in the package, the adapter still gates, parity holds', () => {
     const { code, out } = run(delegating());
     assert.equal(code, 0, out);
     assert.match(out, /ok {2}no seam forks/);
@@ -921,12 +949,26 @@ describe('a caps gate that moved into the chassis is still compared', () => {
     assert.match(out, /chassis reads \{oauthRedirect\}/);
   });
 
-  // [ADR 066]'s limb, UNSOFTENED. The union is empty, so the subset test is
-  // vacuous — and the finding still names the ADAPTER, not the package.
-  test('D3 · an EMPTY union still fails, and still names the adapter', () => {
-    const { code, out } = run(delegating({ gateInPackage: false }));
+  // THE UNION IS REAL, AND IT IS ENFORCED. The package gates on a field the
+  // adapter never mentions; the fork must follow it there. Without this case,
+  // D1 is equally consistent with a resolver that reads only the adapter.
+  test('D2b · a gate that exists ONLY in the package is still a gate the fork must follow', () => {
+    const { code, out } = run(delegating({ extraGateInPackage: true, forkFollowsExtra: false }));
     assert.equal(code, 1, out);
-    assert.match(out, /sign_in_screen\.dart — 0 `caps\.<field>` read\(s\) found, in it OR in the chassis file it delegates to/);
+    assert.match(out, /does NOT read `caps.canNotify`/);
+    assert.match(out, /chassis reads \{canNotify, oauthRedirect\}/);
+  });
+
+  // ── [ADR 066] HARD CONSTRAINT #2, ON THE ADAPTER, UNWIDENED ───────────────
+  // Shipped on 2026-09-05 evaluated over the adapter ∪ package UNION, and a
+  // review stripped every `caps.` read out of the adapter, left the package
+  // mentioning `caps.oauthRedirect`, and watched EXIT 1 become EXIT 0. The
+  // tripwire's subject is whether THIS FILE still gates on anything.
+  test('D3 · the adapter gating on NOTHING still fails, even though the package gates', () => {
+    const { code, out } = run(delegating({ gateInAdapter: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sign_in_screen\.dart — 0 `caps\.<field>` read\(s\) found IN THE ADAPTER ITSELF/);
+    assert.match(out, /the tripwire is about whether this file still gates on anything/);
     assert.match(out, /the subset test cannot fail and is therefore worse than none/);
   });
 
@@ -956,5 +998,32 @@ describe('a caps gate that moved into the chassis is still compared', () => {
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.match(out, /the file is not there/);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // D7 AND D8 — THE EXPLOIT, REPRODUCED AS A TEST.
+  //
+  // 2026-09-05, measured on the real tree by an independent reviewer:
+  //   1. `apps/subly/.../login_screen.dart`, `caps.oauthRedirect` gate deleted
+  //      → EXIT 1, "1 accepted fork(s) have fallen behind the chassis screen".
+  //   2. ONE line added — `import 'package:nikatru_chassis_screens/sign_in.dart';`
+  //      — with the target merely MENTIONING `caps.oauthRedirect`, nothing in
+  //      the fork using it → SAME TREE, EXIT 0, "follows all 1 chassis caps".
+  // The union was taken on the strength of an import line alone. Every
+  // delegation case above has its adapter genuinely delegating, so not one of
+  // them ranged over this. These two do.
+  // ─────────────────────────────────────────────────────────────────────────
+  test('D7 · 🔴 the fork drops its gate and adds an UNUSED chassis import — still EXIT 1', () => {
+    const { code, out } = run(delegating({ forkReads: false, forkUnusedImport: true }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never references anything it declares \(SignInBody\)/);
+    assert.match(out, /a reference is evidence/);
+  });
+
+  test('D8 · 🔴 the ADAPTER imports the package and never uses it — refused, not followed', () => {
+    const { code, out } = run(delegating({ adapterUsesBody: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /never references anything it declares \(SignInBody\)/);
+    assert.match(out, /dead code wearing a delegation's costume/);
   });
 });

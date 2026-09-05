@@ -77,6 +77,7 @@
 // per app would fail the client-only probe for being what it is.
 import { readFileSync, existsSync } from 'node:fs';
 import { listDir } from './tree-walk.mjs';
+import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 import { join } from 'node:path';
 
 const repo = process.cwd();
@@ -2297,45 +2298,18 @@ const anchorDomain = (path) => {
 // an anchor that matched before still matches, because its own file is still
 // read first.
 // ─────────────────────────────────────────────────────────────────────────────
-const CHASSIS_PKG = 'nikatru_chassis_screens';
-const CHASSIS_DIR = 'packages/chassis_screens';
-const CHASSIS_IMPORT = new RegExp(`import\\s+'package:${CHASSIS_PKG}/([^']+\\.dart)'`, 'g');
-
-/** The chassis file(s) `rel` delegates to, resolved ONE level.
- *  `null` = no delegation · `{ lost }` = a delegation that could not be followed
- *  · `{ files }`. The first two are different answers on purpose. */
-function delegationOf(rel) {
-  const abs = join(repo, rel);
-  if (!existsSync(abs)) return null;
-  CHASSIS_IMPORT.lastIndex = 0;
-  const src = stripAnchorComments(rel, readFileSync(abs, 'utf8'));
-  const paths = [...new Set([...src.matchAll(CHASSIS_IMPORT)].map((m) => m[1]))];
-  if (paths.length === 0) return null;
-  if (paths.length > 1) {
-    return {
-      lost:
-        `imports ${paths.length} different \`package:${CHASSIS_PKG}\` paths (${paths.join(', ')}), so the ` +
-        'file that now carries this behaviour cannot be identified; this guard reads NAMED files and will ' +
-        'not guess between two of them',
-    };
-  }
-  const target = `${CHASSIS_DIR}/lib/${paths[0]}`;
-  if (!existsSync(join(repo, target))) {
-    return {
-      lost:
-        `delegates to \`package:${CHASSIS_PKG}/${paths[0]}\`, which resolves to \`${target}\` and that file ` +
-        'is not on disk — the behaviour left this file and arrived nowhere',
-    };
-  }
-  const out = [target];
-  for (const m of stripAnchorComments(target, readFileSync(join(repo, target), 'utf8')).matchAll(
-    /export\s+'([^':]+\.dart)'/g,
-  )) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
-    if (existsSync(join(repo, t))) out.push(t);
-  }
-  return { files: out };
-}
+// 🔴 THE RULE IS NOT WRITTEN OUT AGAIN HERE. It lives in
+// ./chassis-delegation.mjs — one import, one level, the target must be on
+// disk, AND THE ADAPTER MUST ACTUALLY USE SOMETHING THE TARGET DECLARES.
+// It shipped as eleven near-copies on 2026-09-05 and a review measured seven
+// distinct implementations of the same paragraph with nothing in the tree
+// comparing them; the module is that finding repaired, and the use check is
+// the half whose absence let ONE UNUSED IMPORT silence a DPDP withdrawal
+// control and a caps gate. `null` (no delegation) and `{ lost }` (one this
+// scan could not follow) stay DIFFERENT ANSWERS: everything below reports
+// `lost` as COVERAGE LOST and nothing reads it as "nothing to do".
+/** The chassis file(s) a repo-relative file delegates to, resolved ONE level. */
+const delegationOf = (rel) => resolveChassisDelegation(repo, rel, { describe: () => '' });
 
 /** The files ONE anchor is read over: its own spine domain, plus wherever that
  *  domain delegates to. Returns `{ files }` or `{ lost }`. */
