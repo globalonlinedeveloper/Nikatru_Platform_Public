@@ -387,7 +387,9 @@ catch for you.
 **There is no `itemId` / `productId` field, and that is deliberate.** The Chrome
 item id is the last path segment of the Chrome listing URL —
 `https://chromewebstore.google.com/detail/<slug>/<32-char-id>`, this corpus's own
-record at `Extensions_Private/DISTRIBUTION.md:172` and `NAMING.md:27`. A separate
+record at `Private/extensions/DISTRIBUTION.md:172` and `Private/extensions/NAMING.md:27`
+(both moved there 2026-09-05 when Extensions_Private folded into the platform
+corpus, ADR 067 decision 1). A separate
 slot would be a second declaration of a fact `listings.chrome` already carries,
 free to drift in the direction that reports clean. Do not add one.
 
