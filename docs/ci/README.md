@@ -118,9 +118,9 @@ Each is enforced by a guard that will fail the build, named so you can read it:
 - **A drift check deletes its artifact before rebuilding it**, so an empty diff
   cannot mean "the generator emitted nothing" — same guard.
 - **Every `uses:` is SHA-pinned, every job declares `permissions:`, and every
-  job carries `timeout-minutes`** — `tooling/ci/assert-workflow-hardening.mjs`,
-  and now also enforced natively by GitHub (`sha_pinning_required`,
-  `allowed_actions: selected`).
+  job carries `timeout-minutes`** — `tooling/ci/assert-workflow-hardening.mjs`.
+  GitHub's `allowed_actions: selected` backs the allowlist half natively; its
+  `sha_pinning_required` half **cannot be turned on here** and §7.1 says why.
 - **Every workflow file has a `duty` row in `tooling/ops/register.json`** and an
   owner in `tooling/ci/assert-release-lane-generic.mjs` — a new workflow file
   fails the build until both exist. Adding a *job* to an existing workflow does
@@ -197,31 +197,51 @@ Recorded so a change to any of them is a deliberate act:
 | required status checks on `main` | exactly `ci-gate`, strict | one aggregate, forever. |
 | `enforce_admins` | true | |
 | `allowed_actions` | `selected` + a named allowlist | GitHub now enforces natively what `assert-workflow-hardening.mjs` enforced alone. The allowlist is GitHub-owned + verified creators + `subosito/flutter-action`, `cloudflare/wrangler-action`, `nanasess/setup-chromedriver`, `dorny/paths-filter`, `renovatebot/github-action` — the five third-party actions the tree actually uses. |
-| `sha_pinning_required` | true | as above — **and it applies to actions nested INSIDE an action you use**, which is the part that bites. See §7.1. |
+| `sha_pinning_required` | **false, and it cannot be true** | GitHub applies it to actions nested inside an action you use, and `subosito/flutter-action` references `actions/cache@v5`. See §7.1 — this is measured, twice, not a preference. |
 | `delete_branch_on_merge` | true | |
 
-### 7.1 `sha_pinning_required` forbids the Flutter SDK cache
+### 7.1 `sha_pinning_required` cannot be turned on while flutter-action is used
 
-`subosito/flutter-action` is a **composite** action, and its cache path calls
-`actions/cache@v5` — a floating tag, inside an action this repository does not
-control. With `sha_pinning_required: true` GitHub refuses the whole step:
+`subosito/flutter-action` is a **composite** action and it references `actions/cache@v5` — a
+floating tag, inside an action this repository does not control. With `sha_pinning_required: true`
+GitHub refuses every job that uses it:
 
-> `The action actions/cache@v5 is not allowed in globalonlinedeveloper/Nikatru_Platform_Public … All actions must also be pinned to a full-length commit SHA.`
+> `The action actions/cache@v5 is not allowed in globalonlinedeveloper/Nikatru_Platform_Public …
+> All actions must also be pinned to a full-length commit SHA.`
 
-Measured on run 33960420609, which failed `workspace-gate` and `app-brick`
-outright. `.github/actions/setup-flutter` therefore defaults `cache` to
-**false**, which is what every caller did before the composite existed.
+**Measured twice, and the first reading was wrong.** Run **33960420609** failed `workspace-gate` and
+`app-brick` on it, and the obvious inference — *"the cache is what pulls `actions/cache` in, so turn
+the cache off"* — was made and shipped. It is false. GitHub validates **every `uses:` in a composite
+action, whether or not its `if:` would run it**, so the reference is refused with the cache already
+off. Proven by re-running CI on `main` under the setting: run **33961320034 attempt 2**, same two
+jobs, same error, `cache: false` already in the tree.
 
-The other four allowed third-party actions were checked the same way rather than
-assumed — `cloudflare/wrangler-action`, `nanasess/setup-chromedriver` and
-`dorny/paths-filter` are JavaScript actions (`using: node20`/`node24`) with no
-nested `uses:` at the pinned SHA, so no other lane can hit this. If one ever
-does, the reversal is one call:
+⚠️ The reason the intervening runs looked like the fix had worked is worse than the mistake: the
+setting had **silently gone back to `false`** between those runs. A `PUT` to
+`repos/{o}/{r}/actions/permissions` is a **REPLACE** — omit `sha_pinning_required` from the body
+and it resets to `false` — so anything else that sets `allowed_actions` without re-sending the flag
+turns it off. The green runs in between were green because the setting was off, not because the
+cache was.
+
+So: **`sha_pinning_required` stays `false`** until `flutter-action` pins its own dependencies, and
+`.github/actions/setup-flutter` keeps `cache: true`, which is worth about 130 runner-seconds a run.
+`allowed_actions: selected` **is** on and does work — it is what produced the error message above,
+naming the offending action precisely.
+
+`assert-workflow-hardening.mjs` remains the enforcement for what this repository actually writes,
+which is where it always was. The other four allowed third-party actions were read at their pinned
+SHAs (`gh api repos/<o>/<r>/git/trees/<sha>` → `git/blobs`): `cloudflare/wrangler-action` (node20),
+`nanasess/setup-chromedriver` (node24) and `dorny/paths-filter` (node20) are JavaScript actions with
+no nested `uses:` at all, so flutter-action is the only blocker.
+
+To try it again after a flutter-action release that pins `actions/cache`:
 
 ```
-echo '{"enabled":true,"allowed_actions":"selected","sha_pinning_required":false}' > perm.json
+echo '{"enabled":true,"allowed_actions":"selected","sha_pinning_required":true}' > perm.json
 gh api -X PUT repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/permissions --input perm.json
 ```
+
+…and then re-run CI on `main` and read it, because the branch cannot show you this.
 
 ### 7.2 Scanners, and what an acknowledged finding looks like
 

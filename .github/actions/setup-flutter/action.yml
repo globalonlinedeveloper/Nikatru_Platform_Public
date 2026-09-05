@@ -7,16 +7,16 @@ description: Install the Flutter SDK pinned in tooling/versions.json, with the p
 
 inputs:
   cache:
-    description: Restore the Flutter SDK and pub cache. Off by default - see below.
+    description: Restore the Flutter SDK and pub cache. Off for jobs that must resolve cold.
     required: false
-    # why: OFF. subosito/flutter-action's cache path calls `actions/cache@v5` -
-    # a floating tag inside an action this repo does not control - and the repo
-    # now has `sha_pinning_required: true`, which GitHub applies to NESTED
-    # actions too. Measured: run 33960420609 refused setup-flutter outright with
-    # "actions/cache@v5 is not allowed ... All actions must also be pinned to a
-    # full-length commit SHA". The platform guarantee is worth more than the
-    # cache; see docs/ci/README.md section 7.
-    default: 'false'
+    # why: back ON. Turning it off did NOT make `sha_pinning_required: true`
+    # workable - GitHub validates every `uses:` in a composite action whether or
+    # not its `if:` will run it, so subosito/flutter-action's `actions/cache@v5`
+    # is refused either way. Proven by re-running CI on main under the setting:
+    # run 33961320034 attempt 2, same error, cache already off. The setting is
+    # therefore OFF and the cache is worth ~130 runner-seconds a run.
+    # docs/ci/README.md section 7.1 carries the whole measurement.
+    default: 'true'
 
 outputs:
   flutter-version:
