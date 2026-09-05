@@ -1,0 +1,42 @@
+name: Set up Flutter
+description: Install the Flutter SDK pinned in tooling/versions.json, with the pub cache restored.
+
+# why: the SDK version is read from tooling/versions.json at run time rather than
+# written here, so the pin has exactly one home and Renovate's customManager over
+# that file is the only thing that has to move to advance it.
+
+inputs:
+  cache:
+    description: Restore the Flutter SDK and pub cache. Off by default - see below.
+    required: false
+    # why: OFF. subosito/flutter-action's cache path calls `actions/cache@v5` -
+    # a floating tag inside an action this repo does not control - and the repo
+    # now has `sha_pinning_required: true`, which GitHub applies to NESTED
+    # actions too. Measured: run 33960420609 refused setup-flutter outright with
+    # "actions/cache@v5 is not allowed ... All actions must also be pinned to a
+    # full-length commit SHA". The platform guarantee is worth more than the
+    # cache; see docs/ci/README.md section 7.
+    default: 'false'
+
+outputs:
+  flutter-version:
+    description: The version this action installed, as read from tooling/versions.json.
+    value: ${{ steps.pin.outputs.flutter }}
+
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      # why: node is preinstalled on every GitHub-hosted runner, so this resolves
+      # before any toolchain is set up.
+      run: |
+        set -euo pipefail
+        v="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').flutter")"
+        test -n "$v"
+        echo "flutter=$v" >> "$GITHUB_OUTPUT"
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+      with:
+        channel: stable
+        flutter-version: ${{ steps.pin.outputs.flutter }}
+        cache: ${{ inputs.cache }}

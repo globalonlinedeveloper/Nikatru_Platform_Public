@@ -4,10 +4,10 @@
       "DoD H"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "lane",
-    "ref": ".github/workflows/ci.yml#app_brick",
+    "ref": ".github/workflows/ci.yml#app-brick",
     "references": [],
     "state": "WIRED"
   },
@@ -54,7 +54,7 @@
       "C-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-a11y-coverage.mjs",
@@ -66,7 +66,7 @@
       "C-7"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-adapter-capabilities.mjs",
@@ -76,7 +76,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-ads-declarations.mjs",
@@ -89,7 +89,7 @@
       "O-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-alert-disposition.mjs",
@@ -104,7 +104,7 @@
       "E-3"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-analytics-contract.mjs",
@@ -114,7 +114,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-android-target-sdk.mjs",
@@ -130,8 +130,8 @@
       "N-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick",
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-app-dod.mjs",
@@ -145,7 +145,7 @@
       ".github/workflows/build-platforms.yml#prepare",
       ".github/workflows/build-platforms.yml#release",
       ".github/workflows/build-platforms.yml#windows",
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#dry-run",
@@ -161,7 +161,7 @@
       "G-49"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#workspace_gate"
+      ".github/workflows/ci.yml#workspace-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-apple-privacy-manifest.mjs",
@@ -222,7 +222,7 @@
       "T-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-capability-register.mjs",
@@ -234,7 +234,7 @@
       "C-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-captcha-gated-call-sites.mjs",
@@ -246,7 +246,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-case-count-honest.mjs",
@@ -287,7 +287,7 @@
       "E-14"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-ceiling-budget.mjs",
@@ -301,7 +301,7 @@
       "W-1"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-channel-claims.mjs",
@@ -316,7 +316,7 @@
       "R-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-channel-register.mjs",
@@ -329,7 +329,7 @@
       "ADR 066"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-chassis-ledger.mjs",
@@ -342,7 +342,7 @@
       "ADR 057"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-clone-contract.mjs",
@@ -354,7 +354,7 @@
       "B-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-config-registry.mjs",
@@ -367,7 +367,7 @@
       "K-11"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-consent-withdrawal-surface.mjs",
@@ -382,7 +382,7 @@
       "P-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-content-licences.mjs",
@@ -403,7 +403,7 @@
       "S-11"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-cors-allowlist.mjs",
@@ -415,7 +415,7 @@
       "S-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-d1-bindings.mjs",
@@ -425,7 +425,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-d1-sql-inventory.mjs",
@@ -437,7 +437,7 @@
       "K-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-data-inventory.mjs",
@@ -451,7 +451,7 @@
       "C-15"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-deletion-control.mjs",
@@ -463,7 +463,7 @@
       "O-7"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-deploy-triggers-deploy.mjs",
@@ -476,7 +476,7 @@
       "R-1"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-deploy-triggers.mjs",
@@ -486,7 +486,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-desktop-runner-identity.mjs",
@@ -517,7 +517,7 @@
       "N-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-e2e-legs.mjs",
@@ -530,7 +530,7 @@
       "R-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-e2e-proof-fresh.mjs",
@@ -558,7 +558,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-enforcement-index.mjs",
@@ -572,7 +572,7 @@
       "M-7"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-entitlement-contract.mjs",
@@ -582,7 +582,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-erasure-reach.mjs",
@@ -594,7 +594,7 @@
       "E-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-flag-exposure.mjs",
@@ -632,7 +632,7 @@
       "R-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-green-means-ran.mjs",
@@ -644,7 +644,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-guard-coverage.mjs",
@@ -654,7 +654,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-guards-refuse-empty.mjs",
@@ -666,7 +666,7 @@
       "S-1"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-input-contract.mjs",
@@ -678,7 +678,7 @@
       "F-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-lane-coverage.mjs",
@@ -692,7 +692,7 @@
       "R-13"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-launch-smoke.mjs",
@@ -704,7 +704,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-launcher-icons.mjs",
@@ -716,7 +716,7 @@
       "K-13"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-legal-tripwires.mjs",
@@ -730,8 +730,8 @@
       "P-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick",
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-licence-register.mjs",
@@ -743,7 +743,7 @@
       "C-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-lint-inheritance.mjs",
@@ -756,7 +756,7 @@
       "D-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/store-screenshots.yml#capture"
     ],
     "kind": "guard",
@@ -769,7 +769,7 @@
       "F-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-lockfile-discipline.mjs",
@@ -779,7 +779,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-mail-transport-claims.mjs",
@@ -791,7 +791,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-modal-detection.mjs",
@@ -805,7 +805,7 @@
       "M-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-money-config.mjs",
@@ -817,7 +817,7 @@
       "E-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-monitor-coverage.mjs",
@@ -834,7 +834,7 @@
       "M-14"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-mor-adapters.mjs",
@@ -847,7 +847,7 @@
       "C-11"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-clone-tells.mjs",
@@ -859,7 +859,7 @@
       "T-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-do-alarms.mjs",
@@ -873,7 +873,7 @@
       "N-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-gate-weakening.mjs",
@@ -887,7 +887,7 @@
       "DoD E"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-hardcoded-strings.mjs",
@@ -899,7 +899,7 @@
       "M-11"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-price-literals.mjs",
@@ -914,7 +914,7 @@
       "C-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-seam-forks.mjs",
@@ -926,7 +926,7 @@
       "R-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-secret-defines.mjs",
@@ -939,7 +939,7 @@
       "R-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-no-tls-pinning.mjs",
@@ -951,7 +951,7 @@
       "R-7"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-obfuscation-coupled.mjs",
@@ -964,7 +964,7 @@
       "O-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-platform",
       ".github/workflows/ops-watch.yml#digest",
       ".github/workflows/ops-watch.yml#heartbeats"
     ],
@@ -980,7 +980,7 @@
       "P-7"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-pack-inert.mjs",
@@ -993,7 +993,7 @@
       "P-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-pack-roundtrip.mjs",
@@ -1005,7 +1005,7 @@
       "C-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-package-boundaries.mjs",
@@ -1017,7 +1017,7 @@
       "C-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-package-earned.mjs",
@@ -1041,7 +1041,7 @@
       "F-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-platform-proof-fresh.mjs",
@@ -1055,7 +1055,7 @@
       "B-18"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-platform-register.mjs",
@@ -1068,7 +1068,7 @@
       "K-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-play-declarations.mjs",
@@ -1080,7 +1080,7 @@
       "D-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -1094,7 +1094,7 @@
       "K-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-policy-archive.mjs",
@@ -1107,7 +1107,7 @@
       "K-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-policy-claims.mjs",
@@ -1119,7 +1119,7 @@
       "C-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-privacy-manifest.mjs",
@@ -1131,7 +1131,7 @@
       "B-17"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-prod-provenance.mjs",
@@ -1144,7 +1144,7 @@
       "P-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-prompt-provenance.mjs",
@@ -1154,7 +1154,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-provider-graph-acyclic.mjs",
@@ -1168,7 +1168,7 @@
       "M-16"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-pseudonymity-firewall.mjs",
@@ -1182,7 +1182,7 @@
       "P-13"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-publish-gate.mjs",
@@ -1194,7 +1194,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-publish-records.mjs",
@@ -1211,7 +1211,7 @@
       "M-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-purchase-path.mjs",
@@ -1223,7 +1223,7 @@
       "P-1"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-recipe-contract.mjs",
@@ -1236,7 +1236,7 @@
       "R-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-durable.mjs",
@@ -1249,7 +1249,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#prepare",
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/deploy-web.yml#prepare",
       ".github/workflows/e2e.yml#prepare"
     ],
@@ -1267,7 +1267,7 @@
       "R-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-release-provenance.mjs",
@@ -1289,7 +1289,7 @@
       "K-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-repo-posture.mjs",
@@ -1301,7 +1301,7 @@
       "ADR 065"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-responsive-coverage.mjs",
@@ -1313,7 +1313,7 @@
       "O-17"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-retention-coverage.mjs",
@@ -1325,7 +1325,7 @@
       "P-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-review-gate.mjs",
@@ -1339,7 +1339,7 @@
       "K-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-rollup-lossless.mjs",
@@ -1362,7 +1362,7 @@
       "DoD A"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-screen-set.mjs",
@@ -1374,7 +1374,7 @@
       "C-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-seams-wired.mjs",
@@ -1384,7 +1384,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-signup-consent-shape.mjs",
@@ -1396,7 +1396,7 @@
       "K-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-sink-disclosure.mjs",
@@ -1410,7 +1410,7 @@
     ],
     "invokedBy": [
       ".github/workflows/build-platforms.yml#linux_web_android",
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -1425,7 +1425,7 @@
       "S-14"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-brand-assets.mjs",
@@ -1438,7 +1438,7 @@
       "S-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-platforms.mjs",
@@ -1455,7 +1455,7 @@
       "N-4"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-properties.mjs",
@@ -1465,7 +1465,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-text-fidelity.mjs",
@@ -1477,7 +1477,7 @@
       "S-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-wiring.mjs",
@@ -1487,7 +1487,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-store-build-config.mjs",
@@ -1499,7 +1499,7 @@
       "D-3"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-store-identity.mjs",
@@ -1522,8 +1522,8 @@
       "R-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick",
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#app-brick",
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-store-metadata.mjs",
@@ -1539,7 +1539,7 @@
       "D-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-submission-safety.mjs",
@@ -1549,7 +1549,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-supabase-templates.mjs",
@@ -1563,7 +1563,7 @@
       "K-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-sworn-store-files.mjs",
@@ -1575,7 +1575,7 @@
       "O-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-update-coverage.mjs",
@@ -1587,7 +1587,7 @@
       "C-8"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-chassis"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-vendor-portability.mjs",
@@ -1599,7 +1599,7 @@
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-version-consistency.mjs",
@@ -1611,7 +1611,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-walks-bounded.mjs",
@@ -1624,7 +1624,7 @@
       "R-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-store"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-web-cache-policy.mjs",
@@ -1638,7 +1638,7 @@
       "R-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-worker-error-sink.mjs",
@@ -1650,7 +1650,7 @@
       "F-11"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-workflow-hardening.mjs",
@@ -1662,7 +1662,7 @@
       "F-1"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#workspace_gate"
+      ".github/workflows/ci.yml#workspace-gate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-workspace-coverage.mjs",
@@ -1704,7 +1704,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "guard",
     "ref": "tooling/ci/check-migrations.mjs",
@@ -1822,7 +1822,7 @@
       "F-6"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#security-scan"
     ],
     "kind": "guard",
     "ref": "tooling/ci/scan-secrets.mjs",
@@ -1835,7 +1835,7 @@
       "F-11"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#security-scan"
     ],
     "kind": "guard",
     "ref": "tooling/ci/scan-workflows.mjs",
@@ -1883,7 +1883,7 @@
       "ADR 007"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#content_gate"
+      ".github/workflows/ci.yml#content-gate"
     ],
     "kind": "script",
     "ref": "tooling/content_pipeline/cli.mjs",
@@ -2128,7 +2128,7 @@
       "F-2"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-appstore.yml#dry-run"
     ],
     "kind": "script",
@@ -2142,7 +2142,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-play.yml#submit"
     ],
@@ -2158,7 +2158,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -2173,7 +2173,7 @@
       "D-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform",
+      ".github/workflows/ci.yml#guards-store",
       ".github/workflows/submit-windows-store.yml#dry-run"
     ],
     "kind": "script",
@@ -2184,7 +2184,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "script",
     "ref": "tooling/scripts/assert-no-dead-files.mjs",
@@ -2197,7 +2197,7 @@
       "N-9"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#platform"
+      ".github/workflows/ci.yml#guards-platform"
     ],
     "kind": "script",
     "ref": "tooling/scripts/check-selection-record.mjs",
@@ -2209,7 +2209,7 @@
       "S-12"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#app_brick"
+      ".github/workflows/ci.yml#app-brick"
     ],
     "kind": "script",
     "ref": "tooling/scripts/provision-backend.mjs",

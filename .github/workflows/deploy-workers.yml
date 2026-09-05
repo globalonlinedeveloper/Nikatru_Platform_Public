@@ -1,4 +1,6 @@
-name: Deploy Workers
+name: Deploy workers
+
+run-name: "Deploy workers from ${{ github.ref_name }} (${{ github.event_name }})"
 
 # Deploys the Cloudflare Workers in services/ on push to main. Path-scoped so a
 # change to one service never redeploys the other (mirrors deploy-web.yml's
@@ -133,9 +135,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       - run: npm ci
         working-directory: services/subly-api
       # MIGRATIONS BEFORE DEPLOY — the order is the whole point.
@@ -268,9 +268,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
       - run: npm ci
         working-directory: services/platform
       # MIGRATIONS BEFORE DEPLOY — see the note in the subly-api job.

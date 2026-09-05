@@ -21,6 +21,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 name: Renovate
 
+run-name: "Renovate (${{ github.event_name }}) by @${{ github.actor }}"
+
 on:
   # 🔴 THE PRIMARY TRIGGER, and it is `workflow_dispatch` deliberately. GitHub
   # delivers only ~10.1% of scheduled runs on time (research/76 §E, reproduced
