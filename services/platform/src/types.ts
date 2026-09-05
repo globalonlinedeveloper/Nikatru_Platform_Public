@@ -30,6 +30,30 @@ export interface Env {
   JWKS_CACHE?: KVNamespace;
 
   /**
+   * The signups namespace, bound for ONE reason: the nightly export
+   * (src/backup/) cannot back up a namespace the Worker cannot read.
+   *
+   * ⚠️ NOTHING ELSE IN THIS WORKER READS OR WRITES IT, and that is deliberate.
+   * `06 §3.4` measured it bound to no Worker at all — 2 list operations and zero
+   * reads or writes in seven days — which is exactly the shape of a store that
+   * gets lost without anyone noticing. Binding it read-only for the backup is the
+   * cheapest way to stop that; giving it a runtime consumer is a separate
+   * decision nobody has taken.
+   *
+   * Optional so a deploy without it still runs; the export then records the
+   * namespace as FAILED rather than skipping it silently.
+   */
+  SIGNUPS?: KVNamespace;
+
+  /**
+   * The one portfolio backup bucket. Written by the 02:30 cron only.
+   *
+   * Optional for the same reason as the KV bindings above: absence must produce a
+   * RED heartbeat row, not a build failure and not a green run that wrote nothing.
+   */
+  BACKUPS_R2?: R2Bucket;
+
+  /**
    * Cost circuit breaker for /v1/events (G-12). The Rate Limiting binding, NOT
    * a KV counter: KV is eventually consistent with a ~60s edge cache, so under
    * the exact burst a breaker exists to stop, a KV counter reads stale and lets

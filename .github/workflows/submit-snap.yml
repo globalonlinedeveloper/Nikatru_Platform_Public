@@ -1,4 +1,6 @@
-name: Snap Store submission path (dry run + owner-approved upload)
+name: "Store submit: Snap Store"
+
+run-name: "Store submit: Snap Store by @${{ github.actor }}"
 
 # [pipeline D-10] limb (i) — "a submission script exists AND RESOLVES TO A STEP
 # IN A WORKFLOW, parsed not grepped". This workflow is the step it resolves to.
@@ -111,8 +113,6 @@ permissions:
   contents: read
   checks: read
 
-env:
-  FLUTTER_VERSION: '3.47.2'
 
 jobs:
   # Same shape and same reason as submit-play.yml's and submit-windows-store.yml's
@@ -157,10 +157,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/setup-flutter
       # ── the Linux toolchain, DERIVED FROM THE OTHER LANE, NEVER RETYPED ──────
       # 🔴 A SECOND `apt-get install -y clang cmake …` LINE HERE WOULD BE THE
       # DUPLICATION [pipeline F-2] AND generate-snapcraft.mjs'S WHOLE PARSER EXIST
@@ -425,10 +422,7 @@ jobs:
               exit 1
               ;;
           esac
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/setup-flutter
       - name: Linux build deps (the same list the Linux build lane installs)
         run: |
           set -euo pipefail

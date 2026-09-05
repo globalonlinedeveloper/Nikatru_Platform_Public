@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
+import { runBackup } from './backup';
 
 /** The job name recorded in `cron_heartbeat`. */
 export const KEEPALIVE_JOB = 'supabase_keepalive';
@@ -1805,12 +1806,38 @@ async function targetIsDue(
  */
 export const NIGHTLY_CRON = '0 6 * * *';
 
+/**
+ * [research/revamp-2026-09-05/06 §4.2] The off-vendor export of D1 and KV into
+ * R2 — the job that closes "D1, KV and R2 are in NO backup".
+ *
+ * 🔴 IT HAS ITS OWN CRON RATHER THAN A LINE IN THE NIGHTLY CHAIN, and the two
+ * reasons are in the wrangler.jsonc comment beside `30 2 * * *`: Box B's puller
+ * rides the 02:30 Drive sync that already exists, and the copy is taken BEFORE
+ * `retentionSweep` deletes at 06:00.
+ *
+ * ⚠️ THIS MADE "EVERY NON-NIGHTLY CRON IS A DISPATCHER MARGIN FIRING" FALSE, and
+ * that sentence was an assertion in scheduled-crons.test.ts, not just prose. The
+ * branch below is now a three-way, the register maps this job to this cron, and
+ * the test asserts the partition rather than the old two-case shape. A cron that
+ * fires with nothing watching it is what check-heartbeats.mjs refuses outright.
+ */
+export const BACKUP_JOB = 'backup_export';
+
+/** The cron BACKUP_JOB keeps. Asserted against wrangler.jsonc by its own test. */
+export const BACKUP_CRON = '30 2 * * *';
+
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
-      // Every cron but the nightly one is a MARGIN firing: the dispatcher, and
-      // nothing else. An unrecognised value falls through to the full handler —
-      // see NIGHTLY_CRON for why that is the safe direction.
+      // The off-vendor export runs ALONE on its own firing: it is the one limb
+      // whose value is that it happened before anything else touched the data.
+      if (typeof event?.cron === 'string' && event.cron === BACKUP_CRON) {
+        await recordHeartbeat(env, await runBackup(env), BACKUP_JOB);
+        return;
+      }
+      // Every other cron but the nightly one is a MARGIN firing: the dispatcher,
+      // and nothing else. An unrecognised value falls through to the full handler
+      // — see NIGHTLY_CRON for why that is the safe direction.
       if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
         await dispatchGithubWorkflows(env);
         return;

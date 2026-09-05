@@ -611,10 +611,19 @@
         "window in one month. A 24h dispatch cadence would leave 12h of margin against that window; 12h",
         "leaves 24h. The nightly limbs stay on 06:00 alone because the second firing runs the dispatcher",
         "and nothing else -- see the `event.cron` branch in services/platform/src/scheduled.ts, which is",
-        "what keeps a DESTRUCTIVE limb (the retention sweep) firing once a day and not twice."
+        "what keeps a DESTRUCTIVE limb (the retention sweep) firing once a day and not twice.",
+        "",
+        "🔴 `backup_export` KEEPS A THIRD KIND OF FIRING, added 2026-09-05. It is neither the nightly",
+        "chain nor a dispatcher margin: it is the off-vendor export of D1 and KV into R2 that closes",
+        "research/revamp-2026-09-05/06-infrastructure-live.md 4.2 -- 'D1, KV and R2 are in NO backup, and",
+        "recovery.worker-d1-export has NEVER been drilled'. It runs at 02:30 so it lands before Box B's",
+        "02:30 Drive sync picks it up and before the 06:00 retention sweep deletes anything. It is watched",
+        "here for the same reason as every other job: check-heartbeats.mjs refuses a declared cron that no",
+        "job keeps, because a schedule firing with nothing watching what it did is how a backup stops."
       ],
       "watchedJobs": {
         "supabase_keepalive": ["0 6 * * *"],
+        "backup_export": ["30 2 * * *"],
         "analytics_liveness": ["0 6 * * *"],
         "renewals": ["0 6 * * *"],
         "events_rollup": ["0 6 * * *"],
@@ -1766,23 +1775,42 @@
     {
       "id": "recovery.worker-d1-export",
       "kind": "recovery-path",
-      "what": "Restore a Worker plus its D1 contents from an export.",
+      "what": "Restore a Worker's D1 contents from the nightly off-vendor export in R2.",
       "detector": "This row's cadence against lastDrill.",
-      "response": "Blocked: the export half is [4]B-10's and does not exist yet.",
+      "response": "Run the drill in the `drillEvidence` below: pull the night's object, verify its SHA-256 against the manifest, emit SQL with Private/runbooks/d1-restore-from-export.py, import into a scratch D1, compare counts, delete the scratch DB.",
       "cadence": "180d",
-      "lastDrill": null,
+      "lastDrill": "2026-09-05",
+      "drillEvidence": [
+        "🔴 DRILLED FOR THE FIRST TIME 2026-09-05. This row read `lastDrill: null` with the response 'Blocked: the export half is [4]B-10's and does not exist yet' from the day it was written until today, and research/revamp-2026-09-05/06 sec 4.2 called it the single clearest finding in that report: platform_db served 26,938 read queries and 324,066 rows read in seven days, holds entitlements, and had no export, no snapshot and no drilled recovery path - while Box A's Postgres, with ZERO users, was dumped four times a day to two encrypted destinations.",
+        "",
+        "WHAT WAS ACTUALLY RUN, against the LIVE databases and the LIVE bucket:",
+        "  1. the real scheduled handler, through `wrangler dev --remote --test-scheduled`, cron `30 2 * * *` -> HTTP 200",
+        "  2. manifests/latest.json: date 2026-09-05, complete=true, 5 objects",
+        "  3. d1/platform_db/2026-09-05.jsonl.gz: manifest 15,624 bytes / sha256 bc84931c70ad379cbbf655eef67dbb35e98670381ace78f9253c23067e00d418",
+        "     downloaded 15,624 bytes / sha256 bc84931c70ad379cbbf655eef67dbb35e98670381ace78f9253c23067e00d418 - IDENTICAL",
+        "  4. 401 rows across 12 tables, truncated=false; cron_heartbeat is the largest at 226",
+        "  5. `wrangler d1 create scratch-drill` -> c3f47d18-2f82-49a7-ab54-37b8c88b0bfd",
+        "  6. Private/runbooks/d1-restore-from-export.py emitted 226 INSERTs + the CREATE TABLE; `d1 execute --remote --file` reported rows_written=228, num_tables=1",
+        "  7. `SELECT count(*) FROM cron_heartbeat` in the scratch DB -> 226. EXPORTED 226, RESTORED 226.",
+        "  8. GROUP BY job in the restored table -> 8 jobs, including the 7 rows the export's own run wrote",
+        "  9. `wrangler d1 delete scratch-drill` -> deleted; `d1 list` back to platform_db + subly_db",
+        "",
+        "⚠️ THE LIVE TABLE READ 233, NOT 226, AND THAT IS THE EXPORT BEING CORRECT RATHER THAN WRONG. The export is taken BEFORE the run writes its own heartbeat, and that run wrote 7 rows (2 D1 targets + 3 KV + manifest + retention). 226 + 7 = 233. A drill that compared the dump to a live count taken afterwards and demanded equality would fail on every correct backup.",
+        "",
+        "🔴 AND THE DRILL EARNED ITS KEEP ON THE FIRST RUN. The first export set `contentEncoding: 'gzip'` on the R2 put, so R2 served the object DECODED: 129,297 bytes of plain JSON against a manifest recording 15,453 of gzip, `gunzip` refusing it, and a SHA-256 that could not have matched on any client honouring the header. Box B's puller verifies exactly that digest before beating its heartbeat, so the off-vendor leg would have failed on every object every night. No unit test could have found it - the fake bucket speaks no HTTP."
+      ],
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations",
-        "record": "[4]B-10's export, which does not exist yet",
-        "failingValue": "no export to restore from",
-        "readBy": "nothing yet"
+        "anchor": "services/platform/src/backup/index.ts",
+        "record": "r2://nikatru-backups/d1/<db>/<date>.jsonl.gz plus manifests/<date>.json, written nightly at 02:30 UTC",
+        "failingValue": "a manifest with complete=false, an object whose SHA-256 does not match it, or no object for today at all",
+        "readBy": "tooling/ops/check-heartbeats.mjs, via the `backup_export` job; and Box B's /opt/glitchtip/cf_backup_pull.sh, which refuses to beat its GlitchTip heartbeat unless every digest matched"
       },
       "accessProviders": [
         "cloudflare"
       ],
       "ownerGated": true,
-      "ownerGap": "Blocked on stage 4's [4]B-10 export. Listed so the gap is counted, not so somebody starts it here.",
+      "ownerGap": "👤 ONE STEP REMAINS AND IT IS NOT THE EXPORT. The R2 side runs and is drilled; the OFF-VENDOR side does not, because Box B has no R2 credential. Minting one needs a token-creating token and the account token in the local vault is scoped without that permission (measured 2026-09-05: POST /accounts/:id/tokens -> HTTP 403). Create an R2 API token (Object Read-only, scoped to `nikatru-backups`) in the Cloudflare dashboard and add the `r2backups` rclone remote on Box B - the header of /opt/glitchtip/cf_backup_pull.sh carries the exact command. Until then that script exits 78 and its GlitchTip heartbeat (monitor 22) stays silent, which is the correct reading: the copy outside Cloudflare is NOT happening.",
       "source": "verified"
     },
     {
@@ -2618,6 +2646,52 @@
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
       },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.platform.SIGNUPS",
+      "kind": "retention",
+      "store": "kv:platform:SIGNUPS",
+      "what": "🔴 THE SAME PHYSICAL NAMESPACE AS `retention.kv.nikatru-signups.signup` AND `.rate-limit`, SEEN FROM A SECOND BINDING. It entered this guard's domain on 2026-09-05, when services/platform bound `nikatru-signups` READ-ONLY so the nightly export could back it up (research/revamp-2026-09-05/06 §3.4 measured it bound to no Worker at all). The tree walk enumerates stores as `kv:<worker>:<binding>`, so a namespace bound twice is two stores to this guard and one store in the account — and the second view must not be allowed to imply a second, weaker rule. It does not: the rule is the SAME rule, set at the SAME place, and this row points at that place rather than restating a period beside it.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, so this row cannot claim a period the writer does not set.",
+      "response": "n/a from this binding. ⚠️ THE PLATFORM WORKER NEVER WRITES THIS NAMESPACE — it lists and reads it once a night into R2 (services/platform/src/backup/index.ts) and nothing else, so it can neither set nor extend any key's expiry. Workers KV fixes expiry at WRITE time and the only writer is the Pages Function in the anchor. The owner-gated gap on the pre-2026-08-09 keys is recorded ONCE, on `retention.kv.nikatru-signups.signup`, and is not restated here: two copies of one gap is two things to close.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "sites/nikatru/functions/api/subscribe.js",
+        "record": "the expirationTtl on the signup put, computed from `SIGNUP_RETENTION_DAYS` in the anchor",
+        "failingValue": "the anchor losing the declared period, or this Worker gaining a WRITE to the namespace — which would make a second writer able to set a different expiry and make this row's pointer to a single anchor false",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs",
+        "ttlSource": "const SIGNUP_RETENTION_DAYS = 400;"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.r2.platform.BACKUPS_R2",
+      "kind": "retention",
+      "store": "r2:platform:BACKUPS_R2",
+      "what": "🔴 THE FIRST R2 BUCKET IN THIS DOMAIN, AND THE DOMAIN HAD TO GROW TO HOLD IT. `nikatru-backups` is the nightly off-vendor export of D1 and KV added 2026-09-05 to close research/revamp-2026-09-05/06 sec 4.2 — d1/<db>/<date>.jsonl.gz, kv/<ns>/<date>.json.gz, and one manifest per night. It is a DERIVED store: every byte is a copy of something whose own row is elsewhere in this file, which is exactly why it needs a rule of its own — copies outlive their originals unless something deletes them.",
+      "rule": "period",
+      "periodDays": 30,
+      "declaredBy": "ADR 067 decision 6. The number is not a preference: it is D1 Time Travel's own 30-day window, so the two mechanisms cover the same period from opposite sides - shorter would leave days neither can reach, longer buys little. Cost did not decide it; R2 is at 1.3% of the free 10 GB and a night is under half a megabyte.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — and its `enumerateStores` LEARNED r2_buckets on 2026-09-05 for this row. Until then a bucket was a place data could go that the domain could not see, and the guard REFUSED the inventory's period rather than skipping it, which is the only reason the gap was a message instead of a hole.",
+      "response": "A sweep that stops shows up as `ok = 0` on the `backup_export` job, target `retention`, in platform_db.cron_heartbeat — the same table every other cron limb writes to, read by tooling/ops/check-heartbeats.mjs from OUTSIDE Cloudflare.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-r2",
+        "anchor": "services/platform/src/backup/index.ts",
+        "record": "the bucket itself; `BACKUP_RETENTION_DAYS` is the declared period and the sweep at the end of each run is what applies it",
+        "failingValue": "an object whose key carries a date older than the window, still present after a run",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "deletingJob": "backup_export — the 02:30 UTC Cloudflare cron limb `runBackup` in services/platform/src/backup/index.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. ⚠️ THE SWEEP IS PART OF THE JOB THAT WRITES, not a separate schedule: a retention job that can fail independently of the job it prunes is a retention job that stops without the writing stopping, and nothing notices. It refuses to delete a key it cannot date (`isExpired` returns false on an unrecognised key), so it can never delete something another writer put in this bucket.",
       "accessProviders": [
         "cloudflare"
       ],

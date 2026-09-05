@@ -1,4 +1,6 @@
-name: Build all 6 platforms
+name: Build apps
+
+run-name: "Build apps on ${{ github.ref_name }} (${{ github.event_name }}) by @${{ github.actor }}"
 
 # Proves the portfolio's core claim — ONE codebase, SIX platforms — on real
 # runners. Deliberately NOT on every push: six builds is minutes of runner time
@@ -59,8 +61,6 @@ on:
     # proves the timer more often. That is the whole difference.
     - cron: '0 6 * * 4'   # Thursdays 06:00 UTC
 
-env:
-  FLUTTER_VERSION: '3.47.2'
 
 # Least privilege. These jobs only read the repo — they publish nothing through
 # GITHUB_TOKEN. Without this every job ran at the repository-default scope, which
@@ -241,10 +241,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/setup-flutter
       # GTK + ninja are the Linux desktop toolchain.
       #
       # libsecret-1-dev + libjsoncpp-dev are NOT optional: flutter_secure_storage
@@ -673,10 +670,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
       # ── [9]R-2 · the same derivation as the Android lane, same script ────────
@@ -915,10 +909,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
       # KEPT, not temporary. `tooling/versions.json` pins the runner LABEL, the

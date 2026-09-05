@@ -347,9 +347,9 @@ describe('assert-publish-gate — [pipeline 7]P-13 + P-10', () => {
 });
 
 describe('assert-lane-coverage — INC-0, the lane that claims tooling/content_pipeline', () => {
-  it('FAILS naming tooling/content_pipeline when the content_gate job is deleted', () => {
+  it('FAILS naming tooling/content_pipeline when the content-gate job is deleted', () => {
     const t = tree();
-    edit(t, '.github/workflows/ci.yml', (s) => s.replace(/\n  content_gate:[\s\S]*?\n\n  app_brick:/, '\n  app_brick:'));
+    edit(t, '.github/workflows/ci.yml', (s) => s.replace(/\n  content-gate:[\s\S]*?\n\n  app-brick:/, '\n  app-brick:'));
     assertRefused(run(t, 'assert-lane-coverage.mjs'), /tooling\/content_pipeline/, 'lane deleted');
   });
 

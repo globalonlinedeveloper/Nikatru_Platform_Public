@@ -1,5 +1,7 @@
 name: Ops watch
 
+run-name: "Ops watch (${{ github.event_name }})"
+
 # [pipeline O-4] The reader for the run records nothing was reading.
 #
 # 🔴 WHY THIS EXISTS. `platform_db.cron_heartbeat` carried `ok = 0` — "HTTP 401
@@ -128,9 +130,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       # ── THE REGISTER ITSELF, ADDED 2026-09-04 ──────────────────────────────
       #
@@ -264,9 +264,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       # EXIT 2 IS NOT EXIT 1, AND THE DISTINCTION IS LOAD-BEARING: 1 means a
       # surface answered wrongly, 2 means nothing was probed at all. Both fail
@@ -338,9 +336,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       - name: Compare the live Supabase auth config against tooling/mail-transport.json
         env:
@@ -412,9 +408,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       # Same three-valued exit as the two readers above, for the same reason:
       # 2 means the duty did not run, and a run that discovers it cannot do its
@@ -475,9 +469,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       # The same three-valued exit as the three readers above, for the same
       # reason: 2 means the duty did not run, and a run that discovers it cannot
@@ -537,9 +529,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       # 🔴 EVERY STEP RUNS EVEN IF AN EARLIER ONE FAILED (`if: always()`), and
       # that is deliberate. These four check four unrelated things; stopping at
@@ -721,9 +711,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
+      - uses: ./.github/actions/setup-node
 
       - name: Collect what the readers say
         env:

@@ -53,8 +53,8 @@ Security reports go to the address in [`SECURITY.md`](SECURITY.md).
 | `services/` | Cloudflare Workers — `platform` (shared) and `subly-api` (per-app), each with its own D1 migrations. |
 | `sites/` | Static sites: `nikatru`, `rajasekarselvam`, and the `_shared` component set they both build from. |
 | `tooling/` | The factory itself: `bricks/` (Mason templates that stamp a new app), `ci/` (the guards), `ops/`, `release/`, `store/`, `content_pipeline/`, and the JSON registers that are the single declaration of platforms, channels, screens and versions. |
-| `.github/workflows/` | Eleven workflows. `ci.yml` is the gate; `build-platforms.yml` builds all six targets; the four `submit-*.yml` are the store lanes. |
-| `docs/` | The few operational documents that belong in public — the Supabase auth email templates, the breach-response runbook, and a direct-marketing privacy draft. |
+| `.github/workflows/` | Thirteen workflows. `ci.yml` is the gate; `build-platforms.yml` builds all six targets; the four `submit-*.yml` are the store lanes. `.github/actions/` holds the two composite setup actions. How they are shaped, and the rules they obey, is `docs/ci/README.md`. |
+| `docs/` | The few operational documents that belong in public — `ci/` (how CI is shaped), the Supabase auth email templates, the breach-response runbook, and a direct-marketing privacy draft. |
 
 Product design, business records and the requirement corpus are **not** in this repository and are
 not published.

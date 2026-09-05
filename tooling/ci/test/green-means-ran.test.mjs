@@ -110,8 +110,8 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   });
 
   test('giving a gate constituent a job-level `if:` fails — that is what makes it report skipped', () => {
-    const root = mutant([['ci.yml', '  app_brick:\n    name:', "  app_brick:\n    if: github.event_name != 'pull_request'\n    name:"]]);
-    caught(run(root), /lane "app_brick" carries a job-level `if: github\.event_name != 'pull_request'`, and "ci-gate" aggregates it/);
+    const root = mutant([['ci.yml', '  app-brick:\n    name:', "  app-brick:\n    if: github.event_name != 'pull_request'\n    name:"]]);
+    caught(run(root), /lane "app-brick" carries a job-level `if: github\.event_name != 'pull_request'`, and "ci-gate" aggregates it/);
   });
 
   test('removing `if: always()` from the aggregate fails — a skipped required check satisfies branch protection', () => {
@@ -125,13 +125,13 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
     // here — and a no-op mutation passes the guard, which reads as the guard
     // failing rather than as the test rotting. Caught 2026-08-02 when the
     // content_gate lane landed. Keep both halves in step with ci.yml.
-    const root = mutant([['ci.yml', 'needs: [subly_api, platform, tokens, site_shared, content_gate, app_brick, sites, workspace_gate]', 'needs: [subly_api, platform, tokens, site_shared, content_gate, app_brick, sites]']]);
-    caught(run(root), /job "ci-gate" does not `need` "workspace_gate"/);
+    const root = mutant([['ci.yml', '      - workspace-gate\n    if: always()', '    if: always()']]);
+    caught(run(root), /job "ci-gate" does not `need` "workspace-gate"/);
   });
 
   test('a `needs` entry naming a job that does not exist fails', () => {
-    const root = mutant([['ci.yml', 'needs: [subly_api, platform,', 'needs: [subly_api, platform, ghost_lane,']]);
-    caught(run(root), /needs "ghost_lane", which \.github\/workflows\/ci\.yml does not declare/);
+    const root = mutant([['ci.yml', '      - worker-subly-api\n', '      - worker-subly-api\n      - ghost-lane\n']]);
+    caught(run(root), /needs "ghost-lane", which \.github\/workflows\/ci\.yml does not declare/);
   });
 
   test('detecting the verdicts and exiting 0 anyway fails', () => {
@@ -140,12 +140,12 @@ describe('§A — an aggregating job cannot go green over a lane that did not ru
   });
 
   test('a lane missing from the human-readable echo fails (ci.yml under-reported 6 of 7 for months)', () => {
-    const root = mutant([['ci.yml', ' sites=${{ needs.sites.result }}', '']]);
+    const root = mutant([['ci.yml', '          echo "sites=${{ needs.sites.result }}"\n', '']]);
     caught(run(root), /job "ci-gate" never prints needs\.sites\.result/);
   });
 
   test('renaming the aggregating job is COVERAGE LOST, not a quiet pass', () => {
-    const root = mutant([['ci.yml', '  ci-gate:\n    name: ci-gate', '  ci-gate-v2:\n    name: ci-gate']]);
+    const root = mutant([['ci.yml', '\n  ci-gate:\n', '\n  ci-gate-v2:\n']]);
     caught(run(root), /COVERAGE LOST[\s\S]*none of them is "ci-gate"/);
   });
 
@@ -249,7 +249,7 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
 
   test('deleting the `rm` step fails — the "this looks redundant" edit', () => {
     const root = mutant([['ci.yml', RM_STEP, '']]);
-    caught(run(root), /job "tokens" diffs `\.\.\/\.\.\/sites\/_shared\/assets\/tokens\.css` against HEAD, but no earlier step in that job deletes it first/);
+    caught(run(root), /job "site-tokens" diffs `\.\.\/\.\.\/sites\/_shared\/assets\/tokens\.css` against HEAD, but no earlier step in that job deletes it first/);
   });
 
   test('a `rm` AFTER the diff does not count — present, and proving nothing', () => {
