@@ -437,8 +437,7 @@ void main() {
       expect(
         d.flagsCollection.isChecked.name,
         'isFalse',
-        reason:
-            'precondition: this is the blocking checkbox, unticked',
+        reason: 'precondition: this is the blocking checkbox, unticked',
       );
       expect(
         d.label,
