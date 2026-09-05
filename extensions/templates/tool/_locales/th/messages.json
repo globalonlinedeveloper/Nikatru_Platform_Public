@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — โปรดแทนที่ฉัน",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "แทนที่ฉัน — หนึ่งประโยค หนึ่งจุดประสงค์ ไม่เกิน 132 อักขระ ไม่มีคำโฆษณา",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — โปรดแทนที่ฉัน",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "สลับธีม",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "ตัวเลือก",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "แท็บที่ใช้งานอยู่",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "กำลังอ่าน…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "คัดลอกชื่อแท็บ",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "อ่านแท็บที่ใช้งานอยู่อีกครั้ง",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "ปิด",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "คัดลอกแล้ว",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "คัดลอกไม่สำเร็จ — กด Ctrl+C แทน",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "$ACTION$ ครั้งล่าสุดล้มเหลว — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "$ACTION$ ครั้งล่าสุดล้มเหลว — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "การอ่านชื่อแท็บ",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "การคัดลอก",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "การลบข้อมูล",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "การทำงาน",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "มีบางอย่างหยุดการทำงานนี้ก่อนที่จะเสร็จ โปรดลองอีกครั้ง",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "แท็บนี้กำลังทำงานอื่นอยู่",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "หน้านี้ได้รับการป้องกันจากเบราว์เซอร์ จึงไม่อนุญาตให้อ่าน",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "ไม่พบแท็บที่ใช้งานอยู่",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "หน้านี้ไม่มีชื่อให้อ่าน",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "ยกเลิกแล้ว",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "คำสั่งภายในที่ไม่รู้จัก",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "แท็บนั้นถูกปิดก่อนที่งานจะเสร็จ",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "ส่วนขยายไม่ได้ตอบกลับ",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "ไม่มีข้อมูลตอบกลับมา",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "หน้าของเบราว์เซอร์ เช่น การตั้งค่า ส่วนขยาย และแท็บใหม่ เป็นพื้นที่ที่ส่วนขยายทุกตัวเข้าถึงไม่ได้ ลองใช้กับหน้าเว็บทั่วไปแทน",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "หน้าต่างเครื่องมือสำหรับนักพัฒนาเว็บ (DevTools) เป็นพื้นที่ที่ส่วนขยายเข้าถึงไม่ได้",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "หน้าดูแหล่งที่มาของหน้าเว็บเป็นพื้นที่ที่ส่วนขยายเข้าถึงไม่ได้ ลองใช้กับตัวหน้าเว็บเองแทน",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "หน้าของส่วนขยาย รวมถึงหน้าของส่วนขยายนี้เอง ได้รับการป้องกันจากเบราว์เซอร์",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome เว็บสโตร์ ไม่อนุญาตให้ส่วนขยายอ่านหน้าเว็บของตน",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "ไฟล์ในเครื่องต้องได้รับสิทธิ์เพิ่มอีกหนึ่งอย่าง เปิดหน้าส่วนขยายของเบราว์เซอร์ ค้นหาส่วนขยายนี้ แล้วเปิด “อนุญาตให้เข้าถึง URL ของไฟล์”",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "หน้านี้โหลดไม่สำเร็จ จึงยังไม่มีอะไรให้อ่าน",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "นี่คือโปรแกรมดู PDF ที่มาพร้อมกับเบราว์เซอร์ ส่วนขยายไม่สามารถอ่านข้อมูลข้างในได้ — เปิดไฟล์ PDF ในแท็บปกติ หรือดาวน์โหลดไฟล์ไว้ก่อน",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "หน้านี้ถูกจำกัดไว้ในแซนด์บ็อกซ์โดยเว็บไซต์ที่เปิดมันขึ้นมา ส่วนขยายจึงอ่านไม่ได้",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "เว็บไซต์ส่วนเสริมไม่อนุญาตให้ส่วนขยายอ่านหน้าเว็บของตน",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "อุปกรณ์นี้พื้นที่เต็ม จึงไม่ได้บันทึกอะไรไว้เลย ลบรายการที่เก็บไว้บางส่วนในหน้าตัวเลือก แล้วลองอีกครั้ง",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "การทำงานนี้ใช้เวลานานเกินไปจึงถูกหยุด ไม่มีสิ่งใดตกค้างไว้",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "ค่านี้ยาวเกินกว่าที่จะเก็บในการตั้งค่าที่ซิงค์ไว้ของคุณ ลองใช้ค่าที่สั้นกว่านี้",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "บันทึกการตั้งค่านั้นไม่ได้ รอสักครู่แล้วลองอีกครั้ง",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "ตัวเลือก — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · ตัวเลือก",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "ตัวเลือก",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "ระบบบันทึกให้อัตโนมัติ หากคุณเปิดการซิงค์ของเบราว์เซอร์ไว้ การตั้งค่าจะติดไปกับโปรไฟล์เบราว์เซอร์ของคุณ — และจะไม่ถูกส่งมาให้เราเลย",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "การทำงาน",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "คัดลอกเมื่อเปิด",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "คัดลอกผลลัพธ์ไปยังคลิปบอร์ดทันทีที่เปิดป๊อปอัป",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "เก็บประวัติไว้ในเครื่อง",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "ปิดอยู่โดยค่าเริ่มต้น เมื่อเปิดใช้ ผลลัพธ์จะถูกเก็บไว้ในอุปกรณ์นี้เท่านั้น แสดงอยู่ด้านล่าง และลบออกได้ทุกเมื่อ",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "จำนวนประวัติสูงสุด",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "เมื่อรายการยาวเกินจำนวนนี้ รายการที่เก่าที่สุดจะถูกลบทิ้ง",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "ลบรายการที่เก่ากว่า",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "วัน รายการเก่าจะถูกลบอัตโนมัติอยู่เบื้องหลัง ตั้งเป็น 0 เพื่อเก็บรายการไว้จนกว่าจำนวนประวัติสูงสุดจะลบให้เอง",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "ธีม",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "ใช้ตามระบบของคุณโดยค่าเริ่มต้น",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "ตามระบบ",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "สว่าง",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "มืด",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "ข้อมูลของคุณ",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "ไม่มีข้อมูลใดถูกเก็บไว้ในอุปกรณ์นี้",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ รายการถูกเก็บไว้ในอุปกรณ์นี้ ไม่มีสิ่งใดออกไปจากเครื่อง",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ รายการถูกเก็บไว้ในอุปกรณ์นี้ ไม่มีสิ่งใดออกไปจากเครื่อง",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ รายการถูกเก็บไว้ในอุปกรณ์นี้ ไม่มีสิ่งใดออกไปจากเครื่อง",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ รายการถูกเก็บไว้ในอุปกรณ์นี้ ไม่มีสิ่งใดออกไปจากเครื่อง",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ รายการถูกเก็บไว้ในอุปกรณ์นี้ ไม่มีสิ่งใดออกไปจากเครื่อง",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ รายการถูกเก็บไว้ในอุปกรณ์นี้ ไม่มีสิ่งใดออกไปจากเครื่อง",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "ถาวร: เบราว์เซอร์รับปากว่าจะไม่ล้างข้อมูลนี้",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "แบบไม่รับประกัน: เบราว์เซอร์อาจล้างข้อมูลนี้เองหากอุปกรณ์เหลือพื้นที่น้อย ควรส่งออกข้อมูลสำรองไว้",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "เบราว์เซอร์นี้ไม่ได้บอกว่าข้อมูลที่เก็บไว้จะถูกรักษาไว้หรือไม่ จึงควรถือว่าเป็นข้อมูลชั่วคราวและส่งออกข้อมูลสำรองไว้",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ ใช้ไป $USED$ จาก $QUOTA$",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "ลบ",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "ลบรายการจาก $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "ส่งออกทั้งหมด",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "บันทึกทุกรายการที่เก็บไว้ลงในไฟล์ JSON ไฟล์เดียวในอุปกรณ์นี้ ไม่มีการอัปโหลดใด ๆ",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "ส่งออกทั้งหมด",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "ลบทั้งหมด",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "ลบทุกรายการที่เก็บไว้ออกจากอุปกรณ์นี้ การตั้งค่าจะยังคงอยู่",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "ลบทั้งหมด",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "รีเซ็ตการตั้งค่า",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "คืนค่าทุกการตั้งค่าในหน้านี้กลับเป็นค่าเริ่มต้น และลบออกจากโปรไฟล์เบราว์เซอร์ที่ซิงค์ไว้ของคุณ รายการที่เก็บไว้จะยังคงอยู่",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "รีเซ็ตการตั้งค่า",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "รายงานปัญหา",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "เตรียมรายงานปัญหา",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "สร้างไฟล์ขนาดเล็กที่อธิบายสถานะของส่วนขยายนี้ คุณจะเห็นเนื้อหาทั้งหมดในไฟล์ก่อนที่จะบันทึก และไม่มีการส่งข้อมูลไปที่ใดทั้งสิ้น",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "เตรียมรายงาน",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "เกี่ยวกับ",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — โปรดแทนที่ฉัน",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "หนึ่งประโยคที่บอกว่าเครื่องมือนี้ทำอะไรได้บ้าง เครื่องมือนี้ทำงานบนอุปกรณ์ของคุณ: ไม่มีบัญชีผู้ใช้ ไม่มีการติดตาม ไม่มีการเรียกใช้เครือข่าย ไม่มีการส่งข้อมูลใดมาให้เรา",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "บันทึกแล้ว",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "ลบทั้งหมดแล้ว",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "ลบไม่สำเร็จ — ลองอีกครั้ง",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "บันทึกการตั้งค่านั้นไม่ได้",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "บันทึกไฟล์ที่ส่งออกแล้ว",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "บันทึกไฟล์ไม่ได้",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "ลบรายการแล้ว",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "รีเซ็ตการตั้งค่าแล้ว",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "รีเซ็ตการตั้งค่าไม่ได้",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "บันทึกรายงานแล้ว",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "ยกเลิก",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "ลบทั้งหมดใช่ไหม",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "ทุกรายการที่เก็บไว้จะถูกลบออกจากอุปกรณ์นี้ การตั้งค่าของคุณจะยังคงอยู่ การกระทำนี้ย้อนกลับไม่ได้",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "รีเซ็ตการตั้งค่าทั้งหมดใช่ไหม",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "ทุกการตั้งค่าในหน้านี้จะกลับไปเป็นค่าเริ่มต้นและถูกลบออกจากโปรไฟล์เบราว์เซอร์ที่ซิงค์ไว้ของคุณ รายการที่เก็บไว้ของคุณจะยังคงอยู่ การกระทำนี้ย้อนกลับไม่ได้",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "บันทึกรายงานปัญหานี้ใช่ไหม",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "นี่คือเนื้อหาทั้งหมดที่จะอยู่ในไฟล์ ไฟล์นี้ไม่มีที่อยู่ของหน้าเว็บ ไม่มีข้อความในหน้าเว็บ และไม่มีสิ่งใดที่คุณบันทึกเก็บไว้ ไม่มีการส่งข้อมูลไปที่ใดทั้งสิ้น — ไฟล์ถูกบันทึกไว้ในอุปกรณ์นี้ และคุณเป็นผู้ตัดสินใจเองว่าจะแบ่งปันหรือไม่",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "บันทึกรายงาน",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "หน้าต่างที่ไม่ระบุตัวตน — ผลลัพธ์นี้ไม่ได้ถูกบันทึกลงในประวัติของคุณ",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "การเข้าถึงเว็บไซต์",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "การเข้าถึงทุกเว็บไซต์",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "จำเป็นเฉพาะกับฟีเจอร์ที่ทำงานบนหน้าเว็บที่คุณไม่ได้คลิกปุ่มบนแถบเครื่องมือ คุณเพิกถอนสิทธิ์นี้ได้ทุกเมื่อ ที่หน้านี้",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "ให้สิทธิ์เข้าถึง",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "เพิกถอนสิทธิ์เข้าถึง",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "ขณะนี้ส่วนขยายนี้สามารถอ่านทุกเว็บไซต์ที่คุณเข้าชมได้",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "ส่วนขยายนี้จะอ่านแท็บได้ก็ต่อเมื่อคุณคลิกปุ่มของมันบนแถบเครื่องมือแล้วเท่านั้น",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "ให้สิทธิ์เข้าถึงแล้ว",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "ไม่ได้ให้สิทธิ์เข้าถึง",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "เพิกถอนสิทธิ์เข้าถึงแล้ว",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "เพิกถอนสิทธิ์เข้าถึงนั้นไม่ได้",
+    "description": "en: Could not revoke that access"
+  }
+}

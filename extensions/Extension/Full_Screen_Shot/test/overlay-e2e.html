@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — scroll-lock + consent/modal overlays (hide distractions)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #2A3A96; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  #content { height: 2000px; background: #BEBEC8; position: relative; padding: 16px 20px; }
+  #deep { position: absolute; top: 1500px; left: 0; right: 0; height: 100px; background: #00FF88; }
+  #footer { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 16px 20px; }
+  #cookie-consent-banner { position: fixed; left: 0; bottom: 0; width: 100%; height: 100px; background: #FF8C00; color: #222; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+  #promo-modal { position: fixed; left: 140px; top: 60px; width: 1000px; height: 600px; background: #9650C8; color: #fff; z-index: 10000; display: flex; align-items: center; justify-content: center; }
+  #scoreboard { position: fixed; left: 8px; bottom: 110px; width: 470px; max-height: 200px; overflow-y: auto; z-index: 10002;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — a modal has locked the page; the banner + modal must be hidden and scroll unlocked. Press Alt+Shift+P.</div>
+<div id="content">Tall content behind the overlays.<div id="deep"></div></div>
+<div id="footer">PAGE BOTTOM MARKER.</div>
+<div id="cookie-consent-banner">We use cookies. Accept?</div>
+<div id="promo-modal" role="dialog" aria-modal="true">Get the app! (modal dialog)</div>
+<div id="scoreboard">Waiting for capture… press Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  document.documentElement.style.overflow = 'hidden';   // modal scroll-lock
+  const banner = $('cookie-consent-banner'), modal = $('promo-modal'), board = $('scoreboard');
+  const disp = el => getComputedStyle(el).display;
+  const S = { unlocked: false, bannerHidden: false, modalHidden: false, restored: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (getComputedStyle(document.documentElement).overflow !== 'hidden') S.unlocked = true;
+      if (disp(banner) === 'none') S.bannerHidden = true;
+      if (disp(modal) === 'none') S.modalHidden = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.restored = getComputedStyle(document.documentElement).overflow === 'hidden' &&
+                     disp(banner) !== 'none' && disp(modal) !== 'none';
+        report();
+      }, 600);
+    }
+  }, 70);
+  function line(l, ok) { return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + l + '\n'; }
+  function report() {
+    const rows = [
+      ['scroll unlocked during capture', S.unlocked],
+      ['cookie banner hidden during capture', S.bannerHidden],
+      ['modal dialog hidden during capture', S.modalHidden],
+      ['overlays + scroll-lock restored after capture', S.restored]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'OVERLAY RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: full page captured (green deep marker + blue bottom), NO orange banner, NO purple modal.';
+    console.log('FSOVERLAY', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

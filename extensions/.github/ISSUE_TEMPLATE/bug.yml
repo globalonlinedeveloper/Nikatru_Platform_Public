@@ -1,0 +1,91 @@
+name: "🐞 Bug report"
+description: Something is broken that is not about one specific web page
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **A page that captures wrongly belongs in
+        [Report a bad page](?template=bad-page.yml)** — that form asks for the URL
+        and the page shape, which is what makes a capture bug fixable.
+
+        Use this one for everything else: the options page, saving and downloads,
+        history, keyboard shortcuts, the editor, an error the extension shows you.
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which extension?
+      options:
+        - FullShot (fullshot)
+        - Something else / not listed
+    validations: { required: true }
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what happened instead.
+    validations: { required: true }
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Options
+        2. Turn on …
+        3. Capture anything
+        4. …
+    validations: { required: true }
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often?
+      options:
+        - Every time
+        - Most times
+        - Occasionally / hard to reproduce
+        - Once, so far
+    validations: { required: true }
+
+  - type: input
+    id: env
+    attributes:
+      label: Browser + version, OS, extension version
+      placeholder: "Firefox 143 · macOS 15 · FullShot 1.10.1"
+    validations: { required: true }
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Any error text
+      description: >-
+        The message the extension showed you, and/or the console output from the
+        extension's own pages (right-click the popup → Inspect, or the service
+        worker's console on the extensions page). These extensions send us
+        nothing, so an error you don't paste is an error we never see.
+      render: text
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: Problem report (optional — no extension here offers one yet)
+      description: >-
+        Where it exists, Options → "Report a problem" → "Prepare a report" builds
+        a small file describing the extension's state, shows you its contents
+        first, and saves it locally. Nothing is transmitted. No extension in this
+        repository surfaces that button today, FullShot included — if you can't
+        see the section, skip this field.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed personal data from anything I pasted or attached.
+          required: true
+        - label: I searched existing issues first.

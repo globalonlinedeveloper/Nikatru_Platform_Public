@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Inner scrollable panels and iframe frames are stretched to the whole content before capture, instead of being photographed the way they are visible. With frames from other websites the browser asks once for a further permission.",
+  "optionsLead": "Changes are saved automatically and are synchronised with your browser profile.",
+  "optionsExpandPermGranted": "Permission granted — frames from other websites are unfolded too.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission, frames from other websites are captured the way they are visible. Panels and frames from the same website always work.",
+  "optionsRedactPIIDesc": "Searches the text the page makes accessible, finds e-mails, telephone numbers, payment card numbers, birth numbers and API keys and in the saved image covers with a solid area that which matched. It cannot read text rendered as pixels — a canvas, an image, a PDF, a video frame. The recognition runs in your device; nothing is ever sent anywhere. Applies to captures of the whole page (document scroll); the covering is permanent, so check the result yourselves.",
+  "scrollclipFormatHint": "GIF you can play everywhere. WebM is smaller and smoother (it is recorded live directly in your browser).",
+  "batchPermissionHint": "Opening these pages will ask for a one-off permission at the first run.",
+  "batchPermissionDeclined": "The permission to open these pages was rejected."
+}

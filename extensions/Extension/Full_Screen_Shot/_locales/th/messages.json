@@ -1,0 +1,2020 @@
+{
+  "appName": {
+    "message": "FullShot - จับภาพหน้าจอเว็บทั้งหน้า"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "จับภาพทั้งหน้า พื้นที่ที่มองเห็น พื้นที่ที่เลือก หรือองค์ประกอบใดก็ได้ แก้ไข ใส่คำอธิบาย แล้วส่งออกเป็น PNG, JPEG, WebP หรือ PDF"
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - จับภาพหน้าเว็บ (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "จับภาพทั้งหน้า"
+  },
+  "commandCaptureVisible": {
+    "message": "จับภาพพื้นที่ที่มองเห็น"
+  },
+  "commandCaptureRegion": {
+    "message": "จับภาพพื้นที่ที่เลือก"
+  },
+  "commandCaptureElement": {
+    "message": "จับภาพองค์ประกอบในหน้า (คลิกเพื่อเลือก)"
+  },
+  "popupToggleTheme": {
+    "message": "สลับธีม"
+  },
+  "popupModeFullTitle": {
+    "message": "ทั้งหน้า"
+  },
+  "popupModeFullSub": {
+    "message": "เลื่อนและจับภาพทั้งหน้า"
+  },
+  "popupModeVisibleTitle": {
+    "message": "พื้นที่ที่มองเห็น"
+  },
+  "popupModeVisibleSub": {
+    "message": "เฉพาะส่วนที่อยู่บนหน้าจอ"
+  },
+  "popupModeRegionTitle": {
+    "message": "พื้นที่ที่เลือก"
+  },
+  "popupModeRegionSub": {
+    "message": "ลากเพื่อเลือกพื้นที่"
+  },
+  "popupModeElementTitle": {
+    "message": "องค์ประกอบ"
+  },
+  "popupModeElementSub": {
+    "message": "คลิกองค์ประกอบใดก็ได้ในหน้า"
+  },
+  "popupModeDelayedTitle": {
+    "message": "จับภาพแบบหน่วงเวลา"
+  },
+  "popupModeDelayedSub": {
+    "message": "จับภาพทั้งหน้าหลังนับถอยหลัง"
+  },
+  "popupDelayLabel": {
+    "message": "หน่วงเวลา (วินาที)"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ วิ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "ขยายแผงที่เลื่อนได้และ iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "ขยายแผงที่เลื่อนได้และ iframe ด้านในให้เต็มเนื้อหา แทนที่จะจับภาพตามที่เห็น เฟรมจากเว็บไซต์อื่นจะขอสิทธิ์เพิ่มเติมหนึ่งครั้ง"
+  },
+  "popupDismiss": {
+    "message": "ปิด"
+  },
+  "popupLastErrorFailed": {
+    "message": "$MODE$ครั้งล่าสุดล้มเหลว — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "$MODE$ครั้งล่าสุดล้มเหลว — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "การจับภาพทั้งหน้า"
+  },
+  "popupModeNameVisible": {
+    "message": "การจับภาพพื้นที่ที่มองเห็น"
+  },
+  "popupModeNameRegion": {
+    "message": "การจับภาพพื้นที่ที่เลือก"
+  },
+  "popupModeNameElement": {
+    "message": "การจับภาพองค์ประกอบ"
+  },
+  "popupModeNameGeneric": {
+    "message": "การจับภาพ"
+  },
+  "popupNoActiveTab": {
+    "message": "ไม่พบแท็บที่ใช้งานอยู่"
+  },
+  "popupCaptureFailedToStart": {
+    "message": "เริ่มการจับภาพไม่สำเร็จ"
+  },
+  "popupLinkHistory": {
+    "message": "ประวัติ"
+  },
+  "popupLinkBatch": {
+    "message": "ชุดงาน"
+  },
+  "popupLinkOptions": {
+    "message": "ตัวเลือก"
+  },
+  "optionsPageTitle": {
+    "message": "ตัวเลือก — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · ตัวเลือก"
+  },
+  "optionsHeading": {
+    "message": "ตัวเลือก"
+  },
+  "optionsLead": {
+    "message": "การเปลี่ยนแปลงจะถูกบันทึกโดยอัตโนมัติ และซิงค์ไปยังโปรไฟล์เบราว์เซอร์ของคุณ"
+  },
+  "optionsSectionImage": {
+    "message": "รูปภาพ"
+  },
+  "optionsFormat": {
+    "message": "รูปแบบไฟล์"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ ไม่สูญเสียคุณภาพ $JPEG$ ไฟล์เล็กกว่า ส่วน $WEBP$ เล็กที่สุดที่คุณภาพใกล้เคียงกัน",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "คุณภาพ $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "รูปแบบชื่อไฟล์"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "ตัวแทน: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "การจับภาพ"
+  },
+  "optionsCaptureDelay": {
+    "message": "หน่วงเวลาเพิ่มในแต่ละขั้น"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "จำนวนมิลลิวินาทีที่รอหลังการเลื่อนแต่ละครั้ง เพิ่มค่านี้สำหรับหน้าที่ช้าหรือมีแอนิเมชันเยอะ"
+  },
+  "optionsHideFixed": {
+    "message": "ซ่อนองค์ประกอบแบบตรึงและแบบติดหนึบ"
+  },
+  "optionsHideFixedDesc": {
+    "message": "ป้องกันไม่ให้ส่วนหัวซ้ำในทุกหน้าจอ (แสดงเพียงครั้งเดียวที่ด้านบน)"
+  },
+  "optionsPreScroll": {
+    "message": "เลื่อนล่วงหน้าเพื่อโหลดเนื้อหาที่โหลดช้า"
+  },
+  "optionsPreScrollDesc": {
+    "message": "เลื่อนดูทั้งหน้าหนึ่งรอบก่อนจับภาพ ช้ากว่าแต่จะได้รูปที่โหลดแบบ lazy ครบถ้วน"
+  },
+  "optionsAdaptiveWait": {
+    "message": "รอให้รูปภาพถอดรหัสเสร็จ"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "ปล่อยให้รูปที่มาช้าหรือโหลดแบบ lazy ถอดรหัสเสร็จก่อนแต่ละเฟรม จะได้ไม่ถูกจับภาพเป็นช่องดำหรือช่องว่าง"
+  },
+  "optionsHideOverlays": {
+    "message": "ซ่อนแบนเนอร์และป๊อปอัป"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "ลบแบนเนอร์คุกกี้/คำยินยอม กล่องสมัครจดหมายข่าว และป๊อปอัป \"ดาวน์โหลดแอป\" ก่อนจับภาพ พร้อมปลดล็อกหน้าที่ถูกกล่องโต้ตอบตรึงเอาไว้ แล้วคืนค่าให้ทั้งหมดหลังจากนั้น"
+  },
+  "optionsExpandInner": {
+    "message": "ขยายเนื้อหาที่เลื่อนได้"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "ขยายแผงและ iframe ด้านในให้เห็นเนื้อหาที่ซ่อนอยู่ใต้ขอบเขตการเลื่อนของตัวมันเอง แทนที่จะจับภาพตามที่เห็นทุกประการ"
+  },
+  "optionsExpandPermRow": {
+    "message": "เฟรมจากเว็บไซต์อื่น"
+  },
+  "optionsExpandPermAllow": {
+    "message": "อนุญาต"
+  },
+  "optionsExpandPermGranted": {
+    "message": "ได้รับสิทธิ์แล้ว — เฟรมจากเว็บไซต์อื่นจะถูกขยายด้วยเช่นกัน"
+  },
+  "optionsExpandPermMissing": {
+    "message": "หากไม่มีสิทธิ์ \"$PERMISSION$\" เฟรมจากเว็บไซต์อื่นจะถูกจับภาพตามที่เห็นเท่านั้น ส่วนแผงและ iframe จากเว็บไซต์เดียวกันยังทำงานได้เสมอ",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "คลี่รายการแบบเวอร์ชวลไลซ์"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "ไล่ทีละช่วงในฟีดที่เรนเดอร์เฉพาะส่วนที่มองเห็น (แบบ $LIB1$ / $LIB2$) เพื่อจับภาพเนื้อหาทั้งหมด ไม่ใช่แค่แถวที่อยู่บนหน้าจอ จะช้าลงมากถ้ารายการยาวมาก",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "ขยายเนื้อหาที่ต้องคลิกจึงจะเห็น"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "เปิด $DETAILS$ ที่ยุบอยู่ แท็บที่ไม่ได้ใช้งาน แอคคอร์เดียน และส่วน \"ดูเพิ่มเติม\" ก่อนจับภาพ แล้วคืนค่าให้ตามเดิม ทำให้เห็นเนื้อหาที่ซ่อนอยู่หลังการคลิก",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "คลิกปุ่ม \"$BUTTONTEXT$\"",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "คลิกปุ่ม \"โหลดเพิ่ม\" / \"ดูเพิ่มเติม\" แล้วรอเนื้อหาใหม่โหลด ทำซ้ำไปเรื่อย ๆ จนกว่าฟีดจะหมด ต่างจากตัวเลือกด้านบน ตัวเลือกนี้จะดึงเนื้อหาที่ยังไม่มีอยู่ในหน้ามาด้วย และเนื้อหาที่โหลดมาจะยังคงอยู่หลังจับภาพเสร็จ"
+  },
+  "optionsInfiniteScroll": {
+    "message": "เลื่อนเพื่อโหลดฟีดแบบไม่รู้จบ"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "สำหรับฟีดที่ไม่มีปุ่ม \"โหลดเพิ่ม\": เลื่อนลงจนสุดแล้วรอหน้าถัดไปโหลด ทำซ้ำไปเรื่อย ๆ จนกว่าฟีดจะหยุดยาวขึ้น (มีขีดจำกัด จึงไม่ไล่ตามฟีดที่ไม่มีวันจบ) เนื้อหาที่โหลดมาจะยังคงอยู่หลังจับภาพเสร็จ"
+  },
+  "optionsWaitStable": {
+    "message": "รอให้เนื้อหาโหลดเสร็จ"
+  },
+  "optionsWaitStableDesc": {
+    "message": "รอให้ตัวโหลดแบบโครงร่าง/ตัวแทน (พื้นที่ aria-busy บล็อกวิบวับ) ถูกแทนที่ด้วยเนื้อหาจริงก่อนจับภาพ เพื่อไม่ให้คำว่า \"กำลังโหลด…\" กลางหน้าถูกจับเป็นช่องสีเทา มีขีดจำกัดเวลา ตัวหมุนที่ค้างจึงไม่ทำให้การจับภาพค้างตามไปด้วย"
+  },
+  "optionsRedactPII": {
+    "message": "ปิดบังข้อมูลอ่อนไหวอัตโนมัติ"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "สแกนข้อความที่หน้าเว็บเปิดเผยเพื่อหาอีเมล หมายเลขโทรศัพท์ หมายเลขบัตรเครดิต เลขประจำตัวประชาชน และคีย์ API แล้วทาบล็อกทึบทับสิ่งที่ตรงกันในภาพที่บันทึก ข้อความที่วาดเป็นพิกเซลนั้นอ่านไม่ได้ ไม่ว่าจะเป็นแคนวาส รูปภาพ PDF หรือเฟรมวิดีโอ การตรวจจับทำงานบนอุปกรณ์ของคุณ ไม่มีข้อมูลใดถูกส่งออกไปที่ใดทั้งสิ้น ใช้ได้กับการจับภาพทั้งหน้า (แบบเลื่อนทั้งเอกสาร) และบล็อกนี้ลบออกไม่ได้ จึงควรตรวจผลลัพธ์ด้วยตัวเองทุกครั้ง"
+  },
+  "optionsMaxPageHeight": {
+    "message": "ความสูงสูงสุดของหน้า"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "ขีดจำกัดเพื่อความปลอดภัย (พิกเซล CSS) สำหรับฟีดแบบเลื่อนไม่รู้จบ"
+  },
+  "optionsSectionPdf": {
+    "message": "การส่งออก PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "ขนาดกระดาษเริ่มต้น"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" จะทำให้หนึ่งหน้ามีขนาดเท่ากับภาพหน้าจอพอดี",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "ขนาดรูปภาพ"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "การวางแนว"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "สำหรับขนาดกระดาษแบบตายตัว"
+  },
+  "optionsOrientationPortrait": {
+    "message": "แนวตั้ง"
+  },
+  "optionsOrientationLandscape": {
+    "message": "แนวนอน"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "แบ่งหน้าอัจฉริยะ"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "มองหาช่องว่างใกล้จุดตัดหน้าแต่ละจุด เพื่อไม่ให้บรรทัดข้อความถูกตัดครึ่ง"
+  },
+  "optionsPdfStamp": {
+    "message": "ประทับ URL และวันที่"
+  },
+  "optionsPdfStampDesc": {
+    "message": "เพิ่ม URL ของหน้าและวันที่จับภาพไว้ที่ท้ายกระดาษของทุกหน้า PDF"
+  },
+  "optionsSectionDownload": {
+    "message": "การดาวน์โหลด"
+  },
+  "optionsSaveDirectory": {
+    "message": "ไดเรกทอรี"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "โฟลเดอร์ย่อยใต้ $DOWNLOADS$ สำหรับเก็บภาพหน้าจอของคุณ เช่น $EXAMPLE$ เว้นว่างไว้ = $DOWNLOADS$",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(ดาวน์โหลด)"
+  },
+  "optionsSaveAs": {
+    "message": "กล่องโต้ตอบ \"บันทึกเป็น\""
+  },
+  "optionsSaveAsDesc": {
+    "message": "ถามที่เก็บของทุกไฟล์ แทนที่จะดาวน์โหลดเงียบ ๆ"
+  },
+  "optionsClipboardFit": {
+    "message": "ย่อสำเนาในคลิปบอร์ดให้พอดีกับขีดจำกัดของแอป"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "ย่อสำเนาที่เกิน $PIXELS$ พิกเซล เพื่อให้วางลงใน $APP$ และแอปอื่น ๆ ได้",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "ขั้นตอนการทำงาน"
+  },
+  "optionsAutoDownload": {
+    "message": "ดาวน์โหลดอัตโนมัติหลังจับภาพ"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "บันทึกรูปภาพทันทีที่การจับภาพเสร็จสิ้น"
+  },
+  "optionsAutoOpenEditor": {
+    "message": "เปิดตัวแก้ไขหลังจับภาพ"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "เข้าสู่การใส่คำอธิบายทันที (เฉพาะภาพที่ไม่ถูกแบ่งเป็นหลายส่วน)"
+  },
+  "optionsTheme": {
+    "message": "ธีม"
+  },
+  "optionsThemeDesc": {
+    "message": "ใช้กับป๊อปอัปและทุกหน้าของ FullShot"
+  },
+  "optionsThemeSystem": {
+    "message": "ตามระบบ"
+  },
+  "optionsThemeLight": {
+    "message": "สว่าง"
+  },
+  "optionsThemeDark": {
+    "message": "มืด"
+  },
+  "optionsShortcuts": {
+    "message": "แป้นพิมพ์ลัด"
+  },
+  "optionsShortcutsDesc": {
+    "message": "ทั้งหน้า: $KEYFULL$ · พื้นที่ที่มองเห็น: $KEYVISIBLE$ ปรับแต่งได้ที่ $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "บันทึกแล้ว ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "ข้อมูลของคุณ"
+  },
+  "optionsStorage": {
+    "message": "พื้นที่จัดเก็บ"
+  },
+  "optionsStorageUsage": {
+    "message": "ใช้ไป $USED$ จาก $QUOTA$ บนอุปกรณ์นี้",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "เบราว์เซอร์นี้ไม่ได้รายงานว่า FullShot ใช้พื้นที่เท่าใด"
+  },
+  "optionsStorageKept": {
+    "message": "ภาพหน้าจอของคุณจะถูกเก็บไว้ เบราว์เซอร์จะไม่ลบทิ้งเพื่อเรียกคืนพื้นที่"
+  },
+  "optionsStorageAtRisk": {
+    "message": "ภาพหน้าจอของคุณอยู่ในที่จัดเก็บแบบ best-effort ของเบราว์เซอร์ ซึ่งอาจถูกล้างเพื่อเรียกคืนพื้นที่"
+  },
+  "optionsStorageKeep": {
+    "message": "เก็บข้อมูลของฉันไว้"
+  },
+  "optionsExport": {
+    "message": "ส่งออกทั้งหมด"
+  },
+  "optionsExportDesc": {
+    "message": "เขียนไฟล์เดียวที่มีการตั้งค่าและรายการภาพหน้าจอของคุณ ไฟล์นี้บันทึกไว้บนอุปกรณ์นี้และไม่ถูกส่งไปที่ใด"
+  },
+  "optionsExportImages": {
+    "message": "รวมรูปภาพด้วย"
+  },
+  "optionsExportImagesDesc": {
+    "message": "ตัวรูปภาพเอง ซึ่งกินขนาดเกือบทั้งหมด หากไม่รวม ไฟล์จะมีเพียงรายการภาพหน้าจอ แต่ไม่มีรูปใดเลย"
+  },
+  "optionsExportSize": {
+    "message": "ขนาดไฟล์: ประมาณ $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "ข้อมูลที่ตกค้าง"
+  },
+  "optionsSweepDesc": {
+    "message": "การจับภาพที่ถูกขัดจังหวะอาจทิ้งเฟรมไว้บนดิสก์ซึ่งไม่ได้เป็นของภาพหน้าจอใดเลย เฟรมเหล่านี้ไม่ปรากฏบนหน้าใด จึงไม่มีหน้าใดลบได้ ฟังก์ชันนี้จะค้นหาและลบออกให้"
+  },
+  "optionsSweepBtn": {
+    "message": "ค้นหาและลบออก"
+  },
+  "optionsSweepResult": {
+    "message": "ลบแล้ว การจับภาพที่ล้างไป: $COUNT$ · พื้นที่ที่คืนมา: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "ไม่มีอะไรตกค้าง ทุกอย่างที่จัดเก็บไว้เป็นของภาพหน้าจอที่คุณมองเห็น"
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "รีเซ็ตการตั้งค่า"
+  },
+  "optionsResetDesc": {
+    "message": "คืนทุกการตั้งค่าบนหน้านี้กลับสู่ค่าเริ่มต้นที่มาพร้อมกัน ภาพหน้าจอของคุณจะไม่ถูกแตะต้อง"
+  },
+  "optionsResetBtn": {
+    "message": "รีเซ็ต"
+  },
+  "optionsResetConfirm": {
+    "message": "คืนการตั้งค่าทั้งหมดของ FullShot สู่ค่าเริ่มต้นหรือไม่ ภาพหน้าจอของคุณจะไม่ได้รับผลกระทบ"
+  },
+  "optionsResetDone": {
+    "message": "การตั้งค่ากลับสู่ค่าเริ่มต้นแล้ว"
+  },
+  "optionsDeleteAll": {
+    "message": "ลบทั้งหมด"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "ลบภาพหน้าจอทุกภาพในประวัติ และทุกสิ่งที่การจับภาพซึ่งถูกขัดจังหวะทิ้งไว้ การตั้งค่าของคุณยังคงเดิม"
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "ลบทุกอย่างที่ FullShot จัดเก็บไว้บนอุปกรณ์นี้หรือไม่\n\nภาพหน้าจอในประวัติ: $COUNT$\nสิ่งตกค้างจากการจับภาพที่ถูกขัดจังหวะ: $LEFTOVER$\nพื้นที่ที่จะคืนมา: $SIZE$\n\nการตั้งค่าของคุณไม่ได้รับผลกระทบ การกระทำนี้ย้อนกลับไม่ได้",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "ลบแล้ว ตอนนี้ FullShot ไม่ได้จัดเก็บภาพหน้าจอใดบนอุปกรณ์นี้"
+  },
+  "resultPageTitle": {
+    "message": "ภาพหน้าจอ — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "คัดลอก"
+  },
+  "resultCopyTip": {
+    "message": "คัดลอกรูปภาพไปยังคลิปบอร์ด"
+  },
+  "resultEdit": {
+    "message": "แก้ไข"
+  },
+  "resultEditTip": {
+    "message": "เปิดในตัวแก้ไข"
+  },
+  "resultBeautify": {
+    "message": "ตกแต่ง"
+  },
+  "resultBeautifyTip": {
+    "message": "ตกแต่ง — ใส่กรอบและพื้นหลังสำหรับแชร์"
+  },
+  "resultClip": {
+    "message": "คลิป"
+  },
+  "resultClipTip": {
+    "message": "คลิปเลื่อนหน้า — $GIF$ / $WEBM$ แบบเคลื่อนไหว",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "ขนาดกระดาษ PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "ดาวน์โหลด"
+  },
+  "resultDeleteTip": {
+    "message": "ลบภาพหน้าจอ"
+  },
+  "resultHistoryTip": {
+    "message": "ประวัติภาพหน้าจอ"
+  },
+  "resultProgressAssembling": {
+    "message": "กำลังประกอบภาพหน้าจอของคุณ…"
+  },
+  "resultProgressDecodingOther": {
+    "message": "กำลังถอดรหัส $COUNT$ เฟรม…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "กำลังต่อส่วนที่ $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "กำลังต่อส่วนที่ $INDEX$ จากประมาณ $TOTAL$ ส่วน…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "กำลังบันทึก…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "เคล็ดลับ: ลากรูปไปวางบนเดสก์ท็อปได้เลย หรือใช้ $DOWNLOAD$",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "ไม่มีอะไรที่นี่"
+  },
+  "resultEmptyBody": {
+    "message": "ภาพหน้าจอนี้ไม่มีอยู่แล้ว"
+  },
+  "resultOpenHistory": {
+    "message": "เปิดประวัติ"
+  },
+  "resultSomethingWrong": {
+    "message": "มีบางอย่างผิดพลาด — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "ส่วนที่ $INDEX$ จาก $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "ดาวน์โหลดส่วนนี้"
+  },
+  "resultEditPart": {
+    "message": "แก้ไขส่วนนี้"
+  },
+  "resultClipPart": {
+    "message": "ทำคลิปจากส่วนนี้"
+  },
+  "resultPartAlt": {
+    "message": "ภาพหน้าจอส่วนที่ $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "กำลังดาวน์โหลด $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "ลบภาพหน้าจอนี้อย่างถาวรหรือไม่"
+  },
+  "resultDeleted": {
+    "message": "ลบภาพหน้าจอแล้ว"
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "ภาพที่จับได้นี้สูงเกินกว่าจะวางเป็นภาพเดียวที่อ่านออกได้ $COPY$ จึงวางภาพรวมของทั้งหน้าแบบย่อลงไว้ในคลิปบอร์ด ข้อความเล็ก ๆ ในภาพจะอ่านไม่ออก",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "คัดลอกส่วนที่ $INDEX$ ไปยังคลิปบอร์ดแล้ว",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "กำลังสร้าง PDF…"
+  },
+  "resultToastPdfDoneOther": {
+    "message": "ดาวน์โหลด PDF แล้ว ($COUNT$ หน้า)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "สร้าง PDF ไม่สำเร็จ — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "ตัวแก้ไข — FullShot"
+  },
+  "editorBackTip": {
+    "message": "กลับไปที่ภาพหน้าจอ"
+  },
+  "editorToolSelect": {
+    "message": "เลือก / ย้าย ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "ครอบตัด ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "ปากกา ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "ปากกาเน้นข้อความ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "เส้นตรง ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "ลูกศร ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "สี่เหลี่ยม ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "วงรี ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "ข้อความ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "เบลอ / โมเสก ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "หมายเลขขั้นตอน ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "แสตมป์อีโมจิ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "สีที่กำหนดเอง"
+  },
+  "editorStrokeTip": {
+    "message": "ความหนาของเส้น"
+  },
+  "editorStrokeThin": {
+    "message": "บาง"
+  },
+  "editorStrokeMedium": {
+    "message": "ปานกลาง"
+  },
+  "editorStrokeThick": {
+    "message": "หนา"
+  },
+  "editorSizeTip": {
+    "message": "ขนาดข้อความ / อีโมจิ"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "เลิกทำ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "ทำซ้ำ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "ซูมออก (-)"
+  },
+  "editorZoomInTip": {
+    "message": "ซูมเข้า (+)"
+  },
+  "editorZoomFit": {
+    "message": "พอดี"
+  },
+  "editorZoomTipToHundred": {
+    "message": "พอดีกับหน้าต่าง — คลิกเพื่อดูที่ 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "คลิกเพื่อให้พอดีกับหน้าต่าง"
+  },
+  "editorExport": {
+    "message": "ส่งออก"
+  },
+  "editorExportCopy": {
+    "message": "คัดลอกไปยังคลิปบอร์ด"
+  },
+  "editorExportImage": {
+    "message": "รูปภาพ $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "เอกสาร $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "บันทึก"
+  },
+  "editorSaveTip": {
+    "message": "บันทึกการเปลี่ยนแปลงลงประวัติ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "เพิ่มเติม"
+  },
+  "editorMenuFiles": {
+    "message": "ไปที่ประวัติ"
+  },
+  "editorMenuOptions": {
+    "message": "ไปที่ตัวเลือก"
+  },
+  "editorMenuShortcuts": {
+    "message": "แป้นพิมพ์ลัด"
+  },
+  "editorCropApply": {
+    "message": "ใช้การครอบตัด"
+  },
+  "editorCropCancel": {
+    "message": "ยกเลิก"
+  },
+  "editorShortcutsHeading": {
+    "message": "แป้นพิมพ์ลัด"
+  },
+  "editorShortcutTools": {
+    "message": "เลือกเครื่องมือ"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "เลิกทำ / ทำซ้ำ"
+  },
+  "editorShortcutSave": {
+    "message": "บันทึกลงประวัติ"
+  },
+  "editorShortcutZoom": {
+    "message": "ซูมออก / ซูมเข้า"
+  },
+  "editorShortcutDelete": {
+    "message": "ลบวัตถุที่เลือกไว้"
+  },
+  "editorShortcutEscape": {
+    "message": "ยกเลิกการเลือก / ยกเลิกการครอบตัด"
+  },
+  "editorShortcutsClose": {
+    "message": "ปิด"
+  },
+  "editorNotFound": {
+    "message": "ไม่พบภาพหน้าจอ"
+  },
+  "editorToastDownloaded": {
+    "message": "ดาวน์โหลดแล้ว"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "ดาวน์โหลด PDF แล้ว"
+  },
+  "editorToastSaved": {
+    "message": "บันทึกลงประวัติแล้ว"
+  },
+  "historyPageTitle": {
+    "message": "ประวัติ — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · ประวัติ"
+  },
+  "historySearchPlaceholder": {
+    "message": "ค้นหาจากชื่อเรื่องหรือ URL…"
+  },
+  "historySelectAll": {
+    "message": "เลือกทั้งหมด"
+  },
+  "historyClearSelection": {
+    "message": "ล้างการเลือก"
+  },
+  "historyDownloadSelected": {
+    "message": "ดาวน์โหลดรายการที่เลือก"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "ดาวน์โหลด ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "ลบรายการที่เลือก"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "ลบ ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "ยังไม่มีภาพหน้าจอ"
+  },
+  "historyEmptyBody": {
+    "message": "ภาพที่คุณจับไว้จะปรากฏที่นี่ คลิกไอคอน FullShot บนแถบเครื่องมือเพื่อเริ่มต้น"
+  },
+  "historyNoMatchesTitle": {
+    "message": "ไม่พบรายการที่ตรงกัน"
+  },
+  "historyNoMatchesBody": {
+    "message": "ไม่มีภาพหน้าจอที่ตรงกับ \"$QUERY$\"",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "ภาพหน้าจอ $COUNT$ ภาพ · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ จากภาพหน้าจอ $COUNT$ ภาพ · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "เลือก"
+  },
+  "historyCardOpen": {
+    "message": "เปิด"
+  },
+  "historyCardEdit": {
+    "message": "แก้ไข"
+  },
+  "historyCardDownloadTip": {
+    "message": "ดาวน์โหลด"
+  },
+  "historyCardDeleteTip": {
+    "message": "ลบ"
+  },
+  "historyCardOpenOriginal": {
+    "message": "เปิดหน้าต้นฉบับ"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ ส่วน",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "ภาพหน้าจอ"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "ลบภาพหน้าจอนี้หรือไม่"
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "ลบภาพหน้าจอ $COUNT$ ภาพอย่างถาวรหรือไม่",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "กำลังดาวน์โหลดภาพหน้าจอ $COUNT$ ภาพ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "ลบแล้ว"
+  },
+  "beautifyPageTitle": {
+    "message": "ตกแต่ง — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "ตกแต่ง"
+  },
+  "actionBack": {
+    "message": "ย้อนกลับ"
+  },
+  "commonLoading": {
+    "message": "กำลังโหลด…"
+  },
+  "beautifyFieldSize": {
+    "message": "ขนาด"
+  },
+  "beautifyPresetAuto": {
+    "message": "อัตโนมัติ"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "จัตุรัส"
+  },
+  "beautifyPresetPortrait": {
+    "message": "แนวตั้ง"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "พื้นหลัง"
+  },
+  "beautifyBgSlate": {
+    "message": "เทาหินชนวน"
+  },
+  "beautifyBgGraphite": {
+    "message": "เทาแกรไฟต์"
+  },
+  "beautifyBgSky": {
+    "message": "ฟ้าใส"
+  },
+  "beautifyBgSunset": {
+    "message": "อาทิตย์อัสดง"
+  },
+  "beautifyBgGrape": {
+    "message": "ม่วงองุ่น"
+  },
+  "beautifyBgMint": {
+    "message": "เขียวมินต์"
+  },
+  "beautifyFieldPadding": {
+    "message": "ระยะขอบด้านใน"
+  },
+  "beautifyFieldRadius": {
+    "message": "ความมนของมุม"
+  },
+  "beautifyFieldEffects": {
+    "message": "เอฟเฟกต์"
+  },
+  "beautifyShadow": {
+    "message": "เงาตกกระทบ"
+  },
+  "beautifyWindowFrame": {
+    "message": "กรอบหน้าต่าง"
+  },
+  "beautifyFieldExport": {
+    "message": "ส่งออก"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "คลิปเลื่อนหน้า — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "คลิปเลื่อนหน้า"
+  },
+  "scrollclipFieldFormat": {
+    "message": "รูปแบบไฟล์"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ เล่นได้ทุกที่ ส่วน $WEBM$ ไฟล์เล็กกว่าและลื่นกว่า (บันทึกสดในเบราว์เซอร์ของคุณ)",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "ความกว้างของไฟล์ที่ได้"
+  },
+  "scrollclipFieldDensity": {
+    "message": "ความละเอียด"
+  },
+  "scrollclipDensityHint": {
+    "message": "ความละเอียดสูงขึ้นทำให้ภาพคมขึ้น (ใกล้เคียงความละเอียดต้นฉบับ) — แต่ไฟล์ก็ใหญ่ขึ้น"
+  },
+  "scrollclipFieldShape": {
+    "message": "รูปทรง"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "ความเร็วการเลื่อน (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "อัตราเฟรม (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "การเคลื่อนไหว"
+  },
+  "scrollclipBounce": {
+    "message": "เด้งกลับ (เลื่อนกลับขึ้นบนสุด)"
+  },
+  "scrollclipLoop": {
+    "message": "วนซ้ำตลอด"
+  },
+  "scrollclipCopyFrame": {
+    "message": "คัดลอกเฟรม"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "คัดลอกเฟรมปก (บนสุด) เป็น $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ เฟรม · $SECONDS$ วิ",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "กำลังเรนเดอร์เฟรม… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "กำลังเข้ารหัส $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "กำลังปิดงาน…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "กำลังบันทึก $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "กำลังบันทึก…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "ที่นี่ไม่รองรับ $WEBM$ — จะส่งออกเป็น $GIF$ แทน",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "คัดลอกเฟรมปกแล้ว"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — จับภาพเป็นชุด"
+  },
+  "batchHeading": {
+    "message": "จับภาพเป็นชุด"
+  },
+  "batchIntro": {
+    "message": "วาง URL บรรทัดละหนึ่งรายการ FullShot จะเปิดแต่ละหน้า จับภาพทั้งหน้าเก็บลงประวัติ แล้วไปต่อหน้าถัดไป — ครั้งละไม่เกิน $MAX$ รายการ ภาพที่จับได้จะปรากฏในประวัติ คลิก $OPENLINK$ เพื่อดู แก้ไข หรือส่งออกภาพใดก็ได้",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "จับภาพทั้งหมด"
+  },
+  "batchPermissionHint": {
+    "message": "การเปิดหน้าเหล่านี้ต้องขอสิทธิ์แบบครั้งเดียวในการใช้งานครั้งแรก"
+  },
+  "batchPermissionDeclined": {
+    "message": "สิทธิ์ในการเปิดหน้าเหล่านั้นถูกปฏิเสธ"
+  },
+  "batchPanelPlan": {
+    "message": "แผน"
+  },
+  "batchPanelProgress": {
+    "message": "ความคืบหน้า"
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ หน้าที่จะจับภาพ",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ หน้าที่จะจับภาพ (จำกัดไว้ที่ $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "ยังไม่มี URL ที่ใช้ได้"
+  },
+  "batchSkipped": {
+    "message": "ข้ามไป $COUNT$ รายการ: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "โปรโตคอลที่ไม่รองรับ"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "ไม่ถูกต้อง"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "ไม่มีชื่อโฮสต์"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "ซ้ำ"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "ว่างเปล่า"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "เกินขีดจำกัด ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "เสร็จแล้ว $DONE$/$TOTAL$",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "เสร็จแล้ว $DONE$/$TOTAL$, ล้มเหลว $FAILED$",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "เสร็จแล้ว $DONE$/$TOTAL$ — เสร็จสมบูรณ์",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "เสร็จแล้ว $DONE$/$TOTAL$, ล้มเหลว $FAILED$ — เสร็จสมบูรณ์",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "เปิด"
+  },
+  "batchJobTimedOut": {
+    "message": "การจับภาพหมดเวลา"
+  },
+  "batchJobNoSession": {
+    "message": "ไม่มีเซสชันการจับภาพ"
+  },
+  "batchJobFailed": {
+    "message": "จับภาพไม่สำเร็จ"
+  },
+  "batchJobError": {
+    "message": "การจับภาพเกิดข้อผิดพลาด"
+  },
+  "regionHintDrag": {
+    "message": "ลากเพื่อเลือกพื้นที่ — กด $ESC$ เพื่อยกเลิก",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "คลิกองค์ประกอบที่ต้องการจับภาพ — กด $ESC$ เพื่อยกเลิก",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "หน้าของเบราว์เซอร์ เช่น การตั้งค่า ส่วนขยาย และหน้าแท็บใหม่ เป็นพื้นที่ที่ส่วนขยายทุกตัวเข้าไม่ถึง ลองใช้ FullShot กับหน้าเว็บทั่วไปแทน"
+  },
+  "errRestrictedDevtools": {
+    "message": "ส่วนขยายไม่สามารถจับภาพหน้าต่างเครื่องมือสำหรับนักพัฒนาได้ กรุณาใช้เครื่องมือจับภาพหน้าจอของคอมพิวเตอร์คุณเองสำหรับหน้าต่างเหล่านี้"
+  },
+  "errRestrictedViewSource": {
+    "message": "หน้าดูซอร์สโค้ดจับภาพไม่ได้ กรุณาจับภาพหน้าเว็บนั้นโดยตรงแทน"
+  },
+  "errRestrictedExtensionPage": {
+    "message": "หน้าของส่วนขยาย รวมถึงหน้าของ FullShot เอง ได้รับการป้องกันจากเบราว์เซอร์และจับภาพไม่ได้"
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store ไม่อนุญาตให้ส่วนขยายอ่านหน้าเว็บของตนเอง จึงจับภาพหน้านี้ไม่ได้"
+  },
+  "errRestrictedGeneric": {
+    "message": "หน้านี้ได้รับการป้องกันจากเบราว์เซอร์และจับภาพไม่ได้"
+  },
+  "errWrongTab": {
+    "message": "การจับภาพหยุดลง — คุณสลับแท็บ กรุณาเปิดหน้านี้ไว้ด้านหน้าจนกว่า FullShot จะทำงานเสร็จ"
+  },
+  "errGeneric": {
+    "message": "การจับภาพหยุดลงก่อนเสร็จสิ้น กรุณาลองอีกครั้ง"
+  },
+  "errBusy": {
+    "message": "มีการจับภาพกำลังทำงานอยู่แล้วในแท็บนี้"
+  },
+  "errBlocked": {
+    "message": "หน้านี้จับภาพไม่ได้ (ข้อจำกัดของเบราว์เซอร์)"
+  },
+  "errNoStart": {
+    "message": "FullShot เริ่มทำงานในหน้านี้ไม่ได้ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง"
+  },
+  "errCrash": {
+    "message": "การจับภาพหยุดลงโดยไม่คาดคิด กรุณาลองอีกครั้ง"
+  },
+  "errUnknownMessage": {
+    "message": "ข้อความที่ไม่รู้จัก"
+  },
+  "errQuota": {
+    "message": "เบราว์เซอร์กำลังจำกัดความถี่ในการถ่ายภาพหน้าเว็บ กรุณารอสักครู่แล้วลองใหม่"
+  },
+  "errFrameHandover": {
+    "message": "เบราว์เซอร์หยุดส่งภาพหน้าจอให้กลางคัน กรุณารอสักครู่แล้วลองอีกครั้ง"
+  },
+  "errLostTab": {
+    "message": "การจับภาพติดตามแท็บนี้ไม่ได้แล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง"
+  },
+  "errStoppedEarly": {
+    "message": "การจับภาพถูกหยุดก่อนที่จะเสร็จสิ้น"
+  },
+  "errStorageFull": {
+    "message": "ไม่มีพื้นที่เหลือให้จัดเก็บการจับภาพนี้ ลบภาพหน้าจอบางส่วนออกจากประวัติแล้วลองอีกครั้ง"
+  },
+  "reasonGeneric": {
+    "message": "ไม่มีการระบุสาเหตุ กรุณาลองอีกครั้ง"
+  },
+  "reasonDecodeFailed": {
+    "message": "ภาพหน้าจอนั้นถอดรหัสไม่ได้"
+  },
+  "reasonTooLarge": {
+    "message": "รูปภาพใหญ่เกินกว่าจะส่งออกที่นี่ได้"
+  },
+  "toastCopiedClipboard": {
+    "message": "คัดลอกไปยังคลิปบอร์ดแล้ว"
+  },
+  "toastCopyFailed": {
+    "message": "คัดลอกไม่สำเร็จ — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "ส่งออกไม่สำเร็จ — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "บันทึก $FILENAME$ แล้ว",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "บันทึก $FILENAME$ แล้ว  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

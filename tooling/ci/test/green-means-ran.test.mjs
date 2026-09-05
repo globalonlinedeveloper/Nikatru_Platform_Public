@@ -18,7 +18,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, cpSync, readdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -285,9 +285,18 @@ describe('§C — a drift check cannot pass by diffing the checkout against itse
     // feed — a test made stale by a correct change, which is the drift class this
     // whole suite exists to catch, one level up. Count the lanes in the real
     // workflow and assert the guard reports that many.
-    const laneCount = (readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')
-      .match(/git diff --exit-code --/g) ?? []).length;
-    assert.ok(laneCount >= 1, `expected at least one drift lane in ci.yml, found ${laneCount}`);
+    // 🔴 EVERY WORKFLOW, NOT JUST ci.yml — CORRECTED 2026-09-05 FOR THE SECOND
+    // TIME THIS ASSERTION HAS BEEN MADE STALE BY A CORRECT CHANGE. The guard's
+    // subject is the whole workflow directory; this count read ci.yml alone, so
+    // the moment `.github/workflows/extensions.yml` arrived with its own
+    // catalogue drift lane ([ADR 067] decision 1) the derived 3 no longer
+    // described the guard's 4. That is the same one-level-up drift the comment
+    // above records for the site feed, arriving through the FILE SET this time
+    // instead of through the count — so the fix is to derive the file set too.
+    const laneCount = readdirSync(WORKFLOWS)
+      .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+      .reduce((n, f) => n + (readFileSync(join(WORKFLOWS, f), 'utf8').match(/git diff --exit-code --/g) ?? []).length, 0);
+    assert.ok(laneCount >= 1, `expected at least one drift lane under .github/workflows, found ${laneCount}`);
     // A plain substring, not a RegExp. The first version built the pattern with
     // `new RegExp(...)`, where the `(s)` in "drift check(s)" became a CAPTURE
     // GROUP instead of two literal parens — so the assertion could never match,

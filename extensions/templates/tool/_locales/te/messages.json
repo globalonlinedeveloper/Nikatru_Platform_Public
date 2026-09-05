@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — నన్ను మార్చండి",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "నన్ను మార్చండి — ఒక వాక్యం, ఒకే ప్రయోజనం, 132 అక్షరాలు లేదా అంతకంటే తక్కువ, ప్రచార భాష వద్దు.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — నన్ను మార్చండి",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "రూపాన్ని మార్చు",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "ఎంపికలు",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "క్రియాశీల ట్యాబ్",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "చదువుతోంది…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "శీర్షికను కాపీ చేయి",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "క్రియాశీల ట్యాబ్‌ను మళ్లీ చదువు",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "మూసివేయి",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "కాపీ అయింది",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "కాపీ చేయలేకపోయాం — బదులుగా Ctrl+C నొక్కండి",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "చివరి $ACTION$ విఫలమైంది — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "చివరి $ACTION$ విఫలమైంది — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "శీర్షిక చదవడం",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "కాపీ చేయడం",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "డేటా తొలగింపు",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "అమలు",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "ఇది పూర్తయ్యేలోపే ఏదో ఒకటి దీన్ని ఆపేసింది. దయచేసి మళ్లీ ప్రయత్నించండి.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "ఈ ట్యాబ్‌లో ఇప్పటికే ఒక పని జరుగుతోంది.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "ఈ పేజీని బ్రౌజర్ కాపాడుతోంది; దాన్ని చదవడానికి అనుమతి లేదు.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "క్రియాశీల ట్యాబ్ ఏదీ కనిపించలేదు.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "ఈ పేజీకి చదవడానికి శీర్షిక ఏదీ లేదు.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "రద్దు చేయబడింది.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "గుర్తు తెలియని అంతర్గత సందేశం.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "పని పూర్తయ్యేలోపే ఆ ట్యాబ్ మూసివేయబడింది.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "పొడిగింపు స్పందించలేదు.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "ఏ సమాధానమూ తిరిగి రాలేదు.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "సెట్టింగ్‌లు, పొడిగింపులు, కొత్త ట్యాబ్ వంటి బ్రౌజర్ పేజీలను ఏ పొడిగింపూ చదవడానికి బ్రౌజర్ అనుమతించదు. దీన్ని ఒక సాధారణ వెబ్ పేజీలో ప్రయత్నించండి.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "DevTools విండోలను చదవడానికి పొడిగింపులకు అనుమతి లేదు.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "మూలాన్ని చూపే (view-source) పేజీలను చదవడానికి పొడిగింపులకు అనుమతి లేదు. బదులుగా పేజీనే ప్రయత్నించండి.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "ఈ పొడిగింపు సొంత పేజీలతో సహా, పొడిగింపుల పేజీలన్నింటినీ బ్రౌజర్ కాపాడుతుంది.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "స్థానిక ఫైల్‌లకు ఒక అదనపు అనుమతి అవసరం. మీ బ్రౌజర్‌లోని పొడిగింపుల పేజీని తెరిచి, ఈ పొడిగింపును కనుగొని, “ఫైల్ URLలకు యాక్సెస్‌ను అనుమతించు” అనేదాన్ని ఆన్ చేయండి.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "ఈ పేజీ లోడ్ కాలేదు, కాబట్టి ఇప్పటికి చదవడానికి ఏమీ లేదు.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "ఇది బ్రౌజర్‌లో అంతర్నిర్మితంగా ఉన్న PDF వ్యూయర్. దీని లోపల ఉన్నదాన్ని పొడిగింపులు చదవలేవు — PDFని ఒక సాధారణ ట్యాబ్‌లో తెరవండి లేదా ముందుగా డౌన్‌లోడ్ చేసుకోండి.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "ఈ పేజీని తెరిచిన సైట్ దాన్ని శాండ్‌బాక్స్‌లో ఉంచింది, కాబట్టి పొడిగింపులు దాన్ని చదవలేవు.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "యాడ్-ఆన్‌ల సైట్ తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "ఈ పరికరంలో స్థలం లేదు, కాబట్టి ఏదీ సేవ్ కాలేదు. ఎంపికలలో నిల్వ ఉన్న కొన్ని వరుసలను తొలగించి మళ్లీ ప్రయత్నించండి.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "దీనికి చాలా సమయం పట్టడంతో దీన్ని ఆపేశాం. ఏదీ మిగిలిపోలేదు.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "సమకాలీకరించిన మీ సెట్టింగ్‌లలో నిల్వ చేయడానికి ఆ విలువ చాలా పొడవుగా ఉంది. కొంచెం చిన్నదాన్ని ప్రయత్నించండి.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "ఆ సెట్టింగ్‌ను సేవ్ చేయలేకపోయాం. కాసేపు ఆగి మళ్లీ ప్రయత్నించండి.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "ఎంపికలు — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · ఎంపికలు",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "ఎంపికలు",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "స్వయంచాలకంగా సేవ్ అవుతుంది. మీ బ్రౌజర్ సమకాలీకరణ ఆన్‌లో ఉంటే, మీ సెట్టింగ్‌లు మీ బ్రౌజర్ ప్రొఫైల్‌తో పాటు ప్రయాణిస్తాయి — అవి ఎప్పుడూ మాకు పంపబడవు.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "ప్రవర్తన",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "తెరిచినప్పుడు కాపీ చేయి",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "పాప్‌అప్ తెరవగానే ఫలితాన్ని క్లిప్‌బోర్డ్‌కు కాపీ చేస్తుంది.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "ఈ పరికరంలోనే చరిత్రను ఉంచు",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "డిఫాల్ట్‌గా ఇది ఆఫ్‌లో ఉంటుంది. ఆన్ చేస్తే, ఫలితాలు ఈ పరికరంలో మాత్రమే నిల్వ అవుతాయి, కింద జాబితాగా కనిపిస్తాయి, ఎప్పుడైనా వాటిని తొలగించవచ్చు.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "చరిత్ర పరిమితి",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "జాబితా దీని కంటే పొడవైన వెంటనే అత్యంత పాత వరుసలు శాశ్వతంగా తొలగించబడతాయి.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "ఇంతకంటే పాత వరుసలను తొలగించు",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "రోజులు. పాత వరుసలు నేపథ్యంలో వాటంతట అవే తొలగిపోతాయి. చరిత్ర పరిమితి వాటిని తీసేసే వరకు వరుసలను ఉంచాలంటే 0 పెట్టండి.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "రూపం",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "డిఫాల్ట్‌గా మీ సిస్టమ్‌ను అనుసరిస్తుంది.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "సిస్టమ్",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "లేత",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "ముదురు",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "మీ డేటా",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "ఈ పరికరంలో ఏదీ నిల్వ చేయబడలేదు.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "ఈ పరికరంలో $COUNT$ వరుసలు నిల్వ ఉన్నాయి. వాటిలో ఏదీ ఈ పరికరాన్ని దాటి బయటికి వెళ్లదు.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "ఈ పరికరంలో $COUNT$ వరుస నిల్వ ఉంది. అది ఈ పరికరాన్ని దాటి బయటికి వెళ్లదు.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "ఈ పరికరంలో $COUNT$ వరుసలు నిల్వ ఉన్నాయి. వాటిలో ఏదీ ఈ పరికరాన్ని దాటి బయటికి వెళ్లదు.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "ఈ పరికరంలో $COUNT$ వరుసలు నిల్వ ఉన్నాయి. వాటిలో ఏదీ ఈ పరికరాన్ని దాటి బయటికి వెళ్లదు.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "ఈ పరికరంలో $COUNT$ వరుసలు నిల్వ ఉన్నాయి. వాటిలో ఏదీ ఈ పరికరాన్ని దాటి బయటికి వెళ్లదు.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "ఈ పరికరంలో $COUNT$ వరుసలు నిల్వ ఉన్నాయి. వాటిలో ఏదీ ఈ పరికరాన్ని దాటి బయటికి వెళ్లదు.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "స్థిరమైనది: దీన్ని తొలగించబోమని బ్రౌజర్ మాట ఇచ్చింది.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "హామీ లేదు: పరికరంలో స్థలం తగ్గితే బ్రౌజర్ దీన్ని తనంతట తానే తొలగించవచ్చు. ఒక బ్యాకప్‌ను ఎగుమతి చేసుకోండి.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "నిల్వ చేసిన డేటా అలాగే ఉంచబడుతుందో లేదో ఈ బ్రౌజర్ చెప్పదు, కాబట్టి దాన్ని తాత్కాలికమైనదిగానే భావించి ఒక బ్యాకప్‌ను ఎగుమతి చేసుకోండి.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$లో $USED$ వాడుకలో ఉంది.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "తొలగించు",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ నుండి వచ్చిన వరుసను తొలగించు",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "అన్నింటినీ ఎగుమతి చేయి",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "నిల్వ ఉన్న ప్రతి వరుసను ఈ పరికరంలోని ఒకే JSON ఫైల్‌లో సేవ్ చేస్తుంది. ఏదీ అప్‌లోడ్ కాదు.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "అన్నింటినీ ఎగుమతి చేయి",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "అన్నింటినీ తొలగించు",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "నిల్వ ఉన్న ప్రతి వరుసను ఈ పరికరం నుండి తీసేస్తుంది. సెట్టింగ్‌లు అలాగే ఉంటాయి.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "అన్నింటినీ తొలగించు",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "సెట్టింగ్‌లను రీసెట్ చేయి",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "ఈ పేజీలోని ప్రతి సెట్టింగ్‌ను దాని డిఫాల్ట్‌కు తిరిగి తీసుకెళ్తుంది, సమకాలీకరించిన మీ బ్రౌజర్ ప్రొఫైల్ నుండి కూడా వాటిని తీసేస్తుంది. నిల్వ ఉన్న వరుసలు అలాగే ఉంటాయి.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "సెట్టింగ్‌లను రీసెట్ చేయి",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "సమస్యను నివేదించడం",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "సమస్య నివేదికను సిద్ధం చేయి",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "ఈ పొడిగింపు స్థితిని వివరించే ఒక చిన్న ఫైల్‌ను తయారు చేస్తుంది. అది సేవ్ కావడానికి ముందే అందులో ఏముందో మీరే చూస్తారు, ఏదీ ఎక్కడికీ పంపబడదు.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "నివేదికను సిద్ధం చేయి",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "గురించి",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — నన్ను మార్చండి",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "ఈ సాధనం సరిగ్గా ఏం చేస్తుందో చెప్పే ఒక వాక్యం. ఇది తన పనిని మీ పరికరంలోనే చేస్తుంది: ఖాతా లేదు, ట్రాకింగ్ లేదు, నెట్‌వర్క్ కాల్‌లు లేవు, మాకు ఏదీ పంపబడదు.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "సేవ్ అయింది",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "అన్నీ తొలగించబడ్డాయి",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "తొలగించలేకపోయాం — మళ్లీ ప్రయత్నించండి",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "ఆ సెట్టింగ్‌ను సేవ్ చేయలేకపోయాం",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "ఎగుమతి సేవ్ అయింది",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "ఫైల్‌ను సేవ్ చేయలేకపోయాం",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "వరుస తొలగించబడింది",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "సెట్టింగ్‌లు రీసెట్ అయ్యాయి",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "సెట్టింగ్‌లను రీసెట్ చేయలేకపోయాం",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "నివేదిక సేవ్ అయింది",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "రద్దు చేయి",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "అన్నింటినీ తొలగించాలా?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "నిల్వ ఉన్న ప్రతి వరుస ఈ పరికరం నుండి తీసివేయబడుతుంది. మీ సెట్టింగ్‌లు అలాగే ఉంటాయి. దీన్ని వెనక్కి తిప్పడం సాధ్యం కాదు.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "ప్రతి సెట్టింగ్‌ను రీసెట్ చేయాలా?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "ఈ పేజీలోని ప్రతి ప్రాధాన్యత దాని డిఫాల్ట్‌కు తిరిగి వెళ్తుంది, సమకాలీకరించిన మీ బ్రౌజర్ ప్రొఫైల్ నుండి కూడా తీసివేయబడుతుంది. నిల్వ ఉన్న మీ వరుసలు అలాగే ఉంటాయి. దీన్ని వెనక్కి తిప్పడం సాధ్యం కాదు.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "ఈ సమస్య నివేదికను సేవ్ చేయాలా?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "ఫైల్‌లో ఉండేది ఇదంతా. అందులో పేజీ చిరునామాలు లేవు, పేజీలోని వచనం లేదు, మీరు క్యాప్చర్ చేసినవి ఏవీ లేవు. ఏదీ ఎక్కడికీ పంపబడదు — ఫైల్ ఈ పరికరంలోనే సేవ్ అవుతుంది, దాన్ని పంచుకోవడమా వద్దా అనేది మీ ఇష్టం.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "నివేదికను సేవ్ చేయి",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "అజ్ఞాత విండో — ఈ ఫలితం మీ చరిత్రలో సేవ్ చేయబడలేదు.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "సైట్ యాక్సెస్",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "ప్రతి సైట్‌కు యాక్సెస్",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "టూల్‌బార్ బటన్‌ను మీరు నొక్కని పేజీలలోనూ పనిచేసే ఫీచర్‌లకు మాత్రమే ఇది అవసరం. ఇక్కడే, ఎప్పుడైనా దీన్ని మీరు వెనక్కి తీసుకోవచ్చు.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "యాక్సెస్ ఇవ్వు",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "యాక్సెస్‌ను వెనక్కి తీసుకో",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "మీరు సందర్శించే ప్రతి సైట్‌ను ఈ పొడిగింపు ప్రస్తుతం చదవగలదు.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "ఈ పొడిగింపు టూల్‌బార్ బటన్‌ను మీరు నొక్కిన తర్వాత మాత్రమే అది ఒక ట్యాబ్‌ను చదవగలదు.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "యాక్సెస్ ఇవ్వబడింది",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "యాక్సెస్ ఇవ్వబడలేదు",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "యాక్సెస్ వెనక్కి తీసుకోబడింది",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "ఆ యాక్సెస్‌ను వెనక్కి తీసుకోలేకపోయాం",
+    "description": "en: Could not revoke that access"
+  }
+}

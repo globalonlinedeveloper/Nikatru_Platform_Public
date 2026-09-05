@@ -1,0 +1,76 @@
+name: "🧰 Propose a new tool"
+description: An extension that doesn't exist yet
+title: "[new tool] "
+labels: ["new-tool", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth knowing before you write this up: **the Chrome Web Store allows a
+        publisher 20 extensions in total, enforced per publisher.** A new tool
+        therefore spends one of a fixed number of slots, permanently. That is the
+        bar a proposal has to clear — not "would this be useful", but "is this
+        worth a slot that then belongs to no other idea".
+
+        Most proposals are declined. A clear, specific one is still welcome.
+
+  - type: input
+    id: name
+    attributes:
+      label: Working name
+      placeholder: Tab Digest
+    validations: { required: true }
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem — whose, and how often
+      description: One paragraph. Who hits this, how often, and what they do today instead.
+    validations: { required: true }
+
+  - type: textarea
+    id: handoff
+    attributes:
+      label: What could an AI assistant do with what this captures?
+      description: >-
+        The reason these tools exist is the hand-off: something in the browser
+        becomes something an assistant can act on. Be concrete — what does the
+        assistant receive, and what does it do with it that it couldn't before?
+    validations: { required: true }
+
+  - type: textarea
+    id: local
+    attributes:
+      label: Why must it be local-first?
+      description: >-
+        Everything here works with no account, no server, no analytics and no
+        network call. If your idea needs a backend, it is a different product and
+        this is the wrong repository for it — say so honestly rather than working
+        around it.
+    validations: { required: true }
+
+  - type: textarea
+    id: prior
+    attributes:
+      label: What exists already, and what does it cost?
+      description: >-
+        Anything you've tried that solves part of this — free or paid, extension
+        or not — and what made you stop using it.
+
+  - type: textarea
+    id: permissions
+    attributes:
+      label: What would it need access to?
+      description: >-
+        Best guess is fine. A tool that works on the tab you're looking at is a
+        far easier thing to ship than one that needs access to every site.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: It does one thing. (A proposal that lists five features is five proposals.)
+          required: true
+        - label: It works offline, with no account.
+          required: true

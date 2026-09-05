@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — nibadilishe",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "NIBADILISHE — sentensi moja, kusudi moja, herufi 132 au chini yake, bila matangazo.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — nibadilishe",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Badilisha mandhari",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Chaguo",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Kichupo kinachotumika",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Inasoma…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Nakili kichwa",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Soma tena kichupo kinachotumika",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Ondoa",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Imenakiliwa",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Haikuweza kunakili — bonyeza Ctrl+C badala yake",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Jaribio la mwisho la $ACTION$ halikufanikiwa — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Jaribio la mwisho la $ACTION$ halikufanikiwa — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "kusoma kichwa",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kunakili",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "kufuta data",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "kuendesha",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Kitu fulani kilisimamisha hili kabla halijakamilika. Tafadhali jaribu tena.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Kichupo hiki tayari kina shughuli.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Ukurasa huu unalindwa na kivinjari na hairuhusiwi kusomwa.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Hakuna kichupo kinachotumika kilichopatikana.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Ukurasa huu hauna kichwa cha kusoma.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Imeghairiwa.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Ujumbe usiojulikana.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Kichupo hicho kilifungwa kabla kazi haijakamilika.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Kiendelezi hakikujibu.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Hakuna chochote kilichorudi.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Kurasa za kivinjari kama vile Mipangilio, Viendelezi na ukurasa wa Kichupo Kipya hazipatikani kwa kiendelezi chochote. Jaribu hili kwenye ukurasa wa kawaida wa wavuti.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Madirisha ya Zana za Wasanidi (DevTools) hayapatikani kwa viendelezi.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Kurasa za kuonyesha msimbo wa chanzo hazipatikani kwa viendelezi. Jaribu ukurasa wenyewe badala yake.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Kurasa za viendelezi, ikiwa ni pamoja na za kiendelezi hiki chenyewe, zinalindwa na kivinjari.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Duka la Wavuti la Chrome huzuia viendelezi kusoma kurasa zake.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Faili za ndani zinahitaji ruhusa moja ya ziada. Fungua ukurasa wa Viendelezi wa kivinjari chako, tafuta kiendelezi hiki, kisha uwashe \"Ruhusu ufikiaji wa URL za faili\".",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Ukurasa huu haukupakia, kwa hivyo hakuna cha kusoma bado.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Hiki ni kionyeshi cha PDF kilichojengwa ndani ya kivinjari. Viendelezi haviwezi kusoma ndani yake — fungua PDF katika kichupo cha kawaida au uipakue kwanza.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Ukurasa huu umewekwa katika mazingira ya kutengwa na tovuti iliyoufungua, kwa hivyo viendelezi haviwezi kuusoma.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Tovuti ya viongezi huzuia viendelezi kusoma kurasa zake.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Kifaa hiki kimeishiwa nafasi, kwa hivyo hakuna chochote kilichohifadhiwa. Futa baadhi ya safu zilizohifadhiwa katika Chaguo kisha ujaribu tena.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Hili lilichukua muda mrefu mno na likasimamishwa. Hakuna chochote kilichobaki.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Thamani hiyo ni ndefu mno kuhifadhiwa katika mipangilio yako inayosawazishwa. Jaribu fupi zaidi.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Mpangilio huo haukuhifadhiwa. Subiri kidogo kisha ujaribu tena.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Chaguo — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Chaguo",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Chaguo",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Huhifadhiwa kiotomatiki. Ikiwa usawazishaji wa kivinjari chako umewashwa, mipangilio yako husafiri pamoja na wasifu wa kivinjari chako — kamwe haitumwi kwetu.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Tabia",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Nakili inapofunguka",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Nakili matokeo kwenye ubao wa kunakili mara tu kidirisha ibukizi kinapofunguka.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Hifadhi historia ya ndani",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Imezimwa kwa chaguo-msingi. Ikiwashwa, matokeo huhifadhiwa kwenye kifaa hiki pekee, huorodheshwa hapa chini, na unaweza kuyafuta wakati wowote.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Kikomo cha historia",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Safu kongwe zaidi huondolewa mara orodha inapozidi idadi hii.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Futa safu zilizozeeka kuliko",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Siku. Safu kongwe huondolewa kiotomatiki chinichini. Weka 0 ili safu zibaki hadi kikomo cha historia kizifute.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Mandhari",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Hufuata mfumo wako kwa chaguo-msingi.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Mfumo",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Angavu",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Giza",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Data yako",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Hakuna chochote kilichohifadhiwa kwenye kifaa hiki.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Safu $COUNT$ zimehifadhiwa kwenye kifaa hiki. Hakuna kinachoondoka humo.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Safu $COUNT$ imehifadhiwa kwenye kifaa hiki. Hakuna kinachoondoka humo.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Safu $COUNT$ zimehifadhiwa kwenye kifaa hiki. Hakuna kinachoondoka humo.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Safu $COUNT$ zimehifadhiwa kwenye kifaa hiki. Hakuna kinachoondoka humo.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Safu $COUNT$ zimehifadhiwa kwenye kifaa hiki. Hakuna kinachoondoka humo.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Safu $COUNT$ zimehifadhiwa kwenye kifaa hiki. Hakuna kinachoondoka humo.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Ya kudumu: kivinjari kimeahidi kutoifuta.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Juhudi za kadri iwezekanavyo: kivinjari kinaweza kuifuta chenyewe ikiwa nafasi ya kifaa itapungua. Hifadhi nakala rudufu.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Kivinjari hiki hakisemi kama data iliyohifadhiwa itawekwa au la, kwa hivyo ichukulie kama ya muda kisha uhifadhi nakala rudufu.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Inatumia $USED$ kati ya $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Futa",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Futa safu kutoka $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Hamisha kila kitu",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Huhifadhi kila safu iliyohifadhiwa kwenye faili moja ya JSON kwenye kifaa hiki. Hakuna chochote kinachopakiwa mtandaoni.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Hamisha kila kitu",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Futa kila kitu",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Huondoa kila safu iliyohifadhiwa kwenye kifaa hiki. Mipangilio hubaki.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Futa kila kitu",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Weka upya mipangilio",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Hurudisha kila mpangilio kwenye ukurasa huu kwenye hali yake ya chaguo-msingi na kuiondoa kwenye wasifu wa kivinjari chako unaosawazishwa. Safu zilizohifadhiwa hubaki.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Weka upya mipangilio",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Ripoti tatizo",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Andaa ripoti ya tatizo",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Hutengeneza faili ndogo inayoeleza hali ya kiendelezi hiki. Unaona hasa kilichomo kabla haijahifadhiwa, na hakuna chochote kinachotumwa popote.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Andaa ripoti",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Kuhusu",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — nibadilishe",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Sentensi moja inayosema hasa kile ambacho zana hii hufanya. Hufanya kazi yake kwenye kifaa chako: hakuna akaunti, hakuna ufuatiliaji, hakuna mawasiliano ya mtandao, hakuna chochote kinachotumwa kwetu.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Imehifadhiwa",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Kila kitu kimefutwa",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Haikuweza kufuta — jaribu tena",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Haikuweza kuhifadhi mpangilio huo",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Faili ya kuhamisha imehifadhiwa",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Haikuweza kuhifadhi faili",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Safu imefutwa",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Mipangilio imewekwa upya",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Haikuweza kuweka upya mipangilio",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Ripoti imehifadhiwa",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Ghairi",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Ufute kila kitu?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Kila safu iliyohifadhiwa itaondolewa kwenye kifaa hiki. Mipangilio yako itabaki. Hatua hii haiwezi kutenduliwa.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Uweke upya kila mpangilio?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Kila upendeleo kwenye ukurasa huu utarudi kwenye hali ya chaguo-msingi na kuondolewa kwenye wasifu wa kivinjari chako unaosawazishwa. Safu zako zilizohifadhiwa zitabaki. Hatua hii haiwezi kutenduliwa.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Uhifadhi ripoti hii ya tatizo?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Hiki ndicho kila kitu ambacho faili itakuwa nacho. Haina anwani zozote za kurasa, haina maandishi ya kurasa wala chochote ulichonasa. Hakuna chochote kinachotumwa popote — faili huhifadhiwa kwenye kifaa hiki na ni juu yako kuishiriki au kutoishiriki.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Hifadhi ripoti",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Dirisha la kuficha utambulisho — matokeo haya hayakuhifadhiwa kwenye historia yako.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Ufikiaji wa tovuti",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Ufikiaji wa kila tovuti",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Unahitajika tu kwa vipengele vinavyofanya kazi kwenye kurasa ambazo hujabofya kitufe cha upau wa vidhibiti. Unaweza kuurudisha wakati wowote, hapa.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Toa ufikiaji",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Ondoa ufikiaji",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Kwa sasa kiendelezi hiki kinaweza kusoma kila tovuti unayotembelea.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Kiendelezi hiki kinaweza kusoma kichupo tu baada ya kubofya kitufe chake kwenye upau wa vidhibiti.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Ufikiaji umetolewa",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Ufikiaji haukutolewa",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Ufikiaji umeondolewa",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Haikuweza kuondoa ufikiaji huo",
+    "description": "en: Could not revoke that access"
+  }
+}

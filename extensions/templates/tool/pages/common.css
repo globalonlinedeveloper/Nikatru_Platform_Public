@@ -1,0 +1,400 @@
+/* SKELETON — shared styles: colour tokens, both themes, focus, motion, RTL.
+
+   THE HOUSE LOOK: keep every token, change --accent / --accent-hover /
+   --accent-fg (and the matching BADGE_COLOR in background.js and ACCENT in
+   icons/make-icons.mjs) so the family stays recognisable and your tool stays
+   distinct. System font stack only — a remote font is a network call.
+
+   THREE RULES THIS FILE ENFORCES, each with a check in test/skeleton-sim.node.js
+   (sections "theme" and "a11y") that fails if you break it:
+
+   1. EVERY COLOUR IS A TOKEN. No `#hex`, `rgb()` or `hsl()` may appear in any
+      shipped stylesheet outside the three token blocks below. A raw colour in a
+      rule is a colour nobody computed a contrast ratio for.
+
+   2. EVERY PAIRING CLEARS WCAG AA, COMPUTED, IN BOTH THEMES. Body text 4.5:1;
+      large text (>=18.66px bold or >=24px) 3:1; a control boundary or a state
+      indicator 3:1 per WCAG 1.4.11. The sim does the arithmetic from the hex
+      values in this file — there is no eyeballing step and no browser needed.
+      Change --accent to something pretty and the sim tells you the number.
+
+   3. LOGICAL PROPERTIES ONLY. ar, fa and he are three of the 55 locales this
+      family ships. margin-left is a bug in three languages; margin-inline-start
+      is not. A genuinely physical property (a chevron that must always point the
+      same way) is allowed if the line is tagged with a comment reading
+      "physical: intentional".
+
+   CSS COMMENTS DO NOT NEST, and the first close-marker wins. Writing one inside
+   a comment — as the sentence above was originally written — ends the comment
+   there, and everything after it is parsed as CSS. That swallowed the whole
+   light token block, which is why the light theme silently had no --accent and
+   no focus ring at all while dark mode looked perfect. The browser tier caught
+   it; the sim now has a check for it too. Never put a close-marker in prose.
+*/
+
+/* ==================================================================== */
+/* TOKENS — light                                                       */
+/* ==================================================================== */
+:root {
+  color-scheme: light;
+
+  --bg: #f6f6f9;
+  --panel: #ffffff;
+  --bg2: #eeeef3;
+  --fg: #1c1c28;
+  --fg2: #5c5c72;             /* muted text: still 6.5:1 on --panel */
+  --line: #e2e2ea;            /* a hairline between two surfaces — decorative */
+  --line-strong: #7d7d93;     /* the EDGE OF A CONTROL — 3:1 minimum, always */
+
+  /* PLACEHOLDER(accent) — your tool's colour. Three tokens, one rule:
+     --accent-fg on --accent must clear 4.5:1, and --accent on --panel must
+     clear 4.5:1 too (the accent is used as link text, not only as a fill).
+     Run the sim after you change it; it prints the ratio it computed. */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-fg: #ffffff;
+
+  --danger: #c81e1e;
+  --danger-bg: #fee2e2;       /* the error surface, e.g. the popup's note */
+  --danger-fg: #991b1b;
+  --ok: #15803d;
+  --ok-fg: #ffffff;
+
+  --scrim: rgba(16, 16, 32, .45);
+  --shadow: 0 1px 3px rgba(16, 16, 32, .08), 0 4px 16px rgba(16, 16, 32, .06);
+}
+
+/* ==================================================================== */
+/* TOKENS — dark                                                        */
+/* ==================================================================== */
+/* Declared TWICE on purpose: once for the explicit choice the user made in
+   Options, once for "follow the system" when they have made no choice. The sim
+   asserts the two blocks declare identical values, because the failure mode —
+   editing one and not the other — is invisible until someone flips the toggle.
+
+   Note --accent-fg flips to a DARK ink here. A dark UI wants a light accent, and
+   white on a light indigo is 2.9:1. Keeping --accent-fg white and darkening the
+   accent instead would fix the button and break the same colour used as link
+   text on a dark panel. One token per role, each computed. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #121218;
+  --panel: #1c1c26;
+  --bg2: #26262f;
+  --fg: #ececf2;
+  --fg2: #a3a3ba;
+  --line: #2e2e3c;
+  --line-strong: #7a7a95;
+
+  --accent: #8f88ff;
+  --accent-hover: #a5a0ff;
+  --accent-fg: #14122b;
+
+  --danger: #f87171;
+  --danger-bg: #3b1d1d;
+  --danger-fg: #fca5a5;
+  --ok: #22c55e;
+  --ok-fg: #062312;
+
+  --scrim: rgba(0, 0, 0, .6);
+  --shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --bg: #121218;
+    --panel: #1c1c26;
+    --bg2: #26262f;
+    --fg: #ececf2;
+    --fg2: #a3a3ba;
+    --line: #2e2e3c;
+    --line-strong: #7a7a95;
+
+    --accent: #8f88ff;
+    --accent-hover: #a5a0ff;
+    --accent-fg: #14122b;
+
+    --danger: #f87171;
+    --danger-bg: #3b1d1d;
+    --danger-fg: #fca5a5;
+    --ok: #22c55e;
+    --ok-fg: #062312;
+
+    --scrim: rgba(0, 0, 0, .6);
+    --shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* The hidden attribute must always win, even over elements that set their own
+   display (e.g. a flex row). Without this, JS setting el.hidden = true has no
+   visible effect on those elements — a bug this family has already paid for. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* ==================================================================== */
+/* FOCUS — the one rule that must never be lost                         */
+/* ==================================================================== */
+/* :where() has ZERO specificity, so a tool author's own `.btn:focus-visible`
+   can change the RING'S COLOUR without having to out-specify this rule, and
+   cannot accidentally out-specify it into nothing. The reference implementation
+   lost the ring on eight controls exactly that way: an author `outline` on a
+   swatch beat the UA's :focus-visible regardless of specificity, and nobody
+   noticed because nobody tabs through their own settings page.
+
+   :focus-visible, not :focus — a mouse click on a button should not leave a ring
+   behind, but every keyboard arrival must show one. */
+:where(a, button, input, select, textarea, summary, dialog, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.topbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-block-end: 1px solid var(--line);
+  position: sticky; inset-block-start: 0; z-index: 50;
+}
+.topbar .brand {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-weight: 700; font-size: 15px; color: var(--fg);
+  text-decoration: none;
+  min-inline-size: 0;
+}
+.topbar .spacer { flex: 1 1 0; }
+
+/* Secondary text anywhere: a version, a count, a host. Muted by default so it
+   never competes with the thing it annotates. */
+.meta { color: var(--fg2); font-size: 12.5px; }
+.topbar .meta {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-inline-size: 40vw;
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-strong); border-radius: 9px;
+  background: var(--panel); color: var(--fg);
+  font: 600 13px/1 system-ui, sans-serif;
+  cursor: pointer; text-decoration: none;
+  min-inline-size: 0;
+  transition: background .12s, border-color .12s;
+}
+.btn:hover { background: var(--bg2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.icon { padding: 7px 9px; }
+
+/* `.card` and `select.ctl` used to live here and were deleted: nothing in any
+   shipped page used either, and both were second definitions of something that
+   already existed (`.section` and `.opt select` in pages/options.css declare
+   the identical properties). A shared stylesheet carrying an unused copy of a
+   rule is not harmless in a template that is copied 67 times — it is a second
+   place for the family look to drift from, and the copy nobody uses is the one
+   nobody updates. If your tool needs a card surface in the popup, write it in
+   popup.css, which is where popup layout lives. */
+
+/* ==================================================================== */
+/* THE SWITCH — one element, no decorative span                         */
+/* ==================================================================== */
+/* It lives HERE, not in a page's <style>, because every tool copies it and the
+   three things that are easy to get wrong must not be re-derived 67 times:
+
+     forced colours  Windows High Contrast overrides `background`, so a switch
+                     whose only state signal is `background: var(--accent)`
+                     loses its state entirely. The block at the bottom of this
+                     file restates it in system colours.
+     focus           the old shape put `opacity: 0` on the real checkbox and
+                     drew a decorative span next to it, so the UA focus ring was
+                     painted on an invisible box. This IS the checkbox, styled —
+                     the ring lands on the thing you can see.
+     direction       the knob travels the other way in RTL. One rule, below.
+
+   `appearance: none` plus `::after` renders in every engine this manifest
+   supports; the browser tier watches the knob actually move. */
+.switch {
+  appearance: none; -webkit-appearance: none;
+  position: relative; flex: none; margin: 0;
+  inline-size: 40px; block-size: 22px;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--bg2);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.switch::after {
+  content: '';
+  position: absolute; inset-block-start: 2px; inset-inline-start: 2px;
+  inline-size: 16px; block-size: 16px; border-radius: 50%;
+  background: var(--fg2);
+  transition: transform .15s, background .15s;
+}
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::after { background: var(--accent-fg); transform: translateX(18px); }
+/* [dir="rtl"], not :dir(rtl): :dir() shipped in Chrome 120 and this manifest
+   declares minimum_chrome_version 116. skApplyDirection() sets the attribute. */
+[dir="rtl"] .switch:checked::after { transform: translateX(-18px); }
+.switch:disabled { opacity: .55; cursor: default; }
+
+/* ==================================================================== */
+/* UNTRUSTED TEXT                                                       */
+/* ==================================================================== */
+/* Let it wrap, never let it stretch a layout — and ISOLATE ITS DIRECTION.
+   `unicode-bidi: isolate` is not cosmetics. A page title containing U+202E
+   RIGHT-TO-LEFT OVERRIDE reverses the rendering of every character after it in
+   the same bidi paragraph, so a hostile title rendered next to the origin line
+   can change what the ORIGIN appears to say. elText() stops that text becoming
+   markup; only isolation stops it hijacking the display of the trusted text
+   beside it. `isolate`, not `plaintext` (which would also take the direction
+   from the content) and never `bidi-override`.
+   elUntrusted() in common.js emits a <bdi>, which isolates with no CSS at all —
+   use it and this class is belt and braces. */
+.text-untrusted {
+  overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;
+  unicode-bidi: isolate;
+}
+
+/* ==================================================================== */
+/* DIALOG — see skConfirm() in common.js                                */
+/* ==================================================================== */
+/* Native <dialog> + showModal() gives focus containment, Esc-to-close, an inert
+   backdrop and focus restore for free. That is why this family has no hand-
+   rolled scrim div: every one of those is a focus bug waiting to be written. */
+.sk-dialog {
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel); color: var(--fg);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  inline-size: min(28rem, calc(100vw - 32px));
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.sk-dialog::backdrop { background: var(--scrim); }
+.sk-dialog h2 { font-size: 15px; margin: 0 0 6px; }
+.sk-dialog p { margin: 0 0 16px; color: var(--fg2); font-size: 13px; }
+.sk-dialog .row {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
+}
+/* THE REVIEW PANE. The problem report is shown here before a single byte is
+   written, so it has to be genuinely readable: it SCROLLS rather than clipping,
+   it is focusable (see skConfirm — a pane a keyboard user cannot scroll is a
+   pane they are approving unseen), and it wraps long values instead of forcing
+   the dialog wider than the screen.
+   dir="ltr" is deliberate and is the one place in this stylesheet that pins a
+   direction: the pane holds JSON, whose braces and key order are structure, not
+   language. In an RTL locale the surrounding UI still mirrors; this does not. */
+.sk-dialog .sk-preview {
+  direction: ltr; text-align: left;   /* physical: intentional — JSON is not prose */
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  max-block-size: 40vh; overflow: auto;
+  background: var(--bg2); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 10px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  unicode-bidi: isolate;
+}
+
+#sk-toast {
+  position: fixed; inset-block-end: 24px; inset-inline-start: 50%;
+  transform: translate(-50%, 16px);
+  background: var(--fg); color: var(--bg);
+  padding: 10px 18px; border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  max-inline-size: calc(100vw - 32px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s, transform .18s;
+  z-index: 999;
+}
+#sk-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* A spinner is a MOTION-ONLY status, so it never carries the information on its
+   own: whatever shows one also sets text in a live region (see skToast and the
+   role="status" regions in the pages). Reduced motion stops the animation; it
+   must not stop the user knowing what is happening. */
+.spin {
+  inline-size: 18px; block-size: 18px;
+  border: 2.5px solid var(--line-strong);
+  border-block-start-color: var(--accent);
+  border-radius: 50%;
+  animation: sk-spin .8s linear infinite;
+}
+@keyframes sk-spin { to { transform: rotate(360deg); } }
+
+/* ==================================================================== */
+/* REDUCED MOTION                                                       */
+/* ==================================================================== */
+/* All four declarations matter, and the short version of this block that only
+   sets the two durations is WORSE THAN NOTHING, because it looks done:
+     *::before, *::after   `*` does not match pseudo-elements, so the switch
+                           knob kept animating under the old rule.
+     animation-iteration-count  without it, an `infinite` spinner does not stop —
+                           it spins at 0.01ms per revolution, which is strobing,
+                           for exactly the people this query exists to protect.
+     scroll-behavior       a smooth-scrolled page is motion too. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==================================================================== */
+/* FORCED COLOURS (Windows High Contrast)                               */
+/* ==================================================================== */
+/* HCM replaces every author colour with a system one, so any state carried
+   ONLY by a custom colour disappears. System colour keywords are honoured
+   inside this block — that is how a control says "I am the selected one" in a
+   palette the user chose. Never `forced-color-adjust: none` on a control: that
+   opts out of the user's palette, which is the opposite of the point. */
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary, dialog, [tabindex]):focus-visible {
+    outline-color: Highlight;
+  }
+  .btn { border-color: ButtonBorder; }
+  .btn.primary, .btn.primary:hover { background: ButtonFace; color: ButtonText; border-color: ButtonBorder; }
+  .btn.danger { color: LinkText; }
+  .btn:disabled { color: GrayText; border-color: GrayText; opacity: 1; }
+  .switch { border-color: ButtonBorder; background: ButtonFace; }
+  .switch::after { background: ButtonText; }
+  .switch:checked { background: Highlight; border-color: Highlight; }
+  .switch:checked::after { background: HighlightText; }
+  .switch:disabled, .switch:disabled::after { background: ButtonFace; border-color: GrayText; }
+  .spin { border-color: ButtonBorder; border-block-start-color: Highlight; }
+  #sk-toast { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+  .sk-dialog { border: 1px solid CanvasText; }
+}
+
+/* ==================================================================== */
+/* RTL TYPOGRAPHY                                                       */
+/* ==================================================================== */
+/* letter-spacing inserts gaps BETWEEN JOINED LETTERFORMS in Arabic, Persian and
+   Urdu — it does not "space out" cursive script, it breaks it. text-transform
+   is meaningless in scripts with no case, and locale-dependent where there is
+   one (Turkish 'i' uppercases to 'İ', which is why skApplyDirection also sets
+   `lang` on <html>). Both are dropped wholesale in RTL. */
+/* Both selectors name a class that EXISTS. `.eyebrow` was listed here and was
+   defined nowhere and used nowhere — a rule guarding a class that does not
+   exist reads as coverage and provides none, which is worse than an omission
+   because it stops anyone looking. */
+[dir="rtl"] .label,
+[dir="rtl"] .section h2 {
+  letter-spacing: normal;
+  text-transform: none;
+}

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!-- lang and dir are set again at runtime by skApplyDirection() in common.js.
+     They are here as well so the very first paint — before any script has run —
+     already has a language for text-transform and hyphenation, and a direction
+     for every logical property in the stylesheets. -->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title data-i18n="popupDocTitle">SKELETON</title>
+<link rel="stylesheet" href="../pages/common.css">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<!-- ONE <h1> per page. A popup with no heading gives a screen-reader user
+     nothing to orient by; the tool name is that heading. The icon is
+     decorative (alt="") because the heading already says the name. -->
+<div class="header">
+  <img src="../icons/icon32.png" alt="" width="20" height="20">
+  <!-- PLACEHOLDER(tool-name) -->
+  <h1 class="title" data-i18n="popupBrand">SKELETON</h1>
+  <button id="themeBtn" class="icon-btn" type="button"
+          data-i18n-attr="title:themeToggle; aria-label:themeToggle"
+          title="Toggle theme" aria-label="Toggle theme">◐</button>
+</div>
+
+<!-- PLACEHOLDER(popup-body) — this card is the whole trivial-but-real feature.
+     Replace it with your tool's controls; keep the shape: a result area filled
+     through textContent, a primary action, and the error surface below.
+
+     role="status" wraps the RESULT, not each field, so an update announces as
+     one unit ("Active tab, Example Page, https://example.com") instead of three
+     interruptions. It is in the DOM, empty of results, from first paint: a live
+     region that appears at the same moment as its text is not reliably
+     announced, because there was nothing there to observe changing. -->
+<div class="body" id="result" role="status" aria-live="polite">
+  <div class="label" data-i18n="popupActiveTabLabel">Active tab</div>
+  <div id="title" class="value text-untrusted" data-i18n="popupReading">Reading…</div>
+  <div id="origin" class="origin text-untrusted"></div>
+</div>
+
+<div class="actions">
+  <button id="copyBtn" class="btn primary" type="button" data-i18n="popupCopyTitle" disabled>Copy title</button>
+  <!-- An icon-only button needs BOTH aria-label and title: per HTML-AAM the
+       element's CONTENT wins over its title attribute, so without the label
+       this button announces as "↻". -->
+  <button id="refreshBtn" class="btn icon" type="button"
+          data-i18n-attr="title:popupRefresh; aria-label:popupRefresh"
+          title="Read the active tab again" aria-label="Read the active tab again">↻</button>
+</div>
+
+<!-- The error surface. It shows this session's failure AND the note the worker
+     parked from a run that had no popup open to answer to.
+     role="alert" is assertive on purpose — a failure interrupts. Like #result it
+     exists from first paint and only `hidden` is toggled, which is what makes
+     the announcement reliable. -->
+<div id="err" class="err" role="alert" hidden>
+  <span id="errText" class="err-text"></span>
+  <button id="errDismiss" class="icon-btn" type="button"
+          data-i18n-attr="title:popupDismiss; aria-label:popupDismiss"
+          title="Dismiss" aria-label="Dismiss">✕</button>
+</div>
+
+<div class="footer">
+  <a href="#" id="optionsLink" data-i18n="optionsLink">Options</a>
+</div>
+
+<script src="../lib/settings.js"></script>
+<script src="../pages/common.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

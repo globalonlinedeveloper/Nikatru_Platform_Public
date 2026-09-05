@@ -179,8 +179,59 @@ id = "nikatru-india-aadhaar"
 # that over-matches costs one unreadable field in a crash report, while a
 # commit-blocking scanner that over-matches blocks every branch. Same fact, two
 # tools, two correct answers — do not "align" them.
+# 🔴 TWO MORE BOUNDARY GUARDS, ADDED 2026-09-05 WITH THE EXTENSIONS SUBTREE
+# ([ADR 067] decision 1). The form above — a leading class that excludes a digit,
+# a `+` or a `-` — is NOT enough once extensions/ is in the tree, and this was
+# measured with the real scanner rather than reasoned about:
+#
+#     node tooling/ci/scan-secrets.mjs .   ->  55 hits, ALL of them
+#     nikatru-india-aadhaar, ALL under extensions/, 51 of them in
+#     Full_Screen_Shot's redaction test fixtures.
+#
+# Not one is an Aadhaar. They are PAYMENT-CARD and ORDER-ID fixtures: the middle
+# three groups of a sixteen-digit card number in 4-4-4-4 form ARE the 4-4-4
+# Aadhaar shape, and the character before them is a SPACE, which the leading
+# class above permits. (Written as a description rather than as the literal, for
+# the reason the Aadhaar comment already gives twice: a rule's own documentation
+# is inside the rule's blast radius.) A rule
+# that reddens every branch is a rule somebody deletes, or allowlists until it
+# guards nothing — so the fix is to make the rule unable to match, never to
+# excuse 51 strings by name.
+#
+# The two guards are carried across verbatim in MEANING from
+# extensions/scripts/secret-scan.mjs, where the same 51 hits were measured on the
+# same fixtures and the same fix took them to 0 of 540:
+#
+#     not a continuation of an earlier 4-digit group   (nothing like "…2 " before)
+#     not continued by a later one                     (nothing like " 4…" after)
+#
+# ⚠️ EXPRESSED WITH CAPTURED BOUNDARIES, NOT LOOKAROUND. Go's RE2 has no
+# lookaround at all, so the JS scanner's `(?<![0-9][ -])` / `(?![ -]?[0-9])` are
+# spelled here as alternations over the neighbouring characters. `secretGroup = 1`
+# still names the number itself, so the finding prints the value and not the
+# padding. Since a `-` neighbour is already excluded by the classes, only the
+# SPACE case needs the extra arm on each side.
+#
+# ⚠️ KNOWN, ACCEPTED FALSE NEGATIVE, stated here rather than discovered later: a
+# real Aadhaar written immediately after another digit run and a single space
+# ("560001 2345 6789 0123") is now skipped. That is the price of not firing on
+# every card fixture in the repository, and for a gate that blocks commits it is
+# the right side to fail on. The runtime scrubber in packages/telemetry is
+# deliberately wider and stays wider — see the note above.
+#
+# MUTATION-PROVEN 2026-09-05, green control first: with the rule below, the whole
+# merged tree scans clean; planting an issuable-shaped 4-4-4 group into an
+# extension fixture reddens the scan naming that file; removing it returns the
+# scan to green. tooling/ci/scan-secrets.mjs's own canary for this rule is still
+# matched, so the rule is still proven to fire.
+#
+# 🔴 AND THE FIRST DRAFT OF THIS PARAGRAPH SPELLED BOTH VALUES OUT, WHICH MADE
+# THIS FILE A FINDING IN ITS OWN SCAN — twice, exactly as the two comments above
+# say it would. The self-test's scanner reads this config as a file like any
+# other and matched the planted value and the canary straight out of the prose.
+# Describe the shape; never write the digits.
 description = "Indian Aadhaar (12 digits, optionally 4-4-4 grouped; UIDAI never issues one starting 0 or 1)"
-regex = '''(?:^|[^0-9A-Za-z+-])([2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4})(?:[^0-9A-Za-z-]|$)'''
+regex = '''(?:^|^ |[^0-9] |[^ 0-9A-Za-z+-])([2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4})(?:$|[ ]$|[ ][^0-9]|[^ 0-9A-Za-z-])'''
 secretGroup = 1
 keywords = []
   [rules.allowlist]

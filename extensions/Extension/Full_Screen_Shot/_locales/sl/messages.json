@@ -1,0 +1,2335 @@
+{
+  "appName": {
+    "message": "FullShot – posnetek celotne strani"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Zajemite celotno stran, vidni del, izrez ali posamezen element. Urejanje, oznake in izvoz v PNG, JPEG, WebP ali PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – zajemi stran (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Zajemi celotno stran"
+  },
+  "commandCaptureVisible": {
+    "message": "Zajemi vidni del"
+  },
+  "commandCaptureRegion": {
+    "message": "Zajemi izbrano območje"
+  },
+  "commandCaptureElement": {
+    "message": "Zajemi element strani (izberite s klikom)"
+  },
+  "popupToggleTheme": {
+    "message": "Preklopi temo"
+  },
+  "popupModeFullTitle": {
+    "message": "Celotna stran"
+  },
+  "popupModeFullSub": {
+    "message": "Podrsaj čez stran in jo zajemi"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Vidni del"
+  },
+  "popupModeVisibleSub": {
+    "message": "Samo to, kar je na zaslonu"
+  },
+  "popupModeRegionTitle": {
+    "message": "Izbrano območje"
+  },
+  "popupModeRegionSub": {
+    "message": "Območje izberite z vlečenjem"
+  },
+  "popupModeElementTitle": {
+    "message": "Element"
+  },
+  "popupModeElementSub": {
+    "message": "Kliknite element na strani"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Zakasnjeni zajem"
+  },
+  "popupModeDelayedSub": {
+    "message": "Celotna stran po odštevanju"
+  },
+  "popupDelayLabel": {
+    "message": "Sekunde zakasnitve"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Razširi drsne plošče in okvirje"
+  },
+  "popupExpandToggleTip": {
+    "message": "Notranje drsne plošče in okvirje iframe pred zajemom razširi na celotno vsebino, namesto da bi jih posnel takšne, kot so vidni. Za okvirje z drugih spletnih mest brskalnik enkrat zahteva dodatno dovoljenje."
+  },
+  "popupDismiss": {
+    "message": "Zapri"
+  },
+  "popupLastErrorFailed": {
+    "message": "Zadnji $MODE$ ni uspel — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Zadnji $MODE$ ni uspel — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "zajem celotne strani"
+  },
+  "popupModeNameVisible": {
+    "message": "zajem vidnega dela"
+  },
+  "popupModeNameRegion": {
+    "message": "zajem območja"
+  },
+  "popupModeNameElement": {
+    "message": "zajem elementa"
+  },
+  "popupModeNameGeneric": {
+    "message": "zajem"
+  },
+  "popupNoActiveTab": {
+    "message": "Ni najdenega dejavnega zavihka."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Zajema ni bilo mogoče zagnati."
+  },
+  "popupLinkHistory": {
+    "message": "Zgodovina"
+  },
+  "popupLinkBatch": {
+    "message": "Paket"
+  },
+  "popupLinkOptions": {
+    "message": "Možnosti"
+  },
+  "optionsPageTitle": {
+    "message": "Možnosti — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Možnosti"
+  },
+  "optionsHeading": {
+    "message": "Možnosti"
+  },
+  "optionsLead": {
+    "message": "Spremembe se shranijo samodejno in se sinhronizirajo z vašim profilom brskalnika."
+  },
+  "optionsSectionImage": {
+    "message": "Slika"
+  },
+  "optionsFormat": {
+    "message": "Zapis"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ je brez izgub, $JPEG$ je manjši, $WEBP$ pa najmanjši pri primerljivi kakovosti.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Kakovost $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Predloga imena datoteke"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Ograde: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Zajem"
+  },
+  "optionsCaptureDelay": {
+    "message": "Dodatna zakasnitev na korak"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisekunde čakanja po vsakem drsenju. Pri počasnih straneh z veliko animacijami vrednost povečajte."
+  },
+  "optionsHideFixed": {
+    "message": "Skrij fiksne in lepljive elemente"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Prepreči, da bi se glava ponavljala na vsakem zaslonu (prikaže se enkrat na vrhu)."
+  },
+  "optionsPreScroll": {
+    "message": "Predhodno podrsaj za leno vsebino"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Pred zajemom enkrat podrsa čez celotno stran. Počasneje, a ujame tudi leno naložene slike."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Počakaj na dekodiranje slik"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Zapoznelim in leno naloženim slikam pusti, da pred vsako sličico dokončajo dekodiranje, da niso zajete kot črne ali prazne ploščice."
+  },
+  "optionsHideOverlays": {
+    "message": "Skrij pasice in pojavna okna"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Pred zajemom odstrani pasice o piškotkih, okna za e-novice in pozive »prenesite aplikacijo« ter odklene stran, ki jo je zamrznilo modalno okno. Nato vse vrne v prvotno stanje."
+  },
+  "optionsExpandInner": {
+    "message": "Razširi drsno vsebino"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Notranje plošče in okvirje iframe razširi tako, da pokažejo tudi vsebino, skrito pod njihovim lastnim robom, namesto da bi jih zajel točno takšne, kot so vidni."
+  },
+  "optionsExpandPermRow": {
+    "message": "Okvirji z drugih mest"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Dovoli"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Dovoljenje je odobreno — razširijo se tudi okvirji z drugih spletnih mest."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Brez dovoljenja »$PERMISSION$« so okvirji z drugih spletnih mest zajeti takšni, kot so vidni. Plošče in okvirji z istega mesta delujejo vedno.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Razvij virtualizirane sezname"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Prehodi vire z izrisnim oknom (v slogu $LIB1$ / $LIB2$) in zajame njihovo celotno vsebino, ne le vrstic na zaslonu. Pri zelo dolgih seznamih je počasneje.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Razširi vsebino za interakcijo"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Pred zajemom odpre strnjene elemente $DETAILS$, nedejavne zavihke, harmonike in odseke »prikaži več«, nato pa jih povrne. Razkrije vsebino, skrito za klikom.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Klikaj gumbe »$BUTTONTEXT$«",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Vedno znova klika gumbe »load more« / »show more« in čaka, da se naloži nova vsebina, dokler se vir ne izčrpa. Za razliko od zgornje možnosti pridobi vsebino, ki je na strani še ni; naložena vsebina po zajemu ostane."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Podrsaj za neskončne vire"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Za vire brez gumba »load more«: znova in znova podrsa do dna in počaka na naslednji del, dokler vir ne neha rasti (omejeno, da se neskončni viri ne lovijo v nedogled). Naložena vsebina po zajemu ostane."
+  },
+  "optionsWaitStable": {
+    "message": "Počakaj, da se vsebina naloži do konca"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Počaka, da okostja in nadomestni nalagalniki (območja aria-busy, utripajoči bloki) zamenja prava vsebina, tako da se menjava sredi strani ne zajame kot sivi nadomestki. Omejeno, zato zataknjen vrtiljak zajema ne blokira."
+  },
+  "optionsRedactPII": {
+    "message": "Samodejno prekrij občutljive podatke"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Pregleda besedilo, ki ga stran razkrije, za e-naslovi, telefonskimi številkami, številkami plačilnih kartic, davčnimi številkami in ključi API ter v shranjeni sliki s polnim blokom prekrije tisto, kar se je ujemalo. Besedila, narisanega kot slikovne pike, ne zna prebrati — platna, slike, PDF-ja, videosličice. Zaznavanje teče v vaši napravi; nič se nikoli nikamor ne pošlje. Velja za zajeme celotne strani (drsenje dokumenta); blok je trajen, zato rezultat preglejte sami."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Največja višina strani"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Varnostna meja (CSS px) za neskončne vire."
+  },
+  "optionsSectionPdf": {
+    "message": "Izvoz v PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Privzeta velikost papirja"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "Možnost »$IMAGESIZE$« naredi stran natanko tako veliko, kot je posnetek.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Velikost slike"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Usmerjenost"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Velja za stalne velikosti papirja."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Pokončno"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Ležeče"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Pametna delitev strani"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Blizu vsakega preloma poišče vizualno vrzel, da se vrstice besedila ne prerežejo na pol."
+  },
+  "optionsPdfStamp": {
+    "message": "Odtisni naslov in datum"
+  },
+  "optionsPdfStampDesc": {
+    "message": "V nogo vsake strani PDF doda naslov strani in datum zajema."
+  },
+  "optionsSectionDownload": {
+    "message": "Prenos"
+  },
+  "optionsSaveDirectory": {
+    "message": "Mapa"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Podmapa v mapi $DOWNLOADS$ za vaše posnetke, npr. $EXAMPLE$. Prazno = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Pogovorno okno »Shrani kot«"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Vprašaj, kam shraniti vsako datoteko, namesto tihega prenosa."
+  },
+  "optionsClipboardFit": {
+    "message": "Prilagodi kopije v odložišču omejitvam programov"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Kopije nad $PIXELS$ slikovnih pik pomanjša, da lepljenje v $APP$ in podobne deluje.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Potek dela"
+  },
+  "optionsAutoDownload": {
+    "message": "Samodejni prenos po zajemu"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Ko je zajem končan, sliko takoj shrani."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Odpri urejevalnik po zajemu"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Skoči naravnost v označevanje (samo enodelni zajemi)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Za pojavno okno in vse strani FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistemska"
+  },
+  "optionsThemeLight": {
+    "message": "Svetla"
+  },
+  "optionsThemeDark": {
+    "message": "Temna"
+  },
+  "optionsShortcuts": {
+    "message": "Bližnjice na tipkovnici"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Celotna stran: $KEYFULL$ · Vidni del: $KEYVISIBLE$. Prilagodite na $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Shranjeno ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Vaši podatki"
+  },
+  "optionsStorage": {
+    "message": "Shramba"
+  },
+  "optionsStorageUsage": {
+    "message": "Uporabljeno $USED$ od $QUOTA$ v tej napravi.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Ta brskalnik ne pove, koliko prostora porabi FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Vaši posnetki zaslona so ohranjeni: brskalnik jih ne bo izbrisal, da bi sprostil prostor."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Vaši posnetki zaslona so v shrambi brskalnika po načelu »best effort«, ki jo lahko izprazni, da sprosti prostor."
+  },
+  "optionsStorageKeep": {
+    "message": "Ohrani moje podatke"
+  },
+  "optionsExport": {
+    "message": "Izvozi vse"
+  },
+  "optionsExportDesc": {
+    "message": "Zapiše eno datoteko z vašimi nastavitvami in seznamom posnetkov zaslona. Shrani se v to napravo in se nikamor ne pošlje."
+  },
+  "optionsExportImages": {
+    "message": "Vključi slike"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Same slike, ki predstavljajo skoraj vso velikost. Brez njih datoteka vaše posnetke zaslona samo našteje, vendar nobenega ne vsebuje."
+  },
+  "optionsExportSize": {
+    "message": "Velikost datoteke: približno $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Preostali podatki"
+  },
+  "optionsSweepDesc": {
+    "message": "Prekinjeno zajemanje lahko na disku pusti sličice, ki ne pripadajo nobenemu posnetku zaslona. Ne pojavijo se na nobeni strani, zato jih nobena stran ne more izbrisati. To jih najde in odstrani."
+  },
+  "optionsSweepBtn": {
+    "message": "Poišči in odstrani"
+  },
+  "optionsSweepResult": {
+    "message": "Odstranjeno. Pospravljena zajemanja: $COUNT$ · Sproščen prostor: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Nič ni ostalo: vse shranjeno pripada posnetku zaslona, ki ga vidite."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Ponastavi nastavitve"
+  },
+  "optionsResetDesc": {
+    "message": "Vsako nastavitev na tej strani vrne na vrednost, s katero je bila dobavljena. Vaših posnetkov zaslona se ne dotakne."
+  },
+  "optionsResetBtn": {
+    "message": "Ponastavi"
+  },
+  "optionsResetConfirm": {
+    "message": "Ali naj se vse nastavitve FullShota vrnejo na privzete vrednosti? Na vaše posnetke zaslona to ne vpliva."
+  },
+  "optionsResetDone": {
+    "message": "Nastavitve so spet na privzetih vrednostih."
+  },
+  "optionsDeleteAll": {
+    "message": "Izbriši vse"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Odstrani vse posnetke zaslona iz zgodovine in vse, kar so pustila prekinjena zajemanja. Vaše nastavitve ostanejo take, kot so."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Ali želite izbrisati vse, kar je FullShot shranil v tej napravi?\n\nPosnetki zaslona v zgodovini: $COUNT$\nOstanki prekinjenih zajemanj: $LEFTOVER$\nProstor, ki se sprosti: $SIZE$\n\nNa vaše nastavitve to ne vpliva. Tega ni mogoče razveljaviti.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Izbrisano. FullShot zdaj v tej napravi ne hrani nobenega posnetka zaslona."
+  },
+  "resultPageTitle": {
+    "message": "Posnetek zaslona — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopiraj"
+  },
+  "resultCopyTip": {
+    "message": "Kopiraj sliko v odložišče"
+  },
+  "resultEdit": {
+    "message": "Uredi"
+  },
+  "resultEditTip": {
+    "message": "Odpri v urejevalniku"
+  },
+  "resultBeautify": {
+    "message": "Polepšaj"
+  },
+  "resultBeautifyTip": {
+    "message": "Polepšaj — okvir in ozadje za deljenje"
+  },
+  "resultClip": {
+    "message": "Posnetek"
+  },
+  "resultClipTip": {
+    "message": "Drsni posnetek — animirani $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Velikost papirja PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Prenesi"
+  },
+  "resultDeleteTip": {
+    "message": "Izbriši posnetek"
+  },
+  "resultHistoryTip": {
+    "message": "Zgodovina posnetkov"
+  },
+  "resultProgressAssembling": {
+    "message": "Sestavljam vaš posnetek …"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Dekodiram $COUNT$ sličico …",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingTwo": {
+    "message": "Dekodiram $COUNT$ sličici …",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingFew": {
+    "message": "Dekodiram $COUNT$ sličice …",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Dekodiram $COUNT$ sličic …",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Spajam del $INDEX$ …",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Spajam del $INDEX$ od ~$TOTAL$ …",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Shranjujem …"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Nasvet: sliko povlecite kar na namizje ali uporabite $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Tu ni ničesar"
+  },
+  "resultEmptyBody": {
+    "message": "Ta posnetek ne obstaja več."
+  },
+  "resultOpenHistory": {
+    "message": "Odpri zgodovino"
+  },
+  "resultSomethingWrong": {
+    "message": "Nekaj je šlo narobe — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Del $INDEX$ od $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Prenesi del"
+  },
+  "resultEditPart": {
+    "message": "Uredi del"
+  },
+  "resultClipPart": {
+    "message": "Posnetek dela"
+  },
+  "resultPartAlt": {
+    "message": "Del posnetka $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Prenašam $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Trajno izbrisati ta posnetek?"
+  },
+  "resultDeleted": {
+    "message": "Posnetek je izbrisan."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredTwo": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredFew": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Ta posnetek je previsok, da bi ga bilo mogoče prilepiti kot eno berljivo sliko, zato $COPY$ v odložišče postavi pomanjšan pregled celotne strani. Drobno besedilo v njem ne bo berljivo.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Del $INDEX$ je kopiran v odložišče",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Gradim PDF …"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF je prenesen ($COUNT$ stran)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneTwo": {
+    "message": "PDF je prenesen ($COUNT$ strani)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneFew": {
+    "message": "PDF je prenesen ($COUNT$ strani)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF je prenesen ($COUNT$ strani)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF ni uspel — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Urejevalnik — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Nazaj na posnetek"
+  },
+  "editorToolSelect": {
+    "message": "Izberi / premakni ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Obreži ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Pero ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Označevalnik ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Črta ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Puščica ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Pravokotnik ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipsa ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Besedilo ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Zabriši / pikseliraj ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Oštevilčen korak ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Žig z emodžijem ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Barva po meri"
+  },
+  "editorStrokeTip": {
+    "message": "Debelina poteze"
+  },
+  "editorStrokeThin": {
+    "message": "Tanka"
+  },
+  "editorStrokeMedium": {
+    "message": "Srednja"
+  },
+  "editorStrokeThick": {
+    "message": "Debela"
+  },
+  "editorSizeTip": {
+    "message": "Velikost besedila / emodžija"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Razveljavi ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Ponovi ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Pomanjšaj (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Povečaj (+)"
+  },
+  "editorZoomFit": {
+    "message": "Prilag."
+  },
+  "editorZoomTipToHundred": {
+    "message": "Prilagojeno oknu — kliknite za 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Kliknite za prilagoditev oknu"
+  },
+  "editorExport": {
+    "message": "Izvozi"
+  },
+  "editorExportCopy": {
+    "message": "Kopiraj v odložišče"
+  },
+  "editorExportImage": {
+    "message": "Slika $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Dokument $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Shrani"
+  },
+  "editorSaveTip": {
+    "message": "Shrani spremembe v zgodovino ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Več"
+  },
+  "editorMenuFiles": {
+    "message": "Pojdi v Zgodovino"
+  },
+  "editorMenuOptions": {
+    "message": "Pojdi v Možnosti"
+  },
+  "editorMenuShortcuts": {
+    "message": "Bližnjice na tipkovnici"
+  },
+  "editorCropApply": {
+    "message": "Uporabi obrez"
+  },
+  "editorCropCancel": {
+    "message": "Prekliči"
+  },
+  "editorShortcutsHeading": {
+    "message": "Bližnjice na tipkovnici"
+  },
+  "editorShortcutTools": {
+    "message": "Izbira orodij"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Razveljavi / ponovi"
+  },
+  "editorShortcutSave": {
+    "message": "Shrani v zgodovino"
+  },
+  "editorShortcutZoom": {
+    "message": "Pomanjšaj / povečaj"
+  },
+  "editorShortcutDelete": {
+    "message": "Odstrani izbrani predmet"
+  },
+  "editorShortcutEscape": {
+    "message": "Prekliči izbor / obrez"
+  },
+  "editorShortcutsClose": {
+    "message": "Zapri"
+  },
+  "editorNotFound": {
+    "message": "Posnetka ni mogoče najti"
+  },
+  "editorToastDownloaded": {
+    "message": "Preneseno"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF je prenesen"
+  },
+  "editorToastSaved": {
+    "message": "Shranjeno v zgodovino"
+  },
+  "historyPageTitle": {
+    "message": "Zgodovina — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Zgodovina"
+  },
+  "historySearchPlaceholder": {
+    "message": "Iskanje po naslovu ali URL-ju …"
+  },
+  "historySelectAll": {
+    "message": "Izberi vse"
+  },
+  "historyClearSelection": {
+    "message": "Počisti izbor"
+  },
+  "historyDownloadSelected": {
+    "message": "Prenesi izbrane"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Prenesi ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Izbriši izbrane"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Izbriši ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Zaenkrat še ni posnetkov"
+  },
+  "historyEmptyBody": {
+    "message": "Vaši zajemi se bodo pojavili tukaj. Začnite s klikom na ikono FullShot v orodni vrstici."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Ni zadetkov"
+  },
+  "historyNoMatchesBody": {
+    "message": "Poizvedbi »$QUERY$« ne ustreza noben posnetek.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ posnetek · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountTwo": {
+    "message": "$COUNT$ posnetka · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFew": {
+    "message": "$COUNT$ posnetki · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ posnetkov · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ od $COUNT$ posnetka · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredTwo": {
+    "message": "$SHOWN$ od $COUNT$ posnetkov · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredFew": {
+    "message": "$SHOWN$ od $COUNT$ posnetkov · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ od $COUNT$ posnetkov · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Izberi"
+  },
+  "historyCardOpen": {
+    "message": "Odpri"
+  },
+  "historyCardEdit": {
+    "message": "Uredi"
+  },
+  "historyCardDownloadTip": {
+    "message": "Prenesi"
+  },
+  "historyCardDeleteTip": {
+    "message": "Izbriši"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Odpri izvirno stran"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · število delov: $COUNT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Posnetek zaslona"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Izbrisati ta posnetek?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Trajno izbrisati $COUNT$ posnetek?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyTwo": {
+    "message": "Trajno izbrisati $COUNT$ posnetka?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyFew": {
+    "message": "Trajno izbrisati $COUNT$ posnetke?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Trajno izbrisati $COUNT$ posnetkov?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Prenašam $COUNT$ posnetek",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingTwo": {
+    "message": "Prenašam $COUNT$ posnetka",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingFew": {
+    "message": "Prenašam $COUNT$ posnetke",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Prenašam $COUNT$ posnetkov",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Izbrisano"
+  },
+  "beautifyPageTitle": {
+    "message": "Polepšava — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Polepšaj"
+  },
+  "actionBack": {
+    "message": "Nazaj"
+  },
+  "commonLoading": {
+    "message": "Nalaganje …"
+  },
+  "beautifyFieldSize": {
+    "message": "Velikost"
+  },
+  "beautifyPresetAuto": {
+    "message": "Samodejno"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Kvadrat"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Pokončno"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Ozadje"
+  },
+  "beautifyBgSlate": {
+    "message": "Skrilavec"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Nebo"
+  },
+  "beautifyBgSunset": {
+    "message": "Sončni zahod"
+  },
+  "beautifyBgGrape": {
+    "message": "Grozdje"
+  },
+  "beautifyBgMint": {
+    "message": "Meta"
+  },
+  "beautifyFieldPadding": {
+    "message": "Rob"
+  },
+  "beautifyFieldRadius": {
+    "message": "Zaobljenost vogalov"
+  },
+  "beautifyFieldEffects": {
+    "message": "Učinki"
+  },
+  "beautifyShadow": {
+    "message": "Padajoča senca"
+  },
+  "beautifyWindowFrame": {
+    "message": "Okvir okna"
+  },
+  "beautifyFieldExport": {
+    "message": "Izvoz"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Drsni posnetek — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Drsni posnetek"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Zapis"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ se predvaja povsod. $WEBM$ je manjši in tekočnejši (posnet v živo v vašem brskalniku).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Širina izhoda"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Gostota"
+  },
+  "scrollclipDensityHint": {
+    "message": "Večja gostota izriše ostreje (bliže izvorni ločljivosti) — datoteka je večja."
+  },
+  "scrollclipFieldShape": {
+    "message": "Oblika"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Hitrost drsenja (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Hitrost sličic (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Gibanje"
+  },
+  "scrollclipBounce": {
+    "message": "Odboj (drsenje nazaj na vrh)"
+  },
+  "scrollclipLoop": {
+    "message": "Ponavljaj v nedogled"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopiraj sličico"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopiraj naslovno (zgornjo) sličico kot $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ sličica · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsTwo": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ sličici · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsFew": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ sličice · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ sličic · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Izrisujem sličice … $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Kodiram $FORMAT$ … $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Zaključujem …"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Snemam $FORMAT$ …",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Snemam …"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ tu ni podprt — izvažam $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Naslovna sličica je kopirana"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — paketni zajem"
+  },
+  "batchHeading": {
+    "message": "Paketni zajem"
+  },
+  "batchIntro": {
+    "message": "Prilepite naslove URL, vsakega v svojo vrstico. FullShot odpre vsako stran, shrani posnetek celotne strani v zgodovino in nadaljuje — največ $MAX$ naenkrat. Zajemi se pojavijo v zgodovini; s klikom na $OPENLINK$ jih odprete, uredite ali izvozite.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Zajemi vse"
+  },
+  "batchPermissionHint": {
+    "message": "Za odpiranje teh strani je ob prvem zagonu potrebno enkratno dovoljenje."
+  },
+  "batchPermissionDeclined": {
+    "message": "Dovoljenje za odpiranje teh strani je bilo zavrnjeno."
+  },
+  "batchPanelPlan": {
+    "message": "Načrt"
+  },
+  "batchPanelProgress": {
+    "message": "Potek"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ stran za zajem",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountTwo": {
+    "message": "$COUNT$ strani za zajem",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountFew": {
+    "message": "$COUNT$ strani za zajem",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ strani za zajem",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ strani za zajem (omejeno na $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Zaenkrat še ni veljavnih naslovov URL"
+  },
+  "batchSkipped": {
+    "message": "Preskočenih: $COUNT$ — $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "nepodprta shema"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "neveljavno"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "ni gostitelja"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "podvojeno"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "prazno"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "čez omejitev ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ končano",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ končano, $FAILED$ neuspešnih",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ končano — zaključeno",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ končano, $FAILED$ neuspešnih — zaključeno",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "odpri"
+  },
+  "batchJobTimedOut": {
+    "message": "časovna omejitev je potekla"
+  },
+  "batchJobNoSession": {
+    "message": "ni seje zajema"
+  },
+  "batchJobFailed": {
+    "message": "zajem ni uspel"
+  },
+  "batchJobError": {
+    "message": "napaka pri zajemu"
+  },
+  "regionHintDrag": {
+    "message": "Z vlečenjem izberite območje — prekličete s tipko $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Kliknite element, ki ga želite zajeti — prekličete s tipko $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Strani brskalnika, kot so Nastavitve, Razširitve in Nov zavihek, so nedostopne vsem razširitvam. FullShot preizkusite na običajni spletni strani."
+  },
+  "errRestrictedDevtools": {
+    "message": "Oken DevTools razširitev ne more zajeti. Zanje uporabite orodje za posnetke zaslona v svojem računalniku."
+  },
+  "errRestrictedViewSource": {
+    "message": "Strani z izvorno kodo ni mogoče zajeti. Zajemite raje stran samo."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Strani razširitev, vključno z lastnimi stranmi FullShot, brskalnik varuje in jih ni mogoče zajeti."
+  },
+  "errRestrictedWebstore": {
+    "message": "Spletna trgovina Chrome razširitvam preprečuje branje svojih strani, zato te ni mogoče zajeti."
+  },
+  "errRestrictedGeneric": {
+    "message": "To stran brskalnik varuje in je ni mogoče zajeti."
+  },
+  "errWrongTab": {
+    "message": "Zajem se je ustavil — zamenjali ste zavihek. Pustite to stran v ospredju, dokler FullShot ne konča."
+  },
+  "errGeneric": {
+    "message": "Zajem se je ustavil, preden je bil končan. Poskusite znova."
+  },
+  "errBusy": {
+    "message": "V tem zavihku že poteka zajem."
+  },
+  "errBlocked": {
+    "message": "Te strani ni mogoče zajeti (omejitev brskalnika)."
+  },
+  "errNoStart": {
+    "message": "FullShota na tej strani ni bilo mogoče zagnati. Znova naložite stran in poskusite še enkrat."
+  },
+  "errCrash": {
+    "message": "Zajem se je nepričakovano ustavil. Poskusite znova."
+  },
+  "errUnknownMessage": {
+    "message": "Neznano sporočilo."
+  },
+  "errQuota": {
+    "message": "Brskalnik omejuje, kako hitro je mogoče fotografirati strani. Počakajte trenutek in poskusite znova."
+  },
+  "errFrameHandover": {
+    "message": "Brskalnik je sredi opravila nehal predajati sliko. Počakajte nekaj sekund in poskusite znova."
+  },
+  "errLostTab": {
+    "message": "Zajem je izgubil sled za tem zavihkom. Znova naložite stran in poskusite še enkrat."
+  },
+  "errStoppedEarly": {
+    "message": "Zajem se je ustavil, preden je bil končan."
+  },
+  "errStorageFull": {
+    "message": "Za shranjevanje tega zajema ni več prostora. Izbrišite nekaj posnetkov zaslona iz zgodovine in poskusite znova."
+  },
+  "reasonGeneric": {
+    "message": "razlog ni bil naveden. Poskusite znova."
+  },
+  "reasonDecodeFailed": {
+    "message": "tega posnetka ni bilo mogoče dekodirati."
+  },
+  "reasonTooLarge": {
+    "message": "slika je prevelika za izvoz na tem mestu."
+  },
+  "toastCopiedClipboard": {
+    "message": "Kopirano v odložišče"
+  },
+  "toastCopyFailed": {
+    "message": "Kopiranje ni uspelo — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Izvoz ni uspel — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Shranjeno $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Shranjeno $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ kB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

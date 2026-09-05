@@ -1,0 +1,19 @@
+{
+"popupCopyFailed": "No se pudo copiar: presiona Ctrl+C en su lugar",
+"reasonStorageFull": "Este dispositivo no tiene espacio, así que no se guardó nada. Borra algunas filas almacenadas en Opciones e inténtalo de nuevo.",
+"reasonSettingTooBig": "Ese valor es demasiado largo para guardarlo en tu configuración sincronizada. Prueba con uno más corto.",
+"reasonSettingsWriteFailed": "No se pudo guardar esa opción de configuración. Espera un momento e inténtalo de nuevo.",
+"optionsLead": "Se guarda automáticamente. Si la sincronización de tu navegador está activada, tu configuración viaja con tu perfil del navegador; nunca se nos envía.",
+"optKeepHistoryDesc": "Desactivado de forma predeterminada. Al activarlo, los resultados se almacenan solo en este dispositivo, se muestran abajo y se pueden borrar cuando quieras.",
+"optDeleteAllDesc": "Quita de este dispositivo todas las filas almacenadas. La configuración se conserva.",
+"optResetTitle": "Restablecer la configuración",
+"optResetDesc": "Devuelve toda la configuración de esta página a sus valores predeterminados y la quita de tu perfil del navegador sincronizado. Las filas almacenadas se conservan.",
+"toastSaveFailed": "No se pudo guardar esa opción de configuración",
+"toastReset": "Configuración restablecida",
+"toastResetFailed": "No se pudo restablecer la configuración",
+"confirmDeleteAllBody": "Se quitan de este dispositivo todas las filas almacenadas. Tu configuración se conserva. Esto no se puede deshacer.",
+"confirmResetTitle": "¿Restablecer toda la configuración?",
+"confirmResetBody": "Todas las preferencias de esta página vuelven a su valor predeterminado y se quitan de tu perfil del navegador sincronizado. Tus filas almacenadas se conservan. Esto no se puede deshacer.",
+"optSiteAccessDesc": "Solo hace falta para las funciones que actúan en páginas donde no presionaste el botón de la barra de herramientas. Puedes retirarlo cuando quieras, aquí.",
+"siteAccessNotGranted": "Esta extensión solo puede leer una pestaña después de que presiones su botón en la barra de herramientas."
+}

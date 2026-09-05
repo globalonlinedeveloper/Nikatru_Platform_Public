@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title data-i18n="scrollclipPageTitle">Scroll clip — FullShot</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  .topbar h1 { font-size: 15px; margin: 0; font-weight: 650; }
+  .topbar .spacer { flex: 1; }
+  .wrap { flex: 1; display: flex; min-height: 0; }
+  /* overflow: auto, not overflow-y — see beautify.html. A rail that only
+     scrolls one axis hands the other to the page. */
+  .controls { width: 300px; flex: none; overflow: auto; padding: 16px;
+    border-inline-end: 1px solid var(--line); background: var(--panel); }
+  .stage { flex: 1; display: grid; place-items: center; overflow: auto; padding: 24px;
+    background: repeating-conic-gradient(var(--bg2) 0% 25%, var(--bg) 0% 50%) 50% / 24px 24px; }
+  /* Preview surface: a coordinate space, never mirrored. See editor.html. */
+  #scCanvas { direction: ltr; max-width: 100%; max-height: calc(100vh - 130px);
+    box-shadow: 0 8px 40px rgba(0,0,0,.25); border-radius: 4px; background: #0b0b0d; }
+  .field { margin-bottom: 18px; }
+  /* var(--muted) was never defined anywhere — see the same note in
+     beautify.html. An unresolvable var() on an inherited property means
+     INHERIT, so these captions were painting in the body colour. --fg2 is the
+     token that exists, and it is graded against --panel in both themes. */
+  .field > label, .field > .field-label {
+    display: block; font-size: 12px; font-weight: 650; color: var(--fg2);
+    text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* No white-space: nowrap — a rail button that may not wrap is a rail button
+     that paints outside a 300px rail the moment its label stops being English. */
+  .seg button { flex: 1 1 auto; min-width: 0; padding: 7px 8px;
+    border: 1px solid var(--control-line); border-radius: 8px;
+    background: var(--bg); color: var(--fg); font-size: 12px; cursor: pointer; }
+  .seg button.active, .seg button[aria-pressed="true"] {
+    background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row .val { width: 40px; text-align: end; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--fg2); }
+  .chk { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+  .chk input { flex: none; margin-block-start: 2px; }
+  /* Two buttons at flex:1 in a 300px rail forced "Einzelbild kopieren" and
+     "Копировать кадр" onto two lines. flex-basis + wrap lets them stack
+     instead of shrinking below their own words. */
+  .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .actions .btn { flex: 1 1 130px; justify-content: center; }
+  .hint { font-size: 11px; color: var(--fg2); margin-top: 6px; line-height: 1.4; }
+  /* The capture's own W×H — data, not chrome: pinned LTR and isolated so the
+     digits do not reorder around the ×. The line around them is a translated
+     sentence now (scrollclipDims), but the pin stays on the container for the
+     same reason the region overlay's readout is pinned: a measurement that
+     reverses is FullShot corrupting the user's own numbers. */
+  #scDims { font-size: 12px; color: var(--fg2); font-variant-numeric: tabular-nums;
+    direction: ltr; unicode-bidi: isolate; }
+  #scLoading { flex: 1; display: grid; place-items: center; }
+  /* 200% ZOOM — the same breakpoint and the same reasoning as beautify.html:
+     a 300px rail beside a canvas inside a viewport-height box with
+     overflow:hidden has nowhere to reflow to. Below 720px they stack and the
+     page may scroll (WCAG 1.4.10). */
+  @media (max-width: 720px) {
+    body { height: auto; min-height: 100vh; overflow: auto; }
+    .wrap { flex-direction: column; }
+    .controls { width: auto; overflow: visible;
+      border-inline-end: 0; border-block-end: 1px solid var(--line); }
+    #scCanvas { max-height: 60vh; }
+  }
+</style>
+</head>
+<body>
+  <!-- Every user-visible string carries data-i18n (text) or data-i18n-attr (a
+       named attribute) and KEEPS its English as the fallback: pages/common.js
+       substitutes on load, and a key that does not resolve leaves the English
+       standing. Chrome does not substitute __MSG__ inside HTML, which is why
+       the key travels in an attribute. Same shape as popup/popup.html.
+       Not marked, deliberately: the ← and ◐ glyphs, which are symbols (← is
+       bidi-mirrored, so it turns itself around in an RTL locale); the numeric
+       preset labels 480 · 640 · 800, 1× · 2× · 3× and 16:9 · 4:3 · 1:1 · 4:5 ·
+       9:16, which are measurements and ratios rather than words; and every
+       data-v value, which is the enum the code reads.
+
+       ACCESSIBILITY. Same two shapes as beautify.html: a caption that names
+       ONE control is a <label for>, a caption that names a RAIL is a
+       <span class="field-label"> the group points at with aria-labelledby, and
+       every rail button carries aria-pressed so the chosen option is state
+       rather than a CSS class. The ← keeps its glyph but the glyph is
+       aria-hidden, because a button's accessible name is its content and
+       "left arrow Back" is not the name of that link. -->
+  <header class="topbar">
+    <a class="btn" id="backBtn" href="history.html"><span aria-hidden="true">←</span><span data-i18n="actionBack">Back</span></a>
+    <h1 data-i18n="scrollclipHeading">Scroll clip</h1>
+    <span id="scDims"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle theme"
+            data-i18n-attr="title:popupToggleTheme; aria-label:popupToggleTheme"><span aria-hidden="true">◐</span></button>
+  </header>
+
+  <div id="scLoading" role="status" aria-live="polite" data-i18n="commonLoading">Loading…</div>
+
+  <main class="wrap" id="scStage" hidden>
+    <aside class="controls">
+      <div class="field">
+        <span class="field-label" id="scFormatLabel" data-i18n="scrollclipFieldFormat">Format</span>
+        <div class="seg" id="scFormat" role="group" aria-labelledby="scFormatLabel" aria-describedby="scFormatHint">
+          <button type="button" class="active" aria-pressed="true" data-v="gif" data-i18n="scrollclipFormatGif">GIF</button>
+          <button type="button" aria-pressed="false" data-v="webm" data-i18n="scrollclipFormatWebm">WebM</button>
+        </div>
+        <div class="hint" id="scFormatHint" data-i18n="scrollclipFormatHint">GIF plays everywhere. WebM is smaller &amp; smoother (recorded live in your browser).</div>
+      </div>
+      <div class="field">
+        <span class="field-label" id="scOutWLabel" data-i18n="scrollclipFieldOutputWidth">Output width</span>
+        <div class="seg" id="scOutW" role="group" aria-labelledby="scOutWLabel">
+          <button type="button" aria-pressed="false" data-v="s">480</button>
+          <button type="button" class="active" aria-pressed="true" data-v="m">640</button>
+          <button type="button" aria-pressed="false" data-v="l">800</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label" id="scDensityLabel" data-i18n="scrollclipFieldDensity">Density</span>
+        <div class="seg" id="scDensity" role="group" aria-labelledby="scDensityLabel" aria-describedby="scDensityHint">
+          <button type="button" class="active" aria-pressed="true" data-v="1">1×</button>
+          <button type="button" aria-pressed="false" data-v="2">2×</button>
+          <button type="button" aria-pressed="false" data-v="3">3×</button>
+        </div>
+        <div class="hint" id="scDensityHint" data-i18n="scrollclipDensityHint">Higher density renders sharper (closer to the source resolution) — larger file.</div>
+      </div>
+      <div class="field">
+        <span class="field-label" id="scShapeLabel" data-i18n="scrollclipFieldShape">Shape</span>
+        <div class="seg" id="scShape" role="group" aria-labelledby="scShapeLabel">
+          <button type="button" class="active" aria-pressed="true" data-v="wide">16:9</button>
+          <button type="button" aria-pressed="false" data-v="classic">4:3</button>
+          <button type="button" aria-pressed="false" data-v="square">1:1</button>
+          <button type="button" aria-pressed="false" data-v="tall">4:5</button>
+          <button type="button" aria-pressed="false" data-v="story">9:16</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="scSpeed" data-i18n="scrollclipFieldSpeed">Scroll speed (px/s)</label>
+        <div class="row"><input type="range" id="scSpeed" min="200" max="2400" step="100" value="800"><span class="val" id="scSpeedVal" aria-hidden="true">800</span></div>
+      </div>
+      <div class="field">
+        <label for="scFps" data-i18n="scrollclipFieldFps">Frame rate (fps)</label>
+        <div class="row"><input type="range" id="scFps" min="5" max="30" step="1" value="12"><span class="val" id="scFpsVal" aria-hidden="true">12</span></div>
+      </div>
+      <div class="field">
+        <span class="field-label" data-i18n="scrollclipFieldMotion">Motion</span>
+        <label class="chk"><input type="checkbox" id="scBounce"> <span data-i18n="scrollclipBounce">Bounce (scroll back to top)</span></label>
+        <label class="chk" style="margin-top:8px"><input type="checkbox" id="scLoop" checked> <span data-i18n="scrollclipLoop">Loop forever</span></label>
+      </div>
+      <div class="field">
+        <span class="field-label" data-i18n="beautifyFieldExport">Export</span>
+        <div class="actions">
+          <button class="btn primary" id="scDownload" type="button" data-i18n="resultDownload">Download</button>
+          <button class="btn" id="scCopyFrame" type="button" title="Copy the poster (top) frame as PNG"
+                  data-i18n="scrollclipCopyFrame" data-i18n-attr="title:scrollclipCopyFrameTip">Copy frame</button>
+        </div>
+        <div class="hint" id="scProgress" role="status" aria-live="polite" hidden></div>
+      </div>
+    </aside>
+    <div class="stage"><canvas id="scCanvas"></canvas></div>
+  </main>
+
+  <!-- Declared up front so it is already a live region when the text arrives.
+       See history.html. -->
+  <div id="fs-toast" role="status" aria-live="polite"></div>
+
+  <script src="db.js"></script>
+  <script src="common.js"></script>
+  <script src="scrollclip.js"></script>
+</body>
+</html>

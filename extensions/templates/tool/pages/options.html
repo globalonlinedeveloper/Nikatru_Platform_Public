@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<!-- lang/dir are re-set at runtime by skApplyDirection(); they are here too so
+     the first paint already has both. -->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<!-- PLACEHOLDER(tool-name) -->
+<title data-i18n="optionsDocTitle">Options — SKELETON</title>
+<link rel="stylesheet" href="common.css">
+<!-- The page layout is a FILE, never a <style> block. manifest.json declares
+     style-src 'self' with no 'unsafe-inline', so the browser would refuse an
+     inline block outright — and that CSP is the second gate behind "untrusted
+     text never becomes markup". See the banner in options.css. -->
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+
+<div class="topbar">
+  <!-- PLACEHOLDER(tool-name) -->
+  <span class="brand"><img src="../icons/icon32.png" width="20" height="20" alt=""><span data-i18n="optionsBrand">SKELETON · Options</span></span>
+  <span class="spacer"></span>
+  <button class="btn icon" id="themeBtn" type="button"
+          data-i18n-attr="title:themeToggle; aria-label:themeToggle"
+          title="Toggle theme" aria-label="Toggle theme">◐</button>
+</div>
+
+<div id="wrap">
+  <h1 data-i18n="optionsHeading">Options</h1>
+  <!-- HONEST ABOUT SYNC. The old sentence here said settings were "synced to
+       your browser profile" while the About box below claimed the tool "works
+       entirely on your device" — and chrome.storage.sync means Google's servers
+       for anyone signed in with sync on, so those two could not both be true.
+       A reviewer reading them next to a manifest declaring `storage` marks it
+       as misleading, and the privacy policy gets written from this copy. -->
+  <p class="lead" data-i18n="optionsLead">Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us.</p>
+
+  <!-- PLACEHOLDER(options-rows) — one row per key in SK_DEFAULTS (lib/settings.js),
+       with the same id, and an entry in the FIELDS map in options.js.
+
+       THE ROW SHAPE IS NOT DECORATION. Every control is named by the <b> beside
+       it through aria-labelledby, and described by the <small> through
+       aria-describedby. It has to be done this way round rather than with
+       <label for>, because the visible text is a SIBLING of the control inside a
+       flex row: wrapping it in a <label> would change the layout, and a <label>
+       that wraps only the input (which is what the old markup did) names the
+       control with nothing at all. Copy the ids: <id>-label and <id>-desc. -->
+  <div class="section">
+    <h2 data-i18n="optionsSectionBehavior">Behavior</h2>
+
+    <div class="opt">
+      <div class="text">
+        <b id="copyOnOpen-label" data-i18n="optCopyOnOpenTitle">Copy on open</b>
+        <small id="copyOnOpen-desc" data-i18n="optCopyOnOpenDesc">Copy the result to the clipboard as soon as the popup opens.</small>
+      </div>
+      <input type="checkbox" class="switch" id="copyOnOpen"
+             aria-labelledby="copyOnOpen-label" aria-describedby="copyOnOpen-desc">
+    </div>
+
+    <div class="opt">
+      <div class="text">
+        <b id="keepHistory-label" data-i18n="optKeepHistoryTitle">Keep a local history</b>
+        <small id="keepHistory-desc" data-i18n="optKeepHistoryDesc">Off by default. When on, results are stored on this device only, listed below, and deletable at any time.</small>
+      </div>
+      <input type="checkbox" class="switch" id="keepHistory"
+             aria-labelledby="keepHistory-label" aria-describedby="keepHistory-desc">
+    </div>
+
+    <div class="opt">
+      <div class="text">
+        <b id="historyLimit-label" data-i18n="optHistoryLimitTitle">History limit</b>
+        <small id="historyLimit-desc" data-i18n="optHistoryLimitDesc">Oldest rows are dropped once the list is longer than this.</small>
+      </div>
+      <input type="number" id="historyLimit" min="1" max="1000" step="1" inputmode="numeric"
+             aria-labelledby="historyLimit-label" aria-describedby="historyLimit-desc">
+    </div>
+
+    <div class="opt">
+      <div class="text">
+        <b id="retentionDays-label" data-i18n="optRetentionTitle">Delete rows older than</b>
+        <small id="retentionDays-desc" data-i18n="optRetentionDesc">Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them.</small>
+      </div>
+      <input type="number" id="retentionDays" min="0" max="365" step="1" inputmode="numeric"
+             aria-labelledby="retentionDays-label" aria-describedby="retentionDays-desc">
+    </div>
+
+    <div class="opt">
+      <div class="text">
+        <b id="theme-label" data-i18n="optThemeTitle">Theme</b>
+        <small id="theme-desc" data-i18n="optThemeDesc">Follows your system by default.</small>
+      </div>
+      <select id="theme" aria-labelledby="theme-label" aria-describedby="theme-desc">
+        <option value="system" data-i18n="themeSystem">System</option>
+        <option value="light" data-i18n="themeLight">Light</option>
+        <option value="dark" data-i18n="themeDark">Dark</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Every tool in this family ships this section. Anything stored must be
+       reachable and deletable by the user, in the product, without instructions. -->
+  <div class="section">
+    <h2 data-i18n="optionsSectionData">Your data</h2>
+    <!-- role="status": the count changes after a wipe, and a change nobody is
+         told about is a Delete button you cannot tell worked. Present from first
+         paint, so the announcement is reliable. -->
+    <p class="note" id="dataSummary" role="status" data-i18n="dataNothingStored">Nothing is stored on this device.</p>
+    <!-- DURABILITY, STATED IN BOTH BRANCHES. An origin's IndexedDB sits in the
+         browser's best-effort bucket until navigator.storage.persist() grants
+         otherwise, and a best-effort origin can be emptied under storage
+         pressure with no prompt and no event. Filled at runtime from
+         skDurabilityKey(); it is never allowed to say "durable" on a guess. -->
+    <p class="note" id="dataDurability" role="status"></p>
+    <ul id="itemList"></ul>
+    <div class="opt">
+      <div class="text">
+        <b id="exportBtn-label" data-i18n="optExportTitle">Export everything</b>
+        <small id="exportBtn-desc" data-i18n="optExportDesc">Saves every stored row to one JSON file on this device. Nothing is uploaded.</small>
+      </div>
+      <button class="btn" id="exportBtn" type="button"
+              aria-describedby="exportBtn-desc" data-i18n="optExportButton">Export everything</button>
+    </div>
+    <div class="opt">
+      <div class="text">
+        <b id="clearBtn-label" data-i18n="optDeleteAllTitle">Delete everything</b>
+        <small id="clearBtn-desc" data-i18n="optDeleteAllDesc">Removes every stored row from this device. Settings are kept.</small>
+      </div>
+      <!-- The button's own text is its accessible name (content beats every
+           attribute), so it needs no aria-label — only the description. -->
+      <button class="btn danger" id="clearBtn" type="button"
+              aria-describedby="clearBtn-desc" data-i18n="optDeleteAllButton">Delete everything</button>
+    </div>
+    <!-- Settings are the one category of data that can LEAVE the machine, and
+         until this button existed they were also the one category the product
+         offered no way to remove — so "anything stored is reachable and
+         deletable" was false exactly where it mattered most. -->
+    <div class="opt">
+      <div class="text">
+        <b id="resetBtn-label" data-i18n="optResetTitle">Reset settings</b>
+        <small id="resetBtn-desc" data-i18n="optResetDesc">Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept.</small>
+      </div>
+      <button class="btn danger" id="resetBtn" type="button"
+              aria-describedby="resetBtn-desc" data-i18n="optResetButton">Reset settings</button>
+    </div>
+  </div>
+
+  <!-- SITE ACCESS — the other thing the user must be able to take back.
+
+       Broad host access is the most consequential thing a user can grant a tool
+       in this family, and until this section existed it was one-way: granted in
+       a single click from inside the product, revocable only by someone who
+       knows to open chrome://extensions, find the entry, open Details and
+       change Site access. "Anything stored is reachable and deletable" and
+       "anything granted is visible and revocable" are the same rule.
+
+       HIDDEN UNLESS THE MANIFEST DECLARES optional_host_permissions. The
+       skeleton declares none — activeTab is the whole story here — so this
+       section is `hidden` at first paint and options.js only reveals it when
+       chrome.runtime.getManifest().optional_host_permissions is non-empty. It
+       is live, exercised code either way, not a commented intention: the moment
+       you add the manifest key, the row appears, reads the real grant state and
+       offers both directions. -->
+  <div class="section" id="siteAccessSection" hidden>
+    <h2 data-i18n="optionsSectionSiteAccess">Site access</h2>
+    <p class="note" id="siteAccessState" role="status"></p>
+    <div class="opt">
+      <div class="text">
+        <b id="siteAccess-label" data-i18n="optSiteAccessTitle">Access to every site</b>
+        <small id="siteAccess-desc" data-i18n="optSiteAccessDesc">Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here.</small>
+      </div>
+      <button class="btn primary" id="grantBtn" type="button"
+              aria-describedby="siteAccess-desc" data-i18n="optSiteAccessGrant">Grant access</button>
+      <button class="btn danger" id="revokeBtn" type="button"
+              aria-describedby="siteAccess-desc" data-i18n="optSiteAccessRevoke">Revoke access</button>
+    </div>
+  </div>
+
+  <!-- A REPORT PATH WITH NO BACKEND. Nothing is transmitted: the report is a
+       file the user reads first and sends themselves. -->
+  <div class="section">
+    <h2 data-i18n="optionsSectionReport">Report a problem</h2>
+    <div class="opt">
+      <div class="text">
+        <b id="reportBtn-label" data-i18n="optReportTitle">Prepare a problem report</b>
+        <small id="reportBtn-desc" data-i18n="optReportDesc">Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere.</small>
+      </div>
+      <button class="btn" id="reportBtn" type="button"
+              aria-describedby="reportBtn-desc" data-i18n="optReportButton">Prepare a report</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="optionsSectionAbout">About</h2>
+    <div class="opt">
+      <div class="text">
+        <!-- PLACEHOLDER(about) — name, one-sentence purpose, privacy claim -->
+        <b data-i18n="aboutName">SKELETON — replace me</b>
+        <!-- NOT "works entirely on your device". chrome.storage.sync makes that
+             untrue for anyone with browser sync on, and the whole claim is only
+             worth making if every word of it survives being checked. -->
+        <small data-i18n="aboutBlurb">One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us.</small>
+      </div>
+      <span class="meta" id="version"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Empty at first paint and filled by options.js when a save lands: a live
+     region that gains its role at the same moment as its text is not reliably
+     announced, and one whose text never changes is never announced twice. -->
+<div id="saveNote" role="status"></div>
+
+<script src="../lib/settings.js"></script>
+<script src="../lib/storage.js"></script>
+<script src="common.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

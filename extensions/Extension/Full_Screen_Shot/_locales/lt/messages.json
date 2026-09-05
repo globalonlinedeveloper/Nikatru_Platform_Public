@@ -1,0 +1,2335 @@
+{
+  "appName": {
+    "message": "FullShot – viso puslapio ekrano kopija"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Fotografuokite visą puslapį, matomą sritį, pasirinktą plotą ar elementą. Redaguokite, žymėkite, eksportuokite PNG, JPEG, WebP, PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – fotografuoti puslapį (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Fotografuoti visą puslapį"
+  },
+  "commandCaptureVisible": {
+    "message": "Fotografuoti matomą sritį"
+  },
+  "commandCaptureRegion": {
+    "message": "Fotografuoti pasirinktą sritį"
+  },
+  "commandCaptureElement": {
+    "message": "Fotografuoti puslapio elementą (spustelėkite, kad pasirinktumėte)"
+  },
+  "popupToggleTheme": {
+    "message": "Keisti temą"
+  },
+  "popupModeFullTitle": {
+    "message": "Visas puslapis"
+  },
+  "popupModeFullSub": {
+    "message": "Slinkti ir nufotografuoti visą"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Matoma sritis"
+  },
+  "popupModeVisibleSub": {
+    "message": "Tik tai, kas matoma ekrane"
+  },
+  "popupModeRegionTitle": {
+    "message": "Pasirinkta sritis"
+  },
+  "popupModeRegionSub": {
+    "message": "Vilkite, kad pasirinktumėte sritį"
+  },
+  "popupModeElementTitle": {
+    "message": "Elementas"
+  },
+  "popupModeElementSub": {
+    "message": "Spustelėkite bet kurį puslapio elementą"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Atidėtas fotografavimas"
+  },
+  "popupModeDelayedSub": {
+    "message": "Visas puslapis po atskaitos"
+  },
+  "popupDelayLabel": {
+    "message": "Delsa sekundėmis"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Išplėsti slenkamus skydelius ir iframe elementus"
+  },
+  "popupExpandToggleTip": {
+    "message": "Išplėskite vidinius slenkamus skydelius ir iframe elementus iki viso jų turinio, o ne fotografuokite juos tokius, kokie matomi. Kitų svetainių kadrai vieną kartą paprašo papildomo leidimo."
+  },
+  "popupDismiss": {
+    "message": "Uždaryti"
+  },
+  "popupLastErrorFailed": {
+    "message": "Paskutinis $MODE$ nepavyko – $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Paskutinis $MODE$ nepavyko – $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "viso puslapio fotografavimas"
+  },
+  "popupModeNameVisible": {
+    "message": "matomos srities fotografavimas"
+  },
+  "popupModeNameRegion": {
+    "message": "srities fotografavimas"
+  },
+  "popupModeNameElement": {
+    "message": "elemento fotografavimas"
+  },
+  "popupModeNameGeneric": {
+    "message": "fotografavimas"
+  },
+  "popupNoActiveTab": {
+    "message": "Nerasta jokio aktyvaus skirtuko."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Nepavyko pradėti fotografavimo."
+  },
+  "popupLinkHistory": {
+    "message": "Istorija"
+  },
+  "popupLinkBatch": {
+    "message": "Paketas"
+  },
+  "popupLinkOptions": {
+    "message": "Parinktys"
+  },
+  "optionsPageTitle": {
+    "message": "Parinktys – FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Parinktys"
+  },
+  "optionsHeading": {
+    "message": "Parinktys"
+  },
+  "optionsLead": {
+    "message": "Pakeitimai įrašomi automatiškai ir sinchronizuojami su jūsų naršyklės profiliu."
+  },
+  "optionsSectionImage": {
+    "message": "Vaizdas"
+  },
+  "optionsFormat": {
+    "message": "Formatas"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ yra be nuostolių, $JPEG$ – mažesnis, o $WEBP$ – mažiausias esant panašiai kokybei.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ ir $WEBP$ kokybė",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Failo pavadinimo šablonas"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Vietaženkliai: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Fotografavimas"
+  },
+  "optionsCaptureDelay": {
+    "message": "Papildoma delsa kiekviename žingsnyje"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Kiek milisekundžių palaukti po kiekvieno slinkimo. Padidinkite lėtuose, animacijų prisodrintuose puslapiuose."
+  },
+  "optionsHideFixed": {
+    "message": "Slėpti fiksuotus ir lipnius elementus"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Neleidžia antraštėms kartotis kiekviename ekrane (rodoma tik viršuje)."
+  },
+  "optionsPreScroll": {
+    "message": "Iš anksto perslinkti, kad įsikeltų atidėtas turinys"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Prieš fotografuojant vieną kartą perslenka visą puslapį. Lėčiau, bet įtraukiami vaizdai, kurie įkeliami tik slenkant."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Laukti, kol vaizdai bus dekoduoti"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Leidžia vėluojantiems vaizdams baigti dekodavimą prieš kiekvieną kadrą, kad jie nebūtų nufotografuoti kaip juodi ar tušti langeliai."
+  },
+  "optionsHideOverlays": {
+    "message": "Slėpti reklamjuostes ir iššokančiuosius langus"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Prieš fotografuojant pašalina slapukų ir sutikimo juostas, naujienlaiškių langus bei „atsisiųskite programėlę“ iššokančiuosius langus ir atrakina puslapius, kuriuos langas užšaldė. Vėliau viskas atkuriama."
+  },
+  "optionsExpandInner": {
+    "message": "Išplėsti slenkamą turinį"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Išplečia vidinius skydelius ir iframe elementus, kad būtų matomas turinys, paslėptas žemiau jų pačių krašto, užuot fotografavus juos tiksliai tokius, kokie matomi."
+  },
+  "optionsExpandPermRow": {
+    "message": "Kitų svetainių kadrai"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Leisti"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Leidimas suteiktas – išplečiami ir kitų svetainių kadrai."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Be leidimo „$PERMISSION$“ kitų svetainių kadrai fotografuojami tokie, kokie matomi. Skydeliai ir tos pačios svetainės iframe elementai veikia visada.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Išskleisti virtualizuotus sąrašus"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Žingsnis po žingsnio pereina srautus su atvaizdavimo langu ($LIB1$ / $LIB2$ stiliaus), kad būtų nufotografuotas visas jų turinys, o ne tik ekrane matomos eilutės. Labai ilguose sąrašuose lėčiau.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Išskleisti turinį, kuris atsiveria spustelėjus"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Prieš fotografuojant atidaro suskleistus $DETAILS$ elementus, neaktyvius skirtukus, akordeonus ir „rodyti daugiau“ skiltis, o paskui juos atkuria. Atskleidžia turinį, paslėptą už spustelėjimo.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Spustelėti mygtukus „$BUTTONTEXT$“",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Spustelėja „load more“ ir „show more“ mygtukus ir laukia, kol įsikels naujas turinys, kartodama tai tol, kol srautas išsemiamas. Skirtingai nei ankstesnė parinktis, ši atsiunčia turinį, kurio puslapyje dar nėra, ir įkeltas turinys po fotografavimo lieka."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Slinkti, kad įsikeltų begaliniai srautai"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Srautams be „load more“ mygtuko: slenka iki apačios ir laukia, kol įsikels kita dalis, kartodama tai tol, kol srautas nustoja augti (su riba, kad begaliniai srautai nebūtų vejami be galo). Įkeltas turinys po fotografavimo lieka."
+  },
+  "optionsWaitStable": {
+    "message": "Laukti, kol turinys bus įkeltas"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Prieš fotografuojant laukia, kol skeleto ir vietaženklių krovikliai (aria-busy sritys, mirgantys blokai) bus pakeisti tikruoju turiniu, kad „įkeliama…“ tarpsnis puslapio viduryje netaptų pilkais langeliais. Su riba, kad įstrigęs suktukas neužblokuotų fotografavimo."
+  },
+  "optionsRedactPII": {
+    "message": "Automatiškai užtušuoti neskelbtiną informaciją"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Peržiūri tekstą, kurį puslapis atskleidžia, ieškodama el. pašto adresų, telefono numerių, mokėjimo kortelių numerių, asmens kodų ir API raktų ir įrašytame vaizde vientisu stačiakampiu uždengia tai, kas atitiko. Pikseliais nupiešto teksto ji perskaityti negali – drobės, paveikslėlio, PDF, vaizdo įrašo kadro. Aptikimas vyksta jūsų įrenginyje; niekas niekada niekur nesiunčiama. Taikoma viso puslapio (dokumento slinkimo) nuotraukoms; stačiakampis yra nepašalinamas, todėl patys peržiūrėkite rezultatą."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Didžiausias puslapio aukštis"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Saugos riba (CSS px) begalinio slinkimo srautams."
+  },
+  "optionsSectionPdf": {
+    "message": "PDF eksportas"
+  },
+  "optionsPdfPaper": {
+    "message": "Numatytasis popieriaus dydis"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "„$IMAGESIZE$“ padaro puslapį lygiai tokio dydžio kaip ekrano kopija.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Vaizdo dydis"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Padėtis"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Taikoma fiksuotiems popieriaus dydžiams."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Stačias"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Gulsčias"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Išmanusis skaidymas į puslapius"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Ieško vizualaus tarpo šalia kiekvieno puslapio lūžio, kad teksto eilutės nebūtų perkirstos pusiau."
+  },
+  "optionsPdfStamp": {
+    "message": "Įspausti URL ir datą"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Kiekvieno PDF puslapio poraštėje prideda puslapio URL ir fotografavimo datą."
+  },
+  "optionsSectionDownload": {
+    "message": "Atsisiuntimas"
+  },
+  "optionsSaveDirectory": {
+    "message": "Aplankas"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Poaplankis aplanke $DOWNLOADS$ jūsų ekrano kopijoms, pvz., $EXAMPLE$. Tuščia = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialogo langas „Įrašyti kaip“"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Klausti, kur įrašyti kiekvieną failą, užuot atsisiuntus tyliai."
+  },
+  "optionsClipboardFit": {
+    "message": "Pritaikyti kopijas programų apribojimams"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Sumažina didesnes nei $PIXELS$ pikselių kopijas, kad įklijavimas į $APP$ ir panašias programas veiktų.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Darbo eiga"
+  },
+  "optionsAutoDownload": {
+    "message": "Automatiškai atsisiųsti po fotografavimo"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Įrašo vaizdą iškart, kai fotografavimas baigiamas."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Atidaryti rengyklę po fotografavimo"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Iškart pereikite prie žymėjimo (tik vienos dalies nuotraukoms)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Taikoma iššokančiajam langui ir visiems FullShot puslapiams."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistemos"
+  },
+  "optionsThemeLight": {
+    "message": "Šviesi"
+  },
+  "optionsThemeDark": {
+    "message": "Tamsi"
+  },
+  "optionsShortcuts": {
+    "message": "Spartieji klavišai"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Visas puslapis: $KEYFULL$ · Matoma sritis: $KEYVISIBLE$. Keiskite adresu $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Įrašyta ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Jūsų duomenys"
+  },
+  "optionsStorage": {
+    "message": "Saugykla"
+  },
+  "optionsStorageUsage": {
+    "message": "Šiame įrenginyje panaudota $USED$ iš $QUOTA$.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Ši naršyklė nenurodo, kiek vietos užima „FullShot“."
+  },
+  "optionsStorageKept": {
+    "message": "Jūsų ekrano kopijos išsaugomos: naršyklė jų netrins, kad atlaisvintų vietos."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Jūsų ekrano kopijos yra naršyklės „geriausių pastangų“ saugykloje, kurią ji gali išvalyti, kad atlaisvintų vietos."
+  },
+  "optionsStorageKeep": {
+    "message": "Išsaugoti mano duomenis"
+  },
+  "optionsExport": {
+    "message": "Eksportuoti viską"
+  },
+  "optionsExportDesc": {
+    "message": "Įrašo vieną failą su jūsų nustatymais ir ekrano kopijų sąrašu. Jis išsaugomas šiame įrenginyje ir niekur nesiunčiamas."
+  },
+  "optionsExportImages": {
+    "message": "Įtraukti vaizdus"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Patys vaizdai, kurie sudaro beveik visą dydį. Be jų failas išvardija jūsų ekrano kopijas, bet nė vienos jų neturi."
+  },
+  "optionsExportSize": {
+    "message": "Failo dydis: apie $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Likę duomenys"
+  },
+  "optionsSweepDesc": {
+    "message": "Nutrūkęs fiksavimas diske gali palikti kadrų, kurie nepriklauso jokiai ekrano kopijai. Jie nerodomi jokiame puslapyje, todėl jų negali ištrinti joks puslapis. Ši funkcija juos suranda ir pašalina."
+  },
+  "optionsSweepBtn": {
+    "message": "Rasti ir pašalinti"
+  },
+  "optionsSweepResult": {
+    "message": "Pašalinta. Sutvarkyti fiksavimai: $COUNT$ · Atlaisvinta vietos: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Nieko neliko: viskas, kas išsaugota, priklauso ekrano kopijai, kurią matote."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Atkurti nustatymus"
+  },
+  "optionsResetDesc": {
+    "message": "Grąžina kiekvieną šio puslapio nustatymą į pradinę reikšmę. Jūsų ekrano kopijos nepaliečiamos."
+  },
+  "optionsResetBtn": {
+    "message": "Atkurti"
+  },
+  "optionsResetConfirm": {
+    "message": "Grąžinti visus „FullShot“ nustatymus į numatytąsias reikšmes? Jūsų ekrano kopijoms tai neturi įtakos."
+  },
+  "optionsResetDone": {
+    "message": "Nustatymai grąžinti į numatytąsias reikšmes."
+  },
+  "optionsDeleteAll": {
+    "message": "Ištrinti viską"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Pašalina visas ekrano kopijas iš jūsų istorijos ir viską, ką paliko nutrūkę fiksavimai. Jūsų nustatymai lieka tokie, kokie buvo."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Ištrinti viską, ką „FullShot“ išsaugojo šiame įrenginyje?\n\nEkrano kopijų jūsų istorijoje: $COUNT$\nNutrūkusių fiksavimų likučių: $LEFTOVER$\nBus atlaisvinta vietos: $SIZE$\n\nJūsų nustatymams tai neturi įtakos. To atšaukti negalima.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Ištrinta. „FullShot“ šiame įrenginyje nebesaugo jokių ekrano kopijų."
+  },
+  "resultPageTitle": {
+    "message": "Ekrano kopija – FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ – FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopijuoti"
+  },
+  "resultCopyTip": {
+    "message": "Kopijuoti vaizdą į iškarpinę"
+  },
+  "resultEdit": {
+    "message": "Redaguoti"
+  },
+  "resultEditTip": {
+    "message": "Atidaryti rengyklėje"
+  },
+  "resultBeautify": {
+    "message": "Pagražinti"
+  },
+  "resultBeautifyTip": {
+    "message": "Pagražinti – rėmelis ir fonas dalijimuisi"
+  },
+  "resultClip": {
+    "message": "Klipas"
+  },
+  "resultClipTip": {
+    "message": "Slinkimo klipas – animuotas $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF popieriaus dydis"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Atsisiųsti"
+  },
+  "resultDeleteTip": {
+    "message": "Ištrinti ekrano kopiją"
+  },
+  "resultHistoryTip": {
+    "message": "Ekrano kopijų istorija"
+  },
+  "resultProgressAssembling": {
+    "message": "Sudedama jūsų ekrano kopija…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Dekoduojamas $COUNT$ kadras…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingFew": {
+    "message": "Dekoduojami $COUNT$ kadrai…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingMany": {
+    "message": "Dekoduojama $COUNT$ kadro…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Dekoduojama $COUNT$ kadrų…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Sujungiama $INDEX$ dalis…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Sujungiama $INDEX$ dalis iš maždaug $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Įrašoma…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Patarimas: nuvilkite vaizdą tiesiai į darbalaukį arba naudokite $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Čia nieko nėra"
+  },
+  "resultEmptyBody": {
+    "message": "Šios ekrano kopijos nebėra."
+  },
+  "resultOpenHistory": {
+    "message": "Atidaryti istoriją"
+  },
+  "resultSomethingWrong": {
+    "message": "Kažkas nepavyko – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "$INDEX$ dalis iš $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Atsisiųsti dalį"
+  },
+  "resultEditPart": {
+    "message": "Redaguoti dalį"
+  },
+  "resultClipPart": {
+    "message": "Sukurti klipą iš dalies"
+  },
+  "resultPartAlt": {
+    "message": "Ekrano kopijos $INDEX$ dalis",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Atsiunčiama $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Ar visam laikui ištrinti šią ekrano kopiją?"
+  },
+  "resultDeleted": {
+    "message": "Ekrano kopija ištrinta."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredFew": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredMany": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Ši ekrano kopija per aukšta, kad ją būtų galima įklijuoti kaip vieną įskaitomą vaizdą, todėl $COPY$ į iškarpinę įdeda sumažintą viso puslapio apžvalgą. Smulkus tekstas joje bus neįskaitomas.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "$INDEX$ dalis nukopijuota į iškarpinę",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Kuriamas PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF atsisiųstas ($COUNT$ puslapis)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneFew": {
+    "message": "PDF atsisiųstas ($COUNT$ puslapiai)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneMany": {
+    "message": "PDF atsisiųstas ($COUNT$ puslapio)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF atsisiųstas ($COUNT$ puslapių)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF nepavyko – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Rengyklė – FullShot"
+  },
+  "editorBackTip": {
+    "message": "Atgal į ekrano kopiją"
+  },
+  "editorToolSelect": {
+    "message": "Pasirinkti / perkelti ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Apkarpyti ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Rašiklis ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Žymeklis ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Linija ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Rodyklė ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Stačiakampis ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipsė ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Tekstas ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Suliejimas / pikseliavimas ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Numeruotas žingsnis ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Jaustuko antspaudas ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Pasirinktinė spalva"
+  },
+  "editorStrokeTip": {
+    "message": "Linijos storis"
+  },
+  "editorStrokeThin": {
+    "message": "Plona"
+  },
+  "editorStrokeMedium": {
+    "message": "Vidutinė"
+  },
+  "editorStrokeThick": {
+    "message": "Stora"
+  },
+  "editorSizeTip": {
+    "message": "Teksto / jaustukų dydis"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Anuliuoti ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Grąžinti ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Tolinti (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Artinti (+)"
+  },
+  "editorZoomFit": {
+    "message": "Talpinti"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Pritaikyta prie lango – spustelėkite, kad būtų 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Spustelėkite, kad tilptų lange"
+  },
+  "editorExport": {
+    "message": "Eksportuoti"
+  },
+  "editorExportCopy": {
+    "message": "Kopijuoti į iškarpinę"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ vaizdas",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ dokumentas",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Įrašyti"
+  },
+  "editorSaveTip": {
+    "message": "Įrašyti pakeitimus į istoriją ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Daugiau"
+  },
+  "editorMenuFiles": {
+    "message": "Eiti į istoriją"
+  },
+  "editorMenuOptions": {
+    "message": "Eiti į parinktis"
+  },
+  "editorMenuShortcuts": {
+    "message": "Spartieji klavišai"
+  },
+  "editorCropApply": {
+    "message": "Taikyti apkarpymą"
+  },
+  "editorCropCancel": {
+    "message": "Atsisakyti"
+  },
+  "editorShortcutsHeading": {
+    "message": "Spartieji klavišai"
+  },
+  "editorShortcutTools": {
+    "message": "Įrankių pasirinkimas"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Anuliuoti / grąžinti"
+  },
+  "editorShortcutSave": {
+    "message": "Įrašyti į istoriją"
+  },
+  "editorShortcutZoom": {
+    "message": "Tolinti / artinti"
+  },
+  "editorShortcutDelete": {
+    "message": "Pašalinti pasirinktą objektą"
+  },
+  "editorShortcutEscape": {
+    "message": "Panaikinti žymėjimą / atsisakyti apkarpymo"
+  },
+  "editorShortcutsClose": {
+    "message": "Uždaryti"
+  },
+  "editorNotFound": {
+    "message": "Ekrano kopija nerasta"
+  },
+  "editorToastDownloaded": {
+    "message": "Atsisiųsta"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF atsisiųstas"
+  },
+  "editorToastSaved": {
+    "message": "Įrašyta į istoriją"
+  },
+  "historyPageTitle": {
+    "message": "Istorija – FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Istorija"
+  },
+  "historySearchPlaceholder": {
+    "message": "Ieškoti pavadinime arba URL…"
+  },
+  "historySelectAll": {
+    "message": "Pasirinkti visas"
+  },
+  "historyClearSelection": {
+    "message": "Išvalyti žymėjimą"
+  },
+  "historyDownloadSelected": {
+    "message": "Atsisiųsti pasirinktas"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Atsisiųsti ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Ištrinti pasirinktas"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Ištrinti ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Ekrano kopijų kol kas nėra"
+  },
+  "historyEmptyBody": {
+    "message": "Jūsų padarytos nuotraukos atsiras čia. Norėdami pradėti, įrankių juostoje spustelėkite FullShot piktogramą."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Atitikmenų nėra"
+  },
+  "historyNoMatchesBody": {
+    "message": "Nė viena ekrano kopija neatitinka užklausos „$QUERY$“.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ ekrano kopija · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFew": {
+    "message": "$COUNT$ ekrano kopijos · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountMany": {
+    "message": "$COUNT$ ekrano kopijos · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ ekrano kopijų · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ iš $COUNT$ ekrano kopijos · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredFew": {
+    "message": "$SHOWN$ iš $COUNT$ ekrano kopijų · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredMany": {
+    "message": "$SHOWN$ iš $COUNT$ ekrano kopijos · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ iš $COUNT$ ekrano kopijų · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Pasirinkti"
+  },
+  "historyCardOpen": {
+    "message": "Atidaryti"
+  },
+  "historyCardEdit": {
+    "message": "Redaguoti"
+  },
+  "historyCardDownloadTip": {
+    "message": "Atsisiųsti"
+  },
+  "historyCardDeleteTip": {
+    "message": "Ištrinti"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Atidaryti pirminį puslapį"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ dalys",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Ekrano kopija"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Ar ištrinti šią ekrano kopiją?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Ar visam laikui ištrinti $COUNT$ ekrano kopiją?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyFew": {
+    "message": "Ar visam laikui ištrinti $COUNT$ ekrano kopijas?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyMany": {
+    "message": "Ar visam laikui ištrinti $COUNT$ ekrano kopijos?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Ar visam laikui ištrinti $COUNT$ ekrano kopijų?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Atsiunčiama $COUNT$ ekrano kopija",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingFew": {
+    "message": "Atsiunčiamos $COUNT$ ekrano kopijos",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingMany": {
+    "message": "Atsiunčiama $COUNT$ ekrano kopijos",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Atsiunčiama $COUNT$ ekrano kopijų",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Ištrinta"
+  },
+  "beautifyPageTitle": {
+    "message": "Pagražinti – FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Pagražinti"
+  },
+  "actionBack": {
+    "message": "Atgal"
+  },
+  "commonLoading": {
+    "message": "Įkeliama…"
+  },
+  "beautifyFieldSize": {
+    "message": "Dydis"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automatinis"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Kvadratas"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Stačias"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Fonas"
+  },
+  "beautifyBgSlate": {
+    "message": "Skalūnas"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafitas"
+  },
+  "beautifyBgSky": {
+    "message": "Dangus"
+  },
+  "beautifyBgSunset": {
+    "message": "Saulėlydis"
+  },
+  "beautifyBgGrape": {
+    "message": "Vynuogė"
+  },
+  "beautifyBgMint": {
+    "message": "Mėta"
+  },
+  "beautifyFieldPadding": {
+    "message": "Paraštė"
+  },
+  "beautifyFieldRadius": {
+    "message": "Kampų apvalinimas"
+  },
+  "beautifyFieldEffects": {
+    "message": "Efektai"
+  },
+  "beautifyShadow": {
+    "message": "Metamas šešėlis"
+  },
+  "beautifyWindowFrame": {
+    "message": "Lango rėmelis"
+  },
+  "beautifyFieldExport": {
+    "message": "Eksportas"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Slinkimo klipas – FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Slinkimo klipas"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Formatas"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ groja visur. $WEBM$ yra mažesnis ir sklandesnis (įrašomas tiesiai jūsų naršyklėje).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Išvesties plotis"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Tankis"
+  },
+  "scrollclipDensityHint": {
+    "message": "Didesnis tankis atvaizduoja ryškiau (arčiau šaltinio raiškos) – bet failas didesnis."
+  },
+  "scrollclipFieldShape": {
+    "message": "Forma"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Slinkimo greitis (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Kadrų dažnis (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Judesys"
+  },
+  "scrollclipBounce": {
+    "message": "Atšokimas (slinkti atgal į viršų)"
+  },
+  "scrollclipLoop": {
+    "message": "Kartoti be galo"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopijuoti kadrą"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopijuoti viršutinį pradinį kadrą kaip $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadras · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsFew": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadrai · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsMany": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadro · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ kadrų · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Atvaizduojami kadrai… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Koduojama $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Užbaigiama…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Įrašoma $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Įrašoma…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ čia nepalaikomas – eksportuojama $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Pradinis kadras nukopijuotas"
+  },
+  "batchPageTitle": {
+    "message": "FullShot – paketinis fotografavimas"
+  },
+  "batchHeading": {
+    "message": "Paketinis fotografavimas"
+  },
+  "batchIntro": {
+    "message": "Įklijuokite URL adresus, po vieną eilutėje. FullShot atidaro kiekvieną puslapį, nufotografuoja jį visą į jūsų istoriją ir eina toliau – iki $MAX$ vienu metu. Nuotraukos atsiranda istorijoje; spustelėkite $OPENLINK$, kad jas peržiūrėtumėte, redaguotumėte ar eksportuotumėte.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Fotografuoti visus"
+  },
+  "batchPermissionHint": {
+    "message": "Šiems puslapiams atidaryti pirmą kartą reikia vienkartinio leidimo."
+  },
+  "batchPermissionDeclined": {
+    "message": "Leidimas atidaryti tuos puslapius buvo atmestas."
+  },
+  "batchPanelPlan": {
+    "message": "Planas"
+  },
+  "batchPanelProgress": {
+    "message": "Eiga"
+  },
+  "batchPlanCountOne": {
+    "message": "Bus nufotografuotas $COUNT$ puslapis",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountFew": {
+    "message": "Bus nufotografuoti $COUNT$ puslapiai",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountMany": {
+    "message": "Bus nufotografuota $COUNT$ puslapio",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "Bus nufotografuota $COUNT$ puslapių",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "Bus nufotografuota $COUNT$ puslapių (apribota iki $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Galiojančių URL adresų dar nėra"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ praleista: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "nepalaikoma schema"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "netinkamas"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "nėra serverio vardo"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "dublikatas"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "tuščia"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "viršija ribą ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ atlikta",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ atlikta, $FAILED$ nepavyko",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ atlikta – baigta",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ atlikta, $FAILED$ nepavyko – baigta",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "atidaryti"
+  },
+  "batchJobTimedOut": {
+    "message": "baigėsi fotografavimo laikas"
+  },
+  "batchJobNoSession": {
+    "message": "nėra fotografavimo seanso"
+  },
+  "batchJobFailed": {
+    "message": "fotografavimas nepavyko"
+  },
+  "batchJobError": {
+    "message": "fotografavimo klaida"
+  },
+  "regionHintDrag": {
+    "message": "Vilkite, kad pasirinktumėte sritį – $ESC$ atšaukia",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Spustelėkite elementą, kad jį nufotografuotumėte – $ESC$ atšaukia",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Naršyklės puslapiai, tokie kaip Nustatymai, Plėtiniai ir Naujas skirtukas, yra neprieinami visiems plėtiniams. Išbandykite FullShot įprastame tinklalapyje."
+  },
+  "errRestrictedDevtools": {
+    "message": "Plėtinys negali fotografuoti DevTools langų. Jiems naudokite savo kompiuterio ekrano kopijų įrankį."
+  },
+  "errRestrictedViewSource": {
+    "message": "Pirminio kodo peržiūros puslapių fotografuoti negalima. Nufotografuokite patį puslapį."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Plėtinių puslapius, įskaitant paties FullShot puslapius, saugo naršyklė, todėl jų nufotografuoti negalima."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store neleidžia plėtiniams skaityti savo puslapių, todėl šio puslapio nufotografuoti negalima."
+  },
+  "errRestrictedGeneric": {
+    "message": "Šį puslapį saugo naršyklė, todėl jo nufotografuoti negalima."
+  },
+  "errWrongTab": {
+    "message": "Fotografavimas sustabdytas – perjungėte skirtuką. Laikykite šį puslapį priekyje, kol FullShot baigs darbą."
+  },
+  "errGeneric": {
+    "message": "Fotografavimas nutrūko jam nepasibaigus. Bandykite dar kartą."
+  },
+  "errBusy": {
+    "message": "Šiame skirtuke jau vyksta fotografavimas."
+  },
+  "errBlocked": {
+    "message": "Šio puslapio nufotografuoti negalima (naršyklės apribojimas)."
+  },
+  "errNoStart": {
+    "message": "FullShot nepavyko paleisti šiame puslapyje. Įkelkite puslapį iš naujo ir bandykite dar kartą."
+  },
+  "errCrash": {
+    "message": "Fotografavimas netikėtai nutrūko. Bandykite dar kartą."
+  },
+  "errUnknownMessage": {
+    "message": "Nežinomas pranešimas."
+  },
+  "errQuota": {
+    "message": "Naršyklė riboja, kaip greitai galima fotografuoti puslapius. Palaukite akimirką ir bandykite dar kartą."
+  },
+  "errFrameHandover": {
+    "message": "Naršyklė įpusėjus nustojo perduoti ekraną. Palaukite kelias sekundes ir bandykite dar kartą."
+  },
+  "errLostTab": {
+    "message": "Fotografavimas prarado šį skirtuką. Įkelkite puslapį iš naujo ir bandykite dar kartą."
+  },
+  "errStoppedEarly": {
+    "message": "Fotografavimas buvo sustabdytas jam nepasibaigus."
+  },
+  "errStorageFull": {
+    "message": "Nebeliko vietos šiam fiksavimui išsaugoti. Ištrinkite kelias ekrano kopijas iš istorijos ir bandykite dar kartą."
+  },
+  "reasonGeneric": {
+    "message": "priežastis nenurodyta. Bandykite dar kartą."
+  },
+  "reasonDecodeFailed": {
+    "message": "tos ekrano kopijos nepavyko dekoduoti."
+  },
+  "reasonTooLarge": {
+    "message": "vaizdas per didelis, kad būtų eksportuotas čia."
+  },
+  "toastCopiedClipboard": {
+    "message": "Nukopijuota į iškarpinę"
+  },
+  "toastCopyFailed": {
+    "message": "Kopijuoti nepavyko – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Eksportuoti nepavyko – $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Įrašyta $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Įrašyta $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — every visible string is CSS generated content</title>
+<!-- SPEC §7.1 F / E15. The PII a human reads here lives in `content:` on
+     ::before and ::after, including one `content: attr(...)`. None of it is in
+     textContent, so `fed` should be 0 — and `read-no-match` requires `fed > 0`
+     (§3.3), so this page must not be able to reach a positive claim.
+     The point is not that the design covers generated content; §7.1 F says it
+     does not. The point is that not covering it must not read as "clean". -->
+<style>
+  html, body { margin: 0; background: #fff; font: 22px/1.6 system-ui, sans-serif; }
+  .band { height: 280px; }
+  .pad { background: rgb(226, 232, 240); }
+  .gen { height: 120px; padding: 24px; color: #2a0d0d; }
+  .gen1 { background: rgb(255, 90, 90); }
+  .gen1::before { content: "Billing contact jane.doe@example.com"; }
+  .gen2 { background: rgb(90, 130, 255); }
+  .gen2::before { content: "Card on file 4242 4242 4242 4242"; }
+  .gen3 { background: rgb(90, 200, 120); }
+  .gen3::after { content: attr(data-line); }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div class="band pad"></div>
+  <div class="gen gen1"></div>
+  <div class="gen gen2"></div>
+  <div class="gen gen3" data-line="Duty desk +1 (555) 123-4567"></div>
+  <div class="band pad"></div>
+  <div class="band pad"></div>
+  <div id="bottom"></div>
+</body>
+</html>

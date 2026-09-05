@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Grow inner scrollable panels and iframes to their full content instead of capturing them as seen. Cross-site frames ask for an extra permission once.",
+  "optionsLead": "Changes are saved automatically and synced to your browser profile.",
+  "optionsExpandPermGranted": "Permission granted — frames from other sites are expanded too.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission, cross-site frames are captured as seen. Panels and same-site iframes always work.",
+  "optionsRedactPIIDesc": "Scans the text a page exposes for emails, phone numbers, credit-card numbers, National Insurance numbers and API keys, and paints a solid block over what it matches in the saved image. It cannot read text drawn as pixels — a canvas, an image, a PDF, a video frame. Detection runs on your device; nothing is ever sent anywhere. Full-page (document-scroll) captures; the block is permanent, so review the result yourself.",
+  "scrollclipFormatHint": "GIF plays everywhere. WebM is smaller & smoother (recorded live in your browser).",
+  "batchPermissionHint": "Opening these pages needs one-time permission the first time.",
+  "batchPermissionDeclined": "Permission to open those pages was declined."
+}

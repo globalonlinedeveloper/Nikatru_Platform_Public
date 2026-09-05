@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Portal</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  object, embed { display: block; width: 640px; height: 300px; border: 1px solid #d9dde6; background: #fff; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Dashboard</a><a href="#">Documents</a><a href="#">Settings</a>
+  <span>Portal</span>
+</nav>
+<main>
+  <h1>Document portal</h1>
+  <p class="filler">The widget below is served from this same origin. Its content is
+  rendered into the page and is therefore part of any screenshot of this page.</p>
+
+  <!-- SHAPE: §5.4 counts DOORS, and the counter it added recognises exactly two
+       tag names, IFRAME and FRAME. <object> and <embed> create nested browsing
+       contexts too, are same-origin here, and expose contentDocument. Neither
+       is counted, so `frames.sameOrigin === frames.scanned === 0` and scanOk is
+       untouched — the same escape as §7.1 A wearing a different tag name. -->
+  <h2>Statement widget (object)</h2>
+  <object type="text/html" data="frame-pii.html"></object>
+
+  <h2>Statement widget (embed)</h2>
+  <embed type="text/html" src="frame-pii.html">
+
+  <div class="card">
+    <h2>Notes</h2>
+    <p class="filler">No further action is required on this account. Contact the
+    service desk if any of the details shown above are incorrect.</p>
+    <p class="filler">Documents are retained for seven years in line with policy.</p>
+  </div>
+</main>
+</body>
+</html>

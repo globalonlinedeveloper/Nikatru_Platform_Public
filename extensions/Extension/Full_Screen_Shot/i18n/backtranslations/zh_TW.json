@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Push the inner scrollable panels and iframes open to their complete content, rather than capturing according to what is currently seen. Cross-site frames will request an extra permission one time.",
+  "optionsLead": "Changes are saved automatically, and synced to your browser profile.",
+  "optionsExpandPermGranted": "Permission has been obtained — frames coming from other websites will also be unfolded together with them.",
+  "optionsExpandPermMissing": "When there is no \"read all websites\" permission, cross-site frames will only be captured according to what is currently seen. Panels and same-site iframes, on the other hand, always work normally.",
+  "optionsRedactPIIDesc": "Scans the text the page makes public, looking for e-mail addresses, telephone numbers, credit card numbers, national identity card numbers and API keys, and in the saved image puts a solid colour block over the content that matched. It cannot read text drawn as pixels — a canvas, a picture, a PDF, a video frame. Detection is carried out on your device; no data at all will ever be transmitted to any place. Applies to whole-page (document scrolling) captures; the colour block cannot be reverted, so please check the result yourself.",
+  "scrollclipFormatHint": "GIF can be played wherever you go. WebM has a smaller file and a smoother picture (recorded in real time inside your browser).",
+  "batchPermissionHint": "The first time these pages are opened, a one-time permission is needed.",
+  "batchPermissionDeclined": "The permission to open those pages was refused."
+}

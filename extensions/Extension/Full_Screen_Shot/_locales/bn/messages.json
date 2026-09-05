@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - পুরো পৃষ্ঠার স্ক্রিন ক্যাপচার"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "পুরো পৃষ্ঠা, দৃশ্যমান অংশ, নির্বাচিত অংশ বা যেকোনো এলিমেন্ট ক্যাপচার করুন। টীকা যোগ করে PNG, JPEG, WebP বা PDF-এ এক্সপোর্ট করুন।"
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - পৃষ্ঠা ক্যাপচার করুন (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "পুরো পৃষ্ঠা ক্যাপচার করুন"
+  },
+  "commandCaptureVisible": {
+    "message": "দৃশ্যমান অংশ ক্যাপচার করুন"
+  },
+  "commandCaptureRegion": {
+    "message": "নির্বাচিত অংশ ক্যাপচার করুন"
+  },
+  "commandCaptureElement": {
+    "message": "পৃষ্ঠার কোনো এলিমেন্ট ক্যাপচার করুন (বেছে নিতে ক্লিক করুন)"
+  },
+  "popupToggleTheme": {
+    "message": "থিম বদলান"
+  },
+  "popupModeFullTitle": {
+    "message": "পুরো পৃষ্ঠা"
+  },
+  "popupModeFullSub": {
+    "message": "স্ক্রল করে পুরো পৃষ্ঠা নিন"
+  },
+  "popupModeVisibleTitle": {
+    "message": "দৃশ্যমান অংশ"
+  },
+  "popupModeVisibleSub": {
+    "message": "স্ক্রিনে যা আছে শুধু তা-ই"
+  },
+  "popupModeRegionTitle": {
+    "message": "নির্বাচিত অংশ"
+  },
+  "popupModeRegionSub": {
+    "message": "টেনে অংশ বেছে নিন"
+  },
+  "popupModeElementTitle": {
+    "message": "এলিমেন্ট"
+  },
+  "popupModeElementSub": {
+    "message": "পৃষ্ঠার যেকোনো এলিমেন্টে ক্লিক করুন"
+  },
+  "popupModeDelayedTitle": {
+    "message": "বিলম্বিত ক্যাপচার"
+  },
+  "popupModeDelayedSub": {
+    "message": "গণনা শেষে পুরো পৃষ্ঠা"
+  },
+  "popupDelayLabel": {
+    "message": "বিলম্বের সেকেন্ড"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ সেকেন্ড",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "স্ক্রলযোগ্য প্যানেল ও iframe প্রসারিত করুন"
+  },
+  "popupExpandToggleTip": {
+    "message": "ভিতরের স্ক্রলযোগ্য প্যানেল ও iframe যেমন দেখাচ্ছে তেমন ক্যাপচার না করে সেগুলির পুরো বিষয়বস্তু ধরার মতো বড় করুন। অন্য সাইটের ফ্রেমের জন্য একবার একটি অতিরিক্ত অনুমতি চাওয়া হয়।"
+  },
+  "popupDismiss": {
+    "message": "বন্ধ করুন"
+  },
+  "popupLastErrorFailed": {
+    "message": "গত $MODE$ ব্যর্থ হয়েছে — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "গত $MODE$ ব্যর্থ হয়েছে — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "পুরো পৃষ্ঠার ক্যাপচার"
+  },
+  "popupModeNameVisible": {
+    "message": "দৃশ্যমান অংশের ক্যাপচার"
+  },
+  "popupModeNameRegion": {
+    "message": "অংশ ক্যাপচার"
+  },
+  "popupModeNameElement": {
+    "message": "এলিমেন্ট ক্যাপচার"
+  },
+  "popupModeNameGeneric": {
+    "message": "ক্যাপচার"
+  },
+  "popupNoActiveTab": {
+    "message": "সক্রিয় কোনো ট্যাব পাওয়া যায়নি।"
+  },
+  "popupCaptureFailedToStart": {
+    "message": "ক্যাপচার শুরুই করা গেল না।"
+  },
+  "popupLinkHistory": {
+    "message": "ইতিহাস"
+  },
+  "popupLinkBatch": {
+    "message": "ব্যাচ"
+  },
+  "popupLinkOptions": {
+    "message": "বিকল্প"
+  },
+  "optionsPageTitle": {
+    "message": "বিকল্প — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · বিকল্প"
+  },
+  "optionsHeading": {
+    "message": "বিকল্প"
+  },
+  "optionsLead": {
+    "message": "পরিবর্তনগুলি নিজে থেকেই সংরক্ষিত হয় এবং আপনার ব্রাউজার প্রোফাইলে সিঙ্ক হয়ে যায়।"
+  },
+  "optionsSectionImage": {
+    "message": "ছবি"
+  },
+  "optionsFormat": {
+    "message": "ফরম্যাট"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$-এ মান একটুও কমে না; $JPEG$ ছোট হয়; একই মানে $WEBP$ সবচেয়ে ছোট।",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ মান",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "ফাইলনামের ছাঁচ"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "প্লেসহোল্ডার: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "ক্যাপচার"
+  },
+  "optionsCaptureDelay": {
+    "message": "প্রতি ধাপে বাড়তি বিলম্ব"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "প্রতিবার স্ক্রল করার পর কত মিলিসেকেন্ড অপেক্ষা করা হবে। ধীর ও অ্যানিমেশন-ভারী পৃষ্ঠার জন্য বাড়িয়ে নিন।"
+  },
+  "optionsHideFixed": {
+    "message": "ফিক্সড ও স্টিকি এলিমেন্ট লুকান"
+  },
+  "optionsHideFixedDesc": {
+    "message": "হেডার প্রতিটি স্ক্রিনে বারবার আসে না (উপরে একবারই দেখা যায়)।"
+  },
+  "optionsPreScroll": {
+    "message": "দেরিতে লোড হওয়া বিষয়বস্তুর জন্য আগে স্ক্রল করুন"
+  },
+  "optionsPreScrollDesc": {
+    "message": "ক্যাপচারের আগে পুরো পৃষ্ঠা একবার স্ক্রল করে। ধীর, তবে দেরিতে লোড হওয়া ছবিগুলিও ধরা পড়ে।"
+  },
+  "optionsAdaptiveWait": {
+    "message": "ছবি ডিকোড হওয়া পর্যন্ত অপেক্ষা করুন"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "প্রতিটি ফ্রেমের আগে দেরিতে আসা ছবিগুলিকে পুরোপুরি ডিকোড হতে দেয়, যাতে সেগুলি কালো বা ফাঁকা টুকরো হিসেবে ক্যাপচার না হয়।"
+  },
+  "optionsHideOverlays": {
+    "message": "ব্যানার ও পপ-আপ লুকান"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "ক্যাপচারের আগে কুকি/সম্মতি ব্যানার, নিউজলেটার মোডাল আর “অ্যাপ নিন” জাতীয় পপ-আপ সরিয়ে দেয়, আর মোডালে আটকে যাওয়া পৃষ্ঠা আবার সচল করে। পরে সবকিছু আগের মতো ফিরিয়ে দেওয়া হয়।"
+  },
+  "optionsExpandInner": {
+    "message": "স্ক্রলযোগ্য বিষয়বস্তু প্রসারিত করুন"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "ভিতরের প্যানেল ও iframe যেমন দেখাচ্ছে ঠিক তেমন ক্যাপচার না করে এতটা বড় করে যে তাদের নিজেদের নিচে লুকানো বিষয়বস্তুও দেখা যায়।"
+  },
+  "optionsExpandPermRow": {
+    "message": "অন্য সাইটের ফ্রেম"
+  },
+  "optionsExpandPermAllow": {
+    "message": "অনুমতি দিন"
+  },
+  "optionsExpandPermGranted": {
+    "message": "অনুমতি দেওয়া হয়েছে — অন্য সাইটের ফ্রেমগুলিও প্রসারিত করা হয়।"
+  },
+  "optionsExpandPermMissing": {
+    "message": "“$PERMISSION$” অনুমতি ছাড়া অন্য সাইটের ফ্রেম যেমন দেখায় তেমনই ক্যাপচার হয়। প্যানেল আর একই সাইটের iframe সব সময়ই কাজ করে।",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "ভার্চুয়ালাইজড তালিকা খুলে দিন"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "রেন্ডার-উইন্ডো ব্যবহার করা ফিডে ($LIB1$ / $LIB2$ ধরনের) ধাপে ধাপে এগিয়ে শুধু স্ক্রিনে থাকা সারি নয়, পুরো বিষয়বস্তু ক্যাপচার করে। খুব লম্বা তালিকায় ধীর।",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "ক্লিকে খোলা বিষয়বস্তু প্রসারিত করুন"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "ক্যাপচারের আগে বন্ধ $DETAILS$, নিষ্ক্রিয় ট্যাব, অ্যাকর্ডিয়ন আর “আরও দেখুন” অংশগুলি খুলে দেয়, তারপর আগের অবস্থায় ফিরিয়ে দেয়। ক্লিকের আড়ালে লুকানো বিষয়বস্তু সামনে আসে।",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "“$BUTTONTEXT$” বোতামে ক্লিক করুন",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "“load more” / “show more” বোতামে বারবার ক্লিক করে এবং ফিড শেষ না হওয়া পর্যন্ত নতুন বিষয়বস্তু লোড হওয়ার অপেক্ষা করে। উপরের বিকল্পের সঙ্গে পার্থক্য — এটি এমন বিষয়বস্তু আনে যা এখনও পৃষ্ঠায় নেই; লোড হওয়া বিষয়বস্তু ক্যাপচারের পরেও থেকে যায়।"
+  },
+  "optionsInfiniteScroll": {
+    "message": "অসীম ফিড লোড করতে স্ক্রল করুন"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "যেসব ফিডে “load more” বোতাম নেই তাদের জন্য: ফিড বাড়া বন্ধ না হওয়া পর্যন্ত বারবার একদম নিচ পর্যন্ত স্ক্রল করে পরের অংশ লোড হওয়ার অপেক্ষা করে (এর একটি সীমা আছে, তাই কখনও শেষ না হওয়া ফিডের পিছনে ছোটা হয় না)। লোড হওয়া বিষয়বস্তু ক্যাপচারের পরেও থেকে যায়।"
+  },
+  "optionsWaitStable": {
+    "message": "বিষয়বস্তু পুরোপুরি লোড হওয়ার অপেক্ষা করুন"
+  },
+  "optionsWaitStableDesc": {
+    "message": "ক্যাপচারের আগে স্কেলিটন / প্লেসহোল্ডার লোডার (aria-busy অংশ, শিমার ব্লক) সরে গিয়ে আসল বিষয়বস্তু আসা পর্যন্ত অপেক্ষা করে, যাতে মাঝপথে “লোড হচ্ছে…” অবস্থাটি ধূসর প্লেসহোল্ডার হিসেবে ক্যাপচার না হয়। এরও সীমা আছে, তাই আটকে থাকা স্পিনার ক্যাপচার ঝুলিয়ে রাখে না।"
+  },
+  "optionsRedactPII": {
+    "message": "সংবেদনশীল তথ্য নিজে থেকেই ঢেকে দিন"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "পৃষ্ঠা যে লেখা প্রকাশ করে তাতে ইমেল, ফোন নম্বর, ক্রেডিট কার্ড নম্বর, জাতীয় পরিচয় নম্বর (SSN) ও API কী খুঁজে সংরক্ষিত ছবিতে যা মেলে তার উপর নিরেট কালো ব্লক বসিয়ে দেয়। পিক্সেল হিসেবে আঁকা লেখা এটি পড়তে পারে না — ক্যানভাস, ছবি, PDF, ভিডিও ফ্রেম। শনাক্তকরণ চলে আপনার নিজের ডিভাইসেই; কিছুই কখনও কোথাও পাঠানো হয় না। এটি পুরো পৃষ্ঠার (ডকুমেন্ট-স্ক্রল) ক্যাপচারে প্রযোজ্য; ব্লকটি স্থায়ী, তাই ফলাফলটি নিজে দেখে নিন।"
+  },
+  "optionsMaxPageHeight": {
+    "message": "পৃষ্ঠার সর্বোচ্চ উচ্চতা"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "অসীম-স্ক্রল ফিডের জন্য নিরাপত্তা সীমা (CSS px)।"
+  },
+  "optionsSectionPdf": {
+    "message": "PDF এক্সপোর্ট"
+  },
+  "optionsPdfPaper": {
+    "message": "ডিফল্ট কাগজের মাপ"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "“$IMAGESIZE$” বাছলে একটি পৃষ্ঠা ঠিক স্ক্রিনশটের মাপেই হয়।",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "ছবির মাপ"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "লেটার"
+  },
+  "optionsPaperLegal": {
+    "message": "লিগ্যাল"
+  },
+  "optionsPdfOrientation": {
+    "message": "দিক"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "নির্দিষ্ট কাগজের মাপের জন্য।"
+  },
+  "optionsOrientationPortrait": {
+    "message": "লম্বালম্বি"
+  },
+  "optionsOrientationLandscape": {
+    "message": "আড়াআড়ি"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "স্মার্ট পৃষ্ঠা বিভাজন"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "প্রতিটি পৃষ্ঠা-বিরতির কাছে ফাঁকা জায়গা খোঁজে, যাতে লেখার লাইন মাঝখান থেকে কেটে না যায়।"
+  },
+  "optionsPdfStamp": {
+    "message": "URL ও তারিখ ছাপুন"
+  },
+  "optionsPdfStampDesc": {
+    "message": "প্রতিটি PDF পৃষ্ঠার নিচে পৃষ্ঠার URL ও ক্যাপচারের তারিখ যোগ করে।"
+  },
+  "optionsSectionDownload": {
+    "message": "ডাউনলোড"
+  },
+  "optionsSaveDirectory": {
+    "message": "ফোল্ডার"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "আপনার স্ক্রিনশটের জন্য $DOWNLOADS$-এর ভিতরে একটি সাব-ফোল্ডার, যেমন $EXAMPLE$। ফাঁকা রাখলে = $DOWNLOADS$।",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(ডাউনলোড)"
+  },
+  "optionsSaveAs": {
+    "message": "“এইভাবে সংরক্ষণ করুন” ডায়ালগ"
+  },
+  "optionsSaveAsDesc": {
+    "message": "চুপচাপ ডাউনলোড না করে প্রতিটি ফাইল কোথায় রাখা হবে তা জিজ্ঞাসা করুক।"
+  },
+  "optionsClipboardFit": {
+    "message": "ক্লিপবোর্ড কপি অ্যাপের সীমার মধ্যে আনুন"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "$PIXELS$ পিক্সেলের বেশি বড় কপি ছোট করে দেয়, যাতে $APP$ ইত্যাদিতে পেস্ট করা যায়।",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "কর্মপ্রবাহ"
+  },
+  "optionsAutoDownload": {
+    "message": "ক্যাপচারের পর নিজে থেকেই ডাউনলোড করুন"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "ক্যাপচার শেষ হওয়ামাত্র ছবিটি সংরক্ষণ করে।"
+  },
+  "optionsAutoOpenEditor": {
+    "message": "ক্যাপচারের পর এডিটর খুলুন"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "সরাসরি টীকা লেখায় চলে যান (শুধু এক অংশের ক্যাপচারে)।"
+  },
+  "optionsTheme": {
+    "message": "থিম"
+  },
+  "optionsThemeDesc": {
+    "message": "পপআপ ও সব FullShot পৃষ্ঠার জন্য।"
+  },
+  "optionsThemeSystem": {
+    "message": "সিস্টেম"
+  },
+  "optionsThemeLight": {
+    "message": "হালকা"
+  },
+  "optionsThemeDark": {
+    "message": "গাঢ়"
+  },
+  "optionsShortcuts": {
+    "message": "কীবোর্ড শর্টকাট"
+  },
+  "optionsShortcutsDesc": {
+    "message": "পুরো পৃষ্ঠা: $KEYFULL$ · দৃশ্যমান: $KEYVISIBLE$। বদলাতে $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "সংরক্ষিত ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "আপনার ডেটা"
+  },
+  "optionsStorage": {
+    "message": "সঞ্চয়স্থান"
+  },
+  "optionsStorageUsage": {
+    "message": "এই ডিভাইসে $QUOTA$-এর মধ্যে $USED$ ব্যবহৃত হয়েছে।",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "এই ব্রাউজার জানায় না FullShot কতটা জায়গা ব্যবহার করছে।"
+  },
+  "optionsStorageKept": {
+    "message": "আপনার স্ক্রিনশট রাখা হবে: জায়গা খালি করতে ব্রাউজার সেগুলি মুছবে না।"
+  },
+  "optionsStorageAtRisk": {
+    "message": "আপনার স্ক্রিনশট ব্রাউজারের best-effort সঞ্চয়স্থানে আছে, যা জায়গা খালি করতে সে মুছে ফেলতে পারে।"
+  },
+  "optionsStorageKeep": {
+    "message": "আমার ডেটা রাখুন"
+  },
+  "optionsExport": {
+    "message": "সবকিছু রপ্তানি করুন"
+  },
+  "optionsExportDesc": {
+    "message": "আপনার সেটিংস আর স্ক্রিনশটের তালিকা নিয়ে একটিমাত্র ফাইল লেখে। এটি এই ডিভাইসেই সংরক্ষিত হয় এবং কোথাও পাঠানো হয় না।"
+  },
+  "optionsExportImages": {
+    "message": "ছবিগুলিও রাখুন"
+  },
+  "optionsExportImagesDesc": {
+    "message": "ছবিগুলি নিজেই, যা প্রায় পুরো আকারটাই। এগুলি ছাড়া ফাইলটি আপনার স্ক্রিনশটের তালিকা দেয়, কিন্তু একটিও ছবি রাখে না।"
+  },
+  "optionsExportSize": {
+    "message": "ফাইলের আকার: প্রায় $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "অবশিষ্ট ডেটা"
+  },
+  "optionsSweepDesc": {
+    "message": "মাঝপথে থেমে যাওয়া ক্যাপচার ডিস্কে এমন ফ্রেম রেখে যেতে পারে যা কোনও স্ক্রিনশটের নয়। সেগুলি কোনও পৃষ্ঠায় দেখা যায় না, তাই কোনও পৃষ্ঠা থেকে মোছাও যায় না। এটি সেগুলি খুঁজে বের করে সরিয়ে দেয়।"
+  },
+  "optionsSweepBtn": {
+    "message": "খুঁজুন ও সরান"
+  },
+  "optionsSweepResult": {
+    "message": "সরানো হয়েছে। পরিষ্কার করা ক্যাপচার: $COUNT$ · খালি হওয়া জায়গা: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "কিছুই অবশিষ্ট নেই: সঞ্চিত সবকিছুই এমন স্ক্রিনশটের অংশ যা আপনি দেখতে পান।"
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "সেটিংস রিসেট করুন"
+  },
+  "optionsResetDesc": {
+    "message": "এই পৃষ্ঠার প্রতিটি সেটিংকে তার আদি মানে ফিরিয়ে দেয়। আপনার স্ক্রিনশটে হাত পড়ে না।"
+  },
+  "optionsResetBtn": {
+    "message": "রিসেট"
+  },
+  "optionsResetConfirm": {
+    "message": "FullShot-এর প্রতিটি সেটিং ডিফল্ট মানে ফিরিয়ে দেবেন? আপনার স্ক্রিনশটে এর কোনও প্রভাব পড়বে না।"
+  },
+  "optionsResetDone": {
+    "message": "সেটিংস ডিফল্ট মানে ফিরে এসেছে।"
+  },
+  "optionsDeleteAll": {
+    "message": "সবকিছু মুছুন"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "আপনার ইতিহাসের প্রতিটি স্ক্রিনশট এবং থেমে যাওয়া ক্যাপচারের ফেলে যাওয়া সবকিছু সরিয়ে দেয়। আপনার সেটিংস যেমন আছে তেমনই থাকে।"
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "FullShot এই ডিভাইসে যা কিছু সঞ্চয় করেছে সব মুছে ফেলবেন?\n\nআপনার ইতিহাসে স্ক্রিনশট: $COUNT$\nথেমে যাওয়া ক্যাপচারের অবশিষ্ট: $LEFTOVER$\nএতে খালি হবে: $SIZE$\n\nআপনার সেটিংসে প্রভাব পড়বে না। এটি ফিরিয়ে আনা যাবে না।",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "মোছা হয়েছে। FullShot এখন এই ডিভাইসে কোনও স্ক্রিনশট রাখে না।"
+  },
+  "resultPageTitle": {
+    "message": "স্ক্রিনশট — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "কপি"
+  },
+  "resultCopyTip": {
+    "message": "ছবি ক্লিপবোর্ডে কপি করুন"
+  },
+  "resultEdit": {
+    "message": "এডিট"
+  },
+  "resultEditTip": {
+    "message": "এডিটরে খুলুন"
+  },
+  "resultBeautify": {
+    "message": "সাজান"
+  },
+  "resultBeautifyTip": {
+    "message": "সাজান — শেয়ার করার জন্য ফ্রেম ও পটভূমি"
+  },
+  "resultClip": {
+    "message": "ক্লিপ"
+  },
+  "resultClipTip": {
+    "message": "স্ক্রল ক্লিপ — অ্যানিমেটেড $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF কাগজের মাপ"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "ডাউনলোড"
+  },
+  "resultDeleteTip": {
+    "message": "স্ক্রিনশট মুছুন"
+  },
+  "resultHistoryTip": {
+    "message": "স্ক্রিনশট ইতিহাস"
+  },
+  "resultProgressAssembling": {
+    "message": "আপনার স্ক্রিনশট জোড়া হচ্ছে…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "$COUNT$টি ফ্রেম ডিকোড হচ্ছে…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "$COUNT$টি ফ্রেম ডিকোড হচ্ছে…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "$INDEX$ নম্বর অংশ জোড়া হচ্ছে…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "প্রায় $TOTAL$টির মধ্যে $INDEX$ নম্বর অংশ জোড়া হচ্ছে…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "সংরক্ষণ করা হচ্ছে…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "পরামর্শ: ছবিটি সরাসরি আপনার ডেস্কটপে টেনে নিন, অথবা $DOWNLOAD$ ব্যবহার করুন।",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "এখানে কিছু নেই"
+  },
+  "resultEmptyBody": {
+    "message": "এই স্ক্রিনশটটি আর নেই।"
+  },
+  "resultOpenHistory": {
+    "message": "ইতিহাস খুলুন"
+  },
+  "resultSomethingWrong": {
+    "message": "কিছু একটা ভুল হয়েছে — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "$TOTAL$টির মধ্যে $INDEX$ নম্বর অংশ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "অংশ ডাউনলোড করুন"
+  },
+  "resultEditPart": {
+    "message": "অংশ এডিট করুন"
+  },
+  "resultClipPart": {
+    "message": "অংশের ক্লিপ"
+  },
+  "resultPartAlt": {
+    "message": "স্ক্রিনশটের $INDEX$ নম্বর অংশ",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "$FILENAME$ ডাউনলোড হচ্ছে",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "এই স্ক্রিনশটটি স্থায়ীভাবে মুছবেন?"
+  },
+  "resultDeleted": {
+    "message": "স্ক্রিনশট মুছে ফেলা হয়েছে।"
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "এই ক্যাপচারটি এত লম্বা যে একটিমাত্র পাঠযোগ্য ছবি হিসেবে পেস্ট করা যায় না, তাই $COPY$ ক্লিপবোর্ডে পুরো পৃষ্ঠার একটি ছোট করা সারসংক্ষেপ রাখে। এতে থাকা ছোট লেখা পড়া যাবে না।",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "$INDEX$ নম্বর অংশ ক্লিপবোর্ডে কপি হয়েছে",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "PDF তৈরি হচ্ছে…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF ডাউনলোড হয়েছে ($COUNT$টি পৃষ্ঠা)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF ডাউনলোড হয়েছে ($COUNT$টি পৃষ্ঠা)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF তৈরি হয়নি — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "এডিটর — FullShot"
+  },
+  "editorBackTip": {
+    "message": "স্ক্রিনশটে ফিরুন"
+  },
+  "editorToolSelect": {
+    "message": "বাছুন / সরান ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "ক্রপ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "পেন ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "হাইলাইটার ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "রেখা ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "তীর ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "আয়তক্ষেত্র ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "উপবৃত্ত ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "লেখা ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "ঝাপসা / পিক্সেলেট ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "সংখ্যাযুক্ত ধাপ ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "ইমোজি স্ট্যাম্প ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "নিজের পছন্দের রং"
+  },
+  "editorStrokeTip": {
+    "message": "রেখার পুরুত্ব"
+  },
+  "editorStrokeThin": {
+    "message": "সরু"
+  },
+  "editorStrokeMedium": {
+    "message": "মাঝারি"
+  },
+  "editorStrokeThick": {
+    "message": "মোটা"
+  },
+  "editorSizeTip": {
+    "message": "লেখা / ইমোজির মাপ"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "পূর্বাবস্থায় ফিরুন ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "আবার করুন ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "ছোট করুন (-)"
+  },
+  "editorZoomInTip": {
+    "message": "বড় করুন (+)"
+  },
+  "editorZoomFit": {
+    "message": "ফিট"
+  },
+  "editorZoomTipToHundred": {
+    "message": "উইন্ডোয় ফিট — 100% করতে ক্লিক করুন"
+  },
+  "editorZoomTipToFit": {
+    "message": "উইন্ডোয় ফিট করতে ক্লিক করুন"
+  },
+  "editorExport": {
+    "message": "এক্সপোর্ট"
+  },
+  "editorExportCopy": {
+    "message": "ক্লিপবোর্ডে কপি করুন"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ ছবি",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ নথি",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "সংরক্ষণ"
+  },
+  "editorSaveTip": {
+    "message": "পরিবর্তন ইতিহাসে সংরক্ষণ করুন ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "আরও"
+  },
+  "editorMenuFiles": {
+    "message": "ইতিহাসে যান"
+  },
+  "editorMenuOptions": {
+    "message": "বিকল্পে যান"
+  },
+  "editorMenuShortcuts": {
+    "message": "কীবোর্ড শর্টকাট"
+  },
+  "editorCropApply": {
+    "message": "ক্রপ প্রয়োগ করুন"
+  },
+  "editorCropCancel": {
+    "message": "বাতিল করুন"
+  },
+  "editorShortcutsHeading": {
+    "message": "কীবোর্ড শর্টকাট"
+  },
+  "editorShortcutTools": {
+    "message": "টুল বাছাই"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "পূর্বাবস্থা / আবার"
+  },
+  "editorShortcutSave": {
+    "message": "ইতিহাসে সংরক্ষণ"
+  },
+  "editorShortcutZoom": {
+    "message": "ছোট / বড় করা"
+  },
+  "editorShortcutDelete": {
+    "message": "নির্বাচিত বস্তু সরান"
+  },
+  "editorShortcutEscape": {
+    "message": "নির্বাচন বাতিল / ক্রপ বাতিল"
+  },
+  "editorShortcutsClose": {
+    "message": "বন্ধ করুন"
+  },
+  "editorNotFound": {
+    "message": "স্ক্রিনশট পাওয়া যায়নি"
+  },
+  "editorToastDownloaded": {
+    "message": "ডাউনলোড হয়েছে"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF ডাউনলোড হয়েছে"
+  },
+  "editorToastSaved": {
+    "message": "ইতিহাসে সংরক্ষিত হয়েছে"
+  },
+  "historyPageTitle": {
+    "message": "ইতিহাস — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · ইতিহাস"
+  },
+  "historySearchPlaceholder": {
+    "message": "শিরোনাম বা URL খুঁজুন…"
+  },
+  "historySelectAll": {
+    "message": "সব বাছুন"
+  },
+  "historyClearSelection": {
+    "message": "নির্বাচন মুছুন"
+  },
+  "historyDownloadSelected": {
+    "message": "নির্বাচিতগুলি ডাউনলোড করুন"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "ডাউনলোড ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "নির্বাচিতগুলি মুছুন"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "মুছুন ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "এখনও কোনো স্ক্রিনশট নেই"
+  },
+  "historyEmptyBody": {
+    "message": "আপনার নেওয়া ক্যাপচারগুলি এখানে দেখা যাবে। শুরু করতে টুলবারে FullShot আইকনে ক্লিক করুন।"
+  },
+  "historyNoMatchesTitle": {
+    "message": "কিছু মেলেনি"
+  },
+  "historyNoMatchesBody": {
+    "message": "“$QUERY$”-এর সঙ্গে কোনো স্ক্রিনশট মেলেনি।",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$টি স্ক্রিনশট · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$টি স্ক্রিনশট · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$COUNT$টির মধ্যে $SHOWN$টি স্ক্রিনশট · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$COUNT$টির মধ্যে $SHOWN$টি স্ক্রিনশট · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "বাছুন"
+  },
+  "historyCardOpen": {
+    "message": "খুলুন"
+  },
+  "historyCardEdit": {
+    "message": "এডিট"
+  },
+  "historyCardDownloadTip": {
+    "message": "ডাউনলোড"
+  },
+  "historyCardDeleteTip": {
+    "message": "মুছুন"
+  },
+  "historyCardOpenOriginal": {
+    "message": "মূল পৃষ্ঠা খুলুন"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$টি অংশ",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "স্ক্রিনশট"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "এই স্ক্রিনশটটি মুছবেন?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "$COUNT$টি স্ক্রিনশট স্থায়ীভাবে মুছবেন?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "$COUNT$টি স্ক্রিনশট স্থায়ীভাবে মুছবেন?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "$COUNT$টি স্ক্রিনশট ডাউনলোড হচ্ছে",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "$COUNT$টি স্ক্রিনশট ডাউনলোড হচ্ছে",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "মুছে ফেলা হয়েছে"
+  },
+  "beautifyPageTitle": {
+    "message": "সাজান — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "সাজান"
+  },
+  "actionBack": {
+    "message": "ফিরুন"
+  },
+  "commonLoading": {
+    "message": "লোড হচ্ছে…"
+  },
+  "beautifyFieldSize": {
+    "message": "মাপ"
+  },
+  "beautifyPresetAuto": {
+    "message": "স্বয়ংক্রিয়"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "বর্গাকার"
+  },
+  "beautifyPresetPortrait": {
+    "message": "লম্বালম্বি"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "পটভূমি"
+  },
+  "beautifyBgSlate": {
+    "message": "স্লেট"
+  },
+  "beautifyBgGraphite": {
+    "message": "গ্রাফাইট"
+  },
+  "beautifyBgSky": {
+    "message": "আকাশি"
+  },
+  "beautifyBgSunset": {
+    "message": "গোধূলি"
+  },
+  "beautifyBgGrape": {
+    "message": "আঙুরি"
+  },
+  "beautifyBgMint": {
+    "message": "পুদিনা"
+  },
+  "beautifyFieldPadding": {
+    "message": "চারপাশের ফাঁক"
+  },
+  "beautifyFieldRadius": {
+    "message": "কোণের গোলাই"
+  },
+  "beautifyFieldEffects": {
+    "message": "ইফেক্ট"
+  },
+  "beautifyShadow": {
+    "message": "ছায়া"
+  },
+  "beautifyWindowFrame": {
+    "message": "উইন্ডো ফ্রেম"
+  },
+  "beautifyFieldExport": {
+    "message": "এক্সপোর্ট"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "স্ক্রল ক্লিপ — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "স্ক্রল ক্লিপ"
+  },
+  "scrollclipFieldFormat": {
+    "message": "ফরম্যাট"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ সব জায়গায় চলে। $WEBM$ ছোট ও বেশি মসৃণ (আপনার ব্রাউজারেই সরাসরি রেকর্ড করা হয়)।",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "আউটপুট প্রস্থ"
+  },
+  "scrollclipFieldDensity": {
+    "message": "ঘনত্ব"
+  },
+  "scrollclipDensityHint": {
+    "message": "ঘনত্ব বেশি হলে ছবি আরও ঝকঝকে হয় (মূল রেজোলিউশনের কাছাকাছি) — ফাইলও বড় হয়।"
+  },
+  "scrollclipFieldShape": {
+    "message": "মাপের অনুপাত"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "স্ক্রলের গতি (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "ফ্রেম রেট (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "চলন"
+  },
+  "scrollclipBounce": {
+    "message": "বাউন্স (আবার উপরে স্ক্রল)"
+  },
+  "scrollclipLoop": {
+    "message": "বারবার চলতে থাকুক"
+  },
+  "scrollclipCopyFrame": {
+    "message": "ফ্রেম কপি"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "পোস্টার (একেবারে উপরের) ফ্রেমটি $FORMAT$ হিসেবে কপি করুন",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$টি ফ্রেম · $SECONDS$ সেকেন্ড",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$টি ফ্রেম · $SECONDS$ সেকেন্ড",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "ফ্রেম আঁকা হচ্ছে… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "$FORMAT$ এনকোড হচ্ছে… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "শেষ করা হচ্ছে…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "$FORMAT$ রেকর্ড হচ্ছে…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "রেকর্ড হচ্ছে…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "এখানে $WEBM$ সমর্থিত নয় — $GIF$-এ এক্সপোর্ট করা হচ্ছে",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "পোস্টার ফ্রেম কপি হয়েছে"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — ব্যাচ ক্যাপচার"
+  },
+  "batchHeading": {
+    "message": "ব্যাচ ক্যাপচার"
+  },
+  "batchIntro": {
+    "message": "প্রতি লাইনে একটি করে URL পেস্ট করুন। FullShot প্রতিটি পৃষ্ঠা খোলে, পুরো পৃষ্ঠার স্ক্রিনশট আপনার ইতিহাসে নেয়, তারপর পরেরটিতে যায় — একবারে $MAX$টি পর্যন্ত। ক্যাপচারগুলি আপনার ইতিহাসে দেখা যায়; সেগুলির যেকোনোটি দেখতে, এডিট করতে বা এক্সপোর্ট করতে $OPENLINK$-এ ক্লিক করুন।",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "সব ক্যাপচার করুন"
+  },
+  "batchPermissionHint": {
+    "message": "এই পৃষ্ঠাগুলি খুলতে প্রথমবার একবারের জন্য অনুমতি লাগে।"
+  },
+  "batchPermissionDeclined": {
+    "message": "ওই পৃষ্ঠাগুলি খোলার অনুমতি দেওয়া হয়নি।"
+  },
+  "batchPanelPlan": {
+    "message": "পরিকল্পনা"
+  },
+  "batchPanelProgress": {
+    "message": "অগ্রগতি"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$টি পৃষ্ঠা ক্যাপচার করতে হবে",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$টি পৃষ্ঠা ক্যাপচার করতে হবে",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$টি পৃষ্ঠা ক্যাপচার করতে হবে ($MAX$-এ সীমিত)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "এখনও কোনো বৈধ URL নেই"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$টি বাদ পড়েছে: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "অসমর্থিত স্কিম"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "অবৈধ"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "হোস্ট নেই"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "পুনরাবৃত্তি"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "ফাঁকা"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "সীমার বাইরে ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ শেষ",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ শেষ, $FAILED$টি ব্যর্থ",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ শেষ — সম্পূর্ণ",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ শেষ, $FAILED$টি ব্যর্থ — সম্পূর্ণ",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "খুলুন"
+  },
+  "batchJobTimedOut": {
+    "message": "ক্যাপচারের সময় শেষ"
+  },
+  "batchJobNoSession": {
+    "message": "ক্যাপচার সেশন নেই"
+  },
+  "batchJobFailed": {
+    "message": "ক্যাপচার ব্যর্থ"
+  },
+  "batchJobError": {
+    "message": "ক্যাপচারে ত্রুটি"
+  },
+  "regionHintDrag": {
+    "message": "অংশ বাছতে টানুন — বাতিল করতে $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "ক্যাপচার করতে কোনো এলিমেন্টে ক্লিক করুন — বাতিল করতে $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "সেটিংস, এক্সটেনশন আর নতুন ট্যাবের মতো ব্রাউজারের নিজস্ব পৃষ্ঠা কোনো এক্সটেনশনের নাগালের বাইরে। FullShot কোনো সাধারণ ওয়েব পৃষ্ঠায় ব্যবহার করে দেখুন।"
+  },
+  "errRestrictedDevtools": {
+    "message": "DevTools উইন্ডো কোনো এক্সটেনশন ক্যাপচার করতে পারে না। ওগুলির জন্য আপনার কম্পিউটারের নিজস্ব স্ক্রিনশট টুল ব্যবহার করুন।"
+  },
+  "errRestrictedViewSource": {
+    "message": "পৃষ্ঠার সোর্স দেখানোর পৃষ্ঠা ক্যাপচার করা যায় না। তার বদলে পৃষ্ঠাটিই ক্যাপচার করুন।"
+  },
+  "errRestrictedExtensionPage": {
+    "message": "FullShot-এর নিজের পৃষ্ঠা সহ এক্সটেনশনের পৃষ্ঠাগুলি ব্রাউজার সুরক্ষিত রাখে, তাই সেগুলি ক্যাপচার করা যায় না।"
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome ওয়েব স্টোর এক্সটেনশনকে তার পৃষ্ঠা পড়তে দেয় না, তাই এটি ক্যাপচার করা যাবে না।"
+  },
+  "errRestrictedGeneric": {
+    "message": "এই পৃষ্ঠাটি ব্রাউজার সুরক্ষিত রেখেছে, তাই ক্যাপচার করা যাবে না।"
+  },
+  "errWrongTab": {
+    "message": "ক্যাপচার থেমে গেছে — আপনি ট্যাব বদলেছেন। FullShot শেষ না হওয়া পর্যন্ত এই পৃষ্ঠাটি সামনে রাখুন।"
+  },
+  "errGeneric": {
+    "message": "ক্যাপচার শেষ হওয়ার আগেই থেমে গেছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
+  },
+  "errBusy": {
+    "message": "এই ট্যাবে আগে থেকেই একটি ক্যাপচার চলছে।"
+  },
+  "errBlocked": {
+    "message": "এই পৃষ্ঠাটি ক্যাপচার করা যাবে না (ব্রাউজারের বিধিনিষেধ)।"
+  },
+  "errNoStart": {
+    "message": "FullShot এই পৃষ্ঠায় শুরু করতে পারেনি। পৃষ্ঠাটি রিলোড করে আবার চেষ্টা করুন।"
+  },
+  "errCrash": {
+    "message": "ক্যাপচার হঠাৎ থেমে গেছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
+  },
+  "errUnknownMessage": {
+    "message": "অজানা বার্তা।"
+  },
+  "errQuota": {
+    "message": "পৃষ্ঠার ছবি কত দ্রুত তোলা যাবে ব্রাউজার তা সীমিত করছে। একটু অপেক্ষা করে আবার চেষ্টা করুন।"
+  },
+  "errFrameHandover": {
+    "message": "ব্রাউজার মাঝপথে স্ক্রিন দেওয়া বন্ধ করে দিয়েছে। কয়েক সেকেন্ড অপেক্ষা করে আবার চেষ্টা করুন।"
+  },
+  "errLostTab": {
+    "message": "ক্যাপচার এই ট্যাবের খেই হারিয়ে ফেলেছে। পৃষ্ঠাটি রিলোড করে আবার চেষ্টা করুন।"
+  },
+  "errStoppedEarly": {
+    "message": "ক্যাপচার শেষ হওয়ার আগেই থামিয়ে দেওয়া হয়েছে।"
+  },
+  "errStorageFull": {
+    "message": "এই ক্যাপচারটি সংরক্ষণ করার মতো জায়গা আর নেই। ইতিহাস থেকে কিছু স্ক্রিনশট মুছে আবার চেষ্টা করুন।"
+  },
+  "reasonGeneric": {
+    "message": "কোনো কারণ জানানো হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।"
+  },
+  "reasonDecodeFailed": {
+    "message": "ওই স্ক্রিনশটটি ডিকোড করা যায়নি।"
+  },
+  "reasonTooLarge": {
+    "message": "ছবিটি এত বড় যে এখানে এক্সপোর্ট করা যাবে না।"
+  },
+  "toastCopiedClipboard": {
+    "message": "ক্লিপবোর্ডে কপি হয়েছে"
+  },
+  "toastCopyFailed": {
+    "message": "কপি হয়নি — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "এক্সপোর্ট হয়নি — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ সংরক্ষিত হয়েছে",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ সংরক্ষিত হয়েছে  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

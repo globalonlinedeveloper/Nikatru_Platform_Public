@@ -223,6 +223,33 @@ const DEPLOY_PATH_LANES = [...GRADED_LANES].filter(([, v]) => v.deployPath).map(
 
 const CLASSIFIED_ELSEWHERE = new Map([
   [
+    'extensions.yml',
+    // 🔴 CLASSIFIED, NOT GRADED, AND THE REASON IS THE SAME ONE deploy-workers.yml
+    // CARRIES. R-1 quantifies over the workspace APP set — the Flutter apps in the
+    // root pubspec `workspace:` list. This lane builds BROWSER EXTENSIONS, which are
+    // not apps and are in no workspace: it resolves its matrix from
+    // extensions/scripts/discover.mjs over `Extension/<Tool>/tool.json`, an entirely
+    // different set. Graded here it would compare an app set against an extension
+    // set and report a permanent empty-set pass, which is the "assertion that cannot
+    // fail" shape this file exists to refuse.
+    //
+    // ⚠️ IT IS NOT UNGRADED FOR GENERICITY, WHICH IS WHAT THIS GUARD IS ABOUT. The
+    // extension lane is held to the same property by its own gate:
+    // extensions/scripts/discover.mjs emits TOOL IDS and the matrix is keyed on them,
+    // so a tool-id literal in the workflow is the defect — and report 04 §6.2 item 5
+    // records that `discover.mjs --assert-generic` is the check that has to exist and
+    // does not yet. Until it does, the three hardcoded `matrix.tool == 'fullshot'`
+    // conditions this lane inherited are a KNOWN, PRE-EXISTING gap, recorded in
+    // report 04 §9 item 2, and moving this row to GRADED_LANES would not find them
+    // because it is looking at a different set.
+    'builds BROWSER EXTENSIONS from extensions/Extension/<Tool>/tool.json, not apps from the pubspec ' +
+      'workspace. R-1 quantifies over the app set, so this lane has nothing for this guard to compare and ' +
+      'would report a permanent empty-set pass if it were graded. Its own genericity is discover.mjs\'s ' +
+      'business, and the check that closes it is `discover.mjs --assert-generic` (report 04 §6.2 item 5), ' +
+      'not this one. [ADR 067] decision 1.',
+  ],
+
+  [
     'deploy-workers.yml',
     'deploys services/*, which are Workers and not apps. R-1 quantifies over the workspace APP set, so a ' +
       'lane that never builds an app has nothing for this guard to compare and would report a permanent ' +

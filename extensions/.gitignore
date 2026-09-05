@@ -1,0 +1,222 @@
+# NIKATRU — browser extension factory
+#
+# This file is the ROOT gitignore, and it exists because its absence was a real
+# problem rather than an oversight. Until it was added, the only thing keeping a
+# live credential out of this public repository was a NESTED .gitignore one
+# directory deep (Extension/Full_Screen_Shot/.gitignore). A `.claude/` created
+# anywhere else in the tree would have been committed.
+#
+# The rules below are the specification from the factory's own pipeline document,
+# implemented as written rather than reinvented.
+
+# ── secrets: never, under any circumstances ─────────────────────────────
+# 🔴 `.claude/` IS BLANKET-IGNORED, AND THAT IS A CHANGE OF POSTURE, NOT A TYPO.
+# The factory's own spec argued for narrow rules — "`.claude/` is NOT blanket-ignored;
+# hooks, rules, skills and settings must be tracked" — and that trade was made for a
+# PRIVATE remote, for tracked material that was subsequently cut. This remote is public,
+# and on 2026-08-14 `.claude/` moved from Extension/Full_Screen_Shot/ to the repo ROOT,
+# making it the vault the Flutter product's root `.claude/` already is. That repo ignores
+# it in full (.gitignore:13) because it holds secrets.env, PEMs, ssh keys and
+# service-account JSON.
+# A narrow rule protects the ONE secret somebody thought of. A directory rule protects
+# the next one nobody has added yet — and in a public repo the difference is permanent.
+# ⚠️ Git cannot re-include a file whose PARENT directory is excluded, so no `!` negation
+# can carve an exception back out later. That is accepted deliberately: nothing under
+# .claude/ needs to be public, and the Flutter product has run this way throughout.
+.claude/
+**/.claude/
+.claude/secrets.env
+**/.claude/secrets.env
+# A vault file that is NOT inside .claude/. `*.secrets.env` needs a literal `.`
+# before the name, so it catches `foo.secrets.env` and misses the obvious one:
+# measured, `git check-ignore secrets.env` and `publish/secrets.env` both came
+# back NOT ignored, and `git add -A` at the root staged them. The nested
+# Extension/Full_Screen_Shot/.gitignore has carried `**/secrets.env` all along —
+# the root file, which is the one governing the public repo, was the weaker of
+# the two.
+**/secrets.env
+*.secrets.env
+.env
+.env.*
+!.env.example
+secrets.json
+# ⚠️ `**/*_PAT*` USED TO STAND HERE AND IT IS A SILENT-DROP HAZARD, not a typo
+# fixed. `core.ignorecase` is true on a Windows checkout, so gitignore matching is
+# case-INSENSITIVE and `*_PAT*` also matches `_path`, `_patch` and `_pattern`.
+# Measured on this tree: `git check-ignore -v core/lib/url_path.js`,
+# `scripts/lib/zip_patch.mjs` and `test/net_patterns.js` all named `**/*_PAT*`.
+# In a JavaScript factory those are not hypothetical filenames, and the failure is
+# the quiet one — `git add -A` drops the file and says nothing, which is exactly
+# how templates/tool/HANDOFF.md went missing further down this file. The three
+# forms below cover every credential-file shape (`GITHUB_PAT`, `GITHUB_PAT.txt`,
+# `MY_PAT_OLD.txt`) while releasing the `_pat…` word family; .githooks/pre-commit
+# holds the matching `_PAT($|[^A-Za-z])` and negative-tests all three names.
+**/*_PAT
+**/*_PAT.*
+**/*_PAT_*
+# extension signing keys (.pem = the CRX identity)
+**/*.pem
+**/*.p12
+**/*.key
+*.crx
+
+# ── build output & store packages (they live on Releases, not in git) ───
+dist/
+build/
+out/
+web-ext-artifacts/
+**/publish/*.xpi
+*.xpi
+# NOTE: `**/publish/*.zip` is deliberately NOT ignored. Each release zip is a
+# golden master — the exact artifact a store received, and what pack.mjs diffs
+# the next build against. templates/tool/publish/skeleton-0.0.1.zip is tracked for
+# that reason.
+#
+# 🔴 THE SENTENCE THAT USED TO END THIS BLOCK IS DELETED, BECAUSE IT
+# CONTRADICTED THE THREE ABOVE IT. It read: "Real release zips still belong on
+# Releases, not here." Beside a rule that deliberately un-ignores them, that
+# reads as "keep them out of git", which is the opposite of what the un-ignore
+# is for — and it is the sentence that made the disagreement with
+# Extension/Full_Screen_Shot/.gitignore look like a matter of taste rather than
+# a defect. It was neither. Measured 2026-08-20: the nested file's bare `*.zip`
+# won for everything beneath it, so scripts/pack.mjs's dropped-file floor
+# graded ZERO entries for the only real tool in this repo, for the whole life
+# of the repo, and said so in its own output on every run.
+#
+# The two purposes are not in competition and are both true:
+#   · GITHUB RELEASES is how a zip is DISTRIBUTED — release.yml attaches
+#     dist/*.zip to the tag, and that is where anyone else gets one.
+#   · publish/*.zip in git is how a zip is COMPARED — pack.mjs floor 3 needs
+#     the previous artifact ON DISK to prove no file was silently dropped from
+#     the next one. A GitHub Release asset is not on disk at build time.
+# Same bytes, two jobs. Doing one does not excuse skipping the other.
+#
+# ⚠️ Nothing is retroactively committed by this. There are ZERO releases, so
+# there is no golden master to anchor yet; the first real release supplies it,
+# and pack.mjs keeps printing "graded 0 entries … NOT a clean diff" until then.
+# Any *-firefox.zip predating 2026-08-18 must never be tracked OR uploaded —
+# see Extension/Full_Screen_Shot/publish/STALE-FIREFOX-ARTIFACTS-2026-08-20.md.
+
+# ── dependencies ────────────────────────────────────────────────────────
+node_modules/
+.npm/
+package-lock.json.bak
+
+# ── generated test output (goldens go in test/**/golden/) ───────────────
+**/test/pixel-sim/out/
+**/test/e2e/out/
+**/test/**/tmp/
+coverage/
+
+# ── owner-private material kept OUT of a public repo ────────────────────
+# These live in Nikatru_Extensions_Private — a SIBLING directory under Projects/,
+# not a child of this one. 📖 The rule for what goes where is now written down at
+# docs/PUBLIC-PRIVATE.md; this file only enforces it.
+#
+# 🔴 THE REPO NAME ABOVE WAS WRONG UNTIL 2026-08-20, AND IT IS THE THIRD DEAD NAME
+# IN THE STACK. This line read `Nikatru_Chrome_Extensions_Private`, itself a
+# correction of `Project_Cross_browser_Extensions_Private`. Both are dead: the
+# owner dropped `Chrome` from all four repo names on 2026-08-19, and nothing in
+# either tree recorded it. ⚠️ A rename FREES the old name and GitHub keeps
+# answering 200 through a redirect until something re-claims it — so a dead name
+# in a comment reads as correct right up until the day it silently is not.
+# Confirm a repo name with `gh repo list`, NEVER `gh api repos/<owner>/<name>`.
+#
+# 🔴 `private/` AS A NESTED CLONE IS NOT THE ARRANGEMENT IN EFFECT, and the
+# paragraph that used to stand here described one as though it were. There is no
+# `private/` directory on disk; the two repositories are siblings. The rule is
+# kept — a future clone-in-place must not become committable by accident — but do
+# not read it as a description of the layout. `ci.yml` and `scripts/secret-scan.mjs`
+# also name `private/`, and are correct for the same defensive reason.
+# It MUST stay ignored. Git does not descend into a nested repo, but without this
+# line `git add -A` stages the DIRECTORY as a gitlink — and a reader of the public
+# repo then sees a commit hash pointing at a repository they cannot fetch, which
+# is both a broken reference and an advertisement that the private repo exists.
+private/
+# competitor UI screenshots — 3rd-party IP
+**/Reference/
+# competitive strategy
+**/MARKET-ANALYSIS.md
+
+# Per-extension planning and handoff documents. Titled "Roadmap & Business Plan",
+# "Implementation Plan" and "session handoff" — none of them contains a catalogue
+# keyword, which is exactly why a keyword sweep passed them and they were committed
+# and pushed on 2026-08-14. THE LESSON IS THE PART TO KEEP: sensitivity lives in a
+# document's SUBJECT, not its vocabulary. A sweep that reads words will pass every
+# one of these documents every time, because they are written in the same technical
+# English as the code they plan.
+#
+# What happened to the exposure, stated as it now stands rather than as it stood
+# when this block was written: the remote was DELETED AND RECREATED EMPTY, so the
+# history that carried them is gone rather than merely superseded — measured ON
+# THE DAY, `git ls-remote --heads origin` returned nothing at all, and the local
+# `origin/main` was a stale cache of a branch that no longer existed anywhere.
+# ⚠️ THAT MEASUREMENT IS A DATED RECORD AND IS NO LONGER TRUE OF TODAY: the
+# remote was repopulated and now carries branches and history again. The claim is
+# kept in the past tense rather than deleted, because it is the evidence that the
+# leaked history is gone; it is corrected here because a present-tense "returns
+# nothing at all" would be read as a live fact and re-measured to the opposite. The
+# earlier wording here said they "reached the public repo … before being removed",
+# which described a cleanup commit on top of a live history and is no longer what
+# is true. Nothing about the rules below changes: the history was destroyed by an
+# owner action that will not be repeated on every future mistake, and these lines
+# are the reason there is nothing to destroy next time.
+#
+# The names are globbed rather than listed one by one, because the leak was a
+# document nobody had listed. `*-PLAN` generalises V2-FEATURE-COMPLETE-PLAN.md;
+# `*-PROMPT` covers RESUME-PROMPT.md, the agent session-resume note that survived
+# the 2026-08-14 cleanup entirely unnoticed — an internal work queue, owner gates
+# and session numbering, written in vocabulary so ordinary that no gate looked
+# twice. Measured across all 38 markdown files in this tree, the globs below
+# select six and no others — the five internal documents above, plus the one
+# excepted immediately after them. A legitimate document that does land in them is
+# one `git add -f` away, which is the correct direction for the mistake to cost
+# something; the reverse mistake costs a leak.
+**/ROADMAP.md
+**/GIT-SETUP.md
+**/*-PLAN.md
+**/*-PROMPT.md
+**/SESSION-*.md
+**/HANDOFF.md
+# …with exactly one exception, and it is a PATH, not a word. The skeleton's own
+# HANDOFF.md is an unfilled scaffold — `# HANDOFF — ⟨TOOL⟩`, empty bullets, an
+# empty session table — and a required template artefact: MIGRATION.md counts it
+# among the template's tracked files, templates/tool/TEMPLATE.md's checklist
+# requires a stamped tool to fill it in, and templates/tool/README-tour.md names
+# it. It is not a session log; it is the blank a session log is written into.
+#
+# It survived the rule above only by accident: the same commit that added
+# `**/HANDOFF.md` also RENAMED this file out of _skeleton/, and git does not
+# re-consult .gitignore for a path already in the index. When the history was
+# rebuilt from scratch the accident stopped working and `git add -A` silently
+# dropped it: measured, templates/tool/ holds 134 files on disk and tracked 133,
+# and HANDOFF.md was the entire difference — against the 134 MIGRATION.md's own
+# verification step tells a reader to expect. A rule that quietly deletes a
+# required file from the product is the same failure as a rule that quietly
+# publishes a private one.
+!templates/tool/HANDOFF.md
+**/*-DELETE-ME.txt
+# catalogue, build order, revenue model
+TOOLS-PIPELINE.md
+# channels, licence-key model
+DISTRIBUTION.md
+# locked product choices
+DECISIONS.md
+APP-STACK.md
+NAMING.md
+I18N-LESSONS.md
+# names credential locations
+OPERATIONS.md
+FULLSHOT-RESEARCH-2026.md
+# the operating guide
+CLAUDE.md
+
+# ── OS / editor noise ───────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json

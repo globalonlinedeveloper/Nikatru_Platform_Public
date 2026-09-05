@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>giveup — past the re-measure's 4,000-span hold (the one refusal with no sentence)</title>
+<!-- THE DEFERRED-SPAN CAP (FS_PII_MAX_DEFER = 4,000).
+
+     A span that measures 0x0 at scan time is HELD for the second measurement,
+     because "not in the picture" is a statement the pass is not yet entitled to
+     make about it — that is the clause that closed content-visibility: auto.
+     The hold is bounded at 4,000, and span 4,001 is booked as `declined.other`.
+
+     `declined.total` is inside the seal's conjunction, so this refusal DOES
+     reach `matchedComplete`, and the ASCII payload duly prints "(PARTIAL
+     count)". It reaches nothing else: `textRefused` deliberately excludes
+     `other`, no budget was exceeded so `walkComplete` stays true, and no block
+     was lost, unplaced or unread. So every gap sentence on the human surfaces
+     stays silent and the result page, the review dialog and History all render
+     the flat "N matched, N painted, N confirmed opaque" line.
+
+     Same record, two surfaces, two different answers about whether the count is
+     whole. This fixture exists to find out whether that is true. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 16px/22px system-ui, sans-serif; }
+  #control { color: rgb(255, 90, 90); font: 20px/24px monospace; padding: 8px; }
+  .z { display: inline-block; width: 0; height: 0; overflow: hidden; }
+  #tail { height: 60px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div id="control">covered@example.com</div>
+  <div id="held"></div>
+  <div id="tail"></div>
+<script>
+/* 4,100 leaves that measure 0x0 — a hundred past the hold. Each is a childless
+   element with text, which is what fsOwnLeafText reads and what the placement
+   measurement calls `degenerate`, `deferrable`. */
+(function () {
+  const h = document.getElementById('held');
+  const N = 4100;
+  h.innerHTML = new Array(N + 1).join('<span class="z">held</span>');
+  window.__fsFixture = { held: N };
+})();
+</script>
+</body>
+</html>

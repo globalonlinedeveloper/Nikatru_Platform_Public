@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title data-i18n="resultPageTitle">Screenshot — FullShot</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .topbar .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  #progress {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 110px 20px; color: var(--fg2);
+  }
+  #progress .spin { width: 30px; height: 30px; }
+
+  #view { max-width: 1400px; margin: 0 auto; padding: 22px 18px 60px; }
+  .seg-wrap { margin-bottom: 26px; }
+  .seg-head {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 2px 8px; color: var(--fg2); font-size: 12.5px;
+  }
+  .seg-head { flex-wrap: wrap; }
+  .seg-head .grow { flex: 1; }
+  .seg-head button { font-size: 12px; padding: 4px 10px; }
+  /* "Part 2 of 7 · 1280×4096" — digits and × around a translated phrase.
+     Isolated so the run cannot reorder against an RTL sentence beside it. */
+  .seg-head > span:first-child { unicode-bidi: isolate; }
+  /* The captured image is the user's, and it is a coordinate space. */
+  .shot-img { direction: ltr; }
+  .shot-img {
+    display: block; width: 100%; height: auto;
+    background: #fff;
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+  #empty {
+    text-align: center; padding: 120px 20px; color: var(--fg2);
+  }
+  #empty h2 { color: var(--fg); }
+  .hint { text-align: center; color: var(--fg2); font-size: 12px; margin-top: -8px; }
+  /* The acts line. ONE appearance, no variants: a second colour or a heavier
+     border would be a verdict rendered in CSS, which is the same claim wearing
+     a stylesheet. The words carry the whole message; the styling only makes it
+     findable. */
+  .redactline {
+    max-width: 900px; margin: 0 auto 4px; padding: 8px 12px; font-size: 13px;
+    line-height: 1.45; color: var(--fg2); border-inline-start: 3px solid var(--fg2);
+    background: var(--bg2);
+  }
+
+  /* ---- the review step (REDACTION-CLAIM-SPEC.md §3) ---------------------- */
+  #reviewDlg {
+    position: fixed; inset: 0; z-index: 60; display: flex;
+    align-items: center; justify-content: center; padding: 24px;
+    background: rgba(0, 0, 0, 0.55);
+  }
+  #reviewDlg[hidden] { display: none; }
+  /* overflow:auto is the LAST GUARANTEE THAT THE BUTTONS EXIST. The panel is a
+     column with a flexible image region in the middle, and a flex item does not
+     shrink below its own min-height — so on a short window the footer was
+     pushed out of the panel and Cancel and Confirm were simply not on screen.
+     A confirmation dialog whose confirmation cannot be reached is not a dialog.
+     With this the panel scrolls instead, and every control stays reachable at
+     any window size. */
+  .review-panel {
+    display: flex; flex-direction: column; gap: 10px;
+    width: min(980px, 100%); max-height: 100%; overflow: auto;
+    padding: 18px 18px 14px; border-radius: 12px;
+    background: var(--bg); color: var(--fg); box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+  }
+  .review-panel h2 { margin: 0; font-size: 16px; }
+  .review-panel p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
+  /* The ONE bolded line in the design, and it is reached only when a match is
+     not covered. Never a colour on its own. */
+  .review-panel p.review-short { color: var(--fg); font-weight: 700; }
+  .review-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .review-controls .grow { flex: 1; }
+  /* BOUNDED, because the number of marks is bounded only by the box ceiling —
+     two thousand of them. Every one stays reachable (the list scrolls, and
+     focusing a control scrolls it into view); what it may not do is grow until
+     it pushes the image and the confirm button off the screen, which is what
+     the ceiling fixture did. A landmark list that displaces the thing it is a
+     list OF has stopped being a landmark list. */
+  .review-jumps {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    max-height: 74px; overflow-y: auto; flex: 1 1 auto; min-width: 0;
+  }
+  .review-jumps button { font-size: 12px; padding: 3px 8px; }
+  /* "View 3 of 14" — where in the picture the person is. Digits around a
+     translated phrase, so it is isolated for the same reason .seg-head is. */
+  .review-pos { font-size: 12px; color: var(--fg2); white-space: nowrap; unicode-bidi: isolate; }
+  /* The image is the artifact under judgement, so it gets the room and its own
+     scroll region; nothing is ever drawn over its pixels.
+     min-height is deliberately generous: the panel is a column and this is the
+     only member of it that should absorb the slack, because it is the only
+     member of it anybody is here to look at. */
+  #reviewImgWrap {
+    position: relative; overflow: auto; background: #fff; direction: ltr;
+    border: 1px solid var(--line); border-radius: 8px; min-height: 220px; flex: 1;
+  }
+  /* No interpolation opinion is declared. What is on screen when the preview is
+     magnified is the EXPORT's own pixels made bigger — blurred by the downscale
+     that already happened and by nothing else. That is the honest thing to
+     show: if a word cannot be resolved here, it cannot be resolved by whatever
+     receives the image either. */
+  #reviewImg { display: block; }
+  #reviewMarkLayer { position: absolute; inset: 0; pointer-events: none; }
+  /* OUTLINE AND BADGE, NEVER A FILL: the mark must not cover any pixel of the
+     thing being judged. */
+  .review-mark {
+    position: absolute; border: 2px solid #d81b60; border-radius: 2px; background: none;
+  }
+  .review-badge {
+    position: absolute; top: -2px; inset-inline-start: -2px;
+    padding: 0 4px; font: 700 11px/16px system-ui, sans-serif;
+    color: #fff; background: #d81b60; border-radius: 2px;
+  }
+  .review-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+</style>
+</head>
+<body>
+<!-- Every user-visible string carries data-i18n (text) or data-i18n-attr
+     (a named attribute), and KEEPS its English as the fallback: pages/common.js
+     substitutes on load, and a key that does not resolve leaves the English
+     standing. Chrome does not substitute __MSG__ inside HTML, which is why the
+     key travels in an attribute rather than in the text node. Same shape as
+     popup/popup.html, which is the worked example.
+     Not marked, deliberately: the icon glyphs (◐ ⚙ ✎ ✨ 🎬 ⬇ 🗑), which are
+     symbols and read the same in every language; <option value>, which is the
+     enum the pdfPaper setting is stored as; and alt="" on the brand mark, which
+     is decorative and must stay empty.
+     Two strings here are finished by pages/result.js instead of by the load
+     pass, because each spends ANOTHER message as a substitution: the four
+     paper-size options ("PDF: $PAPER$") and the drag-and-drop tip (which names
+     the Download button). Both still carry their key here, so a diff shows the
+     sentence and the load pass has something to write.
+
+     ACCESSIBILITY. Each glyph moved inside a <span aria-hidden="true">: a
+     button's accessible name is its CONTENT, so "✎Edit" was announced with
+     the pencil's Unicode name in front of the word, and 🗑 / ⚙ / ◐ — which
+     have no word at all — were announced as the emoji and their title
+     attributes were never reached (content beats title). The three icon-only
+     buttons take aria-label instead, which replaces the content outright.
+     #progress is a live region so a long stitch says what it is doing, and
+     #empty takes tabindex="-1" so result.js can put the keyboard there when
+     Delete removes the toolbar the user was standing in. -->
+<header class="topbar">
+  <a class="brand" href="#"><img src="../icons/icon32.png" width="20" height="20" alt=""><span data-i18n="appShortName">FullShot</span></a>
+  <span class="meta" id="metaText"></span>
+  <span class="spacer"></span>
+  <div class="actions" id="actions" hidden>
+    <button class="btn" id="copyBtn" type="button" title="Copy image to clipboard"
+            data-i18n="resultCopy" data-i18n-attr="title:resultCopyTip">Copy</button>
+    <button class="btn" id="editBtn" type="button" title="Open in editor"
+            data-i18n-attr="title:resultEditTip"><span aria-hidden="true">✎</span><span data-i18n="resultEdit">Edit</span></button>
+    <button class="btn" id="beautifyBtn" type="button" title="Beautify — frame &amp; background for sharing"
+            data-i18n-attr="title:resultBeautifyTip"><span aria-hidden="true">✨</span><span data-i18n="resultBeautify">Beautify</span></button>
+    <button class="btn" id="clipBtn" type="button" title="Scroll clip — animated GIF / WebM"
+            data-i18n-attr="title:resultClipTip"><span aria-hidden="true">🎬</span><span data-i18n="resultClip">Clip</span></button>
+    <select class="ctl" id="paperSel" title="PDF paper size" aria-label="PDF paper size"
+            data-i18n-attr="title:resultPaperTip; aria-label:resultPaperTip">
+      <option value="auto" data-i18n="resultPaperOption">PDF: Image size</option>
+      <option value="a4" data-i18n="resultPaperOption">PDF: A4</option>
+      <option value="letter" data-i18n="resultPaperOption">PDF: Letter</option>
+      <option value="legal" data-i18n="resultPaperOption">PDF: Legal</option>
+    </select>
+    <button class="btn" id="pdfBtn" type="button" data-i18n="resultPdf">PDF</button>
+    <button class="btn primary" id="dlBtn" type="button"><span aria-hidden="true">⬇</span><span data-i18n="resultDownload">Download</span></button>
+    <button class="btn danger icon" id="delBtn" type="button" title="Delete screenshot" aria-label="Delete screenshot"
+            data-i18n-attr="title:resultDeleteTip; aria-label:resultDeleteTip"><span aria-hidden="true">🗑</span></button>
+  </div>
+  <a class="btn" href="history.html" title="Screenshot history"
+     data-i18n="popupLinkHistory" data-i18n-attr="title:resultHistoryTip">History</a>
+  <button class="btn icon" id="optionsBtn" type="button" title="Options" aria-label="Options"
+          data-i18n-attr="title:popupLinkOptions; aria-label:popupLinkOptions"><span aria-hidden="true">⚙</span></button>
+  <button class="btn icon" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle theme"
+          data-i18n-attr="title:popupToggleTheme; aria-label:popupToggleTheme"><span aria-hidden="true">◐</span></button>
+</header>
+
+<main>
+  <!-- The spinner is decoration; the sentence beside it is the status. Marking
+       the pair as one polite region means "Decoding 7 frames…" and each step
+       after it are spoken, instead of a silent minute with a ring turning. -->
+  <div id="progress" role="status" aria-live="polite">
+    <div class="spin" aria-hidden="true"></div>
+    <div id="progressText" data-i18n="resultProgressAssembling">Assembling your screenshot…</div>
+  </div>
+
+  <div id="view" hidden>
+    <!-- What FullShot DID, permanently. Three counts and the walk — never a
+         judgement about the picture, because this program cannot see the
+         picture and the person can. It is a polite live region so it is
+         announced when it appears, and what it shows is always a SENTENCE with
+         numbers in it — never a colour, never an icon alone. -->
+    <p class="redactline" id="redactLine" role="status" aria-live="polite" hidden></p>
+    <p class="hint" data-i18n="resultTip">Tip: drag the image straight to your desktop, or use Download.</p>
+    <div id="segments"></div>
+  </div>
+
+  <div id="empty" tabindex="-1" hidden>
+    <h2 data-i18n="resultEmptyTitle">Nothing here</h2>
+    <p id="emptyText" data-i18n="resultEmptyBody">This screenshot no longer exists.</p>
+    <a class="btn primary" href="history.html" data-i18n="resultOpenHistory">Open history</a>
+  </div>
+</main>
+
+<!-- THE REVIEW STEP (REDACTION-CLAIM-SPEC.md §3). FullShot cannot see the
+     picture; the person can. So before an AI bundle leaves the machine, the
+     person is shown the exact image that is about to go — already downscaled to
+     what the clipboard will receive — with every block that was read back
+     opaque outlined on it, and they confirm they have looked.
+
+     It gates the AI hand-off and nothing else. Saving a PNG is never
+     interrupted: a dialog on every action teaches people to click through
+     everything, and then the one that matters is furniture.
+
+     Rendered hidden and never removed, so the labels are here for the load
+     pass to translate and for a diff to read. `aria-modal` plus the focus trap
+     in result.js; initial focus lands on the heading, NOT on the primary
+     button — a dialog that opens with the confirm key already armed is a dialog
+     dismissed by an Enter the user had already pressed.
+
+     aria-describedby names the four sentences, so a screen reader announces
+     what this dialog is ABOUT on entry rather than only its heading. Two of
+     them are written by script and two are conditional; an empty one
+     contributes nothing, which is the correct behaviour for a line that does
+     not apply to this capture. -->
+<div id="reviewDlg" role="dialog" aria-modal="true" aria-labelledby="reviewHead"
+     aria-describedby="reviewActs reviewLimit reviewReduced reviewMarkCount" hidden>
+  <div class="review-panel">
+    <h2 id="reviewHead" tabindex="-1" data-i18n="reviewTitle">Before you copy</h2>
+    <p id="reviewActs"></p>
+    <p id="reviewLimit" data-i18n="reviewLimit">FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.</p>
+    <p id="reviewReduced" hidden></p>
+    <p id="reviewMarkCount"></p>
+    <!-- THE CONTROLS, AND WHAT CHANGED ABOUT THEM.
+         These used to be "previous block" / "next block": a tour of the MARKS.
+         A mark is, by definition, a region FullShot already covered — so the
+         tour walked a person around exactly the ground that is known to be
+         solid, and never once past the ground where something the detector has
+         no pattern for is sitting. What a review is FOR is what was missed, and
+         what was missed has no mark on it.
+         So prev/next step through the PICTURE, at a size where words resolve,
+         and the marks stay as landmarks in the list on the left. Nothing here
+         is mandatory: a forced scroll to the bottom becomes a scrollbar drag,
+         and a drag proves nothing. Looking is made cheap instead. -->
+    <div class="review-controls">
+      <div class="review-jumps" id="reviewMarkList"></div>
+      <span class="grow"></span>
+      <span id="reviewPos" class="review-pos" role="status" aria-live="polite"></span>
+      <button class="btn" id="reviewPrev" type="button" data-i18n="reviewPrevView">Previous view</button>
+      <button class="btn" id="reviewNext" type="button" data-i18n="reviewNextView">Next view</button>
+      <button class="btn" id="reviewZoomOut" type="button" data-i18n="reviewZoomOut">Zoom out</button>
+      <button class="btn" id="reviewZoomIn" type="button" data-i18n="reviewZoomIn">Zoom in</button>
+    </div>
+    <!-- A TAB STOP, because the scroll region is a control. Without one a
+         keyboard user can reach every button that moves the picture and never
+         the picture itself, which means PageDown and the arrow keys — the
+         cheapest way there is to look at an image — are unavailable to exactly
+         the person who has no scrollbar to drag. -->
+    <div id="reviewImgWrap" tabindex="0" role="group"
+         data-i18n-attr="aria-label:reviewImgRegion"
+         aria-label="The image that is about to be copied — scroll it with the arrow keys">
+      <img id="reviewImg" alt="">
+      <div id="reviewMarkLayer" aria-hidden="true"></div>
+    </div>
+    <div class="review-foot">
+      <p id="reviewScale" class="grow"></p>
+      <button class="btn" id="reviewCancel" type="button" data-i18n="reviewCancel">Cancel</button>
+      <!-- The primary button carries the statement, so the act and the
+           assertion are one click rather than a checkbox the eye learns to
+           skip. -->
+      <button class="btn primary" id="reviewConfirm" type="button" data-i18n="reviewConfirm">I have looked — copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Declared here, not left to fsToast() to build on demand: a live region has
+     to exist in the document before the text arrives, or the announcement is
+     one an assistive technology may skip. This is the element every "Copy
+     failed — …" on this page lands in. -->
+<div id="fs-toast" role="status" aria-live="polite"></div>
+
+<script src="db.js"></script>
+<script src="common.js"></script>
+<script src="pdf.js"></script>
+<script src="result.js"></script>
+</body>
+</html>

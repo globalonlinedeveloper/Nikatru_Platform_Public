@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  # Points at SECURITY.md rather than at /security/advisories/new, for two
+  # reasons: SECURITY.md is where the repository states its channel — and states
+  # that it publishes no email alias, deliberately — and the advisories form only
+  # exists once private vulnerability reporting is switched on: a link that 404s
+  # is how a reporter files the public issue this entry exists to prevent.
+  - name: 🔒 Security or privacy report
+    url: https://github.com/globalonlinedeveloper/Nikatru_Extensions_Public/blob/main/SECURITY.md
+    about: >-
+      Report privately using the channel in SECURITY.md, not as a public issue —
+      an issue is public from the second it is filed. In scope: anything that could
+      send user data anywhere, or execute code that isn't in this repository.
+      SECURITY.md has what to include, and what not to send.
+  - name: 💬 Questions and ideas
+    url: https://github.com/globalonlinedeveloper/Nikatru_Extensions_Public/discussions
+    about: Usage questions, tool requests, and general discussion.

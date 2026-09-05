@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — 请替换我",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "请替换我 —— 一句话，一个用途，不超过 132 个字符，不要营销话术。",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — 请替换我",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "切换主题",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "选项",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "当前标签页",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "正在读取…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "复制标题",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "重新读取当前标签页",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "关闭",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "已复制",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "无法复制 —— 请改按 Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "上次$ACTION$失败 —— $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "上次$ACTION$失败 —— $REASON$（$ORIGIN$）",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "读取标题",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "复制",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "清除数据",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "运行",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "有东西在完成之前中断了它。请再试一次。",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "这个标签页已经在忙了。",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "这个页面受浏览器保护，无法读取。",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "没有找到当前标签页。",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "这个页面没有可读取的标题。",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "已取消。",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "未知的消息。",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "那个标签页在工作完成之前被关闭了。",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "扩展程序没有回应。",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "什么都没有返回。",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "设置、扩展程序和新标签页等浏览器页面对每个扩展程序都是禁区。请在普通网页上试试。",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "开发者工具窗口对扩展程序是禁区。",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "查看源代码页面对扩展程序是禁区。请改用页面本身。",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "扩展程序页面（包括本扩展程序自己的页面）受浏览器保护。",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome 应用商店禁止扩展程序读取它的页面。",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "本地文件需要一项额外权限。打开浏览器的扩展程序页面，找到这个扩展程序，然后打开“允许访问文件网址”。",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "这个页面没有加载，所以暂时没有可读取的内容。",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "这是浏览器内置的 PDF 阅读器。扩展程序无法读取其中的内容 —— 请在普通标签页中打开该 PDF，或先下载它。",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "这个页面被打开它的网站放进了沙盒，所以扩展程序无法读取。",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "附加组件网站禁止扩展程序读取它的页面。",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "这台设备已经没有空间，所以什么都没有保存。请在选项中删除一些已存行，然后再试一次。",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "这花的时间太长，已经停止。之后没有留下任何东西。",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "这个值太长，无法存入你同步的设置。请换一个更短的。",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "无法保存这项设置。请稍等片刻再试。",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "选项 — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · 选项",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "选项",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "自动保存。如果你的浏览器开启了同步，设置会随浏览器配置文件一起走 —— 它们绝不会发送给我们。",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "行为",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "打开时复制",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "弹出窗口一打开就把结果复制到剪贴板。",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "保留本地历史",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "默认关闭。开启后，结果只存放在这台设备上，列在下方，随时可以删除。",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "历史上限",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "列表超过这个数量时，最旧的行会被丢弃。",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "删除早于以下天数的行",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "天数。旧行会在后台自动移除。设为 0 表示一直保留，直到历史上限把它们挤掉。",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "主题",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "默认跟随你的系统。",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "跟随系统",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "浅色",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "深色",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "你的数据",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "这台设备上没有存放任何内容。",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "这台设备上存放着 $COUNT$ 行。没有任何内容离开它。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "这台设备上存放着 $COUNT$ 行。没有任何内容离开它。",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "这台设备上存放着 $COUNT$ 行。没有任何内容离开它。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "这台设备上存放着 $COUNT$ 行。没有任何内容离开它。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "这台设备上存放着 $COUNT$ 行。没有任何内容离开它。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "这台设备上存放着 $COUNT$ 行。没有任何内容离开它。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "持久：浏览器已承诺不会清除这些内容。",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "尽力而为：如果设备空间不足，浏览器可能会自行清除这些内容。请导出一份备份。",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "这个浏览器不说明已存数据会不会保留，所以请把它当作临时的，并导出一份备份。",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ 已使用 $QUOTA$ 中的 $USED$。",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "删除",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "删除来自 $ORIGIN$ 的行",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "导出全部",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "把每一行已存内容保存到这台设备上的一个 JSON 文件里。不会上传任何内容。",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "导出全部",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "删除全部",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "从这台设备上移除每一行已存内容。设置会保留。",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "删除全部",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "重置设置",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "把这个页面上的每一项设置恢复为默认值，并从你同步的浏览器配置文件中移除它们。已存的行会保留。",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "重置设置",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "报告问题",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "准备一份问题报告",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "生成一个描述本扩展程序状态的小文件。保存之前你会看到里面的全部内容，而且不会发送到任何地方。",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "准备报告",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "关于",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — 请替换我",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "一句话说明这个工具到底做什么。它在你的设备上完成工作：没有账号，没有跟踪，没有网络请求，没有任何内容发送给我们。",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "已保存",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "已全部删除",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "无法删除 —— 请再试一次",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "无法保存这项设置",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "导出已保存",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "无法保存文件",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "已删除该行",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "设置已重置",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "无法重置设置",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "报告已保存",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "取消",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "删除全部？",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "每一行已存内容都会从这台设备上移除。你的设置会保留。此操作无法撤销。",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "重置每一项设置？",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "这个页面上的每一项偏好都会恢复默认值，并从你同步的浏览器配置文件中移除。你已存的行会保留。此操作无法撤销。",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "保存这份问题报告？",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "文件里将只有这些内容。它不含页面地址、不含页面文字，也不含你捕获的任何东西。不会发送到任何地方 —— 文件保存在这台设备上，是否分享由你决定。",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "保存报告",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "无痕窗口 —— 这条结果没有保存到你的历史中。",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "网站访问权限",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "访问所有网站",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "只有那些在你未点击工具栏按钮的页面上工作的功能才需要它。你随时可以在这里收回。",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "授予访问权限",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "撤销访问权限",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "目前这个扩展程序可以读取你访问的每一个网站。",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "这个扩展程序只有在你点击它的工具栏按钮之后才能读取标签页。",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "已授予访问权限",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "访问权限未被授予",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "已撤销访问权限",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "无法撤销该访问权限",
+    "description": "en: Could not revoke that access"
+  }
+}

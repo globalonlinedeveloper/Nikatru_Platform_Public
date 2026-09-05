@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — lazy footer must not be truncated (adaptive bottom re-measure)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #2A3A96; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  #block { height: 2000px; background: #BEBEC8; padding: 16px 20px; }
+  #footerTitles { height: 100px; background: #50505A; color: #fff; padding: 16px 20px; }
+  #lazyTail { height: 260px; background: #00FF88; }
+  #copyright { height: 40px; background: #0088FF; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 470px; max-height: 220px; overflow-y: auto; z-index: 30;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — the bottom footer renders lazily; the whole thing must be captured. Press Alt+Shift+P.</div>
+<div id="block">Tall content block.</div>
+<div id="footer"><div id="footerTitles">Footer titles — always visible</div></div>
+<div id="scoreboard">Waiting for capture… press Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let expanded = false;
+  // lazy mega-footer: only rendered once scrolled near the bottom (like Amazon)
+  function maybeExpand() {
+    if (expanded) return;
+    if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 200) {
+      expanded = true;
+      const tail = document.createElement('div'); tail.id = 'lazyTail';
+      const copy = document.createElement('div'); copy.id = 'copyright';
+      $('footer').append(tail, copy);
+    }
+  }
+  window.addEventListener('scroll', maybeExpand, { passive: true });
+
+  const board = $('scoreboard');
+  const S = { expanded: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (expanded) S.expanded = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(report, 600);
+    }
+  }, 70);
+
+  function line(l, ok) { return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + l + '\n'; }
+  function report() {
+    const rows = [['lazy footer was triggered/expanded during capture', S.expanded]];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'LAZY-FOOTER RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image reaches the true bottom: the green lazy-footer tail AND the blue copyright bar are present below the footer titles (not truncated).';
+    console.log('FSLAZYFOOTER', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "It widens the inner panels with scrolling and the iframes up to the full content, instead of recording them the way they are. For frames from other sites the browser asks one time for an additional permission.",
+  "optionsLead": "Changes are kept automatically and are synchronised with the profile of your browser.",
+  "optionsExpandPermGranted": "The permission has been given — the frames from other sites are widened as well.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission the frames from other sites are recorded the way they are. Panels and iframes from the same site always work.",
+  "optionsRedactPIIDesc": "Searches the text the page exposes for e-mail addresses, telephone numbers, payment card numbers, personal identification numbers and API keys and draws a solid area over that which matches, in the saved image. Text drawn as pixels it cannot read — a canvas, an image, a PDF, a video frame. The recognition takes place on your device; nothing is ever sent anywhere. Applies to captures of the whole page (with document scrolling); the covering is permanent, so check the result yourselves.",
+  "scrollclipFormatHint": "GIF is played everywhere. WebM is smaller and smoother (it is recorded live in your browser).",
+  "batchPermissionHint": "Opening these pages requires a one-off permission the first time.",
+  "batchPermissionDeclined": "The permission to open those pages was refused."
+}

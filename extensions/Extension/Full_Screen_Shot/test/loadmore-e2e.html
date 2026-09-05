@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — network "load more" button</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #283C64; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  .item { height: 100px; background: #5AA0D2; color: #04263f; padding: 12px 20px; }
+  .item.deep { background: #00C878; color: #013; font-weight: 700; }
+  #loadmore { display: block; width: 100%; height: 60px; border: 0; background: #E67828; color: #fff;
+    font: 700 15px system-ui; cursor: pointer; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 12px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 480px; max-height: 220px; overflow-y: auto; z-index: 20;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — network "load more". Turn ON 'Click "Load more" buttons', then press Alt+Shift+P.</div>
+<div id="feed"></div>
+<button id="loadmore" type="button">Load more</button>
+<div id="bottom">PAGE BOTTOM MARKER — appears once at the very end.</div>
+<div id="scoreboard">Waiting for capture… enable loadMore in options, then Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const feed = $('feed'), board = $('scoreboard');
+  const TOTAL = 20, PAGE = 5, DEEP_IX = 17;
+  let loaded = 0, pending = false;
+
+  function addItem(i) {
+    const d = document.createElement('div');
+    d.className = 'item' + (i === DEEP_IX ? ' deep' : '');
+    d.textContent = (i === DEEP_IX)
+      ? 'DEEP FEED ITEM #' + (i + 1) + ' — only present after the engine clicks "Load more"'
+      : 'Feed item #' + (i + 1);
+    feed.appendChild(d);
+  }
+  for (let i = 0; i < PAGE; i++) addItem(i);   // first page ships in the DOM
+  loaded = PAGE;
+
+  // Each click appends the next page after a network-like delay, then removes
+  // the button once the feed is exhausted. The 250ms delay is under the engine's
+  // 350ms per-click settle, so the append lands within the wait.
+  $('loadmore').addEventListener('click', () => {
+    if (pending || loaded >= TOTAL) return;
+    pending = true;
+    setTimeout(() => {
+      const add = Math.min(PAGE, TOTAL - loaded);
+      for (let i = 0; i < add; i++) addItem(loaded + i);
+      loaded += add;
+      pending = false;
+      const b = $('loadmore');
+      if (loaded >= TOTAL && b) b.remove();
+    }, 250);
+  });
+
+  // ---- self-grading scoreboard ----
+  const S = { reachedFull: false, buttonGone: false, stayedLoaded: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (feed.children.length >= TOTAL) S.reachedFull = true;
+      if (!document.getElementById('loadmore')) S.buttonGone = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.stayedLoaded = feed.children.length >= TOTAL;   // honest boundary: NOT un-fetched
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok) {
+    return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + '\n';
+  }
+  function report() {
+    const rows = [
+      ['engine clicked "Load more" until the full feed loaded (20 items)', S.reachedFull],
+      ['"Load more" button removed once the feed was exhausted', S.buttonGone],
+      ['loaded feed left in place after capture (honest boundary — not un-fetched)', S.stayedLoaded]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'LOADMORE RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: full blue feed with the green DEEP item, no orange button, then the blue BOTTOM marker.';
+    console.log('FSLOADMORE', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — more PII matches than the 2000-box ceiling</title>
+<!-- SPEC E4 / §4.5. 250 rows x 10 addresses = 2500 matches against a 2000-box
+     ceiling. Past the ceiling every remaining leaf is counted as declined and
+     returned unscanned, while the old claim still said "baked". The two things
+     that must both be true here: the record says the pass was cut short, AND
+     the boxes that were emitted are still opaque in the delivered image. The
+     user keeps the partial protection and is told it is partial (§4.5).
+     Rows are packed 10 matches to a leaf so the page stays ~7000px rather than
+     ~60000px — the ceiling is a count of boxes, not of pixels. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 13px/1.35 ui-monospace, monospace; }
+  #head { height: 90px; background: rgb(30, 50, 90); }
+  .r { padding: 4px 8px; background: rgb(255, 90, 90); color: #200; overflow-wrap: anywhere; }
+  .r:nth-child(even) { background: rgb(255, 110, 110); }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var host = document.getElementById('rows');
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < 250; i++) {
+    var d = document.createElement('div');
+    d.className = 'r';
+    var parts = [];
+    for (var j = 0; j < 10; j++) parts.push('user' + (i * 10 + j) + '@example.com');
+    d.textContent = parts.join('  ');
+    frag.appendChild(d);
+  }
+  host.appendChild(frag);
+});
+</script>
+</head>
+<body>
+  <div id="head"></div>
+  <div id="rows"></div>
+  <div id="bottom"></div>
+</body>
+</html>

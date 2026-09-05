@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — beni değiştir",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "BENİ DEĞİŞTİR — tek cümle, tek amaç, en fazla 132 karakter, pazarlama dili yok.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — beni değiştir",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Temayı değiştir",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Seçenekler",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Etkin sekme",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Okunuyor…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Başlığı kopyala",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Etkin sekmeyi yeniden oku",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Kapat",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Kopyalandı",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kopyalanamadı — bunun yerine Ctrl+C tuşlarına basın",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Son $ACTION$ işlemi başarısız oldu — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Son $ACTION$ işlemi başarısız oldu — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "başlık okuma",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopyalama",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "veri silme",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "çalıştırma",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Bir şey bunu bitmeden durdurdu. Lütfen yeniden deneyin.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Bu sekme zaten meşgul.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Bu sayfa tarayıcı tarafından korunuyor ve okunamıyor.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Etkin sekme bulunamadı.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Bu sayfanın okunacak bir başlığı yok.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "İptal edildi.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Bilinmeyen ileti.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "O sekme, iş bitmeden kapatıldı.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Uzantı yanıt vermedi.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Hiçbir şey geri gelmedi.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Ayarlar, Uzantılar ve Yeni Sekme gibi tarayıcı sayfaları her uzantıya kapalıdır. Bunu normal bir web sayfasında deneyin.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Geliştirici araçları pencereleri uzantılara kapalıdır.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Kaynak kodu sayfaları uzantılara kapalıdır. Bunun yerine sayfanın kendisini deneyin.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Bu uzantının kendi sayfaları da dahil olmak üzere uzantı sayfaları tarayıcı tarafından korunur.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Mağazası, uzantıların sayfalarını okumasını engeller.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Yerel dosyalar için fazladan bir izin gerekir. Tarayıcınızın uzantılar sayfasını açın, bu uzantıyı bulun ve “Dosya URL'lerine erişime izin ver” seçeneğini açın.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Bu sayfa yüklenmedi, bu yüzden henüz okunacak bir şey yok.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Bu, tarayıcının yerleşik PDF görüntüleyicisidir. Uzantılar içini okuyamaz — PDF'yi normal bir sekmede açın ya da önce indirin.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Bu sayfa, onu açan site tarafından yalıtıldı, bu yüzden uzantılar okuyamıyor.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Eklenti sitesi, uzantıların sayfalarını okumasını engeller.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Bu cihazda yer kalmadı, bu yüzden hiçbir şey kaydedilmedi. Seçenekler'den birkaç kayıtlı satırı silip yeniden deneyin.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Bu çok uzun sürdü ve durduruldu. Geride hiçbir şey kalmadı.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Bu değer, eşitlenen ayarlarınıza sığmayacak kadar uzun. Daha kısasını deneyin.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Bu ayar kaydedilemedi. Biraz bekleyip yeniden deneyin.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Seçenekler — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Seçenekler",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Seçenekler",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Otomatik kaydedilir. Tarayıcınızın eşitlemesi açıksa ayarlarınız tarayıcı profilinizle birlikte gezer — bize asla gönderilmez.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Davranış",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Açılışta kopyala",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Açılır pencere açılır açılmaz sonucu panoya kopyala.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Yerel bir geçmiş tut",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Varsayılan olarak kapalı. Açıkken sonuçlar yalnızca bu cihazda saklanır, aşağıda listelenir ve istediğiniz zaman silinebilir.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Geçmiş sınırı",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Liste bundan uzun olduğunda en eski satırlar atılır.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Şundan eski satırları sil",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Gün. Eski satırlar arka planda otomatik olarak kaldırılır. Satırların geçmiş sınırı onları atana kadar kalmasını istiyorsanız 0 yazın.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Varsayılan olarak sisteminizi izler.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sistem",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Açık",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Koyu",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Verileriniz",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Bu cihazda hiçbir şey saklanmıyor.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Bu cihazda $COUNT$ satır saklanıyor. Hiçbiri buradan çıkmıyor.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Bu cihazda $COUNT$ satır saklanıyor. Hiçbiri buradan çıkmıyor.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Bu cihazda $COUNT$ satır saklanıyor. Hiçbiri buradan çıkmıyor.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Bu cihazda $COUNT$ satır saklanıyor. Hiçbiri buradan çıkmıyor.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Bu cihazda $COUNT$ satır saklanıyor. Hiçbiri buradan çıkmıyor.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Bu cihazda $COUNT$ satır saklanıyor. Hiçbiri buradan çıkmıyor.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Kalıcı: tarayıcı bunu silmeyeceğine söz verdi.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Garantisiz: cihazın yeri azalırsa tarayıcı bunu kendiliğinden silebilir. Bir yedek dışa aktarın.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Bu tarayıcı, saklanan verilerin korunup korunmayacağını söylemiyor; onları geçici sayın ve bir yedek dışa aktarın.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$ alanın $USED$ kadarı kullanılıyor.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Sil",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ satırını sil",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Her şeyi dışa aktar",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Saklanan her satırı bu cihazdaki tek bir JSON dosyasına kaydeder. Hiçbir şey yüklenmez.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Her şeyi dışa aktar",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Her şeyi sil",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Saklanan her satırı bu cihazdan kaldırır. Ayarlar korunur.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Her şeyi sil",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Ayarları sıfırla",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Bu sayfadaki her ayarı varsayılanına döndürür ve eşitlenen tarayıcı profilinizden kaldırır. Saklanan satırlar korunur.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Ayarları sıfırla",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Sorun bildir",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Sorun raporu hazırla",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Bu uzantının durumunu anlatan küçük bir dosya oluşturur. Kaydedilmeden önce içinde tam olarak ne olduğunu görürsünüz ve hiçbir yere hiçbir şey gönderilmez.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Rapor hazırla",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Hakkında",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — beni değiştir",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Bu aracın tam olarak ne yaptığını söyleyen tek bir cümle. İşini sizin cihazınızda yapar: hesap yok, izleme yok, ağ çağrısı yok, bize gönderilen hiçbir şey yok.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Kaydedildi",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Her şey silindi",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Silinemedi — yeniden deneyin",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Bu ayar kaydedilemedi",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Dışa aktarma kaydedildi",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Dosya kaydedilemedi",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Satır silindi",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Ayarlar sıfırlandı",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Ayarlar sıfırlanamadı",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Rapor kaydedildi",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "İptal",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Her şey silinsin mi?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Saklanan her satır bu cihazdan kaldırılır. Ayarlarınız korunur. Bu geri alınamaz.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Bütün ayarlar sıfırlansın mı?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Bu sayfadaki her tercih varsayılanına döner ve eşitlenen tarayıcı profilinizden kaldırılır. Saklanan satırlarınız korunur. Bu geri alınamaz.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Bu sorun raporu kaydedilsin mi?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Dosyanın içereceği her şey bu kadar. İçinde sayfa adresi, sayfa metni ve yakaladığınız hiçbir şey yok. Hiçbir yere hiçbir şey gönderilmez — dosya bu cihaza kaydedilir ve paylaşıp paylaşmamak size kalmıştır.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Raporu kaydet",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Gizli pencere — bu sonuç geçmişinize kaydedilmedi.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Site erişimi",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Bütün sitelere erişim",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Yalnızca araç çubuğu düğmesine basmadığınız sayfalarda çalışan özellikler için gerekir. İstediğiniz zaman buradan geri alabilirsiniz.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Erişim ver",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Erişimi geri al",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Bu uzantı şu anda ziyaret ettiğiniz her siteyi okuyabilir.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Bu uzantı bir sekmeyi ancak siz araç çubuğundaki düğmesine bastıktan sonra okuyabilir.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Erişim verildi",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Erişim verilmedi",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Erişim geri alındı",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Bu erişim geri alınamadı",
+    "description": "en: Could not revoke that access"
+  }
+}

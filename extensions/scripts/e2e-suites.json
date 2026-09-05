@@ -1,0 +1,26 @@
+{
+  "note": [
+    "THE COMMITTED e2e SUITE SET. scripts/assert-e2e-proof-fresh.mjs walks this",
+    "checkout for <Category>/<Tool>/test/e2e/package.json and requires the result",
+    "to EQUAL `suites` exactly, in both directions.",
+    "",
+    "WHY IT IS A FILE AND NOT A CONSTANT IN THE GATE: a derived set cannot tell",
+    "'this tool never had a suite' from 'this tool's suite was deleted in this",
+    "commit'. The committed side supplies that. Held as a constant in the gate the",
+    "check had to be inert wherever the tool directory was absent, so `rm -rf",
+    "<Category>/<Tool>` was silent — MEASURED 2026-08-27 on a two-suite bite tree,",
+    "with the run history losing the same leg: `legs=1/1  GREEN`, exit 0. Held",
+    "here it is a fact about the tree being graded, so the same deletion reddens.",
+    "",
+    "DELETING A SUITE MEANS DELETING ITS LINE HERE IN THE SAME COMMIT. That is the",
+    "point: the shrink becomes a line in the diff instead of a deletion nobody",
+    "reads. ADDING one means adding its line here in the same commit — an unlisted",
+    "suite is a red that names it, so a new suite is protected from the first day",
+    "rather than whenever somebody remembers.",
+    "",
+    "This key is ignored by the gate; `suites` is the whole subject."
+  ],
+  "suites": [
+    "Extension/Full_Screen_Shot"
+  ]
+}

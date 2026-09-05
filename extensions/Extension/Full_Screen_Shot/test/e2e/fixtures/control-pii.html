@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — HONEST CONTROL: ordinary page with real, visible, placed PII</title>
+<!-- SPEC §3.2 / E6. The second control, and it carries the same weight as the
+     attacks: the honest case must still say it was scanned and baked.
+     Everything sensitive here is ordinary visible DOM text in an ordinary
+     visible box: fed, matched, boxed, painted, and — the part the bake has
+     never had — read back out of the finished image (§2.5).
+     Graded on the artifact, not the log (E6): the three marker colours must be
+     GONE from the delivered PNG and black block rows must be present, and the
+     Luhn-invalid decoy must still be there. A design that protected by
+     refusing everything would fail here, which is the whole reason this file
+     exists next to the attack fixtures.
+
+     MARKER CONVENTION, learned from the engine rather than assumed. The bake
+     paints the MATCHED SUBSTRING's rect, not the element's. So:
+       - the coloured span wraps the PII token ALONE — "Registered address: "
+         stays outside it, or its background survives the block and the check
+         would be measuring the label;
+       - line-height is 1, so the band is the glyph band rather than the row;
+       - no text colour may sit within tolerance of the block colour
+         rgb(17,17,17) — #001 does, which silently inflates the black-rows
+         count. Card text is #0b2a6b for that reason. -->
+<style>
+  html, body { margin: 0; background: #fbfbfe; color: #1c2333; font: 17px/1.6 system-ui, sans-serif; }
+  header { background: rgb(35, 45, 70); color: #fff; padding: 24px 28px; font: 600 24px/1.3 system-ui, sans-serif; }
+  .prose { max-width: 900px; padding: 22px 28px; }
+  .row { padding: 30px 28px; min-height: 130px; font: 600 22px/1.6 ui-monospace, monospace; }
+  .mark { font: 600 22px/1 ui-monospace, monospace; }
+  .email { background: rgb(255, 90, 90); color: #300; }
+  .phone { background: rgb(90, 200, 120); color: #031; }
+  .card  { background: rgb(90, 130, 255); color: #0b2a6b; }
+  .decoy { background: rgb(245, 205, 45); color: #320; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+<header>Account summary — servicing record</header>
+<div class="prose">The rows below hold ordinary visible text in ordinary visible boxes. There is nothing clever about this page. It is here so that the suite can prove the product still works when it is asked to do the thing it is for, and so that "protect the user by refusing every claim" cannot pass as a fix.</div>
+<div class="row">Registered address: <span class="mark email">jane.doe@example.com</span></div>
+<div class="prose">Each sensitive token sits on its own marker colour. The harness reads the delivered image and requires those colours to be gone, which is a statement about the picture rather than about the code path that produced it.</div>
+<div class="row">Servicing line: <span class="mark phone">+1 (555) 123-4567</span></div>
+<div class="prose">Verification happens against the composed canvas before encoding, so what is graded below is the artifact the user would actually share.</div>
+<div class="row">Card on file: <span class="mark card">4242 4242 4242 4242</span></div>
+<div class="prose">The row below is a Luhn-invalid decoy. It must survive untouched: over-masking is safe but it is not free, and a product that blacks out every group of sixteen digits has stopped being useful.</div>
+<div class="row">Order reference: <span class="mark decoy">1234 5678 9012 3456</span> (Luhn-invalid — must stay visible)</div>
+<div class="prose">End of servicing record. Nothing below this line is sensitive.</div>
+<div id="bottom"></div>
+</body>
+</html>

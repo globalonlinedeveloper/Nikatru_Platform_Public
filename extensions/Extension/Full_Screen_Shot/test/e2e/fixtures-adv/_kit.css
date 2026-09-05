@@ -1,0 +1,63 @@
+/* Shared fixture furniture for the attempt-six adversarial corpus.
+
+   Marker convention, inherited from the fixtures/ suite's README and its
+   hard-won lesson: THE BAKE PAINTS THE MATCHED SUBSTRING'S RECT, not the
+   element's. So a marker colour must ride on the glyph band of the PII token
+   itself, with line-height:1, or "colour gone" measures padding.
+
+   Two of these fixtures cannot use a wrapper span at all — the whole point of
+   the shape is that the token sits in a BARE TEXT NODE of an element that has
+   an element child (adding a <span> around it would make it a childless leaf
+   and feed it to the detector, which is the bug being tested). Those set
+   `color` on the parent and give the sibling element a different colour, so
+   the token's glyphs are still the only pixels of that hue on the page.
+
+   No text colour may sit within tolerance of the block colour rgb(17,17,17). */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 16px/1.55 "Segoe UI", Arial, sans-serif;
+  color: #2a2a2a;
+  background: #fbfbfd;
+}
+nav {
+  background: #24324a;
+  color: #dfe6f2;
+  padding: 14px 20px;
+  font-size: 15px;
+}
+nav a { color: #b9cdf0; margin-right: 18px; text-decoration: none; }
+main { padding: 22px 26px; max-width: 900px; }
+h1 { font-size: 25px; margin: 0 0 14px; color: #1d2b45; }
+h2 { font-size: 19px; margin: 26px 0 8px; color: #1d2b45; }
+p  { margin: 0 0 13px; }
+.card {
+  background: #fff;
+  border: 1px solid #d9dde6;
+  border-radius: 7px;
+  padding: 16px 18px;
+  margin: 0 0 16px;
+}
+/* Every marker: line-height 1 so the coloured band IS the glyph band. */
+.m {
+  display: inline-block;
+  line-height: 1;
+  font-weight: 700;
+  font-family: "Consolas", "Courier New", monospace;
+}
+.m-email  { color: rgb(255, 90, 90); }
+.m-phone  { color: rgb(90, 200, 120); }
+.m-card   { color: rgb(90, 130, 255); }
+.m-ssn    { color: rgb(160, 110, 255); }
+.m-decoy  { color: rgb(245, 205, 45); }
+.m-late   { color: rgb(255, 120, 200); }
+.m-frame  { color: rgb(0, 200, 200); }
+/* the bare-text-node shapes: colour lives on the PARENT, sibling overridden */
+.owntext        { line-height: 1.05; font-family: "Consolas", "Courier New", monospace; font-weight: 700; }
+.owntext > *    { color: #2a2a2a; font-family: "Segoe UI", Arial, sans-serif; font-weight: 400; }
+.owntext-email  { color: rgb(255, 90, 90); }
+.owntext-card   { color: rgb(90, 130, 255); }
+.owntext-ssn    { color: rgb(160, 110, 255); }
+.filler { color: #4a4a55; }
+.spacer { height: 900px; }

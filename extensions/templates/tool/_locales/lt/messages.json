@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — pakeisk mane",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "PAKEISK MANE — vienas sakinys, vienas tikslas, ne daugiau kaip 132 simboliai, jokios reklamos.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — pakeisk mane",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Keisti temą",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Parinktys",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktyvus skirtukas",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Skaitoma…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopijuoti pavadinimą",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Iš naujo perskaityti aktyvų skirtuką",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Uždaryti",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Nukopijuota",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Nepavyko nukopijuoti — vietoj to paspauskite Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Paskutinis $ACTION$ nepavyko — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Paskutinis $ACTION$ nepavyko — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "pavadinimo nuskaitymas",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopijavimas",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "duomenų ištrynimas",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "vykdymas",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Kažkas tai sustabdė, kol nebuvo baigta. Bandykite dar kartą.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Šis skirtukas jau užimtas.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Šį puslapį saugo naršyklė ir plėtiniams neleidžiama jo skaityti.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Nerasta jokio aktyvaus skirtuko.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Šis puslapis neturi pavadinimo, kurį būtų galima nuskaityti.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Atšaukta.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Nežinomas pranešimas.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Tas skirtukas buvo uždarytas, kol darbas nebuvo baigtas.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Plėtinys neatsakė.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Nieko negrįžo.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Naršyklės puslapiai, tokie kaip Nustatymai, Plėtiniai ir Naujas skirtukas, yra neprieinami kiekvienam plėtiniui. Pabandykite įprastame tinklalapyje.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Kūrėjo įrankių langai plėtiniams neprieinami.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Šaltinio peržiūros puslapiai plėtiniams neprieinami. Vietoj to pabandykite patį puslapį.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Plėtinių puslapius, įskaitant šio paties plėtinio puslapius, saugo naršyklė.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "„Chrome Web Store“ neleidžia plėtiniams skaityti savo puslapių.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Vietiniams failams reikia vienos papildomos teisės. Atidarykite naršyklės puslapį Plėtiniai, raskite šį plėtinį ir įjunkite „Leisti prieigą prie failų URL“.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Šis puslapis neįsikėlė, todėl kol kas nėra ko skaityti.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Tai naršyklės integruotoji PDF peržiūros programa. Plėtiniai negali skaityti jos turinio — atidarykite PDF įprastame skirtuke arba pirma jį atsisiųskite.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Šį puslapį smėlio dėžėje izoliavo jį atvėrusi svetainė, todėl plėtiniai negali jo skaityti.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Priedų svetainė neleidžia plėtiniams skaityti savo puslapių.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Šiame įrenginyje nebeliko vietos, todėl niekas nebuvo išsaugota. Skiltyje Parinktys ištrinkite kelis išsaugotus įrašus ir bandykite dar kartą.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Tai užtruko per ilgai ir buvo sustabdyta. Nieko nebuvo palikta.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Ši reikšmė per ilga, kad būtų laikoma jūsų sinchronizuojamuose nustatymuose. Pabandykite trumpesnę.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Šio nustatymo nepavyko išsaugoti. Palaukite akimirką ir bandykite dar kartą.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Parinktys — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Parinktys",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Parinktys",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Išsaugoma automatiškai. Jei naršyklės sinchronizavimas įjungtas, jūsų nustatymai keliauja kartu su naršyklės profiliu — mums jie niekada nesiunčiami.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Veikimas",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopijuoti atidarius",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopijuoti rezultatą į iškarpinę vos atsidarius iškylančiajam langui.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Kaupti vietinę istoriją",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Pagal numatytuosius nustatymus išjungta. Kai įjungta, rezultatai laikomi tik šiame įrenginyje, pateikiami toliau ir bet kada gali būti ištrinti.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Istorijos riba",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Seniausi įrašai pašalinami, kai sąrašas tampa ilgesnis už šį skaičių.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Trinti įrašus, senesnius nei",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Dienos. Seni įrašai automatiškai pašalinami fone. Nustatykite 0, kad įrašai liktų, kol juos pašalins istorijos riba.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Pagal numatytuosius nustatymus seka jūsų sistemą.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sistema",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Šviesi",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tamsi",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Jūsų duomenys",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Šiame įrenginyje niekas nėra išsaugota.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Šiame įrenginyje išsaugota $COUNT$ įrašų. Niekas iš jo neišsiunčiama.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Šiame įrenginyje išsaugotas $COUNT$ įrašas. Niekas iš jo neišsiunčiama.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Šiame įrenginyje išsaugoti $COUNT$ įrašai. Niekas iš jo neišsiunčiama.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Šiame įrenginyje išsaugoti $COUNT$ įrašai. Niekas iš jo neišsiunčiama.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Šiame įrenginyje išsaugota $COUNT$ įrašo. Niekas iš jo neišsiunčiama.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Šiame įrenginyje išsaugota $COUNT$ įrašų. Niekas iš jo neišsiunčiama.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Patvaru: naršyklė pažadėjo šių duomenų neišvalyti.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Be garantijos: jei įrenginyje pritrūks vietos, naršyklė gali šiuos duomenis išvalyti savo nuožiūra. Eksportuokite atsarginę kopiją.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Ši naršyklė nenurodo, ar išsaugoti duomenys bus išlaikyti, todėl laikykite juos laikinais ir eksportuokite atsarginę kopiją.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Naudojama $USED$ iš $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Ištrinti",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Ištrinti įrašą iš $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Eksportuoti viską",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Išsaugo kiekvieną išsaugotą įrašą į vieną JSON failą šiame įrenginyje. Niekas neįkeliama į internetą.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Eksportuoti viską",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Ištrinti viską",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Pašalina iš šio įrenginio kiekvieną išsaugotą įrašą. Nustatymai išlieka.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Ištrinti viską",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Atkurti nustatymus",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Grąžina kiekvieno šio puslapio nustatymo numatytąją reikšmę ir pašalina juos iš jūsų sinchronizuojamo naršyklės profilio. Išsaugoti įrašai išlieka.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Atkurti nustatymus",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Pranešti apie problemą",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Parengti problemos ataskaitą",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Sukuria nedidelį failą, aprašantį šio plėtinio būseną. Prieš išsaugant matote, kas tiksliai jame yra, ir niekas niekur nesiunčiama.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Parengti ataskaitą",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Apie",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — pakeisk mane",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Vienas sakinys, tiksliai nusakantis, ką šis įrankis daro. Savo darbą jis atlieka jūsų įrenginyje: jokios paskyros, jokio sekimo, jokių tinklo užklausų, mums niekas nesiunčiama.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Išsaugota",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Viskas ištrinta",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Nepavyko ištrinti — bandykite dar kartą",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Nepavyko išsaugoti šio nustatymo",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Eksportas išsaugotas",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Nepavyko išsaugoti failo",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Įrašas ištrintas",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Nustatymai atkurti",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Nepavyko atkurti nustatymų",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Ataskaita išsaugota",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Atšaukti",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Ištrinti viską?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Kiekvienas išsaugotas įrašas pašalinamas iš šio įrenginio. Jūsų nustatymai išlieka. To atšaukti nebus galima.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Atkurti visus nustatymus?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Kiekvienas šio puslapio nustatymas grąžinamas į numatytąją reikšmę ir pašalinamas iš jūsų sinchronizuojamo naršyklės profilio. Jūsų išsaugoti įrašai išlieka. To atšaukti nebus galima.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Išsaugoti šią problemos ataskaitą?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Tai viskas, ką failas turės. Jame nėra puslapių adresų, nėra puslapių teksto ir nėra nieko, ką esate užfiksavę. Niekas niekur nesiunčiama — failas išsaugomas šiame įrenginyje ir tik jūs sprendžiate, ar juo dalytis.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Išsaugoti ataskaitą",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Inkognito langas — šis rezultatas nebuvo išsaugotas jūsų istorijoje.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Prieiga prie svetainių",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Prieiga prie visų svetainių",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Reikalinga tik toms funkcijoms, kurios veikia puslapiuose, kuriuose nespustelėjote įrankių juostos mygtuko. Bet kada galite ją atšaukti čia.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Suteikti prieigą",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Atšaukti prieigą",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Šis plėtinys šiuo metu gali skaityti visas jūsų lankomas svetaines.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Šis plėtinys gali skaityti skirtuką tik po to, kai spustelite jo įrankių juostos mygtuką.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Prieiga suteikta",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Prieiga nebuvo suteikta",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Prieiga atšaukta",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Nepavyko atšaukti šios prieigos",
+    "description": "en: Could not revoke that access"
+  }
+}

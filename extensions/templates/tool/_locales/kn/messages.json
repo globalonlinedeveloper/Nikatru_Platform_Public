@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — ನನ್ನನ್ನು ಬದಲಾಯಿಸಿ",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ನನ್ನನ್ನು ಬದಲಾಯಿಸಿ — ಒಂದು ವಾಕ್ಯ, ಒಂದೇ ಉದ್ದೇಶ, 132 ಅಕ್ಷರ ಅಥವಾ ಅದಕ್ಕಿಂತ ಕಡಿಮೆ, ಜಾಹೀರಾತಿನ ಭಾಷೆ ಬೇಡ.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — ನನ್ನನ್ನು ಬದಲಾಯಿಸಿ",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "ಥೀಮ್ ಬದಲಾಯಿಸಿ",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "ಆಯ್ಕೆಗಳು",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "ಸಕ್ರಿಯ ಟ್ಯಾಬ್",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "ಓದಲಾಗುತ್ತಿದೆ…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "ಶೀರ್ಷಿಕೆ ನಕಲಿಸಿ",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "ಸಕ್ರಿಯ ಟ್ಯಾಬ್ ಅನ್ನು ಮತ್ತೆ ಓದಿ",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "ಮುಚ್ಚಿ",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "ನಕಲಾಗಿದೆ",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "ನಕಲಿಸಲು ಆಗಲಿಲ್ಲ — ಬದಲಿಗೆ Ctrl+C ಒತ್ತಿ",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "ಕೊನೆಯ $ACTION$ ವಿಫಲವಾಯಿತು — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "ಕೊನೆಯ $ACTION$ ವಿಫಲವಾಯಿತು — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "ಶೀರ್ಷಿಕೆ ಓದುವಿಕೆ",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "ನಕಲು",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "ಡೇಟಾ ಅಳಿಸುವಿಕೆ",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "ಕಾರ್ಯಾಚರಣೆ",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "ಇದು ಮುಗಿಯುವ ಮೊದಲೇ ಏನೋ ಒಂದು ಇದನ್ನು ನಿಲ್ಲಿಸಿತು. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "ಈ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ಈಗಾಗಲೇ ಒಂದು ಕೆಲಸ ನಡೆಯುತ್ತಿದೆ.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "ಈ ಪುಟವನ್ನು ಬ್ರೌಸರ್ ಕಾಪಾಡುತ್ತದೆ; ಅದನ್ನು ಓದಲು ಅನುಮತಿ ಇಲ್ಲ.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "ಸಕ್ರಿಯ ಟ್ಯಾಬ್ ಯಾವುದೂ ಸಿಗಲಿಲ್ಲ.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "ಈ ಪುಟದಲ್ಲಿ ಓದಲು ಶೀರ್ಷಿಕೆಯೇ ಇಲ್ಲ.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "ಗುರುತಿಸಲಾಗದ ಆಂತರಿಕ ಸಂದೇಶ.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "ಕೆಲಸ ಮುಗಿಯುವ ಮೊದಲೇ ಆ ಟ್ಯಾಬ್ ಮುಚ್ಚಲ್ಪಟ್ಟಿತು.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "ವಿಸ್ತರಣೆ ಉತ್ತರಿಸಲಿಲ್ಲ.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "ಯಾವ ಉತ್ತರವೂ ಮರಳಿ ಬರಲಿಲ್ಲ.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು, ವಿಸ್ತರಣೆಗಳು, ಹೊಸ ಟ್ಯಾಬ್‌ನಂತಹ ಬ್ರೌಸರ್ ಪುಟಗಳನ್ನು ಯಾವ ವಿಸ್ತರಣೆಯೂ ಓದಲು ಬ್ರೌಸರ್ ಬಿಡುವುದಿಲ್ಲ. ಇದನ್ನು ಸಾಮಾನ್ಯ ವೆಬ್ ಪುಟದಲ್ಲಿ ಪ್ರಯತ್ನಿಸಿ.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "DevTools ವಿಂಡೋಗಳನ್ನು ಓದಲು ವಿಸ್ತರಣೆಗಳಿಗೆ ಅನುಮತಿ ಇಲ್ಲ.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "ಮೂಲವನ್ನು ತೋರಿಸುವ (view-source) ಪುಟಗಳನ್ನು ಓದಲು ವಿಸ್ತರಣೆಗಳಿಗೆ ಅನುಮತಿ ಇಲ್ಲ. ಬದಲಿಗೆ ಪುಟವನ್ನೇ ಪ್ರಯತ್ನಿಸಿ.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "ಈ ವಿಸ್ತರಣೆಯ ಸ್ವಂತ ಪುಟಗಳೂ ಸೇರಿದಂತೆ, ವಿಸ್ತರಣೆಗಳ ಪುಟಗಳನ್ನು ಬ್ರೌಸರ್ ಕಾಪಾಡುತ್ತದೆ.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store ತನ್ನ ಪುಟಗಳನ್ನು ವಿಸ್ತರಣೆಗಳು ಓದದಂತೆ ತಡೆಯುತ್ತದೆ.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "ಸ್ಥಳೀಯ ಫೈಲ್‌ಗಳಿಗೆ ಒಂದು ಹೆಚ್ಚುವರಿ ಅನುಮತಿ ಬೇಕು. ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನ ವಿಸ್ತರಣೆಗಳ ಪುಟವನ್ನು ತೆರೆದು, ಈ ವಿಸ್ತರಣೆಯನ್ನು ಹುಡುಕಿ, “ಫೈಲ್ URLಗಳಿಗೆ ಪ್ರವೇಶವನ್ನು ಅನುಮತಿಸಿ” ಎಂಬುದನ್ನು ಆನ್ ಮಾಡಿ.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "ಈ ಪುಟ ಲೋಡ್ ಆಗಲಿಲ್ಲ, ಹಾಗಾಗಿ ಸದ್ಯಕ್ಕೆ ಓದಲು ಏನೂ ಇಲ್ಲ.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "ಇದು ಬ್ರೌಸರ್‌ನಲ್ಲಿಯೇ ಇರುವ PDF ವೀಕ್ಷಕ. ಇದರ ಒಳಗಿನದನ್ನು ವಿಸ್ತರಣೆಗಳಿಗೆ ಓದಲು ಸಾಧ್ಯವಿಲ್ಲ — PDF ಅನ್ನು ಸಾಮಾನ್ಯ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ತೆರೆಯಿರಿ ಅಥವಾ ಮೊದಲು ಡೌನ್‌ಲೋಡ್ ಮಾಡಿಕೊಳ್ಳಿ.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "ಈ ಪುಟವನ್ನು ತೆರೆದ ಸೈಟ್ ಅದನ್ನು ಸ್ಯಾಂಡ್‌ಬಾಕ್ಸ್‌ನಲ್ಲಿ ಇರಿಸಿದೆ, ಹಾಗಾಗಿ ವಿಸ್ತರಣೆಗಳಿಗೆ ಅದನ್ನು ಓದಲು ಸಾಧ್ಯವಿಲ್ಲ.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "ಆಡ್-ಆನ್‌ಗಳ ಸೈಟ್ ತನ್ನ ಪುಟಗಳನ್ನು ವಿಸ್ತರಣೆಗಳು ಓದದಂತೆ ತಡೆಯುತ್ತದೆ.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ ಜಾಗವಿಲ್ಲ, ಹಾಗಾಗಿ ಏನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಆಯ್ಕೆಗಳಲ್ಲಿ ಸಂಗ್ರಹವಾದ ಕೆಲವು ಸಾಲುಗಳನ್ನು ಅಳಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "ಇದಕ್ಕೆ ತುಂಬಾ ಸಮಯ ಹಿಡಿದ ಕಾರಣ ಇದನ್ನು ನಿಲ್ಲಿಸಲಾಯಿತು. ಏನೂ ಉಳಿದುಕೊಂಡಿಲ್ಲ.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "ಸಿಂಕ್ ಆದ ನಿಮ್ಮ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಸಂಗ್ರಹಿಸಲು ಆ ಮೌಲ್ಯ ತುಂಬಾ ಉದ್ದವಾಗಿದೆ. ಚಿಕ್ಕದೊಂದನ್ನು ಪ್ರಯತ್ನಿಸಿ.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "ಆ ಸೆಟ್ಟಿಂಗ್ ಅನ್ನು ಉಳಿಸಲು ಆಗಲಿಲ್ಲ. ಸ್ವಲ್ಪ ಹೊತ್ತು ಕಾದು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "ಆಯ್ಕೆಗಳು — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · ಆಯ್ಕೆಗಳು",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "ಆಯ್ಕೆಗಳು",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "ತಾನಾಗಿಯೇ ಉಳಿಸಲಾಗುತ್ತದೆ. ನಿಮ್ಮ ಬ್ರೌಸರ್‌ನ ಸಿಂಕ್ ಆನ್ ಆಗಿದ್ದರೆ, ನಿಮ್ಮ ಸೆಟ್ಟಿಂಗ್‌ಗಳು ನಿಮ್ಮ ಬ್ರೌಸರ್ ಪ್ರೊಫೈಲ್‌ನ ಜೊತೆಯೇ ಸಾಗುತ್ತವೆ — ಅವು ಎಂದಿಗೂ ನಮಗೆ ಕಳುಹಿಸಲ್ಪಡುವುದಿಲ್ಲ.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "ವರ್ತನೆ",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "ತೆರೆದಾಗ ನಕಲಿಸು",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "ಪಾಪ್‌ಅಪ್ ತೆರೆದ ಕೂಡಲೇ ಫಲಿತಾಂಶವನ್ನು ಕ್ಲಿಪ್‌ಬೋರ್ಡ್‌ಗೆ ನಕಲಿಸುತ್ತದೆ.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿಯೇ ಇತಿಹಾಸ ಇರಿಸು",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "ಪೂರ್ವನಿಯೋಜಿತವಾಗಿ ಇದು ಆಫ್ ಆಗಿರುತ್ತದೆ. ಆನ್ ಮಾಡಿದರೆ, ಫಲಿತಾಂಶಗಳು ಈ ಸಾಧನದಲ್ಲಿ ಮಾತ್ರ ಸಂಗ್ರಹವಾಗುತ್ತವೆ, ಕೆಳಗೆ ಪಟ್ಟಿಯಾಗುತ್ತವೆ, ಯಾವಾಗ ಬೇಕಾದರೂ ಅವನ್ನು ಅಳಿಸಬಹುದು.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "ಇತಿಹಾಸದ ಮಿತಿ",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "ಪಟ್ಟಿ ಇದಕ್ಕಿಂತ ಉದ್ದವಾದ ಕೂಡಲೇ ಅತ್ಯಂತ ಹಳೆಯ ಸಾಲುಗಳು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಲ್ಪಡುತ್ತವೆ.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "ಇದಕ್ಕಿಂತ ಹಳೆಯ ಸಾಲುಗಳನ್ನು ಅಳಿಸು",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "ದಿನಗಳು. ಹಳೆಯ ಸಾಲುಗಳು ಹಿನ್ನೆಲೆಯಲ್ಲಿ ತಾವಾಗಿಯೇ ತೆಗೆದುಹಾಕಲ್ಪಡುತ್ತವೆ. ಇತಿಹಾಸದ ಮಿತಿ ಅವುಗಳನ್ನು ತೆಗೆಯುವವರೆಗೆ ಸಾಲುಗಳನ್ನು ಉಳಿಸಿಕೊಳ್ಳಲು 0 ಹಾಕಿ.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "ಥೀಮ್",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "ಪೂರ್ವನಿಯೋಜಿತವಾಗಿ ನಿಮ್ಮ ಸಿಸ್ಟಂ ಅನ್ನೇ ಅನುಸರಿಸುತ್ತದೆ.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "ಸಿಸ್ಟಂ",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "ತಿಳಿ",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "ಗಾಢ",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "ನಿಮ್ಮ ಡೇಟಾ",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ ಏನೂ ಸಂಗ್ರಹವಾಗಿಲ್ಲ.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ $COUNT$ ಸಾಲುಗಳು ಸಂಗ್ರಹವಾಗಿವೆ. ಅವುಗಳಲ್ಲಿ ಯಾವುದೂ ಈ ಸಾಧನವನ್ನು ಬಿಟ್ಟು ಹೊರಗೆ ಹೋಗುವುದಿಲ್ಲ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ $COUNT$ ಸಾಲು ಸಂಗ್ರಹವಾಗಿದೆ. ಅದು ಈ ಸಾಧನವನ್ನು ಬಿಟ್ಟು ಹೊರಗೆ ಹೋಗುವುದಿಲ್ಲ.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ $COUNT$ ಸಾಲುಗಳು ಸಂಗ್ರಹವಾಗಿವೆ. ಅವುಗಳಲ್ಲಿ ಯಾವುದೂ ಈ ಸಾಧನವನ್ನು ಬಿಟ್ಟು ಹೊರಗೆ ಹೋಗುವುದಿಲ್ಲ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ $COUNT$ ಸಾಲುಗಳು ಸಂಗ್ರಹವಾಗಿವೆ. ಅವುಗಳಲ್ಲಿ ಯಾವುದೂ ಈ ಸಾಧನವನ್ನು ಬಿಟ್ಟು ಹೊರಗೆ ಹೋಗುವುದಿಲ್ಲ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ $COUNT$ ಸಾಲುಗಳು ಸಂಗ್ರಹವಾಗಿವೆ. ಅವುಗಳಲ್ಲಿ ಯಾವುದೂ ಈ ಸಾಧನವನ್ನು ಬಿಟ್ಟು ಹೊರಗೆ ಹೋಗುವುದಿಲ್ಲ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "ಈ ಸಾಧನದಲ್ಲಿ $COUNT$ ಸಾಲುಗಳು ಸಂಗ್ರಹವಾಗಿವೆ. ಅವುಗಳಲ್ಲಿ ಯಾವುದೂ ಈ ಸಾಧನವನ್ನು ಬಿಟ್ಟು ಹೊರಗೆ ಹೋಗುವುದಿಲ್ಲ.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "ಶಾಶ್ವತ: ಇದನ್ನು ಅಳಿಸುವುದಿಲ್ಲ ಎಂದು ಬ್ರೌಸರ್ ಭರವಸೆ ನೀಡಿದೆ.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "ಖಾತರಿ ಇಲ್ಲ: ಸಾಧನದಲ್ಲಿ ಜಾಗ ಕಡಿಮೆಯಾದರೆ ಬ್ರೌಸರ್ ಇದನ್ನು ತಾನಾಗಿಯೇ ಅಳಿಸಬಹುದು. ಒಂದು ಬ್ಯಾಕಪ್ ರಫ್ತು ಮಾಡಿಕೊಳ್ಳಿ.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "ಸಂಗ್ರಹಿಸಿದ ಡೇಟಾ ಉಳಿಯುತ್ತದೆಯೇ ಎಂಬುದನ್ನು ಈ ಬ್ರೌಸರ್ ಹೇಳುವುದಿಲ್ಲ, ಹಾಗಾಗಿ ಅದನ್ನು ತಾತ್ಕಾಲಿಕ ಎಂದೇ ಭಾವಿಸಿ ಒಂದು ಬ್ಯಾಕಪ್ ರಫ್ತು ಮಾಡಿಕೊಳ್ಳಿ.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$ ನಲ್ಲಿ $USED$ ಬಳಕೆಯಾಗಿದೆ.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "ಅಳಿಸಿ",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ ನಿಂದ ಬಂದ ಸಾಲನ್ನು ಅಳಿಸಿ",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "ಎಲ್ಲವನ್ನೂ ರಫ್ತು ಮಾಡಿ",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "ಸಂಗ್ರಹವಾದ ಪ್ರತಿ ಸಾಲನ್ನೂ ಈ ಸಾಧನದಲ್ಲಿ ಒಂದೇ JSON ಫೈಲ್‌ಗೆ ಉಳಿಸುತ್ತದೆ. ಏನೂ ಅಪ್‌ಲೋಡ್ ಆಗುವುದಿಲ್ಲ.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "ಎಲ್ಲವನ್ನೂ ರಫ್ತು ಮಾಡಿ",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "ಎಲ್ಲವನ್ನೂ ಅಳಿಸಿ",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "ಸಂಗ್ರಹವಾದ ಪ್ರತಿ ಸಾಲನ್ನೂ ಈ ಸಾಧನದಿಂದ ತೆಗೆದುಹಾಕುತ್ತದೆ. ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಹಾಗೆಯೇ ಉಳಿಯುತ್ತವೆ.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "ಎಲ್ಲವನ್ನೂ ಅಳಿಸಿ",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಮರುಹೊಂದಿಸಿ",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "ಈ ಪುಟದ ಪ್ರತಿ ಸೆಟ್ಟಿಂಗ್ ಅನ್ನೂ ಅದರ ಪೂರ್ವನಿಯೋಜಿತಕ್ಕೆ ಮರಳಿಸುತ್ತದೆ ಮತ್ತು ಸಿಂಕ್ ಆದ ನಿಮ್ಮ ಬ್ರೌಸರ್ ಪ್ರೊಫೈಲ್‌ನಿಂದಲೂ ಅವನ್ನು ತೆಗೆದುಹಾಕುತ್ತದೆ. ಸಂಗ್ರಹವಾದ ಸಾಲುಗಳು ಹಾಗೆಯೇ ಉಳಿಯುತ್ತವೆ.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಮರುಹೊಂದಿಸಿ",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "ಸಮಸ್ಯೆಯನ್ನು ವರದಿ ಮಾಡುವುದು",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "ಸಮಸ್ಯೆಯ ವರದಿಯನ್ನು ಸಿದ್ಧಪಡಿಸಿ",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "ಈ ವಿಸ್ತರಣೆಯ ಸ್ಥಿತಿಯನ್ನು ವಿವರಿಸುವ ಒಂದು ಸಣ್ಣ ಫೈಲ್ ಅನ್ನು ರಚಿಸುತ್ತದೆ. ಅದನ್ನು ಉಳಿಸುವ ಮೊದಲೇ ಅದರಲ್ಲಿ ಏನಿದೆ ಎಂಬುದನ್ನು ನೀವೇ ನೋಡುತ್ತೀರಿ, ಮತ್ತು ಏನೂ ಎಲ್ಲಿಗೂ ಕಳುಹಿಸಲ್ಪಡುವುದಿಲ್ಲ.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "ವರದಿಯನ್ನು ಸಿದ್ಧಪಡಿಸಿ",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "ಕುರಿತು",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — ನನ್ನನ್ನು ಬದಲಾಯಿಸಿ",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "ಈ ಸಾಧನ ನಿಖರವಾಗಿ ಏನು ಮಾಡುತ್ತದೆ ಎಂದು ಹೇಳುವ ಒಂದು ವಾಕ್ಯ. ಇದು ತನ್ನ ಕೆಲಸವನ್ನು ನಿಮ್ಮ ಸಾಧನದಲ್ಲಿಯೇ ಮಾಡುತ್ತದೆ: ಖಾತೆ ಇಲ್ಲ, ಟ್ರ್ಯಾಕಿಂಗ್ ಇಲ್ಲ, ನೆಟ್‌ವರ್ಕ್ ಕರೆಗಳಿಲ್ಲ, ನಮಗೆ ಏನೂ ಕಳುಹಿಸಲ್ಪಡುವುದಿಲ್ಲ.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "ಉಳಿಸಲಾಗಿದೆ",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "ಎಲ್ಲವನ್ನೂ ಅಳಿಸಲಾಗಿದೆ",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "ಅಳಿಸಲು ಆಗಲಿಲ್ಲ — ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "ಆ ಸೆಟ್ಟಿಂಗ್ ಅನ್ನು ಉಳಿಸಲು ಆಗಲಿಲ್ಲ",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "ರಫ್ತು ಉಳಿಸಲಾಗಿದೆ",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "ಫೈಲ್ ಅನ್ನು ಉಳಿಸಲು ಆಗಲಿಲ್ಲ",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "ಸಾಲು ಅಳಿಸಲಾಗಿದೆ",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಮರುಹೊಂದಿಕೆಯಾದವು",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಮರುಹೊಂದಿಸಲು ಆಗಲಿಲ್ಲ",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "ವರದಿ ಉಳಿಸಲಾಗಿದೆ",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "ರದ್ದುಗೊಳಿಸಿ",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "ಎಲ್ಲವನ್ನೂ ಅಳಿಸಬೇಕೇ?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "ಸಂಗ್ರಹವಾದ ಪ್ರತಿ ಸಾಲೂ ಈ ಸಾಧನದಿಂದ ತೆಗೆದುಹಾಕಲ್ಪಡುತ್ತದೆ. ನಿಮ್ಮ ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಹಾಗೆಯೇ ಉಳಿಯುತ್ತವೆ. ಇದನ್ನು ಹಿಂದಕ್ಕೆ ಪಡೆಯಲು ಸಾಧ್ಯವಿಲ್ಲ.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "ಪ್ರತಿ ಸೆಟ್ಟಿಂಗ್ ಅನ್ನೂ ಮರುಹೊಂದಿಸಬೇಕೇ?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "ಈ ಪುಟದ ಪ್ರತಿ ಆದ್ಯತೆಯೂ ಅದರ ಪೂರ್ವನಿಯೋಜಿತಕ್ಕೆ ಮರಳುತ್ತದೆ ಮತ್ತು ಸಿಂಕ್ ಆದ ನಿಮ್ಮ ಬ್ರೌಸರ್ ಪ್ರೊಫೈಲ್‌ನಿಂದಲೂ ತೆಗೆದುಹಾಕಲ್ಪಡುತ್ತದೆ. ಸಂಗ್ರಹವಾದ ನಿಮ್ಮ ಸಾಲುಗಳು ಹಾಗೆಯೇ ಉಳಿಯುತ್ತವೆ. ಇದನ್ನು ಹಿಂದಕ್ಕೆ ಪಡೆಯಲು ಸಾಧ್ಯವಿಲ್ಲ.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "ಈ ಸಮಸ್ಯೆಯ ವರದಿಯನ್ನು ಉಳಿಸಬೇಕೇ?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "ಫೈಲ್‌ನಲ್ಲಿ ಇರುವುದು ಇಷ್ಟೇ. ಅದರಲ್ಲಿ ಪುಟದ ವಿಳಾಸಗಳಿಲ್ಲ, ಪುಟದ ಪಠ್ಯವಿಲ್ಲ, ನೀವು ಸೆರೆಹಿಡಿದದ್ದೂ ಏನೂ ಇಲ್ಲ. ಏನೂ ಎಲ್ಲಿಗೂ ಕಳುಹಿಸಲ್ಪಡುವುದಿಲ್ಲ — ಫೈಲ್ ಈ ಸಾಧನದಲ್ಲಿಯೇ ಉಳಿಯುತ್ತದೆ, ಅದನ್ನು ಹಂಚಿಕೊಳ್ಳುವುದೋ ಬೇಡವೋ ಎಂಬುದು ನಿಮ್ಮ ಆಯ್ಕೆ.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "ವರದಿಯನ್ನು ಉಳಿಸಿ",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "ಅಜ್ಞಾತ ವಿಂಡೋ — ಈ ಫಲಿತಾಂಶವನ್ನು ನಿಮ್ಮ ಇತಿಹಾಸಕ್ಕೆ ಉಳಿಸಲಾಗಿಲ್ಲ.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "ಸೈಟ್ ಪ್ರವೇಶ",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "ಪ್ರತಿ ಸೈಟ್‌ಗೂ ಪ್ರವೇಶ",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "ಟೂಲ್‌ಬಾರ್ ಬಟನ್ ಒತ್ತದ ಪುಟಗಳಲ್ಲೂ ಕೆಲಸ ಮಾಡುವ ವೈಶಿಷ್ಟ್ಯಗಳಿಗೆ ಮಾತ್ರ ಇದು ಬೇಕು. ಇಲ್ಲಿಯೇ, ಯಾವಾಗ ಬೇಕಾದರೂ ನೀವು ಇದನ್ನು ಹಿಂಪಡೆಯಬಹುದು.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "ಪ್ರವೇಶ ನೀಡಿ",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "ಪ್ರವೇಶ ಹಿಂಪಡೆಯಿರಿ",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "ನೀವು ಭೇಟಿ ನೀಡುವ ಪ್ರತಿ ಸೈಟ್ ಅನ್ನೂ ಈ ವಿಸ್ತರಣೆ ಸದ್ಯಕ್ಕೆ ಓದಬಲ್ಲದು.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "ಈ ವಿಸ್ತರಣೆಯ ಟೂಲ್‌ಬಾರ್ ಬಟನ್ ಅನ್ನು ನೀವು ಒತ್ತಿದ ನಂತರವಷ್ಟೇ ಅದು ಟ್ಯಾಬ್ ಅನ್ನು ಓದಬಲ್ಲದು.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "ಪ್ರವೇಶ ನೀಡಲಾಗಿದೆ",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "ಪ್ರವೇಶ ನೀಡಲಾಗಿಲ್ಲ",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "ಪ್ರವೇಶ ಹಿಂಪಡೆಯಲಾಗಿದೆ",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "ಆ ಪ್ರವೇಶವನ್ನು ಹಿಂಪಡೆಯಲು ಆಗಲಿಲ್ಲ",
+    "description": "en: Could not revoke that access"
+  }
+}

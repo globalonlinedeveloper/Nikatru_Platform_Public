@@ -1,0 +1,17 @@
+{
+  "README": "The facts about this tool that appear in more than one place. Every script in publish/ reads them from here so they can never be typed twice and drift. NOTE: this tool predates the template and carries NO publish/bump-version.mjs, so `--sync` cannot derive manifest.firefox.json from this file. scripts/policy-check.mjs cross-checks the two instead and FAILS if they disagree — see the `gecko.id is derived from identity.json` limb.",
+
+  "slug": "fullshot",
+  "ownerDomain": "nikatru.com",
+  "supportEmail": "support@nikatru.com",
+  "privacyPolicyUrl": "https://nikatru.com/fullshot/privacy",
+  "homepageUrl": "https://nikatru.com/",
+
+  "NOTES": {
+    "slug": "lowercase, a-z0-9 and hyphens. It is the zip filename (<slug>-<version>.zip) and the local part of the Firefox add-on id. Not shown to users. MUST equal tool.json's id — policy-check fails if it does not.",
+    "ownerDomain": "a domain you actually control. gecko.id is derived as <slug>@<ownerDomain> and AMO fixes the add-on identity at FIRST SIGNING — a placeholder that ships once is a permanently wrong identity, not a fixable typo. Chosen 2026-08-18: nikatru.com, the domain that serves the storefront this extension is catalogued on.",
+    "supportEmail": "goes in the store listing's support field. A real inbox someone reads. This address is already asserted in two other places by the storefront's assert-repo-posture guard (SECURITY.md and sites/nikatru/contact.html), so it is not a new claim.",
+    "privacyPolicyUrl": "FILLED 2026-08-21, and only after the condition this note set was actually met. The page is served from the storefront repo at sites/nikatru/fullshot/privacy.html and was VERIFIED live before this value was written: GET https://nikatru.com/fullshot/privacy answered 200 with no redirect hop, content-type text/html, carrying the legal name and support@nikatru.com and no remaining placeholder. The path serves 200 DIRECTLY rather than through a redirect, because a store listing URL is the one URL a reviewer opens and an automated recheck months later is what discovers a dead one. Same URL in all three dashboards (Chrome, Edge, AMO) - divergent policy URLs invite a policy-mismatch finding. The SOURCE OF TRUTH is publish/PRIVACY-POLICY.html in THIS repo; the served file is a copy in another repo and no guard can see across the boundary, so edit here first and then re-copy.",
+    "homepageUrl": "optional; the storefront that lists this extension."
+  }
+}

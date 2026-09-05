@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Contact</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  table { border-collapse: collapse; margin: 0 0 14px; }
+  th, td { border: 1px solid #d9dde6; padding: 8px 12px; text-align: left; background: #fff; }
+  th { background: #f1f3f7; font-weight: 600; }
+  ul { margin: 0 0 14px 22px; }
+  li { margin: 0 0 8px; }
+  a.mail { text-decoration: none; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Company</a><a href="#">Team</a><a href="#">Contact</a>
+  <span>Nikatru</span>
+</nav>
+<main>
+  <h1>Contact</h1>
+
+  <!-- THE OTHER HONEST CASE. Real pages mark contact details up as leaves — a
+       mailto anchor, a table cell, a list item — so this is the shape the
+       feature exists for and the shape it must keep working on. Every token
+       here must end up under an opaque, READ-BACK-VERIFIED block, and the
+       Luhn-invalid decoy must be left alone: a product that protects the user
+       by blacking out everything has not been fixed. -->
+
+  <p class="filler">The quickest route to a human is email. We answer within one
+  working day and we do not use an autoresponder.</p>
+
+  <p><a class="mail m m-email" href="mailto:rajasekar@nikatru.com">rajasekar@nikatru.com</a></p>
+
+  <table>
+    <tr><th>Line</th><th>Number</th></tr>
+    <tr><td>Reception</td><td><span class="m m-phone">+44 20 7946 0958</span></td></tr>
+    <tr><td>Reference</td><td><span class="filler">NKT-4471-QQ</span></td></tr>
+  </table>
+
+  <h2>Billing</h2>
+  <ul>
+    <li>Card on file: <span class="m m-card">4111 1111 1111 1111</span></li>
+    <li>Internal ledger code: <span class="m m-decoy">4111 1111 1111 1112</span>
+      &mdash; not a payment card and must not be covered</li>
+  </ul>
+
+  <div class="card">
+    <h2>Post</h2>
+    <p class="filler">Written correspondence goes to the registered office. We do
+    not accept deliveries at that address.</p>
+    <p class="filler">Invoices should quote the reference shown in the table above
+    so that they reach the right desk.</p>
+  </div>
+</main>
+</body>
+</html>

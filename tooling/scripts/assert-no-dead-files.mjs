@@ -386,6 +386,38 @@ const RUNNER_WALKS = [
       'discover members by directory convention',
   },
   {
+    // 🔴 THE EXTENSION TREE IS WALKED BY GLOB, BY ITS OWN PACKER, AND THE
+    // MANIFEST OF WHAT SHIPS IS `tool.json`. Added 2026-09-05 with the subtree
+    // ([ADR 067] decision 1), after this guard reported 232 findings over it on
+    // the first CI run that saw it — 56 `_locales/<lang>/messages.json` alone.
+    //
+    // Not one of those is dead, and the reason is structural rather than a
+    // convention this guard could learn: `extensions/scripts/pack.mjs` builds a
+    // package from `tool.json`'s `package.include` GLOBS
+    // (`_locales/*/messages.json`, `content/*.js`, `pages/*.js`, `icons/*.png`),
+    // and the browser then resolves a locale from `manifest.json`'s
+    // `default_locale` at RUNTIME, by directory name. No tracked file names
+    // `_locales/am/messages.json`, and adding the 56th language must not require
+    // one — that is the same "a member joins by existing" property mason's
+    // `__brick__/` has above.
+    //
+    // ⚠️ WHAT THIS DOES NOT CONCEDE. The extension tree is not unguarded here: it
+    // is the only tree in this repository whose shipped set is DECLARED
+    // (`package.include` / `package.exclude`) and then CHECKED — `pack.mjs`
+    // builds it twice and SHA-256 compares, `check-store-packages.mjs` grades the
+    // built zip, `verify-refs.mjs` fails on a reference the package does not
+    // carry, and `tooling/ci/assert-extensions-build-free.mjs` refuses anything
+    // that would make the shipped bytes differ from the tracked ones. A file that
+    // really is dead there is caught by the package it fails to appear in, which
+    // is a stronger reader than a path reference.
+    test: (p) => /^extensions\//.test(p),
+    runner:
+      'extensions/scripts/pack.mjs builds each package from the include/exclude GLOBS in that tool\'s ' +
+      'tool.json, and the browser resolves _locales/<lang>/ from manifest.json\'s default_locale at ' +
+      'runtime — so no tracked file names a member, by design. What ships is declared in tool.json and ' +
+      'checked by the double-build SHA-256 compare, check-store-packages.mjs and verify-refs.mjs.',
+  },
+  {
     test: (p) => /^tooling\/bricks\//.test(p),
     runner:
       'mason generates a brick wholesale from `__brick__/`; its members are templates whose own names ' +

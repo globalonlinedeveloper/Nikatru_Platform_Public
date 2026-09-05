@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — என்னை மாற்றவும்",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "என்னை மாற்றவும் — ஒரு வாக்கியம், ஒரே நோக்கம், 132 எழுத்துகள் அல்லது குறைவு, விளம்பர மொழி வேண்டாம்.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — என்னை மாற்றவும்",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "தோற்றத்தை மாற்று",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "விருப்பங்கள்",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "செயலில் உள்ள தாவல்",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "படிக்கிறது…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "தலைப்பை நகலெடு",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "செயலில் உள்ள தாவலை மீண்டும் படி",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "மூடு",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "நகலெடுக்கப்பட்டது",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "நகலெடுக்க முடியவில்லை — அதற்குப் பதிலாக Ctrl+C ஐ அழுத்தவும்",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "கடைசி $ACTION$ தோல்வியடைந்தது — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "கடைசி $ACTION$ தோல்வியடைந்தது — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "தலைப்புப் படிப்பு",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "நகலெடுப்பு",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "தரவு அழிப்பு",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "செயலாக்கம்",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "இது முடிவடைவதற்கு முன்பே ஏதோ ஒன்று இதைத் தடுத்து நிறுத்தியது. மீண்டும் முயற்சிக்கவும்.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "இந்தத் தாவலில் ஏற்கெனவே ஒரு பணி நடந்து கொண்டிருக்கிறது.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "இந்தப் பக்கத்தை உலாவி பாதுகாக்கிறது; அதைப் படிக்க அனுமதி இல்லை.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "செயலில் உள்ள தாவல் எதுவும் கிடைக்கவில்லை.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "இந்தப் பக்கத்தில் படிப்பதற்குத் தலைப்பு எதுவும் இல்லை.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "ரத்து செய்யப்பட்டது.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "அறியப்படாத உள்செய்தி.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "பணி முடிவதற்கு முன்பே அந்தத் தாவல் மூடப்பட்டது.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "நீட்டிப்பு பதிலளிக்கவில்லை.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "எந்தப் பதிலும் திரும்ப வரவில்லை.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "அமைப்புகள், நீட்டிப்புகள், புதிய தாவல் போன்ற உலாவிப் பக்கங்களை எந்த நீட்டிப்பும் படிக்க உலாவி அனுமதிப்பதில்லை. சாதாரண இணையப் பக்கம் ஒன்றில் இதை முயற்சிக்கவும்.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "DevTools சாளரங்களைப் படிக்க நீட்டிப்புகளுக்கு அனுமதி இல்லை.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "மூலக் குறியீட்டைக் காட்டும் (view-source) பக்கங்களைப் படிக்க நீட்டிப்புகளுக்கு அனுமதி இல்லை. அதற்குப் பதிலாக பக்கத்தையே முயற்சிக்கவும்.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "இந்த நீட்டிப்பின் சொந்தப் பக்கங்கள் உட்பட, நீட்டிப்புப் பக்கங்கள் அனைத்தையும் உலாவி பாதுகாக்கிறது.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store தன் பக்கங்களை நீட்டிப்புகள் படிக்க விடாமல் தடுக்கிறது.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "உள்ளக் கோப்புகளுக்கு ஒரு கூடுதல் அனுமதி தேவை. உங்கள் உலாவியின் நீட்டிப்புகள் பக்கத்தைத் திறந்து, இந்த நீட்டிப்பைக் கண்டுபிடித்து, “கோப்பு URLகளுக்கான அணுகலை அனுமதி” என்பதை இயக்கவும்.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "இந்தப் பக்கம் ஏற்றப்படவில்லை; எனவே இப்போது படிப்பதற்கு எதுவும் இல்லை.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "இது உலாவியில் உள்ளமைந்த PDF காட்டி. இதற்குள் இருப்பதை நீட்டிப்புகளால் படிக்க முடியாது — PDF ஐ ஒரு சாதாரணத் தாவலில் திறக்கவும் அல்லது முதலில் பதிவிறக்கவும்.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "இந்தப் பக்கத்தைத் திறந்த தளம் அதை சாண்ட்பாக்ஸில் அடைத்துள்ளது; எனவே நீட்டிப்புகளால் அதைப் படிக்க முடியாது.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "ஆட்-ஆன்கள் தளம் தன் பக்கங்களை நீட்டிப்புகள் படிக்க விடாமல் தடுக்கிறது.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "இந்தச் சாதனத்தில் இடம் இல்லை; எனவே எதுவும் சேமிக்கப்படவில்லை. விருப்பங்களில் சேமிக்கப்பட்ட சில வரிசைகளை நீக்கிவிட்டு மீண்டும் முயற்சிக்கவும்.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "இதற்கு அதிக நேரம் ஆனதால் இது நிறுத்தப்பட்டது. மிச்சம் எதுவும் விடப்படவில்லை.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "ஒத்திசைக்கப்பட்ட உங்கள் அமைப்புகளில் சேமிக்க அந்த மதிப்பு மிக நீளமானது. குறுகிய ஒன்றை முயற்சிக்கவும்.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "அந்த அமைப்பைச் சேமிக்க முடியவில்லை. சிறிது நேரம் காத்திருந்து மீண்டும் முயற்சிக்கவும்.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "விருப்பங்கள் — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · விருப்பங்கள்",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "விருப்பங்கள்",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "தானாகவே சேமிக்கப்படும். உங்கள் உலாவியின் ஒத்திசைவு இயக்கத்தில் இருந்தால், உங்கள் அமைப்புகள் உங்கள் உலாவிச் சுயவிவரத்துடன் பயணிக்கும் — அவை எப்போதும் எங்களுக்கு அனுப்பப்படுவதில்லை.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "செயல்பாடு",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "திறக்கும்போது நகலெடு",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "பாப்அப் திறந்தவுடன் முடிவை கிளிப்போர்டுக்கு நகலெடுக்கும்.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "இந்தச் சாதனத்தில் மட்டும் வரலாற்றைச் சேமி",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "இயல்பாக இது முடக்கப்பட்டிருக்கும். இயக்கினால், முடிவுகள் இந்தச் சாதனத்தில் மட்டுமே சேமிக்கப்படும், கீழே பட்டியலிடப்படும், எப்போது வேண்டுமானாலும் அவற்றை நீக்கலாம்.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "வரலாற்று வரம்பு",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "பட்டியல் இதைவிட நீளமானதும், மிகப் பழைய வரிசைகள் நிரந்தரமாக நீக்கப்படும்.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "இதைவிடப் பழைய வரிசைகளை நீக்கு",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "நாட்கள். பழைய வரிசைகள் பின்னணியில் தானாகவே நீக்கப்படும். வரலாற்று வரம்பு அவற்றை நீக்கும் வரை வரிசைகளை வைத்திருக்க 0 எனக் கொடுக்கவும்.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "தோற்றம்",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "இயல்பாக உங்கள் கணினியின் அமைப்பையே பின்பற்றும்.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "கணினி",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "வெளிர்",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "அடர்",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "உங்கள் தரவு",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "இந்தச் சாதனத்தில் எதுவும் சேமிக்கப்படவில்லை.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "இந்தச் சாதனத்தில் $COUNT$ வரிசைகள் சேமிக்கப்பட்டுள்ளன. அவற்றில் எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்வதில்லை.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "இந்தச் சாதனத்தில் $COUNT$ வரிசை சேமிக்கப்பட்டுள்ளது. அது இந்தச் சாதனத்தை விட்டு வெளியே செல்வதில்லை.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "இந்தச் சாதனத்தில் $COUNT$ வரிசைகள் சேமிக்கப்பட்டுள்ளன. அவற்றில் எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்வதில்லை.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "இந்தச் சாதனத்தில் $COUNT$ வரிசைகள் சேமிக்கப்பட்டுள்ளன. அவற்றில் எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்வதில்லை.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "இந்தச் சாதனத்தில் $COUNT$ வரிசைகள் சேமிக்கப்பட்டுள்ளன. அவற்றில் எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்வதில்லை.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "இந்தச் சாதனத்தில் $COUNT$ வரிசைகள் சேமிக்கப்பட்டுள்ளன. அவற்றில் எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்வதில்லை.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "நிலையானது: இதை அழிக்க மாட்டோம் என்று உலாவி உறுதியளித்துள்ளது.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "உத்தரவாதம் இல்லை: சாதனத்தில் இடம் குறைந்தால் உலாவி இதைத் தானாகவே அழித்துவிடலாம். ஒரு காப்புப் பிரதியை ஏற்றுமதி செய்யுங்கள்.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "சேமிக்கப்பட்ட தரவு வைத்திருக்கப்படுமா என்பதை இந்த உலாவி சொல்வதில்லை; எனவே அதைத் தற்காலிகமானதாகவே கருதி, ஒரு காப்புப் பிரதியை ஏற்றுமதி செய்யுங்கள்.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$ இல் $USED$ பயன்பாட்டில் உள்ளது.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "நீக்கு",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ இல் இருந்து வந்த வரிசையை நீக்கு",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "அனைத்தையும் ஏற்றுமதி செய்",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "சேமிக்கப்பட்ட ஒவ்வொரு வரிசையையும் இந்தச் சாதனத்தில் ஒரே JSON கோப்பாகச் சேமிக்கும். எதுவும் பதிவேற்றப்படுவதில்லை.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "அனைத்தையும் ஏற்றுமதி செய்",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "அனைத்தையும் நீக்கு",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "சேமிக்கப்பட்ட ஒவ்வொரு வரிசையையும் இந்தச் சாதனத்திலிருந்து நீக்கும். அமைப்புகள் அப்படியே இருக்கும்.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "அனைத்தையும் நீக்கு",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "அமைப்புகளை மீட்டமை",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "இந்தப் பக்கத்தில் உள்ள ஒவ்வொரு அமைப்பையும் அதன் இயல்பு நிலைக்குத் திருப்பி, ஒத்திசைக்கப்பட்ட உங்கள் உலாவிச் சுயவிவரத்திலிருந்தும் அவற்றை நீக்கும். சேமிக்கப்பட்ட வரிசைகள் அப்படியே இருக்கும்.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "அமைப்புகளை மீட்டமை",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "சிக்கலைப் புகாரளித்தல்",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "சிக்கல் அறிக்கையைத் தயாரி",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "இந்த நீட்டிப்பின் நிலையை விவரிக்கும் ஒரு சிறிய கோப்பை உருவாக்கும். அது சேமிக்கப்படுவதற்கு முன்பே அதில் என்ன இருக்கிறது என்பதை நீங்களே பார்ப்பீர்கள்; எதுவும் எங்கும் அனுப்பப்படுவதில்லை.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "அறிக்கையைத் தயாரி",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "பற்றி",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — என்னை மாற்றவும்",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "இந்தக் கருவி என்ன செய்கிறது என்பதைத் துல்லியமாகச் சொல்லும் ஒரு வாக்கியம். இது தன் வேலையை உங்கள் சாதனத்திலேயே செய்கிறது: கணக்கு இல்லை, கண்காணிப்பு இல்லை, நெட்வொர்க் அழைப்புகள் இல்லை, எங்களுக்கு எதுவும் அனுப்பப்படுவதில்லை.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "சேமிக்கப்பட்டது",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "அனைத்தும் நீக்கப்பட்டன",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "நீக்க முடியவில்லை — மீண்டும் முயற்சிக்கவும்",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "அந்த அமைப்பைச் சேமிக்க முடியவில்லை",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "ஏற்றுமதி சேமிக்கப்பட்டது",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "கோப்பைச் சேமிக்க முடியவில்லை",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "வரிசை நீக்கப்பட்டது",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "அமைப்புகள் மீட்டமைக்கப்பட்டன",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "அமைப்புகளை மீட்டமைக்க முடியவில்லை",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "அறிக்கை சேமிக்கப்பட்டது",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "ரத்துசெய்",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "அனைத்தையும் நீக்கவா?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "சேமிக்கப்பட்ட ஒவ்வொரு வரிசையும் இந்தச் சாதனத்திலிருந்து நீக்கப்படும். உங்கள் அமைப்புகள் அப்படியே இருக்கும். இதைத் திரும்பப் பெற முடியாது.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "ஒவ்வொரு அமைப்பையும் மீட்டமைக்கவா?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "இந்தப் பக்கத்தில் உள்ள ஒவ்வொரு விருப்பமும் அதன் இயல்பு நிலைக்குத் திரும்பும், ஒத்திசைக்கப்பட்ட உங்கள் உலாவிச் சுயவிவரத்திலிருந்தும் நீக்கப்படும். சேமிக்கப்பட்ட உங்கள் வரிசைகள் அப்படியே இருக்கும். இதைத் திரும்பப் பெற முடியாது.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "இந்தச் சிக்கல் அறிக்கையைச் சேமிக்கவா?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "கோப்பில் இருக்கப்போவது இதுதான். இதில் பக்க முகவரிகள் இல்லை, பக்கத்தின் உரை இல்லை, நீங்கள் படம்பிடித்தவை எதுவும் இல்லை. எதுவும் எங்கும் அனுப்பப்படுவதில்லை — கோப்பு இந்தச் சாதனத்தில் சேமிக்கப்படுகிறது; அதைப் பகிர்வதா வேண்டாமா என்பது உங்கள் விருப்பம்.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "அறிக்கையைச் சேமி",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "நிழல் பயன்முறைச் சாளரம் — இந்த முடிவு உங்கள் வரலாற்றில் சேமிக்கப்படவில்லை.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "தள அணுகல்",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "ஒவ்வொரு தளத்திற்குமான அணுகல்",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "கருவிப்பட்டி பொத்தானை நீங்கள் கிளிக் செய்யாத பக்கங்களிலும் வேலை செய்யும் அம்சங்களுக்கு மட்டுமே இது தேவை. இங்கேயே, எப்போது வேண்டுமானாலும் இதைத் திரும்பப் பெறலாம்.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "அணுகலை வழங்கு",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "அணுகலைத் திரும்பப் பெறு",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "நீங்கள் பார்வையிடும் ஒவ்வொரு தளத்தையும் இந்த நீட்டிப்பு தற்போது படிக்க முடியும்.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "இந்த நீட்டிப்பின் கருவிப்பட்டி பொத்தானை நீங்கள் கிளிக் செய்த பிறகு மட்டுமே அது ஒரு தாவலைப் படிக்க முடியும்.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "அணுகல் வழங்கப்பட்டது",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "அணுகல் வழங்கப்படவில்லை",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "அணுகல் திரும்பப் பெறப்பட்டது",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "அந்த அணுகலைத் திரும்பப் பெற முடியவில்லை",
+    "description": "en: Could not revoke that access"
+  }
+}

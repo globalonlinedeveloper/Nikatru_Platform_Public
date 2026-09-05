@@ -1,0 +1,54 @@
+https://nikatru.com/fullshot/privacy
+
+# The first line that is neither blank nor a `#` comment IS the URL, and it is
+# what gets pasted into the Chrome, Edge and AMO dashboards verbatim.
+# check-store-metadata.mjs reads it, requires it to parse as https, and fails if
+# it disagrees with publish/identity.json privacyPolicyUrl.
+#
+# CORRECTED 2026-08-22. Until this date the entire file read `NOT-YET-HOSTED`
+# followed by a comment asserting three things. TWO were false by then. The
+# third is a general precondition that is STILL TRUE — what had changed is that
+# its condition was already SATISFIED, so it no longer justified the refusal it
+# was written to justify:
+#   FALSE      "publish/PRIVACY-POLICY.html is written and is NOT hosted anywhere."
+#   SATISFIED  "No store submission can proceed until it is reachable over https
+#              with no login."
+#   FALSE      "publish/identity.json privacyPolicyUrl is deliberately empty for
+#              the same reason"
+# Measured before this line was written, not taken from a note:
+#   - publish/identity.json has carried privacyPolicyUrl = the URL above since
+#     2026-08-21, so it was not empty and had not been for a day;
+#   - GET https://nikatru.com/fullshot/privacy on 2026-08-22 answered 200 with
+#     0 redirect hops, content-type text/html; charset=utf-8, 13923 bytes,
+#     carrying "Rajasekar Selvam", "NIKATRU" and support@nikatru.com, with no
+#     unfilled placeholder in the served text.
+# The refusal notice outlived the condition it described by a day and passed the
+# store-metadata gate green the whole time, because that gate then checked only
+# that this file EXISTED and was non-blank. It now checks what is in it.
+#
+# The SOURCE OF TRUTH for the page text is publish/PRIVACY-POLICY.html in THIS
+# repo. The served copy lives in another repo and no guard can see across that
+# boundary, so edit here first and then re-copy. See PRIVACY-POLICY-HOSTING.md,
+# WITH ONE WARNING, because that pointer led to a stale record until this day:
+# PRIVACY-POLICY-HOSTING.md's "STILL OPEN, and both are deliberate" list said
+# `identity.json`'s privacyPolicyUrl "is STILL EMPTY" and that the page was
+# "committed but not yet deployed". Both were already false when read on
+# 2026-08-22: identity.json carries the URL above (`grep -n privacyPolicyUrl
+# Extension/Full_Screen_Shot/publish/identity.json`) and has since commit 6bd9330
+# (2026-08-21, extensions PR #17), and the GET recorded above answered 200. That
+# passage sits inside a blockquote whose heading `grep -n 'DECIDED AND DONE'
+# PRIVACY-POLICY-HOSTING.md` finds — a DATED snapshot, so it takes an APPENDED
+# dated correction and not an edit.
+#
+# CORRECTED 2026-08-22, later pass — TWO THINGS ABOVE HAVE BEEN SUPERSEDED:
+#   1. The correction has now been appended, immediately under that blockquote,
+#      headed "CORRECTION APPENDED 2026-08-22". The sentence that used to end
+#      this file — "Until someone appends it, THIS file is the current state,
+#      not that one" — no longer describes the tree. The two records agree.
+#   2. This note used to cite the passage as `PRIVACY-POLICY-HOSTING.md:104-106`
+#      and to quote the heading as `"## DECIDED AND DONE - 2026-08-21"` with an
+#      ASCII hyphen. The heading uses an em dash and carries a leading emoji, so
+#      that quotation matched nothing — an anchor offered for searching that
+#      returns zero hits is worse than the line number it replaced. Both are now
+#      greps a reader can paste. Item 2 of that same STILL-OPEN list — LICENSE's
+#      unfilled `Required Notice:` — IS still open and is owner work.

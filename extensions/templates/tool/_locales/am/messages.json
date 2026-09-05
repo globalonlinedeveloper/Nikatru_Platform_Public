@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — ይህን ይተኩት",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ይህን ይተኩት — አንድ ዓረፍተ ነገር፣ አንድ ዓላማ፣ ከ132 ቁምፊ ያልበለጠ፣ ማስታወቂያ የለም።",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — ይህን ይተኩት",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "ገጽታ ይቀይሩ",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "አማራጮች",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "ንቁ ትር",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "በማንበብ ላይ…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "ርዕስ ቅዳ",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "ንቁውን ትር እንደገና አንብብ",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "አሰናብት",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "ተቀድቷል",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "መቅዳት አልተቻለም — በምትኩ Ctrl+C ይጫኑ",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "የመጨረሻው $ACTION$ አልተሳካም — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "የመጨረሻው $ACTION$ አልተሳካም — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "ርዕስ ማንበብ",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "መቅዳት",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "ውሂብ ማጥፋት",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "ማስኬድ",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "ከመጠናቀቁ በፊት አንድ ነገር አቋረጠው። እባክዎ እንደገና ይሞክሩ።",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "ይህ ትር አስቀድሞ ሥራ ላይ ነው።",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "ይህ ገጽ በአሳሹ የተጠበቀ ስለሆነ እንዲነበብ አይፈቀድም።",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "ምንም ንቁ ትር አልተገኘም።",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "ይህ ገጽ የሚነበብ ርዕስ የለውም።",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "ተሰርዟል።",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "ያልታወቀ መልእክት።",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "ሥራው ከመጠናቀቁ በፊት ያ ትር ተዘግቷል።",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "ቅጥያው ምላሽ አልሰጠም።",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "ምንም ነገር አልተመለሰም።",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "እንደ ቅንብሮች፣ ቅጥያዎች እና የአዲስ ትር ገጽ ያሉ የአሳሽ ገጾች ለሁሉም ቅጥያዎች የተከለከሉ ናቸው። ይህን በተለመደ የድር ገጽ ላይ ይሞክሩ።",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "የገንቢ መሣሪያዎች (DevTools) መስኮቶች ለቅጥያዎች የተከለከሉ ናቸው።",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "የገጽ ምንጭ ማሳያ ገጾች ለቅጥያዎች የተከለከሉ ናቸው። በምትኩ ገጹን ራሱን ይሞክሩ።",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "የቅጥያዎች ገጾች፣ የዚህኛው ቅጥያ የራሱን ጨምሮ፣ በአሳሹ የተጠበቁ ናቸው።",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "የChrome ድር መደብር ቅጥያዎች ገጾቹን እንዳያነቡ ይከለክላል።",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "የአካባቢ ፋይሎች አንድ ተጨማሪ ፈቃድ ይፈልጋሉ። የአሳሽዎን የቅጥያዎች ገጽ ይክፈቱ፣ ይህን ቅጥያ ያግኙና \"የፋይል URLs መዳረሻ ፍቀድ\" የሚለውን ያብሩ።",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "ይህ ገጽ አልተጫነም፣ ስለዚህ እስካሁን የሚነበብ ነገር የለም።",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "ይህ በአሳሹ ውስጥ የተሰናዳው የPDF መመልከቻ ነው። ቅጥያዎች በውስጡ ማንበብ አይችሉም — PDFውን በተለመደ ትር ይክፈቱ ወይም መጀመሪያ ያውርዱት።",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "ይህን ገጽ የከፈተው ጣቢያ በአሸዋ ሳጥን ውስጥ ስላስቀመጠው ቅጥያዎች ሊያነቡት አይችሉም።",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "የተጨማሪዎች ጣቢያ ቅጥያዎች ገጾቹን እንዳያነቡ ይከለክላል።",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "በዚህ መሣሪያ ላይ ቦታ አልቋል፣ ስለዚህ ምንም ነገር አልተቀመጠም። በአማራጮች ውስጥ አንዳንድ የተከማቹ ረድፎችን ይሰርዙና እንደገና ይሞክሩ።",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "ይህ ከልክ በላይ ጊዜ ስለወሰደ ተቋርጧል። ምንም ነገር ወደኋላ አልቀረም።",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "ይህ እሴት በተመሳሰሉ ቅንብሮችዎ ውስጥ ለማከማቸት በጣም ረጅም ነው። አጠር ያለ ይሞክሩ።",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "ያ ቅንብር አልተቀመጠም። ጥቂት ቆይተው እንደገና ይሞክሩ።",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "አማራጮች — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · አማራጮች",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "አማራጮች",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "በራስ-ሰር ይቀመጣል። የአሳሽዎ ማመሳሰል የበራ ከሆነ ቅንብሮችዎ ከአሳሽ መገለጫዎ ጋር አብረው ይንቀሳቀሳሉ — ወደ እኛ ግን በፍጹም አይላኩም።",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "ባህሪ",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "ሲከፈት መቅዳት",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "ብቅ-ባዩ እንደተከፈተ ወዲያውኑ ውጤቱ ወደ ቅንጥብ ሰሌዳ ይቀዳል።",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "በዚህ መሣሪያ ላይ ታሪክ ማስቀመጥ",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "በነባሪ ጠፍቷል። ሲበራ፣ ውጤቶች በዚህ መሣሪያ ላይ ብቻ ይቀመጣሉ፣ ከታች ይዘረዘራሉ፣ እና በማንኛውም ጊዜ ሊሰርዟቸው ይችላሉ።",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "የታሪክ ገደብ",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "ዝርዝሩ ከዚህ ቁጥር ሲረዝም በጣም አሮጌዎቹ ረድፎች ይወገዳሉ።",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "ረድፎች የሚሰረዙበት ዕድሜ",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "ቀናት። አሮጌ ረድፎች በጀርባ በራስ-ሰር ይወገዳሉ። ረድፎቹ የታሪክ ገደቡ እስኪያስወግዳቸው ድረስ እንዲቆዩ 0 ያድርጉ።",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "ገጽታ",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "በነባሪ የሥርዓትዎን ቅንብር ይከተላል።",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "ሥርዓት",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "ብሩህ",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "ጨለማ",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "የእርስዎ ውሂብ",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "በዚህ መሣሪያ ላይ ምንም ነገር አልተከማቸም።",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ ረድፍ በዚህ መሣሪያ ላይ ተከማችቷል። ምንም ነገር ከዚህ አይወጣም።",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ ረድፍ በዚህ መሣሪያ ላይ ተከማችቷል። ምንም ነገር ከዚህ አይወጣም።",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ ረድፎች በዚህ መሣሪያ ላይ ተከማችተዋል። ምንም ነገር ከዚህ አይወጣም።",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ ረድፎች በዚህ መሣሪያ ላይ ተከማችተዋል። ምንም ነገር ከዚህ አይወጣም።",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ ረድፎች በዚህ መሣሪያ ላይ ተከማችተዋል። ምንም ነገር ከዚህ አይወጣም።",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ ረድፎች በዚህ መሣሪያ ላይ ተከማችተዋል። ምንም ነገር ከዚህ አይወጣም።",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "ዘላቂ፡ አሳሹ ይህን እንደማያጠፋው ቃል ገብቷል።",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "በተቻለ መጠን፡ የመሣሪያው ቦታ ካነሰ አሳሹ ይህን በራሱ ሊያጠፋው ይችላል። ምትኬ ያውጡ።",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "ይህ አሳሽ የተከማቸ ውሂብ ይቀመጥ አይቀመጥ አይናገርም፣ ስለዚህ እንደ ጊዜያዊ ይያዙትና ምትኬ ያውጡ።",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $USED$ ከ$QUOTA$ ውስጥ ጥቅም ላይ ውሏል።",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "ሰርዝ",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "የ$ORIGIN$ ረድፍን ሰርዝ",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "ሁሉንም ወደ ውጭ ላክ",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "እያንዳንዱን የተከማቸ ረድፍ በዚህ መሣሪያ ላይ ወዳለ አንድ የJSON ፋይል ያስቀምጣል። ምንም ነገር አይሰቀልም።",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "ሁሉንም ወደ ውጭ ላክ",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "ሁሉንም ሰርዝ",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "እያንዳንዱን የተከማቸ ረድፍ ከዚህ መሣሪያ ያስወግዳል። ቅንብሮች ግን ይቀራሉ።",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "ሁሉንም ሰርዝ",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "ቅንብሮችን ዳግም አስጀምር",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "በዚህ ገጽ ላይ ያለውን እያንዳንዱን ቅንብር ወደ ነባሪው ይመልሳል እንዲሁም ከተመሳሰለው የአሳሽ መገለጫዎ ያስወግዳቸዋል። የተከማቹ ረድፎች ግን ይቀራሉ።",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "ቅንብሮችን ዳግም አስጀምር",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "ችግር ሪፖርት ማድረግ",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "የችግር ሪፖርት ማዘጋጀት",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "የዚህን ቅጥያ ሁኔታ የሚገልጽ ትንሽ ፋይል ይሠራል። ከመቀመጡ በፊት በውስጡ ያለውን በትክክል ያያሉ፣ እና ምንም ነገር ወደ የትም አይላክም።",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "ሪፖርት አዘጋጅ",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "ስለ",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — ይህን ይተኩት",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "ይህ መሣሪያ የሚያደርገውን በትክክል የሚገልጽ አንድ ዓረፍተ ነገር። ሥራውን በመሣሪያዎ ላይ ይሠራል፡ መለያ የለም፣ ክትትል የለም፣ የአውታረ መረብ ጥሪዎች የሉም፣ ወደ እኛም ምንም ነገር አይላክም።",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "ተቀምጧል",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "ሁሉም ተሰርዟል",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "መሰረዝ አልተቻለም — እንደገና ይሞክሩ",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "ያ ቅንብር አልተቀመጠም",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "የተላከው ፋይል ተቀምጧል",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "ፋይሉን ማስቀመጥ አልተቻለም",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "ረድፉ ተሰርዟል",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "ቅንብሮች ዳግም ተጀምረዋል",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "ቅንብሮቹን ዳግም ማስጀመር አልተቻለም",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "ሪፖርቱ ተቀምጧል",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "ይቅር",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "ሁሉም ይሰረዝ?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "እያንዳንዱ የተከማቸ ረድፍ ከዚህ መሣሪያ ይወገዳል። ቅንብሮችዎ ግን ይቀራሉ። ይህ መቀልበስ አይቻልም።",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "ሁሉም ቅንብር ዳግም ይጀመር?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "በዚህ ገጽ ላይ ያለው እያንዳንዱ ምርጫ ወደ ነባሪው ይመለሳል እንዲሁም ከተመሳሰለው የአሳሽ መገለጫዎ ይወገዳል። የተከማቹ ረድፎችዎ ግን ይቀራሉ። ይህ መቀልበስ አይቻልም።",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "ይህ የችግር ሪፖርት ይቀመጥ?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "ፋይሉ የሚይዘው ይህ ብቻ ነው። ምንም የገጽ አድራሻዎች፣ ምንም የገጽ ጽሑፍ እና የቀረጹት ምንም ነገር የለውም። ምንም ነገር ወደ የትም አይላክም — ፋይሉ በዚህ መሣሪያ ላይ ይቀመጣል፣ ማጋራቱም ሆነ አለማጋራቱ የእርስዎ ውሳኔ ነው።",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "ሪፖርቱን አስቀምጥ",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "የሥውር መስኮት — ይህ ውጤት በታሪክዎ ውስጥ አልተቀመጠም።",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "የጣቢያ መዳረሻ",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "የሁሉም ጣቢያዎች መዳረሻ",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "የመሣሪያ አሞሌ ቁልፉን ባልተጫኑባቸው ገጾች ላይ ለሚሠሩ ባህሪያት ብቻ ያስፈልጋል። በማንኛውም ጊዜ፣ እዚሁ፣ መልሰው ሊወስዱት ይችላሉ።",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "መዳረሻ ስጥ",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "መዳረሻ ሻር",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "ይህ ቅጥያ አሁን የሚጎበኙትን እያንዳንዱን ጣቢያ ማንበብ ይችላል።",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "ይህ ቅጥያ ትርን ማንበብ የሚችለው በመሣሪያ አሞሌው ላይ ያለውን ቁልፉን ከተጫኑ በኋላ ብቻ ነው።",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "መዳረሻ ተሰጥቷል",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "መዳረሻ አልተሰጠም",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "መዳረሻ ተሽሯል",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "ያንን መዳረሻ መሻር አልተቻለም",
+    "description": "en: Could not revoke that access"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "./contract.schema.json",
+  "moneyEnvironments": [
+    "live",
+    "sandbox"
+  ],
+  "revocationReasons": [
+    {
+      "reason": "refund_approved",
+      "restores": false
+    },
+    {
+      "reason": "chargeback",
+      "restores": false
+    },
+    {
+      "reason": "chargeback_reversed",
+      "restores": true
+    },
+    {
+      "reason": "subscription_expired",
+      "restores": false
+    },
+    {
+      "reason": "trial_expired",
+      "restores": false
+    },
+    {
+      "reason": "payment_failed_final",
+      "restores": false
+    },
+    {
+      "reason": "cancelled_at_period_end",
+      "restores": false
+    },
+    {
+      "reason": "subscription_paused",
+      "restores": false
+    }
+  ]
+}

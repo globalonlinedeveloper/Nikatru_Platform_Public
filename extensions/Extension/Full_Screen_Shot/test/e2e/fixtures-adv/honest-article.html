@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>On slow tools</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  blockquote { margin: 0 0 14px; padding: 10px 16px; border-left: 3px solid #c8cfdb; color: #47505f; }
+  ul { margin: 0 0 14px 22px; }
+  li { margin: 0 0 6px; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Essays</a><a href="#">Notes</a><a href="#">Archive</a><a href="#">About</a>
+  <span>A reading list</span>
+</nav>
+<main>
+  <h1>On slow tools</h1>
+
+  <!-- THE HONEST CASE, and it is a ship gate in its own right (§6.3 E8): "if E8
+       goes red the feature gets switched off and the whole design has failed."
+
+       Deliberately written with ORDINARY markup rather than the leaf-only prose
+       a fixture author reaches for: several paragraphs carry an <a> or an <em>,
+       so their own text nodes are never fed and `chars` understates the page.
+       A design that only stays useful on leaf-only pages is not useful. -->
+
+  <p>A tool that is slow in the right place is often faster than one that is
+  quick everywhere. The question is never how many operations a second the thing
+  can do; it is how many of them you had to ask for.</p>
+
+  <p>Consider the difference between a saw that cuts in one direction and one
+  that cuts in both. The second sounds strictly better. In practice the first
+  gives you a rhythm, and rhythm is what carries a long cut straight.</p>
+
+  <p>There is a version of this argument that is merely nostalgia, and it should
+  be named before it is dismissed. Old tools were not better because they were
+  old. They were better in the specific cases where the constraint they imposed
+  matched the constraint of the work.</p>
+
+  <p>The interesting cases are the ones where <em>removing</em> a constraint made
+  the work worse. A word processor that repaginates continuously removes the
+  page as a unit of thought. A camera that takes a hundred frames a second
+  removes the moment of choosing.</p>
+
+  <blockquote>The instrument shapes the question. Change the instrument and you
+  have quietly changed what you were asking.</blockquote>
+
+  <p>None of this argues for deliberately crippling anything. It argues for
+  knowing which of your constraints are load-bearing, which is a harder question
+  than it sounds and is almost never answered by benchmarking.</p>
+
+  <h2>Three tests</h2>
+
+  <ul>
+    <li>Does the constraint make a class of mistake impossible, or merely
+    inconvenient? Only the first is worth keeping.</li>
+    <li>Would you notice if it were removed tomorrow, or in six months? The
+    slow-acting ones are the ones that get removed.</li>
+    <li>Can you name the last time it stopped you doing something you actually
+    wanted to do? If not, it may be doing nothing.</li>
+  </ul>
+
+  <p>The third test is the one people fail. A constraint that never bites is not
+  a safety property; it is a decoration that has been mistaken for one, and it
+  will be removed by the first person who is in a hurry.</p>
+
+  <p>A related failure is the constraint that bites constantly. That one does not
+  survive either, because everybody learns to work around it, and a rule
+  everybody routes around is worse than no rule: it teaches people that the rules
+  are advisory.</p>
+
+  <p>So the useful constraints sit in a narrow band. They fire often enough that
+  you remember they exist, and rarely enough that firing still means something.
+  That band is where a good tool lives, and it is why so few tools are good.</p>
+
+  <h2>A worked example</h2>
+
+  <p>Version control is the clearest case. The commit is a constraint: it makes
+  you stop, name what you did, and draw a boundary around it. Nothing about the
+  machine requires this. You could persist every keystroke and never name
+  anything, and some editors do.</p>
+
+  <p>The naming is the whole value. It forces a small act of summary at the exact
+  moment when you still remember why. Six months later that summary is the only
+  thing standing between a reader and an archaeology project.</p>
+
+  <p>Notice that the constraint is cheap when the work is coherent and expensive
+  when it is not, which is exactly the right shape. A commit that is hard to name
+  is usually a commit that is doing two things, and being unable to name it is
+  the tool telling you so.</p>
+
+  <p>This is the property worth designing for and the hardest one to fake. A
+  warning that fires on everything has no information in it. A warning that fires
+  when something is genuinely wrong is worth interrupting someone for, and it
+  earns the right to interrupt precisely by being rare.</p>
+
+  <h2>Where this leaves us</h2>
+
+  <p>Prefer the tool whose refusals you can predict. Prefer the one that tells
+  you what it did rather than what it intended. And when a tool reassures you,
+  check what the reassurance is made of, because the comfortable answer and the
+  true one are not always the same shape.</p>
+
+  <p>That last one is the whole discipline, and it is unglamorous. It is mostly a
+  matter of reading the numbers a thing reports and asking which act produced
+  them, which is slower than trusting the summary and is the only method that
+  has ever worked.</p>
+</main>
+</body>
+</html>

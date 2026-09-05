@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "Loosen the inner scrolling panels and iframes out to their whole content, instead of capturing exactly what is being seen. A frame from another website will ask for one more permission, only one single time.",
+  "optionsLead": "Changes are saved automatically and synchronised into your browser profile.",
+  "optionsExpandPermGranted": "Permission has been granted — frames from other websites are also expanded.",
+  "optionsExpandPermMissing": "If there is no \"read all websites\" permission, a frame from another website is only captured exactly as it is being seen. Panels and iframes of the same website, however, always work normally.",
+  "optionsRedactPIIDesc": "Scans the text the page exposes in order to find e-mail addresses, telephone numbers, credit card numbers, personal identification numbers and API keys, then covers the matched part with a solid block in the image that is saved. Text drawn in the form of picture dots it cannot read — a canvas, an image, a PDF file, a video frame. The detection runs right on your device; nothing is sent anywhere at all. Applies to whole-page captures (scrolling the entire document); the covering block is permanent, so please review the result yourself.",
+  "scrollclipFormatHint": "GIF can be played back everywhere. WebM is lighter and smoother (it is recorded directly, right inside your browser).",
+  "batchPermissionHint": "Opening these pages needs a permission that is asked only one single time, at the first run.",
+  "batchPermissionDeclined": "The permission to open those pages has been refused."
+}

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — multi-carousel page (merged-right must NOT misfire)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #nav { position: sticky; top: 0; height: 60px; background: #FF3333; color: #fff; display: flex; align-items: center; padding: 0 20px; z-index: 10; }
+  #blockA { height: 400px; background: #D0D0D8; padding: 16px 20px; }
+  .carousel { height: 220px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; border-top: 2px solid #999; }
+  .track { display: inline-flex; }
+  .item { width: 200px; height: 200px; flex: none; margin: 8px; border-radius: 8px; }
+  #blockB { height: 1200px; background: #B4B4C0; padding: 16px 20px; position: relative; }
+  #deep { position: absolute; top: 700px; left: 0; right: 0; height: 100px; background: #00FF88; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 16px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 470px; max-height: 220px; overflow-y: auto; z-index: 30;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="nav">FullShot e2e — multi-carousel homepage. Several sideways carousels must NOT balloon the capture. Press Alt+Shift+P.</div>
+<div id="blockA">Hero block — full width. The document scrolls only vertically.</div>
+<div class="carousel" id="c1"><div class="track"></div></div>
+<div class="carousel" id="c2"><div class="track"></div></div>
+<div class="carousel" id="c3"><div class="track"></div></div>
+<div class="carousel" id="c4"><div class="track"></div></div>
+<div id="blockB">Lower content block<div id="deep"></div></div>
+<div id="bottom">PAGE BOTTOM MARKER — appears once at the end.</div>
+<div id="scoreboard">Waiting for capture… press Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const COLORS = { c1: '#E68C28', c2: '#28B4A0', c3: '#9650C8', c4: '#E64C96' };
+  // build wide carousels (20 items each => ~4160px track, far wider than the viewport)
+  ['c1','c2','c3','c4'].forEach(id => {
+    const track = $(id).firstElementChild;
+    for (let i = 0; i < 20; i++) {
+      const d = document.createElement('div');
+      d.className = 'item'; d.style.background = COLORS[id];
+      track.appendChild(d);
+    }
+  });
+
+  const winW = window.innerWidth;
+  const board = $('scoreboard');
+  const S = { notBallooned: true, maxW: 0, restored: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      const w = document.documentElement.scrollWidth;
+      if (w > S.maxW) S.maxW = w;
+      if (w > winW * 1.5) S.notBallooned = false;   // widened carousels would balloon the page
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.restored = document.documentElement.scrollWidth <= winW + 8;
+        report();
+      }, 600);
+    }
+  }, 80);
+
+  function line(l, ok) { return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + l + '\n'; }
+  function report() {
+    const rows = [
+      ['page NOT ballooned sideways during capture (carousels not widened)', S.notBallooned],
+      ['document width restored after capture', S.restored]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'MULTI-CAROUSEL RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\n(max doc width seen during capture: ' + S.maxW + 'px; viewport ' + winW + 'px)\n' +
+      'Also verify the image: one viewport-wide vertical capture — red nav once at top, the four carousels as-seen (first items), green deep marker, blue bottom marker. No repeated nav bars, no huge blank sideways area.';
+    console.log('FSMULTICAROUSEL', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

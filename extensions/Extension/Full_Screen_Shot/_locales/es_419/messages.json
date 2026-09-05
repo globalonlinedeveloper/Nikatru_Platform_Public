@@ -1,0 +1,2230 @@
+{
+  "appName": {
+    "message": "FullShot: captura de página completa"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Captura la página completa, el área visible, una región o cualquier elemento. Edita, anota y exporta a PNG, JPEG, WebP o PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot: capturar página (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Capturar página completa"
+  },
+  "commandCaptureVisible": {
+    "message": "Capturar área visible"
+  },
+  "commandCaptureRegion": {
+    "message": "Capturar la región seleccionada"
+  },
+  "commandCaptureElement": {
+    "message": "Capturar un elemento de la página (haga clic para elegir)"
+  },
+  "popupToggleTheme": {
+    "message": "Cambiar tema"
+  },
+  "popupModeFullTitle": {
+    "message": "Página completa"
+  },
+  "popupModeFullSub": {
+    "message": "Desplazarse y capturar toda la página"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Área visible"
+  },
+  "popupModeVisibleSub": {
+    "message": "Solo lo que se ve en pantalla"
+  },
+  "popupModeRegionTitle": {
+    "message": "Región seleccionada"
+  },
+  "popupModeRegionSub": {
+    "message": "Arrastre para elegir un área"
+  },
+  "popupModeElementTitle": {
+    "message": "Elemento"
+  },
+  "popupModeElementSub": {
+    "message": "Haga clic en cualquier elemento de la página"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Captura con retardo"
+  },
+  "popupModeDelayedSub": {
+    "message": "Página completa tras una cuenta atrás"
+  },
+  "popupDelayLabel": {
+    "message": "Segundos de retardo"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Expandir paneles desplazables e iframes"
+  },
+  "popupExpandToggleTip": {
+    "message": "Amplía los paneles desplazables internos y los iframes hasta su contenido completo en lugar de capturarlos tal como se ven. Los marcos de otros sitios piden un permiso adicional una sola vez."
+  },
+  "popupDismiss": {
+    "message": "Descartar"
+  },
+  "popupLastErrorFailed": {
+    "message": "Error en la última $MODE$: $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Error en la última $MODE$: $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "captura de página completa"
+  },
+  "popupModeNameVisible": {
+    "message": "captura del área visible"
+  },
+  "popupModeNameRegion": {
+    "message": "captura de región"
+  },
+  "popupModeNameElement": {
+    "message": "captura de elemento"
+  },
+  "popupModeNameGeneric": {
+    "message": "captura"
+  },
+  "popupNoActiveTab": {
+    "message": "No se ha encontrado ninguna pestaña activa."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "La captura no ha podido iniciarse."
+  },
+  "popupLinkHistory": {
+    "message": "Historial"
+  },
+  "popupLinkBatch": {
+    "message": "Lote"
+  },
+  "popupLinkOptions": {
+    "message": "Opciones"
+  },
+  "optionsPageTitle": {
+    "message": "Opciones — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Opciones"
+  },
+  "optionsHeading": {
+    "message": "Opciones"
+  },
+  "optionsLead": {
+    "message": "Los cambios se guardan automáticamente y se sincronizan con su perfil del navegador."
+  },
+  "optionsSectionImage": {
+    "message": "Imagen"
+  },
+  "optionsFormat": {
+    "message": "Formato"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ no tiene pérdidas; $JPEG$ ocupa menos; $WEBP$ es el más ligero con una calidad similar.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Calidad de $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Plantilla de nombre de archivo"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Marcadores: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Captura"
+  },
+  "optionsCaptureDelay": {
+    "message": "Espera adicional por paso"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisegundos de espera tras cada desplazamiento. Auméntelo en páginas lentas o con muchas animaciones."
+  },
+  "optionsHideFixed": {
+    "message": "Ocultar elementos fijos y adhesivos"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Evita que las cabeceras se repitan en cada pantalla (se muestran una vez arriba)."
+  },
+  "optionsPreScroll": {
+    "message": "Predesplazar para cargar contenido diferido"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Recorre la página una vez antes de capturar. Más lento, pero recoge las imágenes de carga diferida."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Esperar a que se descodifiquen las imágenes"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Deja que las imágenes tardías o diferidas terminen de descodificarse antes de cada fotograma, para que no se capturen como recuadros negros o vacíos."
+  },
+  "optionsHideOverlays": {
+    "message": "Ocultar banners y ventanas emergentes"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Elimina los banners de cookies y consentimiento, las ventanas de boletines y los avisos de \"descarga la app\" antes de capturar, y desbloquea las páginas congeladas por un cuadro de diálogo. Después se restaura todo."
+  },
+  "optionsExpandInner": {
+    "message": "Expandir el contenido desplazable"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Amplía los paneles internos y los iframes para mostrar el contenido oculto bajo su propio borde, en lugar de capturarlos exactamente como se ven."
+  },
+  "optionsExpandPermRow": {
+    "message": "Marcos de otros sitios"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Permitir"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Permiso concedido: los marcos de otros sitios también se expanden."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Sin el permiso \"$PERMISSION$\", los marcos de otros sitios se capturan tal como se ven. Los paneles y los iframes del mismo sitio siempre funcionan.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Desplegar listas virtualizadas"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Recorre paso a paso los feeds con ventana de renderizado (al estilo de $LIB1$ / $LIB2$) para capturar todo su contenido, no solo las filas en pantalla. Más lento en listas muy largas.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Expandir el contenido oculto tras una interacción"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Abre antes de capturar los $DETAILS$ plegados, las pestañas inactivas, los acordeones y las secciones \"ver más\", y luego los restaura. Revela el contenido oculto tras un clic.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Pulsar los botones \"$BUTTONTEXT$\"",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Pulsa los botones \"cargar más\" o \"ver más\" y espera a que se cargue el contenido nuevo, una y otra vez, hasta agotar el feed. A diferencia de la opción anterior, esto trae contenido que aún no está en la página; el contenido cargado permanece tras la captura."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Desplazarse para cargar feeds infinitos"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Para feeds sin botón de \"cargar más\": se desplaza hasta el final y espera la página siguiente, una y otra vez, hasta que el feed deja de crecer (con un límite, para no perseguir feeds interminables). El contenido cargado permanece tras la captura."
+  },
+  "optionsWaitStable": {
+    "message": "Esperar a que termine de cargarse el contenido"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Espera a que los esqueletos y marcadores de carga (zonas aria-busy, bloques con destello) se sustituyan por el contenido real antes de capturar, para que un \"cargando…\" a media página no se capture como recuadros grises. Con un límite, para que un indicador atascado no bloquee la captura."
+  },
+  "optionsRedactPII": {
+    "message": "Ocultar automáticamente los datos sensibles"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Analiza el texto que expone la página en busca de correos electrónicos, números de teléfono, números de tarjeta, números de identificación nacional y claves de API, y pinta un bloque opaco sobre aquello que coincide en la imagen guardada. No puede leer texto dibujado como píxeles: un lienzo, una imagen, un PDF, un fotograma de video. La detección se ejecuta en su dispositivo; nunca se envía nada a ninguna parte. Se aplica a las capturas de página completa (desplazamiento del documento); el bloque es permanente, así que revise usted mismo el resultado."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Altura máxima de la página"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Límite de seguridad (px CSS) para feeds de desplazamiento infinito."
+  },
+  "optionsSectionPdf": {
+    "message": "Exportación a PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Tamaño de papel predeterminado"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" crea una página exactamente del tamaño de la captura.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Tamaño de la imagen"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Carta"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientación"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Para tamaños de papel fijos."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Vertical"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Horizontal"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "División inteligente de páginas"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Busca un hueco visual cerca de cada salto de página para no cortar las líneas de texto por la mitad."
+  },
+  "optionsPdfStamp": {
+    "message": "Sellar la URL y la fecha"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Añade la URL de la página y la fecha de captura al pie de cada página del PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Descarga"
+  },
+  "optionsSaveDirectory": {
+    "message": "Carpeta"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Subcarpeta dentro de $DOWNLOADS$ para sus capturas, p. ej. $EXAMPLE$. En blanco = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Descargas)"
+  },
+  "optionsSaveAs": {
+    "message": "Cuadro de diálogo \"Guardar como\""
+  },
+  "optionsSaveAsDesc": {
+    "message": "Preguntar dónde guardar cada archivo en lugar de descargarlo sin avisar."
+  },
+  "optionsClipboardFit": {
+    "message": "Ajustar las copias del portapapeles a los límites de las apps"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Reduce las copias que superan los $PIXELS$ píxeles para que se puedan pegar en $APP$ y similares.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Flujo de trabajo"
+  },
+  "optionsAutoDownload": {
+    "message": "Descargar automáticamente tras la captura"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Guarda la imagen en cuanto termina una captura."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Abrir el editor tras la captura"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Pasar directamente a anotar (solo en capturas de una sola parte)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Para la ventana emergente y todas las páginas de FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistema"
+  },
+  "optionsThemeLight": {
+    "message": "Claro"
+  },
+  "optionsThemeDark": {
+    "message": "Oscuro"
+  },
+  "optionsShortcuts": {
+    "message": "Atajos de teclado"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Página completa: $KEYFULL$ · Visible: $KEYVISIBLE$. Personalícelos en $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Guardado ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Tus datos"
+  },
+  "optionsStorage": {
+    "message": "Almacenamiento"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ de $QUOTA$ usados en este dispositivo.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Este navegador no informa de cuánto espacio está usando FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Tus capturas se conservan: el navegador no las borrará para liberar espacio."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Tus capturas están en el almacenamiento de mejor esfuerzo del navegador, que puede vaciarlo para liberar espacio."
+  },
+  "optionsStorageKeep": {
+    "message": "Conservar mis datos"
+  },
+  "optionsExport": {
+    "message": "Exportar todo"
+  },
+  "optionsExportDesc": {
+    "message": "Escribe un único archivo con tus ajustes y la lista de tus capturas. Se guarda en este dispositivo y no se envía a ninguna parte."
+  },
+  "optionsExportImages": {
+    "message": "Incluir las imágenes"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Las imágenes en sí, que son casi todo el tamaño. Sin ellas, el archivo enumera tus capturas pero no contiene ninguna."
+  },
+  "optionsExportSize": {
+    "message": "Tamaño del archivo: unos $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Datos sobrantes"
+  },
+  "optionsSweepDesc": {
+    "message": "Una captura interrumpida puede dejar en el disco fotogramas que no pertenecen a ninguna captura de pantalla. No aparecen en ninguna página, así que ninguna página puede borrarlos. Esto los encuentra y los elimina."
+  },
+  "optionsSweepBtn": {
+    "message": "Buscar y eliminar"
+  },
+  "optionsSweepResult": {
+    "message": "Eliminado. Capturas depuradas: $COUNT$ · Espacio liberado: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "No sobra nada: todo lo almacenado pertenece a una captura que puedes ver."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Restablecer los ajustes"
+  },
+  "optionsResetDesc": {
+    "message": "Devuelve cada ajuste de esta página al valor con el que se instaló. Tus capturas no se tocan."
+  },
+  "optionsResetBtn": {
+    "message": "Restablecer"
+  },
+  "optionsResetConfirm": {
+    "message": "¿Devolver todos los ajustes de FullShot a sus valores predeterminados? Tus capturas no se ven afectadas."
+  },
+  "optionsResetDone": {
+    "message": "Los ajustes han vuelto a sus valores predeterminados."
+  },
+  "optionsDeleteAll": {
+    "message": "Borrarlo todo"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Elimina todas las capturas de tu historial y todo lo que hayan dejado las capturas interrumpidas. Tus ajustes se quedan como están."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "¿Borrar todo lo que FullShot ha guardado en este dispositivo?\n\nCapturas en tu historial: $COUNT$\nRestos de capturas interrumpidas: $LEFTOVER$\nEspacio que se libera: $SIZE$\n\nTus ajustes no se ven afectados. Esto no se puede deshacer.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Borrado. FullShot ya no guarda ninguna captura en este dispositivo."
+  },
+  "resultPageTitle": {
+    "message": "Captura — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Copiar"
+  },
+  "resultCopyTip": {
+    "message": "Copiar la imagen al portapapeles"
+  },
+  "resultEdit": {
+    "message": "Editar"
+  },
+  "resultEditTip": {
+    "message": "Abrir en el editor"
+  },
+  "resultBeautify": {
+    "message": "Embellecer"
+  },
+  "resultBeautifyTip": {
+    "message": "Embellecer: marco y fondo para compartir"
+  },
+  "resultClip": {
+    "message": "Clip"
+  },
+  "resultClipTip": {
+    "message": "Clip de desplazamiento: $GIF$ / $WEBM$ animado",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Tamaño de papel del PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Descargar"
+  },
+  "resultDeleteTip": {
+    "message": "Eliminar captura"
+  },
+  "resultHistoryTip": {
+    "message": "Historial de capturas"
+  },
+  "resultProgressAssembling": {
+    "message": "Montando tu captura…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Descodificando $COUNT$ fotograma…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingMany": {
+    "message": "Descodificando $COUNT$ fotogramas…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Descodificando $COUNT$ fotogramas…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Uniendo la parte $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Uniendo la parte $INDEX$ de ~$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Guardando…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$ × $HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Consejo: arrastre la imagen directamente a su escritorio o use $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Aquí no hay nada"
+  },
+  "resultEmptyBody": {
+    "message": "Esta captura ya no existe."
+  },
+  "resultOpenHistory": {
+    "message": "Abrir el historial"
+  },
+  "resultSomethingWrong": {
+    "message": "Algo ha ido mal: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Parte $INDEX$ de $TOTAL$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Descargar la parte"
+  },
+  "resultEditPart": {
+    "message": "Editar la parte"
+  },
+  "resultClipPart": {
+    "message": "Clip de la parte"
+  },
+  "resultPartAlt": {
+    "message": "Parte $INDEX$ de la captura",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Descargando $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "¿Eliminar esta captura permanentemente?"
+  },
+  "resultDeleted": {
+    "message": "Captura eliminada."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredMany": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Esta captura es demasiado alta para pegarla como una sola imagen legible, por eso $COPY$ pone en el portapapeles una vista general reducida de toda la página. El texto pequeño no se va a poder leer.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Parte $INDEX$ copiada al portapapeles",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Creando el PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF descargado ($COUNT$ página)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneMany": {
+    "message": "PDF descargado ($COUNT$ páginas)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF descargado ($COUNT$ páginas)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "Error en el PDF: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Volver a la captura"
+  },
+  "editorToolSelect": {
+    "message": "Seleccionar / mover ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Recortar ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Lápiz ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Marcador ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Línea ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Flecha ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Rectángulo ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipse ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Texto ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Desenfocar / pixelar ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Paso numerado ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Sello de emoji ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Color personalizado"
+  },
+  "editorStrokeTip": {
+    "message": "Grosor del trazo"
+  },
+  "editorStrokeThin": {
+    "message": "Fino"
+  },
+  "editorStrokeMedium": {
+    "message": "Medio"
+  },
+  "editorStrokeThick": {
+    "message": "Grueso"
+  },
+  "editorSizeTip": {
+    "message": "Tamaño del texto / emoji"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Deshacer ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Rehacer ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Alejar (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Acercar (+)"
+  },
+  "editorZoomFit": {
+    "message": "Ajustar"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Ajustar a la ventana: haga clic para el 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Haga clic para ajustar a la ventana"
+  },
+  "editorExport": {
+    "message": "Exportar"
+  },
+  "editorExportCopy": {
+    "message": "Copiar al portapapeles"
+  },
+  "editorExportImage": {
+    "message": "Imagen $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Documento $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Guardar"
+  },
+  "editorSaveTip": {
+    "message": "Guardar los cambios en el historial ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Más"
+  },
+  "editorMenuFiles": {
+    "message": "Ir al historial"
+  },
+  "editorMenuOptions": {
+    "message": "Ir a las opciones"
+  },
+  "editorMenuShortcuts": {
+    "message": "Atajos de teclado"
+  },
+  "editorCropApply": {
+    "message": "Aplicar el recorte"
+  },
+  "editorCropCancel": {
+    "message": "Cancelar"
+  },
+  "editorShortcutsHeading": {
+    "message": "Atajos de teclado"
+  },
+  "editorShortcutTools": {
+    "message": "Seleccionar herramientas"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Deshacer / rehacer"
+  },
+  "editorShortcutSave": {
+    "message": "Guardar en el historial"
+  },
+  "editorShortcutZoom": {
+    "message": "Alejar / acercar"
+  },
+  "editorShortcutDelete": {
+    "message": "Quitar el objeto seleccionado"
+  },
+  "editorShortcutEscape": {
+    "message": "Deseleccionar / cancelar el recorte"
+  },
+  "editorShortcutsClose": {
+    "message": "Cerrar"
+  },
+  "editorNotFound": {
+    "message": "Captura no encontrada"
+  },
+  "editorToastDownloaded": {
+    "message": "Descargado"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF descargado"
+  },
+  "editorToastSaved": {
+    "message": "Guardado en el historial"
+  },
+  "historyPageTitle": {
+    "message": "Historial — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Historial"
+  },
+  "historySearchPlaceholder": {
+    "message": "Buscar por título o URL…"
+  },
+  "historySelectAll": {
+    "message": "Seleccionar todo"
+  },
+  "historyClearSelection": {
+    "message": "Borrar la selección"
+  },
+  "historyDownloadSelected": {
+    "message": "Descargar la selección"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Descargar ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Eliminar la selección"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Eliminar ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Aún no hay capturas"
+  },
+  "historyEmptyBody": {
+    "message": "Las capturas que haga aparecerán aquí. Haga clic en el icono de FullShot de su barra de herramientas para empezar."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Sin coincidencias"
+  },
+  "historyNoMatchesBody": {
+    "message": "Ninguna captura coincide con \"$QUERY$\".",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ captura · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountMany": {
+    "message": "$COUNT$ capturas · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ capturas · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ de $COUNT$ captura · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredMany": {
+    "message": "$SHOWN$ de $COUNT$ capturas · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ de $COUNT$ capturas · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Seleccionar"
+  },
+  "historyCardOpen": {
+    "message": "Abrir"
+  },
+  "historyCardEdit": {
+    "message": "Editar"
+  },
+  "historyCardDownloadTip": {
+    "message": "Descargar"
+  },
+  "historyCardDeleteTip": {
+    "message": "Eliminar"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Abrir la página original"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$ · $COUNT$ partes",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Captura"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "¿Eliminar esta captura?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "¿Eliminar permanentemente $COUNT$ captura?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyMany": {
+    "message": "¿Eliminar permanentemente $COUNT$ capturas?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "¿Eliminar permanentemente $COUNT$ capturas?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Descargando $COUNT$ captura",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingMany": {
+    "message": "Descargando $COUNT$ capturas",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Descargando $COUNT$ capturas",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Eliminado"
+  },
+  "beautifyPageTitle": {
+    "message": "Embellecer — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Embellecer"
+  },
+  "actionBack": {
+    "message": "Volver"
+  },
+  "commonLoading": {
+    "message": "Cargando…"
+  },
+  "beautifyFieldSize": {
+    "message": "Tamaño"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automático"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200 × 630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Cuadrado"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Vertical"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Fondo"
+  },
+  "beautifyBgSlate": {
+    "message": "Pizarra"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafito"
+  },
+  "beautifyBgSky": {
+    "message": "Cielo"
+  },
+  "beautifyBgSunset": {
+    "message": "Atardecer"
+  },
+  "beautifyBgGrape": {
+    "message": "Uva"
+  },
+  "beautifyBgMint": {
+    "message": "Menta"
+  },
+  "beautifyFieldPadding": {
+    "message": "Relleno"
+  },
+  "beautifyFieldRadius": {
+    "message": "Radio de las esquinas"
+  },
+  "beautifyFieldEffects": {
+    "message": "Efectos"
+  },
+  "beautifyShadow": {
+    "message": "Sombra paralela"
+  },
+  "beautifyWindowFrame": {
+    "message": "Marco de ventana"
+  },
+  "beautifyFieldExport": {
+    "message": "Exportar"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Clip de desplazamiento — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Clip de desplazamiento"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Formato"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ se reproduce en todas partes. $WEBM$ es más ligero y fluido (grabado en directo en tu navegador).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Anchura de salida"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Densidad"
+  },
+  "scrollclipDensityHint": {
+    "message": "Una densidad mayor se ve más nítida (más cerca de la resolución original), pero el archivo es más grande."
+  },
+  "scrollclipFieldShape": {
+    "message": "Forma"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Velocidad de desplazamiento (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Fotogramas por segundo (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Movimiento"
+  },
+  "scrollclipBounce": {
+    "message": "Rebote (volver arriba)"
+  },
+  "scrollclipLoop": {
+    "message": "Repetir siempre"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Copiar fotograma"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Copiar el fotograma de portada (arriba) como $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ fotograma · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsMany": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ fotogramas · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ fotogramas · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Renderizando fotogramas… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Codificando $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Finalizando…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Grabando $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Grabando…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ no es compatible aquí: se exportará $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Fotograma de portada copiado"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Captura por lotes"
+  },
+  "batchHeading": {
+    "message": "Captura por lotes"
+  },
+  "batchIntro": {
+    "message": "Pegue las URL, una por línea. FullShot abre cada página, captura la página completa en su historial y sigue con la siguiente, hasta $MAX$ a la vez. Las capturas aparecen en su historial; haga clic en $OPENLINK$ para ver, editar o exportar cualquiera de ellas.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Capturar todo"
+  },
+  "batchPermissionHint": {
+    "message": "Abrir estas páginas requiere un permiso puntual la primera vez."
+  },
+  "batchPermissionDeclined": {
+    "message": "Se ha denegado el permiso para abrir esas páginas."
+  },
+  "batchPanelPlan": {
+    "message": "Plan"
+  },
+  "batchPanelProgress": {
+    "message": "Progreso"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ página por capturar",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountMany": {
+    "message": "$COUNT$ páginas por capturar",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ páginas por capturar",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ páginas por capturar (limitado a $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Aún no hay URL válidas"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ omitidas: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "esquema no admitido"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "no válida"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "sin host"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "duplicada"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "vacía"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "por encima del límite ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ hechas",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ hechas, $FAILED$ con error",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ hechas: completado",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ hechas, $FAILED$ con error: completado",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "abrir"
+  },
+  "batchJobTimedOut": {
+    "message": "tiempo de captura agotado"
+  },
+  "batchJobNoSession": {
+    "message": "sin sesión de captura"
+  },
+  "batchJobFailed": {
+    "message": "captura fallida"
+  },
+  "batchJobError": {
+    "message": "error de captura"
+  },
+  "regionHintDrag": {
+    "message": "Arrastre para seleccionar una región — $ESC$ para cancelar",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Haga clic en un elemento para capturarlo — $ESC$ para cancelar",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Las páginas del navegador, como Configuración, Extensiones y la pestaña nueva, están vedadas a todas las extensiones. Pruebe FullShot en una página web normal."
+  },
+  "errRestrictedDevtools": {
+    "message": "Una extensión no puede capturar las ventanas de DevTools. Use la herramienta de captura de su propia computadora."
+  },
+  "errRestrictedViewSource": {
+    "message": "Las páginas de código fuente no se pueden capturar. Capture la página en sí."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Las páginas de extensiones, incluidas las de FullShot, están protegidas por el navegador y no se pueden capturar."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store impide que las extensiones lean sus páginas, así que esta no se puede capturar."
+  },
+  "errRestrictedGeneric": {
+    "message": "Esta página está protegida por el navegador y no se puede capturar."
+  },
+  "errWrongTab": {
+    "message": "Captura detenida: cambió de pestaña. Mantenga esta página en primer plano hasta que FullShot termine."
+  },
+  "errGeneric": {
+    "message": "La captura se detuvo antes de terminar. Inténtelo de nuevo."
+  },
+  "errBusy": {
+    "message": "Ya hay una captura en curso en esta pestaña."
+  },
+  "errBlocked": {
+    "message": "Esta página no se puede capturar (restricción del navegador)."
+  },
+  "errNoStart": {
+    "message": "FullShot no pudo iniciarse en esta página. Recargue la página e inténtelo de nuevo."
+  },
+  "errCrash": {
+    "message": "La captura se detuvo de forma inesperada. Inténtelo de nuevo."
+  },
+  "errUnknownMessage": {
+    "message": "Mensaje desconocido."
+  },
+  "errQuota": {
+    "message": "El navegador está limitando la rapidez con la que se pueden fotografiar las páginas. Espere un momento e inténtelo de nuevo."
+  },
+  "errFrameHandover": {
+    "message": "El navegador dejó de entregar la pantalla a mitad de camino. Espere unos segundos e inténtelo de nuevo."
+  },
+  "errLostTab": {
+    "message": "La captura perdió el rastro de esta pestaña. Recargue la página e inténtelo de nuevo."
+  },
+  "errStoppedEarly": {
+    "message": "La captura se detuvo antes de terminar."
+  },
+  "errStorageFull": {
+    "message": "No queda espacio para guardar esta captura. Borra algunas capturas de tu historial y vuelve a intentarlo."
+  },
+  "reasonGeneric": {
+    "message": "no se indicó ningún motivo. Inténtelo de nuevo."
+  },
+  "reasonDecodeFailed": {
+    "message": "esa captura no se ha podido descodificar."
+  },
+  "reasonTooLarge": {
+    "message": "la imagen es demasiado grande para exportarla aquí."
+  },
+  "toastCopiedClipboard": {
+    "message": "Copiado al portapapeles"
+  },
+  "toastCopyFailed": {
+    "message": "Error al copiar: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Error al exportar: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ guardado",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ guardado  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ kB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

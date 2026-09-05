@@ -1,0 +1,11 @@
+{
+  "name": "@nikatru/contracts",
+  "private": true,
+  "type": "module",
+  "description": "The definitions more than one runtime has to agree about. NOT a pnpm workspace member and NOT published: it declares `type: module` only so that plain `node` reads contract.js as the ES module every consumer imports it as, without the root package.json having to claim a module type on behalf of the whole tree.",
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "check": "node entitlement/generate.mjs --check"
+  }
+}

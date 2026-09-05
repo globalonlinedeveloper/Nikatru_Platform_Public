@@ -1,0 +1,4 @@
+{
+  "_comment": "DELTA LOCALE, chained en_AU -> en_GB -> en. Australian English follows British spelling, so this file holds only what differs from en_GB as well. 'SSN' becomes the Tax File Number, which is the Australian identifier a redaction feature would actually be describing.",
+  "optionsRedactPIIDesc": "Scans the text a page exposes for emails, phone numbers, credit-card numbers, Tax File Numbers and API keys, and paints a solid block over what it matches in the saved image. It cannot read text drawn as pixels — a canvas, an image, a PDF, a video frame. Detection runs on your device; nothing is ever sent anywhere. Full-page (document-scroll) captures; the block is permanent, so review the result yourself."
+}

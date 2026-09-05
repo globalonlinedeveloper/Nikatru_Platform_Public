@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — replace me",
+    "description": "manifest.json `name`. The extension's full store name, shown in the Chrome Web Store, on chrome://extensions and in the browser's extension menu. Chrome hard-limits this to 75 characters and the store listing shows about 45 before it truncates. If the name contains a product word (a made-up brand), copy that word through untranslated and translate only the descriptive part around it. NOTE: the browser resolves this at manifest-load time, so it deliberately carries no placeholders."
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "manifest.json `short_name`. Shown under the icon on the New Tab page and anywhere the full name will not fit. HARD LIMIT 12 characters — a longer translation is silently cut off by the browser, so shorten aggressively rather than transliterate. This is the product name: keep it as-is in Latin-script locales; transliterate only where that is the local convention (ar, fa, he, ja, ko, th, zh) and when in doubt leave it unchanged."
+  },
+  "appDescription": {
+    "message": "REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing.",
+    "description": "manifest.json `description`. The one-line store-listing summary. Chrome truncates at 132 characters, so the translation MUST also be 132 or fewer — prefer dropping a clause to running long. One sentence, factual, no marketing adjectives. NOTE: the browser resolves this at manifest-load time, so it deliberately carries no placeholders."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — replace me",
+    "description": "manifest.json `action.default_title`. The tooltip on the toolbar button. If the tool declares a keyboard shortcut, the shortcut is appended here (for example \"(Alt+Shift+P)\"): copy key names such as Alt, Shift, Ctrl and Cmd through EXACTLY and do not reorder them. NOTE: the browser resolves this at manifest-load time, so it deliberately carries no placeholders."
+  },
+  "themeToggle": {
+    "message": "Toggle theme",
+    "description": "Accessible name and tooltip for the light/dark theme button. It appears in the popup header and in the topbar of every extension page. The button's visible content is a symbol, so this string is the ONLY name a screen reader can announce — do not leave it empty. Imperative, very short."
+  },
+  "optionsLink": {
+    "message": "Options",
+    "description": "Link in the popup footer that opens the extension's settings page. Use whatever word the browser itself uses for extension settings in this language (Chrome's own chrome://extensions UI is the reference), so the two agree."
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "The popup document's <title>. Users rarely see it, but assistive technology announces it when the popup opens. Usually identical to appShortName."
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "The product name shown in the popup header, next to the icon. This is the heading of the popup. Same treatment as appShortName: it is a product name, so keep it unless local convention is to transliterate."
+  },
+  "popupActiveTabLabel": {
+    "message": "Active tab",
+    "description": "Small uppercase caption above the result area in the popup. It labels the value below it: the title of the browser tab the user is currently looking at. \"Tab\" here is a browser tab, not a keyboard key and not an indentation character. Keep it short — the label sits on one line at about 10px."
+  },
+  "popupReading": {
+    "message": "Reading…",
+    "description": "Placeholder shown in the popup's result area while the extension is asking the browser for the active tab's title. Transient, usually visible for well under a second. Ends with a single ellipsis character (…), not three full stops."
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "Shown in the popup's result area when there is no value to show because the last attempt failed. This is an em dash (U+2014) used as a 'nothing here' marker, not a word. Most locales copy the character through unchanged; use the local equivalent only if an em dash is not used this way in this script."
+  },
+  "popupCopyTitle": {
+    "message": "Copy title",
+    "description": "Label on the popup's primary button. Pressing it copies the tab title shown above it to the system clipboard. \"Copy\" is the clipboard verb. This button shares a row with a second, narrow button, so a translation much longer than about 24 characters will wrap the row — prefer the shortest natural phrasing."
+  },
+  "popupRefresh": {
+    "message": "Read the active tab again",
+    "description": "Accessible name and tooltip for the small circular-arrow button beside the copy button. Pressing it re-reads the current tab. The button's visible content is a symbol (↻), so this string is the only name a screen reader can announce."
+  },
+  "popupDismiss": {
+    "message": "Dismiss",
+    "description": "Accessible name and tooltip for the ✕ button that closes the red error panel in the popup. Dismissing also deletes the stored failure note. The button's visible content is a symbol, so this string is the only name a screen reader can announce."
+  },
+  "popupCopied": {
+    "message": "Copied",
+    "description": "Brief confirmation toast shown for about two seconds after the tab title is copied to the clipboard. Past tense, one or two words."
+  },
+  "popupCopyFailed": {
+    "message": "Could not copy — press Ctrl+C instead",
+    "description": "Toast shown when the browser refused the clipboard write, telling the user to copy manually. \"Ctrl+C\" is a keyboard shortcut: copy the key names through EXACTLY and do not reorder or translate them. On macOS the browser reports the same shortcut, so do not substitute Cmd."
+  },
+  "lastRunFailed": {
+    "message": "Last $ACTION$ failed — $REASON$",
+    "description": "The whole sentence shown in the popup's error panel when the extension reports a failure from earlier work that had no popup open at the time. $ACTION$ is a short noun for what was attempted (see the action* messages, for example \"title read\"). $REASON$ is a complete sentence (see the reason* messages). Reorder the two placeholders freely to suit this language's word order, and change or drop the dash — it is English punctuation, not data. Both placeholders MUST appear exactly once.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "description": "The same sentence as lastRunFailed, used when the site the work was attempted on is known. $ORIGIN$ is a scheme and host only, such as \"https://example.com\" — it is a technical value, never translate or reformat it, and keep it visually separated (brackets, a dash, or whatever this language uses for an aside). All three placeholders MUST appear exactly once.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "title read",
+    "description": "A short NOUN PHRASE naming an attempted operation, substituted into lastRunFailed as $ACTION$ (\"Last title read failed — …\"). It is not a sentence and not a command: it names the thing that failed. Reading the title of a browser tab. Lower case unless this language capitalises nouns."
+  },
+  "actionCopyTitle": {
+    "message": "copy",
+    "description": "A short NOUN PHRASE naming an attempted operation, substituted into lastRunFailed as $ACTION$ (\"Last copy failed — …\"). Copying to the system clipboard. Not the verb form. Lower case unless this language capitalises nouns."
+  },
+  "actionClearData": {
+    "message": "data wipe",
+    "description": "A short NOUN PHRASE naming an attempted operation, substituted into lastRunFailed as $ACTION$ (\"Last data wipe failed — …\"). Deleting everything the extension has stored on the device. Lower case unless this language capitalises nouns."
+  },
+  "actionRun": {
+    "message": "run",
+    "description": "A short, deliberately vague NOUN PHRASE naming an attempted operation, substituted into lastRunFailed as $ACTION$ (\"Last run failed — …\"). It is the fallback used when the extension does not recognise which operation was attempted, so it must stay neutral and must not name any particular feature."
+  },
+  "reasonGeneric": {
+    "message": "Something stopped this before it finished. Please try again.",
+    "description": "The catch-all failure sentence. Deliberately says nothing about the cause: it is what the user sees for every failure the extension does not specifically recognise, so it must never imply the user did something wrong and must never hint at a technical cause. Two short sentences; keep the second one an invitation to retry."
+  },
+  "reasonBusy": {
+    "message": "This tab is already busy.",
+    "description": "Failure sentence: the extension is already doing work on this browser tab and refuses to start a second job on it. \"Tab\" is a browser tab. Not an error the user caused — phrase it as a statement of fact, not a reprimand."
+  },
+  "reasonRestricted": {
+    "message": "This page is protected by the browser and cannot be read.",
+    "description": "[permission] Failure sentence shown when the page belongs to a family the browser blocks all extensions from, and the extension has no more specific sentence for it. IMPORTANT: the meaning is that the BROWSER forbids access, not that this extension chose not to look, and not that the extension failed. Do not soften it into \"could not\" — it is \"is not allowed to\". Keep the wording free of blame."
+  },
+  "reasonNoTab": {
+    "message": "No active tab was found.",
+    "description": "Failure sentence: the browser reported no currently active tab, so there was nothing to read. \"Tab\" is a browser tab. Rare; usually means the window was closing."
+  },
+  "reasonNoTitle": {
+    "message": "This page has no title to read.",
+    "description": "Failure sentence: the page loaded but its title is empty or only whitespace, so there is nothing to report or copy. Statement of fact about the page, not a fault."
+  },
+  "reasonCancelled": {
+    "message": "Cancelled.",
+    "description": "Failure sentence: the user stopped the work themselves. One word if that is natural. Past tense, neutral — the user did this on purpose."
+  },
+  "reasonUnknownMessage": {
+    "message": "Unknown message.",
+    "description": "Failure sentence for an internal protocol error: one part of the extension sent the background worker a request it does not recognise. \"Message\" here means an internal instruction, NOT an email or a chat message. Users should almost never see this; keep it short and technical-sounding so it is obviously a bug report, not user error."
+  },
+  "reasonTabClosed": {
+    "message": "That tab was closed before the work finished.",
+    "description": "Failure sentence: the browser tab the work was running against disappeared mid-job. \"Tab\" is a browser tab. Past tense; a statement of what happened, not a reprimand."
+  },
+  "reasonNoAnswer": {
+    "message": "The extension did not answer.",
+    "description": "Failure sentence shown by the popup when its request to the background worker got no reply at all — usually because the worker was restarting. \"The extension\" refers to this product as a whole."
+  },
+  "reasonNothingCameBack": {
+    "message": "Nothing came back.",
+    "description": "Failure sentence shown by the popup when a reply arrived but was empty or malformed. Short and plain; the user's only useful next step is to try again."
+  },
+  "reasonBrowserPage": {
+    "message": "Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page.",
+    "description": "[permission] Failure sentence for browser-internal pages (chrome://, edge://, about:). CRITICAL: the point of the sentence is that the BROWSER blocks EVERY extension here, not just this one — do not translate it into an admission that this extension is broken or lacks a permission. \"Settings\", \"Extensions\" and \"New Tab\" are names of browser screens: use the names this browser actually shows in this language. The final sentence tells the user what to do instead and must be kept."
+  },
+  "reasonDevtools": {
+    "message": "DevTools windows are off limits to extensions.",
+    "description": "[permission] Failure sentence for the browser's developer tools window. \"DevTools\" is the product name of Chrome's developer tools: use the name Chrome shows in this language, or leave \"DevTools\" untranslated if there is none. Again: the browser forbids this for all extensions."
+  },
+  "reasonViewSource": {
+    "message": "View-source pages are off limits to extensions. Try the page itself instead.",
+    "description": "[permission] Failure sentence for view-source: pages (the raw HTML view opened with Ctrl+U). Use the wording Chrome itself uses for \"view source\" in this language. The browser forbids this for all extensions. The final sentence tells the user what to do instead and must be kept."
+  },
+  "reasonExtensionPage": {
+    "message": "Extension pages, including this one's own, are protected by the browser.",
+    "description": "[permission] Failure sentence for pages belonging to a browser extension, including this extension's own pages. The clause \"including this one's own\" is there to make clear the rule is not selective — keep that meaning."
+  },
+  "reasonWebStore": {
+    "message": "The Chrome Web Store blocks extensions from reading its pages.",
+    "description": "[permission] Failure sentence for chromewebstore.google.com. \"Chrome Web Store\" is a product name: use the localised name Google itself uses in this language, or leave it in English if there is none. The block is imposed by the store, not by this extension."
+  },
+  "reasonFileUrl": {
+    "message": "Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\".",
+    "description": "[permission] Shown when the user runs the tool on a file:// page. This is NOT a refusal by the browser — it is a checkbox the user has never seen, and the whole point of this sentence is to name it so they can fix it themselves. \"Allow access to file URLs\" is the exact label Chrome uses on its own Extensions page: use the wording THIS browser uses in THIS language, in quotation marks, so the user can find it by eye. The negation-free instruction must stay an instruction, not become an apology."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "This page did not load, so there is nothing to read yet.",
+    "description": "[permission] Shown when the tab is a browser error page — an SSL warning, a DNS failure, an offline notice, which the browser blocks every extension from reading. The user is already worried about that page, so this must read as a plain statement of fact and never as a fault in the extension. Keep the negation: the page did NOT load."
+  },
+  "reasonPdfViewer": {
+    "message": "This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first.",
+    "description": "[permission] Shown when the tab is a PDF. The tab looks completely ordinary to the user, so the first half explains what they are actually looking at and the second half gives them something to do. The middle clause is the access claim and its negation must survive: extensions CANNOT read inside the viewer — that is a browser rule, not a defect in this tool. \"PDF\" is a file-format name: do not translate it."
+  },
+  "reasonSandboxed": {
+    "message": "This page is sandboxed by the site that opened it, so extensions cannot read it.",
+    "description": "[permission] Shown for a document with an opaque origin — a sandboxed frame, a data: or blob: page. \"Sandboxed\" is a browser-security term; use the word this language’s browser documentation uses. The point is that the SITE imposed this, not the extension, and the negation must survive: extensions CANNOT read it."
+  },
+  "reasonAddonStore": {
+    "message": "The add-ons site blocks extensions from reading its pages.",
+    "description": "[permission] The Firefox counterpart of reasonWebStore, shown on addons.mozilla.org. Same fact, same tone, same tag: the site imposes the block, on every extension, not just this one."
+  },
+  "reasonStorageFull": {
+    "message": "This device is out of space, so nothing was saved. Delete some stored rows in Options and try again.",
+    "description": "[privacy] Shown when a write to local storage failed because the disk or the browser’s quota is full. Two things must survive: NOTHING was saved (so the user knows the result is gone, not silently kept — the same promise reasonTimedOut makes, which is why this carries the same tag), and there is a specific place to go and fix it. \"Options\" is the extension’s settings page — use the same word this browser uses for it in this language."
+  },
+  "reasonTimedOut": {
+    "message": "This took too long and was stopped. Nothing was left behind.",
+    "description": "[privacy] Shown when a job was still running after the browser suspended and restarted the extension’s background worker, and the watchdog gave it up. The second sentence is a cleanup promise, not filler: the partial work was deleted. The negation must survive."
+  },
+  "reasonSettingTooBig": {
+    "message": "That value is too long to store in your synced settings. Try a shorter one.",
+    "description": "Shown when a single setting exceeds the browser’s per-item sync limit (8 KB). \"Synced settings\" is the browser’s profile sync, not a service belonging to this product."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "That setting could not be saved. Wait a moment and try again.",
+    "description": "Shown when writing a setting failed — usually the browser’s limit on how often settings may be written. Keep the negation: it was NOT saved. The advice to wait is the actionable half, because the limit clears by itself."
+  },
+  "optionsDocTitle": {
+    "message": "Options — SKELETON",
+    "description": "The settings page's <title>, shown in the browser tab and announced when the page opens. \"SKELETON\" is the product name and must be copied through unchanged; translate only the word \"Options\", and use the same word as the optionsLink message."
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Options",
+    "description": "Text in the settings page topbar, beside the icon. \"SKELETON\" is the product name and must be copied through unchanged. The separator is a middle dot (U+00B7); replace it if this script uses a different separator. Translate only the word \"Options\", matching optionsLink."
+  },
+  "optionsHeading": {
+    "message": "Options",
+    "description": "The settings page's main heading (<h1>). Same word as optionsLink and optionsDocTitle."
+  },
+  "optionsLead": {
+    "message": "Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us.",
+    "description": "[privacy] Sentence under the settings heading. It replaces an older wording that said only \"synced to your browser profile\", which sat on the same page as a claim that the tool works entirely on the device — both could not be true. Two facts must survive: there is no Save button, and the browser’s OWN profile sync (not this product) is what may carry the settings to the user’s other computers. The negation is the important half: the settings are NEVER sent to the makers of this extension. Use the wording this browser uses for profile sync in this language."
+  },
+  "optionsSectionBehavior": {
+    "message": "Behavior",
+    "description": "Heading of the settings section holding the everyday preferences. Shown small and upper-cased by the stylesheet; one word if possible. American spelling in this source file — en_GB and en_AU carry \"Behaviour\"."
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Copy on open",
+    "description": "Name of a preference. When it is on, the result is copied to the clipboard the moment the popup is opened, without the user pressing anything. This string is also the accessible name of the on/off switch beside it, so it must stand alone as a label. Very short — it shares a row with the switch."
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Copy the result to the clipboard as soon as the popup opens.",
+    "description": "One-sentence explanation under the \"Copy on open\" preference name. \"The popup\" is the small panel that appears when the toolbar button is clicked."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Keep a local history",
+    "description": "[privacy] Name of a preference. When it is on, results are recorded on this computer so the user can look at them later. \"Local\" means on this device only — that word carries the privacy promise and must not be dropped. This string is also the accessible name of the on/off switch beside it."
+  },
+  "optKeepHistoryDesc": {
+    "message": "Off by default. When on, results are stored on this device only, listed below, and deletable at any time.",
+    "description": "[privacy] Explanation under the \"Keep a local history\" preference. Three separate promises, all of which must survive translation: (1) the setting starts OFF, so nothing is recorded until the user turns it on; (2) anything recorded stays on THIS DEVICE and is never sent anywhere; (3) the user can delete it whenever they like. Do not merge or soften these, and never translate \"stored on this device only\" into anything that could read as \"stored online\"."
+  },
+  "optHistoryLimitTitle": {
+    "message": "History limit",
+    "description": "Name of a numeric preference: the largest number of recorded results to keep. This string is also the accessible name of the number box beside it."
+  },
+  "optHistoryLimitDesc": {
+    "message": "Oldest rows are dropped once the list is longer than this.",
+    "description": "Explanation under the \"History limit\" preference. \"Rows\" are entries in the list of recorded results. \"Dropped\" means deleted permanently."
+  },
+  "optRetentionTitle": {
+    "message": "Delete rows older than",
+    "description": "Label for the number box that sets how many days a stored row is kept. The sentence is deliberately unfinished — the number box completes it — so translate it as a phrase that can be followed by a number, or rephrase it as a complete label if that reads badly in this language."
+  },
+  "optRetentionDesc": {
+    "message": "Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them.",
+    "description": "Explanation under the retention preference. \"Days\" names the unit of the number box beside it. Three facts: the unit, that removal is automatic rather than something the user must do, and that zero turns the age rule off and leaves only the count cap (\"history limit\", the preference above)."
+  },
+  "optThemeTitle": {
+    "message": "Theme",
+    "description": "Name of the light/dark appearance preference. This string is also the accessible name of the dropdown beside it."
+  },
+  "optThemeDesc": {
+    "message": "Follows your system by default.",
+    "description": "Explanation under the \"Theme\" preference: unless the user chooses otherwise, the extension matches the operating system's light or dark setting."
+  },
+  "themeSystem": {
+    "message": "System",
+    "description": "Option in the theme dropdown: follow the operating system's light/dark setting. One word."
+  },
+  "themeLight": {
+    "message": "Light",
+    "description": "Option in the theme dropdown: always use the light colour scheme. One word."
+  },
+  "themeDark": {
+    "message": "Dark",
+    "description": "Option in the theme dropdown: always use the dark colour scheme. One word."
+  },
+  "optionsSectionData": {
+    "message": "Your data",
+    "description": "[privacy] Heading of the settings section that lists everything the extension has stored and offers to delete it. Addressed to the user in the second person — the possessive is the point: this data belongs to them."
+  },
+  "dataNothingStored": {
+    "message": "Nothing is stored on this device.",
+    "description": "[privacy] Shown in the \"Your data\" section when the extension has recorded nothing. This is a factual statement of the empty state and it is also a privacy claim: keep both the negation and \"on this device\". Never translate it into something that could read as \"nothing is stored online\" while implying something IS stored locally."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ rows are stored on this device. Nothing leaves it.",
+    "description": "[privacy] Plural form for the ZERO category. Only a few languages (for example Arabic, Latvian) have a distinct zero form; if this language does not, translate it identically to dataStoredRows_other. $COUNT$ is a number. The second sentence is a privacy promise — nothing recorded is ever sent off the device — and its negation must survive translation.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ row is stored on this device. Nothing leaves it.",
+    "description": "[privacy] Plural form for the ONE category. $COUNT$ is a number. The second sentence is a privacy promise — nothing recorded is ever sent off the device — and its negation must survive translation.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ rows are stored on this device. Nothing leaves it.",
+    "description": "[privacy] Plural form for the TWO category (the dual). Only a few languages (for example Arabic, Slovenian, Welsh) have one; if this language does not, translate it identically to dataStoredRows_other. $COUNT$ is a number. The privacy negation in the second sentence must survive translation.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ rows are stored on this device. Nothing leaves it.",
+    "description": "[privacy] Plural form for the FEW category (for example Polish 2-4, Russian 2-4, Arabic 3-10). If this language has no such category, translate it identically to dataStoredRows_other. $COUNT$ is a number. The privacy negation in the second sentence must survive translation.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ rows are stored on this device. Nothing leaves it.",
+    "description": "[privacy] Plural form for the MANY category (for example Polish and Russian 5+, Arabic 11-99). If this language has no such category, translate it identically to dataStoredRows_other. $COUNT$ is a number. The privacy negation in the second sentence must survive translation.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ rows are stored on this device. Nothing leaves it.",
+    "description": "[privacy] Plural form for the OTHER category. This is the fallback used whenever the more specific category is missing, so it is the ONE form that must always read well. Languages with no plural distinction at all (Chinese, Japanese, Korean, Thai, Vietnamese) use only this form. $COUNT$ is a number. The privacy negation in the second sentence must survive translation.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Durable: the browser has promised not to clear this.",
+    "description": "[privacy] Shown in the \"Your data\" section when the browser has granted persistent storage. It is a promise about the user’s data, so the negation is the whole sentence: the browser will NOT clear it. This string is only ever shown when that is actually true."
+  },
+  "dataBestEffort": {
+    "message": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup.",
+    "description": "[privacy] Shown when the browser has NOT granted persistent storage. Must not be softened: the browser really can delete everything here without asking, and the last two words are the only thing the user can do about it. Never translate this into anything that reads as a guarantee."
+  },
+  "dataDurabilityUnknown": {
+    "message": "This browser does not say whether stored data will be kept, so treat it as temporary and export a backup.",
+    "description": "[privacy] Shown when the browser offers no way to ask about storage durability. Err toward caution: unknown is treated as temporary, never as safe. The negation must survive."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Using $USED$ of $QUOTA$.",
+    "description": "Joins the durability sentence to the amount of space in use. $STATE$ is one of the three sentences above and already ends with its own full stop. $USED$ and $QUOTA$ are already-formatted sizes such as \"1.2 MB\" — do not reformat them or change their order relative to the word for \"of\". All three placeholders MUST appear exactly once.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Delete",
+    "description": "Visible text of the small button that removes ONE stored row. Very short — it sits at the end of a list row. A verb in the imperative."
+  },
+  "rowDeleteLabel": {
+    "message": "Delete the row from $ORIGIN$",
+    "description": "The accessible name of that same per-row Delete button, read aloud by a screen reader so a user moving down a list of identical buttons knows which row each one destroys. $ORIGIN$ is a scheme and host such as \"https://example.com\" — a technical value, never translate or reformat it. The placeholder MUST appear exactly once.",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Export everything",
+    "description": "Label for the control that writes every stored row to a file. \"Export\" in the sense of saving a copy out of the tool."
+  },
+  "optExportDesc": {
+    "message": "Saves every stored row to one JSON file on this device. Nothing is uploaded.",
+    "description": "[privacy] Explanation under \"Export everything\". Two facts that must both survive: the file lands on THIS DEVICE, and NOTHING is uploaded anywhere. \"JSON\" is a file-format name and is not translated."
+  },
+  "optExportButton": {
+    "message": "Export everything",
+    "description": "The button text for the export action. It may be identical to optExportTitle; it is a separate key because a language may need a shorter form on a button than in a heading."
+  },
+  "optDeleteAllTitle": {
+    "message": "Delete everything",
+    "description": "[privacy] Name of the destructive action in the \"Your data\" section: remove every recorded result from this device. This string is also the accessible name of the button beside it. Imperative; keep it unmistakably final, not \"clear\" or \"tidy up\"."
+  },
+  "optDeleteAllDesc": {
+    "message": "Removes every stored row from this device. Settings are kept.",
+    "description": "[privacy] Explanation under \"Delete everything\". Two facts that must both survive: the recorded results are all removed, and the user's preferences are NOT removed. Do not swap which one is kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Delete everything",
+    "description": "Label on the button that performs the deletion. Normally identical to optDeleteAllTitle; it is a separate message so a language that needs a shorter button label than heading can have one."
+  },
+  "optResetTitle": {
+    "message": "Reset settings",
+    "description": "Label for the control that puts every preference back to its default."
+  },
+  "optResetDesc": {
+    "message": "Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept.",
+    "description": "[privacy] Explanation under \"Reset settings\". Two facts that must both survive and must not be swapped: the settings are removed (including from the browser’s profile sync), and the user’s stored results are NOT removed."
+  },
+  "optResetButton": {
+    "message": "Reset settings",
+    "description": "The button text for the reset action, and the confirm button inside the dialog that asks first."
+  },
+  "optionsSectionReport": {
+    "message": "Report a problem",
+    "description": "Heading of the section that builds a diagnostic file. Sentence case, no full stop — it is a section heading, not a sentence."
+  },
+  "optReportTitle": {
+    "message": "Prepare a problem report",
+    "description": "Label for the control that assembles the diagnostic file."
+  },
+  "optReportDesc": {
+    "message": "Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere.",
+    "description": "[privacy] Explanation under \"Prepare a problem report\". Two promises that must both survive: the user reviews the contents BEFORE anything is written, and NOTHING is transmitted. This product has no server to send a report to, and the sentence must not imply that it does."
+  },
+  "optReportButton": {
+    "message": "Prepare a report",
+    "description": "The button text that starts building the report. Shorter than optReportTitle on purpose."
+  },
+  "optionsSectionAbout": {
+    "message": "About",
+    "description": "Heading of the settings section carrying the product name, its one-sentence purpose and the version number. One word."
+  },
+  "aboutName": {
+    "message": "SKELETON — replace me",
+    "description": "The product name shown in the About section. Same treatment as appName: a product word is copied through untranslated, only the descriptive part around it is translated."
+  },
+  "aboutBlurb": {
+    "message": "One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us.",
+    "description": "[privacy] The product’s own privacy claim, shown in the About section and repeated in the store listing. FOUR negations, all of which must survive translation: NO account; NO tracking; NO network calls; NOTHING sent to the makers. The opening half deliberately says the WORK happens on the device rather than claiming the tool works \"entirely\" on the device, because the browser’s own settings sync can carry preferences off it. \"Network calls\" means requests to any server over the internet."
+  },
+  "optionsSaved": {
+    "message": "Saved",
+    "description": "Small confirmation badge that appears for about a second in the corner of the settings page after a preference is written. Past tense, one word."
+  },
+  "toastDeleted": {
+    "message": "Everything deleted",
+    "description": "Confirmation toast shown after the user's stored results were successfully removed. Past tense, very short."
+  },
+  "toastDeleteFailed": {
+    "message": "Could not delete — try again",
+    "description": "Toast shown when the deletion did not complete. It must be clear that the data is still there, and that retrying is the next step. Replace the dash with whatever punctuation this language uses to join a fact and an instruction."
+  },
+  "toastSaveFailed": {
+    "message": "Could not save that setting",
+    "description": "Brief toast shown when writing a setting failed. Keep the negation: it was NOT saved. Very short."
+  },
+  "toastExported": {
+    "message": "Export saved",
+    "description": "Brief toast shown after the export file was written successfully. Past tense, very short."
+  },
+  "toastExportFailed": {
+    "message": "Could not save the file",
+    "description": "Brief toast shown when writing a file (an export or a problem report) failed. Keep the negation. Very short."
+  },
+  "toastRowDeleted": {
+    "message": "Row deleted",
+    "description": "Brief toast shown after one stored row was removed. Past tense, very short."
+  },
+  "toastReset": {
+    "message": "Settings reset",
+    "description": "Brief toast shown after every setting was put back to its default. Past tense, very short."
+  },
+  "toastResetFailed": {
+    "message": "Could not reset the settings",
+    "description": "Brief toast shown when resetting the settings failed. Keep the negation. Very short."
+  },
+  "toastReportSaved": {
+    "message": "Report saved",
+    "description": "Brief toast shown after the problem report file was written. Past tense, very short."
+  },
+  "confirmCancel": {
+    "message": "Cancel",
+    "description": "The dismiss button in every confirmation dialog: it closes the dialog and does nothing. This is the button that is focused when the dialog opens, so it must unambiguously mean \"take no action\" rather than \"go back\"."
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Delete everything?",
+    "description": "[privacy] Heading of the confirmation dialog that appears before the user's stored results are removed. A question, short enough to read at a glance. Keep the question mark if this language uses one."
+  },
+  "confirmDeleteAllBody": {
+    "message": "Every stored row is removed from this device. Your settings are kept. This cannot be undone.",
+    "description": "[privacy] Body of the delete confirmation dialog. Three separate facts, and all three matter: what is removed, what is NOT removed (settings survive), and that the action is irreversible. \"Cannot be undone\" is a negation and must stay negative."
+  },
+  "confirmResetTitle": {
+    "message": "Reset every setting?",
+    "description": "Heading of the confirmation dialog for \"Reset settings\". A question, short enough to fit on one line."
+  },
+  "confirmResetBody": {
+    "message": "Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone.",
+    "description": "[privacy] Body of the reset confirmation. Three facts: the settings go back to defaults and leave the profile sync, the stored results are NOT touched, and the action cannot be undone. Do not swap which one is kept."
+  },
+  "confirmReportTitle": {
+    "message": "Save this problem report?",
+    "description": "Heading of the dialog that shows the finished report before it is written to disk. A question."
+  },
+  "confirmReportBody": {
+    "message": "This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not.",
+    "description": "[privacy] Body of the report review dialog, shown directly above the report itself. FOUR negations, all of which must survive: no page addresses, no page text, nothing captured, nothing sent. Each one is a claim the user is being asked to rely on before sharing the file with someone else, so losing any of them would be a false promise at the exact moment it matters."
+  },
+  "confirmReportSave": {
+    "message": "Save the report",
+    "description": "The confirm button in the report review dialog. The pairing is Cancel / Save the report, so this must read as the action that writes the file."
+  },
+  "popupPrivateNotSaved": {
+    "message": "Private window — this result was not saved to your history.",
+    "description": "[privacy] Toast shown after a successful run in a private/incognito window while the user has \"keep a local history\" turned ON. It explains why the list will still be empty. Keep it a statement of fact, not an apology or a warning, and keep the negation: the whole point is that nothing was written to disk. \"Private window\" should use whatever this browser calls that mode in this language (Chrome: Incognito; Firefox: Private Browsing) — the user has to recognise the mode they are in."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Site access",
+    "description": "[permission] Heading of the settings section where the user grants or takes back the extension's permission to read every site. Short, noun phrase, matching the wording browsers use for the same idea on their own extension details page."
+  },
+  "optSiteAccessTitle": {
+    "message": "Access to every site",
+    "description": "[permission] Name of the control that grants broad host access. Also the accessible name context for the two buttons beside it. It must sound as broad as it is — do not soften it to \"extra access\" or \"full features\"."
+  },
+  "optSiteAccessDesc": {
+    "message": "Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here.",
+    "description": "[permission] Description under \"Access to every site\". Two claims that must both survive translation: the permission is only needed for a subset of features, and it is REVOCABLE FROM THIS PAGE. The second sentence is the whole reason the section exists — never drop it."
+  },
+  "optSiteAccessGrant": {
+    "message": "Grant access",
+    "description": "[permission] Button that asks the browser for broad host access. Imperative verb phrase. Pressing it opens the browser's own permission prompt, so this is a request, not a completed action."
+  },
+  "optSiteAccessRevoke": {
+    "message": "Revoke access",
+    "description": "[permission] Button that gives broad host access back. Imperative verb phrase, and unambiguously a removal — not \"manage\" or \"change\"."
+  },
+  "siteAccessGranted": {
+    "message": "This extension can currently read every site you visit.",
+    "description": "[privacy][permission] Status line shown when broad host access IS held. It is deliberately blunt: the user is entitled to read the true scope of what they granted. Do not soften it and do not add reassurance."
+  },
+  "siteAccessNotGranted": {
+    "message": "This extension can only read a tab after you click its toolbar button.",
+    "description": "[privacy][permission] Status line shown when broad host access is NOT held — the default and the good state. It describes what activeTab actually does. Keep the limitation (\"only\", \"after you click\") intact; a translation that reads as \"can read a tab\" without the condition inverts the claim."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Access granted",
+    "description": "[permission] Short confirmation toast after the browser prompt was accepted. Past tense."
+  },
+  "toastSiteAccessRefused": {
+    "message": "Access was not granted",
+    "description": "[permission] Short toast after the browser prompt was dismissed or declined. Neutral, not an error — declining is a legitimate choice. Keep the negation."
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Access revoked",
+    "description": "[permission] Short confirmation toast after broad host access was successfully removed. Past tense."
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Could not revoke that access",
+    "description": "[permission] Short toast when the browser refused to remove the permission. Keep the negation."
+  }
+}

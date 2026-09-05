@@ -777,19 +777,42 @@ jobs:
     assert.equal(bp.pushTagsOnly, true);
   });
 
-  test('the REAL tree still carries the lane — and EXACTLY one publisher', () => {
+  test('the REAL tree still carries the lane — and EVERY publisher is tags-only', () => {
     // The positive control. Without it every case above is equally consistent
     // with a parser that reports `publishesRelease: false` for everything; the
-    // second assertion is the other direction, that the refusal stayed narrow.
+    // second half is the other direction, that the refusal stayed narrow.
+    //
+    // 🔴 THE EXPECTED SET GREW ON 2026-09-05 AND THE GROWTH IS THE INTERESTING
+    // PART. `extensions.yml` arrived with the extensions subtree ([ADR 067]
+    // decision 1) and it publishes: a `<tool>-v<x.y.z>` tag push creates a
+    // GitHub Release. This assertion caught it on its first CI run, which is
+    // exactly what a positive control is for — but a bare widening of the list
+    // would have thrown away what it found. The file's FIRST spelling paired
+    // the tag trigger with `branches: [main]`, and `releaseTagOf` returns null
+    // for any publisher whose `on.push` is not tags-only, so the release
+    // refusal would have been inert for the new lane while this list said the
+    // tree was understood. So the list is no longer the whole assertion:
+    // EVERY publisher must also be tags-only, which is the property the
+    // refusal actually depends on, and a third publisher that forgets it fails
+    // here rather than at a duplicate `gh release create`.
     const real = loadWorkflows(REAL_WORKFLOWS);
     assert.equal(releaseLaneProblem(real), null);
     const bp = real.get('.github/workflows/build-platforms.yml');
     assert.equal(bp.publishesRelease, true);
     assert.equal(bp.pushTagsOnly, true);
+    const publishers = [...real.values()].filter((w) => w.publishesRelease);
     assert.deepEqual(
-      [...real.values()].filter((w) => w.publishesRelease).map((w) => w.file),
-      ['build-platforms.yml'],
+      publishers.map((w) => w.file).sort(),
+      ['build-platforms.yml', 'extensions.yml'],
     );
+    for (const w of publishers) {
+      assert.equal(
+        w.pushTagsOnly,
+        true,
+        `${w.file} publishes a GitHub Release but its on.push is not tags-only, so releaseTagOf() ` +
+          'returns null for it and safe-rerun cannot refuse a re-run that would publish twice.',
+      );
+    }
   });
 });
 

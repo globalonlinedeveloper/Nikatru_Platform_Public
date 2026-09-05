@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — замени ме",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ЗАМЕНИ МЕ — једна реченица, једна сврха, највише 132 знака, без маркетинга.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — замени ме",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Промени тему",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Опције",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Активна картица",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Читање…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Копирај наслов",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Поново прочитај активну картицу",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Одбаци",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Копирано",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Копирање није успело — притисните Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Последње $ACTION$ није успело — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Последње $ACTION$ није успело — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "читање наслова",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "копирање",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "брисање података",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "покретање",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Нешто је ово зауставило пре него што је завршено. Покушајте поново.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Ова картица је већ заузета.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Ову страницу штити прегледач и екстензије не смеју да је читају.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Није пронађена ниједна активна картица.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Ова страница нема наслов који би се прочитао.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Отказано.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Непозната порука.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Та картица је затворена пре него што је посао завршен.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Екстензија није одговорила.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Ништа није стигло назад.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Странице прегледача, као што су Подешавања, Екстензије и Нова картица, недоступне су свакој екстензији. Пробајте ово на обичној веб-страници.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Прозори алатки за програмере недоступни су екстензијама.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Странице са приказом изворног кода недоступне су екстензијама. Пробајте уместо тога на самој страници.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Странице екстензија, укључујући и сопствене странице ове екстензије, заштићене су прегледачем.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome веб-продавница не дозвољава екстензијама да читају њене странице.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Локалне датотеке траже још једну дозволу. Отворите страницу Екстензије у прегледачу, пронађите ову екстензију и укључите „Дозволи приступ URL адресама датотека“.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Ова страница се није учитала, па још нема шта да се прочита.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Ово је PDF читач уграђен у прегледач. Екстензије не могу да читају његов садржај — отворите PDF у обичној картици или га прво преузмите.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Ову страницу је сајт који ју је отворио сместио у изоловано окружење, па екстензије не могу да је прочитају.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Сајт са додацима не дозвољава екстензијама да читају његове странице.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "На овом уређају нема више простора, па ништа није сачувано. Обришите неке сачуване редове у Опцијама и покушајте поново.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Ово је предуго трајало и заустављено је. Ништа није остало иза тога.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Та вредност је предугачка да би се сачувала у вашим синхронизованим подешавањима. Пробајте краћу.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "То подешавање није сачувано. Сачекајте тренутак и покушајте поново.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Опције — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Опције",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Опције",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Чува се аутоматски. Ако је синхронизација у прегледачу укључена, ваша подешавања путују с вашим профилом прегледача — нама се никада не шаљу.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Понашање",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Копирај при отварању",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Копира резултат у оставу чим се искачући прозор отвори.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Чувај локалну историју",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Подразумевано искључено. Када је укључено, резултати се чувају само на овом уређају, приказани су испод и можете их обрисати у сваком тренутку.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Ограничење историје",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Најстарији редови се бришу чим листа постане дужа од овога.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Бриши редове старије од",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Дана. Стари редови се уклањају аутоматски, у позадини. Поставите 0 да би редови остали док их не избаци ограничење историје.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Тема",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Подразумевано прати ваш систем.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Систем",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Светла",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Тамна",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Ваши подаци",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Ништа није сачувано на овом уређају.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ редова је сачувано на овом уређају. Ништа одавде не одлази.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ ред је сачуван на овом уређају. Ништа одавде не одлази.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ редова је сачувано на овом уређају. Ништа одавде не одлази.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ реда су сачувана на овом уређају. Ништа одавде не одлази.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ редова је сачувано на овом уређају. Ништа одавде не одлази.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ редова је сачувано на овом уређају. Ништа одавде не одлази.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Трајно: прегледач је обећао да ово неће обрисати.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Без гаранције: прегледач ово може сам да обрише ако на уређају понестане простора. Извезите резервну копију.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Овај прегледач не каже да ли ће сачувани подаци бити задржани, зато их сматрајте привременим и извезите резервну копију.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ У употреби $USED$ од $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Обриши",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Обриши ред са $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Извези све",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Чува све сачуване редове у једну JSON датотеку на овом уређају. Ништа се не отпрема.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Извези све",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Обриши све",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Уклања све сачуване редове са овог уређаја. Подешавања остају.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Обриши све",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Ресетуј подешавања",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Враћа сва подешавања на овој страници на подразумеване вредности и уклања их из вашег синхронизованог профила прегледача. Сачувани редови остају.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Ресетуј подешавања",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Пријава проблема",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Припреми извештај о проблему",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Прави малу датотеку која описује стање ове екстензије. Видите тачно шта је у њој пре него што се сачува и ништа се нигде не шаље.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Припреми извештај",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "О програму",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — замени ме",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Једна реченица која каже тачно шта ова алатка ради. Свој посао обавља на вашем уређају: без налога, без праћења, без мрежних захтева, нама се ништа не шаље.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Сачувано",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Све је обрисано",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Брисање није успело — покушајте поново",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Подешавање није сачувано",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Извоз је сачуван",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Датотека није сачувана",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Ред је обрисан",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Подешавања су ресетована",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Подешавања нису ресетована",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Извештај је сачуван",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Откажи",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Обрисати све?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Сви сачувани редови уклањају се са овог уређаја. Ваша подешавања остају. Ово не може да се опозове.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Ресетовати сва подешавања?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Свако подешавање на овој страници враћа се на подразумевану вредност и уклања се из вашег синхронизованог профила прегледача. Ваши сачувани редови остају. Ово не може да се опозове.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Сачувати овај извештај о проблему?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Ово је све што ће датотека садржати. У њој нема адреса страница, нема текста страница и нема ничега што сте забележили. Ништа се нигде не шаље — датотека се чува на овом уређају и само ви одлучујете да ли ћете је делити или не.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Сачувај извештај",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Инкогнито прозор — овај резултат није сачуван у вашој историји.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Приступ сајтовима",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Приступ свим сајтовима",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Потребан је само за функције које раде на страницама на којима нисте кликнули на дугме на траци са алаткама. Можете га одузети у сваком тренутку, овде.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Одобри приступ",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Одузми приступ",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Ова екстензија тренутно може да чита сваки сајт који посетите.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Ова екстензија може да прочита картицу тек након што кликнете на њено дугме на траци са алаткама.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Приступ је одобрен",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Приступ није одобрен",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Приступ је одузет",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Тај приступ није одузет",
+    "description": "en: Could not revoke that access"
+  }
+}

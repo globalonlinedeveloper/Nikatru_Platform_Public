@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Workspace</title>
+<link rel="stylesheet" href="_kit.css">
+<style>
+  #slot { min-height: 320px; }
+  #slot iframe { width: 640px; height: 300px; border: 1px solid #d9dde6; background: #fff; }
+  .sentinel { color: #55606e; font-size: 13px; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="#">Workspace</a><a href="#">Widgets</a><a href="#">Admin</a>
+  <span>Console</span>
+</nav>
+<main>
+  <h1>Workspace console</h1>
+
+  <!-- Same trigger as late-swap.html (see _late.js for why it cannot be
+       deterministic from the page side), different payload: the DOOR itself
+       arrives after the scan. §5.4's frame counters are written during the
+       walk, so a frame that does not exist during the walk is not a door that
+       was left shut — it is a door the ledger does not know about. -->
+  <div class="sentinel" id="sentinel">Console ready.</div>
+
+  <p class="filler">Widgets are mounted lazily as the console is read.</p>
+
+  <div class="spacer"></div>
+  <div class="card">
+    <h2>Activity</h2>
+    <p class="filler">No incidents in the last thirty days. Two scheduled
+    maintenance windows are planned for next quarter.</p>
+  </div>
+  <div class="spacer"></div>
+
+  <div class="card">
+    <h2>Account widget</h2>
+    <div id="slot"><span class="filler">Mounting widget…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Footer</h2>
+    <p class="filler">All times are shown in the workspace timezone.</p>
+  </div>
+  <div class="spacer"></div>
+</main>
+
+<script src="_late.js"></script>
+<script>
+  fsLateFixture('late-frame', function (slot) {
+    if (slot.querySelector('iframe')) return;
+    var f = document.createElement('iframe');
+    f.src = 'frame-pii.html';
+    slot.replaceChildren(f);
+  });
+</script>
+</body>
+</html>

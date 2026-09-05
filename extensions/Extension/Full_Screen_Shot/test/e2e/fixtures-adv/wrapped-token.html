@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — ONE MATCH, TWO BLOCKS: a card number broken across a line</title>
+<!-- REDACTION-CLAIM-SPEC.md §2.1. THE SHAPE THE WHOLE UNIT CORRECTION IS ABOUT,
+     and until now the corpus did not contain it — which is precisely why an
+     assertion that compared a block count to a match count could sit in the
+     suite reading like a law.
+
+     A block is one CLIENT RECT. `collectPIIBoxes` walks
+     `Range.getClientRects()` for the matched substring and emits one box per
+     rect, all of them carrying the same `matchId`, so a token that breaks
+     across a line is ONE match and TWO blocks. Every fixture beside this one
+     holds its PII on a single line, where blocks and matches happen to be equal
+     and every cross-unit comparison in the suite is accidentally green.
+
+     THE COLUMN IS NARROW ON PURPOSE, and the wrap is engineered rather than
+     hoped for: the card number's three interior spaces are the only soft break
+     opportunities in it, the column is far narrower than the sixteen digits at
+     this size, and the font is ui-monospace so the break point does not move
+     with the platform's proportional face. `text-wrap: nowrap` anywhere in this
+     file would silently retire the fixture.
+
+     WHAT THIS FIXTURE IS FOR, stated so nobody "tidies" the column back to a
+     comfortable width: with it in the corpus, the old
+     `marks.length === verifiedOpaque` reddens (3 marks, 2 matches) and the
+     honest `marks.length >= verifiedOpaque` passes. Without it, both are green
+     and the suite teaches the defect.
+
+     MARKER CONVENTION is control-pii.html's, unchanged: the coloured span wraps
+     the token ALONE, line-height 1 on the marker so the band is the glyph band,
+     and no text colour within tolerance of the block colour rgb(17,17,17). -->
+<style>
+  html, body { margin: 0; background: #fbfbfe; color: #1c2333; font: 17px/1.6 system-ui, sans-serif; }
+  header { background: rgb(35, 45, 70); color: #fff; padding: 24px 28px; font: 600 24px/1.3 system-ui, sans-serif; }
+  .prose { max-width: 900px; padding: 22px 28px; }
+  /* THE NARROW COLUMN. 190px against a 16-digit monospace card number at 22px
+     leaves room for roughly two groups per line, so the token breaks once and
+     emits two rects. */
+  .col { width: 190px; padding: 30px 28px; font: 600 22px/1.6 ui-monospace, monospace; }
+  .row { padding: 30px 28px; min-height: 130px; font: 600 22px/1.6 ui-monospace, monospace; }
+  .mark { font: 600 22px/1 ui-monospace, monospace; }
+  .card  { background: rgb(90, 130, 255); color: #0b2a6b; }
+  .email { background: rgb(255, 90, 90); color: #300; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+<header>Statement — narrow column</header>
+<div class="prose">This page holds two pieces of PII and produces three blocks. The card number below sits in a column too narrow to hold it, so it breaks across two lines and the detector's one match becomes two rectangles in the picture. The email further down does not break and stays one.</div>
+<div class="col">Card on file: <span class="mark card">4242 4242 4242 4242</span></div>
+<div class="prose">Two matches, three blocks. Any number in this product that is compared against another must therefore say which of those two it is counting, because on this page they are not the same number and on every other page in the corpus they happen to be.</div>
+<div class="row">Billing contact: <span class="mark email">jane.doe@example.com</span></div>
+<div class="prose">End of statement. Nothing below this line is sensitive.</div>
+<div id="bottom"></div>
+</body>
+</html>

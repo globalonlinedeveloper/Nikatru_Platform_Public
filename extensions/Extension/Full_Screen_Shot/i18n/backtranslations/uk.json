@@ -1,0 +1,10 @@
+{
+  "popupExpandToggleTip": "To unfold the inner scrolling panels and iframes to the full content, instead of taking them as they are. For frames from other sites the browser will ask one time for an additional permission.",
+  "optionsLead": "Changes are saved automatically and are synchronised with the profile of your browser.",
+  "optionsExpandPermGranted": "Permission granted — frames from other sites are unfolded too.",
+  "optionsExpandPermMissing": "Without the \"read all websites\" permission, frames from other sites are taken as they are. Panels and iframes from that same site always work.",
+  "optionsRedactPIIDesc": "Looks in the text the page opens for e-mail addresses, telephone numbers, bank card numbers, identification numbers and API keys and paints over with a solid block that which coincided, in the saved image. Text drawn with pixels it cannot read — a canvas, an image, a PDF, a video frame. Recognition is performed on your device; nothing at all is ever sent anywhere. Works for captures of the whole page (with document scrolling); the block is irreversible, so check the result yourselves.",
+  "scrollclipFormatHint": "GIF is played back everywhere. WebM is smaller and smoother (it is recorded live in your browser).",
+  "batchPermissionHint": "In order to open these pages, a one-off permission is needed the first time.",
+  "batchPermissionDeclined": "The permission to open these pages was refused."
+}

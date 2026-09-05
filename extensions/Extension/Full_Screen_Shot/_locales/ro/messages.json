@@ -1,0 +1,2230 @@
+{
+  "appName": {
+    "message": "FullShot – captură a paginii întregi"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Capturați pagina întreagă, zona vizibilă, o regiune sau orice element. Editați, adnotați și exportați în PNG, JPEG, WebP sau PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – capturează pagina (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Capturează pagina întreagă"
+  },
+  "commandCaptureVisible": {
+    "message": "Capturează zona vizibilă"
+  },
+  "commandCaptureRegion": {
+    "message": "Capturează regiunea selectată"
+  },
+  "commandCaptureElement": {
+    "message": "Capturează un element din pagină (alegeți cu un clic)"
+  },
+  "popupToggleTheme": {
+    "message": "Schimbă tema"
+  },
+  "popupModeFullTitle": {
+    "message": "Pagina întreagă"
+  },
+  "popupModeFullSub": {
+    "message": "Derulează și capturează tot"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Zona vizibilă"
+  },
+  "popupModeVisibleSub": {
+    "message": "Doar ce se vede pe ecran"
+  },
+  "popupModeRegionTitle": {
+    "message": "Regiune selectată"
+  },
+  "popupModeRegionSub": {
+    "message": "Trageți ca să alegeți o zonă"
+  },
+  "popupModeElementTitle": {
+    "message": "Element"
+  },
+  "popupModeElementSub": {
+    "message": "Faceți clic pe un element"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Captură întârziată"
+  },
+  "popupModeDelayedSub": {
+    "message": "Pagina întreagă după numărătoare"
+  },
+  "popupDelayLabel": {
+    "message": "Secunde de întârziere"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Extinde panourile derulabile și iframe-urile"
+  },
+  "popupExpandToggleTip": {
+    "message": "Extinde panourile derulabile interioare și iframe-urile la conținutul lor complet înainte de captură, în loc să le fotografieze așa cum se văd. Pentru cadrele de pe alte site-uri, browserul cere o dată o permisiune suplimentară."
+  },
+  "popupDismiss": {
+    "message": "Închide"
+  },
+  "popupLastErrorFailed": {
+    "message": "Ultima $MODE$ a eșuat — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Ultima $MODE$ a eșuat — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "captură a paginii întregi"
+  },
+  "popupModeNameVisible": {
+    "message": "captură a zonei vizibile"
+  },
+  "popupModeNameRegion": {
+    "message": "captură de regiune"
+  },
+  "popupModeNameElement": {
+    "message": "captură de element"
+  },
+  "popupModeNameGeneric": {
+    "message": "captură"
+  },
+  "popupNoActiveTab": {
+    "message": "Nu s-a găsit nicio filă activă."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Captura nu a putut porni."
+  },
+  "popupLinkHistory": {
+    "message": "Istoric"
+  },
+  "popupLinkBatch": {
+    "message": "Lot"
+  },
+  "popupLinkOptions": {
+    "message": "Opțiuni"
+  },
+  "optionsPageTitle": {
+    "message": "Opțiuni — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Opțiuni"
+  },
+  "optionsHeading": {
+    "message": "Opțiuni"
+  },
+  "optionsLead": {
+    "message": "Modificările se salvează automat și se sincronizează cu profilul dumneavoastră de browser."
+  },
+  "optionsSectionImage": {
+    "message": "Imagine"
+  },
+  "optionsFormat": {
+    "message": "Format"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ este fără pierderi, $JPEG$ este mai mic, iar $WEBP$ este cel mai mic la o calitate similară.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Calitate $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Șablon pentru numele fișierului"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Substituenți: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Captură"
+  },
+  "optionsCaptureDelay": {
+    "message": "Întârziere suplimentară la fiecare pas"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisecunde de așteptare după fiecare derulare. Măriți valoarea pentru pagini lente, pline de animații."
+  },
+  "optionsHideFixed": {
+    "message": "Ascunde elementele fixe și lipicioase"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Împiedică repetarea antetului pe fiecare ecran (apare o singură dată, sus)."
+  },
+  "optionsPreScroll": {
+    "message": "Derulează în prealabil pentru conținutul leneș"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Parcurge pagina o dată înainte de captură. Este mai lent, dar prinde și imaginile încărcate leneș."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Așteaptă decodarea imaginilor"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Lasă imaginile întârziate sau leneșe să termine decodarea înainte de fiecare cadru, ca să nu fie capturate ca pătrate negre sau goale."
+  },
+  "optionsHideOverlays": {
+    "message": "Ascunde bannerele și ferestrele pop-up"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Înainte de captură elimină bannerele de cookie-uri, ferestrele de newsletter și pop-upurile „descarcă aplicația” și deblochează pagina înghețată de o fereastră modală. Apoi restaurează totul."
+  },
+  "optionsExpandInner": {
+    "message": "Extinde conținutul derulabil"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Mărește panourile interioare și iframe-urile ca să arate și conținutul ascuns sub propria lor margine, în loc să le captureze exact așa cum se văd."
+  },
+  "optionsExpandPermRow": {
+    "message": "Cadre de pe alte site-uri"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Permite"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Permisiune acordată — se extind și cadrele de pe alte site-uri."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Fără permisiunea „$PERMISSION$”, cadrele de pe alte site-uri sunt capturate așa cum se văd. Panourile și iframe-urile de pe același site funcționează întotdeauna.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Derulează listele virtualizate"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Parcurge fluxurile cu fereastră de randare (de tip $LIB1$ / $LIB2$) și le capturează tot conținutul, nu doar rândurile de pe ecran. Mai lent la liste foarte lungi.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Extinde conținutul ascuns după interacțiune"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Înainte de captură deschide elementele $DETAILS$ pliate, filele inactive, acordeoanele și secțiunile „afișează mai mult”, apoi le readuce la loc. Scoate la iveală conținutul ascuns după un clic.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Apasă butoanele „$BUTTONTEXT$”",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Apasă în mod repetat butoanele „load more” / „show more” și așteaptă încărcarea conținutului nou, până când fluxul se epuizează. Spre deosebire de opțiunea de mai sus, aceasta aduce conținut care nu se află încă în pagină; conținutul încărcat rămâne și după captură."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Derulează pentru fluxurile infinite"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Pentru fluxurile fără buton „load more”: derulează până jos și așteaptă încărcarea porțiunii următoare, în mod repetat, până când fluxul nu mai crește (cu o limită fermă, ca fluxurile fără sfârșit să nu fie urmărite la nesfârșit). Conținutul încărcat rămâne și după captură."
+  },
+  "optionsWaitStable": {
+    "message": "Așteaptă terminarea încărcării conținutului"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Așteaptă ca scheletele și încărcătoarele-substituent (zone aria-busy, blocuri licăritoare) să fie înlocuite de conținutul real, ca un „se încarcă…” din mijlocul paginii să nu ajungă în captură ca dreptunghiuri gri. Este limitat, așa că un indicator blocat nu blochează captura."
+  },
+  "optionsRedactPII": {
+    "message": "Maschează automat datele sensibile"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Scanează textul pe care pagina îl expune după adrese de e-mail, numere de telefon, numere de card, coduri numerice personale și chei API și acoperă cu un bloc plin ceea ce se potrivește, în imaginea salvată. Nu poate citi text desenat ca pixeli — o pânză de desen, o imagine, un PDF, un cadru video. Detectarea rulează pe dispozitivul dumneavoastră; nimic nu este trimis vreodată nicăieri. Se aplică la capturile paginii întregi (derularea documentului); blocul este permanent, așa că verificați singuri rezultatul."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Înălțime maximă a paginii"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Limită de siguranță (CSS px) pentru fluxurile infinite."
+  },
+  "optionsSectionPdf": {
+    "message": "Export PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Dimensiune implicită a hârtiei"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "„$IMAGESIZE$” face pagina exact cât captura.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Dimensiunea imaginii"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientare"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Doar pentru dimensiuni fixe de hârtie."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Portret"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Peisaj"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Împărțire inteligentă a paginilor"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Caută un spațiu liber lângă fiecare întrerupere de pagină, ca rândurile de text să nu fie tăiate în două."
+  },
+  "optionsPdfStamp": {
+    "message": "Ștampilează adresa și data"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Adaugă adresa paginii și data capturii în subsolul fiecărei pagini PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Descărcare"
+  },
+  "optionsSaveDirectory": {
+    "message": "Folder"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Subfolder în $DOWNLOADS$ pentru capturile dumneavoastră, de exemplu $EXAMPLE$. Gol = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Fereastra „Salvare ca”"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Întreabă unde să salveze fiecare fișier, în loc să descarce în tăcere."
+  },
+  "optionsClipboardFit": {
+    "message": "Adaptează copiile din clipboard la limitele aplicațiilor"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Reduce copiile de peste $PIXELS$ de pixeli, ca lipirea în $APP$ și altele asemenea să funcționeze.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Flux de lucru"
+  },
+  "optionsAutoDownload": {
+    "message": "Descărcare automată după captură"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Salvează imaginea imediat ce captura se termină."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Deschide editorul după captură"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Trece direct la adnotare (doar pentru capturile dintr-o singură parte)."
+  },
+  "optionsTheme": {
+    "message": "Temă"
+  },
+  "optionsThemeDesc": {
+    "message": "Pentru fereastra pop-up și toate paginile FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistem"
+  },
+  "optionsThemeLight": {
+    "message": "Luminoasă"
+  },
+  "optionsThemeDark": {
+    "message": "Întunecată"
+  },
+  "optionsShortcuts": {
+    "message": "Scurtături de tastatură"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Pagina întreagă: $KEYFULL$ · Zona vizibilă: $KEYVISIBLE$. Modificați la $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Salvat ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Datele tale"
+  },
+  "optionsStorage": {
+    "message": "Stocare"
+  },
+  "optionsStorageUsage": {
+    "message": "Sunt folosiți $USED$ din $QUOTA$ pe acest dispozitiv.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Acest browser nu indică cât spațiu folosește FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Capturile tale sunt păstrate: browserul nu le va șterge pentru a elibera spațiu."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Capturile tale se află în stocarea „best effort” a browserului, pe care acesta o poate goli pentru a elibera spațiu."
+  },
+  "optionsStorageKeep": {
+    "message": "Păstrează-mi datele"
+  },
+  "optionsExport": {
+    "message": "Exportă tot"
+  },
+  "optionsExportDesc": {
+    "message": "Scrie un singur fișier cu setările tale și lista capturilor tale. Este salvat pe acest dispozitiv și nu este trimis nicăieri."
+  },
+  "optionsExportImages": {
+    "message": "Include imaginile"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Imaginile propriu-zise, care reprezintă aproape toată dimensiunea. Fără ele, fișierul îți enumeră capturile, dar nu conține niciuna."
+  },
+  "optionsExportSize": {
+    "message": "Dimensiunea fișierului: aproximativ $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Date rămase"
+  },
+  "optionsSweepDesc": {
+    "message": "O captură întreruptă poate lăsa pe disc cadre care nu aparțin niciunei capturi de ecran. Nu apar pe nicio pagină, deci nicio pagină nu le poate șterge. Aceasta le găsește și le elimină."
+  },
+  "optionsSweepBtn": {
+    "message": "Găsește și elimină"
+  },
+  "optionsSweepResult": {
+    "message": "Eliminat. Capturi curățate: $COUNT$ · Spațiu eliberat: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Nu a rămas nimic: tot ce este stocat aparține unei capturi pe care o poți vedea."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Resetează setările"
+  },
+  "optionsResetDesc": {
+    "message": "Readuce fiecare setare din această pagină la valoarea cu care a fost livrată. Capturile tale nu sunt atinse."
+  },
+  "optionsResetBtn": {
+    "message": "Resetează"
+  },
+  "optionsResetConfirm": {
+    "message": "Readuci toate setările FullShot la valorile implicite? Capturile tale nu sunt afectate."
+  },
+  "optionsResetDone": {
+    "message": "Setările au revenit la valorile implicite."
+  },
+  "optionsDeleteAll": {
+    "message": "Șterge tot"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Elimină toate capturile din istoricul tău și tot ce au lăsat în urmă capturile întrerupte. Setările tale rămân așa cum sunt."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Ștergi tot ce a stocat FullShot pe acest dispozitiv?\n\nCapturi în istoricul tău: $COUNT$\nRămășițe de la capturi întrerupte: $LEFTOVER$\nSpațiul eliberat: $SIZE$\n\nSetările tale nu sunt afectate. Această acțiune nu poate fi anulată.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Șters. FullShot nu mai stochează nicio captură pe acest dispozitiv."
+  },
+  "resultPageTitle": {
+    "message": "Captură de ecran — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Copiază"
+  },
+  "resultCopyTip": {
+    "message": "Copiază imaginea în clipboard"
+  },
+  "resultEdit": {
+    "message": "Editează"
+  },
+  "resultEditTip": {
+    "message": "Deschide în editor"
+  },
+  "resultBeautify": {
+    "message": "Înfrumusețează"
+  },
+  "resultBeautifyTip": {
+    "message": "Înfrumusețare — ramă și fundal pentru partajare"
+  },
+  "resultClip": {
+    "message": "Clip"
+  },
+  "resultClipTip": {
+    "message": "Clip derulant — $GIF$ / $WEBM$ animat",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Dimensiunea hârtiei PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Descarcă"
+  },
+  "resultDeleteTip": {
+    "message": "Șterge captura"
+  },
+  "resultHistoryTip": {
+    "message": "Istoricul capturilor"
+  },
+  "resultProgressAssembling": {
+    "message": "Se asamblează captura…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Se decodează $COUNT$ cadru…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingFew": {
+    "message": "Se decodează $COUNT$ cadre…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Se decodează $COUNT$ de cadre…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Se îmbină partea $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Se îmbină partea $INDEX$ din ~$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Se salvează…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Sfat: trageți imaginea direct pe desktop sau folosiți $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Nimic aici"
+  },
+  "resultEmptyBody": {
+    "message": "Această captură nu mai există."
+  },
+  "resultOpenHistory": {
+    "message": "Deschide istoricul"
+  },
+  "resultSomethingWrong": {
+    "message": "Ceva nu a mers — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Partea $INDEX$ din $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Descarcă partea"
+  },
+  "resultEditPart": {
+    "message": "Editează partea"
+  },
+  "resultClipPart": {
+    "message": "Clip din parte"
+  },
+  "resultPartAlt": {
+    "message": "Partea $INDEX$ a capturii",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Se descarcă $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Ștergeți definitiv această captură?"
+  },
+  "resultDeleted": {
+    "message": "Captura a fost ștearsă."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredFew": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Această captură este prea înaltă pentru a fi lipită ca o singură imagine lizibilă, așa că $COPY$ pune în clipboard o privire de ansamblu micșorată a întregii pagini. Textul mic din ea nu va fi lizibil.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Partea $INDEX$ a fost copiată în clipboard",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Se construiește PDF-ul…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF descărcat ($COUNT$ pagină)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneFew": {
+    "message": "PDF descărcat ($COUNT$ pagini)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF descărcat ($COUNT$ de pagini)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF-ul a eșuat — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Înapoi la captură"
+  },
+  "editorToolSelect": {
+    "message": "Selectare / mutare ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Decupare ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Creion ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Marker ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Linie ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Săgeată ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Dreptunghi ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipsă ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Text ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Neclaritate / pixelare ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Pas numerotat ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Ștampilă emoji ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Culoare personalizată"
+  },
+  "editorStrokeTip": {
+    "message": "Grosimea liniei"
+  },
+  "editorStrokeThin": {
+    "message": "Subțire"
+  },
+  "editorStrokeMedium": {
+    "message": "Medie"
+  },
+  "editorStrokeThick": {
+    "message": "Groasă"
+  },
+  "editorSizeTip": {
+    "message": "Dimensiunea textului / emoji"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Anulează ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Refă ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Micșorează (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Mărește (+)"
+  },
+  "editorZoomFit": {
+    "message": "Încadr."
+  },
+  "editorZoomTipToHundred": {
+    "message": "Încadrat în fereastră — clic pentru 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "Clic pentru încadrare în fereastră"
+  },
+  "editorExport": {
+    "message": "Exportă"
+  },
+  "editorExportCopy": {
+    "message": "Copiază în clipboard"
+  },
+  "editorExportImage": {
+    "message": "Imagine $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Document $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Salvează"
+  },
+  "editorSaveTip": {
+    "message": "Salvează modificările în istoric ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Mai multe"
+  },
+  "editorMenuFiles": {
+    "message": "Mergi la Istoric"
+  },
+  "editorMenuOptions": {
+    "message": "Mergi la Opțiuni"
+  },
+  "editorMenuShortcuts": {
+    "message": "Scurtături de tastatură"
+  },
+  "editorCropApply": {
+    "message": "Aplică decuparea"
+  },
+  "editorCropCancel": {
+    "message": "Renunță"
+  },
+  "editorShortcutsHeading": {
+    "message": "Scurtături de tastatură"
+  },
+  "editorShortcutTools": {
+    "message": "Alegerea instrumentelor"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Anulează / refă"
+  },
+  "editorShortcutSave": {
+    "message": "Salvează în istoric"
+  },
+  "editorShortcutZoom": {
+    "message": "Micșorează / mărește"
+  },
+  "editorShortcutDelete": {
+    "message": "Elimină obiectul selectat"
+  },
+  "editorShortcutEscape": {
+    "message": "Deselectează / anulează decuparea"
+  },
+  "editorShortcutsClose": {
+    "message": "Închide"
+  },
+  "editorNotFound": {
+    "message": "Captura nu a fost găsită"
+  },
+  "editorToastDownloaded": {
+    "message": "Descărcat"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF descărcat"
+  },
+  "editorToastSaved": {
+    "message": "Salvat în istoric"
+  },
+  "historyPageTitle": {
+    "message": "Istoric — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Istoric"
+  },
+  "historySearchPlaceholder": {
+    "message": "Căutați după titlu sau URL…"
+  },
+  "historySelectAll": {
+    "message": "Selectează tot"
+  },
+  "historyClearSelection": {
+    "message": "Anulează selecția"
+  },
+  "historyDownloadSelected": {
+    "message": "Descarcă selecția"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Descarcă ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Șterge selecția"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Șterge ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Încă nicio captură"
+  },
+  "historyEmptyBody": {
+    "message": "Capturile pe care le faceți vor apărea aici. Faceți clic pe pictograma FullShot din bara de instrumente ca să începeți."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Nicio potrivire"
+  },
+  "historyNoMatchesBody": {
+    "message": "Nicio captură nu se potrivește cu „$QUERY$”.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ captură · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFew": {
+    "message": "$COUNT$ capturi · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ de capturi · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ din $COUNT$ captură · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredFew": {
+    "message": "$SHOWN$ din $COUNT$ capturi · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ din $COUNT$ de capturi · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Selectează"
+  },
+  "historyCardOpen": {
+    "message": "Deschide"
+  },
+  "historyCardEdit": {
+    "message": "Editează"
+  },
+  "historyCardDownloadTip": {
+    "message": "Descarcă"
+  },
+  "historyCardDeleteTip": {
+    "message": "Șterge"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Deschide pagina originală"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ părți",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Captură de ecran"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Ștergeți această captură?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Ștergeți definitiv $COUNT$ captură?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyFew": {
+    "message": "Ștergeți definitiv $COUNT$ capturi?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Ștergeți definitiv $COUNT$ de capturi?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Se descarcă $COUNT$ captură",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingFew": {
+    "message": "Se descarcă $COUNT$ capturi",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Se descarcă $COUNT$ de capturi",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Șters"
+  },
+  "beautifyPageTitle": {
+    "message": "Înfrumusețare — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Înfrumusețare"
+  },
+  "actionBack": {
+    "message": "Înapoi"
+  },
+  "commonLoading": {
+    "message": "Se încarcă…"
+  },
+  "beautifyFieldSize": {
+    "message": "Dimensiune"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automat"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Pătrat"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Portret"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Fundal"
+  },
+  "beautifyBgSlate": {
+    "message": "Ardezie"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Cer"
+  },
+  "beautifyBgSunset": {
+    "message": "Apus"
+  },
+  "beautifyBgGrape": {
+    "message": "Strugure"
+  },
+  "beautifyBgMint": {
+    "message": "Mentă"
+  },
+  "beautifyFieldPadding": {
+    "message": "Spațiere"
+  },
+  "beautifyFieldRadius": {
+    "message": "Rotunjirea colțurilor"
+  },
+  "beautifyFieldEffects": {
+    "message": "Efecte"
+  },
+  "beautifyShadow": {
+    "message": "Umbră proiectată"
+  },
+  "beautifyWindowFrame": {
+    "message": "Ramă de fereastră"
+  },
+  "beautifyFieldExport": {
+    "message": "Export"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Clip derulant — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Clip derulant"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Format"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ se redă peste tot. $WEBM$ este mai mic și mai fluid (înregistrat live în browserul dumneavoastră).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Lățimea de ieșire"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Densitate"
+  },
+  "scrollclipDensityHint": {
+    "message": "O densitate mai mare randează mai clar (mai aproape de rezoluția sursei) — fișier mai mare."
+  },
+  "scrollclipFieldShape": {
+    "message": "Formă"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Viteza de derulare (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Rata de cadre (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Mișcare"
+  },
+  "scrollclipBounce": {
+    "message": "Revenire (derulare înapoi sus)"
+  },
+  "scrollclipLoop": {
+    "message": "Repetă la nesfârșit"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Copiază cadrul"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Copiază cadrul de început (de sus) ca $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ cadru · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsFew": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ cadre · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ de cadre · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Se randează cadrele… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Se codează $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Se finalizează…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Se înregistrează $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Se înregistrează…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ nu este acceptat aici — se exportă $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Cadrul de început a fost copiat"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — captură pe loturi"
+  },
+  "batchHeading": {
+    "message": "Captură pe loturi"
+  },
+  "batchIntro": {
+    "message": "Lipiți adresele URL, câte una pe rând. FullShot deschide fiecare pagină, salvează o captură a paginii întregi în istoric, apoi trece mai departe — cel mult $MAX$ o dată. Capturile apar în istoric; faceți clic pe $OPENLINK$ ca să le vedeți, să le editați sau să le exportați.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Capturează tot"
+  },
+  "batchPermissionHint": {
+    "message": "Deschiderea acestor pagini necesită o permisiune unică, cerută prima dată."
+  },
+  "batchPermissionDeclined": {
+    "message": "Permisiunea de a deschide acele pagini a fost refuzată."
+  },
+  "batchPanelPlan": {
+    "message": "Plan"
+  },
+  "batchPanelProgress": {
+    "message": "Progres"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ pagină de capturat",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountFew": {
+    "message": "$COUNT$ pagini de capturat",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ de pagini de capturat",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ pagini de capturat (limitat la $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Încă niciun URL valid"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ omise: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "schemă neacceptată"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "nevalid"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "fără gazdă"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "duplicat"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "gol"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "peste limită ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ gata",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ gata, $FAILED$ eșuate",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ gata — finalizat",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ gata, $FAILED$ eșuate — finalizat",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "deschide"
+  },
+  "batchJobTimedOut": {
+    "message": "timp expirat"
+  },
+  "batchJobNoSession": {
+    "message": "nicio sesiune de captură"
+  },
+  "batchJobFailed": {
+    "message": "captura a eșuat"
+  },
+  "batchJobError": {
+    "message": "eroare de captură"
+  },
+  "regionHintDrag": {
+    "message": "Trageți ca să selectați o regiune — $ESC$ pentru anulare",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Faceți clic pe un element ca să îl capturați — $ESC$ pentru anulare",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Paginile browserului, precum Setări, Extensii sau Filă nouă, sunt interzise oricărei extensii. Încercați FullShot pe o pagină web obișnuită."
+  },
+  "errRestrictedDevtools": {
+    "message": "Ferestrele DevTools nu pot fi capturate de o extensie. Pentru ele folosiți instrumentul de captură al computerului dumneavoastră."
+  },
+  "errRestrictedViewSource": {
+    "message": "Paginile cu codul sursă nu pot fi capturate. Capturați în schimb pagina în sine."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Paginile extensiilor, inclusiv cele ale FullShot, sunt protejate de browser și nu pot fi capturate."
+  },
+  "errRestrictedWebstore": {
+    "message": "Magazinul web Chrome nu permite extensiilor să îi citească paginile, așa că aceasta nu poate fi capturată."
+  },
+  "errRestrictedGeneric": {
+    "message": "Această pagină este protejată de browser și nu poate fi capturată."
+  },
+  "errWrongTab": {
+    "message": "Captura s-a oprit — ați schimbat fila. Țineți această pagină în față până când FullShot termină."
+  },
+  "errGeneric": {
+    "message": "Captura s-a oprit înainte de a se termina. Încercați din nou."
+  },
+  "errBusy": {
+    "message": "În această filă rulează deja o captură."
+  },
+  "errBlocked": {
+    "message": "Această pagină nu poate fi capturată (restricție a browserului)."
+  },
+  "errNoStart": {
+    "message": "FullShot nu a putut porni pe această pagină. Reîncărcați pagina și încercați din nou."
+  },
+  "errCrash": {
+    "message": "Captura s-a oprit pe neașteptate. Încercați din nou."
+  },
+  "errUnknownMessage": {
+    "message": "Mesaj necunoscut."
+  },
+  "errQuota": {
+    "message": "Browserul limitează cât de repede pot fi fotografiate paginile. Așteptați puțin și încercați din nou."
+  },
+  "errFrameHandover": {
+    "message": "Browserul a încetat să mai predea ecranul la jumătatea drumului. Așteptați câteva secunde și încercați din nou."
+  },
+  "errLostTab": {
+    "message": "Captura a pierdut urma acestei file. Reîncărcați pagina și încercați din nou."
+  },
+  "errStoppedEarly": {
+    "message": "Captura a fost oprită înainte de a se termina."
+  },
+  "errStorageFull": {
+    "message": "Nu mai există spațiu pentru a stoca această captură. Șterge câteva capturi din istoric, apoi încearcă din nou."
+  },
+  "reasonGeneric": {
+    "message": "nu a fost dat niciun motiv. Încercați din nou."
+  },
+  "reasonDecodeFailed": {
+    "message": "acea captură nu a putut fi decodată."
+  },
+  "reasonTooLarge": {
+    "message": "imaginea este prea mare pentru a fi exportată aici."
+  },
+  "toastCopiedClipboard": {
+    "message": "Copiat în clipboard"
+  },
+  "toastCopyFailed": {
+    "message": "Copierea a eșuat — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Exportul a eșuat — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "S-a salvat $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "S-a salvat $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ kB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

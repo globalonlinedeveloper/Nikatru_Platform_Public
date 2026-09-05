@@ -1,0 +1,2020 @@
+{
+  "appName": {
+    "message": "FullShot - Tangkapan Skrin Halaman Penuh"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Tangkap halaman penuh, kawasan kelihatan, kawasan pilihan atau elemen. Sunting, anotasi dan eksport ke PNG, JPEG, WebP atau PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - Tangkap halaman (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Tangkap halaman penuh"
+  },
+  "commandCaptureVisible": {
+    "message": "Tangkap kawasan yang kelihatan"
+  },
+  "commandCaptureRegion": {
+    "message": "Tangkap kawasan pilihan"
+  },
+  "commandCaptureElement": {
+    "message": "Tangkap satu elemen halaman (klik untuk memilih)"
+  },
+  "popupToggleTheme": {
+    "message": "Tukar tema"
+  },
+  "popupModeFullTitle": {
+    "message": "Halaman penuh"
+  },
+  "popupModeFullSub": {
+    "message": "Tatal dan tangkap seluruh halaman"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Kawasan yang kelihatan"
+  },
+  "popupModeVisibleSub": {
+    "message": "Hanya apa yang ada pada skrin"
+  },
+  "popupModeRegionTitle": {
+    "message": "Kawasan pilihan"
+  },
+  "popupModeRegionSub": {
+    "message": "Seret untuk memilih satu kawasan"
+  },
+  "popupModeElementTitle": {
+    "message": "Elemen"
+  },
+  "popupModeElementSub": {
+    "message": "Klik mana-mana elemen pada halaman"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Tangkapan tertunda"
+  },
+  "popupModeDelayedSub": {
+    "message": "Halaman penuh selepas kiraan detik"
+  },
+  "popupDelayLabel": {
+    "message": "Saat tundaan"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Kembangkan panel boleh tatal & iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "Besarkan panel boleh tatal dan iframe dalaman sehingga kandungan penuhnya, bukan menangkapnya seperti yang kelihatan. Bingkai daripada tapak lain akan meminta satu kebenaran tambahan sekali sahaja."
+  },
+  "popupDismiss": {
+    "message": "Tolak"
+  },
+  "popupLastErrorFailed": {
+    "message": "$MODE$ terakhir gagal — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "$MODE$ terakhir gagal — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "tangkapan halaman penuh"
+  },
+  "popupModeNameVisible": {
+    "message": "tangkapan kawasan yang kelihatan"
+  },
+  "popupModeNameRegion": {
+    "message": "tangkapan kawasan"
+  },
+  "popupModeNameElement": {
+    "message": "tangkapan elemen"
+  },
+  "popupModeNameGeneric": {
+    "message": "tangkapan"
+  },
+  "popupNoActiveTab": {
+    "message": "Tiada tab aktif ditemui."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Tangkapan gagal dimulakan."
+  },
+  "popupLinkHistory": {
+    "message": "Sejarah"
+  },
+  "popupLinkBatch": {
+    "message": "Kelompok"
+  },
+  "popupLinkOptions": {
+    "message": "Pilihan"
+  },
+  "optionsPageTitle": {
+    "message": "Pilihan — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Pilihan"
+  },
+  "optionsHeading": {
+    "message": "Pilihan"
+  },
+  "optionsLead": {
+    "message": "Perubahan disimpan secara automatik dan disegerakkan ke profil pelayar anda."
+  },
+  "optionsSectionImage": {
+    "message": "Imej"
+  },
+  "optionsFormat": {
+    "message": "Format"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ tanpa kehilangan kualiti; $JPEG$ lebih kecil; $WEBP$ paling kecil pada kualiti yang setara.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Kualiti $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Templat nama fail"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Pemegang tempat: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Tangkapan"
+  },
+  "optionsCaptureDelay": {
+    "message": "Tundaan tambahan setiap langkah"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisaat untuk menunggu selepas setiap tatalan. Tingkatkan untuk halaman yang perlahan atau penuh animasi."
+  },
+  "optionsHideFixed": {
+    "message": "Sembunyikan elemen tetap & melekat"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Menghalang pengepala daripada berulang pada setiap skrin (ditunjukkan sekali di bahagian atas)."
+  },
+  "optionsPreScroll": {
+    "message": "Pratatal untuk memuatkan kandungan malas"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Menatal seluruh halaman sekali sebelum menangkap. Lebih perlahan tetapi menangkap imej yang dimuatkan secara malas."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Tunggu imej selesai dinyahkod"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Membiarkan imej yang lewat atau malas selesai dinyahkod sebelum setiap bingkai, supaya ia tidak ditangkap sebagai jubin hitam atau kosong."
+  },
+  "optionsHideOverlays": {
+    "message": "Sembunyikan sepanduk & tetingkap timbul"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Membuang sepanduk kuki/persetujuan, modal surat berita dan tetingkap timbul \"dapatkan apl\" sebelum menangkap, serta membuka kunci halaman yang dibekukan oleh sesuatu modal. Semuanya dipulihkan selepas itu."
+  },
+  "optionsExpandInner": {
+    "message": "Kembangkan kandungan boleh tatal"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Membesarkan panel dalaman dan iframe supaya kandungan yang tersembunyi di bawah lipatannya sendiri kelihatan, bukan menangkapnya tepat seperti yang dilihat."
+  },
+  "optionsExpandPermRow": {
+    "message": "Bingkai merentas tapak"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Benarkan"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Kebenaran diberikan — bingkai daripada tapak lain turut dikembangkan."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Tanpa kebenaran \"$PERMISSION$\", bingkai merentas tapak ditangkap seperti yang kelihatan sahaja. Panel dan iframe daripada tapak yang sama sentiasa berfungsi.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Buka gulung senarai maya"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Melangkah menerusi suapan yang hanya memaparkan tetingkap render (gaya $LIB1$ / $LIB2$) untuk menangkap kandungan penuhnya, bukan hanya baris yang ada pada skrin. Lebih perlahan pada senarai yang sangat panjang.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Kembangkan kandungan yang perlu interaksi"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Membuka $DETAILS$ yang terkuncup, tab tidak aktif, akordion dan bahagian \"tunjukkan lagi\" sebelum menangkap, kemudian memulihkannya. Mendedahkan kandungan yang tersembunyi di sebalik satu klik.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Klik butang \"$BUTTONTEXT$\"",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Mengklik butang \"muatkan lagi\" / \"tunjukkan lagi\" dan menunggu kandungan baharu dimuatkan, berulang kali, sehingga suapan itu habis. Tidak seperti pilihan di atas, ini mengambil kandungan yang belum ada pada halaman; kandungan yang dimuatkan kekal selepas tangkapan."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Tatal untuk memuatkan suapan tanpa henti"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Untuk suapan tanpa butang \"muatkan lagi\": menatal ke bawah sekali dan menunggu halaman seterusnya dimuatkan, berulang kali, sehingga suapan berhenti bertambah panjang (ada hadnya, supaya suapan tanpa penghujung tidak dikejar selamanya). Kandungan yang dimuatkan kekal selepas tangkapan."
+  },
+  "optionsWaitStable": {
+    "message": "Tunggu kandungan selesai dimuatkan"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Menunggu pemuat rangka/pemegang tempat (kawasan aria-busy, blok berkelip) digantikan dengan kandungan sebenar sebelum menangkap, supaya pertukaran \"memuatkan…\" di tengah halaman tidak ditangkap sebagai petak kelabu. Ada had masanya, jadi pemutar yang tersangkut tidak akan menggantung tangkapan."
+  },
+  "optionsRedactPII": {
+    "message": "Tapis maklumat sensitif secara automatik"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Mengimbas teks yang didedahkan oleh halaman untuk mencari e-mel, nombor telefon, nombor kad kredit, nombor kad pengenalan dan kunci API, lalu menyapu blok pejal pada apa yang sepadan di dalam imej yang disimpan. Teks yang dilukis sebagai piksel tidak dapat dibacanya — kanvas, imej, PDF, bingkai video. Pengesanan berjalan pada peranti anda; tiada apa-apa yang pernah dihantar ke mana-mana. Untuk tangkapan halaman penuh (tatalan dokumen); blok itu kekal, jadi semaklah hasilnya sendiri."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Ketinggian halaman maksimum"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Had keselamatan (px CSS) untuk suapan tatalan tanpa henti."
+  },
+  "optionsSectionPdf": {
+    "message": "Eksport PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Saiz kertas lalai"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "\"$IMAGESIZE$\" menjadikan satu halaman tepat sebesar tangkapan skrin itu.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Saiz imej"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientasi"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Untuk saiz kertas tetap."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Potret"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Lanskap"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Pembahagian halaman pintar"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Mencari ruang kosong berhampiran setiap pemisah halaman supaya baris teks tidak terpotong separuh."
+  },
+  "optionsPdfStamp": {
+    "message": "Cap URL & tarikh"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Menambah URL halaman dan tarikh tangkapan pada pengaki setiap halaman PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Muat turun"
+  },
+  "optionsSaveDirectory": {
+    "message": "Direktori"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Subfolder di bawah $DOWNLOADS$ untuk tangkapan skrin anda, contohnya $EXAMPLE$. Kosong = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Muat turun)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialog \"Simpan sebagai\""
+  },
+  "optionsSaveAsDesc": {
+    "message": "Tanya lokasi simpanan bagi setiap fail dan bukan memuat turun secara senyap."
+  },
+  "optionsClipboardFit": {
+    "message": "Muatkan salinan papan keratan mengikut had apl"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Mengecilkan salinan yang melebihi $PIXELS$ piksel supaya tampalan ke $APP$ dan seumpamanya berjaya.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Aliran kerja"
+  },
+  "optionsAutoDownload": {
+    "message": "Muat turun automatik selepas tangkapan"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Menyimpan imej sebaik sahaja sesuatu tangkapan selesai."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Buka editor selepas tangkapan"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Terus masuk ke anotasi (tangkapan satu bahagian sahaja)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Untuk tetingkap timbul dan semua halaman FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistem"
+  },
+  "optionsThemeLight": {
+    "message": "Cerah"
+  },
+  "optionsThemeDark": {
+    "message": "Gelap"
+  },
+  "optionsShortcuts": {
+    "message": "Pintasan papan kekunci"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Halaman penuh: $KEYFULL$ · Kelihatan: $KEYVISIBLE$. Sesuaikan di $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Disimpan ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Data anda"
+  },
+  "optionsStorage": {
+    "message": "Storan"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ daripada $QUOTA$ digunakan pada peranti ini.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Pelayar ini tidak melaporkan berapa banyak ruang yang digunakan FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Tangkapan skrin anda dikekalkan: pelayar tidak akan memadamkannya untuk melapangkan ruang."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Tangkapan skrin anda berada dalam storan “sedaya upaya” pelayar, yang boleh dibersihkan untuk melapangkan ruang."
+  },
+  "optionsStorageKeep": {
+    "message": "Kekalkan data saya"
+  },
+  "optionsExport": {
+    "message": "Eksport semuanya"
+  },
+  "optionsExportDesc": {
+    "message": "Menulis satu fail yang mengandungi tetapan anda dan senarai tangkapan skrin anda. Fail itu disimpan pada peranti ini dan tidak dihantar ke mana-mana."
+  },
+  "optionsExportImages": {
+    "message": "Sertakan imej"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Imej itu sendiri, yang merupakan hampir keseluruhan saiz. Tanpanya, fail hanya menyenaraikan tangkapan skrin anda tetapi tidak mengandungi satu pun."
+  },
+  "optionsExportSize": {
+    "message": "Saiz fail: kira-kira $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Data yang tertinggal"
+  },
+  "optionsSweepDesc": {
+    "message": "Tangkapan yang terputus boleh meninggalkan bingkai pada cakera yang bukan milik mana-mana tangkapan skrin. Bingkai itu tidak muncul pada mana-mana halaman, jadi tiada halaman boleh memadamkannya. Ini mencarinya dan membuangnya."
+  },
+  "optionsSweepBtn": {
+    "message": "Cari dan buang"
+  },
+  "optionsSweepResult": {
+    "message": "Dibuang. Tangkapan yang dibersihkan: $COUNT$ · Ruang yang dilapangkan: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Tiada yang tertinggal: semua yang disimpan milik tangkapan skrin yang boleh anda lihat."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Tetapkan semula tetapan"
+  },
+  "optionsResetDesc": {
+    "message": "Mengembalikan setiap tetapan pada halaman ini kepada nilai asalnya. Tangkapan skrin anda tidak disentuh."
+  },
+  "optionsResetBtn": {
+    "message": "Tetapkan semula"
+  },
+  "optionsResetConfirm": {
+    "message": "Kembalikan semua tetapan FullShot kepada nilai lalai? Tangkapan skrin anda tidak terjejas."
+  },
+  "optionsResetDone": {
+    "message": "Tetapan telah kembali kepada nilai lalainya."
+  },
+  "optionsDeleteAll": {
+    "message": "Padam semuanya"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Membuang setiap tangkapan skrin dalam sejarah anda dan semua yang ditinggalkan oleh tangkapan yang terputus. Tetapan anda kekal seperti sedia ada."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Padam semua yang disimpan FullShot pada peranti ini?\n\nTangkapan skrin dalam sejarah anda: $COUNT$\nSisa daripada tangkapan yang terputus: $LEFTOVER$\nRuang yang dilapangkan: $SIZE$\n\nTetapan anda tidak terjejas. Tindakan ini tidak boleh dibatalkan.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Dipadam. FullShot kini tidak menyimpan sebarang tangkapan skrin pada peranti ini."
+  },
+  "resultPageTitle": {
+    "message": "Tangkapan skrin — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Salin"
+  },
+  "resultCopyTip": {
+    "message": "Salin imej ke papan keratan"
+  },
+  "resultEdit": {
+    "message": "Sunting"
+  },
+  "resultEditTip": {
+    "message": "Buka dalam editor"
+  },
+  "resultBeautify": {
+    "message": "Cantikkan"
+  },
+  "resultBeautifyTip": {
+    "message": "Cantikkan — bingkai & latar belakang untuk dikongsi"
+  },
+  "resultClip": {
+    "message": "Klip"
+  },
+  "resultClipTip": {
+    "message": "Klip tatalan — $GIF$ / $WEBM$ beranimasi",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Saiz kertas PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Muat turun"
+  },
+  "resultDeleteTip": {
+    "message": "Padam tangkapan skrin"
+  },
+  "resultHistoryTip": {
+    "message": "Sejarah tangkapan skrin"
+  },
+  "resultProgressAssembling": {
+    "message": "Sedang mencantum tangkapan skrin anda…"
+  },
+  "resultProgressDecodingOther": {
+    "message": "Menyahkod $COUNT$ bingkai…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Mencantum bahagian $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Mencantum bahagian $INDEX$ daripada kira-kira $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Menyimpan…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Petua: seret imej terus ke desktop anda, atau guna $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Tiada apa-apa di sini"
+  },
+  "resultEmptyBody": {
+    "message": "Tangkapan skrin ini sudah tidak wujud."
+  },
+  "resultOpenHistory": {
+    "message": "Buka sejarah"
+  },
+  "resultSomethingWrong": {
+    "message": "Ada sesuatu yang tidak kena — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Bahagian $INDEX$ daripada $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Muat turun bahagian"
+  },
+  "resultEditPart": {
+    "message": "Sunting bahagian"
+  },
+  "resultClipPart": {
+    "message": "Klip bahagian"
+  },
+  "resultPartAlt": {
+    "message": "Tangkapan skrin bahagian $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Memuat turun $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Padam tangkapan skrin ini secara kekal?"
+  },
+  "resultDeleted": {
+    "message": "Tangkapan skrin dipadamkan."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Tangkapan ini terlalu tinggi untuk ditampal sebagai satu imej yang boleh dibaca, jadi $COPY$ meletakkan gambaran keseluruhan halaman yang dikecilkan pada papan keratan. Teks kecil di dalamnya tidak akan dapat dibaca.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Bahagian $INDEX$ disalin ke papan keratan",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Membina PDF…"
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF dimuat turun ($COUNT$ halaman)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF gagal — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Kembali ke tangkapan skrin"
+  },
+  "editorToolSelect": {
+    "message": "Pilih / alih ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Pangkas ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Pen ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Penyerlah ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Garisan ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Anak panah ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Segi empat tepat ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elips ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Teks ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Kabur / piksel ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Langkah bernombor ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Cap emoji ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Warna tersuai"
+  },
+  "editorStrokeTip": {
+    "message": "Ketebalan garisan"
+  },
+  "editorStrokeThin": {
+    "message": "Nipis"
+  },
+  "editorStrokeMedium": {
+    "message": "Sederhana"
+  },
+  "editorStrokeThick": {
+    "message": "Tebal"
+  },
+  "editorSizeTip": {
+    "message": "Saiz teks / emoji"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Buat asal ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Buat semula ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Zum keluar (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Zum masuk (+)"
+  },
+  "editorZoomFit": {
+    "message": "Muat"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Muat pada tetingkap — klik untuk 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "Klik untuk memuatkan pada tetingkap"
+  },
+  "editorExport": {
+    "message": "Eksport"
+  },
+  "editorExportCopy": {
+    "message": "Salin ke papan keratan"
+  },
+  "editorExportImage": {
+    "message": "Imej $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Dokumen $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Simpan"
+  },
+  "editorSaveTip": {
+    "message": "Simpan perubahan ke sejarah ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Lagi"
+  },
+  "editorMenuFiles": {
+    "message": "Pergi ke Sejarah"
+  },
+  "editorMenuOptions": {
+    "message": "Pergi ke Pilihan"
+  },
+  "editorMenuShortcuts": {
+    "message": "Pintasan papan kekunci"
+  },
+  "editorCropApply": {
+    "message": "Gunakan pangkasan"
+  },
+  "editorCropCancel": {
+    "message": "Batal"
+  },
+  "editorShortcutsHeading": {
+    "message": "Pintasan papan kekunci"
+  },
+  "editorShortcutTools": {
+    "message": "Pilih alat"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Buat asal / buat semula"
+  },
+  "editorShortcutSave": {
+    "message": "Simpan ke sejarah"
+  },
+  "editorShortcutZoom": {
+    "message": "Zum keluar / masuk"
+  },
+  "editorShortcutDelete": {
+    "message": "Buang objek yang dipilih"
+  },
+  "editorShortcutEscape": {
+    "message": "Nyahpilih / batal pangkasan"
+  },
+  "editorShortcutsClose": {
+    "message": "Tutup"
+  },
+  "editorNotFound": {
+    "message": "Tangkapan skrin tidak ditemui"
+  },
+  "editorToastDownloaded": {
+    "message": "Dimuat turun"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF dimuat turun"
+  },
+  "editorToastSaved": {
+    "message": "Disimpan ke sejarah"
+  },
+  "historyPageTitle": {
+    "message": "Sejarah — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · Sejarah"
+  },
+  "historySearchPlaceholder": {
+    "message": "Cari tajuk atau URL…"
+  },
+  "historySelectAll": {
+    "message": "Pilih semua"
+  },
+  "historyClearSelection": {
+    "message": "Kosongkan pilihan"
+  },
+  "historyDownloadSelected": {
+    "message": "Muat turun yang dipilih"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Muat turun ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Padam yang dipilih"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Padam ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Belum ada tangkapan skrin"
+  },
+  "historyEmptyBody": {
+    "message": "Tangkapan yang anda ambil akan muncul di sini. Klik ikon FullShot pada bar alat anda untuk bermula."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Tiada padanan"
+  },
+  "historyNoMatchesBody": {
+    "message": "Tiada tangkapan skrin yang sepadan dengan \"$QUERY$\".",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ tangkapan skrin · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ daripada $COUNT$ tangkapan skrin · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Pilih"
+  },
+  "historyCardOpen": {
+    "message": "Buka"
+  },
+  "historyCardEdit": {
+    "message": "Sunting"
+  },
+  "historyCardDownloadTip": {
+    "message": "Muat turun"
+  },
+  "historyCardDeleteTip": {
+    "message": "Padam"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Buka halaman asal"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ bahagian",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Tangkapan skrin"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Padam tangkapan skrin ini?"
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Padam $COUNT$ tangkapan skrin secara kekal?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Memuat turun $COUNT$ tangkapan skrin",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Dipadamkan"
+  },
+  "beautifyPageTitle": {
+    "message": "Cantikkan — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Cantikkan"
+  },
+  "actionBack": {
+    "message": "Kembali"
+  },
+  "commonLoading": {
+    "message": "Memuatkan…"
+  },
+  "beautifyFieldSize": {
+    "message": "Saiz"
+  },
+  "beautifyPresetAuto": {
+    "message": "Auto"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Segi empat sama"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Potret"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Latar belakang"
+  },
+  "beautifyBgSlate": {
+    "message": "Batu tulis"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Langit"
+  },
+  "beautifyBgSunset": {
+    "message": "Senja"
+  },
+  "beautifyBgGrape": {
+    "message": "Anggur"
+  },
+  "beautifyBgMint": {
+    "message": "Pudina"
+  },
+  "beautifyFieldPadding": {
+    "message": "Pelapik"
+  },
+  "beautifyFieldRadius": {
+    "message": "Kelengkungan sudut"
+  },
+  "beautifyFieldEffects": {
+    "message": "Kesan"
+  },
+  "beautifyShadow": {
+    "message": "Bayang jatuh"
+  },
+  "beautifyWindowFrame": {
+    "message": "Bingkai tetingkap"
+  },
+  "beautifyFieldExport": {
+    "message": "Eksport"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Klip tatalan — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Klip tatalan"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Format"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ boleh dimainkan di mana-mana. $WEBM$ lebih kecil & lebih lancar (dirakam secara langsung di dalam pelayar anda).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Lebar output"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Ketumpatan"
+  },
+  "scrollclipDensityHint": {
+    "message": "Ketumpatan lebih tinggi memberikan hasil yang lebih tajam (lebih hampir dengan resolusi sumber) — fail lebih besar."
+  },
+  "scrollclipFieldShape": {
+    "message": "Bentuk"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Kelajuan tatalan (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Kadar bingkai (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Gerakan"
+  },
+  "scrollclipBounce": {
+    "message": "Lantun (tatal semula ke atas)"
+  },
+  "scrollclipLoop": {
+    "message": "Ulang selamanya"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Salin bingkai"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Salin bingkai poster (atas) sebagai $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ bingkai · $SECONDS$s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Memaparkan bingkai… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Mengekod $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Memuktamadkan…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Merakam $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Merakam…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ tidak disokong di sini — mengeksport $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Bingkai poster disalin"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Tangkapan berkelompok"
+  },
+  "batchHeading": {
+    "message": "Tangkapan berkelompok"
+  },
+  "batchIntro": {
+    "message": "Tampal URL, satu setiap baris. FullShot membuka setiap halaman, menangkap tangkapan skrin halaman penuh ke dalam sejarah anda, kemudian beralih ke seterusnya — sehingga $MAX$ pada satu masa. Tangkapan akan muncul dalam sejarah anda; klik $OPENLINK$ untuk melihat, menyunting atau mengeksport mana-mana daripadanya.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Tangkap semua"
+  },
+  "batchPermissionHint": {
+    "message": "Membuka halaman ini memerlukan kebenaran sekali sahaja pada kali pertama."
+  },
+  "batchPermissionDeclined": {
+    "message": "Kebenaran untuk membuka halaman tersebut telah ditolak."
+  },
+  "batchPanelPlan": {
+    "message": "Rancangan"
+  },
+  "batchPanelProgress": {
+    "message": "Kemajuan"
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ halaman untuk ditangkap",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ halaman untuk ditangkap (dihadkan kepada $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Belum ada URL yang sah"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ dilangkau: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "skema tidak disokong"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "tidak sah"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "tiada hos"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "pendua"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "kosong"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "melebihi had ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ selesai",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ selesai, $FAILED$ gagal",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ selesai — tamat",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ selesai, $FAILED$ gagal — tamat",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "buka"
+  },
+  "batchJobTimedOut": {
+    "message": "tangkapan tamat masa"
+  },
+  "batchJobNoSession": {
+    "message": "tiada sesi tangkapan"
+  },
+  "batchJobFailed": {
+    "message": "tangkapan gagal"
+  },
+  "batchJobError": {
+    "message": "ralat tangkapan"
+  },
+  "regionHintDrag": {
+    "message": "Seret untuk memilih kawasan — $ESC$ untuk batal",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Klik satu elemen untuk menangkapnya — $ESC$ untuk batal",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Halaman pelayar seperti Tetapan, Sambungan dan halaman Tab Baharu adalah di luar had bagi setiap sambungan. Cuba FullShot pada halaman web biasa."
+  },
+  "errRestrictedDevtools": {
+    "message": "Tetingkap DevTools tidak boleh ditangkap oleh sambungan. Gunakan alat tangkapan skrin komputer anda sendiri untuk itu."
+  },
+  "errRestrictedViewSource": {
+    "message": "Halaman lihat sumber tidak boleh ditangkap. Tangkap halaman itu sendiri sebaliknya."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Halaman sambungan, termasuk halaman FullShot sendiri, dilindungi oleh pelayar dan tidak boleh ditangkap."
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome Web Store menghalang sambungan daripada membaca halamannya, jadi halaman ini tidak boleh ditangkap."
+  },
+  "errRestrictedGeneric": {
+    "message": "Halaman ini dilindungi oleh pelayar dan tidak boleh ditangkap."
+  },
+  "errWrongTab": {
+    "message": "Tangkapan terhenti — anda bertukar tab. Kekalkan halaman ini di hadapan sehingga FullShot selesai."
+  },
+  "errGeneric": {
+    "message": "Tangkapan terhenti sebelum ia selesai. Sila cuba lagi."
+  },
+  "errBusy": {
+    "message": "Satu tangkapan sedang berjalan dalam tab ini."
+  },
+  "errBlocked": {
+    "message": "Halaman ini tidak boleh ditangkap (sekatan pelayar)."
+  },
+  "errNoStart": {
+    "message": "FullShot tidak dapat bermula pada halaman ini. Muat semula halaman dan cuba lagi."
+  },
+  "errCrash": {
+    "message": "Tangkapan terhenti secara tiba-tiba. Sila cuba lagi."
+  },
+  "errUnknownMessage": {
+    "message": "Mesej tidak dikenali."
+  },
+  "errQuota": {
+    "message": "Pelayar sedang mengehadkan kelajuan halaman boleh difoto. Tunggu sebentar dan cuba lagi."
+  },
+  "errFrameHandover": {
+    "message": "Pelayar berhenti menyerahkan skrin di pertengahan jalan. Tunggu beberapa saat dan cuba lagi."
+  },
+  "errLostTab": {
+    "message": "Tangkapan kehilangan jejak tab ini. Muat semula halaman dan cuba lagi."
+  },
+  "errStoppedEarly": {
+    "message": "Tangkapan dihentikan sebelum ia selesai."
+  },
+  "errStorageFull": {
+    "message": "Tiada ruang lagi untuk menyimpan tangkapan ini. Padamkan beberapa tangkapan skrin daripada sejarah anda, kemudian cuba lagi."
+  },
+  "reasonGeneric": {
+    "message": "tiada sebab diberikan. Sila cuba lagi."
+  },
+  "reasonDecodeFailed": {
+    "message": "tangkapan skrin itu tidak dapat dinyahkod."
+  },
+  "reasonTooLarge": {
+    "message": "imej itu terlalu besar untuk dieksport di sini."
+  },
+  "toastCopiedClipboard": {
+    "message": "Disalin ke papan keratan"
+  },
+  "toastCopyFailed": {
+    "message": "Salinan gagal — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Eksport gagal — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ disimpan",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ disimpan  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

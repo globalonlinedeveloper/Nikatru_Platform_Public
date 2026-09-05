@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - عکس‌برداری از کل صفحه"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "از کل صفحه، بخش قابل مشاهده، یک ناحیه یا هر عنصری عکس بگیرید. ویرایش و یادداشت‌گذاری کنید و به PNG، JPEG، WebP یا PDF خروجی بگیرید."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - عکس‌برداری از صفحه (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "عکس‌برداری از کل صفحه"
+  },
+  "commandCaptureVisible": {
+    "message": "عکس‌برداری از بخش قابل مشاهده"
+  },
+  "commandCaptureRegion": {
+    "message": "عکس‌برداری از ناحیهٔ انتخابی"
+  },
+  "commandCaptureElement": {
+    "message": "عکس‌برداری از یک عنصر صفحه (برای انتخاب کلیک کنید)"
+  },
+  "popupToggleTheme": {
+    "message": "تغییر پوسته"
+  },
+  "popupModeFullTitle": {
+    "message": "کل صفحه"
+  },
+  "popupModeFullSub": {
+    "message": "پیمایش و ثبت تمام صفحه"
+  },
+  "popupModeVisibleTitle": {
+    "message": "بخش قابل مشاهده"
+  },
+  "popupModeVisibleSub": {
+    "message": "فقط آنچه روی نمایشگر است"
+  },
+  "popupModeRegionTitle": {
+    "message": "ناحیهٔ انتخابی"
+  },
+  "popupModeRegionSub": {
+    "message": "برای انتخاب ناحیه بکشید"
+  },
+  "popupModeElementTitle": {
+    "message": "عنصر"
+  },
+  "popupModeElementSub": {
+    "message": "روی هر عنصر صفحه کلیک کنید"
+  },
+  "popupModeDelayedTitle": {
+    "message": "عکس‌برداری با تأخیر"
+  },
+  "popupModeDelayedSub": {
+    "message": "کل صفحه پس از شمارش معکوس"
+  },
+  "popupDelayLabel": {
+    "message": "ثانیه‌های تأخیر"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ ث",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "گسترش پنل‌های پیمایش‌پذیر و iframeها"
+  },
+  "popupExpandToggleTip": {
+    "message": "پنل‌های پیمایش‌پذیر داخلی و iframeها را به‌جای ثبت به همان شکل دیده‌شده، تا کل محتوایشان بزرگ می‌کند. قاب‌های متعلق به سایت‌های دیگر یک‌بار مجوز اضافی می‌خواهند."
+  },
+  "popupDismiss": {
+    "message": "بستن"
+  },
+  "popupLastErrorFailed": {
+    "message": "آخرین $MODE$ ناموفق بود — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "آخرین $MODE$ ناموفق بود — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "عکس‌برداری از کل صفحه"
+  },
+  "popupModeNameVisible": {
+    "message": "عکس‌برداری از بخش قابل مشاهده"
+  },
+  "popupModeNameRegion": {
+    "message": "عکس‌برداری از ناحیه"
+  },
+  "popupModeNameElement": {
+    "message": "عکس‌برداری از عنصر"
+  },
+  "popupModeNameGeneric": {
+    "message": "عکس‌برداری"
+  },
+  "popupNoActiveTab": {
+    "message": "هیچ زبانهٔ فعالی پیدا نشد."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "عکس‌برداری آغاز نشد."
+  },
+  "popupLinkHistory": {
+    "message": "تاریخچه"
+  },
+  "popupLinkBatch": {
+    "message": "دسته‌ای"
+  },
+  "popupLinkOptions": {
+    "message": "تنظیمات"
+  },
+  "optionsPageTitle": {
+    "message": "تنظیمات — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · تنظیمات"
+  },
+  "optionsHeading": {
+    "message": "تنظیمات"
+  },
+  "optionsLead": {
+    "message": "تغییرات به‌طور خودکار ذخیره و با نمایهٔ مرورگر شما همگام‌سازی می‌شوند."
+  },
+  "optionsSectionImage": {
+    "message": "تصویر"
+  },
+  "optionsFormat": {
+    "message": "قالب"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ بدون افت کیفیت است؛ $JPEG$ کوچک‌تر است؛ $WEBP$ در کیفیت مشابه کوچک‌ترین است.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "کیفیت $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "٪$PERCENT$",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "الگوی نام فایل"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "جای‌نشان‌ها: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "عکس‌برداری"
+  },
+  "optionsCaptureDelay": {
+    "message": "تأخیر اضافی در هر گام"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "میلی‌ثانیه‌هایی که پس از هر پیمایش صبر می‌شود. برای صفحه‌های کند و پرانیمیشن افزایش دهید."
+  },
+  "optionsHideFixed": {
+    "message": "پنهان‌کردن عناصر ثابت و چسبان"
+  },
+  "optionsHideFixedDesc": {
+    "message": "جلوی تکرار سربرگ‌ها در هر صفحه را می‌گیرد (فقط یک‌بار در بالا نمایش داده می‌شود)."
+  },
+  "optionsPreScroll": {
+    "message": "پیمایش اولیه برای بارگذاری محتوای با تأخیر"
+  },
+  "optionsPreScrollDesc": {
+    "message": "پیش از عکس‌برداری یک‌بار کل صفحه را پیمایش می‌کند. کندتر است اما تصاویری را که دیرتر بار می‌شوند می‌گیرد."
+  },
+  "optionsAdaptiveWait": {
+    "message": "انتظار برای رمزگشایی تصاویر"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "به تصاویر دیررس اجازه می‌دهد پیش از هر فریم رمزگشایی‌شان کامل شود تا به‌صورت کاشی‌های سیاه یا خالی ثبت نشوند."
+  },
+  "optionsHideOverlays": {
+    "message": "پنهان‌کردن بنرها و پنجره‌های بازشو"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "پیش از عکس‌برداری بنرهای کوکی/رضایت، پنجره‌های خبرنامه و بازشوهای «برنامه را بگیرید» را حذف می‌کند و قفل صفحه‌هایی را که یک پنجرهٔ مودال ثابت کرده باز می‌کند. پس از آن همه‌چیز بازگردانده می‌شود."
+  },
+  "optionsExpandInner": {
+    "message": "گسترش محتوای پیمایش‌پذیر"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "پنل‌های داخلی و iframeها را بزرگ می‌کند تا محتوای پنهان زیر لبهٔ خودشان هم دیده شود، به‌جای ثبت آن‌ها دقیقاً به همان شکل دیده‌شده."
+  },
+  "optionsExpandPermRow": {
+    "message": "قاب‌های سایت‌های دیگر"
+  },
+  "optionsExpandPermAllow": {
+    "message": "اجازه دادن"
+  },
+  "optionsExpandPermGranted": {
+    "message": "مجوز داده شد — قاب‌های سایت‌های دیگر هم گسترش می‌یابند."
+  },
+  "optionsExpandPermMissing": {
+    "message": "بدون مجوز «$PERMISSION$»، قاب‌های سایت‌های دیگر به همان شکل دیده‌شده ثبت می‌شوند. پنل‌ها و iframeهای همان سایت همیشه کار می‌کنند.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "باز کردن فهرست‌های مجازی‌سازی‌شده"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "در جریان‌هایی که فقط پنجرهٔ دید را رندر می‌کنند (از نوع $LIB1$ / $LIB2$) گام‌به‌گام پیش می‌رود تا کل محتوایشان ثبت شود، نه فقط ردیف‌های روی نمایشگر. در فهرست‌های خیلی بلند کندتر است.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "گسترش محتوای وابسته به تعامل"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "پیش از عکس‌برداری $DETAILS$های جمع‌شده، زبانه‌های غیرفعال، آکاردئون‌ها و بخش‌های «نمایش بیشتر» را باز می‌کند و سپس به حالت قبل بازمی‌گرداند. محتوای پنهان پشت یک کلیک را آشکار می‌کند.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "کلیک روی دکمه‌های «$BUTTONTEXT$»",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "روی دکمه‌های «load more» / «show more» کلیک می‌کند و منتظر بارگذاری محتوای تازه می‌ماند و این کار را تا پایان جریان تکرار می‌کند. برخلاف گزینهٔ بالا، این گزینه محتوایی را می‌آورد که هنوز در صفحه نیست؛ محتوای بارشده پس از عکس‌برداری باقی می‌ماند."
+  },
+  "optionsInfiniteScroll": {
+    "message": "پیمایش برای بارگذاری جریان‌های بی‌پایان"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "برای جریان‌هایی که دکمهٔ «load more» ندارند: تا انتها پیمایش می‌کند و منتظر بارگذاری صفحهٔ بعد می‌ماند و این کار را تا زمانی که جریان بزرگ‌تر نشود تکرار می‌کند (با سقف مشخص، تا دنبال جریان‌های بی‌پایان نرود). محتوای بارشده پس از عکس‌برداری باقی می‌ماند."
+  },
+  "optionsWaitStable": {
+    "message": "انتظار تا پایان بارگذاری محتوا"
+  },
+  "optionsWaitStableDesc": {
+    "message": "پیش از عکس‌برداری صبر می‌کند تا بارگذارهای اسکلتی/جانگهدار (نواحی aria-busy، بلوک‌های درخشان) جای خود را به محتوای واقعی بدهند تا یک «در حال بارگذاری…» میان صفحه به‌صورت بلوک‌های خاکستری ثبت نشود. سقف دارد، پس یک چرخندهٔ گیرکرده عکس‌برداری را معلق نمی‌گذارد."
+  },
+  "optionsRedactPII": {
+    "message": "پوشاندن خودکار اطلاعات حساس"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "متنی را که صفحه در دسترس می‌گذارد برای نشانی‌های ایمیل، شماره‌های تلفن، شماره‌های کارت اعتباری، شماره‌های ملی و کلیدهای API می‌کاود و در تصویر ذخیره‌شده روی آنچه مطابقت یافته یک بلوک توپر می‌کشد. متنی را که به‌صورت پیکسل کشیده شده نمی‌تواند بخواند — بوم نقاشی، تصویر، PDF، فریم ویدئو. تشخیص روی دستگاه شما انجام می‌شود؛ هیچ‌چیز هرگز به هیچ‌جا فرستاده نمی‌شود. برای عکس‌برداری کل صفحه (پیمایش سند)؛ این بلوک دائمی است، پس نتیجه را خودتان بازبینی کنید."
+  },
+  "optionsMaxPageHeight": {
+    "message": "بیشینهٔ ارتفاع صفحه"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "سقف ایمنی (CSS px) برای جریان‌های با پیمایش بی‌پایان."
+  },
+  "optionsSectionPdf": {
+    "message": "خروجی PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "اندازهٔ پیش‌فرض کاغذ"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "«$IMAGESIZE$» هر صفحه را دقیقاً هم‌اندازهٔ عکس صفحه می‌کند.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "اندازهٔ تصویر"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "جهت"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "برای اندازه‌های ثابت کاغذ."
+  },
+  "optionsOrientationPortrait": {
+    "message": "عمودی"
+  },
+  "optionsOrientationLandscape": {
+    "message": "افقی"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "تقسیم هوشمند صفحه"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "نزدیک هر مرز صفحه دنبال یک فاصلهٔ بصری می‌گردد تا خطوط متن از وسط بریده نشوند."
+  },
+  "optionsPdfStamp": {
+    "message": "درج نشانی و تاریخ"
+  },
+  "optionsPdfStampDesc": {
+    "message": "نشانی صفحه و تاریخ عکس‌برداری را به پاورقی هر صفحهٔ PDF اضافه می‌کند."
+  },
+  "optionsSectionDownload": {
+    "message": "دانلود"
+  },
+  "optionsSaveDirectory": {
+    "message": "پوشه"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "زیرپوشه‌ای زیر $DOWNLOADS$ برای عکس‌های صفحهٔ شما، مثلاً $EXAMPLE$. خالی = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(دانلودها)"
+  },
+  "optionsSaveAs": {
+    "message": "پنجرهٔ «ذخیره به‌عنوان»"
+  },
+  "optionsSaveAsDesc": {
+    "message": "به‌جای دانلود بی‌صدا، محل ذخیرهٔ هر فایل را می‌پرسد."
+  },
+  "optionsClipboardFit": {
+    "message": "تطبیق کپی‌های کلیپ‌بورد با محدودیت برنامه‌ها"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "کپی‌های بزرگ‌تر از $PIXELS$ پیکسل را کوچک می‌کند تا چسباندن در $APP$ و مانند آن کار کند.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "گردش کار"
+  },
+  "optionsAutoDownload": {
+    "message": "دانلود خودکار پس از عکس‌برداری"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "به‌محض پایان عکس‌برداری، تصویر را بی‌درنگ ذخیره می‌کند."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "باز کردن ویرایشگر پس از عکس‌برداری"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "مستقیم به یادداشت‌گذاری می‌رود (فقط برای عکس‌های تک‌قسمتی)."
+  },
+  "optionsTheme": {
+    "message": "پوسته"
+  },
+  "optionsThemeDesc": {
+    "message": "برای پنجرهٔ بازشو و همهٔ صفحه‌های FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "سیستم"
+  },
+  "optionsThemeLight": {
+    "message": "روشن"
+  },
+  "optionsThemeDark": {
+    "message": "تیره"
+  },
+  "optionsShortcuts": {
+    "message": "میان‌برهای صفحه‌کلید"
+  },
+  "optionsShortcutsDesc": {
+    "message": "کل صفحه: $KEYFULL$ · قابل مشاهده: $KEYVISIBLE$. سفارشی‌سازی در $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "ذخیره شد ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "داده‌های شما"
+  },
+  "optionsStorage": {
+    "message": "فضای ذخیره‌سازی"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ از $QUOTA$ در این دستگاه استفاده شده است.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "این مرورگر گزارش نمی‌دهد که FullShot چقدر فضا اشغال کرده است."
+  },
+  "optionsStorageKept": {
+    "message": "تصاویر شما نگه داشته می‌شوند: مرورگر برای آزادسازی فضا آن‌ها را پاک نمی‌کند."
+  },
+  "optionsStorageAtRisk": {
+    "message": "تصاویر شما در حافظهٔ «بهترین تلاش» مرورگر است که مرورگر می‌تواند برای آزادسازی فضا آن را پاک کند."
+  },
+  "optionsStorageKeep": {
+    "message": "داده‌هایم را نگه دار"
+  },
+  "optionsExport": {
+    "message": "خروجی گرفتن از همه چیز"
+  },
+  "optionsExportDesc": {
+    "message": "یک فایل می‌نویسد که تنظیمات شما و فهرست تصاویرتان را در بر دارد. روی همین دستگاه ذخیره می‌شود و به هیچ‌جا فرستاده نمی‌شود."
+  },
+  "optionsExportImages": {
+    "message": "تصویرها هم گنجانده شوند"
+  },
+  "optionsExportImagesDesc": {
+    "message": "خودِ تصویرها، که تقریباً تمام حجم را می‌سازند. بدون آن‌ها فایل فقط فهرست تصاویر شما را دارد و هیچ‌کدام را در بر نمی‌گیرد."
+  },
+  "optionsExportSize": {
+    "message": "حجم فایل: حدود $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "داده‌های باقی‌مانده"
+  },
+  "optionsSweepDesc": {
+    "message": "ضبطی که نیمه‌کاره بماند می‌تواند فریم‌هایی روی دیسک بگذارد که به هیچ تصویری تعلق ندارند. در هیچ صفحه‌ای دیده نمی‌شوند، پس هیچ صفحه‌ای هم نمی‌تواند آن‌ها را پاک کند. این آن‌ها را پیدا و حذف می‌کند."
+  },
+  "optionsSweepBtn": {
+    "message": "پیدا کن و حذف کن"
+  },
+  "optionsSweepResult": {
+    "message": "حذف شد. ضبط‌های پاک‌سازی‌شده: $COUNT$ · فضای آزادشده: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "چیزی باقی نمانده است: هر چه ذخیره شده به تصویری تعلق دارد که می‌بینید."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "بازنشانی تنظیمات"
+  },
+  "optionsResetDesc": {
+    "message": "هر تنظیم این صفحه را به مقدار اولیه‌اش برمی‌گرداند. به تصاویر شما دست زده نمی‌شود."
+  },
+  "optionsResetBtn": {
+    "message": "بازنشانی"
+  },
+  "optionsResetConfirm": {
+    "message": "همهٔ تنظیمات FullShot به مقادیر پیش‌فرض برگردد؟ تصاویر شما تحت تأثیر قرار نمی‌گیرند."
+  },
+  "optionsResetDone": {
+    "message": "تنظیمات به مقادیر پیش‌فرض بازگشتند."
+  },
+  "optionsDeleteAll": {
+    "message": "حذف همه چیز"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "همهٔ تصاویر تاریخچه و هر چه ضبط‌های نیمه‌کاره بر جای گذاشته‌اند را حذف می‌کند. تنظیمات شما دست‌نخورده می‌ماند."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "همهٔ آنچه FullShot روی این دستگاه ذخیره کرده حذف شود؟\n\nتصاویر در تاریخچهٔ شما: $COUNT$\nباقی‌ماندهٔ ضبط‌های نیمه‌کاره: $LEFTOVER$\nفضایی که آزاد می‌شود: $SIZE$\n\nتنظیمات شما تحت تأثیر قرار نمی‌گیرد. این کار بازگشت‌پذیر نیست.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "حذف شد. FullShot دیگر هیچ تصویری روی این دستگاه ذخیره نمی‌کند."
+  },
+  "resultPageTitle": {
+    "message": "عکس صفحه — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "کپی"
+  },
+  "resultCopyTip": {
+    "message": "کپی تصویر در کلیپ‌بورد"
+  },
+  "resultEdit": {
+    "message": "ویرایش"
+  },
+  "resultEditTip": {
+    "message": "باز کردن در ویرایشگر"
+  },
+  "resultBeautify": {
+    "message": "زیباسازی"
+  },
+  "resultBeautifyTip": {
+    "message": "زیباسازی — قاب و پس‌زمینه برای هم‌رسانی"
+  },
+  "resultClip": {
+    "message": "کلیپ"
+  },
+  "resultClipTip": {
+    "message": "کلیپ پیمایشی — $GIF$ / $WEBM$ متحرک",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "اندازهٔ کاغذ PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "دانلود"
+  },
+  "resultDeleteTip": {
+    "message": "حذف عکس صفحه"
+  },
+  "resultHistoryTip": {
+    "message": "تاریخچهٔ عکس‌های صفحه"
+  },
+  "resultProgressAssembling": {
+    "message": "در حال سرهم‌کردن عکس صفحهٔ شما…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "در حال رمزگشایی $COUNT$ فریم…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "در حال رمزگشایی $COUNT$ فریم…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "در حال دوختن قسمت $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "در حال دوختن قسمت $INDEX$ از حدود $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "در حال ذخیره…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "نکته: تصویر را مستقیم روی میزکارتان بکشید یا از $DOWNLOAD$ استفاده کنید.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "چیزی اینجا نیست"
+  },
+  "resultEmptyBody": {
+    "message": "این عکس صفحه دیگر وجود ندارد."
+  },
+  "resultOpenHistory": {
+    "message": "باز کردن تاریخچه"
+  },
+  "resultSomethingWrong": {
+    "message": "مشکلی پیش آمد — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "قسمت $INDEX$ از $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "دانلود قسمت"
+  },
+  "resultEditPart": {
+    "message": "ویرایش قسمت"
+  },
+  "resultClipPart": {
+    "message": "کلیپ از قسمت"
+  },
+  "resultPartAlt": {
+    "message": "قسمت $INDEX$ عکس صفحه",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "در حال دانلود $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "این عکس صفحه برای همیشه حذف شود؟"
+  },
+  "resultDeleted": {
+    "message": "عکس صفحه حذف شد."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "این تصویر آن‌قدر بلند است که نمی‌توان آن را به‌صورت یک تصویر خوانا جای‌گذاری کرد، بنابراین $COPY$ نمای کلی کوچک‌شده‌ای از کل صفحه را در بریده‌دان قرار می‌دهد. متن ریز آن خوانا نخواهد بود.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "قسمت $INDEX$ در کلیپ‌بورد کپی شد",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "در حال ساخت PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF دانلود شد ($COUNT$ صفحه)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF دانلود شد ($COUNT$ صفحه)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "ساخت PDF ناموفق بود — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "ویرایشگر — FullShot"
+  },
+  "editorBackTip": {
+    "message": "بازگشت به عکس صفحه"
+  },
+  "editorToolSelect": {
+    "message": "انتخاب / جابه‌جایی ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "برش ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "قلم ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "هایلایتر ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "خط ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "پیکان ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "مستطیل ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "بیضی ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "متن ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "محو / پیکسلی ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "گام شماره‌دار ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "مهر ایموجی ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "رنگ سفارشی"
+  },
+  "editorStrokeTip": {
+    "message": "ضخامت خط"
+  },
+  "editorStrokeThin": {
+    "message": "نازک"
+  },
+  "editorStrokeMedium": {
+    "message": "متوسط"
+  },
+  "editorStrokeThick": {
+    "message": "ضخیم"
+  },
+  "editorSizeTip": {
+    "message": "اندازهٔ متن / ایموجی"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "واگرد ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "ازنو ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "کوچک‌نمایی (-)"
+  },
+  "editorZoomInTip": {
+    "message": "بزرگ‌نمایی (+)"
+  },
+  "editorZoomFit": {
+    "message": "جا شود"
+  },
+  "editorZoomTipToHundred": {
+    "message": "جا شده در پنجره — برای ٪۱۰۰ کلیک کنید"
+  },
+  "editorZoomTipToFit": {
+    "message": "برای جا شدن در پنجره کلیک کنید"
+  },
+  "editorExport": {
+    "message": "خروجی"
+  },
+  "editorExportCopy": {
+    "message": "کپی در کلیپ‌بورد"
+  },
+  "editorExportImage": {
+    "message": "تصویر $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "سند $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "ذخیره"
+  },
+  "editorSaveTip": {
+    "message": "ذخیرهٔ تغییرات در تاریخچه ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "بیشتر"
+  },
+  "editorMenuFiles": {
+    "message": "رفتن به تاریخچه"
+  },
+  "editorMenuOptions": {
+    "message": "رفتن به تنظیمات"
+  },
+  "editorMenuShortcuts": {
+    "message": "میان‌برهای صفحه‌کلید"
+  },
+  "editorCropApply": {
+    "message": "اعمال برش"
+  },
+  "editorCropCancel": {
+    "message": "لغو"
+  },
+  "editorShortcutsHeading": {
+    "message": "میان‌برهای صفحه‌کلید"
+  },
+  "editorShortcutTools": {
+    "message": "انتخاب ابزار"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "واگرد / ازنو"
+  },
+  "editorShortcutSave": {
+    "message": "ذخیره در تاریخچه"
+  },
+  "editorShortcutZoom": {
+    "message": "کوچک‌نمایی / بزرگ‌نمایی"
+  },
+  "editorShortcutDelete": {
+    "message": "حذف شیء انتخاب‌شده"
+  },
+  "editorShortcutEscape": {
+    "message": "لغو انتخاب / لغو برش"
+  },
+  "editorShortcutsClose": {
+    "message": "بستن"
+  },
+  "editorNotFound": {
+    "message": "عکس صفحه پیدا نشد"
+  },
+  "editorToastDownloaded": {
+    "message": "دانلود شد"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF دانلود شد"
+  },
+  "editorToastSaved": {
+    "message": "در تاریخچه ذخیره شد"
+  },
+  "historyPageTitle": {
+    "message": "تاریخچه — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · تاریخچه"
+  },
+  "historySearchPlaceholder": {
+    "message": "جست‌وجوی عنوان یا نشانی…"
+  },
+  "historySelectAll": {
+    "message": "انتخاب همه"
+  },
+  "historyClearSelection": {
+    "message": "پاک‌کردن انتخاب"
+  },
+  "historyDownloadSelected": {
+    "message": "دانلود انتخاب‌شده‌ها"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "دانلود ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "حذف انتخاب‌شده‌ها"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "حذف ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "هنوز عکسی از صفحه ندارید"
+  },
+  "historyEmptyBody": {
+    "message": "عکس‌هایی که می‌گیرید اینجا نمایش داده می‌شوند. برای شروع روی نماد FullShot در نوار ابزارتان کلیک کنید."
+  },
+  "historyNoMatchesTitle": {
+    "message": "بدون نتیجه"
+  },
+  "historyNoMatchesBody": {
+    "message": "هیچ عکس صفحه‌ای با «$QUERY$» مطابقت ندارد.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ عکس صفحه · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ عکس صفحه · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ از $COUNT$ عکس صفحه · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ از $COUNT$ عکس صفحه · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "انتخاب"
+  },
+  "historyCardOpen": {
+    "message": "باز کردن"
+  },
+  "historyCardEdit": {
+    "message": "ویرایش"
+  },
+  "historyCardDownloadTip": {
+    "message": "دانلود"
+  },
+  "historyCardDeleteTip": {
+    "message": "حذف"
+  },
+  "historyCardOpenOriginal": {
+    "message": "باز کردن صفحهٔ اصلی"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ قسمت",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "عکس صفحه"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "این عکس صفحه حذف شود؟"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "$COUNT$ عکس صفحه برای همیشه حذف شود؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "$COUNT$ عکس صفحه برای همیشه حذف شود؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "در حال دانلود $COUNT$ عکس صفحه",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "در حال دانلود $COUNT$ عکس صفحه",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "حذف شد"
+  },
+  "beautifyPageTitle": {
+    "message": "زیباسازی — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "زیباسازی"
+  },
+  "actionBack": {
+    "message": "بازگشت"
+  },
+  "commonLoading": {
+    "message": "در حال بارگذاری…"
+  },
+  "beautifyFieldSize": {
+    "message": "اندازه"
+  },
+  "beautifyPresetAuto": {
+    "message": "خودکار"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "مربع"
+  },
+  "beautifyPresetPortrait": {
+    "message": "عمودی"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "پس‌زمینه"
+  },
+  "beautifyBgSlate": {
+    "message": "سنگ‌لوح"
+  },
+  "beautifyBgGraphite": {
+    "message": "گرافیتی"
+  },
+  "beautifyBgSky": {
+    "message": "آسمانی"
+  },
+  "beautifyBgSunset": {
+    "message": "غروب"
+  },
+  "beautifyBgGrape": {
+    "message": "انگوری"
+  },
+  "beautifyBgMint": {
+    "message": "نعنایی"
+  },
+  "beautifyFieldPadding": {
+    "message": "حاشیهٔ داخلی"
+  },
+  "beautifyFieldRadius": {
+    "message": "گردی گوشه‌ها"
+  },
+  "beautifyFieldEffects": {
+    "message": "جلوه‌ها"
+  },
+  "beautifyShadow": {
+    "message": "سایه"
+  },
+  "beautifyWindowFrame": {
+    "message": "قاب پنجره"
+  },
+  "beautifyFieldExport": {
+    "message": "خروجی"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "کلیپ پیمایشی — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "کلیپ پیمایشی"
+  },
+  "scrollclipFieldFormat": {
+    "message": "قالب"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ همه‌جا پخش می‌شود. $WEBM$ کوچک‌تر و روان‌تر است (به‌صورت زنده در مرورگر خودتان ضبط می‌شود).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "عرض خروجی"
+  },
+  "scrollclipFieldDensity": {
+    "message": "چگالی"
+  },
+  "scrollclipDensityHint": {
+    "message": "چگالی بالاتر خروجی واضح‌تری می‌سازد (نزدیک‌تر به تفکیک‌پذیری منبع) — فایل بزرگ‌تر."
+  },
+  "scrollclipFieldShape": {
+    "message": "نسبت ابعاد"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "سرعت پیمایش (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "نرخ فریم (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "حرکت"
+  },
+  "scrollclipBounce": {
+    "message": "برگشت (پیمایش دوباره به بالا)"
+  },
+  "scrollclipLoop": {
+    "message": "تکرار بی‌پایان"
+  },
+  "scrollclipCopyFrame": {
+    "message": "کپی فریم"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "کپی فریم پوستر (بالا) به‌صورت $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ فریم · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ فریم · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "در حال رندر فریم‌ها… ٪$PERCENT$",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "در حال کدگذاری $FORMAT$… ٪$PERCENT$",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "در حال نهایی‌سازی…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "در حال ضبط $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "در حال ضبط…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ اینجا پشتیبانی نمی‌شود — خروجی به‌صورت $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "فریم پوستر کپی شد"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — عکس‌برداری دسته‌ای"
+  },
+  "batchHeading": {
+    "message": "عکس‌برداری دسته‌ای"
+  },
+  "batchIntro": {
+    "message": "نشانی‌ها را هر کدام در یک خط بچسبانید. FullShot هر صفحه را باز می‌کند، یک عکس تمام‌صفحه در تاریخچهٔ شما ثبت می‌کند و به بعدی می‌رود — تا $MAX$ مورد در هر بار. عکس‌ها در تاریخچهٔ شما ظاهر می‌شوند؛ برای دیدن، ویرایش یا خروجی‌گرفتن از هرکدام روی $OPENLINK$ کلیک کنید.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "عکس‌برداری از همه"
+  },
+  "batchPermissionHint": {
+    "message": "باز کردن این صفحه‌ها بار اول به یک مجوز یک‌باره نیاز دارد."
+  },
+  "batchPermissionDeclined": {
+    "message": "مجوز باز کردن آن صفحه‌ها رد شد."
+  },
+  "batchPanelPlan": {
+    "message": "برنامه"
+  },
+  "batchPanelProgress": {
+    "message": "پیشرفت"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ صفحه برای عکس‌برداری",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ صفحه برای عکس‌برداری",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ صفحه برای عکس‌برداری (محدود به $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "هنوز نشانی معتبری نیست"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ مورد رد شد: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "طرح پشتیبانی‌نشده"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "نامعتبر"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "بدون میزبان"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "تکراری"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "خالی"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "بیش از سقف ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ انجام شد",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ انجام شد، $FAILED$ ناموفق",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ انجام شد — کامل",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ انجام شد، $FAILED$ ناموفق — کامل",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "باز کردن"
+  },
+  "batchJobTimedOut": {
+    "message": "زمان عکس‌برداری تمام شد"
+  },
+  "batchJobNoSession": {
+    "message": "بدون نشست عکس‌برداری"
+  },
+  "batchJobFailed": {
+    "message": "عکس‌برداری ناموفق"
+  },
+  "batchJobError": {
+    "message": "خطای عکس‌برداری"
+  },
+  "regionHintDrag": {
+    "message": "برای انتخاب یک ناحیه بکشید — $ESC$ برای لغو",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "برای عکس‌برداری روی یک عنصر کلیک کنید — $ESC$ برای لغو",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "صفحه‌های خود مرورگر مانند تنظیمات، افزونه‌ها و زبانهٔ جدید برای هر افزونه‌ای ممنوع‌اند. FullShot را روی یک صفحهٔ وب معمولی امتحان کنید."
+  },
+  "errRestrictedDevtools": {
+    "message": "پنجره‌های DevTools را نمی‌توان با یک افزونه ثبت کرد. برای آن‌ها از ابزار عکس‌برداری خود رایانه‌تان استفاده کنید."
+  },
+  "errRestrictedViewSource": {
+    "message": "صفحه‌های نمایش کد منبع قابل ثبت نیستند. به‌جای آن از خود صفحه عکس بگیرید."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "صفحه‌های افزونه‌ها، از جمله صفحه‌های خود FullShot، توسط مرورگر محافظت می‌شوند و قابل ثبت نیستند."
+  },
+  "errRestrictedWebstore": {
+    "message": "فروشگاه وب کروم اجازه نمی‌دهد افزونه‌ها صفحه‌هایش را بخوانند، بنابراین این صفحه قابل ثبت نیست."
+  },
+  "errRestrictedGeneric": {
+    "message": "این صفحه توسط مرورگر محافظت می‌شود و قابل ثبت نیست."
+  },
+  "errWrongTab": {
+    "message": "عکس‌برداری متوقف شد — زبانه را عوض کردید. تا پایان کار FullShot این صفحه را جلو نگه دارید."
+  },
+  "errGeneric": {
+    "message": "عکس‌برداری پیش از پایان متوقف شد. لطفاً دوباره تلاش کنید."
+  },
+  "errBusy": {
+    "message": "هم‌اکنون یک عکس‌برداری در این زبانه در جریان است."
+  },
+  "errBlocked": {
+    "message": "از این صفحه نمی‌توان عکس گرفت (محدودیت مرورگر)."
+  },
+  "errNoStart": {
+    "message": "FullShot نتوانست روی این صفحه شروع کند. صفحه را دوباره بارگذاری کنید و باز تلاش کنید."
+  },
+  "errCrash": {
+    "message": "عکس‌برداری به‌طور غیرمنتظره متوقف شد. لطفاً دوباره تلاش کنید."
+  },
+  "errUnknownMessage": {
+    "message": "پیام ناشناخته."
+  },
+  "errQuota": {
+    "message": "مرورگر سرعت عکس‌برداری از صفحه‌ها را محدود می‌کند. کمی صبر کنید و دوباره تلاش کنید."
+  },
+  "errFrameHandover": {
+    "message": "مرورگر در میانهٔ کار تحویل تصویر نمایشگر را متوقف کرد. چند ثانیه صبر کنید و دوباره تلاش کنید."
+  },
+  "errLostTab": {
+    "message": "عکس‌برداری ردِ این زبانه را گم کرد. صفحه را دوباره بارگذاری کنید و باز تلاش کنید."
+  },
+  "errStoppedEarly": {
+    "message": "عکس‌برداری پیش از پایان متوقف شد."
+  },
+  "errStorageFull": {
+    "message": "دیگر جایی برای ذخیرهٔ این ضبط نیست. چند تصویر از تاریخچه حذف کنید و دوباره تلاش کنید."
+  },
+  "reasonGeneric": {
+    "message": "دلیلی اعلام نشد. لطفاً دوباره تلاش کنید."
+  },
+  "reasonDecodeFailed": {
+    "message": "آن عکس صفحه رمزگشایی نشد."
+  },
+  "reasonTooLarge": {
+    "message": "تصویر برای خروجی‌گرفتن در اینجا بیش از حد بزرگ است."
+  },
+  "toastCopiedClipboard": {
+    "message": "در کلیپ‌بورد کپی شد"
+  },
+  "toastCopyFailed": {
+    "message": "کپی ناموفق بود — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "خروجی‌گرفتن ناموفق بود — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "$FILENAME$ ذخیره شد",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "$FILENAME$ ذخیره شد  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ بایت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ کیلوبایت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ مگابایت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ گیگابایت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

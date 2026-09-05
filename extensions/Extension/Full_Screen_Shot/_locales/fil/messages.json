@@ -1,0 +1,2125 @@
+{
+  "appName": {
+    "message": "FullShot - Screenshot ng Buong Page"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Kunan ang buong page, nakikitang bahagi, piniling bahagi, o elemento. I-edit, anotahan, at i-export bilang PNG, JPEG, WebP, o PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - Kunan ang page (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Kunan ang buong page"
+  },
+  "commandCaptureVisible": {
+    "message": "Kunan ang nakikitang bahagi"
+  },
+  "commandCaptureRegion": {
+    "message": "Kunan ang piniling bahagi"
+  },
+  "commandCaptureElement": {
+    "message": "Kunan ang isang elemento ng page (i-click para pumili)"
+  },
+  "popupToggleTheme": {
+    "message": "Palitan ang tema"
+  },
+  "popupModeFullTitle": {
+    "message": "Buong page"
+  },
+  "popupModeFullSub": {
+    "message": "I-scroll at kunan ang buong page"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Nakikitang bahagi"
+  },
+  "popupModeVisibleSub": {
+    "message": "Ang nasa screen lang"
+  },
+  "popupModeRegionTitle": {
+    "message": "Piniling bahagi"
+  },
+  "popupModeRegionSub": {
+    "message": "Mag-drag para pumili ng bahagi"
+  },
+  "popupModeElementTitle": {
+    "message": "Elemento"
+  },
+  "popupModeElementSub": {
+    "message": "I-click ang kahit anong elemento sa page"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Naantalang pagkuha"
+  },
+  "popupModeDelayedSub": {
+    "message": "Buong page pagkatapos ng countdown"
+  },
+  "popupDelayLabel": {
+    "message": "Segundo ng pagkaantala"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Palawakin ang mga nasa-scroll na panel at iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "Palakihin ang mga panel at iframe sa loob hanggang sa buong nilalaman nito, sa halip na kunan ang mga ito ayon lang sa nakikita. Minsanang hihingi ng dagdag na pahintulot ang mga frame mula sa ibang site."
+  },
+  "popupDismiss": {
+    "message": "I-dismiss"
+  },
+  "popupLastErrorFailed": {
+    "message": "Nabigo ang huling $MODE$ — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Nabigo ang huling $MODE$ — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "pagkuha ng buong page"
+  },
+  "popupModeNameVisible": {
+    "message": "pagkuha ng nakikitang bahagi"
+  },
+  "popupModeNameRegion": {
+    "message": "pagkuha ng bahagi"
+  },
+  "popupModeNameElement": {
+    "message": "pagkuha ng elemento"
+  },
+  "popupModeNameGeneric": {
+    "message": "pagkuha"
+  },
+  "popupNoActiveTab": {
+    "message": "Walang nakitang aktibong tab."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Hindi nagsimula ang pagkuha."
+  },
+  "popupLinkHistory": {
+    "message": "History"
+  },
+  "popupLinkBatch": {
+    "message": "Batch"
+  },
+  "popupLinkOptions": {
+    "message": "Mga Opsyon"
+  },
+  "optionsPageTitle": {
+    "message": "Mga Opsyon — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Mga Opsyon"
+  },
+  "optionsHeading": {
+    "message": "Mga Opsyon"
+  },
+  "optionsLead": {
+    "message": "Awtomatikong nase-save ang mga pagbabago at nagsi-sync ang mga ito sa profile ng iyong browser."
+  },
+  "optionsSectionImage": {
+    "message": "Larawan"
+  },
+  "optionsFormat": {
+    "message": "Format"
+  },
+  "optionsFormatDesc": {
+    "message": "Walang kawalan sa kalidad ang $PNG$; mas maliit ang $JPEG$; pinakamaliit ang $WEBP$ sa halos parehong kalidad.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Kalidad ng $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Template ng pangalan ng file"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Mga placeholder: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Pagkuha"
+  },
+  "optionsCaptureDelay": {
+    "message": "Dagdag na antala kada hakbang"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisegundong hihintayin pagkatapos ng bawat pag-scroll. Taasan para sa mabagal at maraming animation na page."
+  },
+  "optionsHideFixed": {
+    "message": "Itago ang mga nakapirmi at dumidikit na elemento"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Pinipigilan ang paulit-ulit na header sa bawat screen (isang beses lang ipinapakita sa itaas)."
+  },
+  "optionsPreScroll": {
+    "message": "Mag-scroll muna para mai-load ang lazy na nilalaman"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Isang beses munang dinaraanan ang buong page bago kunan. Mas mabagal, pero nahuhuli nito ang mga lazy-loaded na larawan."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Hintayin munang ma-decode ang mga larawan"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Hinahayaang matapos munang mag-decode ang mga huli o lazy na larawan bago ang bawat frame, para hindi sila makuhang itim o blangkong tile."
+  },
+  "optionsHideOverlays": {
+    "message": "Itago ang mga banner at pop-up"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Inaalis ang mga banner ng cookie/pahintulot, modal ng newsletter, at pop-up na \"kunin ang app\" bago kumuha, at ina-unlock ang mga page na na-freeze ng isang modal. Naibabalik ang lahat pagkatapos."
+  },
+  "optionsExpandInner": {
+    "message": "Palawakin ang nilalamang nasa-scroll"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Pinapalaki ang mga panel at iframe sa loob para makita ang nilalamang nakatago sa ilalim ng sarili nilang scroll, sa halip na kunan ang mga ito nang eksakto sa nakikita."
+  },
+  "optionsExpandPermRow": {
+    "message": "Mga frame mula sa ibang site"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Payagan"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Naibigay na ang pahintulot — pinapalawak na rin ang mga frame mula sa ibang site."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Kung wala ang pahintulot na \"$PERMISSION$\", kinukunan lang ayon sa nakikita ang mga frame mula sa ibang site. Palaging gumagana ang mga panel at ang mga iframe mula sa parehong site.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Ilatag ang mga virtualized na listahan"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Dinadaanan nang paunti-unti ang mga feed na nagre-render lang ng nakikitang bahagi (tulad ng $LIB1$ / $LIB2$) para makuha ang buong nilalaman nito, hindi lang ang mga row na nasa screen. Mas mabagal sa napakahabang listahan.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Buksan ang nilalamang kailangan munang i-click"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Binubuksan ang mga nakatiklop na $DETAILS$, hindi aktibong tab, accordion, at seksyong \"magpakita pa\" bago kumuha, tapos ibinabalik ang mga ito. Nailalabas nito ang nilalamang nakatago sa likod ng isang click.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "I-click ang mga button na \"$BUTTONTEXT$\"",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Kini-click ang mga button na \"load more\" / \"magpakita pa\" at hinihintay ang bagong nilalaman, paulit-ulit, hanggang maubos ang feed. Hindi tulad ng opsyon sa itaas, kinukuha nito ang nilalamang wala pa sa page; nananatili ang na-load na nilalaman pagkatapos kumuha."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Mag-scroll para mag-load ng walang katapusang feed"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Para sa mga feed na walang button na \"load more\": nagsi-scroll pababa at hinihintay ang susunod na page, paulit-ulit, hanggang tumigil sa paghaba ang feed (may hangganan, para hindi habulin ang mga walang katapusang feed). Nananatili ang na-load na nilalaman pagkatapos kumuha."
+  },
+  "optionsWaitStable": {
+    "message": "Hintayin munang matapos mag-load ang nilalaman"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Hinihintay munang mapalitan ng tunay na nilalaman ang mga skeleton/placeholder loader (mga aria-busy na bahagi, kumikislap na bloke) bago kumuha, para hindi makuhang kulay-abong kahon ang isang \"naglo-load…\" sa gitna ng page. May hangganan ito, kaya hindi mabibitin ang pagkuha dahil sa naipit na spinner."
+  },
+  "optionsRedactPII": {
+    "message": "Awtomatikong itago ang sensitibong impormasyon"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Sinusuri ang tekstong inilalantad ng page para sa mga email, numero ng telepono, numero ng credit card, numero ng pagkakakilanlan, at API key, at nilalagyan ng solidong bloke ang tumugma sa naka-save na larawan. Hindi nito mabasa ang tekstong iginuhit bilang mga pixel — isang canvas, isang larawan, isang PDF, isang frame ng video. Sa iyong device tumatakbo ang pagtukoy; walang anumang ipinapadala kahit saan kailanman. Para sa mga pagkuha ng buong page (document-scroll); permanente ang bloke, kaya suriin mo mismo ang resulta."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Pinakamataas na taas ng page"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Hangganang pangkaligtasan (CSS px) para sa mga infinite-scroll na feed."
+  },
+  "optionsSectionPdf": {
+    "message": "Pag-export ng PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Default na laki ng papel"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "Ginagawa ng \"$IMAGESIZE$\" na eksaktong kasinlaki ng screenshot ang isang page.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Laki ng larawan"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Oryentasyon"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Para sa mga nakapirming laki ng papel."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Patayo"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Pahiga"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Matalinong paghahati ng page"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Naghahanap ng puwang malapit sa bawat hati ng page para hindi mahati sa gitna ang mga linya ng teksto."
+  },
+  "optionsPdfStamp": {
+    "message": "Ilagay ang URL at petsa"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Idinaragdag ang URL ng page at ang petsa ng pagkuha sa ibaba ng bawat page ng PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "Pag-download"
+  },
+  "optionsSaveDirectory": {
+    "message": "Direktoryo"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Subfolder sa loob ng $DOWNLOADS$ para sa iyong mga screenshot, hal. $EXAMPLE$. Blangko = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialog na \"I-save bilang\""
+  },
+  "optionsSaveAsDesc": {
+    "message": "Tanungin kung saan ise-save ang bawat file sa halip na tahimik na mag-download."
+  },
+  "optionsClipboardFit": {
+    "message": "Iangkop sa limitasyon ng app ang mga kopyang nasa clipboard"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Pinapaliit ang mga kopyang lampas sa $PIXELS$ na pixel para gumana ang pag-paste sa $APP$ at iba pa.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Daloy ng trabaho"
+  },
+  "optionsAutoDownload": {
+    "message": "Awtomatikong mag-download pagkatapos kumuha"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Agad na sine-save ang larawan kapag natapos ang pagkuha."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Buksan ang editor pagkatapos kumuha"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Dumiretso agad sa paglalagay ng anotasyon (para lang sa mga pagkuhang isang bahagi)."
+  },
+  "optionsTheme": {
+    "message": "Tema"
+  },
+  "optionsThemeDesc": {
+    "message": "Para sa popup at sa lahat ng page ng FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Sistema"
+  },
+  "optionsThemeLight": {
+    "message": "Maliwanag"
+  },
+  "optionsThemeDark": {
+    "message": "Madilim"
+  },
+  "optionsShortcuts": {
+    "message": "Mga keyboard shortcut"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Buong page: $KEYFULL$ · Nakikita: $KEYVISIBLE$. I-customize sa $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Na-save ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Ang iyong data"
+  },
+  "optionsStorage": {
+    "message": "Imbakan"
+  },
+  "optionsStorageUsage": {
+    "message": "$USED$ sa $QUOTA$ ang nagagamit sa device na ito.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Hindi iniuulat ng browser na ito kung gaano karaming espasyo ang ginagamit ng FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "Nananatili ang iyong mga screenshot: hindi ito buburahin ng browser para makabawi ng espasyo."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Nasa “best effort” na imbakan ng browser ang iyong mga screenshot, na maaari nitong linisin para makabawi ng espasyo."
+  },
+  "optionsStorageKeep": {
+    "message": "Panatilihin ang aking data"
+  },
+  "optionsExport": {
+    "message": "I-export ang lahat"
+  },
+  "optionsExportDesc": {
+    "message": "Sumusulat ng isang file na naglalaman ng iyong mga setting at listahan ng iyong mga screenshot. Nase-save ito sa device na ito at hindi ipinapadala kahit saan."
+  },
+  "optionsExportImages": {
+    "message": "Isama ang mga larawan"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Ang mga larawan mismo, na halos buong laki na. Kung wala ang mga ito, nililista lang ng file ang iyong mga screenshot ngunit wala ni isang larawan."
+  },
+  "optionsExportSize": {
+    "message": "Laki ng file: mga $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Natirang data"
+  },
+  "optionsSweepDesc": {
+    "message": "Ang isang naantalang pagkuha ay maaaring mag-iwan sa disk ng mga frame na hindi kabilang sa anumang screenshot. Hindi ito lumalabas sa kahit anong pahina, kaya walang pahinang makakapagbura nito. Hinahanap at inaalis ito ng gawaing ito."
+  },
+  "optionsSweepBtn": {
+    "message": "Hanapin at alisin"
+  },
+  "optionsSweepResult": {
+    "message": "Naalis. Mga pagkuhang nalinis: $COUNT$ · Espasyong nabakante: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Walang natira: lahat ng nakaimbak ay pagmamay-ari ng screenshot na nakikita mo."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "I-reset ang mga setting"
+  },
+  "optionsResetDesc": {
+    "message": "Ibinabalik ang bawat setting sa pahinang ito sa orihinal nitong halaga. Hindi ginagalaw ang iyong mga screenshot."
+  },
+  "optionsResetBtn": {
+    "message": "I-reset"
+  },
+  "optionsResetConfirm": {
+    "message": "Ibalik ang lahat ng setting ng FullShot sa mga default na halaga? Hindi maaapektuhan ang iyong mga screenshot."
+  },
+  "optionsResetDone": {
+    "message": "Bumalik na sa mga default na halaga ang mga setting."
+  },
+  "optionsDeleteAll": {
+    "message": "Burahin ang lahat"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Inaalis ang bawat screenshot sa iyong history at lahat ng naiwan ng mga naantalang pagkuha. Mananatili ang iyong mga setting."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Burahin ang lahat ng iniimbak ng FullShot sa device na ito?\n\nMga screenshot sa iyong history: $COUNT$\nMga natira mula sa naantalang pagkuha: $LEFTOVER$\nEspasyong mababakante: $SIZE$\n\nHindi maaapektuhan ang iyong mga setting. Hindi ito maibabalik.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Nabura na. Wala nang iniimbak na screenshot ang FullShot sa device na ito."
+  },
+  "resultPageTitle": {
+    "message": "Screenshot — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopyahin"
+  },
+  "resultCopyTip": {
+    "message": "Kopyahin ang larawan sa clipboard"
+  },
+  "resultEdit": {
+    "message": "I-edit"
+  },
+  "resultEditTip": {
+    "message": "Buksan sa editor"
+  },
+  "resultBeautify": {
+    "message": "Pagandahin"
+  },
+  "resultBeautifyTip": {
+    "message": "Pagandahin — frame at background para maibahagi"
+  },
+  "resultClip": {
+    "message": "Clip"
+  },
+  "resultClipTip": {
+    "message": "Scroll clip — animated na $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Laki ng papel ng PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "I-download"
+  },
+  "resultDeleteTip": {
+    "message": "Tanggalin ang screenshot"
+  },
+  "resultHistoryTip": {
+    "message": "History ng mga screenshot"
+  },
+  "resultProgressAssembling": {
+    "message": "Binubuo ang iyong screenshot…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Dini-decode ang $COUNT$ frame…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Dini-decode ang $COUNT$ na frame…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Pinagdurugtong ang bahagi $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Pinagdurugtong ang bahagi $INDEX$ sa tinatayang $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Sine-save…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Tip: i-drag ang larawan diretso sa iyong desktop, o gamitin ang $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Wala rito"
+  },
+  "resultEmptyBody": {
+    "message": "Wala na ang screenshot na ito."
+  },
+  "resultOpenHistory": {
+    "message": "Buksan ang history"
+  },
+  "resultSomethingWrong": {
+    "message": "May nangyaring mali — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Bahagi $INDEX$ sa $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "I-download ang bahagi"
+  },
+  "resultEditPart": {
+    "message": "I-edit ang bahagi"
+  },
+  "resultClipPart": {
+    "message": "Gawing clip ang bahagi"
+  },
+  "resultPartAlt": {
+    "message": "Bahagi $INDEX$ ng screenshot",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Dina-download ang $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Permanenteng tanggalin ang screenshot na ito?"
+  },
+  "resultDeleted": {
+    "message": "Natanggal ang screenshot."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Masyadong mahaba ang kuhang ito para i-paste bilang isang nababasang larawan, kaya inilalagay ng $COPY$ sa clipboard ang isang pinaliit na pangkalahatang tanawin ng buong pahina. Hindi mababasa ang maliliit na teksto rito.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Nakopya ang bahagi $INDEX$ sa clipboard",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Ginagawa ang PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "Na-download ang PDF ($COUNT$ page)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "Na-download ang PDF ($COUNT$ na page)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "Nabigo ang PDF — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Bumalik sa screenshot"
+  },
+  "editorToolSelect": {
+    "message": "Pumili / ilipat ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "I-crop ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Panulat ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Highlighter ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Linya ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Palaso ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Parihaba ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipse ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Teksto ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Palabuin / pixelate ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Bilang na hakbang ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Selyong emoji ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Custom na kulay"
+  },
+  "editorStrokeTip": {
+    "message": "Kapal ng guhit"
+  },
+  "editorStrokeThin": {
+    "message": "Manipis"
+  },
+  "editorStrokeMedium": {
+    "message": "Katamtaman"
+  },
+  "editorStrokeThick": {
+    "message": "Makapal"
+  },
+  "editorSizeTip": {
+    "message": "Laki ng teksto / emoji"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "I-undo ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "I-redo ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Mag-zoom out (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Mag-zoom in (+)"
+  },
+  "editorZoomFit": {
+    "message": "Iangkop"
+  },
+  "editorZoomTipToHundred": {
+    "message": "Iangkop sa window — i-click para sa 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "I-click para iangkop sa window"
+  },
+  "editorExport": {
+    "message": "I-export"
+  },
+  "editorExportCopy": {
+    "message": "Kopyahin sa clipboard"
+  },
+  "editorExportImage": {
+    "message": "Larawang $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Dokumentong $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "I-save"
+  },
+  "editorSaveTip": {
+    "message": "I-save ang mga pagbabago sa history ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Higit pa"
+  },
+  "editorMenuFiles": {
+    "message": "Pumunta sa History"
+  },
+  "editorMenuOptions": {
+    "message": "Pumunta sa Mga Opsyon"
+  },
+  "editorMenuShortcuts": {
+    "message": "Mga keyboard shortcut"
+  },
+  "editorCropApply": {
+    "message": "Ilapat ang crop"
+  },
+  "editorCropCancel": {
+    "message": "Kanselahin"
+  },
+  "editorShortcutsHeading": {
+    "message": "Mga keyboard shortcut"
+  },
+  "editorShortcutTools": {
+    "message": "Pumili ng mga tool"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "I-undo / i-redo"
+  },
+  "editorShortcutSave": {
+    "message": "I-save sa history"
+  },
+  "editorShortcutZoom": {
+    "message": "Mag-zoom out / in"
+  },
+  "editorShortcutDelete": {
+    "message": "Alisin ang piniling bagay"
+  },
+  "editorShortcutEscape": {
+    "message": "Alisin sa pagkakapili / kanselahin ang crop"
+  },
+  "editorShortcutsClose": {
+    "message": "Isara"
+  },
+  "editorNotFound": {
+    "message": "Hindi nakita ang screenshot"
+  },
+  "editorToastDownloaded": {
+    "message": "Na-download"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "Na-download ang PDF"
+  },
+  "editorToastSaved": {
+    "message": "Na-save sa history"
+  },
+  "historyPageTitle": {
+    "message": "History — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · History"
+  },
+  "historySearchPlaceholder": {
+    "message": "Maghanap ng pamagat o URL…"
+  },
+  "historySelectAll": {
+    "message": "Piliin lahat"
+  },
+  "historyClearSelection": {
+    "message": "I-clear ang pinili"
+  },
+  "historyDownloadSelected": {
+    "message": "I-download ang pinili"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "I-download ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Tanggalin ang pinili"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Tanggalin ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Wala pang screenshot"
+  },
+  "historyEmptyBody": {
+    "message": "Lalabas dito ang mga kukunan mo. I-click ang icon ng FullShot sa iyong toolbar para magsimula."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Walang tugma"
+  },
+  "historyNoMatchesBody": {
+    "message": "Walang screenshot na tumutugma sa \"$QUERY$\".",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ screenshot · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ na screenshot · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ sa $COUNT$ screenshot · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ sa $COUNT$ na screenshot · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Piliin"
+  },
+  "historyCardOpen": {
+    "message": "Buksan"
+  },
+  "historyCardEdit": {
+    "message": "I-edit"
+  },
+  "historyCardDownloadTip": {
+    "message": "I-download"
+  },
+  "historyCardDeleteTip": {
+    "message": "Tanggalin"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Buksan ang orihinal na page"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ na bahagi",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Screenshot"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Tanggalin ang screenshot na ito?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Permanenteng tanggalin ang $COUNT$ screenshot?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Permanenteng tanggalin ang $COUNT$ na screenshot?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Dina-download ang $COUNT$ screenshot",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Dina-download ang $COUNT$ na screenshot",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Natanggal"
+  },
+  "beautifyPageTitle": {
+    "message": "Pagandahin — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Pagandahin"
+  },
+  "actionBack": {
+    "message": "Bumalik"
+  },
+  "commonLoading": {
+    "message": "Naglo-load…"
+  },
+  "beautifyFieldSize": {
+    "message": "Laki"
+  },
+  "beautifyPresetAuto": {
+    "message": "Awto"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Parisukat"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Patayo"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Background"
+  },
+  "beautifyBgSlate": {
+    "message": "Batong-pisara"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grapayt"
+  },
+  "beautifyBgSky": {
+    "message": "Langit"
+  },
+  "beautifyBgSunset": {
+    "message": "Takipsilim"
+  },
+  "beautifyBgGrape": {
+    "message": "Ubas"
+  },
+  "beautifyBgMint": {
+    "message": "Mint"
+  },
+  "beautifyFieldPadding": {
+    "message": "Espasyo sa gilid"
+  },
+  "beautifyFieldRadius": {
+    "message": "Kurba ng sulok"
+  },
+  "beautifyFieldEffects": {
+    "message": "Mga effect"
+  },
+  "beautifyShadow": {
+    "message": "Anino"
+  },
+  "beautifyWindowFrame": {
+    "message": "Frame ng window"
+  },
+  "beautifyFieldExport": {
+    "message": "I-export"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Scroll clip — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Scroll clip"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Format"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "Napapatugtog kahit saan ang $GIF$. Mas maliit at mas makinis ang $WEBM$ (live na naitatala sa loob ng iyong browser).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Lapad ng output"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Densidad"
+  },
+  "scrollclipDensityHint": {
+    "message": "Mas mataas na densidad, mas malinaw ang kalalabasan (mas malapit sa resolusyon ng pinagmulan) — mas malaki ang file."
+  },
+  "scrollclipFieldShape": {
+    "message": "Hugis"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Bilis ng pag-scroll (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Bilis ng frame (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Galaw"
+  },
+  "scrollclipBounce": {
+    "message": "Bounce (mag-scroll pabalik sa itaas)"
+  },
+  "scrollclipLoop": {
+    "message": "Umulit nang walang hanggan"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopyahin ang frame"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Kopyahin bilang $FORMAT$ ang poster (pang-itaas) na frame",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ frame · $SECONDS$s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ na frame · $SECONDS$s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Nirerender ang mga frame… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Ini-encode ang $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Tinatapos…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Nagre-record ng $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Nagre-record…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "Hindi suportado ang $WEBM$ dito — $GIF$ ang ie-export",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Nakopya ang poster frame"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — Batch na pagkuha"
+  },
+  "batchHeading": {
+    "message": "Batch na pagkuha"
+  },
+  "batchIntro": {
+    "message": "I-paste ang mga URL, isa bawat linya. Bubuksan ng FullShot ang bawat page, kukunan ito ng buong-page na screenshot papunta sa iyong history, tapos susunod naman — hanggang $MAX$ sa bawat pagkakataon. Lalabas sa iyong history ang mga nakuha; i-click ang $OPENLINK$ para tingnan, i-edit, o i-export ang alinman sa mga ito.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Kunan lahat"
+  },
+  "batchPermissionHint": {
+    "message": "Kailangan ng minsanang pahintulot sa unang pagkakataon para mabuksan ang mga page na ito."
+  },
+  "batchPermissionDeclined": {
+    "message": "Tinanggihan ang pahintulot na buksan ang mga page na iyon."
+  },
+  "batchPanelPlan": {
+    "message": "Plano"
+  },
+  "batchPanelProgress": {
+    "message": "Progreso"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ page ang kukunan",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ na page ang kukunan",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ na page ang kukunan (hanggang $MAX$ lang)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Wala pang wastong URL"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ ang nilaktawan: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "hindi suportadong scheme"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "hindi wasto"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "walang host"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "duplikado"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "walang laman"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "lampas sa hangganan ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ tapos na",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ tapos na, $FAILED$ ang nabigo",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ tapos na — kumpleto",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ tapos na, $FAILED$ ang nabigo — kumpleto",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "buksan"
+  },
+  "batchJobTimedOut": {
+    "message": "nag-time out ang pagkuha"
+  },
+  "batchJobNoSession": {
+    "message": "walang session ng pagkuha"
+  },
+  "batchJobFailed": {
+    "message": "nabigo ang pagkuha"
+  },
+  "batchJobError": {
+    "message": "error sa pagkuha"
+  },
+  "regionHintDrag": {
+    "message": "Mag-drag para pumili ng bahagi — $ESC$ para kanselahin",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "I-click ang elementong kukunan — $ESC$ para kanselahin",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Bawal sa lahat ng extension ang mga page ng browser gaya ng Settings, Extensions, at ang New Tab page. Subukan ang FullShot sa isang karaniwang web page."
+  },
+  "errRestrictedDevtools": {
+    "message": "Hindi makukunan ng extension ang mga window ng DevTools. Gamitin ang sariling screenshot tool ng iyong computer para diyan."
+  },
+  "errRestrictedViewSource": {
+    "message": "Hindi makukunan ang mga view-source na page. Kunan na lang ang mismong page."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Protektado ng browser ang mga page ng extension, pati na ang sa FullShot mismo, kaya hindi ito makukunan."
+  },
+  "errRestrictedWebstore": {
+    "message": "Hinaharangan ng Chrome Web Store ang mga extension sa pagbasa ng mga page nito, kaya hindi makukunan ang page na ito."
+  },
+  "errRestrictedGeneric": {
+    "message": "Protektado ng browser ang page na ito at hindi ito makukunan."
+  },
+  "errWrongTab": {
+    "message": "Huminto ang pagkuha — lumipat ka ng tab. Panatilihin sa harap ang page na ito hanggang matapos ang FullShot."
+  },
+  "errGeneric": {
+    "message": "Huminto ang pagkuha bago pa ito matapos. Pakisubukang muli."
+  },
+  "errBusy": {
+    "message": "May kasalukuyan nang pagkuhang tumatakbo sa tab na ito."
+  },
+  "errBlocked": {
+    "message": "Hindi makukunan ang page na ito (paghihigpit ng browser)."
+  },
+  "errNoStart": {
+    "message": "Hindi makapagsimula ang FullShot sa page na ito. I-reload ang page at subukang muli."
+  },
+  "errCrash": {
+    "message": "Biglang huminto ang pagkuha. Pakisubukang muli."
+  },
+  "errUnknownMessage": {
+    "message": "Hindi kilalang mensahe."
+  },
+  "errQuota": {
+    "message": "Nililimitahan ng browser kung gaano kabilis makukunan ng litrato ang mga page. Maghintay sandali at subukang muli."
+  },
+  "errFrameHandover": {
+    "message": "Tumigil ang browser sa pagbibigay ng screen sa kalagitnaan. Maghintay ng ilang segundo at subukang muli."
+  },
+  "errLostTab": {
+    "message": "Nawalan ng tunton ang pagkuha sa tab na ito. I-reload ang page at subukang muli."
+  },
+  "errStoppedEarly": {
+    "message": "Pinahinto ang pagkuha bago pa ito matapos."
+  },
+  "errStorageFull": {
+    "message": "Wala nang espasyo para itago ang pagkuhang ito. Magbura ng ilang screenshot sa iyong history, pagkatapos ay subukan muli."
+  },
+  "reasonGeneric": {
+    "message": "walang ibinigay na dahilan. Pakisubukang muli."
+  },
+  "reasonDecodeFailed": {
+    "message": "hindi ma-decode ang screenshot na iyon."
+  },
+  "reasonTooLarge": {
+    "message": "masyadong malaki ang larawan para i-export dito."
+  },
+  "toastCopiedClipboard": {
+    "message": "Nakopya sa clipboard"
+  },
+  "toastCopyFailed": {
+    "message": "Nabigo ang pagkopya — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Nabigo ang pag-export — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Na-save ang $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Na-save ang $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

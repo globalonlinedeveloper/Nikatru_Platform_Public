@@ -591,6 +591,18 @@
   },
   {
     "claims": [
+      "ADR 067"
+    ],
+    "invokedBy": [
+      ".github/workflows/extensions.yml#build-free"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-extensions-build-free.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
       "E-12"
     ],
     "invokedBy": [
@@ -609,6 +621,7 @@
       ".github/workflows/build-platforms.yml#gate",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#detect",
+      ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-appstore.yml#gate",
       ".github/workflows/submit-play.yml#gate",
       ".github/workflows/submit-snap.yml#gate",
@@ -1793,6 +1806,7 @@
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit"
     ],
@@ -1808,7 +1822,8 @@
       "R-6"
     ],
     "invokedBy": [
-      ".github/workflows/build-platforms.yml#release"
+      ".github/workflows/build-platforms.yml#release",
+      ".github/workflows/extensions.yml#release"
     ],
     "kind": "guard",
     "ref": "tooling/ci/release-manifest.mjs",
@@ -2018,6 +2033,7 @@
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/deploy-workers.yml#subly-api",
+      ".github/workflows/extensions.yml#release",
       ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "script",

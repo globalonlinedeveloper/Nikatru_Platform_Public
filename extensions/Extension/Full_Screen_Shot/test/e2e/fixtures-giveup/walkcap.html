@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>giveup — 40,010 elements in front of an email (the walk's element budget)</title>
+<!-- THE WALK'S ELEMENT BUDGET (MAX_WALK = 40,000).
+
+     40,010 empty inline elements come first in document order, so the walk's
+     counter is spent before it reaches the email below them. What must be true:
+
+       walkComplete     false
+       truncatedBy      "elements"
+       matchedComplete  false
+       matched          0
+
+     and the email is in the delivered PNG with nothing over it. `matched: 0`
+     over a page with a visible email is the honest reading only if the
+     truncation travels with it; without that flag it reads as "we looked
+     everywhere and found nothing", which is the sentence this design exists to
+     make unavailable. -->
+<style>
+  html, body { margin: 0; background: #fff; font: 16px/20px system-ui, sans-serif; }
+  #filler i { display: inline-block; width: 1px; height: 1px; }
+  #late { color: rgb(255, 90, 90); font: 22px/26px monospace; padding: 10px; }
+  #tail { height: 60px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+  <div id="filler"></div>
+  <div id="late">unreached@example.com</div>
+  <div id="tail"></div>
+<script>
+(function () {
+  const f = document.getElementById('filler');
+  const N = 40010;
+  /* Built as one string: 40,010 appendChild calls is slower than the capture's
+     own settle window and the point is the element COUNT, not how it got there. */
+  f.innerHTML = new Array(N + 1).join('<i></i>');
+  window.__fsFixture = { fillerElements: f.querySelectorAll('*').length };
+})();
+</script>
+</body>
+</html>

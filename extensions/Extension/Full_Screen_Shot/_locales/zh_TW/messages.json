@@ -1,0 +1,2020 @@
+{
+  "appName": {
+    "message": "FullShot - 整頁網頁截圖"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "擷取整頁、可見區域、選取範圍或任何元素。編輯、標註，並匯出為 PNG、JPEG、WebP 或 PDF，支援智慧分頁。"
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot - 擷取頁面 (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "擷取整頁"
+  },
+  "commandCaptureVisible": {
+    "message": "擷取可見區域"
+  },
+  "commandCaptureRegion": {
+    "message": "擷取選取範圍"
+  },
+  "commandCaptureElement": {
+    "message": "擷取頁面元素（點選以挑選）"
+  },
+  "popupToggleTheme": {
+    "message": "切換佈景主題"
+  },
+  "popupModeFullTitle": {
+    "message": "整頁"
+  },
+  "popupModeFullSub": {
+    "message": "捲動並擷取整個頁面"
+  },
+  "popupModeVisibleTitle": {
+    "message": "可見區域"
+  },
+  "popupModeVisibleSub": {
+    "message": "只擷取螢幕上看得到的部分"
+  },
+  "popupModeRegionTitle": {
+    "message": "選取範圍"
+  },
+  "popupModeRegionSub": {
+    "message": "拖曳以選擇範圍"
+  },
+  "popupModeElementTitle": {
+    "message": "元素"
+  },
+  "popupModeElementSub": {
+    "message": "點選頁面上的任何元素"
+  },
+  "popupModeDelayedTitle": {
+    "message": "延遲擷取"
+  },
+  "popupModeDelayedSub": {
+    "message": "倒數結束後擷取整頁"
+  },
+  "popupDelayLabel": {
+    "message": "延遲秒數"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ 秒",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "展開可捲動面板與 iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "將內部可捲動面板與 iframe 撐開到完整內容，而不是依當前所見擷取。跨網站框架會要求一次額外權限。"
+  },
+  "popupDismiss": {
+    "message": "關閉"
+  },
+  "popupLastErrorFailed": {
+    "message": "上次的$MODE$失敗 — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "上次的$MODE$失敗 — $REASON$（$ORIGIN$）",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "整頁擷取"
+  },
+  "popupModeNameVisible": {
+    "message": "可見區域擷取"
+  },
+  "popupModeNameRegion": {
+    "message": "範圍擷取"
+  },
+  "popupModeNameElement": {
+    "message": "元素擷取"
+  },
+  "popupModeNameGeneric": {
+    "message": "擷取"
+  },
+  "popupNoActiveTab": {
+    "message": "找不到使用中的分頁。"
+  },
+  "popupCaptureFailedToStart": {
+    "message": "擷取無法啟動。"
+  },
+  "popupLinkHistory": {
+    "message": "記錄"
+  },
+  "popupLinkBatch": {
+    "message": "批次"
+  },
+  "popupLinkOptions": {
+    "message": "選項"
+  },
+  "optionsPageTitle": {
+    "message": "選項 — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · 選項"
+  },
+  "optionsHeading": {
+    "message": "選項"
+  },
+  "optionsLead": {
+    "message": "變更會自動儲存，並同步到你的瀏覽器設定檔。"
+  },
+  "optionsSectionImage": {
+    "message": "影像"
+  },
+  "optionsFormat": {
+    "message": "格式"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ 無失真；$JPEG$ 檔案較小；$WEBP$ 在相近品質下檔案最小。",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "$JPEG$ / $WEBP$ 品質",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "檔名範本"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "預留位置：$DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "擷取"
+  },
+  "optionsCaptureDelay": {
+    "message": "每一步的額外延遲"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "每次捲動後等待的毫秒數。頁面較慢或動畫較多時請調高。"
+  },
+  "optionsHideFixed": {
+    "message": "隱藏固定與黏著元素"
+  },
+  "optionsHideFixedDesc": {
+    "message": "避免頁首在每一個畫面重複出現（只在最上方顯示一次）。"
+  },
+  "optionsPreScroll": {
+    "message": "預先捲動以載入延遲內容"
+  },
+  "optionsPreScrollDesc": {
+    "message": "擷取前先把整頁捲過一遍。速度較慢，但抓得到延遲載入的圖片。"
+  },
+  "optionsAdaptiveWait": {
+    "message": "等待圖片解碼完成"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "讓來得較晚或延遲載入的圖片在每一影格前完成解碼，就不會被擷取成黑色或空白的圖塊。"
+  },
+  "optionsHideOverlays": {
+    "message": "隱藏橫幅與彈出視窗"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "擷取前移除 Cookie／同意橫幅、電子報視窗和「下載 App」彈出訊息，並解開被強制視窗鎖住的頁面。之後會還原。"
+  },
+  "optionsExpandInner": {
+    "message": "展開可捲動內容"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "把內部面板與 iframe 撐開，顯示藏在它們自身捲動範圍下方的內容，而不是完全依當前所見擷取。"
+  },
+  "optionsExpandPermRow": {
+    "message": "跨網站框架"
+  },
+  "optionsExpandPermAllow": {
+    "message": "允許"
+  },
+  "optionsExpandPermGranted": {
+    "message": "已取得權限 — 來自其他網站的框架也會一併展開。"
+  },
+  "optionsExpandPermMissing": {
+    "message": "沒有「$PERMISSION$」權限時，跨網站框架只會依當前所見擷取。面板與同網站 iframe 則一律正常運作。",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "展開虛擬化清單"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "逐段走過只算繪可視範圍的動態清單（$LIB1$／$LIB2$ 這一類），把完整內容一併擷取進來，而不只是螢幕上的那幾列。清單很長時會慢上不少。",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "展開需互動才顯示的內容"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "擷取前展開收合的 $DETAILS$、未啟用的分頁、摺疊面板和「顯示更多」區塊，之後再還原。可以揭露藏在一次點擊背後的內容。",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "點擊「$BUTTONTEXT$」按鈕",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "反覆點擊「載入更多」／「顯示更多」按鈕並等待新內容載入，直到動態消息再也沒有東西為止。與上一個選項不同，這會去取回還沒出現在頁面上的內容；載入的內容在擷取後會留著。"
+  },
+  "optionsInfiniteScroll": {
+    "message": "捲動以載入無限動態消息"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "適用於沒有「載入更多」按鈕的動態消息：反覆捲到底並等待下一頁載入，直到內容不再增加為止（有上限，不會無止盡追下去）。載入的內容在擷取後會留著。"
+  },
+  "optionsWaitStable": {
+    "message": "等待內容載入完成"
+  },
+  "optionsWaitStableDesc": {
+    "message": "等骨架／預留載入畫面（aria-busy 區塊、閃爍方塊）被真正的內容取代後再擷取，頁面中途的「載入中…」就不會被拍成一片灰色。有時間上限，卡住的轉圈圖示不會讓擷取停擺。"
+  },
+  "optionsRedactPII": {
+    "message": "自動遮蔽敏感資訊"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "掃描頁面公開的文字，尋找電子郵件地址、電話號碼、信用卡號、身分證字號和 API 金鑰，並在儲存的影像中為符合的內容蓋上實心色塊。它讀不到以像素繪製的文字 — 畫布、圖片、PDF、影片影格。偵測在你的裝置上進行；任何資料都絕不會被傳送到任何地方。適用於整頁（文件捲動）擷取；色塊無法還原，請自行檢查結果。"
+  },
+  "optionsMaxPageHeight": {
+    "message": "頁面高度上限"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "無限捲動動態消息的安全上限（CSS 像素）。"
+  },
+  "optionsSectionPdf": {
+    "message": "PDF 匯出"
+  },
+  "optionsPdfPaper": {
+    "message": "預設紙張大小"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "「$IMAGESIZE$」會讓單一頁面剛好等於截圖的尺寸。",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "影像大小"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "方向"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "僅適用於固定的紙張大小。"
+  },
+  "optionsOrientationPortrait": {
+    "message": "直向"
+  },
+  "optionsOrientationLandscape": {
+    "message": "橫向"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "智慧分頁"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "在每個分頁處附近尋找視覺空隙，避免文字行被從中切斷。"
+  },
+  "optionsPdfStamp": {
+    "message": "加註網址與日期"
+  },
+  "optionsPdfStampDesc": {
+    "message": "在每一頁 PDF 的頁尾加上頁面網址與擷取日期。"
+  },
+  "optionsSectionDownload": {
+    "message": "下載"
+  },
+  "optionsSaveDirectory": {
+    "message": "目錄"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "截圖存放在 $DOWNLOADS$ 下的子資料夾，例如 $EXAMPLE$。留空則直接存到 $DOWNLOADS$。",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "（下載）"
+  },
+  "optionsSaveAs": {
+    "message": "「另存新檔」對話方塊"
+  },
+  "optionsSaveAsDesc": {
+    "message": "每個檔案都詢問儲存位置，而不是安靜地直接下載。"
+  },
+  "optionsClipboardFit": {
+    "message": "調整剪貼簿複本以符合應用程式限制"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "把超過 $PIXELS$ 像素的複本縮小，貼進 $APP$ 之類的服務才不會失敗。",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "工作流程"
+  },
+  "optionsAutoDownload": {
+    "message": "擷取後自動下載"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "擷取一完成就立刻儲存影像。"
+  },
+  "optionsAutoOpenEditor": {
+    "message": "擷取後開啟編輯器"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "直接進入標註（僅限單張未分割的擷取）。"
+  },
+  "optionsTheme": {
+    "message": "佈景主題"
+  },
+  "optionsThemeDesc": {
+    "message": "套用於彈出視窗與所有 FullShot 頁面。"
+  },
+  "optionsThemeSystem": {
+    "message": "跟隨系統"
+  },
+  "optionsThemeLight": {
+    "message": "淺色"
+  },
+  "optionsThemeDark": {
+    "message": "深色"
+  },
+  "optionsShortcuts": {
+    "message": "鍵盤快速鍵"
+  },
+  "optionsShortcutsDesc": {
+    "message": "整頁：$KEYFULL$ · 可見區域：$KEYVISIBLE$。可在 $URL$ 自訂",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "已儲存 ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "你的資料"
+  },
+  "optionsStorage": {
+    "message": "儲存空間"
+  },
+  "optionsStorageUsage": {
+    "message": "本裝置已使用 $USED$，共 $QUOTA$。",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "這個瀏覽器不會回報 FullShot 佔用了多少空間。"
+  },
+  "optionsStorageKept": {
+    "message": "你的螢幕擷圖會保留：瀏覽器不會為了騰出空間而清除它們。"
+  },
+  "optionsStorageAtRisk": {
+    "message": "你的螢幕擷圖位於瀏覽器的「盡力而為」儲存空間中，瀏覽器可能會清除它以騰出空間。"
+  },
+  "optionsStorageKeep": {
+    "message": "保留我的資料"
+  },
+  "optionsExport": {
+    "message": "全部匯出"
+  },
+  "optionsExportDesc": {
+    "message": "寫入一個檔案，內含你的設定與螢幕擷圖清單。它會存到本裝置，不會傳送到任何地方。"
+  },
+  "optionsExportImages": {
+    "message": "包含影像"
+  },
+  "optionsExportImagesDesc": {
+    "message": "影像本身，幾乎佔了全部容量。不包含時，檔案只會列出你的螢幕擷圖，卻不含任何一張。"
+  },
+  "optionsExportSize": {
+    "message": "檔案大小：約 $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "殘留資料"
+  },
+  "optionsSweepDesc": {
+    "message": "中斷的擷取可能在磁碟上留下不屬於任何螢幕擷圖的影格。它們不會出現在任何頁面上，因此任何頁面都無法刪除。這項功能會找出並移除它們。"
+  },
+  "optionsSweepBtn": {
+    "message": "尋找並移除"
+  },
+  "optionsSweepResult": {
+    "message": "已移除。已清理的擷取：$COUNT$ · 釋出空間：$SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "沒有殘留：所有已儲存的內容都屬於你看得到的螢幕擷圖。"
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "重設設定"
+  },
+  "optionsResetDesc": {
+    "message": "把本頁的每項設定還原為出廠值。你的螢幕擷圖不受影響。"
+  },
+  "optionsResetBtn": {
+    "message": "重設"
+  },
+  "optionsResetConfirm": {
+    "message": "要將 FullShot 的所有設定還原為預設值嗎？你的螢幕擷圖不受影響。"
+  },
+  "optionsResetDone": {
+    "message": "設定已還原為預設值。"
+  },
+  "optionsDeleteAll": {
+    "message": "全部刪除"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "移除歷史記錄中的所有螢幕擷圖，以及中斷的擷取留下的一切。你的設定維持不變。"
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "要刪除 FullShot 在本裝置上儲存的所有內容嗎？\n\n歷史記錄中的螢幕擷圖：$COUNT$\n中斷擷取的殘留：$LEFTOVER$\n可釋出的空間：$SIZE$\n\n你的設定不受影響。此操作無法復原。",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "已刪除。FullShot 現在不會在本裝置上儲存任何螢幕擷圖。"
+  },
+  "resultPageTitle": {
+    "message": "截圖 — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "複製"
+  },
+  "resultCopyTip": {
+    "message": "將影像複製到剪貼簿"
+  },
+  "resultEdit": {
+    "message": "編輯"
+  },
+  "resultEditTip": {
+    "message": "在編輯器中開啟"
+  },
+  "resultBeautify": {
+    "message": "美化"
+  },
+  "resultBeautifyTip": {
+    "message": "美化 — 加上外框與背景，方便分享"
+  },
+  "resultClip": {
+    "message": "短片"
+  },
+  "resultClipTip": {
+    "message": "捲動短片 — 動態 $GIF$／$WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "PDF 紙張大小"
+  },
+  "resultPaperOption": {
+    "message": "PDF：$PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "下載"
+  },
+  "resultDeleteTip": {
+    "message": "刪除截圖"
+  },
+  "resultHistoryTip": {
+    "message": "截圖記錄"
+  },
+  "resultProgressAssembling": {
+    "message": "正在組合你的截圖…"
+  },
+  "resultProgressDecodingOther": {
+    "message": "正在解碼 $COUNT$ 個影格…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "正在拼接第 $INDEX$ 部分…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "正在拼接第 $INDEX$ 部分，全部約 $TOTAL$ 部分…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "儲存中…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "小提示：可以直接把影像拖到桌面，或使用「$DOWNLOAD$」。",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "這裡什麼都沒有"
+  },
+  "resultEmptyBody": {
+    "message": "這張截圖已經不存在了。"
+  },
+  "resultOpenHistory": {
+    "message": "開啟記錄"
+  },
+  "resultSomethingWrong": {
+    "message": "發生問題 — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "第 $INDEX$ 部分，共 $TOTAL$ 部分 · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "下載這一部分"
+  },
+  "resultEditPart": {
+    "message": "編輯這一部分"
+  },
+  "resultClipPart": {
+    "message": "製作這一部分的短片"
+  },
+  "resultPartAlt": {
+    "message": "截圖第 $INDEX$ 部分",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "正在下載 $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "要永久刪除這張截圖嗎？"
+  },
+  "resultDeleted": {
+    "message": "截圖已刪除。"
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "這張擷取畫面太長，無法當成一張可閱讀的圖片貼上，因此 $COPY$ 會把整頁縮小後的概覽放到剪貼簿。其中的小字將無法辨識。",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "已將第 $INDEX$ 部分複製到剪貼簿",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "正在製作 PDF…"
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF 已下載（$COUNT$ 頁）",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF 製作失敗 — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "編輯器 — FullShot"
+  },
+  "editorBackTip": {
+    "message": "返回截圖"
+  },
+  "editorToolSelect": {
+    "message": "選取／移動（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "裁切（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "畫筆（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "螢光筆（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "直線（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "箭頭（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "矩形（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "橢圓（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "文字（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "模糊／馬賽克（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "編號標記（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "表情符號印章（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "自訂顏色"
+  },
+  "editorStrokeTip": {
+    "message": "線條粗細"
+  },
+  "editorStrokeThin": {
+    "message": "細"
+  },
+  "editorStrokeMedium": {
+    "message": "中等"
+  },
+  "editorStrokeThick": {
+    "message": "粗"
+  },
+  "editorSizeTip": {
+    "message": "文字／表情符號大小"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "復原（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "取消復原（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "縮小 (-)"
+  },
+  "editorZoomInTip": {
+    "message": "放大 (+)"
+  },
+  "editorZoomFit": {
+    "message": "符合"
+  },
+  "editorZoomTipToHundred": {
+    "message": "符合視窗大小 — 點一下切換為 100%"
+  },
+  "editorZoomTipToFit": {
+    "message": "點一下以符合視窗大小"
+  },
+  "editorExport": {
+    "message": "匯出"
+  },
+  "editorExportCopy": {
+    "message": "複製到剪貼簿"
+  },
+  "editorExportImage": {
+    "message": "$FORMAT$ 影像",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "$FORMAT$ 文件",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "儲存"
+  },
+  "editorSaveTip": {
+    "message": "將變更儲存到記錄（$KEY$）",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "更多"
+  },
+  "editorMenuFiles": {
+    "message": "前往記錄"
+  },
+  "editorMenuOptions": {
+    "message": "前往選項"
+  },
+  "editorMenuShortcuts": {
+    "message": "鍵盤快速鍵"
+  },
+  "editorCropApply": {
+    "message": "套用裁切"
+  },
+  "editorCropCancel": {
+    "message": "取消"
+  },
+  "editorShortcutsHeading": {
+    "message": "鍵盤快速鍵"
+  },
+  "editorShortcutTools": {
+    "message": "選擇工具"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "復原／取消復原"
+  },
+  "editorShortcutSave": {
+    "message": "儲存到記錄"
+  },
+  "editorShortcutZoom": {
+    "message": "縮小／放大"
+  },
+  "editorShortcutDelete": {
+    "message": "移除選取的物件"
+  },
+  "editorShortcutEscape": {
+    "message": "取消選取／取消裁切"
+  },
+  "editorShortcutsClose": {
+    "message": "關閉"
+  },
+  "editorNotFound": {
+    "message": "找不到截圖"
+  },
+  "editorToastDownloaded": {
+    "message": "已下載"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF 已下載"
+  },
+  "editorToastSaved": {
+    "message": "已儲存到記錄"
+  },
+  "historyPageTitle": {
+    "message": "記錄 — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · 記錄"
+  },
+  "historySearchPlaceholder": {
+    "message": "搜尋標題或網址…"
+  },
+  "historySelectAll": {
+    "message": "全選"
+  },
+  "historyClearSelection": {
+    "message": "清除選取"
+  },
+  "historyDownloadSelected": {
+    "message": "下載所選"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "下載（$COUNT$）",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "刪除所選"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "刪除（$COUNT$）",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "還沒有任何截圖"
+  },
+  "historyEmptyBody": {
+    "message": "你擷取的畫面會出現在這裡。點一下工具列上的 FullShot 圖示即可開始。"
+  },
+  "historyNoMatchesTitle": {
+    "message": "沒有符合的結果"
+  },
+  "historyNoMatchesBody": {
+    "message": "沒有截圖符合「$QUERY$」。",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ 張截圖 · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$COUNT$ 張截圖中的 $SHOWN$ 張 · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "選取"
+  },
+  "historyCardOpen": {
+    "message": "開啟"
+  },
+  "historyCardEdit": {
+    "message": "編輯"
+  },
+  "historyCardDownloadTip": {
+    "message": "下載"
+  },
+  "historyCardDeleteTip": {
+    "message": "刪除"
+  },
+  "historyCardOpenOriginal": {
+    "message": "開啟原始頁面"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · $COUNT$ 個部分",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "截圖"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "要刪除這張截圖嗎？"
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "要永久刪除 $COUNT$ 張截圖嗎？",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "正在下載 $COUNT$ 張截圖",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "已刪除"
+  },
+  "beautifyPageTitle": {
+    "message": "美化 — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "美化"
+  },
+  "actionBack": {
+    "message": "返回"
+  },
+  "commonLoading": {
+    "message": "載入中…"
+  },
+  "beautifyFieldSize": {
+    "message": "尺寸"
+  },
+  "beautifyPresetAuto": {
+    "message": "自動"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "正方形"
+  },
+  "beautifyPresetPortrait": {
+    "message": "直向"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "背景"
+  },
+  "beautifyBgSlate": {
+    "message": "石板灰"
+  },
+  "beautifyBgGraphite": {
+    "message": "石墨黑"
+  },
+  "beautifyBgSky": {
+    "message": "天空藍"
+  },
+  "beautifyBgSunset": {
+    "message": "夕陽橘"
+  },
+  "beautifyBgGrape": {
+    "message": "葡萄紫"
+  },
+  "beautifyBgMint": {
+    "message": "薄荷綠"
+  },
+  "beautifyFieldPadding": {
+    "message": "留白"
+  },
+  "beautifyFieldRadius": {
+    "message": "圓角半徑"
+  },
+  "beautifyFieldEffects": {
+    "message": "效果"
+  },
+  "beautifyShadow": {
+    "message": "陰影"
+  },
+  "beautifyWindowFrame": {
+    "message": "視窗外框"
+  },
+  "beautifyFieldExport": {
+    "message": "匯出"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "捲動短片 — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "捲動短片"
+  },
+  "scrollclipFieldFormat": {
+    "message": "格式"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ 到哪裡都播得動。$WEBM$ 檔案更小、畫面更順（在你的瀏覽器裡即時錄製）。",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "輸出寬度"
+  },
+  "scrollclipFieldDensity": {
+    "message": "密度"
+  },
+  "scrollclipDensityHint": {
+    "message": "密度愈高畫面愈銳利（愈接近原始解析度）— 檔案也愈大。"
+  },
+  "scrollclipFieldShape": {
+    "message": "外形"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "捲動速度（px/s）"
+  },
+  "scrollclipFieldFps": {
+    "message": "影格率（fps）"
+  },
+  "scrollclipFieldMotion": {
+    "message": "動態"
+  },
+  "scrollclipBounce": {
+    "message": "來回（再捲回頂端）"
+  },
+  "scrollclipLoop": {
+    "message": "永久循環播放"
+  },
+  "scrollclipCopyFrame": {
+    "message": "複製影格"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "以 $FORMAT$ 複製封面（最上方）影格",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ 個影格 · $SECONDS$ 秒",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "正在算繪影格… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "正在編碼 $FORMAT$… $PERCENT$%",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "正在收尾…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "正在錄製 $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "錄製中…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "這裡不支援 $WEBM$ — 改為匯出 $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "已複製封面影格"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — 批次擷取"
+  },
+  "batchHeading": {
+    "message": "批次擷取"
+  },
+  "batchIntro": {
+    "message": "貼上網址，一行一個。FullShot 會逐一開啟每個頁面，把整頁截圖存進你的記錄，然後繼續下一個 — 一次最多 $MAX$ 個。擷取結果會出現在記錄裡；點一下 $OPENLINK$ 就能檢視、編輯或匯出其中任何一張。",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "全部擷取"
+  },
+  "batchPermissionHint": {
+    "message": "第一次開啟這些頁面時，需要一次性的權限。"
+  },
+  "batchPermissionDeclined": {
+    "message": "開啟那些頁面的權限遭到拒絕。"
+  },
+  "batchPanelPlan": {
+    "message": "計畫"
+  },
+  "batchPanelProgress": {
+    "message": "進度"
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ 個頁面待擷取",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ 個頁面待擷取（已限制為 $MAX$ 個）",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "還沒有有效的網址"
+  },
+  "batchSkipped": {
+    "message": "已略過 $COUNT$ 個：$REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "不支援的通訊協定"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "無效"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "沒有主機名稱"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "重複"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "空白"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "超過上限（$MAX$）",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "已完成 $DONE$/$TOTAL$",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "已完成 $DONE$/$TOTAL$，$FAILED$ 個失敗",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "已完成 $DONE$/$TOTAL$ — 全部結束",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "已完成 $DONE$/$TOTAL$，$FAILED$ 個失敗 — 全部結束",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "開啟"
+  },
+  "batchJobTimedOut": {
+    "message": "擷取逾時"
+  },
+  "batchJobNoSession": {
+    "message": "沒有擷取工作階段"
+  },
+  "batchJobFailed": {
+    "message": "擷取失敗"
+  },
+  "batchJobError": {
+    "message": "擷取發生錯誤"
+  },
+  "regionHintDrag": {
+    "message": "拖曳以選取範圍 — 按 $ESC$ 取消",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "點選要擷取的元素 — 按 $ESC$ 取消",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "設定、擴充功能和新分頁這類瀏覽器頁面，任何擴充功能都碰不到。請在一般網頁上使用 FullShot。"
+  },
+  "errRestrictedDevtools": {
+    "message": "擴充功能無法擷取開發人員工具視窗。這類畫面請改用電腦本身的截圖工具。"
+  },
+  "errRestrictedViewSource": {
+    "message": "檢視原始碼的頁面無法擷取。請改為擷取頁面本身。"
+  },
+  "errRestrictedExtensionPage": {
+    "message": "擴充功能頁面（包括 FullShot 自己的頁面）受瀏覽器保護，無法擷取。"
+  },
+  "errRestrictedWebstore": {
+    "message": "Chrome 線上應用程式商店不讓擴充功能讀取自家頁面，因此這個頁面無法擷取。"
+  },
+  "errRestrictedGeneric": {
+    "message": "這個頁面受瀏覽器保護，無法擷取。"
+  },
+  "errWrongTab": {
+    "message": "擷取已中止 — 你切換了分頁。請讓這個頁面保持在最前面，直到 FullShot 完成。"
+  },
+  "errGeneric": {
+    "message": "擷取還沒完成就停下來了。請再試一次。"
+  },
+  "errBusy": {
+    "message": "這個分頁已經有一項擷取正在進行。"
+  },
+  "errBlocked": {
+    "message": "這個頁面無法擷取（瀏覽器限制）。"
+  },
+  "errNoStart": {
+    "message": "FullShot 無法在這個頁面啟動。請重新載入頁面再試一次。"
+  },
+  "errCrash": {
+    "message": "擷取意外中斷。請再試一次。"
+  },
+  "errUnknownMessage": {
+    "message": "未知的訊息。"
+  },
+  "errQuota": {
+    "message": "瀏覽器正在限制頁面拍攝的頻率。請稍候片刻再試。"
+  },
+  "errFrameHandover": {
+    "message": "瀏覽器在中途停止交出畫面。請等幾秒再試一次。"
+  },
+  "errLostTab": {
+    "message": "擷取追蹤不到這個分頁了。請重新載入頁面再試一次。"
+  },
+  "errStoppedEarly": {
+    "message": "擷取在完成前就被停止了。"
+  },
+  "errStorageFull": {
+    "message": "已經沒有空間可以儲存這次擷取。請從歷史記錄刪除一些螢幕擷圖後再試一次。"
+  },
+  "reasonGeneric": {
+    "message": "沒有提供原因。請再試一次。"
+  },
+  "reasonDecodeFailed": {
+    "message": "那張截圖無法解碼。"
+  },
+  "reasonTooLarge": {
+    "message": "影像太大，無法在這裡匯出。"
+  },
+  "toastCopiedClipboard": {
+    "message": "已複製到剪貼簿"
+  },
+  "toastCopyFailed": {
+    "message": "複製失敗 — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "匯出失敗 — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "已儲存 $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "已儲存 $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ KB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

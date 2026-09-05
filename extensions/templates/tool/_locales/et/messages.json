@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — asenda mind",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ASENDA MIND — üks lause, üks eesmärk, kuni 132 tähemärki, ilma reklaamita.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — asenda mind",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Vaheta teemat",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Valikud",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Aktiivne vahekaart",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Loeb…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Kopeeri pealkiri",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Loe aktiivne vahekaart uuesti",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Sulge",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Kopeeritud",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Kopeerimine ebaõnnestus — vajuta selle asemel Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Viimane $ACTION$ ebaõnnestus — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Viimane $ACTION$ ebaõnnestus — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "pealkirja lugemine",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "kopeerimine",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "andmete kustutamine",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "käivitamine",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Miski peatas selle enne lõpetamist. Palun proovi uuesti.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "See vahekaart on juba hõivatud.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "See leht on brauseri kaitse all ja laiendused ei tohi seda lugeda.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Aktiivset vahekaarti ei leitud.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Sellel lehel pole pealkirja, mida lugeda.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Tühistatud.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Tundmatu sõnum.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "See vahekaart suleti enne töö lõppu.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Laiendus ei vastanud.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Midagi ei tulnud tagasi.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Brauseri enda lehed, näiteks Seaded, Laiendused ja Uus vahekaart, on kõigile laiendustele suletud. Proovi tavalisel veebilehel.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Arendaja tööriistade aknad on laiendustele suletud.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Lähtekoodi vaatamise lehed on laiendustele suletud. Proovi selle asemel lehte ennast.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Laienduste lehed, sealhulgas selle laienduse enda omad, on brauseri kaitse all.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store ei luba laiendustel oma lehti lugeda.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Kohalikud failid vajavad üht lisaluba. Ava brauseri leht Laiendused, otsi üles see laiendus ja lülita sisse „Luba juurdepääs faili-URL-idele“.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "See leht ei laadinud, seega pole veel midagi lugeda.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "See on brauseri sisseehitatud PDF-vaatur. Laiendused ei saa selle sisu lugeda — ava PDF tavalisel vahekaardil või laadi see esmalt alla.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Selle lehe on liivakasti pannud sait, mis selle avas, seega ei saa laiendused seda lugeda.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Lisandite sait ei luba laiendustel oma lehti lugeda.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Selles seadmes sai ruum otsa, seega ei salvestatud midagi. Kustuta menüüs Valikud mõned salvestatud read ja proovi uuesti.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "See võttis liiga kaua aega ja peatati. Midagi ei jäänud maha.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "See väärtus on liiga pikk, et seda sinu sünkroonitud seadetes hoida. Proovi lühemat.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Seda seadet ei õnnestunud salvestada. Oota hetk ja proovi uuesti.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Valikud — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Valikud",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Valikud",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Salvestatakse automaatselt. Kui brauseri sünkroonimine on sisse lülitatud, liiguvad seaded koos sinu brauseriprofiiliga — meile ei saadeta neid kunagi.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Käitumine",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Kopeeri avamisel",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Kopeeri tulemus lõikelauale kohe, kui hüpikaken avaneb.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Pea kohalikku ajalugu",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Vaikimisi välja lülitatud. Kui see on sees, salvestatakse tulemused ainult sellesse seadmesse, need on loetletud allpool ja neid saab igal ajal kustutada.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Ajaloo piirang",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Vanimad read visatakse välja, kui loend läheb sellest pikemaks.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Kustuta read, mis on vanemad kui",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Päeva. Vanad read eemaldatakse automaatselt taustal. Määra 0, et read säiliksid, kuni ajaloo piirang need eemaldab.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Teema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Järgib vaikimisi sinu süsteemi.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Süsteem",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Hele",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Tume",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Sinu andmed",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Sellesse seadmesse pole midagi salvestatud.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "Sellesse seadmesse on salvestatud $COUNT$ rida. Midagi ei lahku sellest.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "Sellesse seadmesse on salvestatud $COUNT$ rida. Midagi ei lahku sellest.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "Sellesse seadmesse on salvestatud $COUNT$ rida. Midagi ei lahku sellest.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "Sellesse seadmesse on salvestatud $COUNT$ rida. Midagi ei lahku sellest.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "Sellesse seadmesse on salvestatud $COUNT$ rida. Midagi ei lahku sellest.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "Sellesse seadmesse on salvestatud $COUNT$ rida. Midagi ei lahku sellest.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Püsiv: brauser on lubanud seda mitte kustutada.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Ilma garantiita: brauser võib selle omal algatusel kustutada, kui seadmes napib ruumi. Ekspordi varukoopia.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "See brauser ei ütle, kas salvestatud andmed säilivad, seega käsitle neid ajutistena ja ekspordi varukoopia.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Kasutusel $USED$ / $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Kustuta",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Kustuta rida saidilt $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Ekspordi kõik",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Salvestab kõik salvestatud read ühte JSON-faili siin seadmes. Midagi ei laadita üles.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Ekspordi kõik",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Kustuta kõik",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Eemaldab sellest seadmest kõik salvestatud read. Seaded jäävad alles.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Kustuta kõik",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Lähtesta seaded",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Taastab kõigi selle lehe seadete vaikeväärtused ja eemaldab need sinu sünkroonitud brauseriprofiilist. Salvestatud read jäävad alles.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Lähtesta seaded",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Teata probleemist",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Valmista ette probleemiaruanne",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Koostab väikese faili, mis kirjeldab selle laienduse olekut. Näed täpselt, mis selles on, enne kui see salvestatakse, ja midagi ei saadeta kuhugi.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Valmista aruanne",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Teave",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — asenda mind",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Üks lause, mis ütleb täpselt, mida see tööriist teeb. Oma töö teeb ta sinu seadmes: ei mingit kontot, ei jälgimist, ei võrgupäringuid, meile ei saadeta midagi.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Salvestatud",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Kõik kustutatud",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Kustutamine ebaõnnestus — proovi uuesti",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Seadet ei õnnestunud salvestada",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Eksport salvestatud",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Faili ei õnnestunud salvestada",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Rida kustutatud",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Seaded lähtestatud",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Seadeid ei õnnestunud lähtestada",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Aruanne salvestatud",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Loobu",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Kas kustutada kõik?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Kõik salvestatud read eemaldatakse sellest seadmest. Sinu seaded jäävad alles. Seda ei saa tagasi võtta.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Kas lähtestada kõik seaded?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Iga selle lehe eelistus läheb tagasi vaikeväärtusele ja eemaldatakse sinu sünkroonitud brauseriprofiilist. Sinu salvestatud read jäävad alles. Seda ei saa tagasi võtta.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Kas salvestada see probleemiaruanne?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "See on kõik, mida fail hakkab sisaldama. Selles pole lehtede aadresse, pole lehtede teksti ega midagi, mille oled jäädvustanud. Midagi ei saadeta kuhugi — fail salvestatakse sellesse seadmesse ja sina otsustad, kas seda jagada või mitte.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Salvesta aruanne",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Inkognitoaken — seda tulemust ei salvestatud sinu ajalukku.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Juurdepääs saitidele",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Juurdepääs kõigile saitidele",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Vajalik ainult nende funktsioonide jaoks, mis töötavad lehtedel, kus sa pole tööriistariba nuppu klõpsanud. Saad selle siit igal ajal tagasi võtta.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Anna juurdepääs",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Tühista juurdepääs",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "See laiendus saab praegu lugeda kõiki saite, mida külastad.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "See laiendus saab vahekaarti lugeda alles siis, kui klõpsad selle tööriistariba nuppu.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Juurdepääs antud",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Juurdepääsu ei antud",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Juurdepääs tühistatud",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Seda juurdepääsu ei õnnestunud tühistada",
+    "description": "en: Could not revoke that access"
+  }
+}

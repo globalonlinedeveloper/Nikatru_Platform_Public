@@ -1,0 +1,39 @@
+FullShot captures any web page the way you actually see it — the whole thing, seam-free.
+
+Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION you drag, or a single ELEMENT you click. Then annotate, redact, beautify, and export — all on your own device. No account. No cloud. No tracking. Works offline.
+
+── CAPTURE ANYTHING ──
+• Full page, visible area, drag-to-select region, or click-to-pick element
+• Seam-free stitching at any zoom or display scale (125% / 150% / Retina)
+• App-shell pages captured correctly — Gmail, ChatGPT, dashboards and other inner-scroll layouts (competing tools grab the wrong scroller)
+• Fixed side navigation unrolled to its full content (Reddit-style rails)
+• Wide tables, boards and code blocks captured across, not cut off
+• Smart multi-part splitting never cuts through a post, image, or line of text
+• Handles lazy images, "load more" buttons, infinite scroll, and skeleton loaders (optional)
+• Optionally hides cookie banners and modal pop-ups before capturing
+
+── MAKE IT USEFUL ──
+• Built-in editor: crop, arrows, boxes, text, highlighter, blur, and numbered step badges
+• Auto-redact PII (opt-in): scans the text a page exposes for emails, phone numbers, credit-card numbers, SSNs and API keys, and bakes a SOLID block over what it matches — not a blur, so it can't be reversed. It reads text, not pictures: anything drawn as pixels (canvas editors, images, PDFs, video) is never read. FullShot tells you what it covered and shows you the marked image before you hand it to an AI — it does not tell you the image is clean. 100% on-device.
+• Beautify: drop the shot on a gradient or solid background with padding, rounded corners, a shadow, and an optional window frame — perfect for docs, decks, and social.
+• Scroll clip: export an animated scroll-through of the capture as a GIF or WebM — great for bug reports and demos.
+• Batch capture: paste a list of URLs and FullShot captures each full page into your history, unattended.
+
+── EXPORT & KEEP ──
+• Save as PNG, JPEG, or WebP
+• Export to PDF with smart page splitting (no cut text lines) and an optional URL + date stamp
+• Copy straight to the clipboard
+• Local history you can search, reopen, re-edit, and re-export — stored only on your device
+
+── PRIVACY BY DESIGN ──
+• Everything runs locally. Your screenshots never leave your computer.
+• No sign-in, no analytics, no telemetry, no ads, no data sold — ever.
+• No remotely hosted code (Manifest V3).
+• Core single-tab capture needs only the "active tab" permission. Broad site access is OPTIONAL and requested at the moment you turn on a feature that needs it (cross-site frame expansion or batch URL capture) — decline and everything else keeps working.
+
+── KEYBOARD SHORTCUTS ──
+• Alt+Shift+P — capture full page
+• Alt+Shift+V — capture visible area
+(Region and element capture shortcuts can be assigned at edge://extensions/shortcuts.)
+
+Everything the other tools charge for — free, private, and pixel-perfect.

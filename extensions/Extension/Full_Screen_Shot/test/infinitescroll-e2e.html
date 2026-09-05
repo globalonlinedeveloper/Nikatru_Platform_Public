@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FullShot e2e — infinite scroll (no button)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  #header { height: 120px; background: #1E325A; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  .item { height: 100px; background: #4696C8; color: #04263f; padding: 12px 20px; }
+  .item.deep { background: #00D282; color: #013; font-weight: 700; }
+  #sentinel { height: 1px; }
+  #bottom { height: 152px; background: #0088FF; color: #fff; font-weight: 700; padding: 12px 20px; }
+  #scoreboard { position: fixed; left: 8px; bottom: 8px; width: 480px; max-height: 220px; overflow-y: auto; z-index: 20;
+    background: #111; color: #eee; font: 12px/1.5 monospace; white-space: pre-wrap; padding: 8px 12px; border-radius: 6px; }
+  #scoreboard b.pass { color: #4ade80; } #scoreboard b.fail { color: #f87171; }
+</style>
+</head>
+<body>
+<div id="header">FullShot e2e — infinite scroll, no button. Turn ON "Scroll to load infinite feeds", then press Alt+Shift+P.</div>
+<div id="feed"></div>
+<div id="sentinel"></div>
+<div id="bottom">PAGE BOTTOM MARKER — appears once at the very end.</div>
+<div id="scoreboard">Waiting for capture… enable infiniteScroll in options, then Alt+Shift+P.</div>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const feed = $('feed'), board = $('scoreboard');
+  const TOTAL = 24, PAGE = 6, DEEP_IX = 21;
+  let loaded = 0, pending = false;
+
+  function addItem(i) {
+    const d = document.createElement('div');
+    d.className = 'item' + (i === DEEP_IX ? ' deep' : '');
+    d.textContent = (i === DEEP_IX)
+      ? 'DEEP FEED ITEM #' + (i + 1) + ' — only reached by scrolling the feed in'
+      : 'Feed item #' + (i + 1);
+    feed.appendChild(d);
+  }
+  for (let i = 0; i < PAGE; i++) addItem(i);   // first page ships in the DOM
+  loaded = PAGE;
+
+  // No button: an IntersectionObserver appends the next page when the bottom
+  // sentinel nears the viewport, after a network-like delay (< the engine's
+  // 400ms per-round settle). Observer disconnects when the feed is exhausted.
+  const io = new IntersectionObserver((entries) => {
+    if (!entries.some(e => e.isIntersecting)) return;
+    if (pending || loaded >= TOTAL) return;
+    pending = true;
+    setTimeout(() => {
+      const add = Math.min(PAGE, TOTAL - loaded);
+      for (let i = 0; i < add; i++) addItem(loaded + i);
+      loaded += add;
+      pending = false;
+      if (loaded >= TOTAL) io.disconnect();
+    }, 250);
+  }, { rootMargin: '300px' });
+  io.observe($('sentinel'));
+
+  // ---- self-grading scoreboard ----
+  const S = { reachedFull: false, stayedLoaded: false };
+  let phase = 'idle';
+  setInterval(() => {
+    const capturing = !!document.getElementById('__fullshot-css');
+    if (capturing) {
+      if (phase === 'idle') { phase = 'capturing'; board.textContent = 'Capture in progress…'; }
+      if (feed.children.length >= TOTAL) S.reachedFull = true;
+    } else if (phase === 'capturing') {
+      phase = 'done';
+      setTimeout(() => {
+        S.stayedLoaded = feed.children.length >= TOTAL;   // honest boundary: NOT un-scrolled
+        report();
+      }, 600);
+    }
+  }, 90);
+
+  function line(label, ok) {
+    return '<b class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</b>  ' + label + '\n';
+  }
+  function report() {
+    const rows = [
+      ['engine scrolled the feed until fully loaded (24 items, no button)', S.reachedFull],
+      ['loaded feed left in place after capture (honest boundary — not un-scrolled)', S.stayedLoaded]
+    ];
+    const anyFail = rows.some(r => r[1] === false);
+    board.innerHTML = 'INFINITE-SCROLL RESULT — ' +
+      (anyFail ? '<b class="fail">FAILURES DETECTED</b>' : '<b class="pass">ALL PASS</b>') + '\n' +
+      rows.map(r => line(r[0], r[1])).join('') +
+      '\nAlso verify the image: full blue feed with the green DEEP item, then the blue BOTTOM marker.';
+    console.log('FSINFINITE', JSON.stringify(S));
+  }
+})();
+</script>
+</body>
+</html>

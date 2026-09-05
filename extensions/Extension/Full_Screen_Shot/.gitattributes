@@ -1,0 +1,40 @@
+# FullShot — .gitattributes
+#
+# WHY THIS FILE EXISTS AT ALL
+#
+# Every one of the 245 text files in this tree is LF-only today, on Windows.
+# (Measured, not assumed: zero 0x0D bytes across the whole tree excluding
+# node_modules, .claude and Reference.)
+#
+# Git for Windows installs with `core.autocrlf=true` by default. Without this
+# file, the first clone on a second machine would check every one of those
+# files out with CRLF endings. Nothing would look broken: the extension would
+# still load, the sims would still pass. But every shipped file's bytes would
+# differ from the bytes that were audited, `node publish/package.node.js`
+# would produce a zip with a different md5 from the one reviewed, and the
+# project's TEETH doctrine — "restore byte-identical, verify md5" — would be
+# quietly false on that machine only.
+#
+# That is precisely the failure shape this project keeps getting bitten by: a
+# claim that stays green locally while being wrong somewhere nobody looked.
+# One line prevents it.
+
+# Normalize to LF in the repository AND on checkout, on every platform,
+# regardless of the cloner's core.autocrlf setting.
+* text=auto eol=lf
+
+# Binaries: never touched, never diffed as text, never line-ending-converted.
+# (`text=auto` already infers this from NUL bytes; stating it removes the
+# inference — a zip whose first bytes happen to look textual cannot be
+# misclassified.)
+*.png   -text
+*.jpg   -text
+*.jpeg  -text
+*.gif   -text
+*.webp  -text
+*.ico   -text
+*.zip   -text
+*.crx   -text
+*.xpi   -text
+*.woff  -text
+*.woff2 -text

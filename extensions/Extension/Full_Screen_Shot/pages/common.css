@@ -1,0 +1,266 @@
+/* FullShot shared styles + light/dark theme */
+
+/* ---- the palette, and the arithmetic behind it ---------------------------
+   Every pair below was MULTIPLIED OUT, not looked at: test/a11y-sim.node.js
+   parses these two blocks, computes the WCAG contrast ratio for each pair the
+   product actually paints, and prints the number. Judging a colour by eye is
+   how #16a34a with white text (3.30:1) shipped as a confirmation pill.
+
+   Four tokens exist because ONE colour cannot do two jobs at these
+   luminances. In the dark theme, white text needs the accent to be dark
+   (relative luminance <= 0.183) and accent-coloured TEXT needs it to be light
+   (>= 0.232 against --panel). That is not a preference to split the
+   difference on, it is arithmetic with no solution, so:
+
+     --accent       a SURFACE and a boundary. Filled buttons, the focus ring,
+                    the checked switch. Graded at 3:1 (SC 1.4.11) against
+                    every background it can sit on, and 4.5:1 against the text
+                    that sits on IT.
+     --accent-fg    the text on that surface.
+     --accent-text  accent-coloured TEXT on an ordinary background — the
+                    captured page's link on a history card. Graded at 4.5:1.
+     --control-line a boundary that IS the control: a .btn's own background is
+                    within 1.1:1 of the page behind it, so the border is the
+                    only thing that says "button", and SC 1.4.11 asks 3:1 of
+                    it. --line stays for dividers and card edges, which are
+                    decoration and are exempt.
+
+   The light values moved by a shade or two rather than being redesigned:
+   --fg2 4.49 -> 4.77 on --bg2, --danger 4.48 -> 5.32 on --bg. The dark accent
+   moved 0.008 in luminance, which is the whole distance between 4.44 and
+   4.60 against white. */
+:root {
+  --bg: #f6f6f9;
+  --panel: #ffffff;
+  --bg2: #eeeef3;
+  --fg: #1c1c28;
+  --fg2: #67677c;
+  --line: #e2e2ea;
+  --control-line: #86869a;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-fg: #ffffff;
+  --accent-text: #4f46e5;
+  --danger: #c81e1e;
+  --ok: #16a34a;
+  --ok-fg: #05210f;
+  --shadow: 0 1px 3px rgba(16, 16, 32, .08), 0 4px 16px rgba(16, 16, 32, .06);
+}
+:root[data-theme="dark"] {
+  --bg: #121218;
+  --panel: #1c1c26;
+  --bg2: #26262f;
+  --fg: #ececf2;
+  --fg2: #9a9ab0;
+  --line: #2e2e3c;
+  --control-line: #707089;
+  --accent: #6a61ef;
+  /* Darker on hover, not lighter. A dark theme normally brightens on hover,
+     but white text is already only 4.60:1 on the base accent — brightening
+     took it to 3.66:1, i.e. the hover state was the inaccessible one. */
+  --accent-hover: #5f56ea;
+  --accent-fg: #ffffff;
+  --accent-text: #a5a0fa;
+  --danger: #f87171;
+  --ok: #22c55e;
+  --ok-fg: #05210f;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+}
+/* The same dark theme, for a profile that never touched the toggle. It has to
+   declare the SAME tokens: one missing here is a page that is AA under the
+   toggle and not AA out of the box — the harder failure to notice, because
+   nobody clicks anything to reach it. Asserted, not trusted. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #121218; --panel: #1c1c26; --bg2: #26262f; --fg: #ececf2;
+    --fg2: #9a9ab0; --line: #2e2e3c; --control-line: #707089;
+    --accent: #6a61ef; --accent-hover: #5f56ea; --accent-fg: #ffffff;
+    --accent-text: #a5a0fa;
+    --danger: #f87171; --ok: #22c55e; --ok-fg: #05210f;
+    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+  }
+}
+
+/* ---- writing direction -------------------------------------------------
+   Direction comes from the LOCALE THAT ACTUALLY LOADED, never from a list of
+   language codes kept here: a second copy of "ar, fa, he" in a stylesheet is a
+   source of truth that goes stale the day a fourth RTL locale is added.
+   __MSG_@@bidi_dir__ is Chrome's own predefined message and is substituted in
+   extension CSS BEFORE first paint, so an RTL locale never flashes LTR.
+   pages/common.js then mirrors the same value onto the dir ATTRIBUTE, which is
+   what [dir=] / :dir() selectors and form controls read. If a browser ever
+   declined the substitution the declaration is simply invalid and dropped —
+   and the attribute still lands, one paint later. */
+html { direction: __MSG_@@bidi_dir__; }
+
+/* ---- text that is NOT ours ---------------------------------------------
+   The same rule as "functional output is never translated", one layer down:
+   text lifted from the captured page (its title, its URL) belongs to the user
+   and carries its OWN direction. Rendering an Arabic page title inside an
+   English chrome — or an English one inside Arabic chrome — reorders the
+   neutral characters at its edges and mangles both.
+
+   `unicode-bidi: plaintext` is dir="auto" expressed in CSS: the element's
+   direction is taken from its first strong character. It needs no JS, so a
+   call site that builds a card next year cannot forget it.
+
+   A URL is never plaintext: it has no strong character until the hostname, so
+   plaintext would give "://" to the surrounding paragraph and hand back
+   something that is not the URL. URLs are pinned LTR and isolated. */
+.fs-user { unicode-bidi: plaintext; }
+.fs-ltr  { direction: ltr; unicode-bidi: isolate; }
+
+/* Technical literals inside a sentence: {domain}, chrome://extensions/shortcuts,
+   Alt+Shift+P. Every one of them is punctuation-heavy, and punctuation is
+   bidi-neutral — dropped into an RTL paragraph unisolated they come out
+   backwards. */
+code, kbd, samp { direction: ltr; unicode-bidi: isolate; }
+
+* { box-sizing: border-box; }
+
+/* The hidden attribute must always win, even over elements that set their
+   own display (e.g. #progress { display:flex }). Without this, JS setting
+   el.hidden = true has no visible effect on those elements. */
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  /* A German or Finnish compound noun is one word and can be 30+ characters.
+     break-word costs nothing on text that already fits — it only ever acts
+     when a word would otherwise paint outside its box — and without it a
+     single long word drags horizontal scroll onto the whole page. Measured at
+     320 CSS px (= 640px at 200% zoom): options.html scrolled 59px sideways
+     and history.html 105px, both from ONE unbroken word in a <p>. */
+  overflow-wrap: break-word;
+}
+
+/* flex-wrap, not overflow: at 200% zoom (or 400 CSS px) the six controls in
+   this bar are already wider than the page in ENGLISH — measured: history.html
+   scrolled 253px sideways before a word was translated. Wrapping costs a row of
+   height; not wrapping costs the buttons on the far edge entirely. */
+.topbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 50;
+}
+.topbar .brand {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 15px; color: var(--fg);
+  text-decoration: none;
+}
+.topbar .spacer { flex: 1; }
+/* .meta holds the CAPTURED PAGE's title — see .fs-user above. */
+.topbar .meta {
+  color: var(--fg2); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 40vw; min-width: 0; unicode-bidi: plaintext;
+}
+
+/* ---- the focus ring ------------------------------------------------------
+   Declared once, for everything, because the alternative is a ring that
+   exists on the five controls somebody remembered. :focus-visible and not
+   :focus, so a mouse click does not paint one — a ring that appears on every
+   click is a ring people ask to have removed, and removing it is how keyboard
+   users lose their place.
+
+   outline-OFFSET is the load-bearing half. A ring drawn flush against
+   .btn.primary would be --accent on --accent: a contrast ratio of 1.0, i.e.
+   invisible on the one control it matters most on. Pushed 2px out it lands on
+   the page or the panel behind the button, where it is graded at 3:1 by
+   test/a11y-sim.node.js in both themes (light 5.83/6.29, dark 4.06/3.67).
+
+   :where() so the whole thing has zero specificity: a page that needs a
+   different ring on one control can say so with a plain class selector and
+   does not have to out-shout this rule. */
+:where(a[href], area, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--control-line); border-radius: 9px;
+  background: var(--panel); color: var(--fg);
+  font: 600 13px/1 system-ui, sans-serif;
+  cursor: pointer; text-decoration: none;
+  transition: background .12s, border-color .12s;
+}
+.btn:hover { background: var(--bg2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.icon { padding: 7px 9px; }
+
+select.ctl, input.ctl {
+  padding: 7px 10px;
+  border: 1px solid var(--control-line); border-radius: 9px;
+  background: var(--panel); color: var(--fg);
+  font: 13px system-ui, sans-serif;
+}
+
+/* Centred, and centred is direction-agnostic — but `left:50% + translateX(-50%)`
+   is NOT the way to say so once logical properties are in play: turning that
+   `left` into `inset-inline-start` sends the toast off the right edge under RTL,
+   because the -50% no longer points back toward the anchor. Centre with
+   `inset-inline: 0` + `margin-inline: auto` instead: no physical edge is named,
+   and nothing has to be flipped. The transform is left doing only the Y slide. */
+#fs-toast {
+  position: fixed; inset-block-end: 24px; inset-inline: 0;
+  width: fit-content; max-width: calc(100% - 32px); margin-inline: auto;
+  transform: translateY(16px);
+  background: var(--fg); color: var(--bg);
+  padding: 10px 18px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; text-align: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s, transform .18s;
+  z-index: 999;
+}
+#fs-toast.show { opacity: 1; transform: translateY(0); }
+
+.spin {
+  width: 18px; height: 18px;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: fs-spin .8s linear infinite;
+}
+@keyframes fs-spin { to { transform: rotate(360deg); } }
+
+/* ---- prefers-reduced-motion ----------------------------------------------
+   Wholesale, and on purpose. A list of the transitions this product happens
+   to declare today is a list that is wrong the first time somebody adds a
+   sixth one, and the failure mode is silent: vestibular symptoms do not raise
+   a console warning. So the sweep is the rule, and the exceptions are named
+   under it.
+
+   .001ms rather than 0s: a transition that is removed outright never fires
+   transitionend, and code that waits for one would hang. Nothing on these
+   pages does today, which is exactly why it is cheap to keep the guarantee.
+
+   THE SPINNER IS THE ONE EXCEPTION. Freezing it is not "less motion", it is a
+   lie — a still ring is what this product paints when nothing is happening,
+   and the spinner is the only thing on screen during a long stitch that says
+   otherwise. It is slowed to a quarter speed instead, which removes the
+   flicker without removing the meaning. (Its live-region text is the real
+   answer for a reader who sees neither.) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spin {
+    animation-duration: 3.2s !important;
+    animation-iteration-count: infinite !important;
+  }
+  /* The toast slides up 16px on the way in. With the transition gone it would
+     simply appear 16px low; pin it instead so it lands where it belongs. */
+  #fs-toast { transform: none; }
+}

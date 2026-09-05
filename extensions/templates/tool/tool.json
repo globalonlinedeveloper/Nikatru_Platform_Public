@@ -1,0 +1,100 @@
+{
+  "$schema": "../../scripts/schema/tool.schema.json",
+
+  "README": "THE MONOREPO CONTRACT — one per tool, and the ONLY coupling surface between a tool and the repository around it. Everything the repo does to a tool is driven from here, so a tool never has to restructure itself to participate. Stamp it in the same sitting as publish/identity.json — the two files share a value and drift the moment they are filled in on different days. The tree the package/tests/policy blocks describe IS this directory: the 132 files that used to sit at _skeleton/ in the repository root arrived here as a git rename, path for path, per MIGRATION.md, so every relative path below resolves against this folder. READ \"absent\" BELOW for what is still genuinely missing.",
+
+  "id": "skeleton",
+  "name": "SKELETON — replace me",
+  "surface": "extension",
+  "status": "template",
+  "summary": "REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing.",
+  "aiHandoff": "",
+
+  "manifest": "manifest.json",
+  "core": null,
+
+  "package": {
+    "include": [
+      "manifest.json",
+      "background.js",
+      "LICENSE",
+      "icons/*.png",
+      "lib/*.js",
+      "pages/*.html",
+      "pages/*.js",
+      "pages/*.css",
+      "popup/*.html",
+      "popup/*.js",
+      "popup/*.css",
+      "_locales/*/messages.json"
+    ],
+    "exclude": [
+      "test/**",
+      "publish/**",
+      "tools/**",
+      "node_modules/**",
+      "**/*.md",
+      "**/*.node.js",
+      "**/*.zip",
+      ".*",
+      "skeleton.json",
+      "tool.json"
+    ]
+  },
+
+  "targets": {
+    "chromium": { "stores": ["chrome", "edge"] },
+    "firefox": { "overlay": null }
+  },
+
+  "tests": [
+    "test/skeleton-sim.node.js"
+  ],
+
+  "policy": {
+    "permissions": {
+      "activeTab": "Acts only on the tab the user clicked the toolbar button on, only after that click, and only until the tab navigates — so the tool never holds standing access to any site.",
+      "storage": "The user's own preferences (theme, retention, what to keep). Everything stored is listed on the options page, exportable, deletable row by row and all at once, and never transmitted."
+    },
+    "optionalHostPermissions": {},
+    "networkAllowlist": []
+  },
+
+  "storeMetadata": {
+    "_why": "THE STORE AXIS. `targets` is the BUILD axis and has two entries; this has three, because the chromium build ships to Chrome AND Edge as two separate listings with different limits and different permanent ids. A stamped tool gets this block from scripts/new-tool.mjs so its listings are graded from its first commit — otherwise tool #2 has its store copy hand-typed into a console, which is the outcome the whole factory exists to avoid.",
+    "sharedDir": "store/_shared",
+    "stores": {
+      "chrome":  { "target": "chromium", "dir": "store/chrome",  "served": false },
+      "edge":    { "target": "chromium", "dir": "store/edge",    "served": false },
+      "firefox": { "target": "firefox",  "dir": "store/firefox", "served": false }
+    }
+  },
+  "listings": { "chrome": null, "edge": null, "firefox": null },
+
+  "absent": {
+    "README": "Named by this file or by the architecture, and NOT PRESENT at the path given, measured on the tree the day this was written. Listed rather than stubbed: a path that resolves to nothing is a bug that hides until release day, and a plausible stub is worse than an honest gap. Delete an entry the day the real thing lands — a stale \"absent\" is the same lie in the other direction, which is why three entries that stood here yesterday are already gone.",
+    "scripts/pack.mjs": "The repo-level packager the package block above is written for. Absent. The packager that actually builds this tree is publish/pack.mjs, whose own ALLOW list is authoritative today — see NOTES.package.",
+    "scripts/verify-refs.mjs": "The reference-integrity gate that runs on the produced zip and fails on a manifest or HTML reference that does not resolve case-exactly inside the archive. Absent at the repo level. publish/verify-package.node.js does this for a package built by publish/pack.mjs, which is why the template is not currently unguarded — it is guarded per-tool rather than repo-wide.",
+    "scripts/run-tests.mjs": "The runner that executes the \"tests\" array above. Absent, so the array is a declaration nothing currently executes for this tree. Run the sims by path until it exists.",
+    "vendor/core/": "The vendored shared runtime. Absent here and in every tool — but the reason has changed and the old reason is no longer true: scripts/sync-core.mjs now EXISTS, and so does core/v1 (settings.js, storage.js, jobs.js, promoted from lib/). What has not happened is a sync: no tool has a vendor/core/ directory or a .coremeta.json, so \"core\" stays null and no vendor/core path appears in package.include. `node scripts/check-core-sync.mjs <tool>` passes today precisely because the two halves agree that nothing is vendored. NOTE THE NAME when it does land: vendor/core/, never _core/ — Chrome refuses to load an extension whose package has a root file or directory starting with an underscore, and _locales is the only exception it makes.",
+    "publish/manifest.firefox.json (as an OVERLAY)": "The FILE exists (at publish/manifest.firefox.json in this directory) and is used. What is absent is the overlay FORM: it is a complete second manifest — manifest_version, name, short_name, version, description, default_locale, both permissions, action, icons all stated a second time — not an RFC 7386 merge patch. So targets.firefox.overlay is null rather than pointing a merge-patcher at something that is not one."
+  },
+
+  "NOTES": {
+    "$schema": "ADDED once scripts/schema/tool.schema.json actually existed, and not one commit earlier. The schema is for editor autocomplete and hover text; it is NOT the gate — scripts/lib/toolinfo.mjs is, because the checks that matter are cross-file (does the manifest exist, does every listed test path resolve, does the surface match the category directory) and no JSON Schema can express them. The relative path is correct from a tool two levels below the repository root, which is where every tool lives.",
+    "id": "lowercase-kebab, and the STABLE PUBLIC HANDLE: it names the tags, the zip files, the CI matrix entry and the release artifacts. Directories can be renamed at any time; this cannot, so choose it as if it were permanent. It MUST equal publish/identity.json.slug — that slug is already the one signal the node tier uses to decide whether this tree is still the template, and a second, disagreeing copy of the same fact would give the two tiers different answers to the same question.",
+    "name": "Free text, the product name a person sees. Not the store listing name: the listing puts the keyword first and the brand last, because the store truncates around 45 characters and the half that survives should be the half that says what the thing does.",
+    "surface": "The delivery surface, which decides the toolchain, the CI matrix and the store target: \"extension\" here. It must equal the lowercased category directory — a tool under Extension/ is \"extension\", and toolinfo.mjs rejects any disagreement. A surface is not a theme: themes get renamed every time the pitch changes, and renaming a category breaks every path, tag and listing that points at it.",
+    "status": "\"template\" is DELIBERATELY OUTSIDE the set a real tool may declare (idea · wip · shipping · archived), and that trap is now LIVE rather than theoretical: scripts/schema/tool.schema.json pins the enum, and scripts/lib/toolinfo.mjs rejects any other value. Know what the trap costs before you meet it — a hand-copied, unstamped tool.json that reaches a category directory does not fail its own tool, it fails scripts/discover.mjs, and a matrix that cannot be built blocks CI for every tool in the repo. That is deliberate: a matrix built from a malformed tool.json silently skips a tool or collides two artifact names, and a loud stop is the cheaper failure. This copy is safe where it sits — templates/ is not a category directory and no gate walks it. \"shipping\" means listed in a store, not built.",
+    "summary": "One sentence, one purpose. If it cannot describe every button in the popup and every row in the options page, the tool has two purposes and one of them is a second tool — which is cheaper to ship than a single-purpose rejection.",
+    "aiHandoff": "How this tool gets context out of the browser and into a language model, and what the model can answer because of it. Empty here because the template has no capture to hand off. It is not optional in a tool: it is the reason the family exists.",
+    "manifest": "manifest.json is the SINGLE source of truth for the version. Not package.json, not this file. Every duplicate of a version number is a release-day drift bug waiting to happen — which is also why there is no version field in this file.",
+    "core": "null = this tool vendors no shared core. scripts/sync-core.mjs now exists, so the rule is no longer \"wait for the script\" but \"wait for the run\": set { \"channel\": \"v1\", \"pin\": null } only after sync-core has been run against this tree and there is a vendor/core/.coremeta.json of hashes for check-core-sync to verify. A declaration that a core is vendored, with no vendor/core to point at, is exactly the fail-closed seam with no proven open path that this corpus keeps rediscovering.",
+    "package": "DECLARATIVE, AND NOT YET AUTHORITATIVE FOR THE ZIP. The list that decides what enters the package is ALLOW in publish/pack.mjs — a positive allowlist pinned per directory and per extension, so a .md dropped into pages/ cannot ride along. This block mirrors it, and the mirror is measured rather than asserted: pack.mjs reports `allowlist: 73 files (55 locales + 18 code/assets)`, and the 12 patterns above select the same 18 non-locale files (manifest.json, background.js, LICENSE, 4 icons, 3 lib, 5 pages, 3 popup). Two copies of one fact drift; when scripts/pack.mjs lands, one of them must start reading the other. Whichever survives, _locales must remain allowlist-ALWAYS rather than pattern-matched — four independent innocent-looking edits can each silently un-ship 55 locale directories, and Chrome REFUSES to load an extension whose default catalogue is missing. Both packagers already enumerate _locales directly for that reason, and scripts/lib/toolinfo.mjs unions them in a second time.",
+    "targets": "chromium builds one package for BOTH Chrome and Edge — the same bytes, uploaded twice, never built twice. firefox.overlay is null on purpose: publish/manifest.firefox.json is a full second manifest rather than a merge patch, and pointing an overlay key at a non-overlay produces a merged manifest that is wrong in a way nothing would catch. Today publish/bump-version.mjs --sync is what keeps the two manifests' shared fields equal; converting the file to a six-key merge patch would remove the need for that and is the better end state.",
+    "tests": "Node simulations that load the real shipped source and grade the artifact it produces, runnable on bare Node with no install. Measured on this tree: `node test/skeleton-sim.node.js` runs 619 checks and currently exits 1 on one pre-existing failure — the generator does not agree that _locales/de/messages.json is what it would write. That is a real defect in the catalogue, not in the sim, and it is documented in MIGRATION.md §4 so a red result after a move is attributed correctly. test/browser/smoke.mjs is deliberately NOT listed here: it needs a real Chromium, so it belongs to the gated browser tier, not the per-push one.",
+    "policy.permissions": "Every permission in manifest.json needs a justification here, and the justification is judged on one formula: narrowest scope that works · the least-privileged option you considered and why it was not enough · tied explicitly to the single purpose. The two above are the two the template's manifest declares, and publish/verify-package.node.js already checks that each has a written justification in publish/STORE-LISTING.md — it reports `2 permission(s) justified: activeTab, storage`. scripts/policy-check.mjs makes the same demand against THIS file for any tool under a category directory: a declared permission with no justification here fails the build, and a justified permission the code never uses warns, which usually means a feature was removed and the manifest was not.",
+    "policy.networkAllowlist": "EMPTY MEANS ZERO NETWORK CALLS, and it is the machine-readable form of the listing claim rather than a restatement of it. Two independent things enforce it for a real tool: publish/verify-package.node.js scans the packaged bytes, and scripts/policy-check.mjs scans the packaged set with comments and string literals blanked first — because grepping raw source grades the comment that promises there is no fetch. The template also states the claim to the browser rather than only to a scanner: manifest.json carries content_security_policy.extension_pages with connect-src 'none', which makes a fetch from an extension page fail at runtime even if one is ever added.",
+    "listings": "Store URLs, once each listing is live. All null until then. Two facts that bite at listing time rather than at build time: a Chrome Web Store publisher account carries at most 20 extensions, and that limit is enforced per publisher — it is a fact about the ACCOUNT, not about any one tool; and Microsoft's certification 10.1.4 requires each listing to have its own metadata, so a summary copied from a sibling tool is a rejection, not a shortcut. The privacy policy is served from nikatru.com; publish/PRIVACY-POLICY.html is the source of that page, not the published copy."
+  }
+}

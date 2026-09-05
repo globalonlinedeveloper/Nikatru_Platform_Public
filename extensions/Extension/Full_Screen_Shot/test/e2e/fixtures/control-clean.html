@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claim-e2e — CLEAN CONTROL: ordinary article, real text, no PII</title>
+<!-- SPEC E8 — "the honest case must survive; if E8 goes red the feature gets
+     switched off and the whole design has failed."
+     This control matters as much as any attack. A suite that only proves
+     refusals would let someone 'fix' the product by refusing everything, and
+     a design that answers `unknown` on a clean article is not safe, it is
+     unusable (§7.2).
+     Requirements this page is built to satisfy exactly:
+       - well over 1000 characters of ordinary prose
+       - every fed span genuinely placed: no inline <script>/<style> in the
+         body, no display:none, no clipped or faded ancestors, no 0x0 boxes.
+         `unplaced.total === 0` selects the unqualified wording in §3.3, and
+         that is the wording this page must produce.
+       - no string matching any of the five patterns. No @ anywhere, no
+         digit run that could Luhn, no 3-3-4 grouping.
+     `#leafrule` is the E16 measurement: its own text nodes hold PII-free prose
+     and it also contains one <a>. `fsOwnLeafText` returns '' for any element
+     with an element child, so the paragraph contributes none of its own text
+     to `$CHARS$`. The runner prints scan.chars against the page's real visible
+     length so the size of that understatement is a number, not an argument. -->
+<style>
+  html, body { margin: 0; background: #fdfdfd; color: #1c2333; font: 17px/1.65 Georgia, "Times New Roman", serif; }
+  header { background: rgb(35, 45, 70); color: #fff; padding: 26px 32px; font: 600 26px/1.3 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 28px 24px 60px; }
+  h2 { font: 600 21px/1.3 system-ui, sans-serif; margin: 26px 0 10px; }
+  p { margin: 0 0 16px; }
+  a { color: #1a4fa0; }
+  footer { background: rgb(240, 242, 248); padding: 20px 32px; font: 15px/1.5 system-ui, sans-serif; }
+  #bottom { height: 152px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+<header>Field notes on rope, tide and the slow repair of a wooden hull</header>
+<main>
+  <p>The yard opens before the light does. Whoever arrives first turns the compressor on and leaves the doors wide, because the smell of last night's varnish will otherwise sit in the rafters until noon and make everybody short tempered by the middle of the morning.</p>
+
+  <h2>On rope</h2>
+  <p>Rope keeps a memory of every load it has carried. A line that has been shocked once will run stiff through a block for the rest of its working life, and the stiffness is not a fault to be corrected so much as a record to be read. The old hands coil by feel rather than by count, and they will stop halfway through a coil to run a length back through their fingers, looking for the place where the lay has opened.</p>
+  <p id="leafrule">The best written account of this is still the chandler's own pamphlet, which the harbour office <a href="#notes">keeps a copy of behind the counter</a> and will photocopy for anyone who asks politely and brings their own coins for the machine.</p>
+
+  <h2>On tide</h2>
+  <p>A tide table is a promise about the average and never a promise about the day. Wind piles water against a coast or drags it away, and a spring tide with three days of southwesterly behind it will float a keel that the printed figures say should be sitting hard on the mud. Nobody plans a lift from the table alone. They plan it from the table and then they walk down and look.</p>
+  <p>The walk down matters more than it sounds. Standing on the slip at the hour before the lift tells you what the water is actually doing, what the wind has done to it overnight, and whether the mooring lines on the boats either side have been left slack by somebody in a hurry. All three of those have stopped a lift that the paperwork said was fine.</p>
+
+  <h2>On the hull</h2>
+  <p>Planking repair is mostly patience and a very small amount of cutting. The rot is followed until it stops, and it stops later than anyone hopes. A patch cut to the first sound-looking timber will simply move the problem along the plank and hide it under new paint for a season, which is the worst of both outcomes: the money is spent and the boat is no better.</p>
+  <p>Fastenings are the other half. Old copper goes soft and old iron goes to rust and takes the wood around it with it, so a survey that reports sound planking and says nothing about what is holding the planking on has reported half of the thing it was paid to report.</p>
+  <p>When the new timber goes in it is left proud and faired back by hand over several passes, checking the line by eye along the length of the hull rather than by rule across it. The eye is better at this than any straightedge, which is a strange thing to write down and an obvious thing once you have watched somebody do it.</p>
+
+  <h2>On finishing</h2>
+  <p>Varnish is applied thin and often, and the temptation to lay it on heavy is the single most reliable way to spoil a week of preparation. Each coat is rubbed back until the surface is dull, and the dullness is the point: gloss on top of gloss will lift in the first hard winter, while gloss on top of a keyed surface will still be there in five years.</p>
+  <p>Nothing in this trade rewards hurry. Everything in it rewards turning up early, opening the doors, and doing the next small correct thing before the light goes.</p>
+</main>
+<footer id="notes">Notes are kept in the yard log and copied out at the end of each season. Corrections are welcome and are pinned to the board by the door.</footer>
+<div id="bottom"></div>
+</body>
+</html>

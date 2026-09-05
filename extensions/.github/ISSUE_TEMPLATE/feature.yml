@@ -1,0 +1,65 @@
+name: "✨ Feature request"
+description: A capability you want in an extension that already exists
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests are read and most are declined — an extension that does one thing
+        well is the product, and every feature is permanent maintenance plus, often,
+        a new permission users have to accept. The ones that get built are usually
+        the ones that make the hand-off to an AI assistant better, so the third
+        field below carries a lot of weight.
+
+  - type: input
+    id: tool
+    attributes:
+      label: Which extension is this for?
+      description: Name it, or write "new tool" if nothing here fits (then use the "Propose a new tool" form instead).
+      placeholder: FullShot
+    validations: { required: true }
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do, and what stops you today?
+      description: The problem, not the solution. What you did instead is useful too.
+    validations: { required: true }
+
+  - type: textarea
+    id: handoff
+    attributes:
+      label: The AI hand-off — what does this let an assistant do that it can't now?
+      description: >-
+        These tools exist to get context out of the browser and into an assistant
+        in a form it can actually use. If the feature has nothing to do with that,
+        say so plainly — it's not disqualifying, it just needs to earn its place
+        another way.
+    validations: { required: true }
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would it look like?
+      description: Where it lives in the UI, what the default is, what happens when it's off.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints this has to live inside
+      description: These are not negotiable, so it's worth checking the idea against them now.
+      options:
+        - label: It works with no account, no server and no network call.
+          required: true
+        - label: It needs no new permission — or if it does, I've said which and why below.
+        - label: It does not need a build step or a third-party runtime dependency.
+
+  - type: textarea
+    id: permission
+    attributes:
+      label: If it needs a new permission, which one and why?
+      description: >-
+        Every permission is shown to every user at install and has to be justified
+        to three store reviewers. A feature that needs a broad host permission is
+        much harder to land than the same feature behind an optional one.

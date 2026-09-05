@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — ここを置き換えてください",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ここを置き換えてください。1つの文、1つの目的、132文字以内、宣伝文句なしで。",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — ここを置き換えてください",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "テーマを切り替える",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "オプション",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "アクティブなタブ",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "読み取り中…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "タイトルをコピー",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "アクティブなタブをもう一度読み取る",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "閉じる",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "コピーしました",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "コピーできませんでした。代わりに Ctrl+C を押してください",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "前回の$ACTION$は失敗しました — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "前回の$ACTION$は失敗しました — $REASON$（$ORIGIN$）",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "タイトルの読み取り",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "コピー",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "データの消去",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "実行",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "何かが途中で処理を止めました。もう一度お試しください。",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "このタブはすでに処理中です。",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "このページはブラウザーに保護されているため読み取れません。",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "アクティブなタブが見つかりませんでした。",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "このページには読み取れるタイトルがありません。",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "キャンセルしました。",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "不明なメッセージです。",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "処理が終わる前にそのタブが閉じられました。",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "拡張機能から応答がありませんでした。",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "何も返ってきませんでした。",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "設定・拡張機能・新しいタブなどのブラウザーのページは、すべての拡張機能に対して立ち入り禁止です。通常のウェブページでお試しください。",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "デベロッパーツールのウィンドウは拡張機能に対して立ち入り禁止です。",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "ソース表示のページは拡張機能に対して立ち入り禁止です。代わりにページ自体でお試しください。",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "拡張機能のページは、この拡張機能自身のページも含めて、ブラウザーに保護されています。",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome ウェブストアは拡張機能がそのページを読み取ることを禁止しています。",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "ローカルファイルには追加の許可が1つ必要です。ブラウザーの拡張機能ページを開き、この拡張機能を見つけて「ファイルの URL へのアクセスを許可する」をオンにしてください。",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "このページは読み込まれなかったため、まだ読み取るものがありません。",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "これはブラウザー内蔵の PDF ビューアーです。拡張機能はその中を読み取れません。PDF を通常のタブで開くか、先にダウンロードしてください。",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "このページは開いたサイトによってサンドボックス化されているため、拡張機能は読み取れません。",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "アドオンのサイトは拡張機能がそのページを読み取ることを禁止しています。",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "この端末の空き容量がないため、何も保存されませんでした。オプションで保存済みの行をいくつか削除してからもう一度お試しください。",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "時間がかかりすぎたため中止しました。あとには何も残っていません。",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "その値は同期される設定に保存するには長すぎます。もっと短いものをお試しください。",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "その設定を保存できませんでした。少し待ってからもう一度お試しください。",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "オプション — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · オプション",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "オプション",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "自動的に保存されます。ブラウザーの同期がオンなら、設定はブラウザーのプロファイルと一緒に移動します。私たちに送信されることは決してありません。",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "動作",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "開いたときにコピー",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "ポップアップが開いたらすぐに結果をクリップボードへコピーします。",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "ローカルの履歴を残す",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "既定ではオフです。オンにすると、結果はこの端末にのみ保存され、下に一覧表示され、いつでも削除できます。",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "履歴の上限",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "一覧がこの数を超えると、古い行から順に破棄されます。",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "次の日数より古い行を削除",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "日数です。古い行はバックグラウンドで自動的に削除されます。履歴の上限で押し出されるまで残したい場合は 0 を設定してください。",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "テーマ",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "既定ではシステムに従います。",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "システム",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "ライト",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "ダーク",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "あなたのデータ",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "この端末には何も保存されていません。",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "この端末に $COUNT$ 行が保存されています。外へは何も出ません。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "この端末に $COUNT$ 行が保存されています。外へは何も出ません。",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "この端末に $COUNT$ 行が保存されています。外へは何も出ません。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "この端末に $COUNT$ 行が保存されています。外へは何も出ません。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "この端末に $COUNT$ 行が保存されています。外へは何も出ません。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "この端末に $COUNT$ 行が保存されています。外へは何も出ません。",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "永続的：ブラウザーはこれを消さないと約束しています。",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "ベストエフォート：端末の空き容量が少なくなると、ブラウザーが独自にこれを消すことがあります。バックアップを書き出してください。",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "このブラウザーは保存したデータが保持されるかどうかを示しません。一時的なものとして扱い、バックアップを書き出してください。",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ $QUOTA$ 中 $USED$ を使用中。",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "削除",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "$ORIGIN$ の行を削除",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "すべて書き出す",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "保存されているすべての行を、この端末上の 1 つの JSON ファイルに保存します。アップロードは一切ありません。",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "すべて書き出す",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "すべて削除",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "保存されているすべての行をこの端末から削除します。設定はそのまま残ります。",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "すべて削除",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "設定をリセット",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "このページのすべての設定を既定値に戻し、同期されるブラウザーのプロファイルからも削除します。保存されている行はそのまま残ります。",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "設定をリセット",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "問題を報告",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "問題レポートを準備する",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "この拡張機能の状態を記した小さなファイルを作ります。保存する前に中身をそのまま確認でき、どこにも送信されません。",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "レポートを準備",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "このツールについて",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — ここを置き換えてください",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "このツールが何をするかをそのまま述べた一文。処理はあなたの端末で行われます。アカウントなし、追跡なし、ネットワーク通信なし、私たちに送られるものは何もありません。",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "保存しました",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "すべて削除しました",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "削除できませんでした。もう一度お試しください",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "その設定を保存できませんでした",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "書き出しを保存しました",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "ファイルを保存できませんでした",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "行を削除しました",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "設定をリセットしました",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "設定をリセットできませんでした",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "レポートを保存しました",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "キャンセル",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "すべて削除しますか？",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "保存されているすべての行がこの端末から削除されます。設定はそのまま残ります。この操作は元に戻せません。",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "すべての設定をリセットしますか？",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "このページのすべての項目が既定値に戻り、同期されるブラウザーのプロファイルからも削除されます。保存されている行はそのまま残ります。この操作は元に戻せません。",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "この問題レポートを保存しますか？",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "ファイルに入るのはこれがすべてです。ページのアドレスも、ページの文字も、あなたが取り込んだものも含まれません。どこにも送信されません。ファイルはこの端末に保存され、共有するかどうかはあなたが決めます。",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "レポートを保存",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "シークレット ウィンドウです。この結果は履歴に保存されませんでした。",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "サイトへのアクセス",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "すべてのサイトへのアクセス",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "ツールバーのボタンを押していないページで動く機能にだけ必要です。ここからいつでも取り消せます。",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "アクセスを許可",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "アクセスを取り消す",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "現在この拡張機能は、あなたが訪れるすべてのサイトを読み取れます。",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "この拡張機能は、ツールバーのボタンを押したあとでなければタブを読み取れません。",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "アクセスを許可しました",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "アクセスは許可されませんでした",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "アクセスを取り消しました",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "そのアクセスを取り消せませんでした",
+    "description": "en: Could not revoke that access"
+  }
+}

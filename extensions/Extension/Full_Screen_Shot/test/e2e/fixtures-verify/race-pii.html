@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>privacy-verify — small PII page for the mid-capture preference race</title>
+<!-- Deliberately SHORT. The race stressor runs this page dozens of times and
+     flips `redactPII` in chrome.storage.sync throughout each capture, so the
+     page's only jobs are (a) hold three ordinary, visible, placeable matches
+     and (b) finish fast enough that thirty runs is minutes rather than hours.
+     Three marker colours so "was it actually covered" is read off the picture,
+     not off the ledger — the ledger is the thing under test. -->
+<style>
+  html, body { margin: 0; background: #fbfbfe; color: #1c2333; font: 17px/1.6 system-ui, sans-serif; }
+  header { background: rgb(35, 45, 70); color: #fff; padding: 20px 24px; font: 600 22px/1.3 system-ui, sans-serif; }
+  .row { padding: 22px 24px; font: 600 22px/1.6 ui-monospace, monospace; }
+  .mark { font: 600 22px/1 ui-monospace, monospace; }
+  .email { background: rgb(255, 90, 90); color: #300; }
+  .phone { background: rgb(90, 200, 120); color: #031; }
+  .card  { background: rgb(90, 130, 255); color: #0b2a6b; }
+  #tail { height: 900px; background: rgb(0, 136, 255); }
+</style>
+</head>
+<body>
+<header>Servicing record</header>
+<div class="row">Registered address: <span class="mark email">jane.doe@example.com</span></div>
+<div class="row">Servicing line: <span class="mark phone">+1 (555) 123-4567</span></div>
+<div class="row">Card on file: <span class="mark card">4242 4242 4242 4242</span></div>
+<div id="tail"></div>
+</body>
+</html>

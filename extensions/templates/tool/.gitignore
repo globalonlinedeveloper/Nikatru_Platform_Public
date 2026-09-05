@@ -1,0 +1,84 @@
+# SKELETON — what never enters version control.
+#
+# Read this before adding a line: this repo's whole claim is "no build step, no
+# dependency, no node_modules shipped". Anything ignored here is something that
+# should not have been in the folder in the first place, with two deliberate
+# exceptions noted at the bottom.
+
+# --- dependencies -----------------------------------------------------------
+# The extension has none. The browser test tier drives Playwright, which lives
+# in ONE shared location for the whole fleet (see test/browser/README.md) and is
+# never installed into a tool folder. If one of these ever appears here,
+# something went wrong — the packaging allowlist will keep it out of the zip,
+# but a committed dependency tree has to be purged from history, not deleted.
+node_modules/
+package-lock.json
+.npm/
+.pnpm-store/
+
+# --- secrets ----------------------------------------------------------------
+# Nothing in this family needs a credential: zero network calls, no accounts, no
+# telemetry, no CI that publishes for you. The store dashboards are the only
+# place you sign in, and you sign in as yourself, in a browser. So a secret in
+# this folder is either a mistake or a sign the tool has stopped being one of
+# these tools. These patterns are a safety net, NOT permission to keep one:
+# an ignored file is still on your disk and one `git add -f` from being public.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+credentials.json
+*-credentials.json
+publish/*.credentials
+publish/upload-token*
+
+# --- OS and editor droppings ------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+.vscode/
+
+# --- test and build scratch -------------------------------------------------
+smoke-profile-*/
+*.log
+*.tmp
+*.zip.tmp
+coverage/
+dist/
+build/
+
+# --- scratch files, by naming convention ------------------------------------
+# The reference implementation shipped a release with a stray scratch file in
+# the working folder. Name anything temporary with one of these and it can
+# neither be committed nor packaged (the packaging never-list matches DELETE).
+*DELETE-ME*
+*-DELETE*
+scratch/
+
+# =============================================================================
+# NOT IGNORED, ON PURPOSE — two decisions worth knowing about.
+#
+# 1. publish/*.zip IS TRACKED. Each release zip is a golden master: it is the
+#    exact artifact a store received, and it is what publish/pack.mjs diffs the
+#    next build against to catch a silently dropped file. Roughly 240 KB each,
+#    most of it the 55 locale catalogues. If you decide you would rather not
+#    carry them, add `publish/*.zip` here — and know that you have turned the
+#    dropped-file check off, because it has nothing left to compare with.
+#
+# 2. _locales/ IS TRACKED, all 55 of them, generated or not. They are inputs to
+#    the package, not build output; regenerating them is deterministic, but a
+#    package cannot be rebuilt from a tree that does not carry them.
+#
+# 3. publish/store/ IS TRACKED once you generate it — the screenshots and the
+#    promo tile a store actually received, exactly as it received them. They are
+#    OUTPUTS (node publish/shots.mjs, node icons/make-icons.mjs --promo), so
+#    regenerate them on every release rather than editing them: an asset drawn
+#    by hand at v0.1 and never refreshed is a description-vs-behaviour mismatch
+#    by v1.2, which is a thing the store penalises specifically. The skeleton
+#    ships none; the first ones you generate are your first listing.

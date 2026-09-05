@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — gantikan saya",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "GANTIKAN SAYA — satu ayat, satu tujuan, 132 aksara atau kurang, tiada bahasa pemasaran.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — gantikan saya",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Tukar tema",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Pilihan",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Tab aktif",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Sedang membaca…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Salin tajuk",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Baca semula tab aktif",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Tutup",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Disalin",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Tidak dapat menyalin — tekan Ctrl+C sebagai ganti",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "$ACTION$ terakhir gagal — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "$ACTION$ terakhir gagal — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "bacaan tajuk",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "salinan",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "pembersihan data",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "larian",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Sesuatu menghentikan perkara ini sebelum ia selesai. Sila cuba lagi.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Tab ini sedang sibuk.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Halaman ini dilindungi oleh pelayar dan tidak boleh dibaca.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Tiada tab aktif ditemui.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "Halaman ini tiada tajuk untuk dibaca.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Dibatalkan.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Mesej tidak dikenali.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Tab itu ditutup sebelum kerja selesai.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Sambungan tidak menjawab.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Tiada apa-apa yang kembali.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Halaman pelayar seperti Tetapan, Sambungan dan halaman Tab Baharu terlarang bagi setiap sambungan. Cuba pada halaman web biasa.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Tetingkap DevTools terlarang bagi sambungan.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Halaman kod sumber terlarang bagi sambungan. Cuba halaman itu sendiri.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Halaman sambungan, termasuk halaman sambungan ini sendiri, dilindungi oleh pelayar.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Chrome Web Store menghalang sambungan daripada membaca halamannya.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Fail setempat memerlukan satu kebenaran tambahan. Buka halaman sambungan pelayar anda, cari sambungan ini, dan hidupkan “Benarkan akses kepada URL fail”.",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Halaman ini tidak dimuatkan, jadi belum ada apa-apa untuk dibaca.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Ini pemapar PDF terbina dalam pelayar. Sambungan tidak boleh membaca di dalamnya — buka PDF itu dalam tab biasa atau muat turun dahulu.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Halaman ini dikurung dalam kotak pasir oleh tapak yang membukanya, jadi sambungan tidak boleh membacanya.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Tapak tambahan menghalang sambungan daripada membaca halamannya.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "Peranti ini kehabisan ruang, jadi tiada apa-apa yang disimpan. Padamkan beberapa baris tersimpan dalam Pilihan dan cuba lagi.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Ini mengambil masa terlalu lama dan telah dihentikan. Tiada apa-apa yang tertinggal.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Nilai itu terlalu panjang untuk tetapan tersegerak anda. Cuba yang lebih pendek.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Tetapan itu tidak dapat disimpan. Tunggu sebentar dan cuba lagi.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Pilihan — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Pilihan",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Pilihan",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Disimpan secara automatik. Jika penyegerakan pelayar anda dihidupkan, tetapan anda mengikut profil pelayar anda — ia tidak pernah dihantar kepada kami.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Kelakuan",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Salin semasa dibuka",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Salin hasilnya ke papan keratan sebaik sahaja tetingkap timbul dibuka.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Simpan sejarah setempat",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Dimatikan secara lalai. Apabila dihidupkan, hasil disimpan pada peranti ini sahaja, disenaraikan di bawah, dan boleh dipadam pada bila-bila masa.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Had sejarah",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Baris paling lama digugurkan sebaik sahaja senarai melebihi angka ini.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Padam baris yang lebih lama daripada",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Hari. Baris lama dibuang secara automatik di latar belakang. Tetapkan 0 untuk menyimpan baris sehingga had sejarah menggugurkannya.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Tema",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Mengikut sistem anda secara lalai.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Sistem",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Cerah",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Gelap",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Data anda",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "Tiada apa-apa disimpan pada peranti ini.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ baris disimpan pada peranti ini. Tiada apa-apa yang keluar dari sini.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ baris disimpan pada peranti ini. Tiada apa-apa yang keluar dari sini.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ baris disimpan pada peranti ini. Tiada apa-apa yang keluar dari sini.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ baris disimpan pada peranti ini. Tiada apa-apa yang keluar dari sini.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ baris disimpan pada peranti ini. Tiada apa-apa yang keluar dari sini.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ baris disimpan pada peranti ini. Tiada apa-apa yang keluar dari sini.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Kekal: pelayar telah berjanji untuk tidak memadamkannya.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Sedaya upaya: pelayar boleh memadamkannya sendiri jika ruang peranti berkurangan. Eksport satu sandaran.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Pelayar ini tidak menyatakan sama ada data tersimpan akan dikekalkan, jadi anggaplah ia sementara dan eksport satu sandaran.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Menggunakan $USED$ daripada $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Padam",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Padam baris daripada $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Eksport semuanya",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Menyimpan setiap baris tersimpan ke dalam satu fail JSON pada peranti ini. Tiada apa-apa dimuat naik.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Eksport semuanya",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Padam semuanya",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Membuang setiap baris tersimpan daripada peranti ini. Tetapan dikekalkan.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Padam semuanya",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Set semula tetapan",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Mengembalikan setiap tetapan pada halaman ini kepada nilai lalai dan membuangnya daripada profil pelayar tersegerak anda. Baris tersimpan dikekalkan.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Set semula tetapan",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Laporkan masalah",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Sediakan laporan masalah",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Membina fail kecil yang menerangkan keadaan sambungan ini. Anda nampak dengan tepat apa yang ada di dalamnya sebelum ia disimpan, dan tiada apa-apa dihantar ke mana-mana.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Sediakan laporan",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Perihal",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — gantikan saya",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Satu ayat yang menyatakan dengan tepat apa yang dilakukan alat ini. Ia bekerja pada peranti anda: tiada akaun, tiada penjejakan, tiada panggilan rangkaian, tiada apa-apa dihantar kepada kami.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Disimpan",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Semuanya dipadam",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Tidak dapat memadam — cuba lagi",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Tidak dapat menyimpan tetapan itu",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Eksport disimpan",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Tidak dapat menyimpan fail itu",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Baris dipadam",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Tetapan diset semula",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Tidak dapat menetapkan semula tetapan",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Laporan disimpan",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Batal",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Padam semuanya?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Setiap baris tersimpan dibuang daripada peranti ini. Tetapan anda dikekalkan. Ini tidak boleh dibatalkan.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Set semula setiap tetapan?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Setiap keutamaan pada halaman ini kembali kepada nilai lalai dan dibuang daripada profil pelayar tersegerak anda. Baris tersimpan anda dikekalkan. Ini tidak boleh dibatalkan.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Simpan laporan masalah ini?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Inilah segala isi fail itu nanti. Ia tidak mengandungi alamat halaman, teks halaman, mahupun apa-apa yang anda tangkap. Tiada apa-apa dihantar ke mana-mana — fail itu disimpan pada peranti ini dan anda yang menentukan sama ada mahu berkongsi.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Simpan laporan",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Tetingkap peribadi — hasil ini tidak disimpan ke dalam sejarah anda.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Akses tapak",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Akses kepada setiap tapak",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Hanya perlu untuk ciri yang berfungsi pada halaman yang anda tidak klik butang bar alatnya. Anda boleh menariknya balik pada bila-bila masa, di sini.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Beri akses",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Tarik balik akses",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Buat masa ini sambungan ini boleh membaca setiap tapak yang anda lawati.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Sambungan ini hanya boleh membaca tab selepas anda klik butangnya pada bar alat.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Akses diberikan",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Akses tidak diberikan",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Akses ditarik balik",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Tidak dapat menarik balik akses itu",
+    "description": "en: Could not revoke that access"
+  }
+}

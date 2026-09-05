@@ -1,0 +1,18 @@
+[
+  {
+    "slug": "fullshot",
+    "name": "FullShot",
+    "tagline": "Full-page, visible-area, region and element capture, with an annotation editor, PDF export and on-device redaction.",
+    "listings": {
+      "chrome": null,
+      "edge": null,
+      "firefox": null
+    },
+    "platforms": [
+      "chrome",
+      "edge",
+      "firefox"
+    ],
+    "status": "preview"
+  }
+]

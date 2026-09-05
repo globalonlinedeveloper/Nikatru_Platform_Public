@@ -1,0 +1,2545 @@
+{
+  "appName": {
+    "message": "FullShot — لقطة شاشة للصفحة كاملة"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "التقط الصفحة كاملة أو المنطقة الظاهرة أو منطقة محددة أو أي عنصر. حرّر وعلّق وصدّر بصيغة PNG أو JPEG أو WebP أو PDF."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot — التقاط الصفحة (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "التقاط الصفحة كاملة"
+  },
+  "commandCaptureVisible": {
+    "message": "التقاط المنطقة الظاهرة"
+  },
+  "commandCaptureRegion": {
+    "message": "التقاط المنطقة المحددة"
+  },
+  "commandCaptureElement": {
+    "message": "التقاط عنصر من الصفحة (انقر للاختيار)"
+  },
+  "popupToggleTheme": {
+    "message": "تبديل المظهر"
+  },
+  "popupModeFullTitle": {
+    "message": "الصفحة كاملة"
+  },
+  "popupModeFullSub": {
+    "message": "التمرير والتقاط الصفحة بأكملها"
+  },
+  "popupModeVisibleTitle": {
+    "message": "المنطقة الظاهرة"
+  },
+  "popupModeVisibleSub": {
+    "message": "ما يظهر على الشاشة فقط"
+  },
+  "popupModeRegionTitle": {
+    "message": "المنطقة المحددة"
+  },
+  "popupModeRegionSub": {
+    "message": "اسحب لتحديد منطقة"
+  },
+  "popupModeElementTitle": {
+    "message": "عنصر"
+  },
+  "popupModeElementSub": {
+    "message": "انقر أي عنصر في الصفحة"
+  },
+  "popupModeDelayedTitle": {
+    "message": "التقاط مؤجل"
+  },
+  "popupModeDelayedSub": {
+    "message": "الصفحة كاملة بعد العد التنازلي"
+  },
+  "popupDelayLabel": {
+    "message": "مدة التأخير بالثواني"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ ث",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "توسيع الألواح القابلة للتمرير وإطارات iframe"
+  },
+  "popupExpandToggleTip": {
+    "message": "توسيع الألواح الداخلية القابلة للتمرير وإطارات iframe لتُظهر محتواها كاملًا بدل التقاطها كما تبدو. أما الإطارات من مواقع أخرى فتطلب إذنًا إضافيًا مرة واحدة."
+  },
+  "popupDismiss": {
+    "message": "إخفاء"
+  },
+  "popupLastErrorFailed": {
+    "message": "فشل آخر $MODE$ — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "فشل آخر $MODE$ — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "التقاط للصفحة كاملة"
+  },
+  "popupModeNameVisible": {
+    "message": "التقاط للمنطقة الظاهرة"
+  },
+  "popupModeNameRegion": {
+    "message": "التقاط لمنطقة محددة"
+  },
+  "popupModeNameElement": {
+    "message": "التقاط لعنصر"
+  },
+  "popupModeNameGeneric": {
+    "message": "التقاط"
+  },
+  "popupNoActiveTab": {
+    "message": "لم يُعثر على علامة تبويب نشطة."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "تعذّر بدء الالتقاط."
+  },
+  "popupLinkHistory": {
+    "message": "السجل"
+  },
+  "popupLinkBatch": {
+    "message": "دفعة"
+  },
+  "popupLinkOptions": {
+    "message": "الخيارات"
+  },
+  "optionsPageTitle": {
+    "message": "الخيارات — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · الخيارات"
+  },
+  "optionsHeading": {
+    "message": "الخيارات"
+  },
+  "optionsLead": {
+    "message": "تُحفظ التغييرات تلقائيًا وتُزامَن مع ملفك الشخصي في المتصفح."
+  },
+  "optionsSectionImage": {
+    "message": "الصورة"
+  },
+  "optionsFormat": {
+    "message": "الصيغة"
+  },
+  "optionsFormatDesc": {
+    "message": "صيغة $PNG$ بلا فقدان، و$JPEG$ أصغر حجمًا، و$WEBP$ هي الأصغر عند جودة مماثلة.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "جودة $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$٪",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "قالب اسم الملف"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "العناصر النائبة: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "الالتقاط"
+  },
+  "optionsCaptureDelay": {
+    "message": "تأخير إضافي لكل خطوة"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "عدد المللي ثانية التي يُنتظرها بعد كل تمرير. ارفعه للصفحات البطيئة أو كثيرة الحركة."
+  },
+  "optionsHideFixed": {
+    "message": "إخفاء العناصر الثابتة والملتصقة"
+  },
+  "optionsHideFixedDesc": {
+    "message": "يمنع تكرار الترويسات في كل شاشة (تظهر مرة واحدة في الأعلى)."
+  },
+  "optionsPreScroll": {
+    "message": "تمرير مسبق لتحميل المحتوى المؤجَّل"
+  },
+  "optionsPreScrollDesc": {
+    "message": "يمرّر الصفحة مرة واحدة قبل الالتقاط. أبطأ لكنه يلتقط الصور المؤجَّلة التحميل."
+  },
+  "optionsAdaptiveWait": {
+    "message": "انتظار فك ترميز الصور"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "يمهل الصور المتأخرة أو المؤجَّلة حتى تنتهي من فك الترميز قبل كل إطار، حتى لا تُلتقط كمربعات سوداء أو فارغة."
+  },
+  "optionsHideOverlays": {
+    "message": "إخفاء اللافتات والنوافذ المنبثقة"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "يزيل لافتات ملفات تعريف الارتباط والموافقة ونوافذ النشرات البريدية ورسائل «حمّل التطبيق» قبل الالتقاط، ويحرّر الصفحات التي جمّدتها نافذة منبثقة. ثم يُعيد كل شيء كما كان."
+  },
+  "optionsExpandInner": {
+    "message": "توسيع المحتوى القابل للتمرير"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "يوسّع الألواح الداخلية وإطارات iframe لإظهار المحتوى المخفي أسفل حدّها الخاص، بدل التقاطها تمامًا كما تبدو."
+  },
+  "optionsExpandPermRow": {
+    "message": "إطارات من مواقع أخرى"
+  },
+  "optionsExpandPermAllow": {
+    "message": "السماح"
+  },
+  "optionsExpandPermGranted": {
+    "message": "تم منح الإذن — تُوسَّع أيضًا الإطارات القادمة من مواقع أخرى."
+  },
+  "optionsExpandPermMissing": {
+    "message": "بدون إذن «$PERMISSION$»، تُلتقط الإطارات القادمة من مواقع أخرى كما تبدو. أما الألواح وإطارات iframe من الموقع نفسه فتعمل دائمًا.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "بسط القوائم الافتراضية"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "يتنقّل عبر الخلاصات ذات نافذة العرض (على نمط $LIB1$ / $LIB2$) لالتقاط محتواها كاملًا، لا الصفوف الظاهرة فقط. أبطأ مع القوائم الطويلة جدًا.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "توسيع المحتوى الذي يظهر بالتفاعل"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "يفتح قبل الالتقاط عناصر $DETAILS$ المطوية وعلامات التبويب غير النشطة والأكورديونات وأقسام «عرض المزيد»، ثم يعيدها كما كانت. يكشف المحتوى المخفي خلف نقرة.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "النقر على أزرار «$BUTTONTEXT$»",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "ينقر أزرار «تحميل المزيد» و«عرض المزيد» وينتظر تحميل المحتوى الجديد، مرة بعد مرة، حتى تنفد الخلاصة. وخلافًا للخيار أعلاه، يجلب هذا محتوى غير موجود بعد في الصفحة؛ ويبقى المحتوى المُحمَّل بعد الالتقاط."
+  },
+  "optionsInfiniteScroll": {
+    "message": "التمرير لتحميل الخلاصات اللانهائية"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "للخلاصات التي لا يوجد بها زر «تحميل المزيد»: يمرّر إلى الأسفل وينتظر الصفحة التالية، مرة بعد مرة، حتى تتوقف الخلاصة عن النمو (بحد أقصى، حتى لا تُلاحَق الخلاصات التي لا تنتهي). ويبقى المحتوى المُحمَّل بعد الالتقاط."
+  },
+  "optionsWaitStable": {
+    "message": "الانتظار حتى ينتهي تحميل المحتوى"
+  },
+  "optionsWaitStableDesc": {
+    "message": "ينتظر حتى تحلّ المحتويات الحقيقية محل هياكل ومؤشرات التحميل (مناطق aria-busy، والكتل الوامضة) قبل الالتقاط، حتى لا تُلتقط عبارة «جارٍ التحميل…» في منتصف الصفحة على هيئة مربعات رمادية. وله حد أقصى، فلا تتعلّق العملية بسبب مؤشر تحميل عالق."
+  },
+  "optionsRedactPII": {
+    "message": "إخفاء المعلومات الحساسة تلقائيًا"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "يفحص النص الذي تعرضه الصفحة بحثًا عن عناوين البريد الإلكتروني وأرقام الهواتف وأرقام بطاقات الائتمان وأرقام الضمان الاجتماعي ومفاتيح واجهات البرمجة، ويضع كتلة صمّاء فوق ما يطابقه في الصورة المحفوظة. ولا يستطيع قراءة نص مرسوم على هيئة بكسلات — لوحة رسم أو صورة أو صفحة PDF أو إطار فيديو. يجري الاكتشاف على جهازك؛ ولا يُرسَل أي شيء إلى أي جهة على الإطلاق. ينطبق على لقطات الصفحة كاملة (تمرير المستند)؛ والكتلة دائمة لا تُلغى، لذا راجع النتيجة بنفسك."
+  },
+  "optionsMaxPageHeight": {
+    "message": "أقصى ارتفاع للصفحة"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "حد أمان (بوحدة CSS px) للخلاصات ذات التمرير اللانهائي."
+  },
+  "optionsSectionPdf": {
+    "message": "التصدير إلى PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "حجم الورق الافتراضي"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "يجعل الخيار «$IMAGESIZE$» الصفحة بحجم لقطة الشاشة تمامًا.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "حجم الصورة"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "الاتجاه"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "لأحجام الورق الثابتة."
+  },
+  "optionsOrientationPortrait": {
+    "message": "طولي"
+  },
+  "optionsOrientationLandscape": {
+    "message": "عرضي"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "تقسيم ذكي للصفحات"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "يبحث عن فراغ بصري قرب كل فاصل صفحة حتى لا تُقطع سطور النص من منتصفها."
+  },
+  "optionsPdfStamp": {
+    "message": "ختم العنوان والتاريخ"
+  },
+  "optionsPdfStampDesc": {
+    "message": "يضيف عنوان الصفحة وتاريخ الالتقاط إلى تذييل كل صفحة في ملف PDF."
+  },
+  "optionsSectionDownload": {
+    "message": "التنزيل"
+  },
+  "optionsSaveDirectory": {
+    "message": "المجلد"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "مجلد فرعي داخل $DOWNLOADS$ للقطاتك، مثل $EXAMPLE$. اتركه فارغًا لاستخدام $DOWNLOADS$ مباشرة.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(التنزيلات)"
+  },
+  "optionsSaveAs": {
+    "message": "مربع حوار «حفظ باسم»"
+  },
+  "optionsSaveAsDesc": {
+    "message": "السؤال عن مكان حفظ كل ملف بدل التنزيل الصامت."
+  },
+  "optionsClipboardFit": {
+    "message": "ملاءمة نسخ الحافظة لحدود التطبيقات"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "يصغّر النسخ التي تتجاوز $PIXELS$ بكسل حتى يعمل اللصق في $APP$ وما شابهها.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "سير العمل"
+  },
+  "optionsAutoDownload": {
+    "message": "التنزيل تلقائيًا بعد الالتقاط"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "يحفظ الصورة فور انتهاء الالتقاط."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "فتح المحرر بعد الالتقاط"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "الانتقال مباشرة إلى التعليق (للقطات المكوّنة من جزء واحد فقط)."
+  },
+  "optionsTheme": {
+    "message": "المظهر"
+  },
+  "optionsThemeDesc": {
+    "message": "للنافذة المنبثقة ولجميع صفحات FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "حسب النظام"
+  },
+  "optionsThemeLight": {
+    "message": "فاتح"
+  },
+  "optionsThemeDark": {
+    "message": "داكن"
+  },
+  "optionsShortcuts": {
+    "message": "اختصارات لوحة المفاتيح"
+  },
+  "optionsShortcutsDesc": {
+    "message": "الصفحة كاملة: $KEYFULL$ · المنطقة الظاهرة: $KEYVISIBLE$. يمكن تخصيصها من $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "تم الحفظ ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "بياناتك"
+  },
+  "optionsStorage": {
+    "message": "التخزين"
+  },
+  "optionsStorageUsage": {
+    "message": "مستخدَم $USED$ من أصل $QUOTA$ على هذا الجهاز.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "لا يذكر هذا المتصفح مقدار المساحة التي يستخدمها FullShot."
+  },
+  "optionsStorageKept": {
+    "message": "لقطاتك محفوظة: لن يمسحها المتصفح لتحرير مساحة."
+  },
+  "optionsStorageAtRisk": {
+    "message": "لقطاتك في مخزن المتصفح من نوع «أفضل جهد»، وقد يمسحه المتصفح لتحرير مساحة."
+  },
+  "optionsStorageKeep": {
+    "message": "احتفظ ببياناتي"
+  },
+  "optionsExport": {
+    "message": "تصدير كل شيء"
+  },
+  "optionsExportDesc": {
+    "message": "يكتب ملفًا واحدًا يضم إعداداتك وقائمة لقطاتك. يُحفَظ على هذا الجهاز ولا يُرسَل إلى أي مكان."
+  },
+  "optionsExportImages": {
+    "message": "تضمين الصور"
+  },
+  "optionsExportImagesDesc": {
+    "message": "الصور نفسها، وهي تشكّل الحجم كله تقريبًا. من دونها يسرد الملف لقطاتك لكنه لا يحتوي أيًا منها."
+  },
+  "optionsExportSize": {
+    "message": "حجم الملف: نحو $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "بيانات متبقية"
+  },
+  "optionsSweepDesc": {
+    "message": "قد تترك عملية التقاط انقطعت إطارات على القرص لا تنتمي إلى أي لقطة شاشة. لا تظهر في أي صفحة، فلا يمكن لأي صفحة حذفها. هذا يعثر عليها ويزيلها."
+  },
+  "optionsSweepBtn": {
+    "message": "ابحث وأزل"
+  },
+  "optionsSweepResult": {
+    "message": "تمت الإزالة. عمليات الالتقاط التي جرى تنظيفها: $COUNT$ · المساحة المحرَّرة: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "لم يتبقَّ شيء: كل ما هو مخزَّن ينتمي إلى لقطة شاشة يمكنك رؤيتها."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "إعادة ضبط الإعدادات"
+  },
+  "optionsResetDesc": {
+    "message": "يعيد كل إعداد في هذه الصفحة إلى قيمته الأصلية. لن تُمس لقطاتك."
+  },
+  "optionsResetBtn": {
+    "message": "إعادة الضبط"
+  },
+  "optionsResetConfirm": {
+    "message": "هل تريد إعادة كل إعدادات FullShot إلى قيمها الافتراضية؟ لن تتأثر لقطاتك."
+  },
+  "optionsResetDone": {
+    "message": "عادت الإعدادات إلى قيمها الافتراضية."
+  },
+  "optionsDeleteAll": {
+    "message": "حذف كل شيء"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "يزيل كل لقطة في سجلك وكل ما خلّفته عمليات الالتقاط المنقطعة. تبقى إعداداتك كما هي."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "هل تريد حذف كل ما خزّنه FullShot على هذا الجهاز؟\n\nاللقطات في سجلك: $COUNT$\nبقايا عمليات الالتقاط المنقطعة: $LEFTOVER$\nالمساحة التي ستتحرر: $SIZE$\n\nلن تتأثر إعداداتك. لا يمكن التراجع عن هذا.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "تم الحذف. لم يعد FullShot يخزّن أي لقطة شاشة على هذا الجهاز."
+  },
+  "resultPageTitle": {
+    "message": "لقطة شاشة — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "نسخ"
+  },
+  "resultCopyTip": {
+    "message": "نسخ الصورة إلى الحافظة"
+  },
+  "resultEdit": {
+    "message": "تحرير"
+  },
+  "resultEditTip": {
+    "message": "الفتح في المحرر"
+  },
+  "resultBeautify": {
+    "message": "تجميل"
+  },
+  "resultBeautifyTip": {
+    "message": "تجميل — إطار وخلفية للمشاركة"
+  },
+  "resultClip": {
+    "message": "مقطع"
+  },
+  "resultClipTip": {
+    "message": "مقطع تمرير — $GIF$ / $WEBM$ متحرك",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "حجم ورق ملف PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "تنزيل"
+  },
+  "resultDeleteTip": {
+    "message": "حذف لقطة الشاشة"
+  },
+  "resultHistoryTip": {
+    "message": "سجل لقطات الشاشة"
+  },
+  "resultProgressAssembling": {
+    "message": "يجري تجميع لقطتك…"
+  },
+  "resultProgressDecodingZero": {
+    "message": "يجري فك ترميز $COUNT$ إطار…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOne": {
+    "message": "يجري فك ترميز إطار واحد…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingTwo": {
+    "message": "يجري فك ترميز إطارين…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingFew": {
+    "message": "يجري فك ترميز $COUNT$ إطارات…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingMany": {
+    "message": "يجري فك ترميز $COUNT$ إطارًا…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "يجري فك ترميز $COUNT$ إطار…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "يجري تجميع الجزء $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "يجري تجميع الجزء $INDEX$ من نحو $TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "يجري الحفظ…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$ × $HEIGHT$ بكسل  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "نصيحة: اسحب الصورة مباشرة إلى سطح المكتب، أو استخدم $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "لا يوجد شيء هنا"
+  },
+  "resultEmptyBody": {
+    "message": "لم تعد لقطة الشاشة هذه موجودة."
+  },
+  "resultOpenHistory": {
+    "message": "فتح السجل"
+  },
+  "resultSomethingWrong": {
+    "message": "حدث خطأ ما — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "الجزء $INDEX$ من $TOTAL$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "تنزيل الجزء"
+  },
+  "resultEditPart": {
+    "message": "تحرير الجزء"
+  },
+  "resultClipPart": {
+    "message": "مقطع من الجزء"
+  },
+  "resultPartAlt": {
+    "message": "جزء لقطة الشاشة $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "يجري تنزيل $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "هل تريد حذف لقطة الشاشة هذه نهائيًا؟"
+  },
+  "resultDeleted": {
+    "message": "تم حذف لقطة الشاشة."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredZero": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredTwo": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredFew": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredMany": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "هذه اللقطة أطول من أن تُلصق كصورة واحدة قابلة للقراءة، لذلك يضع $COPY$ في الحافظة نظرة عامة مصغّرة للصفحة كاملة. النص الصغير فيها لن يكون مقروءًا.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "تم نسخ الجزء $INDEX$ إلى الحافظة",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "يجري إنشاء ملف PDF…"
+  },
+  "resultToastPdfDoneZero": {
+    "message": "تم تنزيل ملف PDF ($COUNT$ صفحة)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOne": {
+    "message": "تم تنزيل ملف PDF (صفحة واحدة)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneTwo": {
+    "message": "تم تنزيل ملف PDF (صفحتان)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneFew": {
+    "message": "تم تنزيل ملف PDF ($COUNT$ صفحات)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneMany": {
+    "message": "تم تنزيل ملف PDF ($COUNT$ صفحة)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "تم تنزيل ملف PDF ($COUNT$ صفحة)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "فشل إنشاء PDF — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "المحرر — FullShot"
+  },
+  "editorBackTip": {
+    "message": "العودة إلى لقطة الشاشة"
+  },
+  "editorToolSelect": {
+    "message": "تحديد / تحريك ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "اقتصاص ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "قلم ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "قلم تظليل ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "خط ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "سهم ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "مستطيل ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "بيضاوي ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "نص ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "تمويه / تبقيع ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "خطوة مرقّمة ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "ختم رمز تعبيري ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "لون مخصص"
+  },
+  "editorStrokeTip": {
+    "message": "سُمك الخط"
+  },
+  "editorStrokeThin": {
+    "message": "رفيع"
+  },
+  "editorStrokeMedium": {
+    "message": "متوسط"
+  },
+  "editorStrokeThick": {
+    "message": "سميك"
+  },
+  "editorSizeTip": {
+    "message": "حجم النص / الرمز التعبيري"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "تراجع ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "إعادة ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "تصغير (-)"
+  },
+  "editorZoomInTip": {
+    "message": "تكبير (+)"
+  },
+  "editorZoomFit": {
+    "message": "ملاءمة"
+  },
+  "editorZoomTipToHundred": {
+    "message": "ملاءمة النافذة — انقر للعرض بنسبة 100٪"
+  },
+  "editorZoomTipToFit": {
+    "message": "انقر لملاءمة النافذة"
+  },
+  "editorExport": {
+    "message": "تصدير"
+  },
+  "editorExportCopy": {
+    "message": "نسخ إلى الحافظة"
+  },
+  "editorExportImage": {
+    "message": "صورة $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "مستند $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "حفظ"
+  },
+  "editorSaveTip": {
+    "message": "حفظ التغييرات في السجل ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "المزيد"
+  },
+  "editorMenuFiles": {
+    "message": "الانتقال إلى السجل"
+  },
+  "editorMenuOptions": {
+    "message": "الانتقال إلى الخيارات"
+  },
+  "editorMenuShortcuts": {
+    "message": "اختصارات لوحة المفاتيح"
+  },
+  "editorCropApply": {
+    "message": "تطبيق الاقتصاص"
+  },
+  "editorCropCancel": {
+    "message": "إلغاء"
+  },
+  "editorShortcutsHeading": {
+    "message": "اختصارات لوحة المفاتيح"
+  },
+  "editorShortcutTools": {
+    "message": "اختيار الأدوات"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "تراجع / إعادة"
+  },
+  "editorShortcutSave": {
+    "message": "الحفظ في السجل"
+  },
+  "editorShortcutZoom": {
+    "message": "تصغير / تكبير"
+  },
+  "editorShortcutDelete": {
+    "message": "إزالة العنصر المحدد"
+  },
+  "editorShortcutEscape": {
+    "message": "إلغاء التحديد / إلغاء الاقتصاص"
+  },
+  "editorShortcutsClose": {
+    "message": "إغلاق"
+  },
+  "editorNotFound": {
+    "message": "لم يُعثر على لقطة الشاشة"
+  },
+  "editorToastDownloaded": {
+    "message": "تم التنزيل"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "تم تنزيل ملف PDF"
+  },
+  "editorToastSaved": {
+    "message": "تم الحفظ في السجل"
+  },
+  "historyPageTitle": {
+    "message": "السجل — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · السجل"
+  },
+  "historySearchPlaceholder": {
+    "message": "ابحث في العناوين أو الروابط…"
+  },
+  "historySelectAll": {
+    "message": "تحديد الكل"
+  },
+  "historyClearSelection": {
+    "message": "إلغاء التحديد"
+  },
+  "historyDownloadSelected": {
+    "message": "تنزيل المحدد"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "تنزيل ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "حذف المحدد"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "حذف ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "لا توجد لقطات بعد"
+  },
+  "historyEmptyBody": {
+    "message": "ستظهر هنا اللقطات التي تلتقطها. انقر رمز FullShot في شريط الأدوات للبدء."
+  },
+  "historyNoMatchesTitle": {
+    "message": "لا توجد نتائج"
+  },
+  "historyNoMatchesBody": {
+    "message": "لا توجد لقطات تطابق «$QUERY$».",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountZero": {
+    "message": "$COUNT$ لقطة · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "لقطة واحدة · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountTwo": {
+    "message": "لقطتان · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFew": {
+    "message": "$COUNT$ لقطات · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountMany": {
+    "message": "$COUNT$ لقطة · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ لقطة · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredZero": {
+    "message": "$SHOWN$ من $COUNT$ لقطة · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ من لقطة واحدة · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredTwo": {
+    "message": "$SHOWN$ من لقطتين · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredFew": {
+    "message": "$SHOWN$ من $COUNT$ لقطات · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredMany": {
+    "message": "$SHOWN$ من $COUNT$ لقطة · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ من $COUNT$ لقطة · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "تحديد"
+  },
+  "historyCardOpen": {
+    "message": "فتح"
+  },
+  "historyCardEdit": {
+    "message": "تحرير"
+  },
+  "historyCardDownloadTip": {
+    "message": "تنزيل"
+  },
+  "historyCardDeleteTip": {
+    "message": "حذف"
+  },
+  "historyCardOpenOriginal": {
+    "message": "فتح الصفحة الأصلية"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$ × $HEIGHT$ · $COUNT$ أجزاء",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "لقطة شاشة"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "هل تريد حذف لقطة الشاشة هذه؟"
+  },
+  "historyConfirmDeleteManyZero": {
+    "message": "هل تريد حذف $COUNT$ لقطة نهائيًا؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "هل تريد حذف لقطة واحدة نهائيًا؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyTwo": {
+    "message": "هل تريد حذف لقطتين نهائيًا؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyFew": {
+    "message": "هل تريد حذف $COUNT$ لقطات نهائيًا؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyMany": {
+    "message": "هل تريد حذف $COUNT$ لقطة نهائيًا؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "هل تريد حذف $COUNT$ لقطة نهائيًا؟",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingZero": {
+    "message": "يجري تنزيل $COUNT$ لقطة",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "يجري تنزيل لقطة واحدة",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingTwo": {
+    "message": "يجري تنزيل لقطتين",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingFew": {
+    "message": "يجري تنزيل $COUNT$ لقطات",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingMany": {
+    "message": "يجري تنزيل $COUNT$ لقطة",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "يجري تنزيل $COUNT$ لقطة",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "تم الحذف"
+  },
+  "beautifyPageTitle": {
+    "message": "تجميل — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "تجميل"
+  },
+  "actionBack": {
+    "message": "رجوع"
+  },
+  "commonLoading": {
+    "message": "جارٍ التحميل…"
+  },
+  "beautifyFieldSize": {
+    "message": "الحجم"
+  },
+  "beautifyPresetAuto": {
+    "message": "تلقائي"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200 × 630"
+  },
+  "beautifyPresetSquare": {
+    "message": "مربع"
+  },
+  "beautifyPresetPortrait": {
+    "message": "طولي"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "الخلفية"
+  },
+  "beautifyBgSlate": {
+    "message": "أردوازي"
+  },
+  "beautifyBgGraphite": {
+    "message": "جرافيتي"
+  },
+  "beautifyBgSky": {
+    "message": "سماوي"
+  },
+  "beautifyBgSunset": {
+    "message": "غروب"
+  },
+  "beautifyBgGrape": {
+    "message": "عنبي"
+  },
+  "beautifyBgMint": {
+    "message": "نعناعي"
+  },
+  "beautifyFieldPadding": {
+    "message": "الحشو الداخلي"
+  },
+  "beautifyFieldRadius": {
+    "message": "استدارة الزوايا"
+  },
+  "beautifyFieldEffects": {
+    "message": "التأثيرات"
+  },
+  "beautifyShadow": {
+    "message": "ظل مُسقَط"
+  },
+  "beautifyWindowFrame": {
+    "message": "إطار نافذة"
+  },
+  "beautifyFieldExport": {
+    "message": "تصدير"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ بكسل",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "مقطع التمرير — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "مقطع التمرير"
+  },
+  "scrollclipFieldFormat": {
+    "message": "الصيغة"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "تعمل صيغة $GIF$ في كل مكان. أما $WEBM$ فأصغر حجمًا وأكثر سلاسة (تُسجَّل مباشرة داخل متصفحك).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "عرض المُخرَج"
+  },
+  "scrollclipFieldDensity": {
+    "message": "الكثافة"
+  },
+  "scrollclipDensityHint": {
+    "message": "الكثافة الأعلى تعطي وضوحًا أكبر (أقرب إلى دقة المصدر) — وملفًا أكبر."
+  },
+  "scrollclipFieldShape": {
+    "message": "الشكل"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "سرعة التمرير (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "معدل الإطارات (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "الحركة"
+  },
+  "scrollclipBounce": {
+    "message": "ارتداد (العودة بالتمرير إلى الأعلى)"
+  },
+  "scrollclipLoop": {
+    "message": "تكرار بلا نهاية"
+  },
+  "scrollclipCopyFrame": {
+    "message": "نسخ الإطار"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "نسخ إطار الغلاف (العلوي) بصيغة $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsZero": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ إطار · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · إطار واحد · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsTwo": {
+    "message": "$WIDTH$ × $HEIGHT$ · إطاران · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsFew": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ إطارات · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsMany": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ إطارًا · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ إطار · $SECONDS$ ث",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "يجري تصيير الإطارات… $PERCENT$٪",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "يجري ترميز $FORMAT$… $PERCENT$٪",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "يجري الإنهاء…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "يجري تسجيل $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "يجري التسجيل…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "صيغة $WEBM$ غير مدعومة هنا — سيتم التصدير بصيغة $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "تم نسخ إطار الغلاف"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — التقاط بالجملة"
+  },
+  "batchHeading": {
+    "message": "التقاط بالجملة"
+  },
+  "batchIntro": {
+    "message": "الصق الروابط، رابطًا في كل سطر. يفتح FullShot كل صفحة، ويلتقط صورة للصفحة كاملة إلى سجلك، ثم ينتقل إلى التالية — بحد أقصى $MAX$ في المرة الواحدة. تظهر اللقطات في سجلك؛ انقر $OPENLINK$ لعرض أي منها أو تحريرها أو تصديرها.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "التقاط الكل"
+  },
+  "batchPermissionHint": {
+    "message": "يتطلب فتح هذه الصفحات إذنًا لمرة واحدة في أول مرة."
+  },
+  "batchPermissionDeclined": {
+    "message": "تم رفض الإذن بفتح تلك الصفحات."
+  },
+  "batchPanelPlan": {
+    "message": "الخطة"
+  },
+  "batchPanelProgress": {
+    "message": "التقدم"
+  },
+  "batchPlanCountZero": {
+    "message": "$COUNT$ صفحة للالتقاط",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOne": {
+    "message": "صفحة واحدة للالتقاط",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountTwo": {
+    "message": "صفحتان للالتقاط",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountFew": {
+    "message": "$COUNT$ صفحات للالتقاط",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountMany": {
+    "message": "$COUNT$ صفحة للالتقاط",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ صفحة للالتقاط",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ صفحة للالتقاط (بحد أقصى $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "لا توجد روابط صالحة بعد"
+  },
+  "batchSkipped": {
+    "message": "تم تخطي $COUNT$: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "مخطط غير مدعوم"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "غير صالح"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "بلا مضيف"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "مكرر"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "فارغ"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "فوق الحد ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ مكتملة",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ مكتملة، $FAILED$ فاشلة",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ مكتملة — انتهى",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ مكتملة، $FAILED$ فاشلة — انتهى",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "فتح"
+  },
+  "batchJobTimedOut": {
+    "message": "انتهت مهلة الالتقاط"
+  },
+  "batchJobNoSession": {
+    "message": "لا توجد جلسة التقاط"
+  },
+  "batchJobFailed": {
+    "message": "فشل الالتقاط"
+  },
+  "batchJobError": {
+    "message": "خطأ في الالتقاط"
+  },
+  "regionHintDrag": {
+    "message": "اسحب لتحديد منطقة — $ESC$ للإلغاء",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "انقر عنصرًا لالتقاطه — $ESC$ للإلغاء",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "صفحات المتصفح مثل الإعدادات والإضافات وصفحة علامة التبويب الجديدة محظورة على كل الإضافات. جرّب FullShot على صفحة ويب عادية."
+  },
+  "errRestrictedDevtools": {
+    "message": "لا تستطيع أي إضافة التقاط نوافذ أدوات المطوّر. استخدم أداة لقطات الشاشة في جهازك لهذا الغرض."
+  },
+  "errRestrictedViewSource": {
+    "message": "لا يمكن التقاط صفحات عرض المصدر. التقط الصفحة نفسها بدلًا من ذلك."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "صفحات الإضافات، بما فيها صفحات FullShot نفسها، محمية من المتصفح ولا يمكن التقاطها."
+  },
+  "errRestrictedWebstore": {
+    "message": "يمنع متجر Chrome الإلكتروني الإضافات من قراءة صفحاته، لذا لا يمكن التقاط هذه الصفحة."
+  },
+  "errRestrictedGeneric": {
+    "message": "هذه الصفحة محمية من المتصفح ولا يمكن التقاطها."
+  },
+  "errWrongTab": {
+    "message": "توقف الالتقاط — لقد بدّلت علامة التبويب. أبقِ هذه الصفحة في المقدمة حتى ينتهي FullShot."
+  },
+  "errGeneric": {
+    "message": "توقف الالتقاط قبل أن يكتمل. يُرجى المحاولة مرة أخرى."
+  },
+  "errBusy": {
+    "message": "هناك التقاط جارٍ بالفعل في علامة التبويب هذه."
+  },
+  "errBlocked": {
+    "message": "لا يمكن التقاط هذه الصفحة (قيد من المتصفح)."
+  },
+  "errNoStart": {
+    "message": "تعذّر على FullShot البدء في هذه الصفحة. أعد تحميل الصفحة وحاول مرة أخرى."
+  },
+  "errCrash": {
+    "message": "توقف الالتقاط بشكل غير متوقع. يُرجى المحاولة مرة أخرى."
+  },
+  "errUnknownMessage": {
+    "message": "رسالة غير معروفة."
+  },
+  "errQuota": {
+    "message": "يحدّ المتصفح من سرعة تصوير الصفحات. انتظر لحظة ثم حاول مرة أخرى."
+  },
+  "errFrameHandover": {
+    "message": "توقف المتصفح عن تسليم الشاشة في منتصف الطريق. انتظر بضع ثوانٍ ثم حاول مرة أخرى."
+  },
+  "errLostTab": {
+    "message": "فقد الالتقاط أثر علامة التبويب هذه. أعد تحميل الصفحة وحاول مرة أخرى."
+  },
+  "errStoppedEarly": {
+    "message": "أُوقف الالتقاط قبل أن يكتمل."
+  },
+  "errStorageFull": {
+    "message": "لم تعد هناك مساحة لتخزين هذا الالتقاط. احذف بعض اللقطات من سجلك ثم أعد المحاولة."
+  },
+  "reasonGeneric": {
+    "message": "لم يُذكر أي سبب. يُرجى المحاولة مرة أخرى."
+  },
+  "reasonDecodeFailed": {
+    "message": "تعذّر فك ترميز تلك اللقطة."
+  },
+  "reasonTooLarge": {
+    "message": "الصورة أكبر من أن تُصدَّر هنا."
+  },
+  "toastCopiedClipboard": {
+    "message": "تم النسخ إلى الحافظة"
+  },
+  "toastCopyFailed": {
+    "message": "فشل النسخ — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "فشل التصدير — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "تم حفظ $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "تم حفظ $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ بايت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ ك.بايت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ م.بايت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ غ.بايت",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

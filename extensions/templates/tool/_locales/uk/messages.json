@@ -1,0 +1,578 @@
+{
+  "appName": {
+    "message": "SKELETON — заміни мене",
+    "description": "en: SKELETON — replace me"
+  },
+  "appShortName": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "appDescription": {
+    "message": "ЗАМІНИ МЕНЕ — одне речення, одна мета, щонайбільше 132 символи, без маркетингу.",
+    "description": "en: REPLACE ME — one sentence, one purpose, 132 characters or fewer, no marketing."
+  },
+  "actionDefaultTitle": {
+    "message": "SKELETON — заміни мене",
+    "description": "en: SKELETON — replace me"
+  },
+  "themeToggle": {
+    "message": "Змінити тему",
+    "description": "en: Toggle theme"
+  },
+  "optionsLink": {
+    "message": "Налаштування",
+    "description": "en: Options"
+  },
+  "popupDocTitle": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupBrand": {
+    "message": "SKELETON",
+    "description": "en: SKELETON"
+  },
+  "popupActiveTabLabel": {
+    "message": "Активна вкладка",
+    "description": "en: Active tab"
+  },
+  "popupReading": {
+    "message": "Читання…",
+    "description": "en: Reading…"
+  },
+  "popupNoValue": {
+    "message": "—",
+    "description": "en: —"
+  },
+  "popupCopyTitle": {
+    "message": "Копіювати заголовок",
+    "description": "en: Copy title"
+  },
+  "popupRefresh": {
+    "message": "Прочитати активну вкладку ще раз",
+    "description": "en: Read the active tab again"
+  },
+  "popupDismiss": {
+    "message": "Закрити",
+    "description": "en: Dismiss"
+  },
+  "popupCopied": {
+    "message": "Скопійовано",
+    "description": "en: Copied"
+  },
+  "popupCopyFailed": {
+    "message": "Не вдалося скопіювати — натисніть Ctrl+C",
+    "description": "en: Could not copy — press Ctrl+C instead"
+  },
+  "lastRunFailed": {
+    "message": "Остання дія «$ACTION$» не вдалася — $REASON$",
+    "description": "en: Last $ACTION$ failed — $REASON$",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      }
+    }
+  },
+  "lastRunFailedWithOrigin": {
+    "message": "Остання дія «$ACTION$» не вдалася — $REASON$ ($ORIGIN$)",
+    "description": "en: Last $ACTION$ failed — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "title read"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This tab is already busy."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "actionReadTitle": {
+    "message": "читання заголовка",
+    "description": "en: title read"
+  },
+  "actionCopyTitle": {
+    "message": "копіювання",
+    "description": "en: copy"
+  },
+  "actionClearData": {
+    "message": "очищення даних",
+    "description": "en: data wipe"
+  },
+  "actionRun": {
+    "message": "запуск",
+    "description": "en: run"
+  },
+  "reasonGeneric": {
+    "message": "Щось зупинило це до завершення. Спробуйте ще раз.",
+    "description": "en: Something stopped this before it finished. Please try again."
+  },
+  "reasonBusy": {
+    "message": "Ця вкладка вже зайнята.",
+    "description": "en: This tab is already busy."
+  },
+  "reasonRestricted": {
+    "message": "Цю сторінку захищає браузер, і прочитати її не можна.",
+    "description": "en: This page is protected by the browser and cannot be read."
+  },
+  "reasonNoTab": {
+    "message": "Активної вкладки не знайдено.",
+    "description": "en: No active tab was found."
+  },
+  "reasonNoTitle": {
+    "message": "На цій сторінці немає заголовка, який можна прочитати.",
+    "description": "en: This page has no title to read."
+  },
+  "reasonCancelled": {
+    "message": "Скасовано.",
+    "description": "en: Cancelled."
+  },
+  "reasonUnknownMessage": {
+    "message": "Невідоме повідомлення.",
+    "description": "en: Unknown message."
+  },
+  "reasonTabClosed": {
+    "message": "Ту вкладку закрили до того, як робота завершилася.",
+    "description": "en: That tab was closed before the work finished."
+  },
+  "reasonNoAnswer": {
+    "message": "Розширення не відповіло.",
+    "description": "en: The extension did not answer."
+  },
+  "reasonNothingCameBack": {
+    "message": "Нічого не повернулося.",
+    "description": "en: Nothing came back."
+  },
+  "reasonBrowserPage": {
+    "message": "Сторінки браузера — налаштування, розширення, нова вкладка — закриті для будь-якого розширення. Спробуйте на звичайній вебсторінці.",
+    "description": "en: Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try this on a normal web page."
+  },
+  "reasonDevtools": {
+    "message": "Вікна інструментів розробника закриті для розширень.",
+    "description": "en: DevTools windows are off limits to extensions."
+  },
+  "reasonViewSource": {
+    "message": "Сторінки з вихідним кодом закриті для розширень. Спробуйте саму сторінку.",
+    "description": "en: View-source pages are off limits to extensions. Try the page itself instead."
+  },
+  "reasonExtensionPage": {
+    "message": "Сторінки розширень, зокрема сторінки самого цього розширення, захищає браузер.",
+    "description": "en: Extension pages, including this one's own, are protected by the browser."
+  },
+  "reasonWebStore": {
+    "message": "Інтернет-магазин Chrome не дозволяє розширенням читати свої сторінки.",
+    "description": "en: The Chrome Web Store blocks extensions from reading its pages."
+  },
+  "reasonFileUrl": {
+    "message": "Локальні файли потребують одного додаткового дозволу. Відкрийте сторінку розширень у браузері, знайдіть це розширення й увімкніть «Дозволити доступ до URL-адрес файлів».",
+    "description": "en: Local files need one extra permission. Open your browser’s Extensions page, find this extension, and turn on \"Allow access to file URLs\"."
+  },
+  "reasonPageDidNotLoad": {
+    "message": "Ця сторінка не завантажилася, тож читати поки нічого.",
+    "description": "en: This page did not load, so there is nothing to read yet."
+  },
+  "reasonPdfViewer": {
+    "message": "Це вбудований переглядач PDF. Розширення не можуть читати всередині нього — відкрийте PDF у звичайній вкладці або спершу завантажте його.",
+    "description": "en: This is the browser’s built-in PDF viewer. Extensions cannot read inside it — open the PDF in a normal tab or download it first."
+  },
+  "reasonSandboxed": {
+    "message": "Цю сторінку ізолював сайт, який її відкрив, тож розширення не можуть її прочитати.",
+    "description": "en: This page is sandboxed by the site that opened it, so extensions cannot read it."
+  },
+  "reasonAddonStore": {
+    "message": "Сайт додатків не дозволяє розширенням читати свої сторінки.",
+    "description": "en: The add-ons site blocks extensions from reading its pages."
+  },
+  "reasonStorageFull": {
+    "message": "На цьому пристрої скінчилося місце, тож нічого не збережено. Видаліть кілька збережених рядків у налаштуваннях і спробуйте знову.",
+    "description": "en: This device is out of space, so nothing was saved. Delete some stored rows in Options and try again."
+  },
+  "reasonTimedOut": {
+    "message": "Це тривало надто довго й було зупинено. Після цього нічого не залишилося.",
+    "description": "en: This took too long and was stopped. Nothing was left behind."
+  },
+  "reasonSettingTooBig": {
+    "message": "Це значення задовге для ваших синхронізованих налаштувань. Спробуйте коротше.",
+    "description": "en: That value is too long to store in your synced settings. Try a shorter one."
+  },
+  "reasonSettingsWriteFailed": {
+    "message": "Не вдалося зберегти це налаштування. Зачекайте мить і спробуйте знову.",
+    "description": "en: That setting could not be saved. Wait a moment and try again."
+  },
+  "optionsDocTitle": {
+    "message": "Налаштування — SKELETON",
+    "description": "en: Options — SKELETON"
+  },
+  "optionsBrand": {
+    "message": "SKELETON · Налаштування",
+    "description": "en: SKELETON · Options"
+  },
+  "optionsHeading": {
+    "message": "Налаштування",
+    "description": "en: Options"
+  },
+  "optionsLead": {
+    "message": "Зберігається автоматично. Якщо синхронізацію браузера ввімкнено, налаштування подорожують разом із профілем браузера — нам їх не надсилають ніколи.",
+    "description": "en: Saved automatically. If your browser’s sync is turned on, your settings travel with your browser profile — they are never sent to us."
+  },
+  "optionsSectionBehavior": {
+    "message": "Поведінка",
+    "description": "en: Behavior"
+  },
+  "optCopyOnOpenTitle": {
+    "message": "Копіювати під час відкриття",
+    "description": "en: Copy on open"
+  },
+  "optCopyOnOpenDesc": {
+    "message": "Копіювати результат у буфер обміну щойно відкриється вікно.",
+    "description": "en: Copy the result to the clipboard as soon as the popup opens."
+  },
+  "optKeepHistoryTitle": {
+    "message": "Вести локальну історію",
+    "description": "en: Keep a local history"
+  },
+  "optKeepHistoryDesc": {
+    "message": "Типово вимкнено. Коли ввімкнено, результати зберігаються лише на цьому пристрої, перелічені нижче, і їх можна видалити будь-коли.",
+    "description": "en: Off by default. When on, results are stored on this device only, listed below, and deletable at any time."
+  },
+  "optHistoryLimitTitle": {
+    "message": "Межа історії",
+    "description": "en: History limit"
+  },
+  "optHistoryLimitDesc": {
+    "message": "Найстаріші рядки зникають, щойно список стає довшим за це число.",
+    "description": "en: Oldest rows are dropped once the list is longer than this."
+  },
+  "optRetentionTitle": {
+    "message": "Видаляти рядки, старіші за",
+    "description": "en: Delete rows older than"
+  },
+  "optRetentionDesc": {
+    "message": "Днів. Старі рядки видаляються автоматично у фоні. Поставте 0, щоб зберігати рядки, доки їх не витіснить межа історії.",
+    "description": "en: Days. Old rows are removed automatically in the background. Set 0 to keep rows until the history limit drops them."
+  },
+  "optThemeTitle": {
+    "message": "Тема",
+    "description": "en: Theme"
+  },
+  "optThemeDesc": {
+    "message": "Типово стежить за системою.",
+    "description": "en: Follows your system by default."
+  },
+  "themeSystem": {
+    "message": "Системна",
+    "description": "en: System"
+  },
+  "themeLight": {
+    "message": "Світла",
+    "description": "en: Light"
+  },
+  "themeDark": {
+    "message": "Темна",
+    "description": "en: Dark"
+  },
+  "optionsSectionData": {
+    "message": "Ваші дані",
+    "description": "en: Your data"
+  },
+  "dataNothingStored": {
+    "message": "На цьому пристрої нічого не зберігається.",
+    "description": "en: Nothing is stored on this device."
+  },
+  "dataStoredRows_zero": {
+    "message": "$COUNT$ рядки зберігаються на цьому пристрої. Вони нікуди не йдуть.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      }
+    }
+  },
+  "dataStoredRows_one": {
+    "message": "$COUNT$ рядок зберігається на цьому пристрої. Він нікуди не йде.",
+    "description": "en: $COUNT$ row is stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "dataStoredRows_two": {
+    "message": "$COUNT$ рядки зберігаються на цьому пристрої. Вони нікуди не йдуть.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "dataStoredRows_few": {
+    "message": "$COUNT$ рядки зберігаються на цьому пристрої. Вони нікуди не йдуть.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "dataStoredRows_many": {
+    "message": "$COUNT$ рядків зберігається на цьому пристрої. Вони нікуди не йдуть.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "dataStoredRows_other": {
+    "message": "$COUNT$ рядка зберігається на цьому пристрої. Вони нікуди не йдуть.",
+    "description": "en: $COUNT$ rows are stored on this device. Nothing leaves it.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "dataDurable": {
+    "message": "Надійно: браузер пообіцяв цього не стирати.",
+    "description": "en: Durable: the browser has promised not to clear this."
+  },
+  "dataBestEffort": {
+    "message": "Без гарантій: браузер може стерти це сам, якщо на пристрої забракне місця. Експортуйте резервну копію.",
+    "description": "en: Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+  },
+  "dataDurabilityUnknown": {
+    "message": "Цей браузер не каже, чи збережуться записані дані, тож вважайте їх тимчасовими та експортуйте резервну копію.",
+    "description": "en: This browser does not say whether stored data will be kept, so treat it as temporary and export a backup."
+  },
+  "dataDurabilityWithUsage": {
+    "message": "$STATE$ Зайнято $USED$ з $QUOTA$.",
+    "description": "en: $STATE$ Using $USED$ of $QUOTA$.",
+    "placeholders": {
+      "state": {
+        "content": "$1",
+        "example": "Best effort: the browser may clear this on its own if the device runs low on space. Export a backup."
+      },
+      "used": {
+        "content": "$2",
+        "example": "1.2 MB"
+      },
+      "quota": {
+        "content": "$3",
+        "example": "2.1 GB"
+      }
+    }
+  },
+  "rowDelete": {
+    "message": "Видалити",
+    "description": "en: Delete"
+  },
+  "rowDeleteLabel": {
+    "message": "Видалити рядок із $ORIGIN$",
+    "description": "en: Delete the row from $ORIGIN$",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "optExportTitle": {
+    "message": "Експортувати все",
+    "description": "en: Export everything"
+  },
+  "optExportDesc": {
+    "message": "Зберігає всі збережені рядки в один файл JSON на цьому пристрої. Нічого нікуди не вивантажується.",
+    "description": "en: Saves every stored row to one JSON file on this device. Nothing is uploaded."
+  },
+  "optExportButton": {
+    "message": "Експортувати все",
+    "description": "en: Export everything"
+  },
+  "optDeleteAllTitle": {
+    "message": "Видалити все",
+    "description": "en: Delete everything"
+  },
+  "optDeleteAllDesc": {
+    "message": "Прибирає з цього пристрою всі збережені рядки. Налаштування залишаються.",
+    "description": "en: Removes every stored row from this device. Settings are kept."
+  },
+  "optDeleteAllButton": {
+    "message": "Видалити все",
+    "description": "en: Delete everything"
+  },
+  "optResetTitle": {
+    "message": "Скинути налаштування",
+    "description": "en: Reset settings"
+  },
+  "optResetDesc": {
+    "message": "Повертає кожне налаштування на цій сторінці до типового значення й прибирає їх із синхронізованого профілю браузера. Збережені рядки залишаються.",
+    "description": "en: Puts every setting on this page back to its default and removes them from your synced browser profile. Stored rows are kept."
+  },
+  "optResetButton": {
+    "message": "Скинути налаштування",
+    "description": "en: Reset settings"
+  },
+  "optionsSectionReport": {
+    "message": "Повідомити про проблему",
+    "description": "en: Report a problem"
+  },
+  "optReportTitle": {
+    "message": "Підготувати звіт про проблему",
+    "description": "en: Prepare a problem report"
+  },
+  "optReportDesc": {
+    "message": "Створює невеликий файл з описом стану цього розширення. Ви бачите точно те, що в ньому є, ще до збереження, і нікуди нічого не надсилається.",
+    "description": "en: Builds a small file describing this extension’s state. You see exactly what is in it before it is saved, and nothing is sent anywhere."
+  },
+  "optReportButton": {
+    "message": "Підготувати звіт",
+    "description": "en: Prepare a report"
+  },
+  "optionsSectionAbout": {
+    "message": "Про розширення",
+    "description": "en: About"
+  },
+  "aboutName": {
+    "message": "SKELETON — заміни мене",
+    "description": "en: SKELETON — replace me"
+  },
+  "aboutBlurb": {
+    "message": "Одне речення про те, що саме робить цей інструмент. Він працює на вашому пристрої: без облікового запису, без стеження, без мережевих запитів, нам нічого не надсилається.",
+    "description": "en: One sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us."
+  },
+  "optionsSaved": {
+    "message": "Збережено",
+    "description": "en: Saved"
+  },
+  "toastDeleted": {
+    "message": "Усе видалено",
+    "description": "en: Everything deleted"
+  },
+  "toastDeleteFailed": {
+    "message": "Не вдалося видалити — спробуйте ще раз",
+    "description": "en: Could not delete — try again"
+  },
+  "toastSaveFailed": {
+    "message": "Не вдалося зберегти це налаштування",
+    "description": "en: Could not save that setting"
+  },
+  "toastExported": {
+    "message": "Експорт збережено",
+    "description": "en: Export saved"
+  },
+  "toastExportFailed": {
+    "message": "Не вдалося зберегти файл",
+    "description": "en: Could not save the file"
+  },
+  "toastRowDeleted": {
+    "message": "Рядок видалено",
+    "description": "en: Row deleted"
+  },
+  "toastReset": {
+    "message": "Налаштування скинуто",
+    "description": "en: Settings reset"
+  },
+  "toastResetFailed": {
+    "message": "Не вдалося скинути налаштування",
+    "description": "en: Could not reset the settings"
+  },
+  "toastReportSaved": {
+    "message": "Звіт збережено",
+    "description": "en: Report saved"
+  },
+  "confirmCancel": {
+    "message": "Скасувати",
+    "description": "en: Cancel"
+  },
+  "confirmDeleteAllTitle": {
+    "message": "Видалити все?",
+    "description": "en: Delete everything?"
+  },
+  "confirmDeleteAllBody": {
+    "message": "Усі збережені рядки буде прибрано з цього пристрою. Ваші налаштування залишаться. Це не можна скасувати.",
+    "description": "en: Every stored row is removed from this device. Your settings are kept. This cannot be undone."
+  },
+  "confirmResetTitle": {
+    "message": "Скинути всі налаштування?",
+    "description": "en: Reset every setting?"
+  },
+  "confirmResetBody": {
+    "message": "Кожен параметр на цій сторінці повернеться до типового значення й зникне із синхронізованого профілю браузера. Ваші збережені рядки залишаться. Це не можна скасувати.",
+    "description": "en: Every preference on this page goes back to its default and is removed from your synced browser profile. Your stored rows are kept. This cannot be undone."
+  },
+  "confirmReportTitle": {
+    "message": "Зберегти цей звіт про проблему?",
+    "description": "en: Save this problem report?"
+  },
+  "confirmReportBody": {
+    "message": "Це все, що буде у файлі. У ньому немає ні адрес сторінок, ні тексту сторінок, ні чогось, що ви записали. Нікуди нічого не надсилається — файл зберігається на цьому пристрої, і лише вам вирішувати, ділитися ним чи ні.",
+    "description": "en: This is everything the file will contain. It holds no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is yours to share or not."
+  },
+  "confirmReportSave": {
+    "message": "Зберегти звіт",
+    "description": "en: Save the report"
+  },
+  "popupPrivateNotSaved": {
+    "message": "Приватне вікно — цей результат не збережено у вашій історії.",
+    "description": "en: Private window — this result was not saved to your history."
+  },
+  "optionsSectionSiteAccess": {
+    "message": "Доступ до сайтів",
+    "description": "en: Site access"
+  },
+  "optSiteAccessTitle": {
+    "message": "Доступ до всіх сайтів",
+    "description": "en: Access to every site"
+  },
+  "optSiteAccessDesc": {
+    "message": "Потрібен лише функціям, які працюють на сторінках, де ви не натискали кнопку на панелі інструментів. Відкликати його можна будь-коли, просто тут.",
+    "description": "en: Only needed for the features that work on pages you have not clicked the toolbar button on. You can take it back at any time, here."
+  },
+  "optSiteAccessGrant": {
+    "message": "Надати доступ",
+    "description": "en: Grant access"
+  },
+  "optSiteAccessRevoke": {
+    "message": "Відкликати доступ",
+    "description": "en: Revoke access"
+  },
+  "siteAccessGranted": {
+    "message": "Зараз це розширення може читати всі сайти, які ви відвідуєте.",
+    "description": "en: This extension can currently read every site you visit."
+  },
+  "siteAccessNotGranted": {
+    "message": "Це розширення може прочитати вкладку лише після того, як ви натиснете його кнопку на панелі інструментів.",
+    "description": "en: This extension can only read a tab after you click its toolbar button."
+  },
+  "toastSiteAccessGranted": {
+    "message": "Доступ надано",
+    "description": "en: Access granted"
+  },
+  "toastSiteAccessRefused": {
+    "message": "Доступ не надано",
+    "description": "en: Access was not granted"
+  },
+  "toastSiteAccessRevoked": {
+    "message": "Доступ відкликано",
+    "description": "en: Access revoked"
+  },
+  "toastSiteAccessRevokeFailed": {
+    "message": "Не вдалося відкликати цей доступ",
+    "description": "en: Could not revoke that access"
+  }
+}

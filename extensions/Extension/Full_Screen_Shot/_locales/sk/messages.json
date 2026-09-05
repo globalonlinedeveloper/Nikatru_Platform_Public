@@ -1,0 +1,2335 @@
+{
+  "appName": {
+    "message": "FullShot – snímka celej stránky"
+  },
+  "appShortName": {
+    "message": "FullShot"
+  },
+  "appDescription": {
+    "message": "Zachyťte celú stránku, viditeľnú časť, výrez či prvok. Úpravy, popisky a export do PNG, JPEG, WebP aj PDF s inteligentným delením."
+  },
+  "actionDefaultTitle": {
+    "message": "FullShot – zachytiť stránku (Alt+Shift+P)"
+  },
+  "commandCaptureFullPage": {
+    "message": "Zachytiť celú stránku"
+  },
+  "commandCaptureVisible": {
+    "message": "Zachytiť viditeľnú časť"
+  },
+  "commandCaptureRegion": {
+    "message": "Zachytiť vybranú oblasť"
+  },
+  "commandCaptureElement": {
+    "message": "Zachytiť prvok stránky (vyberte kliknutím)"
+  },
+  "popupToggleTheme": {
+    "message": "Prepnúť motív"
+  },
+  "popupModeFullTitle": {
+    "message": "Celá stránka"
+  },
+  "popupModeFullSub": {
+    "message": "Prejsť a zachytiť celú stránku"
+  },
+  "popupModeVisibleTitle": {
+    "message": "Viditeľná časť"
+  },
+  "popupModeVisibleSub": {
+    "message": "Len to, čo je na obrazovke"
+  },
+  "popupModeRegionTitle": {
+    "message": "Vybraná oblasť"
+  },
+  "popupModeRegionSub": {
+    "message": "Ťahaním vyberte oblasť"
+  },
+  "popupModeElementTitle": {
+    "message": "Prvok"
+  },
+  "popupModeElementSub": {
+    "message": "Kliknite na prvok stránky"
+  },
+  "popupModeDelayedTitle": {
+    "message": "Snímanie s oneskorením"
+  },
+  "popupModeDelayedSub": {
+    "message": "Celá stránka po odpočítaní"
+  },
+  "popupDelayLabel": {
+    "message": "Sekundy oneskorenia"
+  },
+  "popupDelaySeconds": {
+    "message": "$COUNT$ s",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "popupExpandToggle": {
+    "message": "Rozbaliť posuvné panely a rámy"
+  },
+  "popupExpandToggleTip": {
+    "message": "Vnútorné posuvné panely a rámy iframe sa pred snímaním roztiahnu na celý obsah namiesto toho, aby sa odfotili tak, ako sú vidieť. Pri rámoch z iných webov si prehliadač raz vyžiada ďalšie povolenie."
+  },
+  "popupDismiss": {
+    "message": "Zavrieť"
+  },
+  "popupLastErrorFailed": {
+    "message": "Posledné $MODE$ zlyhalo — $REASON$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      }
+    }
+  },
+  "popupLastErrorFailedAt": {
+    "message": "Posledné $MODE$ zlyhalo — $REASON$ ($ORIGIN$)",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "full-page capture"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "This page is protected by the browser and cannot be captured."
+      },
+      "origin": {
+        "content": "$3",
+        "example": "https://example.com"
+      }
+    }
+  },
+  "popupModeNameFull": {
+    "message": "snímanie celej stránky"
+  },
+  "popupModeNameVisible": {
+    "message": "snímanie viditeľnej časti"
+  },
+  "popupModeNameRegion": {
+    "message": "snímanie oblasti"
+  },
+  "popupModeNameElement": {
+    "message": "snímanie prvku"
+  },
+  "popupModeNameGeneric": {
+    "message": "snímanie"
+  },
+  "popupNoActiveTab": {
+    "message": "Nenašla sa žiadna aktívna karta."
+  },
+  "popupCaptureFailedToStart": {
+    "message": "Snímanie sa nepodarilo spustiť."
+  },
+  "popupLinkHistory": {
+    "message": "História"
+  },
+  "popupLinkBatch": {
+    "message": "Dávka"
+  },
+  "popupLinkOptions": {
+    "message": "Možnosti"
+  },
+  "optionsPageTitle": {
+    "message": "Možnosti — FullShot"
+  },
+  "optionsBrand": {
+    "message": "FullShot · Možnosti"
+  },
+  "optionsHeading": {
+    "message": "Možnosti"
+  },
+  "optionsLead": {
+    "message": "Zmeny sa ukladajú automaticky a synchronizujú sa s vaším profilom prehliadača."
+  },
+  "optionsSectionImage": {
+    "message": "Obrázok"
+  },
+  "optionsFormat": {
+    "message": "Formát"
+  },
+  "optionsFormatDesc": {
+    "message": "$PNG$ je bezstratový, $JPEG$ menší a $WEBP$ najmenší pri porovnateľnej kvalite.",
+    "placeholders": {
+      "png": {
+        "content": "PNG"
+      },
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQuality": {
+    "message": "Kvalita $JPEG$ / $WEBP$",
+    "placeholders": {
+      "jpeg": {
+        "content": "JPEG"
+      },
+      "webp": {
+        "content": "WebP"
+      }
+    }
+  },
+  "optionsQualityValue": {
+    "message": "$PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "92"
+      }
+    }
+  },
+  "optionsFilenameTemplate": {
+    "message": "Šablóna názvu súboru"
+  },
+  "optionsFilenameTemplateDesc": {
+    "message": "Zástupné symboly: $DOMAIN$ $TITLE$ $DATE$ $TIME$ $WIDTH$ $HEIGHT$",
+    "placeholders": {
+      "domain": {
+        "content": "{domain}"
+      },
+      "title": {
+        "content": "{title}"
+      },
+      "date": {
+        "content": "{date}"
+      },
+      "time": {
+        "content": "{time}"
+      },
+      "width": {
+        "content": "{width}"
+      },
+      "height": {
+        "content": "{height}"
+      }
+    }
+  },
+  "optionsSectionCapture": {
+    "message": "Snímanie"
+  },
+  "optionsCaptureDelay": {
+    "message": "Oneskorenie navyše po každom kroku"
+  },
+  "optionsCaptureDelayDesc": {
+    "message": "Milisekundy čakania po každom posunutí. Pri pomalých stránkach plných animácií hodnotu zvýšte."
+  },
+  "optionsHideFixed": {
+    "message": "Skryť pevné a lepivé prvky"
+  },
+  "optionsHideFixedDesc": {
+    "message": "Zabráni tomu, aby sa hlavička opakovala na každej obrazovke (zobrazí sa raz hore)."
+  },
+  "optionsPreScroll": {
+    "message": "Prejsť stránku vopred pre lenivý obsah"
+  },
+  "optionsPreScrollDesc": {
+    "message": "Pred snímaním raz prejde celú stránku. Je to pomalšie, no zachytí aj lenivo načítané obrázky."
+  },
+  "optionsAdaptiveWait": {
+    "message": "Počkať na dekódovanie obrázkov"
+  },
+  "optionsAdaptiveWaitDesc": {
+    "message": "Nechá oneskorené aj lenivo načítané obrázky dokončiť dekódovanie pred každou snímkou, aby sa nezachytili ako čierne či prázdne dlaždice."
+  },
+  "optionsHideOverlays": {
+    "message": "Skryť bannery a vyskakovacie okná"
+  },
+  "optionsHideOverlaysDesc": {
+    "message": "Pred snímaním odstráni lišty so súbormi cookie, okná s newslettermi aj výzvy „stiahnite si aplikáciu“ a odomkne stránku, ktorú zmrazilo modálne okno. Potom všetko obnoví."
+  },
+  "optionsExpandInner": {
+    "message": "Rozbaliť posuvný obsah"
+  },
+  "optionsExpandInnerDesc": {
+    "message": "Roztiahne vnútorné panely a rámy iframe tak, aby ukázali aj obsah skrytý pod ich vlastným okrajom, namiesto toho, aby ich zachytil presne tak, ako sú vidieť."
+  },
+  "optionsExpandPermRow": {
+    "message": "Rámy z iných webov"
+  },
+  "optionsExpandPermAllow": {
+    "message": "Povoliť"
+  },
+  "optionsExpandPermGranted": {
+    "message": "Povolenie udelené — rozbaľujú sa aj rámy z iných webov."
+  },
+  "optionsExpandPermMissing": {
+    "message": "Bez povolenia „$PERMISSION$“ sa rámy z iných webov zachytia tak, ako sú vidieť. Panely a rámy z toho istého webu fungujú vždy.",
+    "placeholders": {
+      "permission": {
+        "content": "read all websites"
+      }
+    }
+  },
+  "optionsUnrollVirtual": {
+    "message": "Rozvinúť virtualizované zoznamy"
+  },
+  "optionsUnrollVirtualDesc": {
+    "message": "Prechádza kanály s vykresľovacím oknom (v štýle $LIB1$ / $LIB2$) a zachytí celý ich obsah, nielen riadky na obrazovke. Pri veľmi dlhých zoznamoch je pomalšie.",
+    "placeholders": {
+      "lib1": {
+        "content": "react-window"
+      },
+      "lib2": {
+        "content": "TanStack"
+      }
+    }
+  },
+  "optionsExpandInteractive": {
+    "message": "Rozbaliť obsah skrytý za interakciou"
+  },
+  "optionsExpandInteractiveDesc": {
+    "message": "Pred snímaním otvorí zbalené prvky $DETAILS$, neaktívne karty, akordeóny aj sekcie „zobraziť viac“ a potom ich vráti späť. Odhalí obsah skrytý za kliknutím.",
+    "placeholders": {
+      "details": {
+        "content": "<details>"
+      }
+    }
+  },
+  "optionsLoadMore": {
+    "message": "Klikať na tlačidlá „$BUTTONTEXT$“",
+    "placeholders": {
+      "buttontext": {
+        "content": "Load more"
+      }
+    }
+  },
+  "optionsLoadMoreDesc": {
+    "message": "Opakovane klika na tlačidlá „load more“ / „show more“ a čaká na načítanie nového obsahu, kým sa kanál nevyčerpá. Na rozdiel od predchádzajúcej voľby dotiahne obsah, ktorý na stránke ešte nie je; načítaný obsah po snímaní zostáva."
+  },
+  "optionsInfiniteScroll": {
+    "message": "Posúvať pre nekonečné kanály"
+  },
+  "optionsInfiniteScrollDesc": {
+    "message": "Pre kanály bez tlačidla „load more“: opakovane sa posunie na koniec a počká na načítanie ďalšej časti, kým kanál neprestane rásť (s pevným limitom, aby sa nekonečné kanály nenaháňali donekonečna). Načítaný obsah po snímaní zostáva."
+  },
+  "optionsWaitStable": {
+    "message": "Počkať na dokončenie načítania obsahu"
+  },
+  "optionsWaitStableDesc": {
+    "message": "Počká, kým kostry a zástupné načítacie bloky (oblasti aria-busy, blikajúce obdĺžniky) nahradí skutočný obsah, aby sa výmena uprostred stránky nezachytila ako sivé plochy. Má pevný limit, takže zaseknutý indikátor snímanie nezablokuje."
+  },
+  "optionsRedactPII": {
+    "message": "Automaticky začierniť citlivé údaje"
+  },
+  "optionsRedactPIIDesc": {
+    "message": "Prehľadá text, ktorý stránka sprístupní, nájde e-maily, telefónne čísla, čísla platobných kariet, rodné čísla a kľúče API a v uloženom obrázku plnou plochou prekryje to, čo sa zhodovalo. Text vykreslený ako pixely prečítať nedokáže — plátno, obrázok, PDF, snímku videa. Rozpoznávanie beží vo vašom zariadení; nič sa nikdy nikam neodosiela. Platí pre snímky celej stránky (posun dokumentu); prekrytie je trvalé, preto si výsledok skontrolujte sami."
+  },
+  "optionsMaxPageHeight": {
+    "message": "Maximálna výška stránky"
+  },
+  "optionsMaxPageHeightDesc": {
+    "message": "Poistný limit (CSS px) pre nekonečné kanály."
+  },
+  "optionsSectionPdf": {
+    "message": "Export do PDF"
+  },
+  "optionsPdfPaper": {
+    "message": "Predvolená veľkosť papiera"
+  },
+  "optionsPdfPaperDesc": {
+    "message": "Voľba „$IMAGESIZE$“ spraví stranu presne takú veľkú ako snímka.",
+    "placeholders": {
+      "imagesize": {
+        "content": "$1",
+        "example": "Image size"
+      }
+    }
+  },
+  "optionsPaperAuto": {
+    "message": "Veľkosť obrázka"
+  },
+  "optionsPaperA4": {
+    "message": "A4"
+  },
+  "optionsPaperLetter": {
+    "message": "Letter"
+  },
+  "optionsPaperLegal": {
+    "message": "Legal"
+  },
+  "optionsPdfOrientation": {
+    "message": "Orientácia"
+  },
+  "optionsPdfOrientationDesc": {
+    "message": "Platí pre pevné veľkosti papiera."
+  },
+  "optionsOrientationPortrait": {
+    "message": "Na výšku"
+  },
+  "optionsOrientationLandscape": {
+    "message": "Na šírku"
+  },
+  "optionsPdfSmartSplit": {
+    "message": "Inteligentné delenie strán"
+  },
+  "optionsPdfSmartSplitDesc": {
+    "message": "Hľadá blízko každého zlomu medzeru v obraze, aby sa riadky textu nerozrezali napoly."
+  },
+  "optionsPdfStamp": {
+    "message": "Odtlačiť adresu a dátum"
+  },
+  "optionsPdfStampDesc": {
+    "message": "Do päty každej strany PDF pridá adresu stránky a dátum snímania."
+  },
+  "optionsSectionDownload": {
+    "message": "Sťahovanie"
+  },
+  "optionsSaveDirectory": {
+    "message": "Priečinok"
+  },
+  "optionsSaveDirectoryDesc": {
+    "message": "Podpriečinok v priečinku $DOWNLOADS$ pre vaše snímky, napríklad $EXAMPLE$. Prázdne = $DOWNLOADS$.",
+    "placeholders": {
+      "downloads": {
+        "content": "Downloads"
+      },
+      "example": {
+        "content": "screencaptures"
+      }
+    }
+  },
+  "optionsSaveDirectoryPlaceholder": {
+    "message": "(Downloads)"
+  },
+  "optionsSaveAs": {
+    "message": "Dialóg „Uložiť ako“"
+  },
+  "optionsSaveAsDesc": {
+    "message": "Spýtať sa, kam každý súbor uložiť, namiesto tichého stiahnutia."
+  },
+  "optionsClipboardFit": {
+    "message": "Prispôsobiť kópie v schránke limitom aplikácií"
+  },
+  "optionsClipboardFitDesc": {
+    "message": "Zmenší kópie nad $PIXELS$ pixelov, aby fungovalo vkladanie do $APP$ a spol.",
+    "placeholders": {
+      "pixels": {
+        "content": "25 million"
+      },
+      "app": {
+        "content": "Google Docs"
+      }
+    }
+  },
+  "optionsSectionWorkflow": {
+    "message": "Pracovný postup"
+  },
+  "optionsAutoDownload": {
+    "message": "Automaticky stiahnuť po snímaní"
+  },
+  "optionsAutoDownloadDesc": {
+    "message": "Po dokončení snímania obrázok ihneď uloží."
+  },
+  "optionsAutoOpenEditor": {
+    "message": "Otvoriť editor po snímaní"
+  },
+  "optionsAutoOpenEditorDesc": {
+    "message": "Prejde rovno k popiskom (len pri jednodielnych snímkach)."
+  },
+  "optionsTheme": {
+    "message": "Motív"
+  },
+  "optionsThemeDesc": {
+    "message": "Pre vyskakovacie okno a všetky stránky FullShot."
+  },
+  "optionsThemeSystem": {
+    "message": "Systémový"
+  },
+  "optionsThemeLight": {
+    "message": "Svetlý"
+  },
+  "optionsThemeDark": {
+    "message": "Tmavý"
+  },
+  "optionsShortcuts": {
+    "message": "Klávesové skratky"
+  },
+  "optionsShortcutsDesc": {
+    "message": "Celá stránka: $KEYFULL$ · Viditeľná časť: $KEYVISIBLE$. Upraviť na $URL$",
+    "placeholders": {
+      "keyfull": {
+        "content": "Alt+Shift+P"
+      },
+      "keyvisible": {
+        "content": "Alt+Shift+V"
+      },
+      "url": {
+        "content": "chrome://extensions/shortcuts"
+      }
+    }
+  },
+  "optionsSaved": {
+    "message": "Uložené ✓"
+  },
+  "optionsSaveFailed": {
+    "message": "Not saved ✕"
+  },
+  "optionsSectionData": {
+    "message": "Vaše údaje"
+  },
+  "optionsStorage": {
+    "message": "Úložisko"
+  },
+  "optionsStorageUsage": {
+    "message": "Použitých $USED$ z $QUOTA$ v tomto zariadení.",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.40 MB"
+      },
+      "quota": {
+        "content": "$2",
+        "example": "1907.35 MB"
+      }
+    }
+  },
+  "optionsStorageUnknown": {
+    "message": "Tento prehliadač neuvádza, koľko miesta FullShot zaberá."
+  },
+  "optionsStorageKept": {
+    "message": "Vaše snímky obrazovky zostanú zachované: prehliadač ich nevymaže, aby uvoľnil miesto."
+  },
+  "optionsStorageAtRisk": {
+    "message": "Vaše snímky obrazovky sú v úložisku prehliadača typu „best effort“, ktoré môže vymazať, aby uvoľnil miesto."
+  },
+  "optionsStorageKeep": {
+    "message": "Zachovať moje údaje"
+  },
+  "optionsExport": {
+    "message": "Exportovať všetko"
+  },
+  "optionsExportDesc": {
+    "message": "Zapíše jediný súbor s vaším nastavením a zoznamom snímok obrazovky. Uloží sa do tohto zariadenia a nikam sa neodosiela."
+  },
+  "optionsExportImages": {
+    "message": "Zahrnúť obrázky"
+  },
+  "optionsExportImagesDesc": {
+    "message": "Samotné obrázky, ktoré tvoria takmer celú veľkosť. Bez nich súbor snímky obrazovky iba vymenuje, ale žiadnu neobsahuje."
+  },
+  "optionsExportSize": {
+    "message": "Veľkosť súboru: približne $SIZE$",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsSweep": {
+    "message": "Zvyšné údaje"
+  },
+  "optionsSweepDesc": {
+    "message": "Prerušené snímanie môže na disku zanechať snímky, ktoré nepatria k žiadnej snímke obrazovky. Nezobrazujú sa na žiadnej stránke, takže ich žiadna stránka nemôže vymazať. Toto ich nájde a odstráni."
+  },
+  "optionsSweepBtn": {
+    "message": "Nájsť a odstrániť"
+  },
+  "optionsSweepResult": {
+    "message": "Odstránené. Upratané snímania: $COUNT$ · Uvoľnené miesto: $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "size": {
+        "content": "$2",
+        "example": "18.20 MB"
+      }
+    }
+  },
+  "optionsSweepPartial": {
+    "message": "Removed $COUNT$ of $FOUND$ · Space freed: $SIZE$ · The rest could not be removed. Try again, or restart your browser.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "0"
+      },
+      "found": {
+        "content": "$2",
+        "example": "40"
+      },
+      "size": {
+        "content": "$3",
+        "example": "0 B"
+      }
+    }
+  },
+  "optionsSweepClean": {
+    "message": "Nič nezostalo: všetko uložené patrí k snímke obrazovky, ktorú vidíte."
+  },
+  "optionsCountUnknown": {
+    "message": "—"
+  },
+  "optionsReset": {
+    "message": "Obnoviť nastavenia"
+  },
+  "optionsResetDesc": {
+    "message": "Vráti každé nastavenie na tejto stránke na hodnotu, s ktorou bolo dodané. Vašich snímok obrazovky sa to nedotkne."
+  },
+  "optionsResetBtn": {
+    "message": "Obnoviť"
+  },
+  "optionsResetConfirm": {
+    "message": "Vrátiť všetky nastavenia FullShotu na predvolené hodnoty? Vašich snímok obrazovky sa to nedotkne."
+  },
+  "optionsResetDone": {
+    "message": "Nastavenia sú späť na predvolených hodnotách."
+  },
+  "optionsDeleteAll": {
+    "message": "Vymazať všetko"
+  },
+  "optionsDeleteAllDesc": {
+    "message": "Odstráni všetky snímky obrazovky z histórie aj všetko, čo po sebe zanechali prerušené snímania. Vaše nastavenia zostanú nezmenené."
+  },
+  "optionsDeleteAllConfirm": {
+    "message": "Vymazať všetko, čo FullShot uložil v tomto zariadení?\n\nSnímky obrazovky v histórii: $COUNT$\nZvyšky po prerušených snímaniach: $LEFTOVER$\nUvoľnené miesto: $SIZE$\n\nVašich nastavení sa to nedotkne. Túto akciu nemožno vrátiť späť.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "leftover": {
+        "content": "$2",
+        "example": "3"
+      },
+      "size": {
+        "content": "$3",
+        "example": "310.44 MB"
+      }
+    }
+  },
+  "optionsDeleteAllDone": {
+    "message": "Vymazané. FullShot teraz v tomto zariadení neuchováva žiadne snímky obrazovky."
+  },
+  "resultPageTitle": {
+    "message": "Snímka obrazovky — FullShot"
+  },
+  "resultDocumentTitle": {
+    "message": "$TITLE$ — FullShot",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "Quarterly report"
+      }
+    }
+  },
+  "resultCopy": {
+    "message": "Kopírovať"
+  },
+  "resultCopyTip": {
+    "message": "Skopírovať obrázok do schránky"
+  },
+  "resultEdit": {
+    "message": "Upraviť"
+  },
+  "resultEditTip": {
+    "message": "Otvoriť v editore"
+  },
+  "resultBeautify": {
+    "message": "Vyladiť"
+  },
+  "resultBeautifyTip": {
+    "message": "Vyladiť — rámik a pozadie na zdieľanie"
+  },
+  "resultClip": {
+    "message": "Klip"
+  },
+  "resultClipTip": {
+    "message": "Rolovací klip — animovaný $GIF$ / $WEBM$",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "resultPaperTip": {
+    "message": "Veľkosť papiera PDF"
+  },
+  "resultPaperOption": {
+    "message": "PDF: $PAPER$",
+    "placeholders": {
+      "paper": {
+        "content": "$1",
+        "example": "A4"
+      }
+    }
+  },
+  "resultPdf": {
+    "message": "PDF"
+  },
+  "resultDownload": {
+    "message": "Stiahnuť"
+  },
+  "resultDeleteTip": {
+    "message": "Odstrániť snímku"
+  },
+  "resultHistoryTip": {
+    "message": "História snímok"
+  },
+  "resultProgressAssembling": {
+    "message": "Skladám vašu snímku…"
+  },
+  "resultProgressDecodingOne": {
+    "message": "Dekódujem $COUNT$ snímku…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressDecodingFew": {
+    "message": "Dekódujem $COUNT$ snímky…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingMany": {
+    "message": "Dekódujem $COUNT$ snímky…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressDecodingOther": {
+    "message": "Dekódujem $COUNT$ snímok…",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "resultProgressStitching": {
+    "message": "Skladám časť $INDEX$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultProgressStitchingOf": {
+    "message": "Skladám časť $INDEX$ z ~$TOTAL$…",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "4"
+      }
+    }
+  },
+  "resultProgressSaving": {
+    "message": "Ukladám…"
+  },
+  "resultMeta": {
+    "message": "$NAME$  ·  $WIDTH$×$HEIGHT$ px  ·  $SIZE$",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Quarterly report"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      },
+      "size": {
+        "content": "$4",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "resultTip": {
+    "message": "Tip: pretiahnite obrázok rovno na plochu alebo použite $DOWNLOAD$.",
+    "placeholders": {
+      "download": {
+        "content": "$1",
+        "example": "Download"
+      }
+    }
+  },
+  "resultEmptyTitle": {
+    "message": "Nič tu nie je"
+  },
+  "resultEmptyBody": {
+    "message": "Táto snímka už neexistuje."
+  },
+  "resultOpenHistory": {
+    "message": "Otvoriť históriu"
+  },
+  "resultSomethingWrong": {
+    "message": "Niečo sa pokazilo — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "resultPartHeading": {
+    "message": "Časť $INDEX$ z $TOTAL$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      },
+      "total": {
+        "content": "$2",
+        "example": "3"
+      },
+      "width": {
+        "content": "$3",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$4",
+        "example": "16000"
+      }
+    }
+  },
+  "resultDownloadPart": {
+    "message": "Stiahnuť časť"
+  },
+  "resultEditPart": {
+    "message": "Upraviť časť"
+  },
+  "resultClipPart": {
+    "message": "Klip z časti"
+  },
+  "resultPartAlt": {
+    "message": "Časť snímky $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "resultToastDownloading": {
+    "message": "Sťahujem $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12-14-05.png"
+      }
+    }
+  },
+  "resultConfirmDelete": {
+    "message": "Odstrániť túto snímku natrvalo?"
+  },
+  "resultDeleted": {
+    "message": "Snímka bola odstránená."
+  },
+  "redactActsLine": {
+    "message": "Redaction on. $MATCHED$ matched, $PAINTED$ painted, $VERIFIED$ confirmed opaque in this image.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "painted": {
+        "content": "$2",
+        "example": "3"
+      },
+      "verified": {
+        "content": "$3",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNone": {
+    "message": "Redaction matched nothing in the text it read and painted no blocks. Nothing is outlined below.",
+    "placeholders": {}
+  },
+  "redactActsShortfall": {
+    "message": "Redaction matched $MATCHED$ and covered $COVERED$.",
+    "placeholders": {
+      "matched": {
+        "content": "$1",
+        "example": "3"
+      },
+      "covered": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOne": {
+    "message": "$COUNT$ match is not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "redactActsUncoveredFew": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredMany": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsUncoveredOther": {
+    "message": "$COUNT$ matches are not covered in this image.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "redactActsWalkTruncated": {
+    "message": "FullShot did not finish walking this page.",
+    "placeholders": {}
+  },
+  "redactActsCountPartial": {
+    "message": "This count may be short: FullShot did not read some of the text in this capture.",
+    "placeholders": {}
+  },
+  "redactActsScanLimits": {
+    "message": "Pieces of text it did not read: $REFUSED$. Blocks it found and did not draw: $LOST$.",
+    "placeholders": {
+      "refused": {
+        "content": "$1",
+        "example": "2"
+      },
+      "lost": {
+        "content": "$2",
+        "example": "201"
+      }
+    }
+  },
+  "redactActsBakeLimits": {
+    "message": "Blocks it could not place in this image: $UNPLACED$. Blocks it drew and did not read back: $UNREAD$.",
+    "placeholders": {
+      "unplaced": {
+        "content": "$1",
+        "example": "1"
+      },
+      "unread": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
+  "redactActsNoLedger": {
+    "message": "This record carries no account of a redaction pass on this capture.",
+    "placeholders": {}
+  },
+  "redactActsUnknownCount": {
+    "message": "—",
+    "placeholders": {}
+  },
+  "reviewTitle": {
+    "message": "Before you copy",
+    "placeholders": {}
+  },
+  "reviewLimit": {
+    "message": "FullShot reads the text a page exposes. It cannot see this image. Anything drawn as pixels — a canvas, an image, a PDF page, a video frame — was never read.",
+    "placeholders": {}
+  },
+  "reviewMarks": {
+    "message": "$COUNT$ blocks are outlined on the image below.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "reviewNoMarks": {
+    "message": "No blocks are outlined on the image below.",
+    "placeholders": {}
+  },
+  "reviewScale": {
+    "message": "Shown at $PERCENT$% of the size that will be copied.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "38"
+      }
+    }
+  },
+  "reviewReduced": {
+    "message": "This capture is too tall to copy as one readable image, so the picture below is a shrunk overview of the whole page. Small text in it is not legible — here or on the clipboard.",
+    "placeholders": {}
+  },
+  "reviewMarkLabel": {
+    "message": "Block $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "reviewMarkAt": {
+    "message": "Block $INDEX$, $PERCENT$% down the image",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "42"
+      }
+    }
+  },
+  "reviewPrevView": {
+    "message": "Previous view",
+    "placeholders": {}
+  },
+  "reviewNextView": {
+    "message": "Next view",
+    "placeholders": {}
+  },
+  "reviewZoomOut": {
+    "message": "Zoom out",
+    "placeholders": {}
+  },
+  "reviewZoomIn": {
+    "message": "Zoom in",
+    "placeholders": {}
+  },
+  "reviewViewPos": {
+    "message": "View $INDEX$ of $TOTAL$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "total": {
+        "content": "$2",
+        "example": "14"
+      }
+    }
+  },
+  "reviewImgRegion": {
+    "message": "The image that is about to be copied, $DIMS$ pixels — scroll it with the arrow keys",
+    "placeholders": {
+      "dims": {
+        "content": "$1",
+        "example": "1568×6000"
+      }
+    }
+  },
+  "reviewConfirm": {
+    "message": "I have looked — copy",
+    "placeholders": {}
+  },
+  "reviewCancel": {
+    "message": "Cancel",
+    "placeholders": {}
+  },
+  "reviewImgAlt": {
+    "message": "The image that is about to be copied",
+    "placeholders": {}
+  },
+  "resultAiOverviewOnly": {
+    "message": "Táto snímka je príliš vysoká na to, aby sa dala vložiť ako jeden čitateľný obrázok, takže $COPY$ vloží do schránky zmenšený prehľad celej stránky. Drobný text v ňom nebude čitateľný.",
+    "placeholders": {
+      "copy": {
+        "content": "$1",
+        "example": "Copy"
+      }
+    }
+  },
+  "resultToastCopiedPart": {
+    "message": "Časť $INDEX$ skopírovaná do schránky",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastBuildingPdf": {
+    "message": "Vytváram PDF…"
+  },
+  "resultToastPdfDoneOne": {
+    "message": "PDF stiahnuté ($COUNT$ strana)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "resultToastPdfDoneFew": {
+    "message": "PDF stiahnuté ($COUNT$ strany)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneMany": {
+    "message": "PDF stiahnuté ($COUNT$ strany)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfDoneOther": {
+    "message": "PDF stiahnuté ($COUNT$ strán)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "7"
+      }
+    }
+  },
+  "resultToastPdfFailed": {
+    "message": "PDF zlyhalo — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "editorPageTitle": {
+    "message": "Editor — FullShot"
+  },
+  "editorBackTip": {
+    "message": "Späť na snímku"
+  },
+  "editorToolSelect": {
+    "message": "Vybrať / presunúť ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "V"
+      }
+    }
+  },
+  "editorToolCrop": {
+    "message": "Orezať ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "C"
+      }
+    }
+  },
+  "editorToolPen": {
+    "message": "Pero ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "P"
+      }
+    }
+  },
+  "editorToolHighlighter": {
+    "message": "Zvýrazňovač ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "H"
+      }
+    }
+  },
+  "editorToolLine": {
+    "message": "Čiara ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "L"
+      }
+    }
+  },
+  "editorToolArrow": {
+    "message": "Šípka ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "A"
+      }
+    }
+  },
+  "editorToolRect": {
+    "message": "Obdĺžnik ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "R"
+      }
+    }
+  },
+  "editorToolEllipse": {
+    "message": "Elipsa ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "O"
+      }
+    }
+  },
+  "editorToolText": {
+    "message": "Text ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "T"
+      }
+    }
+  },
+  "editorToolBlur": {
+    "message": "Rozmazať / pixelizovať ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "B"
+      }
+    }
+  },
+  "editorToolNum": {
+    "message": "Číslovaný krok ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "N"
+      }
+    }
+  },
+  "editorToolEmoji": {
+    "message": "Pečiatka emodži ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "E"
+      }
+    }
+  },
+  "editorCustomColor": {
+    "message": "Vlastná farba"
+  },
+  "editorStrokeTip": {
+    "message": "Hrúbka čiary"
+  },
+  "editorStrokeThin": {
+    "message": "Tenká"
+  },
+  "editorStrokeMedium": {
+    "message": "Stredná"
+  },
+  "editorStrokeThick": {
+    "message": "Hrubá"
+  },
+  "editorSizeTip": {
+    "message": "Veľkosť textu / emodži"
+  },
+  "editorSizeS": {
+    "message": "S"
+  },
+  "editorSizeM": {
+    "message": "M"
+  },
+  "editorSizeL": {
+    "message": "L"
+  },
+  "editorSizeXL": {
+    "message": "XL"
+  },
+  "editorUndoTip": {
+    "message": "Späť ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Z"
+      }
+    }
+  },
+  "editorRedoTip": {
+    "message": "Znova ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+Y"
+      }
+    }
+  },
+  "editorZoomOutTip": {
+    "message": "Oddialiť (-)"
+  },
+  "editorZoomInTip": {
+    "message": "Priblížiť (+)"
+  },
+  "editorZoomFit": {
+    "message": "Prisp."
+  },
+  "editorZoomTipToHundred": {
+    "message": "Prispôsobené oknu — kliknutím na 100 %"
+  },
+  "editorZoomTipToFit": {
+    "message": "Kliknutím prispôsobiť oknu"
+  },
+  "editorExport": {
+    "message": "Exportovať"
+  },
+  "editorExportCopy": {
+    "message": "Kopírovať do schránky"
+  },
+  "editorExportImage": {
+    "message": "Obrázok $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PNG"
+      }
+    }
+  },
+  "editorExportDocument": {
+    "message": "Dokument $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "$1",
+        "example": "PDF"
+      }
+    }
+  },
+  "editorSave": {
+    "message": "Uložiť"
+  },
+  "editorSaveTip": {
+    "message": "Uložiť zmeny do histórie ($KEY$)",
+    "placeholders": {
+      "key": {
+        "content": "Ctrl+S"
+      }
+    }
+  },
+  "editorMoreTip": {
+    "message": "Viac"
+  },
+  "editorMenuFiles": {
+    "message": "Prejsť do Histórie"
+  },
+  "editorMenuOptions": {
+    "message": "Prejsť do Možností"
+  },
+  "editorMenuShortcuts": {
+    "message": "Klávesové skratky"
+  },
+  "editorCropApply": {
+    "message": "Použiť orezanie"
+  },
+  "editorCropCancel": {
+    "message": "Zrušiť"
+  },
+  "editorShortcutsHeading": {
+    "message": "Klávesové skratky"
+  },
+  "editorShortcutTools": {
+    "message": "Výber nástrojov"
+  },
+  "editorShortcutUndoRedo": {
+    "message": "Späť / znova"
+  },
+  "editorShortcutSave": {
+    "message": "Uložiť do histórie"
+  },
+  "editorShortcutZoom": {
+    "message": "Oddialiť / priblížiť"
+  },
+  "editorShortcutDelete": {
+    "message": "Odstrániť vybraný objekt"
+  },
+  "editorShortcutEscape": {
+    "message": "Zrušiť výber / orezanie"
+  },
+  "editorShortcutsClose": {
+    "message": "Zavrieť"
+  },
+  "editorNotFound": {
+    "message": "Snímka sa nenašla"
+  },
+  "editorToastDownloaded": {
+    "message": "Stiahnuté"
+  },
+  "editorToastPdfDownloaded": {
+    "message": "PDF stiahnuté"
+  },
+  "editorToastSaved": {
+    "message": "Uložené do histórie"
+  },
+  "historyPageTitle": {
+    "message": "História — FullShot"
+  },
+  "historyBrand": {
+    "message": "FullShot · História"
+  },
+  "historySearchPlaceholder": {
+    "message": "Hľadať podľa názvu alebo adresy…"
+  },
+  "historySelectAll": {
+    "message": "Vybrať všetko"
+  },
+  "historyClearSelection": {
+    "message": "Zrušiť výber"
+  },
+  "historyDownloadSelected": {
+    "message": "Stiahnuť vybrané"
+  },
+  "historyDownloadSelectedCount": {
+    "message": "Stiahnuť ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyDeleteSelected": {
+    "message": "Odstrániť vybrané"
+  },
+  "historyDeleteSelectedCount": {
+    "message": "Odstrániť ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyEmptyTitle": {
+    "message": "Zatiaľ žiadne snímky"
+  },
+  "historyEmptyBody": {
+    "message": "Vaše snímky sa zobrazia tu. Začnite kliknutím na ikonu FullShot na paneli s nástrojmi."
+  },
+  "historyNoMatchesTitle": {
+    "message": "Žiadne zhody"
+  },
+  "historyNoMatchesBody": {
+    "message": "Dopytu „$QUERY$“ nezodpovedá žiadna snímka.",
+    "placeholders": {
+      "query": {
+        "content": "$1",
+        "example": "invoice"
+      }
+    }
+  },
+  "historyCountOne": {
+    "message": "$COUNT$ snímka · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      },
+      "size": {
+        "content": "$2",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFew": {
+    "message": "$COUNT$ snímky · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountMany": {
+    "message": "$COUNT$ snímky · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountOther": {
+    "message": "$COUNT$ snímok · $SIZE$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "24"
+      },
+      "size": {
+        "content": "$2",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOne": {
+    "message": "$SHOWN$ z $COUNT$ snímky · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "1"
+      },
+      "count": {
+        "content": "$2",
+        "example": "1"
+      },
+      "size": {
+        "content": "$3",
+        "example": "1.20 MB"
+      }
+    }
+  },
+  "historyCountFilteredFew": {
+    "message": "$SHOWN$ zo $COUNT$ snímok · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredMany": {
+    "message": "$SHOWN$ z $COUNT$ snímky · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCountFilteredOther": {
+    "message": "$SHOWN$ z $COUNT$ snímok · $SIZE$",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "3"
+      },
+      "count": {
+        "content": "$2",
+        "example": "24"
+      },
+      "size": {
+        "content": "$3",
+        "example": "12.40 MB"
+      }
+    }
+  },
+  "historyCardSelect": {
+    "message": "Vybrať"
+  },
+  "historyCardOpen": {
+    "message": "Otvoriť"
+  },
+  "historyCardEdit": {
+    "message": "Upraviť"
+  },
+  "historyCardDownloadTip": {
+    "message": "Stiahnuť"
+  },
+  "historyCardDeleteTip": {
+    "message": "Odstrániť"
+  },
+  "historyCardOpenOriginal": {
+    "message": "Otvoriť pôvodnú stránku"
+  },
+  "historyCardSubtitle": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "8420"
+      }
+    }
+  },
+  "historyCardSubtitleParts": {
+    "message": "$DATE$ · $WIDTH$×$HEIGHT$ · počet častí: $COUNT$",
+    "placeholders": {
+      "date": {
+        "content": "$1",
+        "example": "12/08/2026, 14:05:33"
+      },
+      "width": {
+        "content": "$2",
+        "example": "1280"
+      },
+      "height": {
+        "content": "$3",
+        "example": "32000"
+      },
+      "count": {
+        "content": "$4",
+        "example": "3"
+      }
+    }
+  },
+  "historyUntitled": {
+    "message": "Snímka obrazovky"
+  },
+  "historyConfirmDeleteSingle": {
+    "message": "Odstrániť túto snímku?"
+  },
+  "historyConfirmDeleteManyOne": {
+    "message": "Odstrániť $COUNT$ snímku natrvalo?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyConfirmDeleteManyFew": {
+    "message": "Odstrániť $COUNT$ snímky natrvalo?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyMany": {
+    "message": "Odstrániť $COUNT$ snímky natrvalo?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyConfirmDeleteManyOther": {
+    "message": "Odstrániť $COUNT$ snímok natrvalo?",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOne": {
+    "message": "Sťahujem $COUNT$ snímku",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyToastDownloadingFew": {
+    "message": "Sťahujem $COUNT$ snímky",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingMany": {
+    "message": "Sťahujem $COUNT$ snímky",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDownloadingOther": {
+    "message": "Sťahujem $COUNT$ snímok",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "historyToastDeleted": {
+    "message": "Odstránené"
+  },
+  "beautifyPageTitle": {
+    "message": "Vyladenie — FullShot"
+  },
+  "beautifyHeading": {
+    "message": "Vyladiť"
+  },
+  "actionBack": {
+    "message": "Späť"
+  },
+  "commonLoading": {
+    "message": "Načítava sa…"
+  },
+  "beautifyFieldSize": {
+    "message": "Veľkosť"
+  },
+  "beautifyPresetAuto": {
+    "message": "Automaticky"
+  },
+  "beautifyPresetOg": {
+    "message": "OG 1200×630"
+  },
+  "beautifyPresetSquare": {
+    "message": "Štvorec"
+  },
+  "beautifyPresetPortrait": {
+    "message": "Na výšku"
+  },
+  "beautifyPresetWide": {
+    "message": "16:9"
+  },
+  "beautifyFieldBackground": {
+    "message": "Pozadie"
+  },
+  "beautifyBgSlate": {
+    "message": "Bridlica"
+  },
+  "beautifyBgGraphite": {
+    "message": "Grafit"
+  },
+  "beautifyBgSky": {
+    "message": "Obloha"
+  },
+  "beautifyBgSunset": {
+    "message": "Západ slnka"
+  },
+  "beautifyBgGrape": {
+    "message": "Hrozno"
+  },
+  "beautifyBgMint": {
+    "message": "Mäta"
+  },
+  "beautifyFieldPadding": {
+    "message": "Okraje"
+  },
+  "beautifyFieldRadius": {
+    "message": "Zaoblenie rohov"
+  },
+  "beautifyFieldEffects": {
+    "message": "Efekty"
+  },
+  "beautifyShadow": {
+    "message": "Vrhnutý tieň"
+  },
+  "beautifyWindowFrame": {
+    "message": "Rámik okna"
+  },
+  "beautifyFieldExport": {
+    "message": "Export"
+  },
+  "beautifyDims": {
+    "message": "$WIDTH$ × $HEIGHT$ px",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "1200"
+      },
+      "height": {
+        "content": "$2",
+        "example": "630"
+      }
+    }
+  },
+  "scrollclipPageTitle": {
+    "message": "Rolovací klip — FullShot"
+  },
+  "scrollclipHeading": {
+    "message": "Rolovací klip"
+  },
+  "scrollclipFieldFormat": {
+    "message": "Formát"
+  },
+  "scrollclipFormatGif": {
+    "message": "GIF"
+  },
+  "scrollclipFormatWebm": {
+    "message": "WebM"
+  },
+  "scrollclipFormatHint": {
+    "message": "$GIF$ prehráte všade. $WEBM$ je menší a plynulejší (nahráva sa naživo priamo vo vašom prehliadači).",
+    "placeholders": {
+      "gif": {
+        "content": "GIF"
+      },
+      "webm": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipFieldOutputWidth": {
+    "message": "Šírka výstupu"
+  },
+  "scrollclipFieldDensity": {
+    "message": "Hustota"
+  },
+  "scrollclipDensityHint": {
+    "message": "Vyššia hustota vykresľuje ostrejšie (bližšie k zdrojovému rozlíšeniu) — súbor je väčší."
+  },
+  "scrollclipFieldShape": {
+    "message": "Tvar"
+  },
+  "scrollclipFieldSpeed": {
+    "message": "Rýchlosť posunu (px/s)"
+  },
+  "scrollclipFieldFps": {
+    "message": "Snímková frekvencia (fps)"
+  },
+  "scrollclipFieldMotion": {
+    "message": "Pohyb"
+  },
+  "scrollclipBounce": {
+    "message": "Odraz (posun späť nahor)"
+  },
+  "scrollclipLoop": {
+    "message": "Opakovať donekonečna"
+  },
+  "scrollclipCopyFrame": {
+    "message": "Kopírovať snímku"
+  },
+  "scrollclipCopyFrameTip": {
+    "message": "Skopírovať úvodnú (hornú) snímku ako $FORMAT$",
+    "placeholders": {
+      "format": {
+        "content": "PNG"
+      }
+    }
+  },
+  "scrollclipDimsOne": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ snímka · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "1"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "0,1"
+      }
+    }
+  },
+  "scrollclipDimsFew": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ snímky · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsMany": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ snímky · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipDimsOther": {
+    "message": "$WIDTH$ × $HEIGHT$ · $COUNT$ snímok · $SECONDS$ s",
+    "placeholders": {
+      "width": {
+        "content": "$1",
+        "example": "640"
+      },
+      "height": {
+        "content": "$2",
+        "example": "360"
+      },
+      "count": {
+        "content": "$3",
+        "example": "128"
+      },
+      "seconds": {
+        "content": "$4",
+        "example": "10,7"
+      }
+    }
+  },
+  "scrollclipProgressRendering": {
+    "message": "Vykresľujem snímky… $PERCENT$ %",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "40"
+      }
+    }
+  },
+  "scrollclipProgressEncoding": {
+    "message": "Kódujem $FORMAT$… $PERCENT$ %",
+    "placeholders": {
+      "format": {
+        "content": "GIF"
+      },
+      "percent": {
+        "content": "$1",
+        "example": "72"
+      }
+    }
+  },
+  "scrollclipProgressFinalizing": {
+    "message": "Dokončujem…"
+  },
+  "scrollclipProgressRecording": {
+    "message": "Nahrávam $FORMAT$…",
+    "placeholders": {
+      "format": {
+        "content": "WebM"
+      }
+    }
+  },
+  "scrollclipToastRecording": {
+    "message": "Nahrávam…"
+  },
+  "scrollclipWebmUnsupported": {
+    "message": "$WEBM$ tu nie je podporovaný — exportujem $GIF$",
+    "placeholders": {
+      "webm": {
+        "content": "WebM"
+      },
+      "gif": {
+        "content": "GIF"
+      }
+    }
+  },
+  "scrollclipToastCopiedFrame": {
+    "message": "Úvodná snímka skopírovaná"
+  },
+  "batchPageTitle": {
+    "message": "FullShot — dávkové snímanie"
+  },
+  "batchHeading": {
+    "message": "Dávkové snímanie"
+  },
+  "batchIntro": {
+    "message": "Vložte adresy URL, každú na samostatný riadok. FullShot otvorí každú stránku, uloží snímku celej stránky do histórie a pokračuje ďalej — až $MAX$ naraz. Snímky nájdete v histórii; kliknutím na $OPENLINK$ ich zobrazíte, upravíte alebo exportujete.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      },
+      "openlink": {
+        "content": "$2",
+        "example": "open"
+      }
+    }
+  },
+  "batchRun": {
+    "message": "Zachytiť všetko"
+  },
+  "batchPermissionHint": {
+    "message": "Otvorenie týchto stránok si pri prvom spustení vyžiada jednorazové povolenie."
+  },
+  "batchPermissionDeclined": {
+    "message": "Povolenie na otvorenie týchto stránok bolo zamietnuté."
+  },
+  "batchPanelPlan": {
+    "message": "Plán"
+  },
+  "batchPanelProgress": {
+    "message": "Priebeh"
+  },
+  "batchPlanCountOne": {
+    "message": "$COUNT$ stránka na zachytenie",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "batchPlanCountFew": {
+    "message": "$COUNT$ stránky na zachytenie",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountMany": {
+    "message": "$COUNT$ stránky na zachytenie",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCountOther": {
+    "message": "$COUNT$ stránok na zachytenie",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "batchPlanCapped": {
+    "message": "$COUNT$ stránok na zachytenie (obmedzené na $MAX$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "50"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "batchPlanEmpty": {
+    "message": "Zatiaľ žiadne platné adresy URL"
+  },
+  "batchSkipped": {
+    "message": "$COUNT$ preskočené: $REASONS$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      },
+      "reasons": {
+        "content": "$2",
+        "example": "duplicate, no host"
+      }
+    }
+  },
+  "batchSkipReasonScheme": {
+    "message": "nepodporovaná schéma"
+  },
+  "batchSkipReasonInvalid": {
+    "message": "neplatné"
+  },
+  "batchSkipReasonNoHost": {
+    "message": "chýba hostiteľ"
+  },
+  "batchSkipReasonDuplicate": {
+    "message": "duplikát"
+  },
+  "batchSkipReasonEmpty": {
+    "message": "prázdne"
+  },
+  "batchSkipReasonOverCap": {
+    "message": "nad limit ($MAX$)",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "50"
+      }
+    }
+  },
+  "batchProgressCount": {
+    "message": "$DONE$/$TOTAL$ hotovo",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCountFailed": {
+    "message": "$DONE$/$TOTAL$ hotovo, $FAILED$ zlyhalo",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "7"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchProgressComplete": {
+    "message": "$DONE$/$TOTAL$ hotovo — dokončené",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "12"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      }
+    }
+  },
+  "batchProgressCompleteFailed": {
+    "message": "$DONE$/$TOTAL$ hotovo, $FAILED$ zlyhalo — dokončené",
+    "placeholders": {
+      "done": {
+        "content": "$1",
+        "example": "10"
+      },
+      "total": {
+        "content": "$2",
+        "example": "12"
+      },
+      "failed": {
+        "content": "$3",
+        "example": "2"
+      }
+    }
+  },
+  "batchRowOpen": {
+    "message": "otvoriť"
+  },
+  "batchJobTimedOut": {
+    "message": "vypršal časový limit"
+  },
+  "batchJobNoSession": {
+    "message": "chýba relácia snímania"
+  },
+  "batchJobFailed": {
+    "message": "snímanie zlyhalo"
+  },
+  "batchJobError": {
+    "message": "chyba snímania"
+  },
+  "regionHintDrag": {
+    "message": "Ťahaním vyberte oblasť — zrušíte klávesom $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "regionHintElement": {
+    "message": "Kliknutím vyberte prvok na zachytenie — zrušíte klávesom $ESC$",
+    "placeholders": {
+      "esc": {
+        "content": "Esc"
+      }
+    }
+  },
+  "errRestrictedBrowserPage": {
+    "message": "Stránky prehliadača, ako sú Nastavenia, Rozšírenia či Nová karta, sú pre každé rozšírenie nedostupné. Vyskúšajte FullShot na bežnej webovej stránke."
+  },
+  "errRestrictedDevtools": {
+    "message": "Okná DevTools rozšírenie zachytiť nedokáže. Použite na ne nástroj na snímky obrazovky vo svojom počítači."
+  },
+  "errRestrictedViewSource": {
+    "message": "Stránky so zdrojovým kódom sa zachytiť nedajú. Zachyťte namiesto toho samotnú stránku."
+  },
+  "errRestrictedExtensionPage": {
+    "message": "Stránky rozšírení vrátane vlastných stránok FullShot prehliadač chráni a zachytiť sa nedajú."
+  },
+  "errRestrictedWebstore": {
+    "message": "Internetový obchod Chrome bráni rozšíreniam čítať jeho stránky, takže túto zachytiť nemožno."
+  },
+  "errRestrictedGeneric": {
+    "message": "Túto stránku prehliadač chráni a zachytiť ju nemožno."
+  },
+  "errWrongTab": {
+    "message": "Snímanie sa zastavilo — prepli ste kartu. Nechajte túto stránku vpredu, kým FullShot neskončí."
+  },
+  "errGeneric": {
+    "message": "Snímanie skončilo skôr, než bolo hotové. Skúste to prosím znova."
+  },
+  "errBusy": {
+    "message": "Na tejto karte už jedno snímanie prebieha."
+  },
+  "errBlocked": {
+    "message": "Túto stránku nemožno zachytiť (obmedzenie prehliadača)."
+  },
+  "errNoStart": {
+    "message": "FullShot sa na tejto stránke nepodarilo spustiť. Načítajte stránku znova a skúste to zopakovať."
+  },
+  "errCrash": {
+    "message": "Snímanie sa nečakane zastavilo. Skúste to prosím znova."
+  },
+  "errUnknownMessage": {
+    "message": "Neznáma správa."
+  },
+  "errQuota": {
+    "message": "Prehliadač obmedzuje, ako rýchlo možno stránky fotografovať. Chvíľu počkajte a skúste to znova."
+  },
+  "errFrameHandover": {
+    "message": "Prehliadač prestal uprostred odovzdávať obraz. Počkajte pár sekúnd a skúste to znova."
+  },
+  "errLostTab": {
+    "message": "Snímanie stratilo prehľad o tejto karte. Načítajte stránku znova a skúste to zopakovať."
+  },
+  "errStoppedEarly": {
+    "message": "Snímanie sa zastavilo skôr, než bolo hotové."
+  },
+  "errStorageFull": {
+    "message": "Na uloženie tohto snímania už nie je miesto. Vymažte niekoľko snímok obrazovky z histórie a skúste to znova."
+  },
+  "reasonGeneric": {
+    "message": "nebol uvedený žiadny dôvod. Skúste to prosím znova."
+  },
+  "reasonDecodeFailed": {
+    "message": "túto snímku sa nepodarilo dekódovať."
+  },
+  "reasonTooLarge": {
+    "message": "obrázok je príliš veľký, než aby sa dal takto exportovať."
+  },
+  "toastCopiedClipboard": {
+    "message": "Skopírované do schránky"
+  },
+  "toastCopyFailed": {
+    "message": "Kopírovanie zlyhalo — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastExportFailed": {
+    "message": "Export zlyhal — $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "the image is too large to export here."
+      }
+    }
+  },
+  "toastSavedFile": {
+    "message": "Uložené $FILENAME$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.png"
+      }
+    }
+  },
+  "toastSavedFileSize": {
+    "message": "Uložené $FILENAME$  ·  $SIZE$",
+    "placeholders": {
+      "filename": {
+        "content": "$1",
+        "example": "fullshot-example.com-2026-08-12.gif"
+      },
+      "size": {
+        "content": "$2",
+        "example": "2.10 MB"
+      }
+    }
+  },
+  "unitBytes": {
+    "message": "$VALUE$ B",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "812"
+      }
+    }
+  },
+  "unitKilobytes": {
+    "message": "$VALUE$ kB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "42,7"
+      }
+    }
+  },
+  "unitMegabytes": {
+    "message": "$VALUE$ MB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "12,40"
+      }
+    }
+  },
+  "unitGigabytes": {
+    "message": "$VALUE$ GB",
+    "placeholders": {
+      "value": {
+        "content": "$1",
+        "example": "1,24"
+      }
+    }
+  }
+}

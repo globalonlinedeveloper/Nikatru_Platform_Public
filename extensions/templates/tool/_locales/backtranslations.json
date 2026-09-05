@@ -1,0 +1,410 @@
+{
+  "ar": {
+"aboutBlurb": "One sentence describing exactly what this tool does. It does its work on your device: no account, no tracking, no network connections, and nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It carries no page addresses, no page text, and nothing you captured. Nothing is sent to anyone — the file is saved on this device and you alone decide whether to share it or not.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings stay as they are."
+  },
+  "bg": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no profile, no tracking, no network requests, nothing is sent to us.",
+"optExportDesc": "Saves every stored row in one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text, and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and you decide whether to share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is kept on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "ca": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without an account, without tracking, without network calls, nothing is sent to us.",
+"optExportDesc": "Writes every stored row into a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It includes no page address, no page text and nothing you have captured. Nothing is sent anywhere: the file is saved on this device and you are free to share it or not.",
+"popupPrivateNotSaved": "Incognito window: this result was not saved in the history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "cs": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is uploaded anywhere.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text, and nothing you captured. Nothing is sent anywhere — the file is saved on this device and only you decide whether to share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved into your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "de": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row in a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "That is everything the file will contain. It contains no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and you decide whether you share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "el": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: without an account, without tracking, without network calls, without anything being sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It has no page addresses, no page text, nor anything you have recorded. Nothing is sent anywhere — the file is saved on this device and you decide whether you will share it.",
+"popupPrivateNotSaved": "Private browsing window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "es": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network connections, nothing sent to us.",
+"optExportDesc": "Saves every stored row to a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It does not include page addresses, nor page text, nor anything you have captured. Nothing is sent anywhere — the file is saved on this device and you are the one who decides whether to share it or not.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "There is nothing stored on this device.",
+"optDeleteAllDesc": "Removes from this device every stored row. The settings are kept."
+  },
+  "es_419": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network connections, nothing sent to us.",
+"optExportDesc": "Saves every stored row to a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It does not include page addresses, nor page text, nor anything you have captured. Nothing is sent anywhere — the file is saved on this device and you are the one who decides whether to share it or not.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "There is nothing stored on this device.",
+"optDeleteAllDesc": "Removes from this device every stored row. The configuration is kept."
+  },
+  "fr": {
+"aboutBlurb": "One sentence saying exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row in a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "Here is everything the file will contain. It includes no page address, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is up to you whether to share it or not.",
+"popupPrivateNotSaved": "Private browsing window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "hi": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this same device. Nothing is uploaded.",
+"confirmReportBody": "The file will contain only this much. It has no page address in it, no page text, and nothing you captured either. Nothing is sent anywhere — the file is saved on this device and whether to share it is your decision.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "id": {
+"aboutBlurb": "One sentence that states exactly what this tool does. It works on your device: without an account, without tracking, without network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is the entire contents of the file later. There are no page addresses, no page text, and nothing at all that you captured. Nothing is sent anywhere — the file is saved on this device and you decide whether to share it or not.",
+"popupPrivateNotSaved": "Private window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Discards every stored row from this device. The settings are still kept."
+  },
+  "it": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing sent to us.",
+"optExportDesc": "Saves every stored row in a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It contains no page addresses, no page text, nor anything you have captured. Nothing is sent to anyone — the file is saved on this device and it is you who decide whether to share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved in the history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "ja": {
+"aboutBlurb": "One sentence stating plainly what this tool does. The work is done on your device. No account, no tracking, no network communication, and there is nothing that is sent to us.",
+"optExportDesc": "Saves all the stored rows into one JSON file on this device. There is no upload at all.",
+"confirmReportBody": "This is all that goes into the file. Page addresses, page text and anything you captured are not included. It is not sent anywhere. The file is saved on this device, and you decide whether to share it.",
+"popupPrivateNotSaved": "This is an incognito window. This result was not saved to the history.",
+"dataNothingStored": "Nothing is saved on this device.",
+"optDeleteAllDesc": "Deletes all stored rows from this device. The settings remain as they are."
+  },
+  "ko": {
+"aboutBlurb": "One sentence that explains exactly what this tool does. The work happens on the user's device. No account, no tracking, no network calls, and nothing is sent to us either.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is all the content that will go into the file. It contains no page addresses, no page text, and nothing the user captured. It is not sent anywhere — the file is saved on this device and the user decides whether to share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to the history.",
+"dataNothingStored": "There is nothing stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept as they are."
+  },
+  "ms": {
+"aboutBlurb": "One sentence that states exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is all the contents of that file later. It contains no page addresses, no page text, nor anything you captured. Nothing is sent anywhere — the file is saved on this device and you decide whether you want to share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved into your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Discards every stored row from this device. The settings are retained."
+  },
+  "nl": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your own device: no account, no tracking, no network traffic, nothing that goes to us.",
+"optExportDesc": "Saves every stored row in one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text and nothing of what you captured. Nothing is sent anywhere — the file stays on this device and you determine whether you share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings stay."
+  },
+  "pl": {
+"aboutBlurb": "One sentence saying exactly what this tool does. It works on your device: without an account, without tracking, without network connections, nothing reaches us.",
+"optExportDesc": "Saves all stored rows into a single JSON file on this device. Nothing is sent out.",
+"confirmReportBody": "That is everything that will be in the file. It contains no page addresses, no page text and nothing you captured. Nothing is sent anywhere — the file is saved on this device and only you decide whether to share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved in the history.",
+"dataNothingStored": "Nothing is kept on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "pt_BR": {
+"aboutBlurb": "One sentence saying exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is sent to the cloud.",
+"confirmReportBody": "This is everything the file will contain. It brings no page addresses, no page text, and nothing you captured. Nothing is sent anywhere — the file is saved on this device and you are the one who decides whether to share it or not.",
+"popupPrivateNotSaved": "Anonymous window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes from this device all stored rows. The settings are kept."
+  },
+  "pt_PT": {
+"aboutBlurb": "One sentence saying exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing sent to us.",
+"optExportDesc": "Saves all the stored rows into a single JSON file on this device. Nothing is uploaded out.",
+"confirmReportBody": "This is everything the file will contain. It brings no page addresses, no page text, nor anything you captured. Nothing is sent anywhere — the file stays saved on this device and it is you who decides whether to share it or not.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "There is nothing saved on this device.",
+"optDeleteAllDesc": "Removes from this device all stored rows. The settings are kept."
+  },
+  "ru": {
+"aboutBlurb": "One sentence about what exactly this tool does. It works on your device: without an account, without surveillance, without network requests, nothing is sent to us.",
+"optExportDesc": "Saves all the stored rows into one JSON file on this device. Nothing is uploaded anywhere.",
+"confirmReportBody": "This is everything that will be in the file. There are no page addresses in it, no page text, nor anything you recorded. Nothing is sent anywhere — the file is saved on this device, and only you decide whether to share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Deletes all the stored rows from this device. The settings are preserved."
+  },
+  "sk": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is uploaded anywhere.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text and nothing you captured. Nothing is sent anywhere — the file is saved on this device and only you decide whether you will share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved into your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "sr": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without an account, without tracking, without network requests, nothing is sent to us.",
+"optExportDesc": "Saves all the stored rows into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. In it there are no page addresses, no page text and nothing that you have recorded. Nothing is sent anywhere — the file is saved on this device and only you decide whether you will share it or not.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes all the stored rows from this device. Settings are kept."
+  },
+  "sv": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row in one single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It has no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and it is you who decides whether it should be shared.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "tr": {
+"aboutBlurb": "A single sentence saying exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "That is all the file will contain. There is no page address in it, no page text and nothing you captured. Nothing is sent anywhere — the file is saved to this device and whether to share it is up to you.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are preserved."
+  },
+  "uk": {
+"aboutBlurb": "One sentence about what exactly this tool does. It works on your device: without an account, without surveillance, without network requests, nothing is sent to us.",
+"optExportDesc": "Saves all stored rows into one JSON file on this device. Nothing is uploaded anywhere.",
+"confirmReportBody": "This is everything that will be in the file. There are no page addresses in it, no page text, nor anything you recorded. Nothing is sent anywhere — the file is saved on this device, and only you decide whether to share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes all stored rows from this device. The settings remain."
+  },
+  "vi": {
+"aboutBlurb": "One sentence saying exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is the whole content the file will have. The file contains no page addresses, no page text and nothing at all that you captured. Nothing is sent anywhere — the file is saved on this device and you decide for yourself whether to share it or not.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved into your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept unchanged."
+  },
+  "zh_CN": {
+"aboutBlurb": "One sentence explaining what exactly this tool does. It finishes the work on your device: no account, no tracking, no network requests, nothing sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "The file will contain only these things. It has no page addresses, no page text, and nothing you captured either. It is not sent anywhere — the file is saved on this device, and whether to share it is your decision.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved into your history.",
+"dataNothingStored": "Nothing at all is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "zh_TW": {
+"aboutBlurb": "One sentence explaining what exactly this tool does. It finishes the work on your device: no account, no tracking, no network requests, nothing sent to us.",
+"optExportDesc": "Saves every stored row as one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "The file will contain only these things. It has no page addresses, no page text, and nothing you captured either. It is not sent anywhere — the file is saved on this device, and whether to share it is your decision.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved into your records.",
+"dataNothingStored": "Nothing at all is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "ta": {
+"aboutBlurb": "A sentence that says exactly what this tool does. It does its work on your device itself: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row as a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is what the file will contain. It has no page addresses in it, no page text, nothing you captured. Nothing is sent anywhere — the file is saved on this device; whether to share it or not is your choice.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain as they are."
+  },
+  "te": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device itself: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is all that will be in the file. There are no page addresses in it, no page text, none of what you captured. Nothing is sent anywhere — the file is saved on this device itself; whether to share it or not is your wish.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings stay as they are."
+  },
+  "kn": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device itself: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row to a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is all that is in the file. It has no page addresses, no page text, and nothing that you captured either. Nothing is sent anywhere — the file stays on this device; whether to share it or not is your choice.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain as they are."
+  },
+  "ml": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device itself: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves all the stored rows into a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This much only is what the file will contain. There are no page addresses in it, no page text, nothing that you captured. Nothing is sent anywhere — the file is saved on this device itself; whether to share it or not is your wish.",
+"popupPrivateNotSaved": "Incognito window — this result has not been saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes all stored rows from this device. The settings remain as they are."
+  },
+  "am": {
+"aboutBlurb": "One sentence that describes exactly what this tool does. It does its work on your device: there is no account, no tracking, no network calls, and nothing is sent to us either.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is all the file will hold. It has no page addresses, no page text and nothing you captured. Nothing is sent anywhere — the file is saved on this device, and whether to share it or not is your decision.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings, however, remain."
+  },
+  "bn": {
+"aboutBlurb": "One sentence telling exactly what this tool does. It does its work right on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into a JSON file on this device itself. Nothing is uploaded.",
+"confirmReportBody": "The file will contain exactly this much. It has no page address in it, no page text, nothing you captured. Nothing is sent anywhere — the file is saved on this device itself and whether or not you share it is entirely your wish.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "da": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every saved row in one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It contains no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device, and it is you who decides whether it is shared.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is saved on this device.",
+"optDeleteAllDesc": "Removes every saved row from this device. The settings are preserved."
+  },
+  "et": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work in your device: no account, no tracking, no network requests, nothing is sent to us.",
+"optExportDesc": "Saves all stored rows into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text, nor anything you have captured. Nothing is sent anywhere — the file is saved to this device and you decide whether to share it or not.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing has been saved to this device.",
+"optDeleteAllDesc": "Removes all stored rows from this device. The settings remain."
+  },
+  "fa": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without a user account, without tracking, without any network request, and nothing is sent to us.",
+"optExportDesc": "Saves all the stored rows into one JSON file on this same device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will hold. There is no page address in it, no page text, and nothing you have recorded. Nothing is sent anywhere — the file is stored on this same device and you yourself decide whether or not to share it with anyone.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Deletes all the stored rows from this device. The settings remain."
+  },
+  "fi": {
+"aboutBlurb": "One sentence that tells exactly what this tool does. It does its work on your device: no account, no tracking, no network requests, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is sent to the network.",
+"confirmReportBody": "This is everything the file will contain. It has no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved to this device, and you decide whether you share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing has been saved to this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "fil": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It works on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored record to one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It has no page address, no page text and not one of the things you captured. Nothing is sent anywhere — the file is saved on this device and you are the one who will decide whether or not to share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing at all is stored on this device.",
+"optDeleteAllDesc": "Removes every stored record on this device. The settings remain."
+  },
+  "gu": {
+"aboutBlurb": "One sentence saying exactly what this tool does. It does its work on your device itself: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this same device. Nothing is uploaded.",
+"confirmReportBody": "The file will hold only this much. It has no page address in it, no page text, and nothing you have captured. Nothing is sent anywhere — the file is saved on this same device and whether to share it or not is in your hands.",
+"popupPrivateNotSaved": "Incognito window — this result has not been saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Deletes every stored row from this device. The settings are retained."
+  },
+  "he": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without an account, without tracking, without network requests, and nothing is sent to us.",
+"optExportDesc": "Saves every stored row to a single JSON file on this device. Nothing is uploaded anywhere.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no text from pages in it, and nothing in it that you captured. Nothing is sent anywhere — the file is saved on this device and you decide whether to share it or not.",
+"popupPrivateNotSaved": "Incognito browsing window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is saved on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings are kept."
+  },
+  "hr": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without an account, without tracking, without network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is transferred to the internet.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text, nor anything you have recorded. Nothing is sent anywhere — the file is saved to this device and only you decide whether you will share it.",
+"popupPrivateNotSaved": "Anonymous window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "hu": {
+"aboutBlurb": "One sentence about exactly what this tool does. It does its work on your device: there is no account, no tracking, no network calls, and nothing reaches us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing gets uploaded.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text in it, and nothing in it that you recorded. Nothing is sent anywhere — the file is stored on this device, and it is up to you whether you share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to the history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "lt": {
+"aboutBlurb": "One sentence stating exactly what this tool does. It does its work on your device: no account, no tracking, no network requests, nothing is sent to us.",
+"optExportDesc": "Saves every stored record into one JSON file on this device. Nothing is uploaded to the internet.",
+"confirmReportBody": "This is all the file will have. There are no page addresses in it, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and only you decide whether to share it.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is saved on this device.",
+"optDeleteAllDesc": "Removes every saved record from this device. The settings remain."
+  },
+  "lv": {
+"aboutBlurb": "One sentence that says precisely what this tool does. It does its work on your device: there is no account, no tracking, no network requests, nothing is sent to us.",
+"optExportDesc": "Saves every stored record into one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device, and only you decide whether to share it with anyone.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is saved on this device.",
+"optDeleteAllDesc": "Removes every saved record from this device. The settings are retained."
+  },
+  "mr": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your own device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this very device. Nothing is uploaded.",
+"confirmReportBody": "The file will contain only this much. It has no page address in it, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this very device and whether or not to share it is in your hands.",
+"popupPrivateNotSaved": "Incognito window — this result has not been saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row on this device. The settings stay as they are."
+  },
+  "no": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its job on your device: no account, no tracking, no network calls, nothing is sent to us.",
+"optExportDesc": "Saves every saved row in one JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is everything the file will contain. It contains no page addresses, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device, and it is you who decides whether it is shared.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is saved on this device.",
+"optDeleteAllDesc": "Removes every saved row from this device. The settings are kept."
+  },
+  "ro": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without an account, without tracking, without network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into a single JSON file on this device. Nothing is uploaded online.",
+"confirmReportBody": "This is everything the file will contain. It does not contain page addresses, it does not contain page text and it contains nothing of what you captured. Nothing is sent anywhere — the file is saved on this device and you decide whether you share it or not.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes from this device every stored row. The settings are kept."
+  },
+  "sl": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: without an account, without tracking, without network calls, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded to the web.",
+"confirmReportBody": "This is everything the file will contain. There are no page addresses in it, no page text and nothing you have captured. Nothing is sent anywhere — the file is saved on this device and only you decide whether you will share it.",
+"popupPrivateNotSaved": "Private window — this result was not saved to your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row from this device. The settings remain."
+  },
+  "sw": {
+"aboutBlurb": "One sentence that says exactly what this tool does. It does its work on your device: no account, no tracking, no network communication, nothing is sent to us.",
+"optExportDesc": "Saves every stored row into one JSON file on this device. Nothing is uploaded online.",
+"confirmReportBody": "This is everything the file will have. It has no page addresses, no page text, nor anything you captured. Nothing is sent anywhere — the file is saved on this device and it is up to you whether to share it or not to share it.",
+"popupPrivateNotSaved": "Incognito window — these results were not saved in your history.",
+"dataNothingStored": "Nothing is stored on this device.",
+"optDeleteAllDesc": "Removes every stored row on this device. The settings remain."
+  },
+  "th": {
+"aboutBlurb": "One sentence saying what this tool does. This tool works on your device: no user account, no tracking, no network calls, no data is sent to us.",
+"optExportDesc": "Saves every stored entry into a single JSON file on this device. Nothing is uploaded.",
+"confirmReportBody": "This is all the content that will be in the file. This file has no web page addresses, no page text, and nothing you have recorded. No data is sent anywhere at all — the file is saved on this device, and you yourself decide whether to share it or not.",
+"popupPrivateNotSaved": "Incognito window — this result was not saved into your history.",
+"dataNothingStored": "No data is kept on this device.",
+"optDeleteAllDesc": "Deletes every stored entry from this device. The settings will remain."
+  }
+}

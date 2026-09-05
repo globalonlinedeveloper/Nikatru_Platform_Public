@@ -207,7 +207,16 @@ const RECORD_SCRIPT = 'record-deployment.mjs';
 // and a space followed by `.` is two non-word characters, so there is none. The
 // alternative silently matched nothing for the entire workflow half of the
 // domain — a check that reported ok because it was looking at an empty set.
-const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps|scripts)\/[A-Za-z0-9_.\-/]*[A-Za-z0-9_-]\.(?:mjs|js|ts|yml|yaml|json|jsonc|sql|ps1|dart|py)\b/g;
+// 🔴 `extensions` JOINED THE LIST 2026-09-05 ([ADR 067] decision 1), AND THE
+// SYMPTOM IS WORTH RECORDING BECAUSE IT LOOKED LIKE A MISSING FILE. This is a
+// list of TOP-LEVEL DIRECTORIES, and `extensions/` became one when the extension
+// repository moved in as a subtree. Without it, a `readBy` naming
+// `extensions/scripts/assert-e2e-proof-fresh.mjs` matched NOTHING — the leading
+// lookbehind correctly refuses to start at `scripts/` mid-path — so the guard
+// reported that a real, committed, run-every-PR freshness reader "names no
+// in-tree file that exists". A root this list has not been taught about is
+// indistinguishable here from a file that is not there.
+const NAMED_PATH = /(?<![\w/.-])(?:tooling|\.github|services|sites|packages|apps|scripts|extensions|contracts)\/[A-Za-z0-9_.\-/]*[A-Za-z0-9_-]\.(?:mjs|js|ts|yml|yaml|json|jsonc|sql|ps1|dart|py)\b/g;
 
 /** Prefixes a CI checkout structurally CANNOT contain, so an anchor under one of
  *  them is counted and printed rather than checked. Both are STRUCTURAL, not
