@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
+import { allRows } from '../lib/d1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/account — SUBLY'S OWN ERASURE ROUTE, over subly_db (APP_DB).
@@ -134,16 +135,33 @@ async function userOwnedTables(db: D1Database): Promise<string[]> {
  * test here can go red on the old form, and the tests accompanying this change
  * pin the DERIVED SET against the real migrations instead. Only a query executed
  * against a live D1 can catch this class, and nothing in CI does that today.
+ *
+ * 🔴 BOTH READS GO THROUGH `allRows`, WHICH IS THE TRANSIENT-D1 RETRY. They used
+ * to be bare `db.prepare(...).all()`, and that was the whole of a second defect:
+ * `src/lib/d1.ts` has listed `storage operation exceeded timeout which caused
+ * object to be reset` as retryable since 2026-09-02, but nothing on this path
+ * called it — `src/index.ts` imports `nowIso` from that module and nothing else,
+ * so the helper was not even in scope at the route. A D1 Durable Object reset
+ * lasting milliseconds therefore came out of THIS preflight as
+ * `503 account_deletion_failed`, i.e. a user told their data was not deleted for
+ * a reason that had already stopped being true. A read is idempotent, so the
+ * retry is safe here by construction rather than by argument.
+ *
+ * ⚠️ IT IS STILL THE NARROW RETRY, AND THAT MATTERS MORE THAN THE RETRY. The
+ * SQLITE_AUTH rejection above is DETERMINISTIC: `isTransientD1Error` refuses it,
+ * so the second attempt this change adds is never spent re-asking a question D1
+ * has already answered. `test/d1-transient-preflight.test.ts` asserts both sides
+ * — one reset survives, and a deterministic failure is sent exactly once.
  */
 async function columnsMatching(
   db: D1Database,
   match: (column: string) => boolean,
 ): Promise<Array<{ table: string; column: string }>> {
-  const listed = await db
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)
-    .all<{ name: string }>();
+  const listed = await allRows<{ name: string }>(
+    db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`),
+  );
 
-  const tables = (listed.results ?? [])
+  const tables = listed
     .map((r) => r.name)
     .filter(
       (n) =>
@@ -158,10 +176,10 @@ async function columnsMatching(
   const hits: Array<{ table: string; column: string }> = [];
   for (const table of tables) {
     // eslint-disable-next-line no-await-in-loop
-    const cols = await db
-      .prepare(`SELECT name FROM pragma_table_info('${table}')`)
-      .all<{ name: string }>();
-    for (const row of cols.results ?? []) {
+    const cols = await allRows<{ name: string }>(
+      db.prepare(`SELECT name FROM pragma_table_info('${table}')`),
+    );
+    for (const row of cols) {
       if (typeof row.name === 'string' && match(row.name)) {
         hits.push({ table, column: row.name });
       }
