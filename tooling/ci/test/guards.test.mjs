@@ -7410,6 +7410,8 @@ describe('assert-responsive-coverage', () => {
    *  covering all 18. */
   const build = (name, over = {}, routerOpts = {}) => {
     const files = {
+      'pubspec.yaml': 'name: nikatru_workspace\npublish_to: none\n\nworkspace:\n  - apps/subly\n',
+      'apps/subly/pubspec.yaml': 'name: subly\n',
       [ROUTER]: routerSrc(routerOpts),
       [HARNESS]: harnessSrc,
       [sheetFile('add')]: sheetSrc('showAddSheet'),
@@ -7447,9 +7449,9 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /19 surface\(s\) routed, 19 measured/);
+    assert.match(out, /apps\/subly: 19 surface\(s\) reachable, 19 measured/);
     assert.match(out, /the two sets are EQUAL/);
-    assert.match(out, /every surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
+    assert.match(out, /apps\/subly: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
   });
 
   test('PRINTS its exclusions with reasons on a PASSING run, never silently', () => {
@@ -7575,7 +7577,7 @@ describe('assert-responsive-coverage', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-noharness', { [HARNESS]: null }) });
     assert.equal(code, 1);
     assert.match(out, /COVERAGE LOST/);
-    assert.match(out, /no `const Size k… = Size\(w, h\)` declaration was found/);
+    assert.match(out, /declares NO .* window class/);
   });
 
   test('FAILS when the harness stops declaring a window class the floor requires', () => {
@@ -7584,7 +7586,7 @@ describe('assert-responsive-coverage', () => {
     });
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /`kDesktop` is required of every responsive surface and .* no longer declares it/);
+    assert.match(out, /`kDesktop` is required of every responsive surface and `apps\/subly` declares it nowhere/);
   });
 
   test('COVERAGE LOST when the router is gone — the routed set parses EMPTY', () => {
@@ -7605,7 +7607,7 @@ describe('assert-responsive-coverage', () => {
     for (const i of ids.slice(0, 13)) over[`${TEST}/width_s${i}_test.dart`] = null;
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — the COVERED set parsed EMPTY/);
+    assert.match(out, /COVERAGE LOST — `apps\/subly` has 0 measured surface\(s\) and its measured floor is 19/);
   });
 
   test('FAILS when a route builds something this guard cannot classify', () => {
@@ -7623,7 +7625,7 @@ describe('assert-responsive-coverage', () => {
     // there reports judgement over nothing.
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-staleexcl', {}, { shell: false }) });
     assert.equal(code, 1);
-    assert.match(out, /`AppShell` is excluded in NOT_A_PANE but no route/);
+    assert.match(out, /`AppShell` is excluded in NOT_A_PANE for `apps\/subly` but no route/);
   });
 
   test('resolves a router-local wrapper to the SCREEN it gates, not to the wrapper', () => {
