@@ -94,6 +94,7 @@
     "    fact, not by policy. Do not add one, and do not add a rotation reminder."
   ],
   "_deploySmokeExemptions": {
+    "extension-$TOOL_ID": "APPENDED 2026-09-05 with the extensions subtree ([ADR 067] decision 1), and it is the \"nothing joinable\" shape rather than the \"no job\" shape \u2014 the same distinction the note above draws for subly-linux-snap. THE KEY IS LITERAL ON PURPOSE: the job passes the environment as \"extension-$TOOL_ID\" from an env var rather than an expression, because a tag name is chosen by whoever pushed the tag and expanding it into a shell line is a template injection (caught by tooling/ci/scan-workflows.mjs on this lane's first run). So one entry covers every tool, which is also correct: the reason below is a fact about the surface, not about FullShot. WHAT THIS DEPLOY ACTUALLY IS: a GitHub Release in THIS repository carrying two zips and two checksum files. It is not a store submission \u2014 extension submission is MANUAL on all three stores (Chrome, Edge, AMO), there is no upload API call anywhere under extensions/, and release.yml's own publishing tripwire greps for the endpoints precisely because none exists yet. WHY A post-deploy-smoke STEP WOULD PROVE LESS THAN WHAT ALREADY RUNS: the artefacts are verified IN THIS JOB, over the exact directory the upload names \u2014 the zip is built TWICE and SHA-256 compared, verify-refs runs over the built zip, check-store-packages grades dist, and tooling/ci/release-manifest.mjs --verify re-hashes every asset and fails in both directions (a named file absent, and a file present that the manifest does not name). A probe that fetched the release back would compare those same bytes to themselves through GitHub's CDN. \ud83d\udd34 WHAT IS GENUINELY UNWATCHED, WRITTEN DOWN AS A GAP RATHER THAN DRESSED AS COVERAGE: nothing reads the release back after creation, so a `gh release create` that partially uploaded would leave a green tick and a deployment record. WHAT RETIRES THIS ENTRY: a post-deploy-smoke limb that runs `gh release view <tag> --json assets` and requires the asset set to equal dist/SHA256SUMS's named set. That is one fact this repository already holds \u2014 unlike subly-linux-snap, which needs a vendor fact it does not have \u2014 so this exemption is the cheapest of the four to remove and should be the first to go. \u26a0\ufe0f AND THE STORE HALF IS NOT WHAT THIS EXEMPTS. Nothing in this repository submits to a store, so there is no shipped-to-a-store claim here for a probe to check; when a store upload is added, its own deploy row and its own probe arrive with it, and the tripwire in the release lane fails the build if the upload lands without one.",
     "_why": [
       "[14]O-7. A deployable surface must be PROBED after it ships, in the job that shipped it — the domain is",
       "derived from `record-deployment.mjs` calls plus every directory under sites/, so deleting a deploy job",
@@ -876,6 +877,61 @@
         "what": "tooling/ci/assert-e2e-proof-fresh.mjs, on every push: the newest SCHEDULED green run must be inside its derived window.",
         "ownerGated": true,
         "gap": "Same shape and same size as duty.workflow.build-platforms.yml: a push-triggered reader catches the schedule dying, and cannot catch the provider dying, because it is on that provider. Recorded separately rather than cross-referenced because a shared note is a note that gets edited for one row and read for two. OWNER_QUEUE S-8."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "duty.workflow.extensions.yml",
+      "kind": "duty",
+      "what": "The whole extension pipeline in one workflow: the CI lane on every pull request, the weekly end-to-end lane on Mondays 04:17 UTC, and the release lane on a `<tool>-v<x.y.z>` tag push. Arrived 2026-09-05 with the extensions subtree, replacing three workflows in a repository that is now archived.",
+      "detector": "A red check on the pull request that caused it, attended by definition, for the CI lane. For the weekly lane, extensions/scripts/assert-e2e-proof-fresh.mjs on every push: the newest SCHEDULED green run must be inside the window it DERIVES from this workflow's own cron, and a workflow_dispatch deliberately does not satisfy it.",
+      "response": "Fix before merge for the CI lane. A stale weekly proof means the extension end-to-end evidence is unproven, not that the extensions are broken \u2014 read the run history before treating it as an outage, and remember the run history for the WEEKLY lane starts on 2026-09-05 because the previous repository holds everything before it.",
+      "cadence": "7d",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/extensions.yml",
+        "record": "GitHub Actions run history for extensions.yml",
+        "failingValue": "conclusion = failure on event = schedule",
+        "readBy": "extensions/scripts/assert-e2e-proof-fresh.mjs, run by this same workflow on every pull request. Since 2026-09-05 that gate RESOLVES the workflow it reads its ceiling out of rather than assuming a file beside itself \u2014 the candidates are extensions.yml then e2e.yml, so it keeps working both here and in a tree reconstructed by `git subtree split --prefix=extensions`.",
+        "recordQuery": {
+          "reader": "github-run-history",
+          "workflow": "extensions.yml",
+          "event": "schedule",
+          "headBranch": "main",
+          "firstDue": "2026-09-12T00:00:00Z",
+          "_why": [
+            "\u26a0\ufe0f `firstDue` IS THE BOOTSTRAP AND IT EXPIRES BY ARITHMETIC. This workflow landed on",
+            "2026-09-05 and its cron fires on Mondays, so there CANNOT be a scheduled run in this",
+            "repository's history until 2026-09-08 at the earliest; the run history of the three",
+            "workflows this one replaces is in globalonlinedeveloper/Nikatru_Extensions_Public, which is",
+            "archived and which no query here reaches. Dated one cadence window out, as the schema",
+            "requires, so this cannot quietly stay empty.",
+            "",
+            "\ud83d\udd34 `event: schedule` STAYS, and it is not an oversight that this row has no `timer` limb.",
+            "The sibling e2e.yml row split its two claims onto two records because the Cloudflare",
+            "dispatcher writes a cron_heartbeat only a timer can write. NOTHING DISPATCHES THIS",
+            "WORKFLOW: services/platform/src/scheduled.ts names e2e.yml and not this one, so there is no",
+            "timer record to read and an event-less run-history read would accept a hand-press as proof",
+            "the schedule is alive \u2014 the exact defect assert-platform-proof-fresh.mjs's header names.",
+            "The event filter also carries the branch guarantee here, and `headBranch` is stated anyway",
+            "so that dropping one later cannot silently widen this to a green run on any branch.",
+            "",
+            "\u2b1c WHAT WOULD IMPROVE IT: add extensions.yml to GITHUB_DISPATCH_TARGETS in",
+            "services/platform/src/scheduled.ts and split this row the way e2e.yml's was split. GitHub",
+            "delivers this repository's crons 10.1% on time, so a weekly cadence read through the",
+            "scheduler alone is the shakiest evidence in this register. It is deliberately NOT done in",
+            "the same change as a 542-file repository merge."
+          ]
+        }
+      },
+      "absenceWatcher": {
+        "substrate": "github-actions",
+        "what": "extensions/scripts/assert-e2e-proof-fresh.mjs, on every pull request: the newest SCHEDULED green run must be inside the window derived from this workflow's cron.",
+        "ownerGated": true,
+        "gap": "Same shape and same size as duty.workflow.e2e.yml: a push-triggered reader catches the schedule dying and CANNOT catch the provider dying, because it runs on that provider. Recorded here rather than cross-referenced, because a shared note is one that gets edited for one row and read for two. OWNER_QUEUE S-8."
       },
       "accessProviders": [
         "github"
