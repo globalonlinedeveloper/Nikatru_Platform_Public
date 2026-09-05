@@ -1,4 +1,6 @@
-name: E2E (live)
+name: E2E live
+
+run-name: "E2E live against production (${{ github.event_name }})"
 
 # Full-stack end-to-end test of the deployed Subly app against LIVE Supabase auth
 # + the live Cloudflare Worker + D1. A throwaway user is provisioned (confirmed)

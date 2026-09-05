@@ -1,4 +1,6 @@
-name: Store screenshots (live capture)
+name: Store screenshots
+
+run-name: "Store screenshots by @${{ github.actor }}"
 
 # Captures the Google Play phone AND tablet screenshot sets from a LIVE build of
 # Subly, uploads them as an artifact and opens a pull request proposing the set.

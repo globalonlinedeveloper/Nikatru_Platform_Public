@@ -1,4 +1,6 @@
-name: Deploy Workers
+name: Deploy workers
+
+run-name: "Deploy workers from ${{ github.ref_name }} (${{ github.event_name }})"
 
 # Deploys the Cloudflare Workers in services/ on push to main. Path-scoped so a
 # change to one service never redeploys the other (mirrors deploy-web.yml's

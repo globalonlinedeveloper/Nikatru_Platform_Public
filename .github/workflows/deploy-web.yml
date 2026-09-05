@@ -1,4 +1,6 @@
-name: Deploy Web
+name: Deploy web
+
+run-name: "Deploy web from ${{ github.ref_name }} (${{ github.event_name }})"
 
 # Builds EVERY app in the pub workspace for web with the real Flutter SDK on
 # GitHub's runners, then uploads each built site to its own Cloudflare Pages

@@ -1,5 +1,7 @@
 name: Site drift repair
 
+run-name: "Site drift repair after ${{ github.ref_name }}"
+
 # ── WHAT THIS REPAIRS, AND WHY NO PRE-MERGE LANE CAN ────────────────────────
 # sites/nikatru/sitemap.xml carries a <lastmod> per page, and
 # tooling/sites/lastmod.mjs derives that value from the page's GIT DATE

@@ -1,4 +1,6 @@
-name: Build all 6 platforms
+name: Build apps
+
+run-name: "Build apps on ${{ github.ref_name }} (${{ github.event_name }}) by @${{ github.actor }}"
 
 # Proves the portfolio's core claim — ONE codebase, SIX platforms — on real
 # runners. Deliberately NOT on every push: six builds is minutes of runner time

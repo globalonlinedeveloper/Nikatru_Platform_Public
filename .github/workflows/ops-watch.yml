@@ -1,5 +1,7 @@
 name: Ops watch
 
+run-name: "Ops watch (${{ github.event_name }})"
+
 # [pipeline O-4] The reader for the run records nothing was reading.
 #
 # 🔴 WHY THIS EXISTS. `platform_db.cron_heartbeat` carried `ok = 0` — "HTTP 401
