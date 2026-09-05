@@ -162,6 +162,15 @@ const PRE_GEN = `${BRICK}/hooks/pre_gen.dart`;
 const problems = [];
 const ok = (m) => console.log(`ok   ${m}`);
 
+/** Where — and how deep — section 2 looks before calling a named file a phantom.
+ *  Named here rather than inlined so the failure text and the walk cannot drift
+ *  apart and start describing different searches. 🔴 The bound is deliberate and
+ *  must not be raised or deleted: see the block above `existsAnywhere` for the
+ *  two mutations showing that widening this walk RE-ADMITS the phantom it exists
+ *  to catch, and `input-contract.test.mjs` for the case that holds it. */
+const SEARCH_ROOTS = [BRICK, 'tooling', '.'];
+const SEARCH_DEPTH = 4;
+
 const read = (p) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), 'utf8') : null);
 
 const brickYaml = read(YAML);
@@ -353,7 +362,12 @@ if (scanned === 0) {
 } else if (phantoms.length) {
   for (const p of phantoms) {
     problems.push(
-      `${p.rel} names \`${p.name}\`, which does not exist anywhere in the tree. An instruction pointing at a phantom file makes the reader believe they are holding it wrong. (Allowlist it here if it is created later by the stamp.)`,
+      `${p.rel} names \`${p.name}\`, which does not exist within ${SEARCH_DEPTH} level(s) of ${SEARCH_ROOTS.map((r) => `\`${r}\``).join(', ')}. `
+        + 'An instruction pointing at a phantom file makes the reader believe they are holding it wrong. '
+        + `(If the file DOES exist, deeper than that: move it, or add its directory to \`SEARCH_ROOTS\` — do NOT `
+        + 'reach for `ALLOW`. An ALLOW entry is a permanent blind spot for that BASENAME everywhere, so silencing a '
+        + 'bounded-walk false alarm with one buys the loud failure off with the silent one. Allowlist only names '
+        + 'that legitimately do not exist yet because the stamp creates them.)',
     );
   }
 } else {
@@ -542,16 +556,55 @@ if (handEditScanned < HAND_EDIT_SCAN.length) {
   ok(`the ${handEditScanned} stamped backend file(s) name the provisioner and ask for no hand-edit`);
 }
 
+// ── the bounded walk, and 🔴 WHY THE BOUND STAYS ────────────────────────────
+//
+// A depth cap on a guard's walk is, nearly everywhere in this repo, a defect:
+// `assert-content-licences.mjs` capped its walk at 4, never reached the brick's
+// app pubspec six levels down, and printed `ok` over 12 files while the 13th —
+// carrying an unlicensed dependency — was invisible. A silent GREEN over an
+// unreached subject. That was repaired by DELETING the cap (PR #465), and the
+// same repair was proposed for this function on the strength of the shape alone.
+//
+// ⚠️ IT IS THE WRONG REPAIR HERE, BECAUSE THE POLARITY IS INVERTED, AND THAT WAS
+// MEASURED RATHER THAN ARGUED. There, the walk COLLECTS subjects, so anything it
+// cannot reach goes unchecked and a wider walk is strictly stronger. Here the
+// walk DISCHARGES AN OBLIGATION: a name that is found is EXCUSED, so widening
+// can only move names out of the phantom set. Two mutations on the real tree:
+//
+//   · a real file planted at `tooling/bricks/app/probe/a/b/c/d/deep-real.json`
+//     (depth 5 under the brick, 7 under the root) and named in `post_gen.dart`
+//     → RED. The cap's error direction is a FALSE ALARM, never a silent pass.
+//   · an unrelated `app.yaml` planted at that same depth, with `post_gen.dart`
+//     naming `apps/<id>/app.yaml` — THE HISTORICAL PHANTOM THIS SECTION EXISTS
+//     FOR → capped: RED, correctly. Cap removed: `assert-input-contract: ok`.
+//     Deleting the cap resurrects the original defect, because the extractor
+//     captures a BASENAME and any deep file sharing it becomes an alibi.
+//
+// So the bound is a real limit, kept with its eyes open, and the honest cost is
+// paid in the failure text: it says what was searched instead of claiming the
+// tree, and it steers a false alarm to `SEARCH_ROOTS` rather than to `ALLOW`,
+// which would trade the loud failure for the silent one. `content-rating.json`
+// and `defaults.json` both resolve at exactly depth 4 today — one nesting level
+// from that false alarm — which is why the number is named, not inlined.
+//
+// The real fix, if this ever bites, is not a bigger number: it is to capture the
+// PATH the instruction gives (`apps/<id>/app.yaml`) and match on the suffix, so
+// that neither depth nor a basename collision can decide the answer. That is a
+// change to what section 2 extracts, not to how far it walks.
+//
+// No landmark/"COVERAGE LOST" limb is added here, and its absence is deliberate:
+// this walk is already fail-closed in the safe direction. If every root became
+// unreadable, `existsAnywhere` would answer false for everything and every
+// mention would be reported — loudly — rather than passing over nothing.
 /** Is there a file with this basename anywhere we would plausibly mean? */
 function existsAnywhere(name) {
-  const roots = [BRICK, 'tooling', '.'];
-  for (const r of roots) {
+  for (const r of SEARCH_ROOTS) {
     if (walkFind(join(ROOT, r), name, 0)) return true;
   }
   return false;
 }
 function walkFind(dir, name, depth) {
-  if (depth > 4) return false;
+  if (depth > SEARCH_DEPTH) return false;
   let entries;
   try { entries = listDir(dir); } catch { return false; }
   for (const e of entries) {
