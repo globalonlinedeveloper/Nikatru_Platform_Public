@@ -415,7 +415,9 @@ jobs:
       - name: Known-vulnerable dependencies, INCLUDING the Dart ones
         # why: the only scanner in this stack that reads pubspec.lock. Play
         # Console flags vulnerable SDK versions and can block updates, so this is
-        # one of the two scanners here with a store consequence.
+        # one of the two scanners here with a store consequence. Findings that
+        # are acknowledged rather than fixed are DATED in osv-scanner.toml at the
+        # repo root, which this reads by its own default name.
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/osv-scanner" scan source -r .

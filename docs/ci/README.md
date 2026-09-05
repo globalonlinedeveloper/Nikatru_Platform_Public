@@ -196,9 +196,49 @@ Recorded so a change to any of them is a deliberate act:
 | self-hosted runners | **none, ever** | ADR 067 decision 4. |
 | required status checks on `main` | exactly `ci-gate`, strict | one aggregate, forever. |
 | `enforce_admins` | true | |
-| `allowed_actions` | `selected` + a named allowlist | GitHub now enforces natively what `assert-workflow-hardening.mjs` enforced alone. |
-| `sha_pinning_required` | true | as above. |
+| `allowed_actions` | `selected` + a named allowlist | GitHub now enforces natively what `assert-workflow-hardening.mjs` enforced alone. The allowlist is GitHub-owned + verified creators + `subosito/flutter-action`, `cloudflare/wrangler-action`, `nanasess/setup-chromedriver`, `dorny/paths-filter`, `renovatebot/github-action` — the five third-party actions the tree actually uses. |
+| `sha_pinning_required` | true | as above — **and it applies to actions nested INSIDE an action you use**, which is the part that bites. See §7.1. |
 | `delete_branch_on_merge` | true | |
+
+### 7.1 `sha_pinning_required` forbids the Flutter SDK cache
+
+`subosito/flutter-action` is a **composite** action, and its cache path calls
+`actions/cache@v5` — a floating tag, inside an action this repository does not
+control. With `sha_pinning_required: true` GitHub refuses the whole step:
+
+> `The action actions/cache@v5 is not allowed in globalonlinedeveloper/Nikatru_Platform_Public … All actions must also be pinned to a full-length commit SHA.`
+
+Measured on run 33960420609, which failed `workspace-gate` and `app-brick`
+outright. `.github/actions/setup-flutter` therefore defaults `cache` to
+**false**, which is what every caller did before the composite existed.
+
+The other four allowed third-party actions were checked the same way rather than
+assumed — `cloudflare/wrangler-action`, `nanasess/setup-chromedriver` and
+`dorny/paths-filter` are JavaScript actions (`using: node20`/`node24`) with no
+nested `uses:` at the pinned SHA, so no other lane can hit this. If one ever
+does, the reversal is one call:
+
+```
+echo '{"enabled":true,"allowed_actions":"selected","sha_pinning_required":false}' > perm.json
+gh api -X PUT repos/globalonlinedeveloper/Nikatru_Platform_Public/actions/permissions --input perm.json
+```
+
+### 7.2 Scanners, and what an acknowledged finding looks like
+
+`security-scan` runs four pinned, checksum-verified binaries — gitleaks, zizmor,
+OSV-Scanner and Trivy — never a vendor action (`gitleaks-action` v2+ is a
+commercial licence for organization accounts).
+
+OSV-Scanner's very first run found four fixable vulnerabilities, all dev
+dependencies of `packages/tokens`. They are **dated, not waived**, in
+`osv-scanner.toml` at the repository root: each entry carries an `ignoreUntil`,
+so the finding reddens the lane again if Renovate has not closed it. An entry
+with no expiry does not belong in that file.
+
+⚠️ The four scanner versions are pinned **inline in `ci.yml`**, not in
+`tooling/versions.json`, so `assert-update-coverage.mjs` cannot see them and
+Renovate does not advance them. That is a pre-existing gap (gitleaks and zizmor
+were already pinned this way) and it is the next thing to fix here.
 
 ## 8. Dependency updates
 
