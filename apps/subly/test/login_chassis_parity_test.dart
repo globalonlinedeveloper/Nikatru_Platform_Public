@@ -1,18 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// THE THREE BEHAVIOURS SUBLY'S LOGIN SCREEN LOST BY BEING A FORK.
+// THE FOUR BEHAVIOURS SUBLY'S LOGIN SCREEN LOST BY BEING A FORK.
 //
 // *(Said TWO until 2026-08-21, when the third — §3, the keyboard and the
-// browser — was found and fixed. The count is corrected rather than left
-// standing: a header that undercounts its own file reads as "everything below
-// is the whole story", which is the sentence that stops the next reader
-// looking.)*
+// browser — was found and fixed, and THREE until 2026-09-05, when §4 — the
+// re-entrancy latch the chassis `_run` has always had — was found by the same
+// reading. The count is corrected rather than left standing: a header that
+// undercounts its own file reads as "everything below is the whole story",
+// which is the sentence that stops the next reader looking.)*
 //
-// `apps/subly/lib/features/auth/login_screen.dart` (617 lines) and the chassis
-// `tooling/bricks/app/__brick__/…/features/auth/sign_in_screen.dart` (154) are
-// the same screen written twice. Every stamped app inherits the brick's
-// version; Subly predates it and carries its own. Three of the differences were
-// defects, and NONE of them throws, clips, or changes a rendered string on
-// the path any existing test walks — which is why 492 green tests said nothing.
+// `apps/subly/lib/features/auth/login_screen.dart` and the chassis
+// `tooling/bricks/app/__brick__/…/features/auth/sign_in_screen.dart` are the
+// same screen written twice. Every stamped app inherits the brick's version;
+// Subly predates it and carries its own. Four of the differences were defects,
+// and NONE of them throws, clips, or changes a rendered string on the path any
+// existing test walks — which is why 492 green tests said nothing, and why 831
+// still said nothing about §4 on 2026-09-05.
+//
+// *(The two line counts that used to open this paragraph — "617 lines" and
+// "154" — are gone rather than re-measured. Neither was true any more, both
+// were true only on the day they were typed, and a stale number in a header is
+// the thing that makes a reader distrust the sentences beside it.)*
 //
 // 1 · THE FORGOT-PASSWORD BUTTON. It read the email field, sent whatever was
 //     in it, and then told the user a reset link was on its way — with no
@@ -82,7 +89,32 @@
 //     field is by definition still empty — an "enter both" snack every time.
 //     `.next` + a focus hop is the behaviour the brick should grow; it is not
 //     a fork divergence to be reconciled back.
+//
+// 4 · THE RE-ENTRANCY LATCH ON FORGOT-PASSWORD (§7-4, 2026-09-05). §1 gave the
+//     button a guard and a `catch`; it did not put the button inside this
+//     screen's in-flight idiom. Every other await here is behind `_loading` —
+//     `_submit` and `_apple` raise it, the submit and Apple buttons are gated
+//     on it, and `onSubmitted` re-states it so a second Enter cannot fire a
+//     second sign-in — but `_forgot` neither read it nor set it, and its
+//     control was `onPressed: _forgot`, flat. Two taps, two reset requests to
+//     the same address; GoTrue caps those per address, so the second tap is
+//     what CREATES the rate limit §1 taught the screen to report.
+//
+//     ⚠️ THE ASSERTION IS A CALL COUNT, AND THE TAPS ARE IN ONE FRAME. Nothing
+//     rendered and no string differs between the broken screen and the fixed
+//     one — both send `a@b.test` — so only the number of calls can tell them
+//     apart. And `setState` schedules a rebuild rather than performing one, so
+//     a case that pumped between the taps would pass against a method that is
+//     still re-entrant and only the BUTTON had been fixed. Measured against the
+//     unfixed file 2026-09-05: `Actual: ['a@b.test', 'a@b.test']`.
+//
+//     ⚠️ THE CHASSIS HAS HAD THIS SINCE IT WAS WRITTEN (`_run`'s
+//     `if (_busy) return;`), so this is the fork owing the chassis rather than
+//     the other way round — but it is Subly's own `_loading` that carries it,
+//     not an imported `_run`. One screen, one idiom.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -110,6 +142,16 @@ class _ResetAuth extends core.AuthRepository {
   /// Every address the seam was actually handed, in order.
   final List<String> sentTo = <String>[];
 
+  /// Parks the request until a test completes it — i.e. an IN-FLIGHT request.
+  ///
+  /// 🔴 WITHOUT THIS THE RE-ENTRANCY CASE CANNOT FAIL HONESTLY. An `async`
+  /// method with no await in it settles on the next microtask, so "tap twice"
+  /// would really be "tap, let the first request finish, tap again" — two
+  /// requests that a correct screen SHOULD send. Holding the future open is
+  /// what makes the second tap arrive while the first is genuinely outstanding,
+  /// which is the only situation a latch is supposed to refuse.
+  Completer<void>? hold;
+
   @override
   core.AuthUser? get currentUser => null;
 
@@ -120,6 +162,7 @@ class _ResetAuth extends core.AuthRepository {
   @override
   Future<void> sendPasswordReset(String email, {String? captchaToken}) async {
     sentTo.add(email);
+    if (hold != null) await hold!.future;
     if (refusal != null) throw refusal!;
   }
 
@@ -264,11 +307,9 @@ void main() {
 
       await tapForgot(tester, en);
 
-      expect(
-        auth.sentTo,
-        <String>['a@b.test'],
-        reason: 'the request was made — this case is about its ANSWER',
-      );
+      expect(auth.sentTo, <String>[
+        'a@b.test',
+      ], reason: 'the request was made — this case is about its ANSWER');
       expect(
         find.text(en.authRateLimited),
         findsOneWidget,
@@ -297,11 +338,9 @@ void main() {
 
       await tapForgot(tester, en);
 
-      expect(
-        auth.sentTo,
-        <String>['a@b.test'],
-        reason: 'the seam is handed the TRIMMED address, as it was before',
-      );
+      expect(auth.sentTo, <String>[
+        'a@b.test',
+      ], reason: 'the seam is handed the TRIMMED address, as it was before');
       expect(
         find.text(en.resetSent),
         findsOneWidget,
@@ -311,6 +350,74 @@ void main() {
             'whether that address has an account',
       );
     });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // §7-4 · THE FOURTH MISSING HALF: NOTHING STOPPED A SECOND TAP.
+    //
+    // The case above proves the rate limit is REPORTED. This one proves the
+    // screen stops CAUSING it. `_forgot` was the one await on this screen
+    // outside the `_loading` idiom: `_submit` and `_apple` both raise it before
+    // their request and every other control is gated on it, but this button was
+    // `onPressed: _forgot`, flat. A user who taps twice — the ordinary response
+    // to a control that shows nothing for a second — sent two reset mails to
+    // the same address, and GoTrue caps those per address, so the second tap is
+    // what manufactures `over_email_send_rate_limit`. The button punished the
+    // user for the fact that it gave them no feedback.
+    //
+    // 🔴 NO PUMP BETWEEN THE TAPS, AND THAT IS THE WHOLE POINT. `setState`
+    // SCHEDULES a rebuild; it does not repaint inside the current frame. Both
+    // taps therefore reach the live button, so `onPressed: _loading ? null : …`
+    // cannot be what saves this — only a latch inside the method can. A version
+    // of this case with a pump in the middle would pass against a screen whose
+    // method is still re-entrant, which is a weaker property than the one a
+    // double-tapping thumb actually meets.
+    testWidgets(
+      'a second tap while the first request is IN FLIGHT sends nothing',
+      (WidgetTester tester) async {
+        final _ResetAuth auth = _ResetAuth()..hold = Completer<void>();
+        await pumpLogin(tester, auth: auth);
+        await tester.enterText(find.byKey(E2EKeys.loginEmail), 'a@b.test');
+
+        final Finder forgot = find.widgetWithText(
+          TextButton,
+          en.forgotPasswordShort,
+        );
+        await tester.tap(forgot);
+        await tester.tap(forgot);
+        await tester.pump();
+
+        expect(
+          auth.sentTo,
+          <String>['a@b.test'],
+          reason:
+              'THE DEFECT: two taps, two requests. The COUNT is the assertion — '
+              'the address is identical either way, so nothing rendered and no '
+              'string differs between the broken screen and the fixed one',
+        );
+        expect(
+          tester.widget<TextButton>(forgot).onPressed,
+          isNull,
+          reason:
+              'and the control says so: a latch the user cannot see is a button '
+              'that still invites the tap it is about to swallow',
+        );
+
+        // The other direction, in the same case, because a latch that never
+        // releases is a Forgot-password button that works exactly once per app
+        // launch — and it would satisfy every assertion above.
+        auth.hold!.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text(en.resetSent), findsOneWidget);
+        expect(
+          tester.widget<TextButton>(forgot).onPressed,
+          isNotNull,
+          reason: 'the request finished, so the door reopens',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   // ───────────────────────────────────────────────────────────────────────────
