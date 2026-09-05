@@ -400,6 +400,47 @@ jobs:
       - name: Workflow static analysis (self-tests, then scans)
         run: node tooling/ci/scan-workflows.mjs . --zizmor "${RUNNER_TEMP}/zizmor"
 
+      - name: Install OSV-Scanner (pinned + checksum-verified)
+        env:
+          OSV_VERSION: '2.5.1'
+          OSV_SHA256: 'f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be'
+        run: |
+          set -euo pipefail
+          bin="${RUNNER_TEMP}/osv-scanner"
+          wget -q -O "$bin" \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SHA256}  ${bin}" | sha256sum -c -
+          chmod +x "$bin"
+          "$bin" --version
+      - name: Known-vulnerable dependencies, INCLUDING the Dart ones
+        # why: the only scanner in this stack that reads pubspec.lock. Play
+        # Console flags vulnerable SDK versions and can block updates, so this is
+        # one of the two scanners here with a store consequence.
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/osv-scanner" scan source -r .
+      - name: Install Trivy (pinned + checksum-verified)
+        env:
+          TRIVY_VERSION: '0.74.0'
+          TRIVY_SHA256: '2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a'
+        run: |
+          set -euo pipefail
+          tarball="${RUNNER_TEMP}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          wget -q -O "$tarball" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" -C "${RUNNER_TEMP}" trivy
+          "${RUNNER_TEMP}/trivy" --version
+      - name: Vulnerabilities and misconfigurations in the filesystem
+        # why: HIGH and CRITICAL only, and only what has a fix. A gate that goes
+        # red on something nobody can act on gets switched off, and a switched-off
+        # gate is worse than no gate at all.
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+
   site-tokens:
     name: Site design tokens (build + drift)
     runs-on: ubuntu-24.04
