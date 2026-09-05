@@ -2757,13 +2757,31 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
 
     // ── and the schema half: the guard must REFUSE the shapes that would turn
     //    the wait into a waiver. Run through the real limb over the real file.
+    // 🔴 THE SUBJECT IS DERIVED, NOT PINNED, AND THAT IS THE WHOLE POINT OF THIS
+    //    FIELD. A `firstDue` exists to be DELETED the moment its record lands —
+    //    its own text says so — so a control pinned to one row id and one literal
+    //    date fails on the very act it exists to make safe. It did, on 2026-09-05,
+    //    when `duty.workflow.renovate.yml`'s spent bootstrap was removed after its
+    //    first scheduled run landed. ⚠️ The domain is asserted NON-EMPTY: "no row
+    //    carries a firstDue" must REFUSE rather than pass vacuously, because a
+    //    mutation applied to nothing is a control that cannot fail.
+    const bootstrapRow = (reg) => {
+      const row = reg.rows.find((r) => typeof r?.mechanism?.recordQuery?.firstDue === 'string');
+      assert.ok(
+        row,
+        'COVERAGE LOST — no row carries a `recordQuery.firstDue`, so every mutation below would ' +
+          'range over nothing and pass. Re-point this at a row that has one, or delete these cases ' +
+          'with the field.',
+      );
+      return row;
+    };
+
     test('🔴 THE SCHEMA REFUSES A DATE PARKED IN THE FUTURE — the one way this becomes permanent', () => {
       const reg = REAL();
-      const row = reg.rows.find((r) => r.id === 'duty.workflow.renovate.yml');
-      assert.ok(row, 'the committed row this field was added for must still exist');
-      assert.equal(row.mechanism.recordQuery.firstDue, '2026-09-05T12:00:00Z');
+      const row = bootstrapRow(reg);
+      assert.ok(Number.isFinite(Date.parse(row.mechanism.recordQuery.firstDue)), 'the committed firstDue must be a real instant');
       const far = JSON.parse(JSON.stringify(reg));
-      far.rows.find((r) => r.id === 'duty.workflow.renovate.yml').mechanism.recordQuery.firstDue = '2030-01-01T00:00:00Z';
+      bootstrapRow(far).mechanism.recordQuery.firstDue = '2030-01-01T00:00:00Z';
       const out = limbErrors(far);
       assert.ok(
         out.some((e) => /more than one cadence window/.test(e)),
@@ -2774,11 +2792,11 @@ describe('assert-ops-register — [14]O-3 · the GlitchTip heartbeat reader, and
     test('the schema refuses an unparseable firstDue and one on an `unreachable` reader', () => {
       const reg = REAL();
       const bad = JSON.parse(JSON.stringify(reg));
-      bad.rows.find((r) => r.id === 'duty.workflow.renovate.yml').mechanism.recordQuery.firstDue = 'soon';
+      bootstrapRow(bad).mechanism.recordQuery.firstDue = 'soon';
       assert.ok(limbErrors(bad).some((e) => /not a parseable instant/.test(e)));
 
       const unreachable = JSON.parse(JSON.stringify(reg));
-      const q = unreachable.rows.find((r) => r.id === 'duty.workflow.renovate.yml').mechanism.recordQuery;
+      const q = bootstrapRow(unreachable).mechanism.recordQuery;
       q.reader = 'unreachable';
       q.why = 'built for this mutation only';
       assert.ok(limbErrors(unreachable).some((e) => /reader is `unreachable`/.test(e)));
