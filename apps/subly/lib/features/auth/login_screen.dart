@@ -91,8 +91,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     // exhaustive and the analyzer enforces that: adding an arm to
     // `CredentialsProblem` without a case here is a compile error, which is the
     // property a chain of `if`s could not offer.
-    final core.CredentialsProblem? problem =
-        core.signInProblem(email: email, password: _password.text);
+    final core.CredentialsProblem? problem = core.signInProblem(
+      email: email,
+      password: _password.text,
+    );
     if (problem != null) {
       _snack(switch (problem) {
         core.CredentialsProblem.incomplete => l10n.authEnterBoth,
@@ -196,13 +198,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   ///     per address) landed in an unawaited future, so the user got the same
   ///     "on its way" and the real answer went to the console. Every other
   ///     await on this screen is already wrapped; this one was not.
+  ///
+  /// 🔴 AND A THIRD, FOUND 2026-09-05: NOTHING STOPPED A SECOND TAP. This was
+  /// the ONE await on this screen outside the `_loading` idiom — `_submit` and
+  /// `_apple` both raise the flag before their request, the submit button and
+  /// the Apple button are both gated on it, and even `onSubmitted` re-states it
+  /// so a second Enter cannot fire a second sign-in. This button was
+  /// `onPressed: _forgot`, flat. So a user who taps twice — the ordinary
+  /// response to a control that shows nothing for a second — sent TWO reset
+  /// requests for the same address, and GoTrue caps reset mail per address.
+  /// The second tap is what manufactures `over_email_send_rate_limit`: the
+  /// button was punishing the user for the fact that it gave them no feedback,
+  /// and the refusal it produced is one nothing on screen could explain.
+  ///
+  /// ⚠️ THE LATCH IS NOT THE SAME THING AS THE DISABLED BUTTON, AND BOTH ARE
+  /// HERE. `setState` SCHEDULES a rebuild; it does not repaint inside the
+  /// current frame. Two taps in one frame therefore both reach a button that is
+  /// still the live one, so `onPressed: _loading ? null : _forgot` alone stops
+  /// nothing — `login_chassis_parity_test.dart` taps twice with no pump between
+  /// for exactly that reason. The gate is what the USER is told; the `if` below
+  /// is what actually holds.
+  ///
+  /// ⚠️ `_loading`, NOT A SECOND FLAG. It is this screen's "a request is in
+  /// flight" bit, already shared by `_submit` and `_apple`, and a reset in
+  /// flight genuinely should hold the sign-in button too — the chassis `_run`
+  /// uses one `_busy` across every action for the same reason. A private
+  /// `_resetting` would be a second concept for one fact, and the screen would
+  /// then have two answers to "is something happening".
+  ///
+  /// ⚠️ THE EMPTY-FIELD GUARD STAYS IN FRONT OF THE FLAG. It makes no request,
+  /// so raising `_loading` for it would blank the whole form for one frame to
+  /// report a mistake the screen caught locally.
   Future<void> _forgot() async {
+    if (_loading) return;
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String email = _email.text.trim();
     if (core.passwordResetProblem(email: email) != null) {
       _snack(l10n.emailRequired);
       return;
     }
+    setState(() => _loading = true);
     try {
       await ref
           .read(authRepositoryProvider)
@@ -215,6 +250,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _snack(l10n.resetSent);
     } catch (e) {
       _snack(e);
+    } finally {
+      // `mounted`-checked like the other two: this runs after an await, and the
+      // screen can be gone — the deletion redirect and the router both tear it
+      // down. And it must release: a latch that never lets go is a
+      // Forgot-password button that works exactly once per app launch.
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -234,7 +275,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// server's raw English instead. Moved to `auth_error_text.dart` 2026-09-04
   /// so one change fixes every screen; kept as a thin method because `_snack`
   /// and the tests both call it by name.
-  String _friendlyMessage(AppLocalizations l10n, Object e) => authErrorText(l10n, e);
+  String _friendlyMessage(AppLocalizations l10n, Object e) =>
+      authErrorText(l10n, e);
 
   @override
   Widget build(BuildContext context) {
@@ -380,7 +422,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _forgot,
+                      // Gated like every other control on this screen. This is
+                      // the half the user can SEE; the latch at the top of
+                      // `_forgot` is the half that actually holds, because a
+                      // second tap in the same frame reaches a button that has
+                      // not been rebuilt yet. Neither is redundant.
+                      onPressed: _loading ? null : _forgot,
                       child: Text(
                         l10n.forgotPasswordShort,
                         style: AppText.body.copyWith(
