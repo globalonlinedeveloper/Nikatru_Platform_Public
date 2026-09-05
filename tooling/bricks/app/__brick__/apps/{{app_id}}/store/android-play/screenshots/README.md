@@ -7,6 +7,16 @@ they are photographs of a build that does not exist at stamp time.
 
 Google requires **at least two** screenshots to publish at all, recommends at
 least four at 1080px minimum, and caps the long side at twice the short one.
+
+🔴 **AND "AT LEAST TWO" IS A COUNT OF DEVICE TYPES, NOT OF FILES IN THIS
+DIRECTORY.** Filling this directory with four phone frames does not make the
+listing publishable: the verbatim sentence is *"a minimum of two screenshots
+across different device types"*, and everything here is one type. The second
+type is `../screenshots-tablet/`, stamped beside this one with its own numbers
+and its own README, and `tooling/ci/assert-play-device-coverage.mjs` counts the
+directories that carry pixels. Read that README before deciding this one is
+done.
+
 Every one of those numbers is in `tooling/channel-register.json` →
 `storeMetadataContract.perChannel["android-play"].graphicAssets.screenshots`
 with the primary-source URL and fetch date, and

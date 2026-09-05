@@ -44,6 +44,44 @@
 // beside them, so each screenshot is now opened and graded against THAT SET'S
 // OWN declared rule. A row declaring only `dir` — `phone` does — grades nothing.
 //
+// ── 🔴 ROOT 2: THE FACTORY. A CHECK THAT CANNOT SEE THE TEMPLATE IS THE BUG ──
+// Everything above ranges over `catalog/apps.json` — REGISTERED apps. Measured
+// 2026-09-05 on `main` @ a9b04696: that is ONE app, `subly`, whose tablet set a
+// human captured by hand on 2026-08-27. The template every future app is stamped
+// from, `tooling/bricks/app/__brick__/apps/{{app_id}}/store/android-play/`,
+// carried `screenshots/` AND NO `screenshots-tablet/` AT ALL — so every app
+// stamped since the register grew its tablet row on 2026-08-21 was born one
+// device type short, structurally unpublishable, and this guard printed `ok`.
+// Not because a limb was wrong: because the brick was not in its domain. The
+// first anyone would have learned of it is a Google Play rejection.
+//
+// So the brick is a SECOND ROOT, with its OWN floor, checked on every run. The
+// register is the one declaration for both roots; only the question differs.
+//
+//   root 1, a REGISTERED app  — "does this listing carry the pixels?"
+//   root 2, the BRICK         — "can the factory produce a listing that can?"
+//
+// ⚠️ AND THE BRICK'S ANSWER IS THE OPPOSITE ONE. A declared set here must exist
+// and must be EMPTY of pixels. A PNG committed into the template is a
+// placeholder by construction — nobody photographed an app that does not exist —
+// and it would be stamped into every app at once while satisfying exactly the
+// check ("the tablet directory has pixels") that is meant to prove the frames
+// were captured. A listing that cannot be published yet and says why is strictly
+// better than one that can be published carrying fake frames.
+//
+// What makes the directory exist in a clone at all is its `README.md`, since git
+// cannot commit an empty directory — which is precisely how the gap arose. So
+// the README is required, and its absence means the directory is absent means a
+// stamped app is short a device type again.
+//
+// The floors are PER ROOT, never a union: `tooling/ci/assert-workspace-coverage
+// .mjs:130-136` records a union floor staying satisfied over an emptied `apps/`,
+// and today a guard printed ok over 7 files when it should have seen 349 because
+// a root fell off a list and every limb watched only for an EMPTIED root, never
+// an UNLISTED one. Root 2 therefore has its own COVERAGE LOST, and which branch
+// it took is PRINTED on every run rather than implied. Shape borrowed from
+// `assert-no-tls-pinning.mjs:94-175`.
+//
 // ── THE PRINT/FAIL SPLIT IS A RELATIONSHIP, NOT A MOOD ───────────────────────
 //   ("short of the minimum" below covers every kind of gap: too few device types,
 //    a set whose pixels miss its own declared count/size/aspect rule, and a
@@ -54,6 +92,16 @@
 //   a declared set's directory missing entirely     -> FAIL (a declaration with
 //       no directory is a coverage claim over nothing, at any served state)
 //   the declaration itself absent or unsourced      -> COVERAGE LOST
+//
+//   ROOT 2 IS NOT ROUTED THROUGH THAT SPLIT, DELIBERATELY:
+//   a declared set missing from the BRICK           -> FAIL, any served state
+//   a PNG committed into a BRICK set                -> FAIL, any served state
+//   a BRICK set with no README.md                   -> FAIL, any served state
+//   the brick's store tree for the channel absent   -> COVERAGE LOST
+//   `served` is a fact about ONE listing's readiness; the factory's ability to
+//   emit a publishable listing is not that fact, and waiting for the channel to
+//   be served would be waiting for the rejection. Same reasoning as
+//   `assert-store-metadata.mjs`'s "THE FACTORY" limb, which fails outright.
 //
 // `--for-submission` is what makes this a per-environment gate rather than a
 // note. `.github/workflows/ci.yml` runs it plain, where the gap prints and the
@@ -83,8 +131,10 @@
 // Usage:  node tooling/ci/assert-play-device-coverage.mjs [--for-submission] [repoRoot]
 // Exit 0 = every declared channel covers at least its minimum device types and
 //          every set keeps its own declared rule, or falls short on a channel
-//          that is not served yet and said so.
-// Exit 1 = a served or submitting channel is short, or the scan reached nothing.
+//          that is not served yet and said so; AND the brick offers a directory
+//          for every declared set, each empty of pixels and carrying its README.
+// Exit 1 = a served or submitting channel is short, the brick cannot emit a
+//          declared set or ships placeholder pixels, or a scan reached nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -95,10 +145,31 @@ import { pngHeader } from '../store/chrome-raster.mjs';
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
+// ── ROOT 2, addressed exactly as assert-store-metadata.mjs addresses it ──────
+// One spelling of "the brick's copy of a per-app path" in the corpus, not two.
+const BRICK = 'tooling/bricks/app';
+const BRICK_APP_TOKEN = '{{app_id}}';
+/** `apps/{app}/store/x` -> `tooling/bricks/app/__brick__/apps/{{app_id}}/store/x`. */
+const brickPath = (perAppTemplate) => `${BRICK}/__brick__/${perAppTemplate.replace('{app}', BRICK_APP_TOKEN)}`;
+/** The file that makes an intentionally-empty set directory exist in a clone. */
+const SET_README = 'README.md';
+
 const argv = process.argv.slice(2);
 const FOR_SUBMISSION = argv.includes('--for-submission');
 const positional = argv.filter((a) => !a.startsWith('--'));
 const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+
+/**
+ * ROOT 2 is a path INSIDE this repository, so it means nothing over the
+ * synthetic roots the unit tests build: those legitimately model one listing
+ * tree at a time and carry no brick. The limb is therefore applied only when
+ * ROOT is a real checkout, detected by THIS GUARD'S OWN FILE being present under
+ * it — a sentinel that sits outside both subject roots and so survives any
+ * mutation OF a subject, which a sentinel under `apps/` or `tooling/bricks/`
+ * would not. Which branch was taken is PRINTED on every run: a limb that went
+ * quiet must never be indistinguishable from a limb that found nothing.
+ */
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-play-device-coverage.mjs'));
 
 const problems = [];
 const prints = [];
@@ -204,11 +275,20 @@ function ruleGaps(type, def, rel, found) {
   return out;
 }
 
+// ROOT 1 counters.
 let treesSeen = 0;
 let channelsChecked = 0;
 let setsMeasured = 0;
 let ruledSets = 0;
 let framesGraded = 0;
+
+// ROOT 2 counters, kept SEPARATE from root 1's on purpose. A union count is
+// satisfied by one healthy root while the other is gone, which is the exact
+// shape of the failure this root was added to remove.
+let brickTreesSeen = 0;
+let brickSetsDeclared = 0; // sets root 2 OUGHT to have looked for — the floor
+let brickSetsExamined = 0; // sets root 2 ACTUALLY looked for, present or not
+let brickSetsKept = 0;     // present, empty of pixels, and carrying their README
 
 for (const row of withCoverage) {
   const g = contract.perChannel[row.id].graphicAssets;
@@ -257,6 +337,11 @@ for (const row of withCoverage) {
       coverageLost([`${where}.sets["${type}"].portraitAspect is ${JSON.stringify(def.portraitAspect)}, not "W:H" in positive integers, so a declared limit would grade nothing.`]);
     }
     if (ruled(def)) ruledSets++;
+    // ROOT 2's floor is counted HERE, from the register, and not inside the
+    // brick loop below — a floor produced by the same code it grades is the
+    // counter marking its own homework, which is the defect
+    // assert-case-count-honest.mjs exists for.
+    brickSetsDeclared++;
   }
 
   // 🔴 THE TWO DECLARATIONS OF WHERE THE PHONE SET LIVES MUST AGREE.
@@ -350,6 +435,85 @@ for (const row of withCoverage) {
     for (const g of gaps) route('SET RULE SHORTFALL', g);
     for (const b of bare) route('EMPTY DECLARED SET', b);
   }
+
+  // ── ROOT 2: THE FACTORY ────────────────────────────────────────────────────
+  // Same register, same `sets`, opposite expectation: the brick must OFFER every
+  // declared device type and must SUPPLY pixels for none of them.
+  if (IS_FULL_CHECKOUT) {
+    const brickDir = brickPath(template);
+    if (!existsSync(join(ROOT, brickDir)) || !statSync(join(ROOT, brickDir)).isDirectory()) {
+      coverageLost([
+        `${brickDir} does not exist, so channel "${row.id}"'s device types were checked on registered apps ONLY.`,
+        `${apps.length} registered app(s) is not the subject: the brick is what every future app is stamped from, and a`,
+        'template that emits no store tree emits no device-type sets either. A root that is never DERIVED must not read',
+        'as "nothing to check" — that is how this guard printed ok over a brick with no tablet set for two weeks.',
+        'If the brick genuinely no longer emits this channel, assert-store-metadata.mjs owns that verdict and fails too.',
+      ]);
+    }
+    brickTreesSeen++;
+
+    for (const [type, def] of Object.entries(sets)) {
+      if (!def || typeof def.dir !== 'string' || def.dir.trim() === '') continue; // counted, not examined — the floor below catches it
+      const rel = `${brickDir}/${def.dir}`;
+      const found = screenshotsIn(join(ROOT, brickDir, def.dir));
+      brickSetsExamined++;
+
+      if (found === null) {
+        problems.push(
+          `THE BRICK EMITS NO "${type}" SET: ${rel} does not exist, and \`${where}.sets["${type}"]\` declares it. Every app ` +
+            `stamped from this template is therefore born covering fewer than the ${min} device type(s) Play requires — ` +
+            'unpublishable on day one, with nothing to tell anyone until the console rejects the upload. Stamp the ' +
+            `directory with a README.md stating the obligation (git cannot commit an empty one). Source: ${cov.source}`,
+        );
+        continue;
+      }
+
+      // 🔴 THE ONE PLACE IN THIS GUARD WHERE PIXELS ARE A FAILURE.
+      if (found.length > 0) {
+        problems.push(
+          `${rel} holds ${found.length} PNG(s) (${found.map((f) => f.name).join(', ')}), and it is the TEMPLATE. Nobody ` +
+            'photographed an app that does not exist yet, so a screenshot committed here is a placeholder by construction — ' +
+            'stamped into every app at once, and satisfying the very check ("the set carries pixels") that is supposed to ' +
+            'prove the frames were captured. A listing that cannot be published yet and says why is strictly better than ' +
+            'one that can be published carrying fake frames. Delete them; capture into the stamped app instead.',
+        );
+      }
+
+      if (!existsSync(join(ROOT, brickDir, def.dir, SET_README))) {
+        problems.push(
+          `${rel}/${SET_README} is missing. It is the only file in an intentionally-empty set directory, and git cannot ` +
+            'commit an empty directory — so without it the directory does not survive a clone, the stamped app is short ' +
+            `device type "${type}" again, and the person who has to capture the frames is never told the obligation. ` +
+            'That is not a tidiness rule: it is the mechanism by which this set went missing in the first place.',
+        );
+      } else if (found.length === 0) {
+        brickSetsKept++;
+      }
+    }
+  }
+}
+
+// ── ROOT 2's OWN FLOOR ───────────────────────────────────────────────────────
+// Never folded into root 1's. `assert-workspace-coverage.mjs:130-136` records a
+// union floor staying satisfied over an emptied `apps/`, and every limb that
+// watched only for an EMPTIED root missed the day a root went UNLISTED.
+if (IS_FULL_CHECKOUT) {
+  if (brickSetsExamined === 0) {
+    coverageLost([
+      `${brickTreesSeen} brick store tree(s) were read and ZERO device-type sets were looked for in the template.`,
+      'Root 1 can be perfectly green while this is true — it was, for two weeks — because a hand-fixed registered app',
+      'says nothing about the factory. Zero sets examined means the brick was not graded at all.',
+    ]);
+  }
+  if (brickSetsExamined !== brickSetsDeclared) {
+    coverageLost([
+      `the register declares ${brickSetsDeclared} device-type set row(s) and the brick limb examined ${brickSetsExamined}.`,
+      'The two numbers are counted by different code over the same register — the floor by the row validator above, the',
+      'other by the brick walk itself — precisely so a walk that quietly skips a row cannot also lower its own floor.',
+      'A declared set the factory check never looked for is a device type nobody is watching in the template, which is',
+      'indistinguishable from the template being correct. A row naming no `dir` is the way this happens.',
+    ]);
+  }
 }
 
 if (treesSeen === 0) {
@@ -382,9 +546,18 @@ if (problems.length) {
 }
 
 console.log(
-  `ok  play device coverage — ${channelsChecked} (app × channel) listing(s) across ${treesSeen} tree(s); ` +
-    `${setsMeasured} declared device-type set(s) measured, ${framesGraded} screenshot(s) graded against the ` +
-    `${ruledSets} set(s) that declare a rule${FOR_SUBMISSION ? '; --for-submission, so a shortfall would have been fatal' : ''}`,
+  `ok  play device coverage — ROOT 1 (registered apps): ${channelsChecked} (app × channel) listing(s) across ` +
+    `${treesSeen} tree(s); ${setsMeasured} declared device-type set(s) measured, ${framesGraded} screenshot(s) graded ` +
+    `against the ${ruledSets} set(s) that declare a rule${FOR_SUBMISSION ? '; --for-submission, so a shortfall would have been fatal' : ''}`,
+);
+console.log(
+  IS_FULL_CHECKOUT
+    ? `    ROOT 2 (the factory): ${brickTreesSeen} brick store tree(s) under ${BRICK}; ${brickSetsExamined} of ` +
+      `${brickSetsDeclared} declared set(s) examined, ${brickSetsKept} present, empty of pixels and carrying their ` +
+      `${SET_README} — so an app stamped today is born offering every declared device type and inventing none.`
+    : '    ROOT 2 (the factory): NOT APPLIED — this root is not a checkout of this repository, so there is no ' +
+      `${BRICK} to grade. Only the registered-app root above was checked.`,
 );
 console.log('   ⚠️ CANNOT SEE: whether the pixels in a set really came off that device type. A set is a promise');
-console.log('      about where a type\'s shots live; this counts the sets that are kept.');
+console.log('      about where a type\'s shots live; this counts the sets that are kept. And in the brick it can only');
+console.log('      see that the set is OFFERED and UNFILLED — whether anyone ever captures into it is root 1\'s question.');
