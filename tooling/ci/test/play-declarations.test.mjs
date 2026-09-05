@@ -33,6 +33,46 @@
 // cannot quietly drop a limb. The proof that the limbs bite is the mutation run
 // against the real repository, summarised above.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-09-05 — THE DOMAIN TESTS, AND THE RUN THAT PROVED THEY CAN FAIL
+//
+// The guard stopped checking one hard-coded app and started deriving its roots.
+// 25 tests were added at the bottom of this file. A test that passes the day it
+// is written has proven nothing, so each new limb in the guard was BROKEN in
+// turn and the new tests re-run against the broken build. A limb whose removal
+// left every test green has no test, whatever the file looks like.
+//
+//   #    guard limb removed                                    new tests red
+//   ───  ───────────────────────────────────────────────────   ─────────────
+//   BASE unmutated (control)                                        0
+//   GM1  the brick-root existence check                             1
+//   GM2  the factory dependency sweep                               2
+//   GM3  the true-answered-claim exclusion (over-broad again)       1
+//   GM4  the empty-app-set floor                                    1
+//   GM5  the per-root floor report                                  2
+//   GM6  the template-still-unanswered check                        2
+//   GM7  the loop, truncated to the first app                       3
+//   GM8  the template manifest permission sweep                     1
+//   GM9  the brick pubspec EMPTY-dependencies floor                 0  ← see below
+//
+// 🔴 GM9 CAME BACK GREEN, AND THAT WAS A REAL HOLE, NOT A FLUKE. Deleting
+// `deps.size === 0` changed nothing, because the only test aimed at it removed
+// the `dependencies:` HEADER — which lands in the earlier missing-anchor branch.
+// The case that reaches the floor is a header that IS present with nothing under
+// it, and it is the more dangerous of the two: the parse found its anchor and
+// still yielded nothing, which is what a working sweep over a clean template
+// looks like from the outside. The test now exists ('a dependencies block that
+// is PRESENT and EMPTY'). Three limbs in this file were previously found to be
+// measuring nothing; this is the fourth, and it was found by asking rather than
+// by assuming.
+//
+// ⚠️ THE HARNESS RESTORES THE GUARD FROM AN IN-MEMORY COPY TAKEN AT START-UP.
+// Editing the guard while it runs loses those edits silently — it happened, and
+// it is the same shape as the `git checkout -- .` that reverted this whole
+// change once during the tree-mutation run. Do not write to a subject while
+// something else is holding a copy of it.
+// ─────────────────────────────────────────────────────────────────────────────
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
@@ -395,6 +435,71 @@ const PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `;
 
+// ── THE DOMAIN THE GUARD DERIVES, MODELLED ──────────────────────────────────
+// 🔴 EVERY TEST IN THIS FILE USED TO PASS WITHOUT ANY OF THIS, AND THAT WAS THE
+// DEFECT. The guard read `apps/subly` out of a string literal, so a fixture
+// needed no root pubspec, no workspace list and no brick — the domain could not
+// be got wrong because it was not derived. Now it is: the workspace block is
+// the app set, and a fixture that omits it is COVERAGE LOST rather than a pass
+// over the one app somebody hard-coded.
+const ROOT_PUBSPEC = `name: nikatru_workspace
+publish_to: none
+
+# Comment lines are stripped before the block is read — a commented member is
+# not a member, the same rule the app-side dependency parse follows.
+workspace:
+  - packages/core
+  # - apps/ghost
+  - apps/subly
+`;
+
+const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+
+// FIVE direct dependencies, none of them a watched tell — the template's real
+// shape in miniature. The factory sweep's needle list comes from the answered
+// declaration, so `geolocator` here is what makes it fire.
+const BRICK_PUBSPEC = `name: {{app_id.snakeCase()}}
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_core:
+    path: ../../packages/core
+  flutter_riverpod: ^2.5.0
+  go_router: ^14.2.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+`;
+
+/** The template's declarations, STAMPED UNANSWERED — which is what the real
+ *  ones are. No `vocabulary`, no `answers`, every question null, and an
+ *  `unresolved` list saying why. The guard must NOT grade these as an app. */
+const BRICK_DS = () => ({
+  _readme: ['THE GOOGLE PLAY DATA SAFETY DECLARATION — STAMPED UNANSWERED.'],
+  app: '{{app_id}}',
+  channel: 'android-play',
+  sources: { allowedHosts: ['support.google.com'], cited: [] },
+  buildPosture: null,
+  collectsData: null,
+  sharesData: null,
+  dataTypes: null,
+  unresolved: [{ question: 'what leaves the device, and to whom?', why: 'derivable from this app once it has code' }],
+  resolved: [],
+});
+const BRICK_CR = () => ({
+  _readme: ['THE IARC CONTENT-RATING QUESTIONNAIRE — STAMPED UNANSWERED.'],
+  app: '{{app_id}}',
+  channel: 'android-play',
+  category: '{{category}}',
+  violence: null,
+  digitalPurchases: null,
+  unresolved: [{ question: 'every content question above', why: 'they describe content this app does not have yet' }],
+});
+
 function writeFile(root, rel, body) {
   const abs = join(root, rel);
   mkdirSync(dirname(abs), { recursive: true });
@@ -421,12 +526,28 @@ function makeRoot(patch = {}) {
     'apps/subly/lib/settings.dart': '// the delete-account control\n',
     'sites/nikatru/delete-account.html': '<html><body>delete</body></html>\n',
     'services/subly-api/src/routes/account.ts': '// DELETE /v1/account\n',
+    // ── the derived domain ──
+    'pubspec.yaml': ROOT_PUBSPEC,
+    [`${BRICK}/pubspec.yaml`]: BRICK_PUBSPEC,
   };
+
+  const brickDs = BRICK_DS();
+  const brickCr = BRICK_CR();
 
   if (patch.register) patch.register(register);
   if (patch.ds) patch.ds(ds);
   if (patch.cr) patch.cr(cr);
   if (patch.inv) patch.inv(inv);
+  if (patch.brickDs) patch.brickDs(brickDs);
+  if (patch.brickCr) patch.brickCr(brickCr);
+  files[`${BRICK}/store/android-play/data-safety.json`] = brickDs;
+  files[`${BRICK}/store/android-play/content-rating.json`] = brickCr;
+  // 🔴 THE SENTINEL, WRITTEN ONLY WHEN A TEST ASKS FOR IT. The per-root floors
+  // are measurements of the real repository and mean nothing over a fixture
+  // with three data types in it, so the guard applies them only when its OWN
+  // file is present under ROOT. Every other test here is deliberately NOT a
+  // full checkout; the floor tests opt in.
+  if (patch.fullCheckout) files['tooling/ci/assert-play-declarations.mjs'] = '// sentinel — see IS_FULL_CHECKOUT\n';
   if (patch.files) patch.files(files);
 
   writeFile(root, 'tooling/channel-register.json', register);
@@ -1492,5 +1613,270 @@ describe('assert-play-declarations — limb 7a against the REAL data-safety.json
     const unattributed = m.permissions.filter((p) => p.attribution === 'unattributed').map((p) => p.name);
     const findings = Object.keys(m.unattributed ?? {});
     assert.deepEqual([...unattributed].sort(), [...findings].sort(), 'the unattributed rows and the named findings have drifted apart');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE DOMAIN — one app hard-coded became every app derived (2026-09-05).
+//
+// 🔴 WHAT THESE TESTS EXIST FOR. Until this change the guard read `apps/subly`
+// out of a string literal in two places, so app #2's Data safety label, its
+// permission equality and its content-rating questionnaire were outside every
+// limb while the file printed `ok`. Google's stated consequence for a label
+// that contradicts the code is app REMOVAL. Every test below was confirmed to
+// FAIL against the widened guard before being kept: a test that cannot fail is
+// worse than none, because it is read as coverage by everybody who greps.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A root carrying TWO apps on the workspace list — the case the whole change
+ *  is about. app2's tree and declarations are subly's with the path rewritten,
+ *  because the point being proven is that the LOOP reaches it, not that a
+ *  different app can be modelled. */
+function makeTwoAppRoot(patch = {}) {
+  const ds2 = JSON.parse(JSON.stringify(DATA_SAFETY()).split('apps/subly').join('apps/app2'));
+  const cr2 = JSON.parse(JSON.stringify(CONTENT_RATING()).split('apps/subly').join('apps/app2'));
+  if (patch.ds2) patch.ds2(ds2);
+  if (patch.cr2) patch.cr2(cr2);
+  return makeRoot({
+    ...patch,
+    files: (f) => {
+      f['pubspec.yaml'] = ROOT_PUBSPEC.replace('  - apps/subly\n', '  - apps/subly\n  - apps/app2\n');
+      for (const [rel, body] of Object.entries({ ...f })) {
+        if (rel.startsWith('apps/subly/')) f[rel.replace('apps/subly/', 'apps/app2/')] = body;
+      }
+      f['apps/app2/store/android-play/data-safety.json'] = ds2;
+      f['apps/app2/store/android-play/content-rating.json'] = cr2;
+      if (patch.files) patch.files(f);
+    },
+  });
+}
+
+describe('assert-play-declarations — the domain is DERIVED, and floored', () => {
+  test('the app set comes from the workspace list, and a commented member is not a member', () => {
+    // ROOT_PUBSPEC carries `# - apps/ghost`. If the `#` strip regressed, the
+    // guard would go looking for a tree that does not exist and COVERAGE LOST
+    // on the wrong thing entirely.
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /1 answered app root\(s\) \+ the brick template/);
+    assert.doesNotMatch(out(r), /apps\/ghost/);
+  });
+
+  test('no root pubspec at all is COVERAGE LOST — the domain, not a limb', () => {
+    const r = run(makeRoot({ files: (f) => { f['pubspec.yaml'] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /root pubspec\.yaml does not exist/);
+  });
+
+  test('a pubspec with no `workspace:` block is COVERAGE LOST, not a scan of zero apps', () => {
+    const r = run(makeRoot({ files: (f) => { f['pubspec.yaml'] = 'name: nikatru_workspace\n'; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /no readable `workspace:` block/);
+  });
+
+  test('a workspace list naming no apps/ member is COVERAGE LOST — an empty domain prints ok', () => {
+    const r = run(makeRoot({ files: (f) => { f['pubspec.yaml'] = 'name: w\nworkspace:\n  - packages/core\n'; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /names no apps\/ member/);
+  });
+
+  test('🔴 A SECOND APP IS REALLY CHECKED — the whole defect, in one test', () => {
+    // The mutation is in app2's declaration ONLY. Under the pre-change guard,
+    // which read `apps/subly` from a literal, this tree was GREEN.
+    const r = run(makeTwoAppRoot({
+      ds2: (x) => { findAnswer(x, 'Precise location').tells.dartPackages = ['flutter']; },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /apps\/app2\/store\/android-play\/data-safety\.json/);
+    assert.match(out(r), /NEVER collected/);
+  });
+
+  test("a second app's failure names THAT app, not the first", () => {
+    const r = run(makeTwoAppRoot({
+      ds2: (x) => { findAnswer(x, 'Precise location').tells.dartPackages = ['flutter']; },
+    }));
+    assert.doesNotMatch(out(r), /FAIL[^\n]*apps\/subly\/store/);
+  });
+
+  test('two healthy apps both pass and both are NAMED in the passing lines', () => {
+    const r = run(makeTwoAppRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /2 answered app root\(s\)/);
+    assert.match(out(r), /ok {3}apps\/subly — 3\/3 Play data type\(s\)/);
+    assert.match(out(r), /ok {3}apps\/app2 — 3\/3 Play data type\(s\)/);
+  });
+
+  test("app #2's own COVERAGE LOST names app #2 — a lost domain must not send the reader to the wrong tree", () => {
+    const r = run(makeTwoAppRoot({ files: (f) => { f['apps/app2/android/app/src/main/AndroidManifest.xml'] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST \[apps\/app2\]/);
+  });
+
+  test('the per-root floors are applied ONLY over a full checkout, and the ok line says which branch ran', () => {
+    // The fixture models three data types on purpose; the floors are
+    // measurements of the real repository. Without the sentinel they are skipped
+    // and the run is green — and it SAYS so rather than implying it.
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /the per-root floors were NOT applied/);
+    assert.doesNotMatch(out(r), /floors: answers/);
+  });
+
+  test('🔴 with the sentinel present the floors BITE — a three-answer declaration is COVERAGE LOST', () => {
+    // The same fixture, plus this guard's own file under ROOT. That is the only
+    // difference, and it is the difference between "the floors mean nothing
+    // here" and "this subject collapsed". Both halves are asserted so the
+    // sentinel branch itself cannot silently invert.
+    const r = run(makeRoot({ fullCheckout: true }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /root-level floor\(s\) were not met/);
+    assert.match(out(r), /shape-checked only 3 answer\(s\), below its floor of 20/);
+  });
+
+  test('the floor report names EVERY root that fell short, not just the first', () => {
+    const r = run(makeRoot({ fullCheckout: true }));
+    // The app's answers floor AND the factory sweep's needle-list floor.
+    assert.match(out(r), /shape-checked only 3 answer\(s\)/);
+    assert.match(out(r), /watched Dart package\(s\), below the factory sweep's floor/);
+  });
+});
+
+describe('assert-play-declarations — THE FACTORY: the brick is a root of a different kind', () => {
+  test('the brick template missing entirely is COVERAGE LOST, not a root quietly dropped', () => {
+    const r = run(makeRoot({
+      files: (f) => {
+        for (const k of Object.keys(f)) if (k.startsWith(BRICK)) f[k] = null;
+      },
+    }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /is not a directory under/);
+  });
+
+  test("the brick's data-safety.json missing is COVERAGE LOST — the root is not empty and must not become so", () => {
+    const r = run(makeRoot({ files: (f) => { f[`${BRICK}/store/android-play/data-safety.json`] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST \[tooling\/bricks/);
+    assert.match(out(r), /data-safety\.json does not exist/);
+  });
+
+  test("the brick's pubspec missing is COVERAGE LOST — the sweep's haystack", () => {
+    const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = null; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /pubspec\.yaml does not exist/);
+  });
+
+  test('a brick pubspec with no dependencies block is COVERAGE LOST, not an empty sweep reporting clean', () => {
+    const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = 'name: x\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n'; } }));
+    assert.equal(r.status, 1);
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /no top-level `dependencies:` block/);
+  });
+
+  test('a dependencies block that is PRESENT and EMPTY is COVERAGE LOST too', () => {
+    // 🔬 THIS TEST EXISTS BECAUSE A LIMB HAD NONE, AND ONLY MUTATING THE GUARD
+    // SAID SO. Deleting the `deps.size === 0` floor left every test in this file
+    // green: the case above reaches the *missing header* branch, not this one,
+    // and the two failures read identically in a summary. An empty block right
+    // under a present header is a different fault — the parse found its anchor
+    // and still yielded nothing — and it is the one that looks most like a
+    // working sweep over a clean template.
+    const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = 'name: x\ndependencies:\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n'; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /COVERAGE LOST/);
+    assert.match(out(r), /parsed to ZERO entries/);
+  });
+
+  test('🔴 THE SWEEP BITES — a watched package added to the TEMPLATE fails the build', () => {
+    // The single reason the brick is a root at all. `geolocator` in apps/subly
+    // makes one label false; `geolocator` here makes every app the factory ever
+    // stamps collect location, while the declaration stamped beside it is null.
+    const r = run(makeRoot({ files: (f) => { f[`${BRICK}/pubspec.yaml`] = BRICK_PUBSPEC.replace('  go_router:', '  geolocator: ^12.0.0\n  go_router:'); } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declares `geolocator` as a direct dependency of the APP TEMPLATE/);
+    assert.match(out(r), /every app stamped from here inherits the package/);
+  });
+
+  test('a watched PERMISSION in a template manifest fails too — the walk grows with the template', () => {
+    // The template has no android/ tree today. The walk is over whatever exists
+    // rather than a fixed path precisely so this limb starts working by itself.
+    const r = run(makeRoot({
+      files: (f) => {
+        f[`${BRICK}/android/app/src/main/AndroidManifest.xml`] =
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n' +
+          '  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n</manifest>\n';
+      },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /the app template declares android\.permission\.ACCESS_FINE_LOCATION/);
+  });
+
+  test('an XML COMMENT in a template manifest is not a permission there either', () => {
+    const r = run(makeRoot({
+      files: (f) => {
+        f[`${BRICK}/android/app/src/main/AndroidManifest.xml`] =
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n' +
+          '  <!-- android.permission.ACCESS_FINE_LOCATION is deliberately absent -->\n</manifest>\n';
+      },
+    }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('🔬 THE CALIBRATION CASE — a tell of a claim answering TRUE is NOT a needle', () => {
+    // MEASURED, NOT REASONED. The first version of this sweep took every tell it
+    // could find and failed on `nikatru_purchases`, which is a tell of the
+    // content-rating `digital-purchases` claim — a claim answering TRUE, where
+    // the package's PRESENCE is what the answer predicts. A rule that fires on
+    // correct input is switched off within a week, so the case is pinned here.
+    const r = run(makeRoot({
+      cr: (x) => { findClaim(x, 'contains-ads').answer = true; },
+      files: (f) => { f[`${BRICK}/pubspec.yaml`] = BRICK_PUBSPEC.replace('  go_router:', '  google_mobile_ads: ^5.0.0\n  go_router:'); },
+    }));
+    assert.equal(r.status, 0, out(r));
+    assert.doesNotMatch(out(r), /google_mobile_ads[^\n]*APP TEMPLATE/);
+  });
+
+  test('…and the SAME package with the claim answering false DOES fire — the case is not vacuous', () => {
+    // Identical tree, one boolean different. Without this half the test above
+    // would pass over a sweep that had stopped working altogether.
+    const r = run(makeRoot({
+      files: (f) => { f[`${BRICK}/pubspec.yaml`] = BRICK_PUBSPEC.replace('  go_router:', '  google_mobile_ads: ^5.0.0\n  go_router:'); },
+    }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /declares `google_mobile_ads` as a direct dependency of the APP TEMPLATE/);
+  });
+
+  test('the template growing an `answers` array FAILS — a template that stopped being one', () => {
+    const r = run(makeRoot({ brickDs: (x) => { x.answers = [{ category: 'Location', type: 'Precise location' }]; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /have stopped being STAMPED UNANSWERED/);
+    assert.match(out(r), /carries an `answers` array/);
+  });
+
+  test('the template losing its `unresolved` list FAILS — the list is what says the questions are open', () => {
+    const r = run(makeRoot({ brickCr: (x) => { x.unresolved = []; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /carries no non-empty `unresolved` list/);
+  });
+
+  test('the passing line reports the factory sweep as a MEASUREMENT, not as a name', () => {
+    // A line that says only "the brick was checked" reads identically whether it
+    // swept fifteen dependencies or zero. Both counts are printed.
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /ok {3}THE FACTORY — .*still stamps UNANSWERED declarations/);
+    assert.match(out(r), /its 5 direct dependenc\(ies\)/);
+    assert.match(out(r), /watched package\(s\)/);
+  });
+
+  test("what the sweep CANNOT see is printed, with the count of tells it silences", () => {
+    const r = run(makeRoot());
+    assert.match(out(r), /THE TEMPLATE'S NATIVE PERMISSIONS AND iOS USAGE KEYS/);
+    assert.match(out(r), /found 0 manifest\(s\) there/);
   });
 });
