@@ -342,6 +342,23 @@ export function flutterBuildTargets(wf) {
 export function requiredTargets(register) {
   const platforms = new Set();
   for (const c of register?.channels ?? []) {
+    // 🔴 THE SIX-PLATFORM PROOF IS A `flutter build` PROOF, SO ITS DOMAIN IS THE
+    // FLUTTER SURFACE. Every target in PLATFORM_BUILD_TARGETS is a verb this
+    // repository runs against apps/{app}; a browser extension is packed by
+    // extensions/scripts/pack.mjs and there is no `flutter build chrome` to add.
+    // On 2026-09-05 the register acquired three `surface: "extension"` rows
+    // naming chrome / edge / firefox, and the unmapped-platform limb — correctly,
+    // on its own terms — refused: "Skipping an unknown platform is how five out
+    // of six comes to read as all."
+    //
+    // ⚠️ NOTHING STOPS BEING PROVEN, BECAUSE NOTHING WAS EVER PROVEN HERE ABOUT
+    // AN EXTENSION. What proves that lane is `extensions.yml`'s own `package`
+    // job — pack, verify-refs inside the zip, a leak check, a determinism check
+    // and `web-ext lint` — and `assert-channel-register.mjs` §3b now compares the
+    // format that lane emits against what each extension row accepts. The
+    // unmapped-platform limb keeps its full force over the app surface: add a
+    // seventh Flutter platform and it still refuses.
+    if (c?.surface === 'extension') continue;
     for (const p of c?.platforms ?? []) if (typeof p === 'string' && p !== '') platforms.add(p);
   }
   const unmapped = [...platforms].filter((p) => !PLATFORM_BUILD_TARGETS.has(p)).sort();

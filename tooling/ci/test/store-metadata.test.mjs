@@ -75,6 +75,7 @@ const storeRow = (over = {}) => ({
   name: 'Microsoft Store',
   platforms: ['windows'],
   kind: 'store',
+  surface: 'app',
   served: false,
   submittable: true,
   artifactFormats: ['.msix'],
@@ -98,6 +99,7 @@ const playRow = (over = {}) => ({
   name: 'Google Play',
   platforms: ['android'],
   kind: 'store',
+  surface: 'app',
   served: false,
   submittable: true,
   artifactFormats: ['.aab'],
@@ -228,9 +230,28 @@ function tree({
   };
 
   const register = {
+    // ⚠️ REQUIRED IN THE FIXTURE. This guard reads
+    // `surfaces.<surface>.storeMetadataGradedBy` to decide which store rows are
+    // its domain — the extension surface's listing trees are graded by
+    // extensions/scripts/check-store-metadata.mjs — so a fixture without the
+    // block is COVERAGE LOST, which a case below asserts deliberately.
+    surfaces: {
+      app: {
+        what: 'a Flutter application delivered to a device',
+        platforms: ['android', 'ios', 'linux', 'macos', 'web', 'windows'],
+        platformsSource: "Flutter's own target names",
+        storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+      },
+      extension: {
+        what: 'a browser extension shipped from extensions/',
+        platforms: ['chrome', 'edge', 'firefox'],
+        platformsSource: 'the browser names',
+        storeMetadataGradedBy: 'extensions/scripts/check-store-metadata.mjs',
+      },
+    },
     storeMetadataContract: contract(),
     channels: [
-      { id: 'web', name: 'Web', platforms: ['web'], kind: 'web', served: true, submittable: false, artifactFormats: ['static-bundle'], storeMetadataDir: null },
+      { id: 'web', name: 'Web', platforms: ['web'], kind: 'web', surface: 'app', served: true, submittable: false, artifactFormats: ['static-bundle'], storeMetadataDir: null },
       storeRow(),
     ],
   };
@@ -408,6 +429,78 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     assert.match(out, /COVERAGE LOST — .*declares no `storeMetadataContract`/);
   });
 
+  // ── THE SURFACE SCOPE, 2026-09-05 ────────────────────────────────────────
+  // The expected product is { kind:"store" rows OF THIS SURFACE } x { apps }, and
+  // "of this surface" is DECLARED in the register rather than guessed: each
+  // surface names its `storeMetadataGradedBy` and this file takes the rows that
+  // name IT. These cases hold the three properties that makes that a domain
+  // rather than a shrink — the block is required, a row handed to another grader
+  // is PRINTED with the grader's name, and it does not enter the app product.
+  test('an extension-surface store row does NOT demand apps/<app>/store/<store>', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        r.channels.push({
+          id: 'chrome-webstore',
+          name: 'Chrome Web Store',
+          surface: 'extension',
+          platforms: ['chrome'],
+          kind: 'store',
+          served: false,
+          submittable: false,
+          artifactFormats: ['.zip'],
+          storeMetadataDir: 'extensions/Extension/{tool}/store/chrome',
+          extensionStoreKey: 'chrome',
+        });
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /store\/chrome-webstore/);
+  });
+
+  test('and it is PRINTED with the guard that does grade it — a handover, not a disappearance', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => {
+        r.channels.push({
+          id: 'amo',
+          name: 'Firefox Add-ons',
+          surface: 'extension',
+          platforms: ['firefox'],
+          kind: 'store',
+          served: false,
+          submittable: false,
+          artifactFormats: ['.zip'],
+          storeMetadataDir: 'extensions/Extension/{tool}/store/firefox',
+          extensionStoreKey: 'firefox',
+        });
+      },
+    }));
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT THIS GUARD'S DOMAIN: channel "amo"/);
+    assert.match(out, /extensions\/scripts\/check-store-metadata\.mjs/);
+  });
+
+  test('COVERAGE LOST when the surfaces block is deleted — the filter would match nothing', () => {
+    const { code, out } = run(tree({ mutateRegister: (r) => delete r.surfaces }));
+    assert.equal(code, 1, out);
+    assert.match(out, /declares no `surfaces` block/);
+  });
+
+  test('COVERAGE LOST when no surface names THIS guard as its grader', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => { r.surfaces.app.storeMetadataGradedBy = 'tooling/ci/assert-something-else.mjs'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /as `storeMetadataGradedBy` for NO surface/);
+  });
+
+  test('COVERAGE LOST when every store row belongs to another grader', () => {
+    const { code, out } = run(tree({
+      mutateRegister: (r) => { for (const c of r.channels) if (c.kind === 'store') c.surface = 'extension'; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /ZERO `kind: "store"` channels on the surface\(s\) this guard grades/);
+  });
+
   test('COVERAGE LOST when no row is kind:"store" any more', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => r.channels.forEach((c) => (c.kind = 'direct')) }));
     assert.equal(code, 1, out);
@@ -540,6 +633,25 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
   };
 
   const register = {
+    // ⚠️ REQUIRED IN THE FIXTURE. This guard reads
+    // `surfaces.<surface>.storeMetadataGradedBy` to decide which store rows are
+    // its domain — the extension surface's listing trees are graded by
+    // extensions/scripts/check-store-metadata.mjs — so a fixture without the
+    // block is COVERAGE LOST, which a case below asserts deliberately.
+    surfaces: {
+      app: {
+        what: 'a Flutter application delivered to a device',
+        platforms: ['android', 'ios', 'linux', 'macos', 'web', 'windows'],
+        platformsSource: "Flutter's own target names",
+        storeMetadataGradedBy: 'tooling/ci/assert-store-metadata.mjs',
+      },
+      extension: {
+        what: 'a browser extension shipped from extensions/',
+        platforms: ['chrome', 'edge', 'firefox'],
+        platformsSource: 'the browser names',
+        storeMetadataGradedBy: 'extensions/scripts/check-store-metadata.mjs',
+      },
+    },
     storeMetadataContract: {
       requiredFiles: [...REQUIRED],
       urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
@@ -571,6 +683,8 @@ function appleTree({ mutateRegister = null, fields = {} } = {}) {
         name: 'Apple App Store (iOS)',
         platforms: ['ios'],
         kind: 'store',
+        surface: 'app',
+  surface: 'app',
         served: false,
         submittable: true,
         artifactFormats: ['.ipa'],

@@ -120,6 +120,11 @@
 //   node tooling/ci/release-manifest.mjs --emit-environments <dir> --app <id>
 //   [--repo-root <path>]   point the register lookup at another tree (tests)
 //
+// `--app <id>` is resolved to a SURFACE against the tree — apps/<id>/ is an app,
+// extensions/Extension/*/tool.json declaring that id is whatever `surface` it
+// declares — and both `--stage` and `--emit-environments` then read only that
+// surface's channels. An id the tree does not hold is refused, never widened.
+//
 // Exit 0 = the mode succeeded. 1 = it did not, loudly and with a reason.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
@@ -162,10 +167,17 @@ export const MANIFEST_NAME = 'SHA256SUMS';
  * install on a handset, which is precisely "an artifact intended for a user".
  * A format with a reason beats a format with a row that would be a lie.
  */
+/* ⚠️ THE VALUE CARRIES A `surface` AS WELL AS A REASON, added 2026-09-05. An
+ * extra with no surface is an extra that belongs to EVERY surface, and `.apk` on
+ * an extension release would be exactly the leak `channelIsOnSurface` below
+ * exists to stop — a format offered to a lane that can never build it. */
 export const EXTRA_INSTALLABLE = new Map([
   [
     '.apk',
-    'no channel ACCEPTS an .apk (Play takes the .aab), so no register row can declare it — yet it is the only Android artifact a person can sideload onto a handset, which is exactly the "intended for a user" the requirement quantifies over.',
+    {
+      surface: 'app',
+      why: 'no channel ACCEPTS an .apk (Play takes the .aab), so no register row can declare it — yet it is the only Android artifact a person can sideload onto a handset, which is exactly the "intended for a user" the requirement quantifies over.',
+    },
   ],
 ]);
 
@@ -207,17 +219,57 @@ export const BUNDLE_MEMBERS = new Map([
   ],
 ]);
 
-/** Every installable file extension: the register's, plus the declared extras. */
-export function installableExtensions(register) {
+/**
+ * 🔴 THE SURFACE GATE, AND WHY IT IS ONE PREDICATE READ BY BOTH READERS BELOW.
+ * `surface` is the register's own axis — a Flutter application or a browser
+ * extension — and it is the axis every `--app <id>` invocation of this script
+ * sits on: `build-platforms.yml` releases an APP, `extensions.yml` releases a
+ * TOOL, and the two share this file.
+ *
+ * ⚠️ WHAT WENT WRONG WITHOUT IT, MEASURED 2026-09-05 ON THE BRANCH THAT ADDED THE
+ * EXTENSION ROWS. `.zip` is declared only by the three extension channels, and
+ * `installableExtensions()` ranged over every row with no surface question — so a
+ * `subly` release carrying any `.zip` staged it as an APP installable, where main
+ * had refused with "no installable artifact found". `originEnvironments()` had the
+ * mirror defect one level worse: it emitted a row on `c.surface === 'extension'`
+ * without ever asking whether `--app <id>` was an extension at all, so a Flutter
+ * app's release emitted `subly-amo`, `subly-chrome-webstore` and
+ * `subly-edge-addons` — three [10]D-9 records of browser-store origins for a
+ * product that ships to no browser store. main's honest refusal became three false
+ * environments. Both are one question, asked once, here.
+ *
+ * ⚠️ IT IS AN EQUALITY ON THE EXTENSION SIDE ONLY, DELIBERATELY. A row with NO
+ * `surface` reads as not-an-extension and keeps exactly the behaviour it had
+ * before this gate existed — the register's schema requires the field and
+ * assert-channel-register.mjs fails the build without it, so a surface-less row
+ * is a tree that is already red. Making the app half an equality instead would
+ * change what this script does on a register that guard has already rejected,
+ * which is a second opinion about a failure rather than a narrowing.
+ */
+export function channelIsOnSurface(c, surface) {
+  return (c?.surface === 'extension') === (surface === 'extension');
+}
+
+/** Every installable file extension: the register's, plus the declared extras.
+ *
+ *  `surface` narrows both halves to one surface's channels. `null` — the default
+ *  and what every GUARD passes — is the whole register, because "is this upload
+ *  an installable at all?" is a question about the tree and not about one
+ *  release. Only the `--app`-scoped CLI modes narrow. */
+export function installableExtensions(register, surface = null) {
   const found = new Set();
   for (const c of register?.channels ?? []) {
+    if (surface !== null && !channelIsOnSurface(c, surface)) continue;
     for (const f of c?.artifactFormats ?? []) {
       // A register format is either a file extension (".aab") or a shape name
       // ("static-bundle"). Only the first kind names a file.
       if (typeof f === 'string' && /^\.[A-Za-z0-9]+$/.test(f)) found.add(f);
     }
   }
-  for (const e of EXTRA_INSTALLABLE.keys()) found.add(e);
+  for (const [e, x] of EXTRA_INSTALLABLE) {
+    if (surface !== null && x.surface !== surface) continue;
+    found.add(e);
+  }
   return found;
 }
 
@@ -551,8 +603,10 @@ const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
  * actually carries. DERIVED from the register on all three axes so nothing here
  * is a list somebody maintains:
  *
- *   · `kind: "direct"` rows only. A GitHub Release is a download origin, never a
- *     store submission — [ADR 015] §4 is explicit that Releases is "the artifact
+ *   · `kind: "direct"` rows, PLUS every row on the `extension` surface — see the
+ *     comment on the loop below for why the second half is the same rule rather
+ *     than an exception to it. A GitHub Release is a download origin, never an
+ *     APP store submission — [ADR 015] §4 is explicit that Releases is "the artifact
  *     origin, not the download button". Recording a Play or App Store channel
  *     here would write a submission that never happened into [10]D-9's ledger,
  *     which record-deployment.mjs's own header calls worse than recording nothing
@@ -588,7 +642,18 @@ const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
  *     still published and still downloadable. Only the [10]D-9 record is held
  *     back, which is the half that would otherwise be false.
  */
-export function originEnvironments(register, app, assetNames) {
+export function originEnvironments(register, app, assetNames, surface) {
+  // 🔴 REQUIRED, AND IT THROWS RATHER THAN DEFAULTING. A default would be the
+  // exact defect this parameter was added to close: the caller that forgets it
+  // gets the widened answer and every log line still reads correct. There is one
+  // production caller (the `--emit-environments` mode below), it resolves the
+  // surface from the tree, and it refuses before reaching here if it cannot.
+  if (typeof surface !== 'string' || surface.trim() === '') {
+    throw new TypeError(
+      'originEnvironments needs the SURFACE the release is on as its fourth argument ("app" | "extension"). ' +
+        'Without it an extension channel is an origin for a Flutter app release, which is three [10]D-9 records of a submission that cannot exist.',
+    );
+  }
   const out = [];
   const omitted = [];
   // ⚠️ EVERY GUARD IN THIS LOOP IS FALSIFIABLE — READ TO THE END OF THIS BLOCK
@@ -639,7 +704,44 @@ export function originEnvironments(register, app, assetNames) {
   // `continue`d on a nullish `c`, nothing downstream can observe them, so no test
   // could be written and they only made the loop look guarded twice over.
   for (const c of register?.channels ?? []) {
-    if (c?.kind !== 'direct') continue;
+    // 🔴 `kind: "direct"` OR THE EXTENSION SURFACE, AND THE SECOND HALF IS NOT A
+    // RELAXATION OF THE FIRST — it is the same rule read on a surface where a
+    // GitHub Release genuinely IS the origin.
+    //
+    // The `direct` rule exists because "a GitHub Release is a download origin,
+    // never a store submission": recording a Play or App Store channel from a
+    // release would write a submission that never happened. On the extension
+    // surface the artifact this release publishes IS the artifact the store
+    // takes — extensions/dist/<tool>-<target>.zip, the same bytes, built once by
+    // extensions.yml's `release` job and uploaded by `gh release create` in that
+    // same job. There is no second build and no second file. Without these rows
+    // that job refused at this very command, BEFORE `gh release create`, with
+    // "publishing while recording nothing is [10]D-9's unrecorded deploy wearing
+    // a release badge" — which is the refusal this branch answers.
+    //
+    // ⚠️ WHAT THE [10]D-9 ROW THEN MEANS, STATED SO NOBODY READS MORE INTO IT.
+    // It records that this release is the ORIGIN of the artifact destined for
+    // that channel. It does NOT record a store submission, and it must not be
+    // read as one: no extension row is `served`, every one carries a `deferral`,
+    // and ADR 067 decision 8 puts a MANUAL first publish in front of all three.
+    // The store-submission record is `record-deployment.mjs`'s `--state` +
+    // `--listing-url` pair, which a release job cannot honestly supply because
+    // the store decides hours-to-weeks after the run has ended.
+    // 🔴 AND THAT PAIR IS THE OPEN EDGE OF THIS CHANGE: record-deployment.mjs
+    // refuses a `kind: "store"` environment with neither flag, so the extensions
+    // release job's record loop — which passes only a URL — would fail AFTER the
+    // publish on the first real tag. `git tag` is 0 and no extension has ever
+    // been released, so nothing is broken today and the fix is one flag pair in
+    // a workflow this change does not own. It is recorded in
+    // research/revamp-2026-09-05/phase2-ext-purchase-rail.md rather than left to
+    // be discovered by the first release.
+    // 🔴 THE SURFACE OF THE RELEASE COMES FIRST, BEFORE `kind` IS EVEN READ.
+    // Without this line the branch below asked "is this row an extension row?"
+    // and never "is this release an extension release?", so `--app subly`
+    // emitted three browser-store environments. See `channelIsOnSurface`.
+    if (!channelIsOnSurface(c, surface)) continue;
+    const isExtension = c?.surface === 'extension';
+    if (c?.kind !== 'direct' && !isExtension) continue;
     const tpl = c.deploymentEnvironment;
     if (typeof tpl !== 'string' || !tpl.includes('{app}')) continue;
     const formats = (c.artifactFormats ?? []).filter((f) => typeof f === 'string' && f.startsWith('.'));
@@ -775,6 +877,68 @@ function die(msg, ...more) {
   process.exit(1);
 }
 
+/** Where each surface keeps its products. `apps/<id>/` is a Flutter app;
+ *  `extensions/Extension/<dir>/tool.json` is a browser tool and DECLARES its own
+ *  surface, so the extension half is read rather than assumed. */
+export const APPS_ROOT = 'apps';
+export const EXT_TOOL_ROOT = 'extensions/Extension';
+
+/**
+ * Every product in the tree that answers to `--app <id>`, with the surface it is
+ * on and the file that says so. Returns a LIST, not a surface, because zero and
+ * two are different failures and the caller must be able to say which.
+ *
+ * 🔴 THE EXTENSION SIDE READS `tool.json`'s OWN `surface` FIELD rather than
+ * concluding "it is under extensions/, so it is an extension". The tool declares
+ * it, the register declares the same vocabulary in `surfaces`, and a directory
+ * position is not a declaration — the day a non-extension product lives under
+ * that root, a path rule would still call it one.
+ */
+export function productSurfaces(root, id) {
+  const found = [];
+  const extAbs = join(root, EXT_TOOL_ROOT);
+  if (existsSync(extAbs)) {
+    for (const d of listDir(extAbs)) {
+      const rel = `${EXT_TOOL_ROOT}/${d}/tool.json`;
+      const abs = join(extAbs, d, 'tool.json');
+      if (!existsSync(abs)) continue;
+      let tool = null;
+      try {
+        tool = JSON.parse(readFileSync(abs, 'utf8'));
+      } catch {
+        continue; // a broken tool.json is the extensions gate's finding, not this script's
+      }
+      if (tool?.id !== id) continue;
+      if (typeof tool.surface !== 'string' || tool.surface.trim() === '') continue;
+      found.push({ surface: tool.surface, where: rel });
+    }
+  }
+  if (existsSync(join(root, APPS_ROOT, id))) found.push({ surface: 'app', where: `${APPS_ROOT}/${id}/` });
+  return found;
+}
+
+/** The one surface `--app <id>` is on, or a refusal. Never a guess. */
+function requireSurface(root, id, mode) {
+  const found = productSurfaces(root, id);
+  if (found.length === 0) {
+    die(
+      `COVERAGE LOST — ${mode} was given --app "${id}" and this tree holds no such product.`,
+      `Looked for ${APPS_ROOT}/${id}/ and an ${EXT_TOOL_ROOT}/*/tool.json declaring id "${id}".`,
+      'The surface decides which channels are origins and which formats are installable, so continuing',
+      'would range over EVERY surface — which is how a Flutter release emitted three browser-store',
+      'environments. Refusing is the only honest answer to an id nothing in the tree claims.',
+    );
+  }
+  const surfaces = [...new Set(found.map((f) => f.surface))];
+  if (surfaces.length > 1) {
+    die(
+      `--app "${id}" resolves to more than one surface: ${found.map((f) => `${f.surface} (${f.where})`).join(', ')}.`,
+      'One id, two products, and nothing here can choose between them.',
+    );
+  }
+  return surfaces[0];
+}
+
 function loadRegister() {
   const root = resolve(flag('repo-root') ?? DEFAULT_ROOT);
   const abs = join(root, REGISTER_REL);
@@ -847,7 +1011,12 @@ function main() {
     const tag = flag('tag') ?? die('--stage needs --tag <tag>');
     // Installable MINUS the declared bundle members — see BUNDLE_MEMBERS above.
     // Lifting a bundle's executable out breaks the executable and the bundle.
-    const exts = new Set([...installableExtensions(loadRegister())].filter((x) => !BUNDLE_MEMBERS.has(x)));
+    // NARROWED TO THE SURFACE `--app` IS ON: `.zip` is an extension channel's
+    // format and nothing else's, so an app release that happens to carry one
+    // must still find no installable — which is what main did and what the
+    // extension rows widened away until 2026-09-05.
+    const stageSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--stage');
+    const exts = new Set([...installableExtensions(loadRegister(), stageSurface)].filter((x) => !BUNDLE_MEMBERS.has(x)));
     mkdirSync(out, { recursive: true });
 
     const staged = [];
@@ -887,7 +1056,7 @@ function main() {
     if (staged.length === 0) {
       die(
         `COVERAGE LOST — no installable artifact found under ${from}.`,
-        `Looked for: ${[...exts].sort().join(', ')} (derived from ${REGISTER_REL}).`,
+        `Looked for: ${[...exts].sort().join(', ')} (derived from ${REGISTER_REL}, surface "${stageSurface}").`,
         'A release with no installer is a release of nothing, and publishing one would satisfy every',
         'downstream check over an empty set.',
       );
@@ -1008,8 +1177,13 @@ function main() {
   if (has('emit-environments')) {
     const dir = requireDir(positionalAfter('emit-environments'), '--emit-environments');
     const app = flag('app') ?? die('--emit-environments needs --app <id>');
+    // The surface is resolved from the TREE, not from the register: the register
+    // says which channels exist on each surface, and the tree says which surface
+    // this product is on. Reading the first for the second is how `--app subly`
+    // emitted `subly-chrome-webstore`.
+    const emitSurface = requireSurface(resolve(flag('repo-root') ?? DEFAULT_ROOT), app, '--emit-environments');
     const { names } = assetFiles(dir);
-    const { environments, omitted } = originEnvironments(loadRegister(), app, names);
+    const { environments, omitted } = originEnvironments(loadRegister(), app, names, emitSurface);
     // 🔴 STDERR, NOT STDOUT. The release job reads this command as a word list
     // (`for environment in $(node … --emit-environments …)`), so a reason printed
     // on stdout becomes an argument to record-deployment.mjs.
@@ -1050,8 +1224,8 @@ function main() {
     }
     if (environments.length === 0 && omitted.length === 0) {
       die(
-        `no \`kind: "direct"\` channel in ${REGISTER_REL} declares a format this release carries.`,
-        `The release holds: ${names.join(', ') || '(nothing)'}.`,
+        `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
+        `The release holds: ${names.join(', ') || '(nothing)'}, and \`--app ${app}\` is on the "${emitSurface}" surface — only that surface's channels were considered.`,
         'Publishing while recording nothing is [10]D-9\'s unrecorded deploy wearing a release badge —',
         'the artifacts would exist and nothing could say what shipped.',
       );

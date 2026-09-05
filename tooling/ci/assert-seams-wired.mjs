@@ -1093,9 +1093,37 @@ function jobBody(yaml, jobName) {
   let lanes = [];
   try {
     const register = JSON.parse(readFileSync(REGISTER, 'utf8'));
-    lanes = (register.channels ?? [])
-      .filter((c) => typeof c?.lane?.workflow === 'string' && typeof c?.lane?.job === 'string')
+    // 🔴 `--dart-define` IS A FLUTTER FLAG, SO THE DOMAIN IS THE FLUTTER
+    // SURFACE. This check's other half is `apps/subly/lib/main.dart` reading
+    // `String.fromEnvironment('GLITCHTIP_DSN')` — a Dart consumer — and the
+    // failure it exists to catch is a Flutter build initialising the NoOp
+    // client. On 2026-09-05 the register acquired three `surface: "extension"`
+    // rows whose lane is extensions.yml's `release` job: it runs
+    // `node scripts/pack.mjs` and no `flutter build` at all, so demanding
+    // `--dart-define` there is demanding a flag the build has nowhere to put.
+    //
+    // ⚠️ THE EXTENSIONS DO NOT SILENTLY LOSE A CRASH SINK — THEY NEVER HAD ONE,
+    // AND THE REGISTER NOW SAYS SO OUT LOUD. Each extension row carries
+    // `crashSink: { layers: [], native: false }` with the reason: the free tier
+    // is held to zero network calls by extensions/PRINCIPLES.md and extensions
+    // ADR 013 makes the Pro entitlement check the ONE call the product makes, so
+    // an error sink would be a second one. That is a declaration a reader can
+    // disagree with, which is more than the silence this limb would otherwise
+    // have produced by failing on an impossible flag.
+    const allLanes = (register.channels ?? []).filter(
+      (c) => typeof c?.lane?.workflow === 'string' && typeof c?.lane?.job === 'string',
+    );
+    const notFlutter = allLanes.filter((c) => c.surface === 'extension');
+    lanes = allLanes
+      .filter((c) => c.surface !== 'extension')
       .map((c) => ({ id: c.id, workflow: c.lane.workflow.split('/').pop(), job: c.lane.job }));
+    for (const c of notFlutter) {
+      console.log(
+        `note ⬜ NO DART TO DEFINE INTO: channel \`${c.id}\` (surface "${c.surface}") names lane ${c.lane.workflow}#${c.lane.job}, ` +
+          `which runs no \`flutter build\`. Its declared crashSink is layers=[${(c.crashSink?.layers ?? []).join(', ') || 'none'}] — ` +
+          'a stated absence, not an unchecked one.',
+      );
+    }
   } catch (e) {
     fail(`COVERAGE LOST — tooling/channel-register.json could not be read (${e.message}), so the set of artifact lanes that must supply GLITCHTIP_DSN is empty and this check asserts nothing.`);
   }

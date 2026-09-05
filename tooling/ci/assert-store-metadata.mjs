@@ -138,13 +138,78 @@ try {
 }
 
 const channels = Array.isArray(register.channels) ? register.channels : [];
-const storeRows = channels.filter((c) => c && c.kind === 'store');
+
+// ── WHICH STORE ROWS ARE THIS GUARD'S, AND WHY THE ANSWER IS DECLARED ────────
+// 🔴 THE PRODUCT IS { kind: "store" rows OF THIS SURFACE } × { apps }, AND THE
+// SURFACE HALF IS NOT A SHRINK. `apps/{app}/store/<channel>` is what this file
+// grades and `catalog/apps.json` is the only right-hand side it has. On
+// 2026-09-05 the register acquired `chrome-webstore`, `edge-addons` and `amo` —
+// browser add-on stores whose listing trees live under
+// extensions/Extension/<tool>/store/<store> and whose products are not in
+// apps.json at all. Multiplying them by the app set would have demanded
+// `apps/subly/store/chrome-webstore/`, a directory that should never exist: it
+// would be a Chrome Web Store listing for a Flutter app that will never be
+// submitted to it.
+//
+// So the domain is DECLARED rather than guessed, and it is declared in the
+// register: each surface names its `storeMetadataGradedBy`, and this file takes
+// the rows that name IT. That is the same shape as `storeMetadataContract` —
+// read from the register, never a private copy — and it means a new surface
+// cannot quietly fall out of every guard's domain: it either names this file, or
+// it names another one, and the rows it takes with it are PRINTED below.
+//
+// ⚠️ NOTHING LEAVES COVERAGE. The extension trees are graded by
+// extensions/scripts/check-store-metadata.mjs, which is stricter about them than
+// this file could be — it holds three declarations of the store vocabulary to
+// each other and enforces per-store field limits that carry a fetched source.
+// assert-channel-register.mjs holds the two corpora together at the row level:
+// every extension row's `storeMetadataDir` must resolve on disk for every tool
+// AND agree with that tool's own `tool.json`.
+const MY_REL = 'tooling/ci/assert-store-metadata.mjs';
+const surfaceDefs = register.surfaces;
+if (surfaceDefs === null || typeof surfaceDefs !== 'object' || Array.isArray(surfaceDefs)) {
+  coverageLost([
+    `${REGISTER} declares no \`surfaces\` block.`,
+    'This guard reads `surfaces.<surface>.storeMetadataGradedBy` to decide which store rows are its',
+    'domain. With the block gone the filter matches NOTHING and the expected set is empty — which is',
+    'the same vacuity D-5 shipped with, arriving through a deleted key instead of an empty register.',
+  ]);
+}
+const mySurfaces = new Set(
+  Object.entries(surfaceDefs)
+    .filter(([name, def]) => !name.startsWith('_') && def && def.storeMetadataGradedBy === MY_REL)
+    .map(([name]) => name),
+);
+if (mySurfaces.size === 0) {
+  coverageLost([
+    `${REGISTER} names ${MY_REL} as \`storeMetadataGradedBy\` for NO surface.`,
+    'Every store row would then belong to some other grader and this file would check nothing while',
+    'exiting 0. If this guard is genuinely no longer D-5\'s reader, delete it in the same commit that',
+    'moves the last surface off it — a guard nobody\'s domain names is a guard nobody runs.',
+  ]);
+}
+const allStoreRows = channels.filter((c) => c && c.kind === 'store');
+const storeRows = allStoreRows.filter((c) => mySurfaces.has(c.surface));
+const elsewhere = allStoreRows.filter((c) => !mySurfaces.has(c.surface));
 if (storeRows.length === 0) {
   coverageLost([
-    `${REGISTER} declares ZERO \`kind: "store"\` channels.`,
+    `${REGISTER} declares ZERO \`kind: "store"\` channels on the surface(s) this guard grades (${[...mySurfaces].join(', ')}).`,
     'D-5 is entirely about store listings. With no store row the expected set is empty and this',
     'guard passes by having nothing to check — which is exactly the vacuity D-5 shipped with.',
   ]);
+}
+
+// Every store row this guard does NOT grade is named, with the guard that does.
+// A row that silently left one guard's domain and entered nobody's is the exact
+// shape of the coverage this file exists to make loud, so the handover is
+// printed on every run rather than inferred from an absence.
+for (const c of elsewhere) {
+  const by = surfaceDefs?.[c.surface]?.storeMetadataGradedBy ?? '(no grader named — see assert-channel-register.mjs)';
+  prints.push(
+    `NOT THIS GUARD'S DOMAIN: channel "${c.id}" is kind:"store" on surface "${c.surface}", whose listing trees are graded by ${by}. ` +
+      `Its trees are ${c.storeMetadataDir ?? '(none declared)'} — outside apps/{app}/store/, which is this file's whole subject. ` +
+      'D-5 still holds for it; a different reader holds it.',
+  );
 }
 
 const contract = register.storeMetadataContract;
