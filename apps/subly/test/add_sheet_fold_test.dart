@@ -82,14 +82,16 @@ void main() {
       expect(
         MediaQuery.sizeOf(tester.element(submit)),
         kStorePhone,
-        reason: 'the sheet must be laid out against the pinned window, not the '
+        reason:
+            'the sheet must be laid out against the pinned window, not the '
             'flutter_test 800x600 default',
       );
 
       expect(
         submit.hitTestable(),
         findsNothing,
-        reason: 'submit sits below the fold at $kStorePhone — a tap aimed at it '
+        reason:
+            'submit sits below the fold at $kStorePhone — a tap aimed at it '
             'lands on nothing, which is why presence is not reachability',
       );
 
@@ -99,7 +101,8 @@ void main() {
       expect(
         submit.hitTestable(),
         findsOneWidget,
-        reason: 'submit is inside the scroll view, so scrolling to it must '
+        reason:
+            'submit is inside the scroll view, so scrolling to it must '
             'bring it into the window',
       );
     },

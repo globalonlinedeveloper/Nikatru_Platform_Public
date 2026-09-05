@@ -440,36 +440,36 @@ final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
 /// declares a builder for, minus [kAlreadySwept] and [kCannotBeSwept]. A route
 /// added to the router with no entry here is a FAILURE, which is what stops
 /// this file quietly measuring a shrinking share of a growing app.
-const Map<String, ({int controls, int reachable})> kExpected =
-    <String, ({int controls, int reachable})>{
-      '/scan': (controls: 1, reachable: 1),
-      // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
-      // control count did NOT move — `FocusableTap` still builds a
-      // `GestureDetector` with an `onTap`, so the rig counts the same nine.
-      '/sign-up': (controls: 9, reachable: 7),
-      '/check-inbox': (controls: 1, reachable: 1),
-      '/verify-email': (controls: 3, reachable: 3),
-      // 2 -> 4, and it is the SAME TWO LINKS: this screen renders
-      // `LegalConsentFields` too, so one widget fix moved two routes.
-      '/reaccept-terms': (controls: 5, reachable: 4),
-      '/reset-password': (controls: 1, reachable: 1),
-      '/notifications': (controls: 1, reachable: 1),
-      // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
-      // and `More options` are the app bar; `_iconButton` now builds on
-      // `FocusableTap`.
-      '/sub/:id': (controls: 4, reachable: 4),
-      '/paywall': (controls: 0, reachable: 0),
-      // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
-      // always built; this file was sweeping the state that does not build it.
-      // See [kSweptAs]: the cancel row is `if (isPro)`, so `2 of 2` was a full
-      // house for a screen with the ROSCA control absent. The three are the
-      // app-bar back button, the restore row and the cancel row, each named by
-      // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
-      '/manage-plan': (controls: 3, reachable: 3),
-      '/calendar': (controls: 7, reachable: 7),
-      '/insights': (controls: 3, reachable: 3),
-      '/budget': (controls: 0, reachable: 0),
-    };
+const Map<String, ({int controls, int reachable})>
+kExpected = <String, ({int controls, int reachable})>{
+  '/scan': (controls: 1, reachable: 1),
+  // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
+  // control count did NOT move — `FocusableTap` still builds a
+  // `GestureDetector` with an `onTap`, so the rig counts the same nine.
+  '/sign-up': (controls: 9, reachable: 7),
+  '/check-inbox': (controls: 1, reachable: 1),
+  '/verify-email': (controls: 3, reachable: 3),
+  // 2 -> 4, and it is the SAME TWO LINKS: this screen renders
+  // `LegalConsentFields` too, so one widget fix moved two routes.
+  '/reaccept-terms': (controls: 5, reachable: 4),
+  '/reset-password': (controls: 1, reachable: 1),
+  '/notifications': (controls: 1, reachable: 1),
+  // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
+  // and `More options` are the app bar; `_iconButton` now builds on
+  // `FocusableTap`.
+  '/sub/:id': (controls: 4, reachable: 4),
+  '/paywall': (controls: 0, reachable: 0),
+  // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
+  // always built; this file was sweeping the state that does not build it.
+  // See [kSweptAs]: the cancel row is `if (isPro)`, so `2 of 2` was a full
+  // house for a screen with the ROSCA control absent. The three are the
+  // app-bar back button, the restore row and the cancel row, each named by
+  // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
+  '/manage-plan': (controls: 3, reachable: 3),
+  '/calendar': (controls: 7, reachable: 7),
+  '/insights': (controls: 3, reachable: 3),
+  '/budget': (controls: 0, reachable: 0),
+};
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.
 ///
@@ -1202,9 +1202,7 @@ void main() {
       // than one whose route is keyboard-dead. So: the screen carries exactly
       // two link-role controls, and each owns exactly one Tab stop.
       final List<Element> links = s.controls
-          .where(
-            (Element e) => _declaresLink(e),
-          )
+          .where((Element e) => _declaresLink(e))
           .toList();
       expect(
         links,
@@ -1311,9 +1309,7 @@ void main() {
       // count of 1 is equally satisfied by two links that traverse and by two
       // links that were removed from the gate altogether.
       final List<Element> links = s.controls
-          .where(
-            (Element e) => _declaresLink(e),
-          )
+          .where((Element e) => _declaresLink(e))
           .toList();
       expect(
         links,
@@ -1435,7 +1431,9 @@ void main() {
           .map((FocusNode n) => n.rect.bottom)
           .reduce((double a, double b) => a > b ? a : b);
       final double highestBody = s.orbit
-          .where((FocusNode n) => !heroStops.any((FocusNode h) => identical(h, n)))
+          .where(
+            (FocusNode n) => !heroStops.any((FocusNode h) => identical(h, n)),
+          )
           .map((FocusNode n) => n.rect.top)
           .reduce((double a, double b) => a < b ? a : b);
       expect(
@@ -1578,4 +1576,3 @@ void main() {
     });
   });
 }
-

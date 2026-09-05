@@ -42,61 +42,52 @@ class _MemStore implements core.KeyValueStore {
 }
 
 void main() {
-  test(
-    'LIVE: consent + funnel reach production',
-    () async {
-      final _MemStore store = _MemStore();
-      // A fixed anon id so the rows are findable and deletable afterwards.
-      const String anonId = 'c6probe-0000000000000001';
-      final core.ConsentController consent = core.ConsentController(
-        store: store,
-      );
+  test('LIVE: consent + funnel reach production', () async {
+    final _MemStore store = _MemStore();
+    // A fixed anon id so the rows are findable and deletable afterwards.
+    const String anonId = 'c6probe-0000000000000001';
+    final core.ConsentController consent = core.ConsentController(store: store);
 
-      // 1. The real decision path, over the real consent transport.
-      final core.ConsentArtifact artifact = await applyConsentDecision(
-        controller: consent,
-        transport: DioConsentTransport(platformBaseUrl: kProbePlatformBase),
-        appId: 'subly',
-        anonId: anonId,
-        granted: true,
-        appVersion: kProbeAppVersion,
-        platform: 'probe',
-      );
-      expect(
-        consent.statusOf(core.ConsentPurpose.analytics),
-        core.ConsentStatus.granted,
-      );
-      // ignore: avoid_print
-      print('consent_id  = ${artifact.consentId}');
+    // 1. The real decision path, over the real consent transport.
+    final core.ConsentArtifact artifact = await applyConsentDecision(
+      controller: consent,
+      transport: DioConsentTransport(platformBaseUrl: kProbePlatformBase),
+      appId: 'subly',
+      anonId: anonId,
+      granted: true,
+      appVersion: kProbeAppVersion,
+      platform: 'probe',
+    );
+    expect(
+      consent.statusOf(core.ConsentPurpose.analytics),
+      core.ConsentStatus.granted,
+    );
+    // ignore: avoid_print
+    print('consent_id  = ${artifact.consentId}');
 
-      // 2. The real recorder over the real event transport — the exact objects
-      //    apps/subly/lib/state/analytics_providers.dart builds at runtime.
-      final core.AnalyticsRecorder recorder = core.AnalyticsRecorder(
-        appId: 'subly',
-        anonId: anonId,
-        transport: DioEventTransport(platformBaseUrl: kProbePlatformBase),
-        consent: consent,
-        queueStore: store,
-        envelope: <String, Object?>{
-          'platform': 'probe',
-          'app_version': kProbeAppVersion,
-        },
-      );
-      await recorder.hydrate();
+    // 2. The real recorder over the real event transport — the exact objects
+    //    apps/subly/lib/state/analytics_providers.dart builds at runtime.
+    final core.AnalyticsRecorder recorder = core.AnalyticsRecorder(
+      appId: 'subly',
+      anonId: anonId,
+      transport: DioEventTransport(platformBaseUrl: kProbePlatformBase),
+      consent: consent,
+      queueStore: store,
+      envelope: <String, Object?>{
+        'platform': 'probe',
+        'app_version': kProbeAppVersion,
+      },
+    );
+    await recorder.hydrate();
 
-      // 3. The real launch lifecycle — first_launch + app_open + return_visit,
-      // as app.dart fires it since P2.6a: the chassis core.AnalyticsLifecycle
-      // (same storage keys the old AnalyticsFunnel.onLaunch used, so this probe
-      // exercises exactly the path production installs take).
-      await core.AnalyticsLifecycle(
-        analytics: recorder,
-        store: store,
-      ).onLaunch();
-      await recorder.flush();
+    // 3. The real launch lifecycle — first_launch + app_open + return_visit,
+    // as app.dart fires it since P2.6a: the chassis core.AnalyticsLifecycle
+    // (same storage keys the old AnalyticsFunnel.onLaunch used, so this probe
+    // exercises exactly the path production installs take).
+    await core.AnalyticsLifecycle(analytics: recorder, store: store).onLaunch();
+    await recorder.flush();
 
-      // ignore: avoid_print
-      print('flushed for anon_id=$anonId app_version=$kProbeAppVersion');
-    },
-    timeout: const Timeout(Duration(seconds: 60)),
-  );
+    // ignore: avoid_print
+    print('flushed for anon_id=$anonId app_version=$kProbeAppVersion');
+  }, timeout: const Timeout(Duration(seconds: 60)));
 }

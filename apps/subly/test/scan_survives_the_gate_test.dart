@@ -115,76 +115,74 @@ Future<void> _boot(WidgetTester tester, ProviderContainer c) async {
 }
 
 void main() {
-  testWidgets(
-    'asking for /scan while the gate is CLOSED banks it as ?next=',
-    (WidgetTester tester) async {
-      final ProviderContainer c = _gatedContainer();
-      addTearDown(c.dispose);
-      await _boot(tester, c);
+  testWidgets('asking for /scan while the gate is CLOSED banks it as ?next=', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _gatedContainer();
+    addTearDown(c.dispose);
+    await _boot(tester, c);
 
-      expect(
-        c.read(legalReacceptanceNeededProvider),
-        isTrue,
-        reason:
-            'the premise: an empty store means no clickwrap record, which is '
-            'exactly the state the e2e admin-API user is in. If this is false '
-            'the rest of the file is asserting against a gate that never fired',
-      );
+    expect(
+      c.read(legalReacceptanceNeededProvider),
+      isTrue,
+      reason:
+          'the premise: an empty store means no clickwrap record, which is '
+          'exactly the state the e2e admin-API user is in. If this is false '
+          'the rest of the file is asserting against a gate that never fired',
+    );
 
-      // The harness's stand-in for `LoginScreen._submit`'s `context.go('/scan')`.
-      c.read(routerProvider).go('/scan');
-      await tester.pumpAndSettle();
+    // The harness's stand-in for `LoginScreen._submit`'s `context.go('/scan')`.
+    c.read(routerProvider).go('/scan');
+    await tester.pumpAndSettle();
 
-      expect(
-        _where(c),
-        '/reaccept-terms?next=%2Fscan',
-        reason:
-            'the FIRST of the two steps the existing test skips: the gate must '
-            'BANK the destination rather than merely blocking it. A bare '
-            '/reaccept-terms here means `_gateWithNext` dropped it, and the '
-            'user is going to /home no matter how the interstitial is cleared',
-      );
-    },
-  );
+    expect(
+      _where(c),
+      '/reaccept-terms?next=%2Fscan',
+      reason:
+          'the FIRST of the two steps the existing test skips: the gate must '
+          'BANK the destination rather than merely blocking it. A bare '
+          '/reaccept-terms here means `_gateWithNext` dropped it, and the '
+          'user is going to /home no matter how the interstitial is cleared',
+    );
+  });
 
-  testWidgets(
-    'and clearing the gate the way a user clears it lands on /scan',
-    (WidgetTester tester) async {
-      final ProviderContainer c = _gatedContainer();
-      addTearDown(c.dispose);
-      await _boot(tester, c);
+  testWidgets('and clearing the gate the way a user clears it lands on /scan', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _gatedContainer();
+    addTearDown(c.dispose);
+    await _boot(tester, c);
 
-      c.read(routerProvider).go('/scan');
-      await tester.pumpAndSettle();
+    c.read(routerProvider).go('/scan');
+    await tester.pumpAndSettle();
 
-      // 🔴 SATISFIED BY THE REAL SCREEN, NOT BY FLIPPING A PROVIDER. Overriding
-      // the provider to `false` would assert the exit line over again; the
-      // question is whether the acceptance a user actually performs — tick the
-      // box, press the button, the write lands in the store, the provider
-      // recomputes, `routerRefreshProvider` re-runs the redirect — arrives at
-      // the banked destination. Every one of those hops is a place the `next`
-      // can be lost, and only this route exercises them.
-      expect(
-        find.byKey(LegalConsentFields.termsCheckbox),
-        findsOneWidget,
-        reason: 'the interstitial must actually be on screen to be cleared',
-      );
-      await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(ReacceptTermsScreen.acceptButton));
-      await tester.pumpAndSettle();
+    // 🔴 SATISFIED BY THE REAL SCREEN, NOT BY FLIPPING A PROVIDER. Overriding
+    // the provider to `false` would assert the exit line over again; the
+    // question is whether the acceptance a user actually performs — tick the
+    // box, press the button, the write lands in the store, the provider
+    // recomputes, `routerRefreshProvider` re-runs the redirect — arrives at
+    // the banked destination. Every one of those hops is a place the `next`
+    // can be lost, and only this route exercises them.
+    expect(
+      find.byKey(LegalConsentFields.termsCheckbox),
+      findsOneWidget,
+      reason: 'the interstitial must actually be on screen to be cleared',
+    );
+    await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ReacceptTermsScreen.acceptButton));
+    await tester.pumpAndSettle();
 
-      expect(
-        _where(c),
-        '/scan',
-        reason:
-            'THE WHOLE QUESTION. The nightly e2e signs in with a magic-link '
-            'token, stands in for the form\'s context.go(\'/scan\'), clears '
-            'this interstitial and then asserts ScanScreen rendered "Go to '
-            'dashboard". Landing on /home here reproduces that red locally, '
-            'and is the router/gates.dart:376 regression arriving by a second '
-            'route',
-      );
-    },
-  );
+    expect(
+      _where(c),
+      '/scan',
+      reason:
+          'THE WHOLE QUESTION. The nightly e2e signs in with a magic-link '
+          'token, stands in for the form\'s context.go(\'/scan\'), clears '
+          'this interstitial and then asserts ScanScreen rendered "Go to '
+          'dashboard". Landing on /home here reproduces that red locally, '
+          'and is the router/gates.dart:376 regression arriving by a second '
+          'route',
+    );
+  });
 }

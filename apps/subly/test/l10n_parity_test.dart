@@ -134,7 +134,8 @@ void main() {
         expect(
           enKeys,
           contains(key),
-          reason: 'COVERAGE LOST — $key is gone from app_en.arb, so the '
+          reason:
+              'COVERAGE LOST — $key is gone from app_en.arb, so the '
               'comparison below has nothing to compare.',
         );
         expect(
@@ -148,7 +149,8 @@ void main() {
         expect(
           (ta[key] as String).trim(),
           isNotEmpty,
-          reason: '$key is blank in Tamil — the wall would render nothing at all',
+          reason:
+              '$key is blank in Tamil — the wall would render nothing at all',
         );
       }
     });

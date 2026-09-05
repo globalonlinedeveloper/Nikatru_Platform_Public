@@ -27,16 +27,23 @@ class SubMath {
 
   static List<Subscription> byMonthlyDesc(List<Subscription> s) {
     final List<Subscription> l = List<Subscription>.of(s);
-    l.sort((Subscription a, Subscription b) =>
-        b.monthlyPrice.compareTo(a.monthlyPrice));
+    l.sort(
+      (Subscription a, Subscription b) =>
+          b.monthlyPrice.compareTo(a.monthlyPrice),
+    );
     return l;
   }
 
-  static List<Subscription> upcoming(List<Subscription> s, DateTime now,
-      {int take = 4}) {
+  static List<Subscription> upcoming(
+    List<Subscription> s,
+    DateTime now, {
+    int take = 4,
+  }) {
     final List<Subscription> l = List<Subscription>.of(s);
-    l.sort((Subscription a, Subscription b) =>
-        a.daysUntil(now).compareTo(b.daysUntil(now)));
+    l.sort(
+      (Subscription a, Subscription b) =>
+          a.daysUntil(now).compareTo(b.daysUntil(now)),
+    );
     return l.take(take).toList();
   }
 
@@ -86,9 +93,10 @@ class SubMath {
   /// double-count a monthly plan that would also bill again in 31 days. That is
   /// a floor on the horizon, not a ceiling, and it is honest in the safe
   /// direction.
-  static double dueWithin(List<Subscription> s, DateTime now, int days) =>
-      s.where((Subscription x) {
+  static double dueWithin(List<Subscription> s, DateTime now, int days) => s
+      .where((Subscription x) {
         final int d = x.daysUntil(now);
         return d >= 0 && d <= days;
-      }).fold(0.0, (double a, Subscription x) => a + x.price);
+      })
+      .fold(0.0, (double a, Subscription x) => a + x.price);
 }

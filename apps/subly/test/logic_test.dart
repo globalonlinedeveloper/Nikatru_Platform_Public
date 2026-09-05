@@ -35,13 +35,13 @@ void main() {
 
   group('Subscription', () {
     Subscription make(double price, BillingCycle cycle) => Subscription(
-          id: '1',
-          name: 'X',
-          category: 'Other',
-          price: price,
-          cycle: cycle,
-          nextRenewal: DateTime(2026, 1, 1),
-        );
+      id: '1',
+      name: 'X',
+      category: 'Other',
+      price: price,
+      cycle: cycle,
+      nextRenewal: DateTime(2026, 1, 1),
+    );
 
     test('yearly price normalises to a monthly figure', () {
       expect(make(120, BillingCycle.yearly).monthlyPrice, 10);
@@ -50,8 +50,9 @@ void main() {
       expect(make(9.99, BillingCycle.monthly).monthlyPrice, 9.99);
     });
     test('json round-trips name, price and cycle', () {
-      final Subscription back =
-          Subscription.fromJson(make(15.49, BillingCycle.yearly).toJson());
+      final Subscription back = Subscription.fromJson(
+        make(15.49, BillingCycle.yearly).toJson(),
+      );
       expect(back.cycle, BillingCycle.yearly);
       expect(back.price, 15.49);
       expect(back.name, 'X');

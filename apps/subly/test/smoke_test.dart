@@ -39,8 +39,7 @@ class _MemStore implements core.KeyValueStore {
 /// router's signed-out redirect from bouncing us off /home.
 class _SignedInAuth extends core.AuthRepository {
   @override
-  core.AuthUser? get currentUser =>
-      const core.AuthUser(
+  core.AuthUser? get currentUser => const core.AuthUser(
     id: 'smoke',
     email: 'smoke@test.dev',
     emailVerified: true,
@@ -82,42 +81,41 @@ void main() {
     expect(find.textContaining('Welcome to'), findsOneWidget);
   });
 
-  testWidgets(
-    'home renders INSIDE the design-system AppScaffold — via the shell',
-    (WidgetTester tester) async {
-      final ProviderContainer container = ProviderContainer(
-        overrides: <Override>[
-          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
-          // This user has accepted the current terms. Stated, not defaulted: a
-          // signed-in user with no acceptance on record is sent to /reaccept-terms
-          // by the router, which is correct and is what every pre-clickwrap install
-          // sees once. The gate itself is driven in legal_gates_test.dart.
-          legalReacceptanceNeededProvider.overrideWithValue(false),
-          authRepositoryProvider.overrideWithValue(_SignedInAuth()),
-          keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
-          analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
-        ],
-      );
-      addTearDown(container.dispose);
+  testWidgets('home renders INSIDE the design-system AppScaffold — via the shell', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Override>[
+        onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+        // This user has accepted the current terms. Stated, not defaulted: a
+        // signed-in user with no acceptance on record is sent to /reaccept-terms
+        // by the router, which is correct and is what every pre-clickwrap install
+        // sees once. The gate itself is driven in legal_gates_test.dart.
+        legalReacceptanceNeededProvider.overrideWithValue(false),
+        authRepositoryProvider.overrideWithValue(_SignedInAuth()),
+        keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
+        analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+      ],
+    );
+    addTearDown(container.dispose);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: MaterialApp.router(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: buildAppTheme(seed: const Color(0xFF6459F5)),
-            routerConfig: container.read(routerProvider),
-          ),
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: buildAppTheme(seed: const Color(0xFF6459F5)),
+          routerConfig: container.read(routerProvider),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      // Exactly one: the shell's. A second AppScaffold anywhere would mean a
-      // screen re-grew its own shell — the two-navigation-surfaces defect the
-      // Variant B decision exists to prevent.
-      expect(find.byType(AppScaffold), findsOneWidget);
-      expect(find.byType(HomeScreen), findsOneWidget);
-    },
-  );
+    // Exactly one: the shell's. A second AppScaffold anywhere would mean a
+    // screen re-grew its own shell — the two-navigation-surfaces defect the
+    // Variant B decision exists to prevent.
+    expect(find.byType(AppScaffold), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
 }

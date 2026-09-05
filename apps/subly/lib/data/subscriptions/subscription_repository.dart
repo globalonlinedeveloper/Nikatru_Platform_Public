@@ -10,7 +10,8 @@ class SubscriptionRepository {
   final ApiClient _api;
 
   Future<List<Subscription>> fetchAll() => _api.getSubscriptions();
-  Future<Subscription> add(Subscription draft) => _api.createSubscription(draft);
+  Future<Subscription> add(Subscription draft) =>
+      _api.createSubscription(draft);
   Future<Subscription> update(String id, Map<String, dynamic> changes) =>
       _api.updateSubscription(id, changes);
   Future<void> cancel(String id) => _api.deleteSubscription(id);

@@ -171,7 +171,11 @@ void main() {
 
         // The prompt IS up — established by its own controls, so nothing below
         // can be explained away as "it never appeared".
-        expect(_decline, findsOneWidget, reason: 'precondition: prompt mounted');
+        expect(
+          _decline,
+          findsOneWidget,
+          reason: 'precondition: prompt mounted',
+        );
         expect(_allow, findsOneWidget, reason: 'precondition: prompt mounted');
 
         // ── THE ROOT CAUSE, PINNED ────────────────────────────────────────
@@ -198,7 +202,8 @@ void main() {
         expect(
           _skip,
           findsOneWidget,
-          reason: 'the carousel is built beneath the scrim — this is why a '
+          reason:
+              'the carousel is built beneath the scrim — this is why a '
               'presence check on Skip is not a safe guard for a tap on Skip',
         );
         expect(
@@ -221,7 +226,11 @@ void main() {
         addTearDown(c.dispose);
 
         await _launch(tester, c);
-        expect(_decline, findsOneWidget, reason: 'precondition: prompt mounted');
+        expect(
+          _decline,
+          findsOneWidget,
+          reason: 'precondition: prompt mounted',
+        );
 
         // `warnIfMissed: false` because THE MISS IS THE SUBJECT. This is the
         // capture suite's exact line, and its silence is the defect: no

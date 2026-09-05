@@ -67,7 +67,9 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       // Was `_notice = e.message`. `resendVerificationEmail` hits `resend`, which
       // Box A gates, so this is one of the two screens the captcha actually reaches.
       if (mounted) {
-        setState(() => _notice = authErrorText(AppLocalizations.of(context), e));
+        setState(
+          () => _notice = authErrorText(AppLocalizations.of(context), e),
+        );
       }
     } catch (_) {
       if (mounted) {

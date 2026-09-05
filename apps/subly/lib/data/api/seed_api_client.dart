@@ -42,7 +42,9 @@ class SeedApiClient implements ApiClient {
 
   @override
   Future<Subscription> updateSubscription(
-      String id, Map<String, dynamic> changes) async {
+    String id,
+    Map<String, dynamic> changes,
+  ) async {
     final int i = _subs.indexWhere((Subscription s) => s.id == id);
     if (i < 0) throw ApiException(404, 'Not found');
     _subs[i] = _subs[i].copyWith(
@@ -62,7 +64,10 @@ class SeedApiClient implements ApiClient {
     final Subscription s = _subs.firstWhere((Subscription s) => s.id == id);
     return List<PaymentRecord>.generate(4, (int i) {
       final DateTime d = DateTime(
-          s.nextRenewal.year, s.nextRenewal.month - (i + 1), s.nextRenewal.day);
+        s.nextRenewal.year,
+        s.nextRenewal.month - (i + 1),
+        s.nextRenewal.day,
+      );
       return PaymentRecord(date: d, amount: s.price);
     });
   }
@@ -78,15 +83,15 @@ class SeedApiClient implements ApiClient {
 
   @override
   Future<Entitlements> getEntitlements() async => Entitlements(
-        appId: AppConfig.appId,
-        isPro: true,
-        items: const <Entitlement>[
-          Entitlement(
-            entitlement: 'pro',
-            productId: 'subly_pro_monthly',
-            store: 'demo',
-            isActive: true,
-          ),
-        ],
-      );
+    appId: AppConfig.appId,
+    isPro: true,
+    items: const <Entitlement>[
+      Entitlement(
+        entitlement: 'pro',
+        productId: 'subly_pro_monthly',
+        store: 'demo',
+        isActive: true,
+      ),
+    ],
+  );
 }

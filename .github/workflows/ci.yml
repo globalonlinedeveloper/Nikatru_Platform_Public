@@ -2528,6 +2528,27 @@ jobs:
       # (plain `dart pub get` cannot resolve `sdk: flutter` dependencies).
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
+      # 🔴 THE ONE APP THAT SHIPS WAS THE ONE APP NOBODY FORMAT-GATED. Two steps
+      # in the app_brick lane check `apps/probe` and `apps/probeapi` — the two
+      # STAMPED apps, which exist only inside a CI run — and nothing checked
+      # `apps/subly`. Measured 2026-09-05: 28 files were dirty, including
+      # `login_screen.dart` and `integration_test/app_test.dart` at 145 lines of
+      # drift, and it had been accumulating unseen.
+      #
+      # ⚠️ THIS STEP RUNS *AFTER* `pub get`, WHICH IS THE OPPOSITE OF THE PROBE
+      # GATES, AND THE PLACEMENT IS THE WHOLE DESIGN. `dart format` takes its
+      # style from the RESOLVED language version. Measured on this tree, same
+      # SDK, same command, same files:
+      #     root .dart_tool PRESENT (resolved)  ->  28 files changed
+      #     root .dart_tool PARKED   (fallback) ->  51 files changed
+      # The probe gates must run before resolution because a freshly stamped app
+      # has none. `apps/subly` DOES resolve, so gating it pre-resolution would
+      # pin it to a language version its own constraint does not imply — and any
+      # contributor running `dart format apps/subly` after an ordinary `pub get`
+      # would immediately undo it. Gating post-resolution means the local command
+      # and this step agree with no parking ritual.
+      - name: The shipping app is dart format-clean
+        run: dart format --output=none --set-exit-if-changed apps/subly
       # THE APPLE HALF OF THE SAME QUESTION, AND IT ARRIVED SEVEN WEEKS AFTER THE
       # PLAY HALF. `PrivacyInfo.xcprivacy` is a sworn declaration about what the
       # code does, exactly like the two Play artefacts above — and it is the one

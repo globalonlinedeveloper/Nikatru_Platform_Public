@@ -131,8 +131,12 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     // against a 4.5 bar. The fork landed before these three call sites did, so
     // a11y_semantics_test.dart carried a named exemption citing this exact line;
     // passing brightness is what expires it.
-    final DueInfo due = DueInfo.localized(l10n, s, DateTime.now(),
-        brightness: Theme.of(context).brightness);
+    final DueInfo due = DueInfo.localized(
+      l10n,
+      s,
+      DateTime.now(),
+      brightness: Theme.of(context).brightness,
+    );
 
     return Scaffold(
       body: Column(
@@ -334,89 +338,89 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                   // card is correct as written. Inventing a signal to fill it
                   // is the repair that would actually be wrong.
                   if (s.unused || s.usedPct > 0) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: cardDecoration(context, radius: 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: <Widget>[
-                            // 🔴 `Flexible`, ADDED BY THE l10n INCREMENT AND
-                            // NOT BY TASTE. Two translated labels in one
-                            // `spaceBetween` Row is the classic l10n overflow
-                            // shape: English "Usage this month" + "Active" fits
-                            // a 352 px card, Tamil "இந்த மாதப் பயன்பாடு" +
-                            // "அரிதாகப் பயன்படுத்தப்படுகிறது" does not, and an
-                            // inflexible Row answers that with a yellow-and-
-                            // black overflow stripe.
-                            //
-                            // `Flexible` and NOT `Expanded`, and only on the
-                            // LEADING child: loose fit means it takes its
-                            // intrinsic width whenever that fits, so the
-                            // English build lays out byte-identically and
-                            // `spaceBetween` still distributes the same free
-                            // space. Making BOTH children flexible would give
-                            // each half the row and wrap the English label too.
-                            Flexible(
-                              child: Text(
-                                l10n.usageThisMonth,
-                                style: AppText.body.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: ink,
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: cardDecoration(context, radius: 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: <Widget>[
+                              // 🔴 `Flexible`, ADDED BY THE l10n INCREMENT AND
+                              // NOT BY TASTE. Two translated labels in one
+                              // `spaceBetween` Row is the classic l10n overflow
+                              // shape: English "Usage this month" + "Active" fits
+                              // a 352 px card, Tamil "இந்த மாதப் பயன்பாடு" +
+                              // "அரிதாகப் பயன்படுத்தப்படுகிறது" does not, and an
+                              // inflexible Row answers that with a yellow-and-
+                              // black overflow stripe.
+                              //
+                              // `Flexible` and NOT `Expanded`, and only on the
+                              // LEADING child: loose fit means it takes its
+                              // intrinsic width whenever that fits, so the
+                              // English build lays out byte-identically and
+                              // `spaceBetween` still distributes the same free
+                              // space. Making BOTH children flexible would give
+                              // each half the row and wrap the English label too.
+                              Flexible(
+                                child: Text(
+                                  l10n.usageThisMonth,
+                                  style: AppText.body.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    color: ink,
+                                  ),
                                 ),
                               ),
-                            ),
-                            // The status colours do NOT fork — see the class
-                            // doc. `AppThemeX.fromScheme` keeps warn/positive
-                            // literal in both brightnesses too.
-                            Text(
-                              s.unused
-                                  ? l10n.usageRarelyUsed
-                                  : l10n.usageActive,
-                              style: TextStyle(
-                                fontFamily: 'Manrope',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                                color: s.unused
-                                    ? AppColors.warn
-                                    : AppColors.positive,
+                              // The status colours do NOT fork — see the class
+                              // doc. `AppThemeX.fromScheme` keeps warn/positive
+                              // literal in both brightnesses too.
+                              Text(
+                                s.unused
+                                    ? l10n.usageRarelyUsed
+                                    : l10n.usageActive,
+                                style: TextStyle(
+                                  fontFamily: 'Manrope',
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: s.unused
+                                      ? AppColors.warn
+                                      : AppColors.positive,
+                                ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: LinearProgressIndicator(
+                              value: s.usedPct / 100,
+                              minHeight: 8,
+                              // The TRACK is a light neutral (0xFFECECF2) and
+                              // therefore forks: unbranched it is a near-white
+                              // bar across a dark card, brighter than the meter
+                              // it is the background of.
+                              backgroundColor: isLight
+                                  ? AppColors.line
+                                  : scheme.outlineVariant,
+                              color: s.unused
+                                  ? AppColors.warn
+                                  : AppColors.positive,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: s.usedPct / 100,
-                            minHeight: 8,
-                            // The TRACK is a light neutral (0xFFECECF2) and
-                            // therefore forks: unbranched it is a near-white
-                            // bar across a dark card, brighter than the meter
-                            // it is the background of.
-                            backgroundColor: isLight
-                                ? AppColors.line
-                                : scheme.outlineVariant,
-                            color: s.unused
-                                ? AppColors.warn
-                                : AppColors.positive,
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          s.usageNote,
-                          style: AppText.muted.copyWith(
-                            fontSize: 12,
-                            color: muted,
+                          const SizedBox(height: 10),
+                          Text(
+                            s.usageNote,
+                            style: AppText.muted.copyWith(
+                              fontSize: 12,
+                              color: muted,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
                   ],
                   Padding(
                     padding: const EdgeInsets.fromLTRB(2, 18, 2, 10),

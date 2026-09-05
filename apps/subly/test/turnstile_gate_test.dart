@@ -58,7 +58,9 @@ void main() {
       expect(find.text('below'), findsOneWidget);
     });
 
-    testWidgets('never calls back, so callers keep a null token', (tester) async {
+    testWidgets('never calls back, so callers keep a null token', (
+      tester,
+    ) async {
       final List<String?> seen = <String?>[];
       await tester.pumpWidget(
         MaterialApp(
