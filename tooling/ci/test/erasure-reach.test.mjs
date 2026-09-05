@@ -13,6 +13,19 @@
 // behind the shared-secret middleware, delete the route's own refusal, spell that
 // refusal fail-OPEN, un-mount the route, and restore the `no-route` declaration
 // the four subly_db rows carried until 2026-08-04.
+//
+// ── THE TEMPLATE ROOT (added 2026-09-05, G-4) ───────────────────────────────
+// 🔴 THE SECOND ROOT HAS ITS OWN `realTree`, AND THAT IS DELIBERATE. The live
+// tree above copies `services/` and the register and NOTHING ELSE — no
+// `tooling/ci`, so the guard's own sentinel is absent and the template floor is
+// correctly skipped. `templateTree()` below copies the brick's stamped Worker AND
+// the sentinel, which is what turns the template limbs on. Two fixtures, because
+// one fixture carrying both roots could not show that either floor is separate.
+//
+// Measured before the widening, on the same tree: every one of the six
+// brick-shaped mutations below exited 0 against main's version. The guard could
+// not see the template at all — it read 9 migration files, and the template's was
+// not one of them.
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -65,6 +78,45 @@ const edit = (root, rel, fn) => {
   assert.notEqual(after, before, `mutation of ${rel} changed nothing — the test would assert about the real tree`);
   writeFileSync(p, after);
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TEMPLATE ROOT
+//
+// ⚠️ THE MUSTACHE DIRECTORY IS TWO SEGMENTS ON DISK. `{{/needs_backend}}`
+// contains a `/`, which is a PATH SEPARATOR: git stores
+// `{{#needs_backend}}services{{` / `needs_backend}}`. It is spelled as segments
+// here and joined, never handed to a matcher — braces are glob syntax.
+// ─────────────────────────────────────────────────────────────────────────────
+const BRICK_SEGMENTS = [
+  'tooling', 'bricks', 'app', '__brick__', '{{#needs_backend}}services{{', 'needs_backend}}', '{{app_id}}-api',
+];
+const BRICK = BRICK_SEGMENTS.join('/');
+const BRICK_INDEX = `${BRICK}/src/index.ts`;
+const BRICK_ROUTE = `${BRICK}/src/routes/account.ts`;
+const BRICK_WRANGLER = `${BRICK}/wrangler.jsonc`;
+const BRICK_MIGRATION = `${BRICK}/migrations/0001_init.sql`;
+
+/** The live tree PLUS the brick's stamped Worker PLUS this guard's own file —
+ *  the sentinel that turns the template floor on. Without the sentinel the
+ *  template root is skipped, which is exactly what makes `realTree()` above still
+ *  a valid fixture for the live limbs. */
+function templateTree() {
+  const root = realTree();
+  cpSync(join(REPO, ...BRICK_SEGMENTS), join(root, ...BRICK_SEGMENTS), { recursive: true });
+  mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+  cpSync(GUARD, join(root, 'tooling', 'ci', 'assert-erasure-reach.mjs'));
+  return root;
+}
+
+function withTemplateTree(mutate, fn) {
+  const root = templateTree();
+  try {
+    mutate(root);
+    fn(spawnSync(process.execPath, [GUARD, root], { cwd: REPO, encoding: 'utf8' }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 
 describe('the real tree', () => {
   test('passes, and says what it actually checked', () => {
@@ -364,6 +416,228 @@ describe('LIMB 4 — the ONE erasure call the client makes must reach every app'
         assert.equal(r.status, 1);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /service\(s\) own a database/);
+      },
+    );
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE TEMPLATE ROOT — the Worker every future backend app is stamped from.
+//
+// 🔴 EVERY CASE HERE EXITED 0 AGAINST THE PRE-G-4 GUARD. The subject was
+// `services/` and the register; the brick stamps a whole Worker — wrangler.jsonc
+// with a migrations_dir, a starter migration creating a user-owned table,
+// index.ts, middleware/auth.ts carrying the shared-secret fallback, and
+// routes/account.ts — and not a byte of it was read. A defect stamped here is
+// not one app's orphaned rows, it is every app the factory ever produces.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('the template root', () => {
+  test('passes over the real brick, and SAYS the template floor was applied', () => {
+    // The branch taken is printed rather than implied: a reader must be able to
+    // tell a covered template from a skipped one without reading this file.
+    withTemplateTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /TEMPLATE ROOT: 1 stamped-Worker template\(s\) owning a database/);
+        assert.match(r.stdout, /1 user-owned table\(s\) proven reachable/);
+        assert.match(r.stdout, /FULL CHECKOUT — the template floor was APPLIED/);
+      },
+    );
+  });
+
+  test('the live fixture does NOT silently claim template coverage', () => {
+    // 🔴 THE OTHER HALF OF THE SENTINEL. If `realTree()` (no tooling/ci, no
+    // brick) reported the template root as covered, the floor would be
+    // decorative — and every live-limb test above would be quietly asserting
+    // about a root that is not there.
+    withTree(
+      () => {},
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /NOT a full checkout/);
+        assert.match(r.stdout, /the template floor and the git cross-check were SKIPPED/);
+      },
+    );
+  });
+
+  test('T1 FAILS when the starter schema grows a user-owned table the route does not reach', () => {
+    // 🔴 THE DRIFT BOTH SHIPPED ROUTES DOCUMENT AND NOTHING ENFORCED. The brick's
+    // route carries `const appTables = ['records'];` where platform and subly-api
+    // derive the set from `sqlite_master`. A table added to the starter migration
+    // without the same diff editing that list is orphaned PII in every stamped
+    // app, and the route still answers `{ ok: true }`.
+    withTemplateTree(
+      (root) =>
+        edit(root, BRICK_MIGRATION, (s) => `${s}\nCREATE TABLE notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL);\n`),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /does not reach `notes`, which the template's own migrations give a `user_id`/);
+      },
+    );
+  });
+
+  test('T1 PASSES when the route derives its table set from the schema — the cure is not punished', () => {
+    // The recommended fix is to stop carrying a list at all. A check that failed
+    // on the cure is a check somebody deletes, so deriving must be a clean pass
+    // even for a table the route never names.
+    withTemplateTree(
+      (root) => {
+        edit(root, BRICK_MIGRATION, (s) => `${s}\nCREATE TABLE notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL);\n`);
+        edit(root, BRICK_ROUTE, (s) =>
+          s.replace(
+            "const appTables = ['records'];",
+            "const appTables = await tablesFrom(c.env.APP_DB, 'sqlite_master');",
+          ),
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /2 user-owned table\(s\) proven reachable/);
+      },
+    );
+  });
+
+  test('T2 FAILS when the template stops mounting its erasure route', () => {
+    withTemplateTree(
+      (root) => edit(root, BRICK_INDEX, (s) => s.replace("app.route('/v1/account', account);", '')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /mounts no `\.route\('…account…', …\)`/);
+      },
+    );
+  });
+
+  test('T3 FAILS when the template mounts erasure behind the shared-secret middleware', () => {
+    // One identifier in one line of the template, and every app ever stamped from
+    // it serves account deletion behind a symmetric secret.
+    withTemplateTree(
+      (root) =>
+        edit(root, BRICK_INDEX, (s) =>
+          s.replace("app.use('/v1/account', erasureAuth);", "app.use('/v1/account', supabaseAuth);"),
+        ),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /guards DELETE \/v1\/account with `supabaseAuth`, which reaches SUPABASE_JWT_SECRET/);
+      },
+    );
+  });
+
+  test('T3 FAILS when the stamped handler loses its own token-assurance refusal', () => {
+    withTemplateTree(
+      (root) => edit(root, BRICK_ROUTE, (s) => s.replaceAll('tokenAssurance', 'someOtherThing')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /does not check `tokenAssurance`/);
+      },
+    );
+  });
+
+  test('T3 FAILS on a SUFFIXED rename — the shape a find-and-replace produces', () => {
+    // 🔴 THIS ONE PASSED WHILE THE LIMB WAS BEING WRITTEN. An unanchored
+    // /tokenAssurance/ is satisfied by `tokenAssuranceXX`, so the route had no
+    // refusal left and the check was green. Both this limb and the live one are
+    // word-anchored now; found by mutation, not by reading.
+    withTemplateTree(
+      (root) => edit(root, BRICK_ROUTE, (s) => s.replaceAll('tokenAssurance', 'tokenAssuranceXX')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /does not check `tokenAssurance`/);
+      },
+    );
+  });
+
+  test("T3 FAILS on the fail-OPEN spelling `!== 'symmetric'`, stamped", () => {
+    withTemplateTree(
+      (root) => edit(root, BRICK_ROUTE, (s) => s.replace("assurance !== 'asymmetric'", "assurance !== 'symmetric'")),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /does not refuse on `!== 'asymmetric'`/);
+      },
+    );
+  });
+
+  test('T4 FAILS when the template declares no vars.APP_ID', () => {
+    // Limb 4 matches an app Worker to APP_ERASURE_ENDPOINTS by its APP_ID. Without
+    // the hook in the template, every stamped backend fails limb 4 on arrival.
+    withTemplateTree(
+      (root) => edit(root, BRICK_WRANGLER, (s) => s.replace('"APP_ID": "{{app_id}}",', '')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /declares no `vars\.APP_ID`/);
+      },
+    );
+  });
+
+  test('COVERAGE LOST when the template stops owning a database — its own floor, not the live one', () => {
+    // 🔴 A UNION FLOOR WOULD STAY SATISFIED HERE. Two live owners remain, so a
+    // combined "at least three database-owning Workers" would be down to two and
+    // a combined "at least two" would still pass. The floors are separate.
+    withTemplateTree(
+      (root) => edit(root, BRICK_WRANGLER, (s) => s.replace('"migrations_dir": "migrations"', '"unused": ""')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /no wrangler config under tooling\/bricks\/ declares a `migrations_dir`/);
+      },
+    );
+  });
+
+  test('COVERAGE LOST when the template schema has no user-owned table left', () => {
+    withTemplateTree(
+      (root) => edit(root, BRICK_MIGRATION, (s) => s.replaceAll('user_id', 'owner_ref')),
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /NOT ONE user-owned table was found/);
+      },
+    );
+  });
+});
+
+describe('the roots are DERIVED, so a Worker in neither is not a silent skip', () => {
+  test('COVERAGE LOST on a wrangler.jsonc outside both roots', () => {
+    // 🔴 TWO NAMED ROOTS ARE STILL A LIST. A Worker that lands under `packages/`
+    // or at the repo root joins the portfolio with an unswept database while both
+    // floors stay satisfied — a root never derived is never empty.
+    withTemplateTree(
+      (root) => {
+        mkdirSync(join(root, 'packages', 'stray-worker'), { recursive: true });
+        writeFileSync(
+          join(root, 'packages', 'stray-worker', 'wrangler.jsonc'),
+          JSON.stringify({
+            name: 'stray',
+            d1_databases: [{ database_name: 'stray_db', migrations_dir: 'migrations' }],
+          }),
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /belong to neither root: packages\/stray-worker\/wrangler\.jsonc/);
+      },
+    );
+  });
+
+  test('COVERAGE LOST when a services/ Worker is nested deeper than the walk reaches', () => {
+    // The live walk takes DIRECT children of `services/`; the glob takes every
+    // depth. They must agree, or a Worker one level in owns databases no limb
+    // ranges over while the two-owner floor is satisfied by the two above it.
+    withTemplateTree(
+      (root) => {
+        mkdirSync(join(root, 'services', 'group', 'nested'), { recursive: true });
+        writeFileSync(
+          join(root, 'services', 'group', 'nested', 'wrangler.jsonc'),
+          JSON.stringify({
+            name: 'nested',
+            d1_databases: [{ database_name: 'nested_db', migrations_dir: 'migrations' }],
+          }),
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /COVERAGE LOST/);
+        assert.match(r.stderr, /never opened: services\/group\/nested\/wrangler\.jsonc/);
       },
     );
   });
