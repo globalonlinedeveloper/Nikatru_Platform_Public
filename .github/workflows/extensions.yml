@@ -3277,12 +3277,21 @@ jobs:
         # Deployment is an outward-facing act and a rehearsal must not perform one.
         if: github.event_name == 'push' && inputs.dry_run != true
         working-directory: .
+        # ⚠️ THE URL IS BUILT FROM ENVIRONMENT VARIABLES, NOT FROM `${{ … }}` IN
+        # THE SHELL LINE. A tag name is chosen by whoever pushed the tag, and an
+        # expression expanded into a `run:` body is substituted BEFORE the shell
+        # sees it — so a tag containing shell metacharacters would be executed
+        # rather than quoted. tooling/ci/scan-workflows.mjs caught this on the
+        # first run of this lane through it (`template-injection`, medium/high).
+        # GitHub sets GITHUB_REF_NAME, GITHUB_SERVER_URL and GITHUB_REPOSITORY
+        # already; the shell reads them as data.
         env:
           GH_TOKEN: ${{ github.token }}
+          TOOL_ID: ${{ steps.tag.outputs.id }}
         run: >
           node tooling/ci/record-deployment.mjs
-          "extension-${{ steps.tag.outputs.id }}"
-          "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          "extension-$TOOL_ID"
+          "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
 
       # The counterpart, so a rehearsal ends in a sentence rather than in the
       # absence of one. A skipped step is rendered the same way whether it was
