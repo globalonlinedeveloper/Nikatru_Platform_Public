@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════
-// EVERY SURFACE A USER CAN REACH EITHER CARRIES AN A11Y SWEEP OR IS NAMED, OUT
-// LOUD, ON EVERY RUN, AS ONE THAT DOES NOT. AND EVERY A11Y SWEEP POINTS AT A
-// SURFACE A USER CAN REACH.
+// EVERY SURFACE A USER CAN REACH, IN EVERY TREE THIS FACTORY SHIPS, EITHER
+// CARRIES AN A11Y SWEEP OR IS NAMED, OUT LOUD, ON EVERY RUN, AS ONE THAT DOES
+// NOT. AND EVERY A11Y SWEEP POINTS AT A SURFACE A USER CAN REACH.
 //
 // ── WHY THIS EXISTS ────────────────────────────────────────────────────────
 // P5 shipped `apps/subly/test/a11y_semantics_test.dart` and it found two real
@@ -18,63 +18,137 @@
 // exactly like a width. So an unswept surface is an unpoliced one, and the
 // accounting has to be mechanical.
 //
-// 🔴 THIS GUARD PRINTS THE GAP; IT DOES NOT FAIL ON IT. As of 2026-08-13 THE
-// GAP IS EMPTY — the sweep landed all nineteen, so the printed list has ZERO
-// entries. That does not make the printing limb decoration: the next surface to
-// land arrives unswept and joins that list by existing, which is the ordinary
-// case this guard was written for. A guard that reddened CI over work nobody
-// has started would block every unrelated change on it — the standing [pipeline
-// C-6] rule, recorded when four fail-closed seams shipped with no proven open
-// path. What it DOES fail on is the other three things:
-//   · COVERAGE LOST — the scan reached no router, no surfaces, no a11y file, no
-//     case, or no sweep at all. An empty set makes every statement below either
-//     vacuously true or confidently wrong, and it reports as a pass.
-//   · REGRESSION — a surface listed in SWEPT_FLOOR, measured as swept on a
-//     stated date, is not swept any more. Work leaving the tree is a legitimate
-//     move; it may not be a QUIET one.
+// 🔴 THIS GUARD PRINTS THE GAP; IT DOES NOT FAIL ON IT. As of 2026-08-13 the
+// gap in `apps/subly` was empty — the sweep landed all nineteen, so the printed
+// list had ZERO entries FOR THAT ROOT. That does not make the printing limb
+// decoration: the next surface to land arrives unswept and joins that list by
+// existing, which is the ordinary case this guard was written for. A guard that
+// reddened CI over work nobody has started would block every unrelated change
+// on it — the standing [pipeline C-6] rule, recorded when four fail-closed seams
+// shipped with no proven open path. What it DOES fail on is the other three
+// things:
+//   · COVERAGE LOST — the scan reached no root, no router, no surfaces, no
+//     a11y file, no case, or no sweep at all, or a root fell under its own
+//     measured floor. An empty set makes every statement below either vacuously
+//     true or confidently wrong, and it reports as a pass.
+//   · REGRESSION — a surface listed in that root's SWEPT_FLOOR, measured as
+//     swept on a stated date, is not swept any more. Work leaving the tree is a
+//     legitimate move; it may not be a QUIET one.
 //   · DEAD COVERAGE — a sweep whose subject nothing routes to (see below).
 // The distinction is the whole design: NEVER DONE prints, WAS DONE AND IS GONE
 // fails.
 //
-// ── THE DOMAIN RULE, AND WHY IT IS THE SAME ONE ────────────────────────────
-// The domain is the REACHABLE SURFACES of apps/subly, derived from the SAME
-// SOURCE `assert-responsive-coverage.mjs` derives it from — the router and the
-// feature tree — and deliberately not one word differently:
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴🔴 THE DOMAIN IS DERIVED, AND UNTIL 2026-09-05 IT WAS ONE HARDCODED APP
+// ═══════════════════════════════════════════════════════════════════════════
+// This file opened with `const APP = 'apps/subly';` from the day it was written
+// until 2026-09-05 [backlog G-3]. Two things followed from that line and both
+// were measured, not feared:
 //
-//   (1) ROUTED SCREENS — every widget a `builder:` in `lib/core/router.dart`
-//       returns, INCLUDING the routes inside the StatefulShellRoute branches. A
-//       builder target declared IN the router itself (a private `_Wrapper`,
-//       e.g. `_GatedInsights`) is resolved ONE LEVEL to the feature screen it
-//       builds, because the wrapper is a gate and the pane is what the user is
-//       handed.
+//   · THE BRICK WAS UNCHECKED. `tooling/bricks/app/__brick__/apps/{{app_id}}`
+//     is the template every future app is stamped from; it routes TWELVE
+//     screens and carries NO `a11y_*_test.dart` at all. An accessibility defect
+//     written there is stamped into app #2, app #3 and every app after, and
+//     nothing in this repository said a word. That is not hypothetical: backlog
+//     item B-4 was a gutter tap beside "Privacy" that TICKED CONSENT in every
+//     stamped app, and it was fixed by hand in PR #456 because no guard saw it.
+//   · `packages/design_system` WAS UNCHECKED — and this file's own exclusion
+//     for `NotFoundScreen` said "the design system owns its semantics", which
+//     was a promise nothing kept. [ADR 065] chassis step 2 moved the shared
+//     widgets THERE: `nav_shell.dart`, `app_scaffold.dart`, `auth_field.dart`,
+//     `destructive_confirm_dialog.dart`, `two_pane.dart` and eleven more. Those
+//     nineteen widgets are mounted by every stamped app, so they are the MOST
+//     reachable surfaces in the tree, and they were the only ones outside the
+//     domain.
+//
+// 🔴 THE ROOTS ARE DERIVED, NEVER LISTED. A directory listing of `apps/` is
+// REFUSED for a stated reason: the brick lane stamps `apps/probe` and does not
+// remove it, so a listing differs between a dev box and CI and the domain would
+// depend on which machine ran it. The derivation is the same one
+// `assert-deletion-control.mjs` and `assert-modal-detection.mjs` use:
+//
+//   (1) THE BRICK TEMPLATE, anchored on `tooling/bricks/app/brick.yaml` — the
+//       tree's OWN declaration that a brick lives here. Anchored rather than
+//       opportunistic because the opportunistic form was measured failing:
+//       assert-modal-detection.mjs records the brick's app directory renamed
+//       away taking that scan from 329 sites to 263 with an "ok" on the end.
+//   (2) EVERY `apps/*` ON THE ROOT `pubspec.yaml` `workspace:` LIST, without
+//       further condition. An app that ships a screen has a router.
+//   (3) EVERY `packages/*` ON THAT LIST whose OWN pubspec declares a
+//       `flutter_test` dev-dependency AND which declares at least one public
+//       widget class. Both halves are load-bearing and the second is PR #461's
+//       disproof, re-measured here on 2026-09-05: `packages/analysis` is
+//       lints-only, and `auth_supabase`, `notifications`, `platform_storage`,
+//       `purchases` and `telemetry` all declare `flutter_test` and between them
+//       declare ZERO public widget classes. Deriving them would make five
+//       permanently empty roots, and an empty root is either a permanent red or
+//       a floor of zero, which is not a floor. `design_system` is the ONE
+//       package that clears both halves, and it clears them by measurement:
+//       nineteen public widget classes under `lib/src/widgets/`.
+//
+// A root that is DERIVED but not DECLARED below is scanned anyway and simply
+// has no measured floor yet — new members are covered on arrival. A root that
+// is DECLARED and stops being DERIVED FAILS, because a root that is never
+// derived is never empty and no emptiness limb can see it go.
+//
+// 🔴 ONE FLOOR PER ROOT, NEVER A UNION FLOOR. assert-no-tls-pinning.mjs records
+// a union floor that stayed satisfied by the brick alone while `apps/` and
+// `packages/` went to zero, and assert-workspace-coverage.mjs:130-136 records
+// the same shape over an emptied `apps/`. Every floor in REQUIRED_COVERAGE
+// below is keyed by root, and WHICH BRANCH WAS TAKEN IS PRINTED ON EVERY RUN.
+//
+// ── THE DOMAIN RULE, PER KIND OF ROOT ──────────────────────────────────────
+// An APP ROOT (the brick, and every `apps/*` member) keeps the rule this file
+// has always had, derived from the SAME SOURCE `assert-responsive-coverage.mjs`
+// derives it from — the router and the feature tree — and deliberately not one
+// word differently:
+//
+//   (1) ROUTED SCREENS — every widget a `builder:` in `<root>/lib/core/
+//       router.dart` returns, INCLUDING the routes inside the
+//       StatefulShellRoute branches. A builder target declared IN the router
+//       itself (a private `_Wrapper`, e.g. `_GatedInsights`) is resolved ONE
+//       LEVEL to the feature screen it builds, because the wrapper is a gate
+//       and the pane is what the user is handed.
 //   (2) MODAL SHEETS — every `show*Sheet` function declared under
-//       `lib/features/**`. A sheet is a surface a reader has to traverse, and
-//       nothing about being modal changes that.
+//       `<root>/lib/features/**`. A sheet is a surface a reader has to
+//       traverse, and nothing about being modal changes that.
+//
+// A PACKAGE ROOT HAS NO ROUTER, AND THAT CHANGES THE VOCABULARY RATHER THAN
+// WEAKENING IT. In an app, a widget nothing routes to is unreachable — which is
+// the whole DEAD COVERAGE limb below. In a package, every PUBLIC widget class
+// is reachable by construction: the package exists to be mounted, the barrel
+// exports it, and every stamped app inherits it. So the domain of a package
+// root is every `class X extends …Widget` declared under `<root>/lib/**` whose
+// name does not start with `_`. That is strictly MORE reachable than a routed
+// screen, not less, and it is why `NotFoundScreen` can be excluded from
+// `apps/subly` on the grounds that "the design system owns its semantics" and
+// have that sentence be TRUE for the first time.
 //
 // 🔴 THERE IS NO SECOND HARDCODED LIST OF SCREENS HERE, AND THAT IS THE POINT.
 // A checked-in enumeration of the nineteen would be the copy that silently
 // stops matching the first. The only checked-in sets in this file are
-// NOT_A_PANE (two argued non-panes) and SWEPT_FLOOR (nineteen measured sweeps,
-// which is the whole domain as of 2026-08-13), and
-// BOTH are self-checked against the derived domain in both directions below —
-// an entry the tree no longer contains fails, and an entry the tree contradicts
-// fails.
+// NOT_A_PANE (argued non-panes, per root) and SWEPT_FLOOR (measured sweeps, per
+// root), and BOTH are self-checked against the derived domain in both
+// directions below — an entry the tree no longer contains fails, and an entry
+// the tree contradicts fails.
 //
 // 🔴 TWO GUARDS, ONE DOMAIN, TWO COPIES OF THE PARSE — SAID OUT LOUD RATHER
 // THAN LEFT TO BE DISCOVERED. This repository's rule is to extract a shared
 // parse the moment a second consumer appears (`workflow-scan.mjs` was pulled
 // out of assert-release-provenance for exactly that reason: four copies of a
 // workflow parser drift in the one way that reports clean, which is WHICH LINES
-// THEY CAN SEE). That extraction was NOT taken in the change that added this
-// file, and the reason is stated rather than assumed: the extraction edits
-// assert-responsive-coverage.mjs, a 756-line guard with fifteen recorded
-// failing cases, and this change could not verify that rewrite. The drift here
-// cannot be silent in the meantime — each copy carries its own MEASURED
-// `surfaces` floor over the SAME tree, so a copy that stops reaching a route
-// falls under its own floor and fails by name instead of reporting a smaller
-// domain as fully accounted for. The two floors agreeing is the expected
-// reading; a DISAGREEMENT is the signal that one parse has drifted.
-// ⚠️ EXTRACT WHEN A THIRD CONSUMER APPEARS.
+// THEY CAN SEE). The extraction is now OWED TWICE OVER — the root derivation
+// above is a third copy of what assert-modal-detection.mjs and
+// assert-deletion-control.mjs already carry — and it was NOT taken in the
+// change that widened these two guards, for a reason on the record: that change
+// was scoped to these two files and their tests, and a new shared module under
+// tooling/ci would have been edited by no test in this change. The drift cannot
+// be silent in the meantime — each copy carries its own MEASURED per-root floor
+// over the SAME tree, so a copy that stops reaching a root falls under its own
+// floor and fails by name instead of reporting a smaller domain as fully
+// accounted for. The two floors agreeing is the expected reading; a
+// DISAGREEMENT is the signal that one parse has drifted.
+// ⚠️ EXTRACT `deriveRoots()` INTO ONE MODULE. It has four call sites now.
 //
 // Everything else a `builder:` returns is an EXCLUSION, and exclusions are
 // PRINTED ON EVERY RUN with their reason — never dropped silently. The same two
@@ -82,22 +156,40 @@
 // be readable on its own:
 //   · the SHELL WRAPPER (`AppShell`) — chrome, not a pane;
 //   · the DIALOG/ERROR surface (`NotFoundScreen`) — declared in
-//     packages/design_system, so the design system owns its semantics.
+//     packages/design_system, which is now a root of this scan in its own
+//     right, so the design system owning its semantics is a fact this guard
+//     checks rather than a promise it makes.
 // A redirect-only `GoRoute` has no builder and therefore no surface; printed
 // too, for the same reason.
 //
 // 🔴 AN UNKNOWN BUILDER TARGET IS A FAILURE, NOT AN EXCLUSION. NOT_A_PANE is a
-// statement about two known non-panes, not an allowlist screens can be added
-// to.
+// statement about known non-panes, not an allowlist screens can be added to.
 //
 // ── HOW A SWEEP IS ESTABLISHED, AND WHY A FILE IS NOT ONE ──────────────────
 // 🔴 THE HALF THAT DOES THE WORK. A surface is SWEPT when an `a11y_*_test.dart`
-// file IMPORTS its feature file (`package:subly/features/…`) AND SOME
-// `testWidgets` BLOCK IN THAT FILE both CONSTRUCTS the symbol AND CALLS AN A11Y
-// SWEEP. All three halves are load-bearing:
+// file under that root's `test/` IMPORTS its declaring file (via
+// `package:<the root's own pubspec name>/…`) AND SOME `testWidgets` BLOCK IN
+// THAT FILE both CONSTRUCTS the symbol AND CALLS AN A11Y SWEEP. All three
+// halves are load-bearing:
 //   · the IMPORT gives provenance — which file the symbol came from;
 //   · the CONSTRUCTION gives evidence the case actually pumps it;
 //   · the SWEEP CALL is what distinguishes a measurement from a mention.
+//
+// ⚠️ THE PACKAGE NAME IS READ OUT OF EACH ROOT'S OWN `pubspec.yaml`, NEVER
+// SPELLED HERE. It was `package:subly/` hardcoded until 2026-09-05. The brick's
+// name is the literal string `{{app_id.snakeCase()}}` — a mustache placeholder
+// that is not a valid Dart identifier and never will be until the brick is
+// stamped — and the brick's own suite imports itself by exactly that spelling,
+// so quoting the manifest is what makes the template readable at all.
+//
+// ⚠️ A PACKAGE ROOT'S SUITE IMPORTS THE BARREL, NOT THE FILE. Measured on
+// 2026-09-05: fifteen of design_system's seventeen test files import
+// `package:nikatru_design_system/nikatru_design_system.dart` and only three
+// import a `src/widgets/…` file directly. Provenance would collapse to nothing
+// under the app rule, so a barrel import is resolved ONE LEVEL through the
+// `export 'src/…';` lines the barrel declares. One level and not a graph: a
+// barrel re-exporting a barrel is not a shape this tree has, and a walk nobody
+// can check is worse than a bound nobody has hit.
 //
 // The BLOCK is the unit, NOT the file, and that is the limb this guard exists
 // for. Set equality over files would credit `a11y_semantics_test.dart` with
@@ -108,7 +200,7 @@
 // ~~TWENTY-SIX of its 60 cases … (36 of the 60 sweep nothing; 26 of those 36)~~
 // — retracted 2026-08-13, same day, same file: that reading was taken before
 // the tap-target family added 21 cases.
-// ⚠️ AND THE FILE-LEVEL ANSWER HAPPENS TO AGREE TODAY:
+// ⚠️ AND THE FILE-LEVEL ANSWER HAPPENS TO AGREE TODAY IN SUBLY:
 // the same one file that names those surfaces also sweeps all nineteen, so set
 // equality over files would currently return the same verdict for the wrong
 // reason. That coincidence is not reassurance — it is exactly the state in
@@ -128,12 +220,12 @@
 // mechanism rather than an aspiration:
 //   · NAKED CONTROLS — `expectNothingNaked(` / `nakedControls(`, the walk this
 //     app wrote: every node with a tap action that announces no role or no
-//     name. All nineteen surfaces have it today. ~~and it is the ONLY family
-//     any of them uses~~ — RETRACTED 2026-08-13, hours after it was written,
-//     by the tap-target sweep below.
+//     name. All nineteen subly surfaces have it today. ~~and it is the ONLY
+//     family any of them uses~~ — RETRACTED 2026-08-13, hours after it was
+//     written, by the tap-target sweep below.
 //   · TAP TARGET — flutter_test's own `meetsGuideline(androidTapTargetGuideline)`
 //     / `iOSTapTargetGuideline` / `labeledTapTargetGuideline`. LIVE since
-//     2026-08-13 ([ADR 048]): 19 cases, covering 17 of the 19 surfaces.
+//     2026-08-13 ([ADR 048]): 19 cases, covering 17 of the 19 subly surfaces.
 //   · CONTRAST — flutter_test's `meetsGuideline(textContrastGuideline)`.
 // ⚠️ MEASURED, NOT ASSUMED, AND RE-MEASURED 2026-08-13 AFTER THE TAP-TARGET
 // SWEEP LANDED — the reading below is the CURRENT one and the previous two are
@@ -157,18 +249,52 @@
 // `responsive_width_test.dart` spent its life measuring. A name-keyed guard
 // finds the twin's name in the covered set and writes the exact bug it exists
 // to catch into its own answer. The file is what distinguishes a twin from its
-// original, so the file is part of the identity.
+// original, so the file is part of the identity. Since 2026-09-05 the key is
+// ROOT-QUALIFIED too, because the brick and subly declare a `SignUpScreen`
+// each and they are different files with different sweeps.
 //
 // ── WHY THE CORPUS IS `a11y_*_test.dart` AND NOT "ANY FILE THAT TAKES A
 //    SemanticsHandle" ──────────────────────────────────────────────────────
-// Three other files under apps/subly/test call `ensureSemantics()` —
-// chassis_properties, consent_scrim_layout and dark_group_detail — and each
+// ~~Three~~ FOUR other files under apps/subly/test call `ensureSemantics()` —
+// chassis_properties, consent_clickwrap_a11y, consent_scrim_layout and
+// dark_group_detail — and each
 // asserts one targeted fact (an icon's label, a scrim's reading order, a Tamil
-// back button). None sweeps a surface. Counting them would credit a surface
+// back button). None sweeps a surface. ⚠️ THE "THREE" STOOD IN THIS HEADER
+// UNTIL 2026-09-05 AND IT WAS ALREADY FOUR — a fourth file landed and no
+// sentence followed it, which is the same prose-drift class this file's
+// REQUIRED_COVERAGE block records three instances of. It is a number a reader
+// can now see instead of believe: the count is PRINTED per root on every run,
+// so the next one to land moves the output rather than needing a comment.
+// Counting them would credit a surface
 // with a sweep it never received, which is DEAD COVERAGE wearing a friendlier
 // face. The cost of the naming rule is real and is stated rather than hidden:
 // a11y work written into some other file does not count here. Name the file
 // `a11y_<surface>_test.dart` and it does.
+//
+// ⚠️ THAT COST IS NOW VISIBLE RATHER THAN IMPLIED, AND THE MEASUREMENT IS NOT
+// THE ONE THIS PARAGRAPH FIRST CLAIMED. Every root prints, on every run, two
+// things about the a11y work that sits OUTSIDE its `a11y_*_test.dart` corpus:
+// how many of its other test files call a recognised SWEEP helper, and how many
+// take a `SemanticsHandle` without sweeping. Measured 2026-09-05 by grep before
+// the sentence was written:
+//   · recognised sweep helper outside the corpus — ZERO files in every root.
+//     ~~design_system has FOUR~~ — retracted before it shipped: those four call
+//     `ensureSemantics()` and nothing else, and `ensureSemantics` is NOT a
+//     sweep family. Writing it down without running the grep would have put a
+//     false number in a header whose whole subject is false numbers.
+//   · `ensureSemantics` without a sweep — FOUR files in design_system
+//     (auth_field, brand_lockup, focusable_tap, promo_card), FOUR in subly
+//     (chassis_properties, consent_clickwrap_a11y, consent_scrim_layout,
+//     dark_group_detail — the header below said THREE and had said it for a
+//     file too long), ONE in the brick (chassis_properties).
+//     Printed so that a reader of an empty ✅ list is never
+//     left to infer a root has done no accessibility work at all — it has done
+//     TARGETED work, which is exactly what the paragraph above argues is not a
+//     sweep.
+// 🔴 THE FIRST OF THOSE TWO LINES HAS NEVER BEEN NON-ZERO. That is the same
+// standing of `contrast ×0` on the day this file was written, and it is
+// recorded here for the same reason: a limb nothing has ever exercised is a
+// limb nobody has read.
 //
 // ── COMMENTS ARE STRIPPED, AND SO ARE STRING LITERALS ──────────────────────
 // Comments via tooling/ci/text-reductions.mjs, the reduction nine guards share.
@@ -210,12 +336,12 @@
 //   M2  replace that call with a STRING mentioning `expectNothingNaked`
 //       → identical to M1: prose does not sweep.
 //   M3  delete every `GoRoute` from the router
-//       → COVERAGE LOST, the reachable set parsed EMPTY.
+//       → COVERAGE LOST, the reachable set of that root parsed EMPTY.
 //   M4  rename `a11y_semantics_test.dart` out of the `a11y_*` corpus
-//       → COVERAGE LOST, no a11y file matched.
+//       → COVERAGE LOST, subly's declared a11y-file floor of 1 is unmet.
 //   M5  rename EVERY sweep helper app-wide inside the test file — both naked
 //       helpers AND `meetsGuideline`
-//       → COVERAGE LOST, 81 cases parsed and not one sweeps.
+//       → COVERAGE LOST, 110 cases parsed and not one sweeps.
 //       ⚠️ `meetsGuideline` ADDED 2026-08-13. Renaming only the two naked
 //       helpers left tap-target ×19 alive and 17 surfaces still swept, so the
 //       mutation could no longer reach the `sweepingBlocks === 0` limb it is
@@ -225,44 +351,53 @@
 //   M6  point a sweep at an unrouted twin screen
 //       → DEAD COVERAGE, named.
 //   M7  delete one route (`/notifications`) from the router
-//       → COVERAGE LOST on the `surfaces` floor (18 < 19). ⚠️ TWO MORE LIMBS NOW
-//         CO-FIRE, re-measured 2026-08-13: with SWEPT_FLOOR covering the whole
-//         domain, the removed route also strands its floor entry (FLOOR OVER
-//         NOTHING) and strands its surviving sweep (DEAD COVERAGE). The
+//       → COVERAGE LOST on subly's `surfaces` floor (18 < 19). ⚠️ TWO MORE
+//         LIMBS CO-FIRE, re-measured 2026-08-13: with SWEPT_FLOOR covering the
+//         whole domain, the removed route also strands its floor entry (FLOOR
+//         OVER NOTHING) and strands its surviving sweep (DEAD COVERAGE). The
 //         `surfaces` floor is therefore no longer demonstrable IN ISOLATION
-//         here — it is still not redundant, because a surface added AFTER the
-//         floor was measured sits in neither set and only this floor would see
-//         it go, but that case cannot be built without editing
-//         REQUIRED_COVERAGE itself.
-//   M8  delete four of the 81 cases, keeping every sweep
-//       → COVERAGE LOST on the `cases` floor (77 < 81): every set above is
-//         byte-identical and real assertions left the tree in silence.
+//         for subly — it is still not redundant, because a surface added AFTER
+//         the floor was measured sits in neither set and only this floor would
+//         see it go. ✅ AND SINCE 2026-09-05 IT *IS* DEMONSTRABLE IN ISOLATION,
+//         on another root: the brick has a `surfaces` floor and an EMPTY
+//         SWEPT_FLOOR, so deleting one brick route fires the floor and nothing
+//         else. See M11.
+//   M8  delete four of the 110 cases, keeping every sweep
+//       → COVERAGE LOST on subly's `cases` floor (106 < 110): every set above
+//         is byte-identical and real assertions left the tree in silence.
 //   M9  delete a NOT_A_PANE entry's route (AppShell)
 //       → the exclusion self-check fires: judgement over nothing.
 //   M10 THE POSITIVE CONTROL — land a reachable surface nothing sweeps (a new
 //       `showExportSheet` under lib/features, which enters the domain FROM DISK
 //       and so touches neither the router nor SWEPT_FLOOR), then add its sweep,
-//       and watch it cross the line in TWO runs against ONE fixture:
-//         before → 19 swept, 1 printed (20 reachable), exit 0
-//         after  → 20 swept, 0 printed, 82 cases,        exit 0
-//       ⚠️ RE-POINTED 2026-08-13. It used to add the MISSING `HomeScreen` sweep
-//       and read "6 swept, 13 printed"; home is swept now, so that mutation can
-//       no longer be performed as written — adding a sweep for an
-//       already-swept surface changes no number, which is a positive control
-//       that cannot fail, the exact defect this ledger exists to rule out.
+//       and watch it cross the line in TWO runs against ONE fixture.
 //       Without M10, every result above is consistent with a guard that can
 //       only ever say "unswept".
+//   M11 🔴 THE ROOT MUTATIONS, ADDED 2026-09-05 WITH THE WIDENING. Each of
+//       these left the guard GREEN before the widening — that is the defect,
+//       and the measurement is the fix:
+//       M11a rename the brick's app directory away        → COVERAGE LOST
+//       M11b cut `  - packages/design_system` from the root workspace list
+//                                                          → COVERAGE LOST
+//       M11c cut `flutter_test:` from design_system's own pubspec
+//                                                          → COVERAGE LOST
+//       M11d cut `  - apps/subly` from the workspace list  → COVERAGE LOST
+//       M11e delete one brick route                        → the brick's
+//            `surfaces` floor alone, with no other limb firing
+//       M11f delete one design_system widget file          → that root's
+//            `surfaces` floor
+//   M12 THE SECOND POSITIVE CONTROL, and the one that proves the NEW roots are
+//       really in the domain rather than merely derived: land a surface in the
+//       BRICK and one in DESIGN_SYSTEM and watch each appear, by name, in that
+//       root's printed ⬜ list. A root that is derived but whose surfaces never
+//       reach the report is a root this guard cannot see.
 // ═══════════════════════════════════════════════════════════════════════════
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 
 const ROOT = process.argv[2] ?? process.cwd();
-const APP = 'apps/subly';
-const ROUTER_REL = `${APP}/lib/core/router.dart`;
-const FEATURES_REL = `${APP}/lib/features`;
-const TEST_REL = `${APP}/test`;
 
 const problems = [];
 const notes = [];
@@ -270,37 +405,393 @@ const ok = (m) => console.log(`ok   ${m}`);
 const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`);
 
 const read = (rel) => stripSourceComments(readFileSync(join(ROOT, rel), 'utf8'), '.dart');
+/** A pubspec is YAML, not Dart: `#` comments out, nothing else touched. */
+const readManifest = (rel) => readFileSync(join(ROOT, rel), 'utf8').replace(/^\s*#.*$/gm, '');
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const isDir = (rel) => {
+  try {
+    return statSync(join(ROOT, rel)).isDirectory();
+  } catch {
+    return false;
+  }
+};
 
-// ── THE TWO NON-PANES, ARGUED ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// (0) THE ROOTS — DERIVED. See the header for why each half is load-bearing.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** The brick template, which stamps every future app. Scanned as a root of its
+ *  own: an a11y defect stamped into app #2 is invisible in app #1's tree, and
+ *  the brick has no Dart suite runner, so a static read is the ONLY reading it
+ *  ever gets. */
+const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+/** The brick PACKAGE's manifest — the tree's own declaration that a brick lives
+ *  here. It is what turns the line above from an OPPORTUNISTIC `existsSync`
+ *  into a derived requirement. assert-modal-detection.mjs measured the
+ *  opportunistic form failing: the brick's app directory renamed away and
+ *  nothing else touched took that scan from 329 sites to 263, exit 0, "ok". */
+const BRICK_MANIFEST = 'tooling/bricks/app/brick.yaml';
+/** What makes a `packages/` workspace member eligible: its own pubspec
+ *  declaring the dependency a widget sweep COMES FROM. */
+const SUITE_RUNNER_RE = /^\s+flutter_test:\s*$/m;
+
+/** A PUBLIC widget class. `_FooState extends State<Foo>` is lower-cased out by
+ *  the leading `[A-Z]`, which is also what keeps a package's private
+ *  implementation widgets out of a domain nothing can mount directly. */
+const WIDGET_DECL =
+  /\bclass\s+([A-Z][\w$]*)\s+extends\s+(?:[A-Za-z_$][\w$]*\.)?(?:StatelessWidget|StatefulWidget|ConsumerWidget|ConsumerStatefulWidget|HookWidget|HookConsumerWidget)\b/g;
+/** A surface in an APP root. Unchanged since this file was written. */
+const SCREEN_DECL = /\bclass\s+([A-Za-z_$][\w$]*Screen)\b/g;
+const SHEET_DECL = /^[ \t]*(?:Future<[^>]*>|void)\s+(show[A-Z][\w$]*Sheet)\s*\(/gm;
+
+/** Every `.dart` under `rel`, recursively, relative to ROOT. */
+function dartFilesUnder(rel) {
+  const out = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = listDir(join(ROOT, dir), { withFileTypes: true });
+    } catch {
+      return; // absent — the caller's own emptiness limb is the report
+    }
+    for (const e of entries) {
+      const child = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(child);
+      else if (e.name.endsWith('.dart')) out.push(child);
+    }
+  };
+  walk(rel);
+  return out.sort();
+}
+
+const packageNameOf = (dir) => {
+  try {
+    return /^name:[ \t]*(\S+)[ \t]*$/m.exec(readManifest(`${dir}/pubspec.yaml`))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+const declaresSuiteRunner = (dir) => {
+  try {
+    return SUITE_RUNNER_RE.test(readManifest(`${dir}/pubspec.yaml`));
+  } catch {
+    return false;
+  }
+};
+/** ≥1 public widget class under `<dir>/lib`. The PR #461 disproof, applied: a
+ *  package with none would be a permanently empty root, and an empty root is
+ *  either a permanent red or a floor of zero.
+ *
+ *  🔴 A FRESH REGEX, NOT `WIDGET_DECL`, AND THE REASON IS A MEASURED DEFECT
+ *  THIS GUARD'S OWN FIXTURE CAUGHT ON 2026-09-05. `RegExp.prototype.test` on a
+ *  /g/ regex ADVANCES `lastIndex`, and `String.prototype.matchAll` starts from
+ *  it — so one `.test()` here silently made `surfacesIn` skip every declaration
+ *  before that offset in the NEXT file it read. The full checkout hid it by
+ *  luck: `notifications`, `platform_storage`, `purchases` and `telemetry` are
+ *  scanned AFTER design_system, they contain no widget, and each failing
+ *  `.test()` resets `lastIndex` to 0 on its way out. Against a fixture holding
+ *  only the three roots, nothing reset it and the design_system domain read
+ *  FIVE surfaces instead of NINETEEN — a fourteen-surface silent loss, in the
+ *  direction that reports a smaller domain as fully accounted for.
+ *  📌 A SHARED /g/ REGEX IS STATE. Every `matchAll` below resets `lastIndex`
+ *  first for the same reason. */
+const declaresAWidget = (dir) => {
+  const re = new RegExp(WIDGET_DECL.source, 'g');
+  return dartFilesUnder(`${dir}/lib`).some((f) => {
+    re.lastIndex = 0;
+    return re.test(read(f));
+  });
+};
+
+const roots = []; // { dir, kind: 'app' | 'package', pkg }
+const derivation = [];
+
+if (isDir(BRICK)) {
+  roots.push({ dir: BRICK, kind: 'app' });
+  derivation.push(`${BRICK} (brick template, declared by ${BRICK_MANIFEST})`);
+} else if (existsSync(join(ROOT, BRICK_MANIFEST))) {
+  coverageLost(
+    `${BRICK_MANIFEST} exists, so this tree DECLARES a brick — but ${BRICK} does not, so the template ` +
+      'every future app is stamped from contributed NOTHING to this scan. The other root(s) still hold ' +
+      'a healthy non-empty domain, so every limb below would find something to look at and print ok over ' +
+      'a root that silently left. The brick has no Dart suite runner of its own: a static read is the ' +
+      'ONLY reading it ever gets, and an a11y defect stamped into app #2 is invisible in app #1. ' +
+      'Re-point BRICK, or delete the brick.',
+  );
+}
+
+let workspaceRead = false;
+try {
+  const lines = readManifest('pubspec.yaml').split('\n');
+  const at = lines.findIndex((l) => /^workspace:\s*$/.test(l));
+  if (at !== -1) {
+    workspaceRead = true;
+    for (const line of lines.slice(at + 1)) {
+      if (/^\S/.test(line)) break;
+      const m = line.match(/^\s*-\s*(\S+)\s*$/);
+      if (!m) continue;
+      const dir = m[1];
+      if (dir.startsWith('apps/')) {
+        roots.push({ dir, kind: 'app' });
+        derivation.push(`${dir} (workspace app member)`);
+      } else if (dir.startsWith('packages/')) {
+        const runner = declaresSuiteRunner(dir);
+        const widget = runner && declaresAWidget(dir);
+        if (runner && widget) {
+          roots.push({ dir, kind: 'package' });
+          derivation.push(`${dir} (workspace package member: declares flutter_test AND a public widget)`);
+        }
+      }
+    }
+  }
+} catch {
+  /* handled by workspaceRead below */
+}
+if (!workspaceRead) {
+  coverageLost(
+    'the root pubspec.yaml has no readable `workspace:` block, so the app AND package roots could not be ' +
+      'derived. The domain would then be the brick alone — and the brick carries no a11y suite at all, ' +
+      'which is the one shape of this scan that finds nothing to sweep and still prints ok.',
+  );
+}
+if (roots.length === 0) {
+  coverageLost(
+    'NO root was derived: the brick is absent, the workspace lists no `apps/` member, and no ' +
+      '`packages/` member both declares a `flutter_test` dev-dependency and declares a public widget ' +
+      'class. There is nothing to scan, so a pass here would be a claim about an empty set.',
+  );
+}
+for (const r of roots) {
+  r.pkg = packageNameOf(r.dir);
+  if (r.pkg === null) {
+    coverageLost(
+      `\`${r.dir}\` was derived as a root and this parse could not read a \`name:\` out of ` +
+        `${r.dir}/pubspec.yaml. The package name is how a test's import is attributed to a file; without ` +
+        'it every surface in that root would print as unswept — confident statements derived from having ' +
+        'read nothing.',
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (0b) REQUIRED_COVERAGE — ONE FLOOR PER ROOT, NEVER A UNION FLOOR
+//
+// 🔴 assert-no-tls-pinning.mjs:94-175 records a union floor that stayed
+// satisfied by the brick alone while apps/ AND packages/ went to zero;
+// assert-workspace-coverage.mjs:130-136 records the same shape over an emptied
+// apps/. A root that is never DERIVED is never EMPTY, so the derivation above
+// cannot see a root leave on its own — that is what this table is for.
+//
+// TWO CLAUSES, AND THEY FIRE IN DIFFERENT SITUATIONS:
+//   · A DECLARED ROOT THAT WAS NOT DERIVED fails — but only over a FULL
+//     CHECKOUT, detected by this guard's OWN file being present under ROOT. The
+//     sentinel sits outside every subject tree (`apps/`, `packages/`,
+//     `tooling/bricks/`) and therefore survives any mutation OF a subject,
+//     which a sentinel inside one of them would not. Partial trees are real and
+//     legitimate: this guard's own suite builds one root at a time.
+//   · A DERIVED ROOT UNDER ITS OWN FLOOR fails ALWAYS, checkout or fixture.
+//     ⚠️ THE ASYMMETRY IS DELIBERATE AND IT IS NOT THE ONE assert-modal-
+//     detection.mjs TOOK. Gating the floors themselves on IS_FULL_CHECKOUT
+//     would make M7, M8, M11e and M11f un-testable — every one of them mutates
+//     a byte copy of one root — and a floor no mutation can reach is a floor
+//     nothing has ever exercised. A fixture root IS a byte copy of the real
+//     root, so the measured floor is valid over it.
+//
+// ⚠️ WHICH BRANCH WAS TAKEN IS PRINTED ON EVERY RUN. A floor skipped in silence
+// is indistinguishable from a floor that passed.
+//
+// ⚠️ A FLOOR IS ONLY A FLOOR ON THE DAY IT IS MEASURED. It has no way to notice
+// the tree growing past it, so ADDING to it belongs in the same change that
+// adds the surface — the step #280 skipped one domain over, which left
+// assert-responsive-coverage's floor two surfaces under its tree for a week.
+//
+// EVERY NUMBER BELOW WAS PRODUCED BY RUNNING THIS GUARD ON 2026-09-05 AND
+// READING ITS OWN PER-ROOT REPORT. None was incremented, inherited or guessed.
+// ═══════════════════════════════════════════════════════════════════════════
+const IS_FULL_CHECKOUT = existsSync(join(ROOT, 'tooling', 'ci', 'assert-a11y-coverage.mjs'));
+
+const REQUIRED_COVERAGE = [
+  {
+    dir: 'apps/subly',
+    // 19 reachable surfaces — 17 routed screens + 2 modal sheets.
+    // 110 testWidgets cases in 1 file (a11y_semantics_test.dart), of which the
+    //    sweeping families are naked-controls ×24 · tap-target ×19 · contrast ×24
+    // ~~81 cases~~ — the reading after the tap-target increment.
+    // ~~60 cases … 24 sweeping … 36 non-sweeping~~ — the reading before that.
+    //
+    // 🔴 THIS FLOOR WENT BLIND THREE TIMES IN ONE DAY AND THE RECORD STAYS.
+    // The 2026-08-13 sweep moved SWEPT_FLOOR 5 → 19 and left `cases` at 24
+    // while the suite grew 24 → 60 (**36 cases deletable in silence**); the
+    // tap-target increment took it 60 → 81 and left `cases` at 60 (**21
+    // deletable**); the contrast increment took it 81 → 109 and left `cases` at
+    // 81 (**28 deletable**). Each time the floor could not fire AT ALL without
+    // a sweep also being deleted, which the sets already catch. A floor that
+    // can only fire when something else fires first is not a floor.
+    // 📌 A guard extended in one dimension must be re-measured in EVERY
+    // dimension it carries. Raising the membership set is not raising the
+    // count. What caught the third occurrence was this guard's OWN test suite
+    // (M8), which pins the floor's number in its regex — and that suite runs
+    // ONLY under `node --test`, so a session that gates locally sees nothing.
+    //
+    // ⚠️ `surfaces: 19` IS THE SAME NUMBER assert-responsive-coverage.mjs
+    // CARRIES for this root and that is a MEASUREMENT, not a copy. The two
+    // guards range over the same domain by design, so agreement is the expected
+    // reading and a DISAGREEMENT is the signal that one parse has drifted. If
+    // you change one, RE-MEASURE the other rather than mirroring the edit.
+    surfaces: 19,
+    a11yFiles: 1,
+    cases: 110,
+    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
+  },
+  {
+    dir: BRICK,
+    // MEASURED 2026-09-05, the first day this root was ever in the domain:
+    //   12 reachable surfaces — 12 routed screens, 0 modal sheets
+    //   0 `a11y_*_test.dart` files, 0 cases, 0 swept.
+    //
+    // 🔴 `a11yFiles: 0` AND `cases: 0` ARE NOT A SHRUG, THEY ARE THE FINDING.
+    // The brick is the template every future app inherits and it has never had
+    // an accessibility sweep. That gap is PRINTED in full on every run — twelve
+    // named surfaces — and it is reported to the owner rather than silenced.
+    // A floor of zero cannot fall, so it says nothing; the `surfaces` floor is
+    // what holds this root, and it is a real one: it is what fires when the
+    // brick's router loses a route or the template stops being derived.
+    // ⚠️ RAISE `a11yFiles` TO 1 AND `cases` TO WHATEVER THE FIRST BRICK SWEEP
+    // MEASURES, IN THE SAME CHANGE THAT LANDS IT.
+    surfaces: 12,
+    a11yFiles: 0,
+    cases: 0,
+    label: 'the template every stamped app inherits — 12 routed screens, ZERO a11y sweeps',
+  },
+  {
+    dir: 'packages/design_system',
+    // MEASURED 2026-09-05, the first day this root was ever in the domain:
+    //   19 public widget classes under lib/src/widgets/
+    //   0 `a11y_*_test.dart` files, 0 cases, 0 swept — though FOUR of its
+    //   seventeen test files do call a recognised sweep helper from outside the
+    //   corpus, which is printed rather than left to be inferred.
+    //
+    // This is the root [ADR 065] chassis step 2 moved the shared widgets into,
+    // and it is the root whose absence made `NotFoundScreen`'s exclusion from
+    // apps/subly a promise nothing kept.
+    surfaces: 19,
+    a11yFiles: 0,
+    cases: 0,
+    label:
+      'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
+      'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (0c) THE ARGUED NON-PANES, PER ROOT
+//
 // Not an allowlist. Each entry is a claim about WHAT KIND OF THING the symbol
-// is, and each is self-checked twice at the bottom of this file: an entry the
-// router no longer builds fails (an exception for something that is not there
-// reports judgement over nothing), and an entry that turns out to be a feature
-// surface after all fails (it scans as a pane; the exclusion is wrong).
-const NOT_A_PANE = new Map([
+// is, and each is self-checked twice below: an entry the root's router no
+// longer builds fails (an exception for something that is not there reports
+// judgement over nothing), and an entry that turns out to be a feature surface
+// after all fails (it scans as a pane; the exclusion is wrong).
+//
+// Keyed by root since 2026-09-05: the brick and subly each route an `AppShell`
+// and an errorBuilder `NotFoundScreen`, and one map over both would let an
+// exclusion argued for one tree silence the other.
+// ═══════════════════════════════════════════════════════════════════════════
+const SHELL_WHY =
+  'is the shell CHROME, not a pane — it hosts the bottom nav and an IndexedStack of the branch routes, ' +
+  'each of which is in this domain on its own account. It is DECLARED IN packages/design_system, which ' +
+  'is a root of this scan in its own right since 2026-09-05, so its own semantics are in the domain ' +
+  'THERE rather than nowhere.';
+const NOT_FOUND_WHY =
+  'is the errorBuilder surface and it is DECLARED IN packages/design_system, not in this app. That was a ' +
+  'promise nothing kept until 2026-09-05; design_system is now a root of this scan, so the design ' +
+  'system owning its semantics is a fact this guard checks rather than a sentence it prints.';
+
+const NOT_A_PANE_BY_ROOT = new Map([
   [
-    'AppShell',
-    'is the shell CHROME, not a pane — it hosts the bottom nav and an IndexedStack of the five branch ' +
-      'routes, each of which is in this domain on its own account. Its OWN semantics are not unmeasured: ' +
-      'the `shell ·` group pumps the REAL router and sweeps what it lands on — once per family since ' +
-      '2026-08-13 — which is why the tally below reports sweeping case(s) that attribute to no surface ' +
-      'rather than pretending there are none.',
+    'apps/subly',
+    new Map([
+      [
+        'AppShell',
+        'is the shell CHROME, not a pane — it hosts the bottom nav and an IndexedStack of the five branch ' +
+          'routes, each of which is in this domain on its own account. Its OWN semantics are not unmeasured: ' +
+          'the `shell ·` group pumps the REAL router and sweeps what it lands on — once per family since ' +
+          '2026-08-13 — which is why the tally below reports sweeping case(s) that attribute to no surface ' +
+          'rather than pretending there are none.',
+      ],
+      ['NotFoundScreen', NOT_FOUND_WHY],
+    ]),
   ],
   [
-    'NotFoundScreen',
-    'is the errorBuilder surface and it is DECLARED IN packages/design_system, not in this app — the ' +
-      'design system owns its semantics and every stamped app inherits that decision, so a Subly-local ' +
-      'a11y sweep would assert a property Subly does not control.',
+    BRICK,
+    new Map([
+      ['AppShell', SHELL_WHY],
+      ['NotFoundScreen', NOT_FOUND_WHY],
+    ]),
   ],
 ]);
 
-// ── SURFACE VOCABULARY ─────────────────────────────────────────────────────
-// A surface is a `…Screen` class or a `show…Sheet` function. Deliberately the
-// SAME vocabulary on both sides and the same one assert-responsive-coverage
-// uses: the reachable set and the swept set must agree about what counts as a
-// surface, or the accounting below compares two different questions.
-const SCREEN_DECL = /\bclass\s+([A-Za-z_$][\w$]*Screen)\b/g;
-const SHEET_DECL = /^[ \t]*(?:Future<[^>]*>|void)\s+(show[A-Z][\w$]*Sheet)\s*\(/gm;
+// ═══════════════════════════════════════════════════════════════════════════
+// (0d) SWEPT_FLOOR — what WAS swept, by name, per root
+//
+// 🔴 A COUNT WOULD NOT DO, AND THE MUTATION THAT PROVES IT IS: delete one
+// surface's sweep and add another's in the same change. A `sweptSurfaces: 19`
+// number stays satisfied, the printed list is still empty, and the surface that
+// lost its coverage lost it in silence. The floor is therefore a SET, and it
+// names what it loses — which is what M1 measures: deleting the check-inbox
+// sweep reports `REGRESSION — CheckInboxScreen` BY NAME, not a count that moved.
+//
+// It is NOT an allowlist and nothing can be added to it to silence anything —
+// it is a measurement of work already done, and it is self-checked: an entry
+// the domain no longer contains FAILS, because a floor over a surface that is
+// not there is judgement over nothing.
+//
+// MEASURED 2026-08-13 for apps/subly by running this guard against the working
+// tree: these NINETEEN keys were reported swept, each by a `nothing on … is
+// naked` case in apps/subly/test/a11y_semantics_test.dart. That is the WHOLE
+// domain of that root.
+//
+// 🔴 THE OTHER TWO ROOTS HAVE AN EMPTY FLOOR, AND THAT IS A MEASUREMENT TOO —
+// on 2026-09-05 neither the brick nor design_system carried a single a11y
+// sweep. An empty set here is not a waiver: every one of their surfaces is in
+// the printed ⬜ list on every run, and the first sweep to land in either root
+// belongs in this map in the same change.
+//
+// ⚠️ AN EMPTY FLOOR ALSO BUYS SOMETHING M7 LOST. With subly's floor covering
+// its whole domain, no mutation there can fire the `surfaces` floor ALONE. The
+// brick's floor is empty, so deleting one brick route fires its `surfaces`
+// floor and nothing else — M11e — and the floor's independence is demonstrable
+// again for the first time since 2026-08-13.
+// ═══════════════════════════════════════════════════════════════════════════
+const SWEPT_FLOOR_BY_ROOT = new Map([
+  [
+    'apps/subly',
+    new Set(
+      [
+        'features/insights/insights_screen.dart#InsightsScreen',
+        'features/budget/budget_screen.dart#BudgetScreen',
+        'features/scan/scan_screen.dart#ScanScreen',
+        'features/calendar/calendar_screen.dart#CalendarScreen',
+        'features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen',
+        'features/auth/check_inbox_screen.dart#CheckInboxScreen',
+        'features/auth/verify_email_screen.dart#VerifyEmailScreen',
+        'features/auth/reaccept_terms_screen.dart#ReacceptTermsScreen',
+        'features/auth/login_screen.dart#LoginScreen',
+        'features/auth/sign_up_screen.dart#SignUpScreen',
+        'features/auth/reset_password_screen.dart#ResetPasswordScreen',
+        'features/home/home_screen.dart#HomeScreen',
+        'features/settings/settings_screen.dart#SettingsScreen',
+        'features/notifications/notifications_screen.dart#NotificationsScreen',
+        'features/monetization/paywall_screen.dart#PaywallScreen',
+        'features/monetization/manage_plan_screen.dart#ManagePlanScreen',
+        'features/onboarding/onboarding_screen.dart#OnboardingScreen',
+        'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
+        'features/cancel/cancel_sheet.dart#showCancelSheet',
+      ].map((k) => `apps/subly/lib/${k}`),
+    ),
+  ],
+  [BRICK, new Set()],
+  ['packages/design_system', new Set()],
+]);
 
 // ── WHAT MAKES A CASE A SWEEP RATHER THAN A LABEL ASSERTION ────────────────
 // See the header. Each family is matched on the literal-stripped BODY of one
@@ -322,39 +813,45 @@ const SWEEP_FAMILIES = [
     what: "flutter_test's own text-contrast sweep",
   },
 ];
+const A11Y_TEST = /^a11y_.*_test\.dart$/;
+/** Not a sweep, and printed BECAUSE it is not one — see the header. A file that
+ *  takes a SemanticsHandle is doing accessibility work of some kind; a file
+ *  that takes one and asserts a single label is the exact shape this guard
+ *  refuses to count, so it is named rather than left invisible. */
+const SEMANTICS_HANDLE_RE = /\bensureSemantics\s*\(/;
+
+// ── SHARED PARSE HELPERS ───────────────────────────────────────────────────
 
 const surfaceCache = new Map();
-/** The surfaces a feature file DECLARES, as bare symbol names. */
-function surfacesIn(rel) {
-  if (surfaceCache.has(rel)) return surfaceCache.get(rel);
+/** The surfaces a file DECLARES, as bare symbol names.
+ *
+ *  APP roots keep the `…Screen` / `show…Sheet` vocabulary, deliberately the
+ *  same one assert-responsive-coverage uses. PACKAGE roots use PUBLIC WIDGET
+ *  CLASSES, because a package has no router and everything it exports is
+ *  mounted by every app that depends on it — see the header. */
+function surfacesIn(rel, kind) {
+  const cacheKey = `${kind}:${rel}`;
+  if (surfaceCache.has(cacheKey)) return surfaceCache.get(cacheKey);
   let out = [];
   if (existsSync(join(ROOT, rel))) {
     const code = read(rel);
-    out = [
-      ...[...code.matchAll(SCREEN_DECL)].map((m) => m[1]),
-      ...[...code.matchAll(SHEET_DECL)].map((m) => m[1]),
-    ];
+    // 🔴 `lastIndex` RESET BEFORE EVERY `matchAll`. See declaresAWidget: a /g/
+    // regex carries state between calls and `matchAll` honours it, which cost
+    // this guard fourteen of nineteen design_system surfaces in silence before
+    // its own fixture caught it.
+    WIDGET_DECL.lastIndex = 0;
+    SCREEN_DECL.lastIndex = 0;
+    SHEET_DECL.lastIndex = 0;
+    out =
+      kind === 'package'
+        ? [...code.matchAll(WIDGET_DECL)].map((m) => m[1])
+        : [
+            ...[...code.matchAll(SCREEN_DECL)].map((m) => m[1]),
+            ...[...code.matchAll(SHEET_DECL)].map((m) => m[1]),
+          ];
   }
-  surfaceCache.set(rel, out);
+  surfaceCache.set(cacheKey, out);
   return out;
-}
-
-/** Every .dart file under lib/features, relative to ROOT. */
-function featureFiles() {
-  const out = [];
-  const walk = (rel) => {
-    for (const entry of listDir(join(ROOT, rel))) {
-      const child = `${rel}/${entry}`;
-      if (entry.endsWith('.dart')) out.push(child);
-      else if (!entry.includes('.')) walk(child);
-    }
-  };
-  try {
-    walk(FEATURES_REL);
-  } catch {
-    /* absent — reported by the caller */
-  }
-  return out.sort();
 }
 
 /** The inner text of the balanced run opening at `open`, quotes respected.
@@ -392,25 +889,26 @@ function sliceBalanced(text, open, openCh, closeCh) {
 const sliceCall = (text, open) => sliceBalanced(text, open, '(', ')');
 
 // ── THE ROUTER IS A SPINE, NOT A FILE (2026-09-04, P1b) ────────────────────
-// `apps/subly/lib/core/router.dart` is a BARREL over `lib/core/router/` — the
-// ordered gate chain, the route table, the shell wiring, the navigator key and
-// the `GoRouter` those assemble into. Every `GoRoute`, every `builder:` and
-// every `import '../../features/…'` this guard's domain is built from now lives
-// in that directory.
+// `<root>/lib/core/router.dart` may be a BARREL over `<root>/lib/core/router/`
+// — the ordered gate chain, the route table, the shell wiring, the navigator
+// key and the `GoRouter` those assemble into. Every `GoRoute`, every `builder:`
+// and every `import '../../features/…'` this guard's domain is built from lives
+// in that directory when the split has happened.
 //
 // 🔴 READ AS ONE FILE AFTER THAT SPLIT THIS GUARD RANGES OVER A ROUTER WITH NO
 // ROUTES IN IT, which is indistinguishable from a router that LOST them: the
-// reachable set empties, every sweep is reported as dead coverage, and the two
+// reachable set empties, every sweep is reported as dead coverage, and the
 // argued non-panes fail as "no route builds it". The domain widens to the
 // barrel PLUS `router/*.dart`, in that order, and to nothing else — same
 // vocabulary, same regexes, same refusals. A tree whose router is still one
-// file has no sibling directory and is read exactly as it was before.
+// file has no sibling directory and is read exactly as it was before. The brick
+// is such a tree today; subly is not.
 //
 // Concatenated rather than scanned per file on purpose: `_GatedInsights` is
 // declared in one file and routed from another, and the wrapper resolution
 // below has to see both to resolve it to a feature surface.
-const routerSpine = () => {
-  const dir = ROUTER_REL.slice(0, -'.dart'.length);
+function routerSpine(routerRel) {
+  const dir = routerRel.slice(0, -'.dart'.length);
   let entries = [];
   try {
     entries = listDir(join(ROOT, dir));
@@ -418,619 +916,663 @@ const routerSpine = () => {
     entries = []; // no sibling directory: an unsplit router
   }
   const files = [
-    ROUTER_REL,
-    ...entries.filter((e) => e.endsWith('.dart')).sort().map((e) => `${dir}/${e}`),
+    routerRel,
+    ...entries
+      .filter((e) => e.endsWith('.dart'))
+      .sort()
+      .map((e) => `${dir}/${e}`),
   ];
   return { files, src: files.map(read).join('\n') };
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (A) THE REACHABLE SET
-// ═══════════════════════════════════════════════════════════════════════════
-if (!existsSync(join(ROOT, ROUTER_REL))) {
-  coverageLost(
-    `${ROUTER_REL} does not exist, so the reachable-surface half of this check ranged over NOTHING and ` +
-      'would have reported every a11y sweep as dead coverage. The router is the domain; without it there ' +
-      'is no question to ask.',
-  );
 }
 
-const reachable = new Map(); // "<featureFile>#<Symbol>" → { file, symbol, via, kind }
-const excluded = []; // { what, why }
-const routerTargets = new Set();
-
-if (problems.length === 0) {
-  const spine = routerSpine();
-  const router = spine.src;
-
-  // Which feature file each symbol the router imports comes from. Relative
-  // imports, because that is how the router spells them (`../features/…`).
-  const importedFeature = new Map(); // Symbol → [file, …]
-  for (const m of router.matchAll(/import\s+'(?:\.\.\/)+(features\/[^']+\.dart)'/g)) {
-    const rel = `${APP}/lib/${m[1]}`;
-    for (const symbol of surfacesIn(rel)) {
-      if (!importedFeature.has(symbol)) importedFeature.set(symbol, []);
-      importedFeature.get(symbol).push(rel);
-    }
+/** The files a `package:<pkg>/<path>` import resolves to, INCLUDING one level
+ *  of barrel expansion. See the header: fifteen of design_system's seventeen
+ *  test files import the barrel and only three import a widget file directly,
+ *  so without this the provenance half collapses and every widget prints as
+ *  unswept for a reason that has nothing to do with the package. */
+function resolveImport(R, path) {
+  const rel = `${R.dir}/lib/${path}`;
+  if (!existsSync(join(ROOT, rel))) return [];
+  const declared = surfacesIn(rel, R.kind);
+  if (declared.length > 0) return [rel];
+  const out = [];
+  for (const m of read(rel).matchAll(/export\s+'([^':]+\.dart)'/g)) {
+    const target = `${R.dir}/lib/${m[1]}`;
+    if (existsSync(join(ROOT, target))) out.push(target);
   }
-  for (const [symbol, files] of importedFeature) {
-    if (files.length > 1) {
-      problems.push(
-        `AMBIGUOUS SURFACE — the router imports ${files.length} feature files that each declare \`${symbol}\` ` +
-          `(${files.join(', ')}), so a \`${symbol}(\` in the router cannot be attributed to one of them. ` +
-          'That is the twin shape this guard keys by file to catch; resolve the collision rather than guessing.',
-      );
-    }
-  }
+  return out.length ? out : [rel];
+}
 
-  // ── Every GoRoute is accounted for: a builder target, or a redirect ──────
-  // Walked route by route rather than by a bare `builder:` regex, so a route
-  // this parse cannot classify FAILS instead of vanishing.
+// ═══════════════════════════════════════════════════════════════════════════
+// ONE ROOT, ANALYSED. Everything below (A)–(G) used to be top-level code over
+// `const APP = 'apps/subly'`; it is the same accounting, once per derived root.
+// ═══════════════════════════════════════════════════════════════════════════
+function analyseRoot(R) {
+  const routerRel = `${R.dir}/lib/core/router.dart`;
+  const featuresRel = `${R.dir}/lib/features`;
+  const testRel = `${R.dir}/test`;
+  const notFound = []; // this root's problems
+  const rootProblem = (m) => notFound.push(m);
+  const rootCoverageLost = (m) => notFound.push(`COVERAGE LOST — ${m}`);
+  const NOT_A_PANE = NOT_A_PANE_BY_ROOT.get(R.dir) ?? new Map();
+
+  const reachable = new Map(); // "<file>#<Symbol>" → { file, symbol, via, kind }
+  const excluded = []; // { what, why }
+  const routerTargets = new Set();
   let goRoutes = 0;
   let redirectOnly = 0;
-  const unparsed = [];
-  for (const m of router.matchAll(/\bGoRoute\s*\(/g)) {
-    goRoutes++;
-    const open = m.index + m[0].length - 1;
-    const inner = sliceCall(router, open);
-    if (inner === null) {
-      unparsed.push(`a GoRoute( at offset ${m.index} whose argument list this parse could not close`);
-      continue;
+  let spineFiles = [];
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // (A) THE REACHABLE SET
+  // ═══════════════════════════════════════════════════════════════════════
+  if (R.kind === 'app') {
+    if (!existsSync(join(ROOT, routerRel))) {
+      rootCoverageLost(
+        `${routerRel} does not exist, so the reachable-surface half of this check ranged over NOTHING for ` +
+          'this root and would have reported every a11y sweep in it as dead coverage. The router is the ' +
+          'domain; without it there is no question to ask.',
+      );
+    } else {
+      const spine = routerSpine(routerRel);
+      spineFiles = spine.files;
+      const router = spine.src;
+
+      // Which feature file each symbol the router imports comes from. Relative
+      // imports, because that is how a router spells them (`../features/…`).
+      const importedFeature = new Map(); // Symbol → [file, …]
+      for (const m of router.matchAll(/import\s+'(?:\.\.\/)+(features\/[^']+\.dart)'/g)) {
+        const rel = `${R.dir}/lib/${m[1]}`;
+        for (const symbol of surfacesIn(rel, R.kind)) {
+          if (!importedFeature.has(symbol)) importedFeature.set(symbol, []);
+          importedFeature.get(symbol).push(rel);
+        }
+      }
+      for (const [symbol, files] of importedFeature) {
+        if (files.length > 1) {
+          rootProblem(
+            `AMBIGUOUS SURFACE — ${routerRel} imports ${files.length} feature files that each declare ` +
+              `\`${symbol}\` (${files.join(', ')}), so a \`${symbol}(\` in the router cannot be attributed ` +
+              'to one of them. That is the twin shape this guard keys by file to catch; resolve the ' +
+              'collision rather than guessing.',
+          );
+        }
+      }
+
+      // ── Every GoRoute is accounted for: a builder target, or a redirect ──
+      // Walked route by route rather than by a bare `builder:` regex, so a
+      // route this parse cannot classify FAILS instead of vanishing.
+      const unparsed = [];
+      for (const m of router.matchAll(/\bGoRoute\s*\(/g)) {
+        goRoutes++;
+        const open = m.index + m[0].length - 1;
+        const inner = sliceCall(router, open);
+        if (inner === null) {
+          unparsed.push(`a GoRoute( at offset ${m.index} whose argument list this parse could not close`);
+          continue;
+        }
+        if (/\bbuilder\s*:/.test(inner)) continue; // handled by the builder pass below
+        if (/\bredirect\s*:/.test(inner)) {
+          redirectOnly++;
+          const path = /\bpath\s*:\s*'([^']*)'/.exec(inner)?.[1] ?? '(unnamed)';
+          excluded.push({
+            what: `GoRoute ${path}`,
+            why: 'is REDIRECT-ONLY — it declares no builder, so it renders nothing and there is no surface for a reader to traverse.',
+          });
+          continue;
+        }
+        unparsed.push(`a GoRoute( at offset ${m.index} with neither a builder: nor a redirect:`);
+      }
+      if (unparsed.length) {
+        rootCoverageLost(
+          `${unparsed.length} route(s) in ${routerRel} could not be classified: ${unparsed.join('; ')}. ` +
+            'An unclassified route is a screen this guard cannot see, and an invisible screen reads exactly ' +
+            'like a swept one.',
+        );
+      }
+
+      // Builder targets. `errorBuilder` is captured too so the 404 surface is
+      // EXCLUDED WITH A REASON rather than never noticed.
+      const BUILDER =
+        /\b(errorBuilder|builder)\s*:\s*\([^)]*\)\s*=>\s*(?:const\s+)?([A-Za-z_$][\w$]*)\s*\(/g;
+      const builderKeys = [...router.matchAll(/\b(?:errorBuilder|builder)\s*:/g)].length;
+      const matches = [...router.matchAll(BUILDER)];
+      if (matches.length !== builderKeys) {
+        rootCoverageLost(
+          `${routerRel} has ${builderKeys} builder key(s) and this parse resolved ${matches.length} of ` +
+            'them. The unresolved ones build SOMETHING and this guard does not know what — a builder with ' +
+            'a block body or a non-constructor expression slips past the arrow form. Widen the parse; do ' +
+            'not let a screen be invisible.',
+        );
+      }
+
+      for (const [, , target] of matches) {
+        routerTargets.add(target);
+
+        // A router-local private wrapper (`_GatedInsights`) is a gate, not a
+        // pane. Resolve ONE level to the feature surface it builds.
+        let symbol = target;
+        let via = null;
+        if (target.startsWith('_')) {
+          const decl = new RegExp(`\\bclass\\s+${target}\\b`).exec(router);
+          const brace = decl ? router.indexOf('{', decl.index) : -1;
+          const body = brace === -1 ? '' : (sliceBalanced(router, brace, '{', '}') ?? '');
+          const inner = [...body.matchAll(/\b(?:const\s+)?([A-Za-z_$][\w$]*)\s*\(/g)]
+            .map((x) => x[1])
+            .find((name) => importedFeature.has(name));
+          if (!inner) {
+            rootProblem(
+              `\`${target}\` is a route builder declared inside ${routerRel} and it resolves to NO feature ` +
+                'surface. A wrapper that wraps nothing is a route whose surface nothing can be pointed at; ' +
+                'name the screen it builds or stop routing to it.',
+            );
+            continue;
+          }
+          symbol = inner;
+          via = target;
+        }
+
+        const files = importedFeature.get(symbol);
+        if (!files) {
+          const why = NOT_A_PANE.get(symbol);
+          if (why) {
+            excluded.push({ what: symbol, why });
+          } else {
+            rootProblem(
+              `\`${symbol}\` is built by a route in ${routerRel} but is neither a screen declared under ` +
+                `${featuresRel} nor one of the ${NOT_A_PANE.size} argued non-panes for this root. This ` +
+                'guard will not guess: a builder target it cannot classify is a surface that would ' +
+                'silently leave the domain. Either it is a surface (sweep it, or let it print as unswept) ' +
+                'or it is not (say why, in NOT_A_PANE_BY_ROOT).',
+            );
+          }
+          continue;
+        }
+        reachable.set(`${files[0]}#${symbol}`, {
+          file: files[0],
+          symbol,
+          via,
+          kind: 'routed screen',
+        });
+      }
     }
-    if (/\bbuilder\s*:/.test(inner)) continue; // handled by the builder pass below
-    if (/\bredirect\s*:/.test(inner)) {
-      redirectOnly++;
-      const path = /\bpath\s*:\s*'([^']*)'/.exec(inner)?.[1] ?? '(unnamed)';
-      excluded.push({
-        what: `GoRoute ${path}`,
-        why: 'is REDIRECT-ONLY — it declares no builder, so it renders nothing and there is no surface for a reader to traverse.',
+  }
+
+  // ── MODAL SHEETS — the other half of an app root's domain ────────────────
+  // ── or, for a PACKAGE root, the whole of it: every public widget under lib.
+  const declaringFiles =
+    R.kind === 'package' ? dartFilesUnder(`${R.dir}/lib`) : dartFilesUnder(featuresRel);
+  if (declaringFiles.length === 0) {
+    rootCoverageLost(
+      `no .dart file was found under ${R.kind === 'package' ? `${R.dir}/lib` : featuresRel}, so the ` +
+        `${R.kind === 'package' ? 'whole domain of this package root' : 'modal-sheet half of the domain'} ` +
+        'is empty and a sweep pointed there would read as dead coverage. The scan is pointed at the wrong tree.',
+    );
+  }
+  for (const rel of declaringFiles) {
+    for (const symbol of surfacesIn(rel, R.kind)) {
+      if (R.kind === 'app' && !symbol.startsWith('show')) continue; // screens enter via the router, not the disk
+      reachable.set(`${rel}#${symbol}`, {
+        file: rel,
+        symbol,
+        via: null,
+        kind: R.kind === 'package' ? 'shared widget' : 'modal sheet',
       });
-      continue;
     }
-    unparsed.push(`a GoRoute( at offset ${m.index} with neither a builder: nor a redirect:`);
-  }
-  if (unparsed.length) {
-    coverageLost(
-      `${unparsed.length} route(s) in ${ROUTER_REL} could not be classified: ${unparsed.join('; ')}. ` +
-        'An unclassified route is a screen this guard cannot see, and an invisible screen reads exactly ' +
-        'like a swept one.',
-    );
   }
 
-  // Builder targets. `errorBuilder` is captured too so the 404 surface is
-  // EXCLUDED WITH A REASON rather than never noticed.
-  const BUILDER = /\b(errorBuilder|builder)\s*:\s*\([^)]*\)\s*=>\s*(?:const\s+)?([A-Za-z_$][\w$]*)\s*\(/g;
-  const builderKeys = [...router.matchAll(/\b(?:errorBuilder|builder)\s*:/g)].length;
-  const matches = [...router.matchAll(BUILDER)];
-  if (matches.length !== builderKeys) {
-    coverageLost(
-      `${ROUTER_REL} has ${builderKeys} builder key(s) and this parse resolved ${matches.length} of them. ` +
-        'The unresolved ones build SOMETHING and this guard does not know what — a builder with a block ' +
-        'body or a non-constructor expression slips past the arrow form. Widen the parse; do not let a ' +
-        'screen be invisible.',
-    );
+  // ═══════════════════════════════════════════════════════════════════════
+  // (B) THE SWEPT SET — per testWidgets BLOCK, not per file
+  // ═══════════════════════════════════════════════════════════════════════
+  let a11yFiles = [];
+  let otherSweepFiles = [];
+  let semanticsOnlyFiles = [];
+  try {
+    const all = listDir(join(ROOT, testRel));
+    a11yFiles = all.filter((f) => A11Y_TEST.test(f)).sort();
+    // The naming rule's cost, MEASURED rather than implied — see the header.
+    for (const f of all.filter((x) => x.endsWith('.dart') && !A11Y_TEST.test(x)).sort()) {
+      const src = stripStringLiterals(read(`${testRel}/${f}`));
+      if (SWEEP_FAMILIES.some((fam) => fam.re.test(src))) otherSweepFiles.push(f);
+      else if (SEMANTICS_HANDLE_RE.test(src)) semanticsOnlyFiles.push(f);
+    }
+  } catch {
+    /* absent — the floors below are the report */
   }
 
-  for (const [, , target] of matches) {
-    routerTargets.add(target);
+  const swept = new Map(); // "<file>#<Symbol>" → { files:Set, kinds:Set }
+  const namedOnly = new Map(); // "<file>#<Symbol>" → Set of test files naming it in a NON-sweeping case
+  const kindTally = new Map(SWEEP_FAMILIES.map((f) => [f.kind, 0]));
+  let a11yCases = 0;
+  let sweepingBlocks = 0;
+  let unattributedSweeps = 0;
 
-    // A router-local private wrapper (`_GatedInsights`) is a gate, not a pane.
-    // Resolve ONE level to the feature surface it builds.
-    let symbol = target;
-    let via = null;
-    if (target.startsWith('_')) {
-      const decl = new RegExp(`\\bclass\\s+${target}\\b`).exec(router);
-      const brace = decl ? router.indexOf('{', decl.index) : -1;
-      const body = brace === -1 ? '' : (sliceBalanced(router, brace, '{', '}') ?? '');
-      const inner = [...body.matchAll(/\b(?:const\s+)?([A-Za-z_$][\w$]*)\s*\(/g)]
-        .map((x) => x[1])
-        .find((name) => importedFeature.has(name));
-      if (!inner) {
-        problems.push(
-          `\`${target}\` is a route builder declared inside ${ROUTER_REL} and it resolves to NO feature ` +
-            'surface. A wrapper that wraps nothing is a route whose surface nothing can be pointed at; ' +
-            'name the screen it builds or stop routing to it.',
-        );
-        continue;
+  const IMPORT_RE = new RegExp(`import\\s+'package:${escapeRe(R.pkg ?? ' ')}/([^']+\\.dart)'`, 'g');
+
+  for (const name of a11yFiles) {
+    const rel = `${testRel}/${name}`;
+    const code = read(rel);
+
+    // Imports FIRST, on comment-stripped text ONLY: an import path IS a string
+    // literal, so stripping literals before this would erase the provenance
+    // half and every surface would fall to the printed list with nothing to say
+    // why.
+    const declaredHere = new Map(); // Symbol → [declaring file, …]
+    IMPORT_RE.lastIndex = 0;
+    for (const m of code.matchAll(IMPORT_RE)) {
+      for (const declRel of resolveImport(R, m[1])) {
+        for (const symbol of surfacesIn(declRel, R.kind)) {
+          if (!declaredHere.has(symbol)) declaredHere.set(symbol, []);
+          if (!declaredHere.get(symbol).includes(declRel)) declaredHere.get(symbol).push(declRel);
+        }
       }
-      symbol = inner;
-      via = target;
     }
-
-    const files = importedFeature.get(symbol);
-    if (!files) {
-      const why = NOT_A_PANE.get(symbol);
-      if (why) {
-        excluded.push({ what: symbol, why });
-      } else {
-        problems.push(
-          `\`${symbol}\` is built by a route in ${ROUTER_REL} but is neither a screen declared under ` +
-            `${FEATURES_REL} nor one of the ${NOT_A_PANE.size} argued non-panes. This guard will not guess: ` +
-            'a builder target it cannot classify is a surface that would silently leave the domain. Either ' +
-            'it is a surface (sweep it, or let it print as unswept) or it is not (say why, in NOT_A_PANE).',
-        );
-      }
-      continue;
-    }
-    reachable.set(`${files[0]}#${symbol}`, { file: files[0], symbol, via, kind: 'routed screen' });
-  }
-
-  if (goRoutes > 0) {
-    ok(
-      `${goRoutes} GoRoute(s) parsed — ${goRoutes - redirectOnly} with a builder, ${redirectOnly} redirect-only` +
-        ` (router spine: ${spine.files.length} file(s) — ${spine.files.join(', ')})`,
-    );
-  }
-}
-
-// ── MODAL SHEETS — the other half of the domain ────────────────────────────
-const featureDartFiles = featureFiles();
-if (featureDartFiles.length === 0) {
-  coverageLost(
-    `no .dart file was found under ${FEATURES_REL}, so the modal-sheet half of the domain is empty and a ` +
-      'sheet sweep would read as dead coverage. The scan is pointed at the wrong tree.',
-  );
-}
-for (const rel of featureDartFiles) {
-  for (const symbol of surfacesIn(rel)) {
-    if (!symbol.startsWith('show')) continue; // screens enter the domain via the router, not the disk
-    reachable.set(`${rel}#${symbol}`, { file: rel, symbol, via: null, kind: 'modal sheet' });
-  }
-}
-const sheetCount = [...reachable.values()].filter((s) => s.kind === 'modal sheet').length;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (B) THE SWEPT SET — per testWidgets BLOCK, not per file
-// ═══════════════════════════════════════════════════════════════════════════
-const A11Y_TEST = /^a11y_.*_test\.dart$/;
-let a11yFiles = [];
-try {
-  a11yFiles = listDir(join(ROOT, TEST_REL)).filter((f) => A11Y_TEST.test(f)).sort();
-} catch {
-  /* absent — the empty-parse checks below are the report */
-}
-
-const swept = new Map(); // "<file>#<Symbol>" → { files:Set, kinds:Set }
-const namedOnly = new Map(); // "<file>#<Symbol>" → Set of test files that name it in a NON-sweeping case
-const kindTally = new Map(SWEEP_FAMILIES.map((f) => [f.kind, 0]));
-let a11yCases = 0;
-let sweepingBlocks = 0;
-let unattributedSweeps = 0;
-
-for (const name of a11yFiles) {
-  const rel = `${TEST_REL}/${name}`;
-  const code = read(rel);
-
-  // Imports FIRST, on comment-stripped text ONLY: an import path IS a string
-  // literal, so stripping literals before this would erase the provenance half
-  // and every surface would fall to the printed list with nothing to say why.
-  const declaredHere = new Map(); // Symbol → [feature file, …]
-  for (const m of code.matchAll(/import\s+'package:subly\/(features\/[^']+\.dart)'/g)) {
-    const featureRel = `${APP}/lib/${m[1]}`;
-    for (const symbol of surfacesIn(featureRel)) {
-      if (!declaredHere.has(symbol)) declaredHere.set(symbol, []);
-      declaredHere.get(symbol).push(featureRel);
-    }
-  }
-  for (const [symbol, files] of declaredHere) {
-    if (files.length > 1) {
-      problems.push(
-        `AMBIGUOUS SUBJECT — ${rel} imports ${files.length} feature files that each declare \`${symbol}\` ` +
-          `(${files.join(', ')}), so this guard cannot tell WHICH of them a case pumps. Keying by file is ` +
-          'exactly what catches an unrouted twin, and a collision inside one file defeats it.',
-      );
-    }
-  }
-
-  const blocks = [...code.matchAll(/\btestWidgets\s*\(/g)];
-  a11yCases += blocks.length;
-  const unclosed = [];
-  for (const m of blocks) {
-    const open = m.index + m[0].length - 1;
-    const inner = sliceCall(code, open);
-    if (inner === null) {
-      unclosed.push(`a testWidgets( at offset ${m.index}`);
-      continue;
-    }
-    // Literals out for the construction and sweep match. A case's own prose
-    // must not be able to claim a sweep it does not perform.
-    const body = stripStringLiterals(inner);
-    const kinds = SWEEP_FAMILIES.filter((f) => f.re.test(body)).map((f) => f.kind);
-    if (kinds.length) sweepingBlocks++;
-    for (const kind of kinds) kindTally.set(kind, kindTally.get(kind) + 1);
-
-    let attributed = 0;
     for (const [symbol, files] of declaredHere) {
-      if (files.length !== 1) continue; // already reported as AMBIGUOUS
-      // Construction/invocation, not a bare mention: `find.byType(HomeScreen)`
-      // names a widget without pumping one.
-      if (!new RegExp(`\\b${symbol}\\s*\\(`).test(body)) continue;
-      const key = `${files[0]}#${symbol}`;
-      if (!kinds.length) {
-        if (!namedOnly.has(key)) namedOnly.set(key, new Set());
-        namedOnly.get(key).add(name);
+      if (files.length > 1) {
+        rootProblem(
+          `AMBIGUOUS SUBJECT — ${rel} imports ${files.length} files that each declare \`${symbol}\` ` +
+            `(${files.join(', ')}), so this guard cannot tell WHICH of them a case pumps. Keying by file is ` +
+            'exactly what catches an unrouted twin, and a collision inside one file defeats it.',
+        );
+      }
+    }
+
+    const blocks = [...code.matchAll(/\btestWidgets\s*\(/g)];
+    a11yCases += blocks.length;
+    const unclosed = [];
+    for (const m of blocks) {
+      const open = m.index + m[0].length - 1;
+      const inner = sliceCall(code, open);
+      if (inner === null) {
+        unclosed.push(`a testWidgets( at offset ${m.index}`);
         continue;
       }
-      attributed++;
-      if (!swept.has(key)) swept.set(key, { files: new Set(), kinds: new Set() });
-      swept.get(key).files.add(name);
-      for (const kind of kinds) swept.get(key).kinds.add(kind);
+      // Literals out for the construction and sweep match. A case's own prose
+      // must not be able to claim a sweep it does not perform.
+      const body = stripStringLiterals(inner);
+      const kinds = SWEEP_FAMILIES.filter((f) => f.re.test(body)).map((f) => f.kind);
+      if (kinds.length) sweepingBlocks++;
+      for (const kind of kinds) kindTally.set(kind, kindTally.get(kind) + 1);
+
+      let attributed = 0;
+      for (const [symbol, files] of declaredHere) {
+        if (files.length !== 1) continue; // already reported as AMBIGUOUS
+        // Construction/invocation, not a bare mention: `find.byType(HomeScreen)`
+        // names a widget without pumping one.
+        if (!new RegExp(`\\b${symbol}\\s*\\(`).test(body)) continue;
+        const key = `${files[0]}#${symbol}`;
+        if (!kinds.length) {
+          if (!namedOnly.has(key)) namedOnly.set(key, new Set());
+          namedOnly.get(key).add(name);
+          continue;
+        }
+        attributed++;
+        if (!swept.has(key)) swept.set(key, { files: new Set(), kinds: new Set() });
+        swept.get(key).files.add(name);
+        for (const kind of kinds) swept.get(key).kinds.add(kind);
+      }
+      if (kinds.length && attributed === 0) unattributedSweeps++;
     }
-    if (kinds.length && attributed === 0) unattributedSweeps++;
-  }
-  if (unclosed.length) {
-    coverageLost(
-      `${unclosed.length} testWidgets block(s) in ${rel} could not be closed by this parse ` +
-        `(${unclosed.join('; ')}). A block this guard cannot read is a sweep it cannot see, and an ` +
-        'invisible sweep reads exactly like an absent one — in the direction that reports LESS work than ' +
-        'was done, silently moving a swept surface onto the printed list.',
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (C) EMPTY PARSE ⇒ COVERAGE LOST
-//     Every statement below reads these two sets. Either one empty makes the
-//     accounting vacuous in one direction and catastrophically wrong in the
-//     other, and it reports as a pass. The marker string is what
-//     assert-guard-coverage.mjs looks for.
-// ═══════════════════════════════════════════════════════════════════════════
-if (reachable.size === 0) {
-  coverageLost(
-    'the REACHABLE set parsed EMPTY. Nothing was found to require a sweep, so every existing a11y case ' +
-      'would be reported as dead coverage and a router full of screens would be reported as fully ' +
-      'accounted for. The router parse has stopped reaching the tree.',
-  );
-}
-if (a11yFiles.length === 0) {
-  coverageLost(
-    `no file under ${TEST_REL} matched \`a11y_*_test.dart\`, so the swept set is empty by construction ` +
-      'and every surface in the app would print as unswept — nineteen confident statements derived from ' +
-      'having read nothing. The suite moved, or it was renamed out of this scan.',
-  );
-}
-if (a11yFiles.length > 0 && a11yCases === 0) {
-  coverageLost(
-    `${a11yFiles.length} a11y test file(s) were read and NOT ONE \`testWidgets(\` block was parsed out of ` +
-      'them. The block is this guard\'s unit of evidence; with none, the swept set is empty for a reason ' +
-      'that has nothing to do with the app.',
-  );
-}
-if (a11yCases > 0 && sweepingBlocks === 0) {
-  coverageLost(
-    `${a11yCases} a11y case(s) were parsed across ${a11yFiles.length} file(s) and NOT ONE of them calls a ` +
-      `sweep (${SWEEP_FAMILIES.map((f) => f.kind).join(', ')}). Either the sweep was deleted, or it was ` +
-      'renamed and this parse did not follow — and a renamed sweep reports as EVERY surface being unswept, ' +
-      'which is nineteen confident statements about the wrong thing.',
-  );
-}
-
-// Both sets are now built. Everything below reads them rather than the tree, so
-// one parse failure above must not be reported as nineteen findings here.
-const parsedCleanly = problems.length === 0;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (D) DEAD COVERAGE — a sweep whose subject nothing reaches
-//
-// The direction this repository paid for. `responsive_width_test.dart` spent
-// its life measuring `features/firstrun/onboarding_screen.dart`, the STAMPED
-// twin of the carousel — an unrouted copy no Subly user could ever open. The
-// screen with the coverage had no user and the screen with the user had no
-// coverage, and the suite was green the entire time. A sweep that audits a
-// widget nobody can open reports coverage it does not have, and it is worse
-// than no sweep because it makes the gap invisible.
-// ═══════════════════════════════════════════════════════════════════════════
-if (parsedCleanly) {
-  for (const key of [...swept.keys()].filter((k) => !reachable.has(k)).sort()) {
-    const [file, symbol] = key.split('#');
-    problems.push(
-      `DEAD COVERAGE — ${[...swept.get(key).files].join(', ')} sweeps \`${symbol}\` from \`${file}\`, and ` +
-        'NOTHING REACHES IT. The sweep is green and it is auditing a widget no user can open. This is the ' +
-        'unrouted-twin defect verbatim — Subly has already shipped two classes called `OnboardingScreen`, ' +
-        'and the one with the coverage had no user. Re-point the case at the reachable surface, or route ' +
-        'to this one.',
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (E) SWEPT_FLOOR — what WAS swept, by name
-//
-// 🔴 A COUNT WOULD NOT DO, AND THE MUTATION THAT PROVES IT IS: delete one
-// surface's sweep and add another's in the same change. A `sweptSurfaces: 19`
-// number stays satisfied, the printed list is still empty, and the surface that
-// lost its coverage lost it in silence. The floor is therefore a SET, and it
-// names what it loses — which is what M1 measures: deleting the insights sweep
-// reports `REGRESSION — InsightsScreen` BY NAME, not a count that moved.
-//
-// It is NOT an allowlist and nothing can be added to it to silence anything —
-// it is a measurement of work already done, and it is self-checked: an entry
-// the domain no longer contains FAILS, because a floor over a surface that is
-// not there is judgement over nothing.
-//
-// ⚠️ A FLOOR IS ONLY A FLOOR ON THE DAY IT IS MEASURED. It has no way to notice
-// the tree growing past it, so ADDING to it belongs in the same change that
-// adds the sweep — the step #280 skipped one domain over, which left
-// assert-responsive-coverage's floor two surfaces under its tree for a week.
-//
-// MEASURED 2026-08-13 by running this guard against the working tree: these
-// NINETEEN `<file>#<Symbol>` keys were reported swept, each by a `nothing on …
-// is naked` case in apps/subly/test/a11y_semantics_test.dart. That is the WHOLE
-// domain — the floor and the reachable set are the same nineteen today, so
-// there is no unswept surface left for the printed list to name.
-//
-// ⚠️ RE-MEASURED LATER THE SAME DAY, AND THE FLOOR DID NOT MOVE: the tap-target
-// family added a SECOND sweep to 17 of the nineteen. Membership is unchanged
-// (the floor asks whether a surface is swept, not by how many families), so
-// this set is still correct — but the two surfaces it did NOT reach are the
-// reason M1/M2/M2b now point at check-inbox: `BudgetScreen` and
-// `CheckInboxScreen` are the only single-family entries left, and both are
-// single-family by ARGUMENT, not by omission (a11y_semantics_test.dart:3049 and
-// :3069 pin that the guideline inspects zero nodes on each).
-//
-// ⚠️ THE FLOOR COVERING EVERYTHING HAS A CONSEQUENCE WORTH STATING: while it
-// held only five, removing a route touched one limb. Now it touches three (see
-// M7), and no mutation can exercise the `surfaces` floor alone.
-//
-// (It held FIVE from 2026-08-12 until the 2026-08-13 sweep — the P5 five:
-// insights, budget, scan, calendar and subscription-detail.)
-// ═══════════════════════════════════════════════════════════════════════════
-const SWEPT_FLOOR = new Set([
-  `${APP}/lib/features/insights/insights_screen.dart#InsightsScreen`,
-  `${APP}/lib/features/budget/budget_screen.dart#BudgetScreen`,
-  `${APP}/lib/features/scan/scan_screen.dart#ScanScreen`,
-  `${APP}/lib/features/calendar/calendar_screen.dart#CalendarScreen`,
-  `${APP}/lib/features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen`,
-  `${APP}/lib/features/auth/check_inbox_screen.dart#CheckInboxScreen`,
-  `${APP}/lib/features/auth/verify_email_screen.dart#VerifyEmailScreen`,
-  `${APP}/lib/features/auth/reaccept_terms_screen.dart#ReacceptTermsScreen`,
-  `${APP}/lib/features/auth/login_screen.dart#LoginScreen`,
-  `${APP}/lib/features/auth/sign_up_screen.dart#SignUpScreen`,
-  `${APP}/lib/features/auth/reset_password_screen.dart#ResetPasswordScreen`,
-  `${APP}/lib/features/home/home_screen.dart#HomeScreen`,
-  `${APP}/lib/features/settings/settings_screen.dart#SettingsScreen`,
-  `${APP}/lib/features/notifications/notifications_screen.dart#NotificationsScreen`,
-  `${APP}/lib/features/monetization/paywall_screen.dart#PaywallScreen`,
-  `${APP}/lib/features/monetization/manage_plan_screen.dart#ManagePlanScreen`,
-  `${APP}/lib/features/onboarding/onboarding_screen.dart#OnboardingScreen`,
-  `${APP}/lib/features/add/add_subscription_sheet.dart#showAddSubscriptionSheet`,
-  `${APP}/lib/features/cancel/cancel_sheet.dart#showCancelSheet`,
-]);
-
-if (parsedCleanly) {
-  for (const key of [...SWEPT_FLOOR].sort()) {
-    if (!reachable.has(key)) {
-      problems.push(
-        `FLOOR OVER NOTHING — \`${key}\` is recorded in SWEPT_FLOOR as a surface this app sweeps, and ` +
-          'nothing in the app reaches it any more. Either it moved and the floor did not follow, or it is ' +
-          'retired and the entry should have gone with it. An entry for something that is not there ' +
-          'reports judgement over nothing, and it makes the floor below it unfalsifiable.',
-      );
-      continue;
-    }
-    if (!swept.has(key)) {
-      const [file, symbol] = key.split('#');
-      const alsoNamed = namedOnly.get(key);
-      problems.push(
-        `REGRESSION — \`${symbol}\` (${file}) was swept when this floor was measured (2026-08-13, all ` +
-          `${SWEPT_FLOOR.size} surfaces) and NO ` +
-          'a11y case sweeps it now. ' +
-          (alsoNamed
-            ? `${[...alsoNamed].join(', ')} still NAMES it, and naming is not sweeping: a case that ` +
-              'asserts one label says nothing about whether the screen carries a tap action with no role ' +
-              'or no name. '
-            : '') +
-          'Work leaving the tree is a legitimate move and it may not be a quiet one — restore the sweep, ' +
-          'or remove this entry in the same change with the reason written beside it.',
+    if (unclosed.length) {
+      rootCoverageLost(
+        `${unclosed.length} testWidgets block(s) in ${rel} could not be closed by this parse ` +
+          `(${unclosed.join('; ')}). A block this guard cannot read is a sweep it cannot see, and an ` +
+          'invisible sweep reads exactly like an absent one — in the direction that reports LESS work than ' +
+          'was done, silently moving a swept surface onto the printed list.',
       );
     }
   }
+
+  return {
+    R,
+    reachable,
+    excluded,
+    routerTargets,
+    declaringFiles,
+    swept,
+    namedOnly,
+    kindTally,
+    a11yFiles,
+    otherSweepFiles,
+    semanticsOnlyFiles,
+    a11yCases,
+    sweepingBlocks,
+    unattributedSweeps,
+    goRoutes,
+    redirectOnly,
+    spineFiles,
+    routerRel,
+    featuresRel,
+    testRel,
+    problems: notFound,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// (F) REQUIRED_COVERAGE — the floors set membership cannot see
-//
-// 🔴 NEITHER IS REDUNDANT WITH ANYTHING ABOVE, AND EACH HAS THE MUTATION THAT
-// PROVES IT:
-//   surfaces  delete a route. The reachable set shrinks, a surface that is gone
-//             is not unswept but ABSENT, and the printed list gets SHORTER,
-//             which reads like progress. This floor is what sees a domain being
-//             emptied wholesale. ⚠️ Since SWEPT_FLOOR grew to cover the whole
-//             domain it no longer fires ALONE (M7: the same deletion also
-//             strands a floor entry and a sweep), but it remains the ONLY limb
-//             that would see a surface added AFTER the floor was measured —
-//             which is in neither set — leave again.
-//   cases     delete the `[ta]` Tamil donut case. InsightsScreen is still
-//             constructed and still swept by its own case, so every set above
-//             is byte-identical and a real assertion left the tree in silence.
-//             P5 shipped 24; the 2026-08-13 naked-controls sweep of all
-//             nineteen took the suite to 60, and the tap-target family the same
-//             day took it to 81. A smaller number is coverage leaving, not
-//             tidying.
-//
-// 🔴 THIS FLOOR WENT BLIND FOR THE LENGTH OF ONE COMMIT, AND THE CAUSE IS THE
-// EXACT SHAPE THIS FILE'S HEADER WARNS ABOUT. The 2026-08-13 sweep moved
-// SWEPT_FLOOR 5 → 19 and left `cases` at 24 while the suite grew 24 → 60. Both
-// numbers were measured on the same day from the same file; only one was
-// carried. Measured consequence, not a worry: **36 cases could be deleted
-// before this limb said one word** — and since exactly 36 of the 60 are
-// non-sweeping, the floor could no longer fire AT ALL without a sweep also
-// being deleted, which the sets above already catch. A floor that can only
-// fire when something else fires first is not a floor.
-// 📌 A guard extended in one dimension must be re-measured in EVERY dimension
-// it carries. Raising the membership set is not raising the count.
-//
-// 🔴🔴 IT RECURRED THE SAME DAY — WITHIN HOURS OF THE PARAGRAPH ABOVE BEING
-// WRITTEN (fixed 2026-08-13, second instance). The tap-target increment
-// ([ADR 048]) took the suite 60 → 81 and added a whole SWEEP FAMILY that had
-// read ×0 since this file was written, and `cases` stayed at 60. The failure
-// is not "a number was missed": it is that the SAME dimension drifted for the
-// SAME reason, one commit after the reason was written down at length. At 60
-// against a tree of 81, TWENTY-ONE cases could have been deleted in silence —
-// and 38 of the 81 are non-sweeping, so once again the floor could not fire
-// without a sweep dying first.
-// 📌 THIS IS THE EVIDENCE THAT THE NOTE ABOVE IS LOAD-BEARING RATHER THAN
-// DECORATIVE. A gotcha that only lives in prose gets repeated — this one was
-// repeated by the next commit, by someone who had the prose in front of them.
-// The prose is kept AND it is not the control: what the tree now has instead
-// is `PRECONDITION · the mutation subject is swept by exactly ONE family` in
-// tooling/ci/test/a11y-coverage.test.mjs, which fails the build when a second
-// family lands on M1/M2/M2b's subject. The generalisable control is still
-// owed: nothing yet fails when `cases` is left behind by a growing suite, and
-// it cannot be written here — a floor that recomputed itself from the tree
-// would be satisfied by definition and would measure nothing at all.
-//
-// 🔴 AND THE PROSE DRIFTED WITH IT — THE THIRD INSTANCE OF THIS CLASS IN ONE
-// DAY (fixed 2026-08-13). The same change raised SWEPT_FLOOR 5 → 19 and `cases`
-// 24 → 60 and left SIXTEEN statements describing them untouched: the header
-// still said "fourteen of nineteen surfaces are unswept", the floor still said
-// "MEASURED 2026-08-12 … these five keys", the ledger still described an M10
-// that can no longer be performed. TWO OF THE SIXTEEN WERE RUNTIME MESSAGES —
-// the REGRESSION text named the wrong measurement date, and the cases-floor
-// text told the reader "P5 shipped 24" while the floor it had just tripped was
-// 60. A failure message that misstates the baseline is worse than a stale
-// comment: it is read at the exact moment someone is deciding what broke, and
-// it sends them to the wrong conclusion.
-// 📌 THE MESSAGE A GUARD PRINTS IS PART OF ITS CONTRACT, AND IT IS THE PART
-// NOTHING CHECKS. Every number in this file is asserted by
-// tooling/ci/test/a11y-coverage.test.mjs; not one WORD of the reasoning is, so
-// prose can contradict the code indefinitely while the suite stays green — the
-// suite cannot see this class of defect at all. Until an assertion exists, the
-// only control is the discipline: change a floor, then re-read every sentence
-// and every failure string that explains it. Where a message can quote the
-// enforced value instead of restating it, MAKE IT — the REGRESSION text now
-// interpolates `SWEPT_FLOOR.size` rather than spelling a number that can rot.
+// EVERY ROOT, THEN THE ACCOUNTING OVER EACH
 // ═══════════════════════════════════════════════════════════════════════════
-const REQUIRED_COVERAGE = {
-  // RE-MEASURED on the working tree of 2026-08-13 AFTER the CONTRAST increment,
-  // by running this guard and counting, not from ambition:
-  //   19 reachable surfaces — 17 routed screens + 2 modal sheets
-  //   109 testWidgets cases in 1 file (a11y_semantics_test.dart), of which the
-  //      sweeping families are naked-controls ×24 · tap-target ×19 · contrast ×23
-  // ~~81 cases~~ — the reading after the tap-target increment.
-  // ~~60 cases … 24 sweeping … 36 non-sweeping~~ — the reading before that.
-  //
-  // 🔴 AND IT HAPPENED A THIRD TIME, WHICH IS WHY BOTH RETRACTIONS STAY. The
-  // contrast increment took the suite 81 → 109 and left `cases` at 81 — **28
-  // cases deletable in silence**, the same defect as the 21 the tap-target
-  // increment left and the 36 the sweep before it left. It was invisible to
-  // `melos run gate`, which runs Dart only; the limb that caught it is this
-  // guard's OWN test suite (`tooling/ci/test/a11y-coverage.test.mjs`, M8),
-  // which pins the floor's number in its regex — and that suite runs ONLY in
-  // CI, under `node --test`, so a session that gates locally and pushes sees
-  // nothing. **Three occurrences is not a lapse, it is the default outcome of
-  // growing a suite.** The floor does not track the suite by itself and nothing
-  // reminds you; only M8 going red does.
-  //
-  // ⚠️ `surfaces: 19` IS THE SAME NUMBER assert-responsive-coverage.mjs CARRIES
-  // and that is a MEASUREMENT, not a copy. The two guards range over the same
-  // domain by design, so agreement is the expected reading and a DISAGREEMENT
-  // is the signal that one of the two parses has drifted from the other. If you
-  // change one, RE-MEASURE the other rather than mirroring the edit.
-  surfaces: 19,
-  cases: 110,
-};
-if (reachable.size > 0 && reachable.size < REQUIRED_COVERAGE.surfaces) {
-  coverageLost(
-    `only ${reachable.size} reachable surface(s) are in the domain, and the checked-in floor is ` +
-      `${REQUIRED_COVERAGE.surfaces}. Nothing else here can see this: a surface that is GONE is not ` +
-      'unswept, it is absent, and the printed list below merely gets shorter — which reads like progress. ' +
-      'Lower the floor deliberately in the same change that removes the surface, with the reason beside it.',
-  );
-}
-if (a11yCases > 0 && a11yCases < REQUIRED_COVERAGE.cases) {
-  coverageLost(
-    `only ${a11yCases} a11y case(s) were found across ${a11yFiles.length} file(s), and the checked-in ` +
-      `floor is ${REQUIRED_COVERAGE.cases}. Cases can be deleted without changing either set above — the ` +
-      'screen stays swept by one surviving case while every label, locale and falsifier assertion around ' +
-      'it goes. P5 shipped 24; the 2026-08-13 naked-controls sweep of all nineteen surfaces took the suite ' +
-      `to 60 and the tap-target family the same day took it to ${REQUIRED_COVERAGE.cases}. A smaller ` +
-      'number is coverage leaving the tree, not a tidy-up.',
-  );
-}
+const analyses = problems.length === 0 ? roots.map(analyseRoot) : [];
 
-// ── THE EXCLUSION SELF-CHECKS ──────────────────────────────────────────────
-for (const [symbol, why] of NOT_A_PANE) {
-  if (!routerTargets.has(symbol)) {
-    problems.push(
-      `\`${symbol}\` is excluded in NOT_A_PANE but no route in ${ROUTER_REL} builds it. Either it moved ` +
-        'and the entry did not follow, or it is retired and the entry should have gone with it — an ' +
-        'exception for something that is not there reports judgement over nothing.',
-    );
-  }
-  const declaredAsSurface = featureDartFiles.find((f) => surfacesIn(f).includes(symbol));
-  if (declaredAsSurface) {
-    problems.push(
-      `\`${symbol}\` is excluded in NOT_A_PANE but \`${declaredAsSurface}\` declares it as a feature ` +
-        'surface. It is a surface after all; remove the exclusion and let it be swept or printed like ' +
-        'every other one.',
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (G) THE REPORT — swept, unswept, excluded. ALL OF IT PRINTED, EVERY RUN.
-//
-// Counted is not enough. The failure this repository keeps recording is an
-// unmet clause that produced NO OUTPUT AT ALL, so every unswept surface is read
-// aloud on a GREEN run and stays uncomfortable to read. ⚠️ AS OF 2026-08-13
-// THAT LIST IS EMPTY — nineteen of nineteen are swept — and this section is
-// deliberately unchanged by that: the discomfort was the mechanism, not the
-// goal, and the list refills by itself the moment a surface lands without a
-// sweep. There is no
-// deferral list to add a screen to and no reason field to fill in: the list is
-// DERIVED from the domain minus the sweeps, so it cannot drift from either, and
-// a surface added tomorrow joins it by existing rather than by somebody
-// remembering.
-// ═══════════════════════════════════════════════════════════════════════════
-const unswept = [...reachable.keys()].filter((k) => !swept.has(k)).sort();
-
-if (parsedCleanly && problems.length === 0) {
-  ok(
-    `${swept.size} of ${reachable.size} reachable surface(s) carry an a11y sweep, from ` +
-      `${a11yFiles.length} a11y test file(s) across ${a11yCases} case(s)`,
-  );
-}
-
-if (swept.size) {
-  notes.push(`✅ ${swept.size} surface(s) SWEPT — the sweep is what can fail on a control added tomorrow:`);
-  for (const key of [...swept.keys()].sort()) {
-    const { files, kinds } = swept.get(key);
-    notes.push(`   · ${key.split('#')[1]} — ${[...kinds].sort().join(' + ')} (${[...files].sort().join(', ')})`);
-  }
-}
-notes.push(
-  `   sweep families used: ${SWEEP_FAMILIES.map((f) => `${f.kind} ×${kindTally.get(f.kind)}`).join(', ')}` +
-    `${unattributedSweeps ? `; ${unattributedSweeps} sweeping case(s) construct no domain surface directly (the \`shell ·\` group pumps the REAL router, once per family)` : ''}`,
+ok(
+  `${roots.length} root(s) DERIVED, never listed — ${derivation.join(' · ')}` +
+    (IS_FULL_CHECKOUT
+      ? ` (FULL CHECKOUT: all ${REQUIRED_COVERAGE.length} declared root(s) are required to be among them)`
+      : ' (PARTIAL TREE: the declared-root-must-exist clause is SKIPPED; every derived root still ' +
+        'carries its own floor)'),
 );
 
-if (unswept.length) {
-  notes.push(
-    `⬜ ${unswept.length} of ${reachable.size} reachable surface(s) carry NO a11y sweep. Printed, not ` +
-      'failed: this is work nobody has started, and reddening CI over it would block every unrelated ' +
-      'change. It is still owed —',
-  );
-  for (const key of unswept) {
-    const { file, symbol, via, kind } = reachable.get(key);
-    const alsoNamed = namedOnly.get(key);
-    notes.push(
-      `   · ${symbol} (${kind}, ${file}${via ? `, via ${via}` : ''})` +
-        (alsoNamed
-          ? ` — ${[...alsoNamed].sort().join(', ')} NAMES it but never sweeps it; a case asserting one ` +
-            'label says nothing about a tap action with no role or no name'
-          : ''),
+const byDir = new Map(analyses.map((a) => [a.R.dir, a]));
+const totals = { reachable: 0, swept: 0, unswept: 0, cases: 0, files: 0, excluded: 0 };
+
+for (const a of analyses) {
+  const { R } = a;
+  const label = R.dir;
+  const floor = REQUIRED_COVERAGE.find((r) => r.dir === R.dir) ?? null;
+  const SWEPT_FLOOR = SWEPT_FLOOR_BY_ROOT.get(R.dir) ?? new Set();
+  const NOT_A_PANE = NOT_A_PANE_BY_ROOT.get(R.dir) ?? new Map();
+
+  if (a.goRoutes > 0) {
+    ok(
+      `${label}: ${a.goRoutes} GoRoute(s) parsed — ${a.goRoutes - a.redirectOnly} with a builder, ` +
+        `${a.redirectOnly} redirect-only (router spine: ${a.spineFiles.length} file(s) — ` +
+        `${a.spineFiles.join(', ')})`,
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // (C) EMPTY PARSE ⇒ COVERAGE LOST
+  //     Every statement below reads these two sets. Either one empty makes the
+  //     accounting vacuous in one direction and catastrophically wrong in the
+  //     other, and it reports as a pass. The marker string is what
+  //     assert-guard-coverage.mjs looks for.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (a.reachable.size === 0) {
+    a.problems.push(
+      `COVERAGE LOST — the REACHABLE set of \`${label}\` parsed EMPTY. Nothing was found to require a ` +
+        'sweep, so every existing a11y case in that root would be reported as dead coverage and a router ' +
+        'full of screens would be reported as fully accounted for. The parse has stopped reaching the tree.',
+    );
+  }
+  // 🔴 THE a11y-FILE LIMB IS A FLOOR, NOT AN EXISTENCE CHECK, AND THAT CHANGED
+  // ON 2026-09-05. It used to be `a11yFiles.length === 0 ⇒ COVERAGE LOST`,
+  // which was right for the one root this guard could see and is WRONG the
+  // moment a root with no suite at all joins the domain: the brick and
+  // design_system have never had one, and reddening CI over work nobody has
+  // started is the [pipeline C-6] rule this guard's whole design obeys. The
+  // floor keeps the strength where it was earned — subly's floor is 1, so
+  // renaming its suite out of the corpus still fires (M4) — and a root at zero
+  // prints its entire domain as owed instead.
+  if (floor && a.a11yFiles.length < floor.a11yFiles) {
+    a.problems.push(
+      `COVERAGE LOST — \`${label}\` yielded ${a.a11yFiles.length} file(s) matching \`a11y_*_test.dart\` ` +
+        `under ${a.testRel} and its measured floor is ${floor.a11yFiles}. The swept set is smaller than ` +
+        'the day it was measured for a reason that has nothing to do with the app: the suite moved, or it ' +
+        'was renamed out of this scan, and every surface it swept would print as unswept — confident ' +
+        'statements derived from having read nothing.',
+    );
+  }
+  if (a.a11yFiles.length > 0 && a.a11yCases === 0) {
+    a.problems.push(
+      `COVERAGE LOST — ${a.a11yFiles.length} a11y test file(s) were read under \`${label}\` and NOT ONE ` +
+        "`testWidgets(` block was parsed out of them. The block is this guard's unit of evidence; with " +
+        'none, the swept set is empty for a reason that has nothing to do with the app.',
+    );
+  }
+  if (a.a11yCases > 0 && a.sweepingBlocks === 0) {
+    a.problems.push(
+      `COVERAGE LOST — ${a.a11yCases} a11y case(s) were parsed across ${a.a11yFiles.length} file(s) under ` +
+        `\`${label}\` and NOT ONE of them calls a sweep ` +
+        `(${SWEEP_FAMILIES.map((f) => f.kind).join(', ')}). Either the sweep was deleted, or it was ` +
+        'renamed and this parse did not follow — and a renamed sweep reports as EVERY surface being ' +
+        'unswept, which is a confident statement about the wrong thing.',
+    );
+  }
+
+  // Both sets are now built. Everything below reads them rather than the tree,
+  // so one parse failure above must not be reported as nineteen findings here.
+  const parsedCleanly = a.problems.length === 0;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // (D) DEAD COVERAGE — a sweep whose subject nothing reaches
+  //
+  // The direction this repository paid for. `responsive_width_test.dart` spent
+  // its life measuring `features/firstrun/onboarding_screen.dart`, the STAMPED
+  // twin of the carousel — an unrouted copy no Subly user could ever open. The
+  // screen with the coverage had no user and the screen with the user had no
+  // coverage, and the suite was green the entire time. A sweep that audits a
+  // widget nobody can open reports coverage it does not have, and it is worse
+  // than no sweep because it makes the gap invisible.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (parsedCleanly) {
+    for (const key of [...a.swept.keys()].filter((k) => !a.reachable.has(k)).sort()) {
+      const [file, symbol] = key.split('#');
+      a.problems.push(
+        `DEAD COVERAGE — ${[...a.swept.get(key).files].join(', ')} sweeps \`${symbol}\` from \`${file}\`, ` +
+          'and NOTHING REACHES IT. The sweep is green and it is auditing a widget no user can open. This ' +
+          'is the unrouted-twin defect verbatim — Subly has already shipped two classes called ' +
+          '`OnboardingScreen`, and the one with the coverage had no user. Re-point the case at the ' +
+          'reachable surface, or route to this one.',
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // (E) SWEPT_FLOOR — what WAS swept, by name. See (0d).
+  // ═══════════════════════════════════════════════════════════════════════
+  if (parsedCleanly) {
+    for (const key of [...SWEPT_FLOOR].sort()) {
+      if (!a.reachable.has(key)) {
+        a.problems.push(
+          `FLOOR OVER NOTHING — \`${key}\` is recorded in SWEPT_FLOOR as a surface \`${label}\` sweeps, ` +
+            'and nothing in that root reaches it any more. Either it moved and the floor did not follow, ' +
+            'or it is retired and the entry should have gone with it. An entry for something that is not ' +
+            'there reports judgement over nothing, and it makes the floor below it unfalsifiable.',
+        );
+        continue;
+      }
+      if (!a.swept.has(key)) {
+        const [file, symbol] = key.split('#');
+        const alsoNamed = a.namedOnly.get(key);
+        a.problems.push(
+          `REGRESSION — \`${symbol}\` (${file}) was swept when this floor was measured (2026-08-13, all ` +
+            `${SWEPT_FLOOR.size} surfaces of ${label}) and NO a11y case sweeps it now. ` +
+            (alsoNamed
+              ? `${[...alsoNamed].join(', ')} still NAMES it, and naming is not sweeping: a case that ` +
+                'asserts one label says nothing about whether the screen carries a tap action with no role ' +
+                'or no name. '
+              : '') +
+            'Work leaving the tree is a legitimate move and it may not be a quiet one — restore the sweep, ' +
+            'or remove this entry in the same change with the reason written beside it.',
+        );
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // (F) THE PER-ROOT FLOORS — what membership cannot see
+  //
+  // 🔴 NEITHER IS REDUNDANT WITH ANYTHING ABOVE, AND EACH HAS THE MUTATION
+  // THAT PROVES IT:
+  //   surfaces  delete a route. The reachable set shrinks, a surface that is
+  //             gone is not unswept but ABSENT, and the printed list gets
+  //             SHORTER, which reads like progress. This floor is what sees a
+  //             domain being emptied wholesale. On subly it no longer fires
+  //             ALONE (M7); on the brick, whose SWEPT_FLOOR is empty, it does
+  //             (M11e).
+  //   cases     delete a case that is not the only sweep of its surface. Every
+  //             set above is byte-identical and a real assertion left the tree
+  //             in silence. P5 shipped 24; the 2026-08-13 naked-controls sweep
+  //             took the suite to 60, the tap-target family the same day to 81
+  //             and the contrast family to 110. A smaller number is coverage
+  //             leaving, not tidying.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (floor) {
+    if (a.reachable.size > 0 && a.reachable.size < floor.surfaces) {
+      a.problems.push(
+        `COVERAGE LOST — \`${label}\` has only ${a.reachable.size} reachable surface(s) in the domain, and ` +
+          `its checked-in floor is ${floor.surfaces} (${floor.label}). Nothing else here can see this: a ` +
+          'surface that is GONE is not unswept, it is absent, and the printed list below merely gets ' +
+          'shorter — which reads like progress. Lower the floor deliberately in the same change that ' +
+          'removes the surface, with the reason beside it.',
+      );
+    }
+    if (a.a11yCases > 0 && a.a11yCases < floor.cases) {
+      a.problems.push(
+        `COVERAGE LOST — only ${a.a11yCases} a11y case(s) were found across ${a.a11yFiles.length} file(s) ` +
+          `under \`${label}\`, and the checked-in floor is ${floor.cases}. Cases can be deleted without ` +
+          'changing either set above — the screen stays swept by one surviving case while every label, ' +
+          'locale and falsifier assertion around it goes. A smaller number is coverage leaving the tree, ' +
+          'not a tidy-up.',
+      );
+    }
+  } else {
+    notes.push(
+      `⬜ ${label} is DERIVED but has no measured floor in REQUIRED_COVERAGE. It is scanned in full and ` +
+        'its whole domain is reported below; it simply cannot yet fail on a domain that SHRINKS. Measure ' +
+        'it and declare it.',
+    );
+  }
+
+  // ── THE EXCLUSION SELF-CHECKS ────────────────────────────────────────────
+  for (const [symbol, why] of NOT_A_PANE) {
+    if (!a.routerTargets.has(symbol)) {
+      a.problems.push(
+        `\`${symbol}\` is excluded in NOT_A_PANE for \`${label}\` but no route in ${a.routerRel} builds ` +
+          'it. Either it moved and the entry did not follow, or it is retired and the entry should have ' +
+          'gone with it — an exception for something that is not there reports judgement over nothing.',
+      );
+    }
+    const declaredAsSurface = a.declaringFiles.find((f) => surfacesIn(f, R.kind).includes(symbol));
+    if (declaredAsSurface) {
+      a.problems.push(
+        `\`${symbol}\` is excluded in NOT_A_PANE for \`${label}\` but \`${declaredAsSurface}\` declares it ` +
+          'as a surface of that same root. It is a surface after all; remove the exclusion and let it be ' +
+          'swept or printed like every other one.',
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // (G) THE REPORT — swept, unswept, excluded. ALL OF IT PRINTED, EVERY RUN.
+  //
+  // Counted is not enough. The failure this repository keeps recording is an
+  // unmet clause that produced NO OUTPUT AT ALL, so every unswept surface is
+  // read aloud on a GREEN run and stays uncomfortable to read. There is no
+  // deferral list to add a screen to and no reason field to fill in: the list
+  // is DERIVED from the domain minus the sweeps, so it cannot drift from
+  // either, and a surface added tomorrow joins it by existing rather than by
+  // somebody remembering.
+  // ═══════════════════════════════════════════════════════════════════════
+  const unswept = [...a.reachable.keys()].filter((k) => !a.swept.has(k)).sort();
+  a.unswept = unswept;
+  totals.reachable += a.reachable.size;
+  totals.swept += a.swept.size;
+  totals.unswept += unswept.length;
+  totals.cases += a.a11yCases;
+  totals.files += a.a11yFiles.length;
+  totals.excluded += a.excluded.length;
+
+  if (a.problems.length === 0) {
+    ok(
+      `${label}: ${a.swept.size} of ${a.reachable.size} reachable surface(s) carry an a11y sweep, from ` +
+        `${a.a11yFiles.length} a11y test file(s) across ${a.a11yCases} case(s)`,
+    );
+  }
+  for (const p of a.problems) problems.push(p);
+
+  notes.push(`── ${label} (${R.kind} root, package \`${R.pkg}\`) ─────────────────────────`);
+  if (a.swept.size) {
+    notes.push(
+      `✅ ${a.swept.size} surface(s) SWEPT — the sweep is what can fail on a control added tomorrow:`,
+    );
+    for (const key of [...a.swept.keys()].sort()) {
+      const { files, kinds } = a.swept.get(key);
+      notes.push(
+        `   · ${key.split('#')[1]} — ${[...kinds].sort().join(' + ')} (${[...files].sort().join(', ')})`,
+      );
+    }
+  }
   notes.push(
-    `   → add a case to ${TEST_REL}/a11y_*_test.dart that pumps the surface and calls ` +
-      '`expectNothingNaked(tester, …)`, and add its key to SWEPT_FLOOR in the same change.',
+    `   sweep families used: ${SWEEP_FAMILIES.map((f) => `${f.kind} ×${a.kindTally.get(f.kind)}`).join(', ')}` +
+      `${a.unattributedSweeps ? `; ${a.unattributedSweeps} sweeping case(s) construct no domain surface directly (the \`shell ·\` group pumps the REAL router, once per family)` : ''}`,
   );
+  // The naming rule's cost, PRINTED rather than left to be inferred, and both
+  // halves printed every run including at zero. See the header: a reader must
+  // not conclude from an empty ✅ list that a root has done no accessibility
+  // work at all, and must not conclude from a non-empty one that everything
+  // a11y-shaped in the tree has been counted.
+  notes.push(
+    `   outside the \`a11y_*_test.dart\` corpus: ${a.otherSweepFiles.length} file(s) call a recognised ` +
+      `sweep helper and are NOT counted` +
+      (a.otherSweepFiles.length ? ` (${a.otherSweepFiles.join(', ')}) — rename one to ` +
+        '`a11y_<surface>_test.dart` and its sweeps count' : '') +
+      `; ${a.semanticsOnlyFiles.length} take a SemanticsHandle without sweeping` +
+      (a.semanticsOnlyFiles.length
+        ? ` (${a.semanticsOnlyFiles.join(', ')}) — targeted assertions, which this guard deliberately ` +
+          'does not count as coverage of a surface'
+        : ''),
+  );
+
+  if (unswept.length) {
+    notes.push(
+      `⬜ ${unswept.length} of ${a.reachable.size} reachable surface(s) in ${label} carry NO a11y sweep. ` +
+        'Printed, not failed: this is work nobody has started, and reddening CI over it would block every ' +
+        'unrelated change. It is still owed —',
+    );
+    for (const key of unswept) {
+      const { file, symbol, via, kind } = a.reachable.get(key);
+      const alsoNamed = a.namedOnly.get(key);
+      notes.push(
+        `   · ${symbol} (${kind}, ${file}${via ? `, via ${via}` : ''})` +
+          (alsoNamed
+            ? ` — ${[...alsoNamed].sort().join(', ')} NAMES it but never sweeps it; a case asserting one ` +
+              'label says nothing about a tap action with no role or no name'
+            : ''),
+      );
+    }
+    notes.push(
+      `   → add a case to ${a.testRel}/a11y_*_test.dart that pumps the surface and calls ` +
+        '`expectNothingNaked(tester, …)`, and add its key to SWEPT_FLOOR_BY_ROOT in the same change.',
+    );
+  }
+
+  if (a.excluded.length) {
+    notes.push(
+      `⬜ ${a.excluded.length} builder target(s) in ${label} DELIBERATELY OUTSIDE the domain, printed not hidden:`,
+    );
+    for (const e of a.excluded.sort((x, y) => x.what.localeCompare(y.what))) {
+      notes.push(`   · ${e.what} — ${e.why}`);
+    }
+  }
 }
 
-if (excluded.length) {
-  notes.push(`⬜ ${excluded.length} builder target(s) DELIBERATELY OUTSIDE the domain, printed not hidden:`);
-  for (const e of excluded.sort((a, b) => a.what.localeCompare(b.what))) notes.push(`   · ${e.what} — ${e.why}`);
+// ── THE DECLARED ROOTS THAT NEVER ARRIVED ──────────────────────────────────
+// The limbs above catch a derived root that went empty or fell under its floor.
+// This one catches the step BEFORE it: a root that stopped being DERIVED.
+// Cutting one line from the workspace list took assert-modal-detection from 349
+// sites to 80 with an "ok" on the end, and nothing else could see it, because a
+// root that is never derived is never empty.
+//
+// Reported TOGETHER, never first-only: a tree can lose two roots for two
+// different reasons and naming one sends the reader to fix half of it.
+if (IS_FULL_CHECKOUT && analyses.length > 0) {
+  const lost = REQUIRED_COVERAGE.filter((r) => !byDir.has(r.dir));
+  if (lost.length) {
+    coverageLost(
+      `${lost.length} of the ${REQUIRED_COVERAGE.length} DECLARED root(s) were not among the ` +
+        `${roots.length} this run derived:\n` +
+        lost.map((r) => `    · \`${r.dir}\` — ${r.label}`).join('\n') +
+        `\n    The scan still read ${totals.reachable} surface(s) from the root(s) that remain, so every ` +
+        'count above would print healthy and the "ok" line would be literally true of a collapsed tree. ' +
+        'Each root carries its OWN floor deliberately: a single floor over the union is satisfied by ' +
+        'whichever root happens to be biggest, which is how assert-no-tls-pinning.mjs once passed over a ' +
+        'deleted apps/ AND packages/ (its header, and assert-workspace-coverage.mjs:130-136 for the same ' +
+        'shape again). Restore the root, or — if it really has left the tree for good — delete its entry ' +
+        'in REQUIRED_COVERAGE in the same commit, so the domain shrinks on purpose.',
+    );
+  }
 }
+
 if (notes.length) console.log(`\n${notes.join('\n')}`);
 
 if (problems.length) {
@@ -1041,7 +1583,8 @@ if (problems.length) {
 }
 
 console.log(
-  `\nassert-a11y-coverage: ok — ${reachable.size} reachable surface(s) (${reachable.size - sheetCount} routed ` +
-    `screens, ${sheetCount} modal sheets); ${swept.size} swept by ${a11yFiles.length} a11y test file(s) ` +
-    `across ${a11yCases} case(s); ${unswept.length} unswept and PRINTED; ${excluded.length} exclusion(s) printed`,
+  `\nassert-a11y-coverage: ok — ${roots.length} derived root(s) (${roots.map((r) => r.dir).join(', ')}); ` +
+    `${totals.reachable} reachable surface(s); ${totals.swept} swept by ${totals.files} a11y test file(s) ` +
+    `across ${totals.cases} case(s); ${totals.unswept} unswept and PRINTED; ` +
+    `${totals.excluded} exclusion(s) printed`,
 );

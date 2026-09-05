@@ -8,19 +8,40 @@
 // matching the function's own DECLARATION, and ALL SIX of its hand-written
 // fixtures passed against the broken version. Only breaking the actual repo
 // exposed it. A fixture you wrote encodes the same misunderstanding as the
-// guard you wrote, so the subject here is `apps/subly/lib/core/router.dart`,
-// `apps/subly/lib/features/**` and `apps/subly/test/a11y_semantics_test.dart`
-// as they are on disk.
+// guard you wrote, so the subjects here are `apps/subly/lib/core/router.dart`,
+// `apps/subly/lib/features/**`, `apps/subly/test/a11y_semantics_test.dart`,
+// the brick template and `packages/design_system` as they are on disk.
 //
 // ⚠️ AND EVERY MUTATION ASSERTS ITS OWN ANCHOR WAS FOUND. `edit()` throws when
 // the text it is asked to replace is not present, so a mutation that has
 // drifted out of the tree FAILS LOUDLY instead of quietly testing nothing —
 // which is the shape that lets a suite go on passing over a subject that moved.
 //
-// ⚠️ THE POSITIVE CONTROLS ARE NOT DECORATION EITHER. `baseline` and
-// `M10 · a new sweep counts` are what stop every negative result below being
-// consistent with a guard that can only ever say "unswept": without them,
-// deleting the sweep and deleting the whole app would be indistinguishable.
+// ⚠️ THE POSITIVE CONTROLS ARE NOT DECORATION EITHER. `baseline`,
+// `M10 · a new sweep counts` and `M12 · the new roots are really in the domain`
+// are what stop every negative result below being consistent with a guard that
+// can only ever say "unswept": without them, deleting the sweep and deleting
+// the whole app would be indistinguishable.
+//
+// ── THE FIXTURE GAINED TWO MANIFESTS ON 2026-09-05, AND THAT IS THE WIDENING ─
+// The guard's domain used to be `const APP = 'apps/subly'` — one hardcoded
+// string. It is now DERIVED from `tooling/bricks/app/brick.yaml` plus the root
+// `pubspec.yaml` `workspace:` list, so a fixture that copies only subly's
+// router and suite derives NO ROOT AT ALL and the guard correctly refuses it.
+// `tree()` therefore copies the root manifest and subly's own, and NOTHING
+// else — which means the fixture derives exactly one root (design_system is on
+// the workspace list but is not present, so it does not clear the
+// `flutter_test` + public-widget test) and the mutations below go on measuring
+// exactly what they measured before.
+//
+// ⚠️ AND `tree()` IS DELIBERATELY A PARTIAL TREE. The guard applies its "every
+// DECLARED root must have been DERIVED" clause only over a full checkout,
+// detected by its own file being present under the root — a sentinel outside
+// `apps/`, `packages/` and `tooling/bricks/`, so no mutation OF a subject can
+// move it. The PER-ROOT FLOORS still apply here, and they must: M7 and M8 are
+// floor mutations over a byte copy of one root, and a floor no mutation can
+// reach is a floor nothing has ever exercised. `treeWithNewRoots()` copies the
+// sentinel in, because M11b/M11c/M11d are about that clause.
 //
 // ── RE-MEASURED 2026-08-13, WHEN THE SWEEP WENT FROM 5 OF 19 TO 19 OF 19 ─────
 // Every number in this file was re-derived by running the guard against the
@@ -32,27 +53,11 @@
 // ── RE-MEASURED AGAIN THE SAME DAY, WHEN THE TAP-TARGET FAMILY LANDED ────────
 // [ADR 048] took the suite 60 → 81 and moved `tap-target` from ×0 to ×19, and
 // NINE of this file's fourteen tests went red on pinned numbers that had not
-// moved with it. Re-derived the same way — by running the guard, then counting
-// the blocks with the guard's own parse:
-//   19 reachable surfaces (17 routed screens + 2 modal sheets) — still unchanged
-//   19 swept · 0 unswept · 81 a11y cases
-//   43 of the 81 call a sweep (naked-controls ×24 + tap-target ×19, and NO case
-//      is in two families); 38 assert one label and do not
-// 🔴 AND THREE TESTS CHANGED SUBSTANCE, NOT JUST NUMBERS. A second sweep family
-// over the same surfaces silently un-tested M1/M2/M2b and half of M5 — see the
-// notes on each. That is the more expensive half of this repair: the numeric
-// failures were LOUD (nine red tests), and these four were SILENT and would
-// have stayed green.
-// Two tests changed SUBJECT rather than numbers, because their subject became
-// empty, and an assertion that cannot fail inflates coverage instead of
-// providing it. Both are re-pointed and renamed below, never deleted:
-//   · "an unswept surface PRINTS …" — there are no unswept surfaces left, so
-//     the fixture MANUFACTURES one (a new sheet on disk that no case sweeps).
-//     The property — owed work prints and does NOT redden CI — is real and has
-//     to survive the tree catching up with it.
-//   · "M10 · a NEW sweep is counted" — it used to add the missing HomeScreen
-//     sweep; home is swept now, so it adds the sweep for that manufactured
-//     sheet instead and watches the surface move ⬜ → ✅ across two runs.
+// moved with it. 🔴 AND THREE TESTS CHANGED SUBSTANCE, NOT JUST NUMBERS. A
+// second sweep family over the same surfaces silently un-tested M1/M2/M2b and
+// half of M5. That is the more expensive half of the repair: the numeric
+// failures were LOUD (nine red tests), and those were SILENT and would have
+// stayed green.
 //
 // ── WHAT IS A FAILURE AND WHAT IS A PRINT ────────────────────────────────────
 // The guard prints unswept surfaces and exits 0, because reddening CI over work
@@ -106,10 +111,22 @@ const ROUTER_SHELL = `${ROUTER_DIR}/shell.dart`;
 const FEATURES = `${APP}/lib/features`;
 const SUITE = `${APP}/test/a11y_semantics_test.dart`;
 
-// The four things the guard reads. Copied whole; nothing else is needed, and
-// copying only what is read keeps a fixture from accidentally depending on a
-// part of the repo this guard never opens.
-const SUBJECT = [ROUTER, ROUTER_DIR, FEATURES, SUITE];
+// 🔴 THE TWO MANIFESTS ARE PART OF THE SUBJECT NOW. Without them the guard
+// derives no root and refuses the fixture — see the header.
+const WORKSPACE_MANIFEST = 'pubspec.yaml';
+const APP_MANIFEST = `${APP}/pubspec.yaml`;
+
+// The things the guard reads for the subly root. Copied whole; copying only
+// what is read keeps a fixture from accidentally depending on a part of the
+// repo this guard never opens.
+const SUBJECT = [WORKSPACE_MANIFEST, APP_MANIFEST, ROUTER, ROUTER_DIR, FEATURES, SUITE];
+
+// The two roots the 2026-09-05 widening added. Copied only by the fixtures that
+// measure them, so every mutation above them keeps its one-root reading.
+const BRICK = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+const BRICK_MANIFEST = 'tooling/bricks/app/brick.yaml';
+const DS = 'packages/design_system';
+const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS];
 
 // MEASURED by running the guard against the working tree of 2026-08-13. Named
 // individually rather than counted: a count with no names is the "unmet clause
@@ -148,15 +165,36 @@ after(() => {
 });
 
 /** A fresh byte copy of the real subject tree. */
-function tree() {
+function tree(extra = []) {
   const root = join(TMP, `r${seq++}`);
-  for (const rel of SUBJECT) {
+  for (const rel of [...SUBJECT, ...extra]) {
     const src = join(REPO, rel);
     assert.ok(existsSync(src), `the real tree no longer has ${rel} — this suite's subject moved`);
     const dest = join(root, rel);
     mkdirSync(dirname(dest), { recursive: true });
     cpSync(src, dest, { recursive: true });
   }
+  return root;
+}
+
+/** The same, plus the brick and design_system — the roots added 2026-09-05 —
+ *  AND the guard's own file, which is the FULL-CHECKOUT SENTINEL.
+ *
+ *  🔴 THE SENTINEL IS PART OF THE FIXTURE, NOT AN ACCIDENT OF ONE. The guard
+ *  applies its "every DECLARED root must have been DERIVED" clause only when
+ *  its own file is present under the root it is scanning, because a partial
+ *  tree with one root in it is a legitimate thing to scan and this suite builds
+ *  several. That sentinel sits OUTSIDE `apps/`, `packages/` and
+ *  `tooling/bricks/`, so no mutation of a subject can move it — which is the
+ *  whole reason it is the sentinel and a file inside a subject tree is not.
+ *  M11b/M11c/M11d each cut ONE root out of the derivation and require the
+ *  clause to fire, so their fixture has to be checkout-shaped. Measured:
+ *  without this line all three exited 0, which is the guard being right about a
+ *  partial tree and the test being wrong about what it had built. */
+function treeWithNewRoots() {
+  const root = tree(NEW_ROOT_SUBJECT);
+  mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+  cpSync(GUARD, join(root, 'tooling', 'ci', 'assert-a11y-coverage.mjs'));
   return root;
 }
 
@@ -204,9 +242,15 @@ function familiesOf(out, symbol) {
   return line === undefined ? null : line.slice(prefix.length).split(' (')[0].split(' + ');
 }
 
-/** The ⬜ block — the surfaces the guard prints as owed. */
-function printedUnswept(out) {
-  const start = out.indexOf('carry NO a11y sweep');
+/** The ⬜ block — the surfaces the guard prints as owed.
+ *
+ *  ⚠️ ROOT-SCOPED SINCE 2026-09-05. There is one such block PER ROOT now, and a
+ *  scan that stopped at the first would read the brick's twelve and report them
+ *  as subly's. `root` defaults to the app because that is what every mutation
+ *  below is about. */
+function printedUnswept(out, root = APP) {
+  const marker = `reachable surface(s) in ${root} carry NO a11y sweep`;
+  const start = out.indexOf(marker);
   if (start === -1) return [];
   const rest = out.slice(start).split('\n').slice(1);
   const lines = [];
@@ -218,13 +262,11 @@ function printedUnswept(out) {
 }
 
 // ── THE MANUFACTURED SURFACE ────────────────────────────────────────────────
-// 🔴 WHY A FIXTURE HAS TO INVENT ONE NOW. Two properties of this guard are only
-// observable when SOME reachable surface is unswept: that owed work is PRINTED,
-// and that a sweep arriving is COUNTED. On 2026-08-13 the tree stopped
+// 🔴 WHY A FIXTURE HAS TO INVENT ONE. Two properties of this guard are only
+// observable when SOME reachable surface in subly is unswept: that owed work is
+// PRINTED, and that a sweep arriving is COUNTED. On 2026-08-13 the tree stopped
 // supplying either — 19 of 19 are swept — and the honest move is to
-// manufacture the condition, not to drop the tests that measure it. A surface
-// that lands tomorrow with no sweep is the ordinary case this guard was written
-// for; the fixture just makes tomorrow happen now.
+// manufacture the condition, not to drop the tests that measure it.
 //
 // A MODAL SHEET is used deliberately: a `show…Sheet` under lib/features enters
 // the domain FROM DISK, so the fixture adds one file and touches neither the
@@ -247,7 +289,7 @@ function addUnsweptSheet(root) {
 
 /** Give that surface a sweep: the import for provenance, and one testWidgets
  *  block that both CONSTRUCTS it and CALLS a sweep. Swept 19 → 20, cases
- *  109 → 110. */
+ *  110 → 111. */
 function sweepTheNewSheet(root) {
   edit(
     root,
@@ -280,32 +322,39 @@ function sweepTheNewSheet(root) {
 // POSITIVE CONTROLS
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the guard says YES on the tree as it is', () => {
-  test('the REAL repository — 19 reachable, 19 swept, 0 printed, exit 0', () => {
+  test('the REAL repository — 3 derived roots, 50 surfaces, 19 swept, exit 0', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
-    assert.match(out, /19 reachable surface\(s\) \(17 routed screens, 2 modal sheets\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
-    assert.match(out, /0 unswept and PRINTED/);
-    // The per-family tally, pinned. It read `tap-target ×0` from the day this
-    // guard was written until 2026-08-13, and a family that has never been
-    // non-zero is a limb nothing has exercised — so the number that proves it
-    // started is worth holding.
-    //
-    // ✅ `contrast` STARTED TOO, later the same day: ×0 → ×23. It is pinned here
-    // for the same reason tap-target is — and it earned the pin immediately, by
-    // failing on its first real run and catching five genuine defects (a 1.01:1
-    // page title in dark mode among them). **Both families have now gone from
-    // ×0 to non-zero, so this line no longer records a limb that has never
-    // fired.** If either returns to ×0, that is a sweep helper renamed out of
-    // the parse, not progress.
+    // 🔴 THE ROOT LINE IS PINNED BECAUSE THE ROOT LINE IS THE FIX. Until
+    // 2026-09-05 this guard read one hardcoded app; the number of DERIVED roots
+    // going back to one is the regression this whole change exists to prevent,
+    // and nothing else in the output would say so — 19 of 19 swept would still
+    // print, in a tree with two unchecked roots in it.
+    assert.match(out, /3 root\(s\) DERIVED, never listed/);
+    assert.match(out, /apps\/subly \(workspace app member\)/);
+    assert.match(
+      out,
+      /packages\/design_system \(workspace package member: declares flutter_test AND a public widget\)/,
+    );
+    assert.match(out, /\{\{app_id\}\} \(brick template, declared by tooling\/bricks\/app\/brick\.yaml\)/);
+    assert.match(out, /FULL CHECKOUT: all 3 declared root\(s\) are required to be among them/);
+
+    assert.match(out, /apps\/subly: 19 of 19 reachable surface\(s\) carry an a11y sweep/);
+    assert.match(out, /50 reachable surface\(s\); 19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
+    assert.match(out, /31 unswept and PRINTED/);
+    // The per-family tally for subly, pinned. It read `tap-target ×0` from the
+    // day this guard was written until 2026-08-13, and a family that has never
+    // been non-zero is a limb nothing has exercised — so the number that proves
+    // it started is worth holding. `contrast` started the same day: ×0 → ×24.
     assert.match(out, /sweep families used: naked-controls ×24, tap-target ×19, contrast ×24/);
   });
 
-  test('the copied subject tree reproduces the real reading exactly', () => {
+  test('the copied subject tree reproduces the subly reading exactly — and derives ONE root', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /19 reachable surface\(s\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
+    assert.match(out, /1 root\(s\) DERIVED, never listed — apps\/subly \(workspace app member\)/);
+    assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
+    assert.match(out, /19 reachable surface\(s\); 19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.equal(printedUnswept(out).length, 0);
   });
@@ -315,10 +364,6 @@ describe('the guard says YES on the tree as it is', () => {
   // subjects. It now has none — and the property it measures (owed a11y work is
   // READ ALOUD on a GREEN run rather than reddening CI, the standing [pipeline
   // C-6] rule) did not stop being a property just because the tree caught up.
-  // Deleting it would delete the only proof that a future unswept surface is
-  // printed rather than build-failing, which is precisely the behaviour a
-  // reader of this guard is entitled to rely on. So the fixture supplies the
-  // subject the tree no longer does.
   test('an unswept surface PRINTS and does not fail the build — a NEW sheet nobody has swept', () => {
     const root = tree();
     addUnsweptSheet(root);
@@ -330,23 +375,20 @@ describe('the guard says YES on the tree as it is', () => {
       `${NEW_SHEET_SYMBOL} is not in the printed list:\n${out}`,
     );
     assert.deepEqual(printedUnswept(out), [NEW_SHEET_SYMBOL]);
-    assert.match(out, /⬜ 1 of 20 reachable surface\(s\) carry NO a11y sweep/);
+    assert.match(out, /⬜ 1 of 20 reachable surface\(s\) in apps\/subly carry NO a11y sweep/);
     assert.match(out, /→ add a case to .* that pumps the surface and calls/);
 
     // AND NOT FAILED. This is the half that would be lost if the test went.
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /FAIL /);
-    assert.match(out, /20 reachable surface\(s\) \(17 routed screens, 3 modal sheets\)/);
-    assert.match(out, /19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
+    assert.match(out, /20 reachable surface\(s\); 19 swept by 1 a11y test file\(s\) across 110 case\(s\)/);
     assert.match(out, /1 unswept and PRINTED/);
   });
 
   // ⚠️ RE-POINTED for the same reason: its old subject was the MISSING HomeScreen
   // sweep, and home is swept now. Adding a sweep for an already-swept surface
   // would change no number, which is a positive control that cannot fail — the
-  // exact defect class this suite exists to catch. It now moves the
-  // manufactured sheet across the line, in two runs against ONE fixture, so the
-  // move itself is the evidence rather than two unrelated readings.
+  // exact defect class this suite exists to catch.
   test('M10 · a NEW sweep is counted — without this, every failure below is vacuous', () => {
     const root = tree();
     addUnsweptSheet(root);
@@ -375,55 +417,162 @@ describe('the guard says YES on the tree as it is', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔴 THE WIDENING ITSELF — every test in this block was GREEN against the
+// version of the guard this change replaces, WITH THE MUTATION APPLIED. That is
+// not a manner of speaking: `tooling/ci/assert-a11y-coverage.mjs` was copied out
+// of git at a9b04696, renamed into tooling/ci so its relative imports resolved,
+// and run against each mutated tree on 2026-09-05. It exited 0 on all six. The
+// domain was one hardcoded string and none of these touched it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the domain is DERIVED, and a root that stops being derived FAILS', () => {
+  test('the three roots are all scanned, and each one is NAMED in the report', () => {
+    const { code, out } = run(treeWithNewRoots());
+    assert.equal(code, 0, out);
+    assert.match(out, /3 root\(s\) DERIVED/);
+    assert.match(out, /FULL CHECKOUT: all 3 declared root\(s\) are required to be among them/);
+    // Each root gets its own accounting line. A root that is derived but whose
+    // surfaces never reach the report is a root this guard cannot see.
+    assert.match(out, /apps\/subly: 19 of 19 reachable surface\(s\) carry an a11y sweep/);
+    assert.match(out, /\{\{app_id\}\}: 0 of 12 reachable surface\(s\) carry an a11y sweep/);
+    assert.match(out, /packages\/design_system: 0 of 19 reachable surface\(s\) carry an a11y sweep/);
+    // And the gap in each is PRINTED, by name, not merely counted.
+    assert.ok(printedUnswept(out, BRICK).includes('HomeScreen'), out);
+    assert.ok(printedUnswept(out, DS).includes('NavShell'), out);
+    assert.ok(printedUnswept(out, DS).includes('DestructiveConfirmDialog'), out);
+    assert.ok(printedUnswept(out, DS).includes('TwoPane'), out);
+  });
+
+  test('M11a · the brick DECLARES itself and its app directory is gone — COVERAGE LOST', () => {
+    const root = treeWithNewRoots();
+    renameSync(join(root, BRICK), join(root, 'tooling/bricks/app/__brick__/apps/renamed_away'));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — tooling\/bricks\/app\/brick\.yaml exists, so this tree DECLARES a brick/);
+  });
+
+  test('M11b · a package root cut from the workspace list — COVERAGE LOST', () => {
+    const root = treeWithNewRoots();
+    edit(root, WORKSPACE_MANIFEST, '\n  - packages/design_system', '');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /DECLARED root\(s\) were not among the 2 this run derived/);
+    assert.match(out, /`packages\/design_system`/);
+    // 🔴 THE REASON THIS LIMB EXISTS, ASSERTED. Nothing else can see it: the
+    // scan still read the other roots in full, so every count printed healthy.
+    assert.match(out, /every count above would print healthy/);
+  });
+
+  test('M11c · a package root that stops declaring flutter_test — COVERAGE LOST', () => {
+    const root = treeWithNewRoots();
+    edit(root, `${DS}/pubspec.yaml`, '\n  flutter_test:', '');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /DECLARED root\(s\) were not among the 2 this run derived/);
+    assert.match(out, /`packages\/design_system`/);
+  });
+
+  test('M11d · the APP cut from the workspace list — COVERAGE LOST', () => {
+    const root = treeWithNewRoots();
+    edit(root, WORKSPACE_MANIFEST, '\n  - apps/subly', '');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /DECLARED root\(s\) were not among the 2 this run derived/);
+    assert.match(out, /`apps\/subly`/);
+  });
+
+  test('M11e · one brick route leaves — the brick surfaces floor fires, and ALONE', () => {
+    const root = treeWithNewRoots();
+    const rel = `${BRICK}/lib/core/router.dart`;
+    const src = readIn(root, rel);
+    const anchor = "          GoRoute(\n            path: '/settings',";
+    const open = src.indexOf(anchor);
+    assert.ok(open !== -1, 'the /settings route anchor moved in the brick router');
+    const close = src.indexOf('          ),', open) + '          ),\n'.length;
+    writeIn(root, rel, src.slice(0, open) + src.slice(close));
+
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(
+      out,
+      /COVERAGE LOST — `tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}` has only 11 reachable surface\(s\).*floor is 12/s,
+    );
+    // 🔴 AND ALONE, WHICH IS THE PROPERTY M7 LOST. Since SWEPT_FLOOR covers the
+    // whole of subly, removing a subly route also strands a floor entry and a
+    // sweep — three findings, so the surfaces floor is not demonstrable there in
+    // isolation. The brick's SWEPT_FLOOR is empty, so here it is: exactly one.
+    assert.equal(
+      out.split('\n').filter((l) => l.startsWith('FAIL ')).length,
+      1,
+      `the surfaces floor did not fire alone:\n${out}`,
+    );
+  });
+
+  test("M11f · one design_system widget file leaves — that root's surfaces floor fires", () => {
+    const root = treeWithNewRoots();
+    rmSync(join(root, `${DS}/lib/src/widgets/two_pane.dart`));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 17 reachable surface\(s\).*floor is 19/s);
+  });
+
+  test("M12 · a NEW surface in EACH new root reaches that root's printed list", () => {
+    const root = treeWithNewRoots();
+    // The brick: a modal sheet, which enters the domain FROM DISK and so touches
+    // neither the router nor any floor.
+    mkdirSync(join(root, `${BRICK}/lib/features/export`), { recursive: true });
+    writeIn(
+      root,
+      `${BRICK}/lib/features/export/g3_probe_sheet.dart`,
+      "import 'package:flutter/material.dart';\n\nFuture<void> showG3ProbeSheet(BuildContext context) async {}\n",
+    );
+    // design_system: a public widget, which is that root's whole vocabulary.
+    writeIn(
+      root,
+      `${DS}/lib/src/widgets/g3_probe.dart`,
+      "import 'package:flutter/material.dart';\n\nclass G3ProbeWidget extends StatelessWidget {\n" +
+        '  const G3ProbeWidget({super.key});\n' +
+        '  @override\n' +
+        '  Widget build(BuildContext context) => const SizedBox();\n}\n',
+    );
+    const { code, out } = run(root);
+    // PRINTED, not failed — the [pipeline C-6] rule, in the new roots too.
+    assert.equal(code, 0, out);
+    assert.ok(printedUnswept(out, BRICK).includes('showG3ProbeSheet'), out);
+    assert.ok(printedUnswept(out, DS).includes('G3ProbeWidget'), out);
+    assert.match(out, /13 of 13 reachable surface\(s\) in tooling\/bricks/);
+    assert.match(out, /20 of 20 reachable surface\(s\) in packages\/design_system/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // A SWEEP THAT LEAVES — covered ⇒ printed, and it is NOT quiet
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 RE-POINTED FROM INSIGHTS TO CHECK-INBOX, 2026-08-13, AND THE OLD SUBJECT
-// HAD STOPPED TESTING ANYTHING — SILENTLY, WITH ALL THREE TESTS STILL GREEN
-// WOULD HAVE BEEN THE OUTCOME HAD THE NUMBERS NOT MOVED TOO.
+// HAD STOPPED TESTING ANYTHING — SILENTLY. These three delete ONE sweep call
+// and require the surface to leave the ✅ list. `InsightsScreen` is swept by TWO
+// families now, so deleting `expectNothingNaked(tester, 'insights')` leaves it
+// swept — and the guard is CORRECT to keep reporting it.
 //
-// These three delete ONE sweep call and require the surface to leave the ✅
-// list. `InsightsScreen` is swept by TWO families now (naked-controls AND
-// tap-target), so deleting `expectNothingNaked(tester, 'insights')` leaves it
-// swept — and the guard is CORRECT to keep reporting it. The mutation stopped
-// matching its own name: "the sweep call is deleted" would have been measuring
-// nothing but the guard's ability to survive an irrelevant edit.
-//
-// TWO REPAIRS WERE AVAILABLE AND THE CHOICE IS RECORDED RATHER THAN IMPLIED:
-//   (a) make each mutation delete BOTH of the subject's sweeps;
-//   (b) re-point at a surface carrying exactly ONE.
-// (b) is taken, for all three. The axis under test is whether a sweep CALL is
-// what the guard counts — M2 hides it in a string, M2b in a comment — and each
-// needs the smallest edit that isolates that axis. Under (a) every one of the
-// three would need a second anchor in a distant group of the suite, doubling
-// what can drift while measuring the same one thing; and M2/M2b would have to
-// prose-ify a `meetsGuideline` call as well, which tests the literal- and
-// comment-stripping limbs twice over rather than once.
-//
-// ⚠️ AND (b) HAS A FAILURE MODE, WHICH IS THE ONE THAT JUST HAPPENED: the
+// ⚠️ AND THE REPAIR HAS A FAILURE MODE, WHICH IS THE ONE THAT HAPPENED: the
 // subject's single-family status is a fact about today's tree, and nothing
 // noticed when it changed. So it is no longer left to be noticed. The
-// PRECONDITION test below asserts it, and the suite ARGUES it too —
-// `CheckInboxScreen` is single-family because
-// `androidTapTargetGuideline` inspects zero nodes on that screen, pinned by
-// `check-inbox hands the tap-target guideline NOTHING — pinned`
-// (a11y_semantics_test.dart:3069). The day that stops being true, that case
-// goes red and so does the precondition, in the same run.
+// PRECONDITION test below asserts it.
 describe('a surface whose a11y sweep is deleted moves from covered to printed', () => {
   // The subject, named once. Swept by exactly ONE family — see the precondition.
-  const SUBJECT = 'CheckInboxScreen';
+  const SUBJECT_SCREEN = 'CheckInboxScreen';
   const DELETED = "        expectNothingNaked(tester, 'check-inbox');\n";
 
   test('PRECONDITION · the subject is swept by exactly ONE family', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
     assert.deepEqual(
-      familiesOf(out, SUBJECT),
+      familiesOf(out, SUBJECT_SCREEN),
       ['naked-controls'],
-      `${SUBJECT} is no longer swept by exactly one family, so deleting its ONE sweep call no longer ` +
+      `${SUBJECT_SCREEN} is no longer swept by exactly one family, so deleting its ONE sweep call no longer ` +
         'unsweeps it and M1/M2/M2b below are vacuous — they would pass while measuring nothing. This is ' +
         'not hypothetical: it is exactly what a second family did to the previous subject (InsightsScreen) ' +
         'on 2026-08-13, in silence. Either re-point M1/M2/M2b at a single-family surface, or make each of ' +
-        `them delete EVERY sweep of ${SUBJECT}.\n${out}`,
+        `them delete EVERY sweep of ${SUBJECT_SCREEN}.\n${out}`,
     );
   });
 
@@ -433,19 +582,19 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
     const { code, out } = run(root);
 
     // THE ACCOUNTING MOVED — this is the requirement.
-    assert.ok(!sweptList(out).includes(SUBJECT), `still reported swept:\n${out}`);
-    assert.ok(printedUnswept(out).includes(SUBJECT), `not printed as owed:\n${out}`);
-    assert.deepEqual(printedUnswept(out), [SUBJECT]);
+    assert.ok(!sweptList(out).includes(SUBJECT_SCREEN), `still reported swept:\n${out}`);
+    assert.ok(printedUnswept(out).includes(SUBJECT_SCREEN), `not printed as owed:\n${out}`);
+    assert.deepEqual(printedUnswept(out), [SUBJECT_SCREEN]);
 
     // AND IT IS NOT QUIET. Coverage that WAS there and is gone is a regression,
     // not an unstarted task, and SWEPT_FLOOR is what tells the two apart.
     assert.equal(code, 1, out);
-    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT}\``));
+    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT_SCREEN}\``));
 
     // The remaining eighteen are untouched: one loss is reported as one loss.
     assert.deepEqual(
       sweptList(out).sort(),
-      ALL_19_SWEPT.filter((s) => s !== SUBJECT),
+      ALL_19_SWEPT.filter((s) => s !== SUBJECT_SCREEN),
     );
   });
 
@@ -459,9 +608,9 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.ok(!sweptList(out).includes(SUBJECT), `prose was counted as a sweep:\n${out}`);
-    assert.ok(printedUnswept(out).includes(SUBJECT), out);
-    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT}\``));
+    assert.ok(!sweptList(out).includes(SUBJECT_SCREEN), `prose was counted as a sweep:\n${out}`);
+    assert.ok(printedUnswept(out).includes(SUBJECT_SCREEN), out);
+    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT_SCREEN}\``));
   });
 
   // 🔴 M2 AND M2b DIFFER ON PURPOSE, AND THE DIFFERENCE WAS MEASURED. Both
@@ -469,32 +618,28 @@ describe('a surface whose a11y sweep is deleted moves from covered to printed', 
   // the sweep call survives as executable code — which is exactly the axis
   // under test. M2 hides it in a STRING (the literal-stripping limb); M2b hides
   // it in a COMMENT (the comment-stripping limb). An earlier draft of M2b also
-  // deleted the construction, and it therefore passed for the WRONG REASON:
-  // with the guard meta-mutated to skip stripStringLiterals it still went
-  // green, because an unconstructed surface is unattributable however the
-  // sweep is spelled. A test that passes for a reason other than the one it
-  // names is not testing that reason.
+  // deleted the construction, and it therefore passed for the WRONG REASON.
   test('M2b · the sweep call is commented out, and the comment still names it', () => {
     const root = tree();
     edit(
       root,
       SUITE,
       DELETED,
-      `        // expectNothingNaked(tester) — ${SUBJECT} is swept elsewhere.\n`,
+      `        // expectNothingNaked(tester) — ${SUBJECT_SCREEN} is swept elsewhere.\n`,
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
     assert.ok(
-      !sweptList(out).includes(SUBJECT),
+      !sweptList(out).includes(SUBJECT_SCREEN),
       `a commented-out call was counted as coverage:\n${out}`,
     );
-    assert.ok(printedUnswept(out).includes(SUBJECT), out);
-    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT}\``));
+    assert.ok(printedUnswept(out).includes(SUBJECT_SCREEN), out);
+    assert.match(out, new RegExp(`FAIL REGRESSION — \`${SUBJECT_SCREEN}\``));
     // It is still NAMED — by the two label cases in its own group AND by the
     // pinned `hands the tap-target guideline NOTHING` case, all three of which
     // construct it without sweeping it — and the guard says so rather than
     // implying the screen is untouched by the suite.
-    assert.match(out, new RegExp(`${SUBJECT} .*NAMES it but never sweeps it`));
+    assert.match(out, new RegExp(`${SUBJECT_SCREEN} .*NAMES it but never sweeps it`));
   });
 });
 
@@ -518,29 +663,28 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     }
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — the REACHABLE set parsed EMPTY/);
+    assert.match(out, /COVERAGE LOST — the REACHABLE set of `apps\/subly` parsed EMPTY/);
   });
 
-  test('M4 · the a11y corpus is renamed out of the scan', () => {
+  // 🔴 THIS LIMB CHANGED SHAPE ON 2026-09-05 AND KEPT ITS STRENGTH. It used to
+  // be "no a11y file at all ⇒ COVERAGE LOST", which is right for one root and
+  // wrong the moment a root that has never had one joins the domain — the brick
+  // and design_system would have reddened CI on arrival. It is now a per-root
+  // FLOOR, and subly's floor is 1, so renaming its suite out of the corpus
+  // still fires exactly as before.
+  test('M4 · the a11y corpus is renamed out of the scan — the per-root floor of 1 fires', () => {
     const root = tree();
     renameSync(join(root, SUITE), join(root, `${APP}/test/semantics_of_a11y_test.dart`));
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — no file under .* matched `a11y_\*_test\.dart`/);
+    assert.match(out, /COVERAGE LOST — `apps\/subly` yielded 0 file\(s\) matching `a11y_\*_test\.dart`.*floor is 1/s);
   });
 
   // 🔴 `meetsGuideline` ADDED TO THE RENAME 2026-08-13, AND WITHOUT IT THIS
   // TEST HAD STOPPED REACHING ITS OWN LIMB. Renaming only the two naked
-  // helpers used to silence every sweep in the suite; once the tap-target
-  // family landed it left `tap-target ×19` running and SEVENTEEN surfaces still
-  // swept, so `sweepingBlocks === 0` could not fire and the guard instead
-  // reported two REGRESSIONs (budget and check-inbox, the two surfaces the
-  // tap-target family does not reach). The test went red on its regex and that
-  // is the only reason this was seen — had the message not carried a number,
-  // it would have passed while measuring a different failure entirely.
+  // helpers left `tap-target ×19` running and SEVENTEEN surfaces still swept.
   // 📌 A mutation named "not one sweep" must neuter EVERY family the guard
   // recognises, and it inherits a new one each time SWEEP_FAMILIES grows.
-  // `contrast` needs no rename today only because it shares `meetsGuideline`.
   test('M5 · every sweep helper is renamed — 110 cases, not one sweep', () => {
     const root = tree();
     const src = readIn(root, SUITE)
@@ -565,25 +709,11 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
 
   // ⚠️ RENAMED 2026-08-13, AND THE OLD NAME WAS THE LIE. It read "the surfaces
   // floor is the only thing that sees it", which was TRUE while SWEPT_FLOOR
-  // held five of nineteen and NotificationsScreen was not one of them. It holds
-  // all nineteen now, so removing ANY route also strands a floor entry and
-  // strands its sweep: three findings fire, not one. The assertion on the
-  // surfaces floor is unchanged and just as tight — 18 against a floor of 19 —
-  // and the two co-firing findings are PINNED here rather than left unstated,
-  // because the measured reading is the record.
-  //
-  // 🔴 WHAT WAS LOST AND IS NOT RECOVERABLE FROM THIS FILE: with SWEPT_FLOOR
-  // covering the whole domain, no mutation can make the surfaces floor fire
-  // ALONE, so its independence is no longer demonstrable here. It is not
-  // redundant — a surface added AFTER the floor was measured is in neither set
-  // and only this floor would see it go — but that case cannot be built without
-  // editing REQUIRED_COVERAGE, which lives in the guard.
-  //
-  // ⚠️ THE MUTATION THAT WOULD DEMONSTRATE IT, so the next person need not
-  // re-derive it: when a 20th surface lands and `surfaces` is re-measured to 20
-  // BEFORE that surface is swept, delete its route — its key is in neither
-  // `swept` nor SWEPT_FLOOR, so 19 < 20 fires the surfaces floor with no other
-  // limb able to see it, and this test can go back to asserting exactly that.
+  // held five of nineteen. It holds all nineteen now, so removing ANY subly
+  // route also strands a floor entry and strands its sweep: three findings.
+  // ✅ The floor's INDEPENDENCE is demonstrable again as of 2026-09-05, on
+  // another root — see M11e, where the brick's empty SWEPT_FLOOR lets exactly
+  // one finding fire.
   test('M7 · a route leaves the app — the surfaces floor fires by number, SWEPT_FLOOR by name', () => {
     const root = tree();
     edit(
@@ -598,10 +728,8 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /COVERAGE LOST — only 18 reachable surface\(s\) .* the checked-in floor is 19/s);
-    // The two limbs that now co-fire, asserted rather than assumed: the sweep
-    // is still in the suite and now audits a screen no user can open, and the
-    // floor entry is judgement over a surface that is not there.
+    assert.match(out, /COVERAGE LOST — `apps\/subly` has only 18 reachable surface\(s\).*floor is 19/s);
+    // The two limbs that now co-fire, asserted rather than assumed.
     assert.match(out, /FAIL DEAD COVERAGE — .* sweeps `NotificationsScreen`/);
     assert.match(out, /FAIL FLOOR OVER NOTHING — .*notifications_screen\.dart#NotificationsScreen`/);
     // Proof the domain really shrank rather than the report merely changing
@@ -611,27 +739,10 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     assert.equal(printedUnswept(out).length, 0);
   });
 
-  // ⚠️ BACK IN ITS FOUR-CASE FORM 2026-08-13, and the detour is worth recording
-  // because it is a property of FLOORS, not of this test. The a11y sweep took
-  // the suite from 24 cases to 60 and raised SWEPT_FLOOR from 5 keys to 19, but
-  // `REQUIRED_COVERAGE.cases` stayed at 24 for one change — and a floor 36
-  // below its tree is not a floor: THIRTY-SIX cases could have left in silence,
-  // this four-case deletion among them. While that lasted, the only mutation
-  // that could reach the floor deleted 37 cases and needed a re-implementation
-  // of the guard's own `testWidgets` parse inside this file to pick them. The
-  // floor has since been re-measured to 60, so four is enough again, the
-  // fixture parse is deleted, and the mutation is once more the small silent
-  // erosion the limb exists to catch.
-  //
-  // 🔴 AND IT HAPPENED AGAIN THE SAME DAY, WHICH IS WHY THE PARAGRAPH ABOVE
-  // STAYS. The tap-target increment took the suite 60 → 81 and again left
-  // `cases` behind, this time at 60 — TWENTY-ONE cases deletable in silence.
-  // This test was one of the nine that went red, and only because it pins the
-  // floor's own number in its regex: `only 56 … floor is 60` could not match a
-  // guard that no longer trips at 77. Pinning the FLOOR here, not just the
-  // measured count, is what turns someone else's missed re-measurement into a
-  // red test instead of a quieter guard. Re-measured to 81; four is still
-  // enough, because the floor sits exactly on the tree again.
+  // ⚠️ THE `cases` FLOOR WENT BLIND THREE TIMES IN ONE DAY and this test is the
+  // only limb that catches it: it pins the FLOOR's own number in its regex, not
+  // just the measured count, so somebody else's missed re-measurement is a red
+  // test rather than a quieter guard.
   test('M8 · four cases are deleted while every sweep survives', () => {
     const root = tree();
     for (const title of [
@@ -646,9 +757,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     assert.equal(code, 1, out);
     assert.match(out, /COVERAGE LOST — only 106 a11y case\(s\) .* the checked-in floor is 110/s);
     // Every set above is byte-identical — which is the point of the floor, and
-    // it is also what catches a mutation that disabled the WRONG block: if one
-    // of the four titles above ever drifts onto a sweeping case, its surface
-    // leaves this list instead of the deletion reading as a tidy-up.
+    // it is also what catches a mutation that disabled the WRONG block.
     assert.deepEqual(sweptList(out).sort(), ALL_19_SWEPT);
     assert.doesNotMatch(out, /REGRESSION/);
     assert.doesNotMatch(out, /DEAD COVERAGE/);
@@ -673,25 +782,10 @@ describe('a sweep must point at something a user can reach', () => {
     );
     // 🔴 THE IMPORT SWAP IS THE WHOLE MUTATION, AND IT MUST BE A SWAP. Re-point
     // the suite's `OnboardingScreen` import at the twin and the onboarding sweep
-    // the suite ALREADY HAS starts attributing to a file no route imports — which
-    // is DEAD COVERAGE, by name. REPLACE the routed import; do NOT add alongside
-    // it. Until 2026-08-13 the suite did not import
-    // `features/onboarding/onboarding_screen.dart` at all, so ADDING the twin's
-    // import left exactly one `OnboardingScreen` in scope and this fired. The
-    // sweep of all 19 surfaces added that import, and two files declaring one
-    // symbol is AMBIGUOUS SUBJECT (:518) — which fires FIRST and, because an
-    // ambiguous symbol is never resolved into `swept`, section (D) at :613 can no
-    // longer compute DEAD COVERAGE at all. The fixture would have gone on passing
-    // against a DIFFERENT check while reporting that it proved this one.
-    //
-    // ⚠️ A SECOND EDIT STOOD HERE UNTIL 2026-08-13 AND IT WAS DEAD. It pumped
-    // `const OnboardingScreen()` and swept "the twin" beside the insights sweep.
-    // Inverting it ALONE left this test green — once the import is swapped the
-    // suite's own onboarding case already points at the twin, so it changed no
-    // outcome. An edit that contributes nothing is the "assertion that cannot
-    // fail" shape wearing a mutation's clothes, and it left a reader believing
-    // two things were being mutated. Deleted rather than annotated; re-proved
-    // after deletion by inverting the swap below, which turns this test RED.
+    // the suite ALREADY HAS starts attributing to a file no route imports —
+    // which is DEAD COVERAGE, by name. REPLACE the routed import; do NOT add
+    // alongside it, or AMBIGUOUS SUBJECT fires first and section (D) can no
+    // longer compute DEAD COVERAGE at all.
     edit(
       root,
       SUITE,
@@ -713,6 +807,6 @@ describe('a sweep must point at something a user can reach', () => {
     );
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL `AppShell` is excluded in NOT_A_PANE but no route in .* builds it/);
+    assert.match(out, /FAIL `AppShell` is excluded in NOT_A_PANE for `apps\/subly` but no route in .* builds it/);
   });
 });
