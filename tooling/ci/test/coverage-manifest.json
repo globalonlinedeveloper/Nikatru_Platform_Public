@@ -91,7 +91,7 @@
   "ops-verifiers.test.mjs": 15,
   "package-boundaries.test.mjs": 18,
   "package-earned.test.mjs": 13,
-  "palette-consistent.test.mjs": 39,
+  "palette-consistent.test.mjs": 50,
   "platform-proof-fresh.test.mjs": 81,
   "platform-register.test.mjs": 67,
   "play-declarations.test.mjs": 148,

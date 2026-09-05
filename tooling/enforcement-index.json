@@ -1038,7 +1038,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 067"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#sites"
     ],

@@ -43,6 +43,16 @@
 // is additionally named in MUST_COMPARE below so it cannot leave the subject
 // quietly.
 //
+//   3. ADDED 2026-09-05 — THE GENERATED SIBLINGS. [ADR 067] decision 1 moved the
+//      DTCG token JSON to `contracts/tokens/dtcg/` and packages/tokens now emits
+//      THREE committed files from it: the CSS above, Dart constants in
+//      `packages/design_system/lib/src/tokens/brand_tokens.dart`, and a JSON
+//      table in `extensions/core/tokens.json` for the build-free extension
+//      subtree. A second limb, at the bottom of this file, holds all three equal
+//      to the DTCG source. (1) and (2) compare hand-maintained copies with each
+//      other; that limb compares generated copies with the thing they are
+//      generated from. Both are "one palette" and both belong here.
+//
 // ── THE EXCLUSION, AND WHY IT IS ITSELF CHECKED ──────────────────────────────
 // `sites/nikatru/legal/<YYYY-MM-DD>/<locale>/*.html` are DATED POLICY SNAPSHOTS
 // ([pipeline K-4], `assert-policy-archive.mjs`). A consent record naming policy
@@ -106,6 +116,24 @@
 // are recorded with their exact output in
 // `tooling/ci/test/palette-consistent.test.mjs`. Every floor in this file has a
 // named input that fires it; none is decorative.
+//
+// The generated-siblings limb was negative-tested the same way, on the REAL tree
+// (2026-09-05, each mutation restored with `git checkout --` and a green control
+// run before and after):
+//   (d) brand_tokens.dart `primary` #2E6FF2 → #2E6FF3 ⇒ exit 1, "light.primary
+//       disagrees between the token source and a file generated from it",
+//       citing the Dart line.
+//   (e) brand_tokens.dart `line` (DARK class) #22304D → #22304E ⇒ exit 1, in the
+//       dark scope — the class split is read, not assumed.
+//   (f) extensions/core/tokens.json `muted` #586275 → #586276 ⇒ exit 1.
+//   (g) brand_tokens.dart `fontBody` 'Manrope' → 'Manrop' ⇒ exit 1. The font
+//       families are the tokens that actually reach the Flutter apps today.
+//   (h) brand_tokens.dart deleted ⇒ exit 2, "a COMMITTED output … not on disk".
+//   (i) `light.teal` deleted from tokens.json ⇒ exit 2, "declares 22 of the 23
+//       token(s) the DTCG source names".
+//   (j) contracts/tokens/dtcg/ moved away ⇒ exit 2, naming color.json.
+// Two more that a fixture reaches more cheaply than the tree — an emptied
+// `color` group, and `class BrandTokensDark` renamed — are in the test file.
 //
 // Usage:  node tooling/ci/assert-palette-consistent.mjs [repoRoot]
 // Exit:   0 = one palette · 1 = two sources disagree · 2 = the scan lost its
@@ -593,7 +621,235 @@ if (compared < MIN_COMPARED) {
   ]);
 }
 
+/* ── THE GENERATED SIBLINGS ─────────────────────────────────────────────────
+ *
+ * Everything above compares HAND-MAINTAINED palettes with each other. This limb
+ * asks the other half of the question: do the three GENERATED outputs still say
+ * what their one source says?
+ *
+ * ── WHY IT IS HERE AND NOT IN A GUARD OF ITS OWN ────────────────────────────
+ * This file's subject is already "one palette", and until 2026-09-05 exactly one
+ * output existed. [ADR 067] decision 1 moved the DTCG JSON to
+ * contracts/tokens/dtcg/ and packages/tokens now emits THREE committed files
+ * from it — the CSS, Dart constants for the Flutter apps, and a JSON table for
+ * the build-free extension subtree. Three committed generated files is three
+ * more chances for a hand edit to stick, and the failure is silent in the worst
+ * way: the file still parses, the app still builds, and the palette has forked.
+ *
+ * ── WHY IT DUPLICATES THE CI LANE, DELIBERATELY ─────────────────────────────
+ * ci.yml's `site-tokens` lane deletes all three, rebuilds and diffs — which is
+ * the stronger check, because it re-derives rather than compares. But it needs
+ * `npm ci` and a node_modules tree, so it cannot run in the guard lanes and it
+ * cannot run on a developer machine that has not installed the emitter. This
+ * limb reads four JSON files and three text files and needs nothing. It cannot
+ * catch an emitter whose FORMATTER changed (only a rebuild sees that); it does
+ * catch every hand edit to a value, which is the failure that actually happens.
+ *
+ * ── HOW IT REFUSES ─────────────────────────────────────────────────────────
+ * A comparison across an absent file is this repository's most repeated defect,
+ * so: the DTCG source must exist and must yield at least the floors below, and
+ * each generated output must exist and must declare EVERY key the source does.
+ * A missing output is COVERAGE LOST, not a finding — it is what a build that did
+ * not run looks like from here, and reporting it as "the palette disagrees"
+ * would send a reader to edit a file that is not there.
+ */
+
+const DTCG_DIR = 'contracts/tokens/dtcg';
+const DART_OUT = 'packages/design_system/lib/src/tokens/brand_tokens.dart';
+const JSON_OUT = 'extensions/core/tokens.json';
+
+/** Light colours in the DTCG source. EXACT: the emitters assert completeness on
+ *  their side too (`assertEmitsEveryToken`), so a token added to the JSON and
+ *  not to the emit order fails the BUILD; this floor is the half that fires when
+ *  a token is REMOVED from the source and every output loses it together, which
+ *  no other check here would see. */
+const MIN_SOURCE_LIGHT = 12;
+/** Dark overrides in the DTCG source. */
+const MIN_SOURCE_DARK = 8;
+
+function readJsonOrRefuse(rel, why) {
+  const abs = join(ROOT, rel);
+  if (!existsSync(abs)) coverageLost([`${rel} is not on disk.`, why]);
+  try {
+    return JSON.parse(readFileSync(abs, 'utf8'));
+  } catch (e) {
+    coverageLost([`${rel} is not valid JSON, so it cannot be the source this guard compares against.`, String(e.message)]);
+  }
+}
+
+/** `ink-2` -> `ink2`. The same mechanical transform the Dart emitter applies —
+ *  restated here rather than imported, because importing it would mean this
+ *  guard agrees with the emitter BY CONSTRUCTION and could not catch an emitter
+ *  that renamed on the way out. Two independent statements of one rule is the
+ *  point; a divergence between them is a real finding, not a nuisance. */
+const dartIdent = (name) => name.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+
+/* The source of truth. */
+const dtcgColor = readJsonOrRefuse(
+  `${DTCG_DIR}/color.json`,
+  `It is the light half of the token contract [ADR 067] decision 1 created, and every generated palette in the tree is emitted from it.`,
+);
+const dtcgDark = readJsonOrRefuse(`${DTCG_DIR}/color.dark.json`, `It is the dark half of the token contract.`);
+const dtcgFont = readJsonOrRefuse(`${DTCG_DIR}/font.json`, `It declares the two brand font families.`);
+const dtcgSize = readJsonOrRefuse(`${DTCG_DIR}/size.json`, `It declares the brand corner radius.`);
+
+/** DTCG group -> Map(name -> value), skipping the `$`-prefixed metadata keys. */
+function dtcgGroup(doc, group) {
+  const body = doc?.[group];
+  const out = new Map();
+  if (!body || typeof body !== 'object') return out;
+  for (const [k, v] of Object.entries(body)) {
+    if (k.startsWith('$')) continue;
+    const value = v?.$value ?? v?.value;
+    if (typeof value === 'string') out.set(k, value);
+  }
+  return out;
+}
+
+const srcLight = dtcgGroup(dtcgColor, 'color');
+const srcDark = dtcgGroup(dtcgDark, 'dark');
+const srcFont = dtcgGroup(dtcgFont, 'font');
+const srcSize = dtcgGroup(dtcgSize, 'size');
+
+if (srcLight.size < MIN_SOURCE_LIGHT || srcDark.size < MIN_SOURCE_DARK) {
+  coverageLost([
+    `the DTCG source declares ${srcLight.size} light and ${srcDark.size} dark colour(s), expected at least`,
+    `${MIN_SOURCE_LIGHT} and ${MIN_SOURCE_DARK}. Comparing three generated files against a source that has emptied prints ok over`,
+    `nothing — the outputs would agree with an empty contract by containing no key it names.`,
+  ]);
+}
+if (!srcFont.has('display') || !srcFont.has('body') || !srcSize.has('radius')) {
+  coverageLost([
+    `${DTCG_DIR}/font.json must declare font.display and font.body, and size.json must declare size.radius.`,
+    `They are the non-colour half of this comparison and the only tokens that reach the Flutter apps today.`,
+  ]);
+}
+
+/** Every key this limb holds equal, as `scope.name` -> value, from the source. */
+const expected = new Map();
+for (const [k, v] of srcLight) expected.set(`light.${k}`, v);
+for (const [k, v] of srcDark) expected.set(`dark.${k}`, v);
+expected.set('font.display', srcFont.get('display'));
+expected.set('font.body', srcFont.get('body'));
+expected.set('size.radius', srcSize.get('radius'));
+
+/** One generated output, read as `scope.name` -> { value, line }. */
+const readGenerated = {
+  css() {
+    const abs = join(ROOT, TOKENS_CSS);
+    const text = readFileSync(abs, 'utf8');
+    const out = new Map();
+    for (const d of rootDeclarations(blankCssComments(text))) {
+      const name = d.property.replace(/^--/, '');
+      const scope = d.scope === '@media(prefers-color-scheme:dark)' ? 'dark' : 'light';
+      const line = lineOf(text, d.offset);
+      if (name === 'radius') out.set('size.radius', { value: d.value, line });
+      else if (name === 'font-display') out.set('font.display', { value: d.value.replace(/^"|"$/g, ''), line });
+      else if (name === 'font-body') out.set('font.body', { value: d.value.replace(/^"|"$/g, ''), line });
+      else out.set(`${scope}.${name}`, { value: d.value, line });
+    }
+    return out;
+  },
+  dart() {
+    const text = readFileSync(join(ROOT, DART_OUT), 'utf8');
+    const split = text.indexOf('class BrandTokensDark');
+    if (split < 0) {
+      coverageLost([
+        `${DART_OUT} declares no \`class BrandTokensDark\`, so the dark half of the palette is not in this`,
+        `comparison and every dark token would read as "the output does not declare it" — a message about the`,
+        `wrong thing. Either the emitter's class names changed, or the file is not the emitter's output.`,
+      ]);
+    }
+    const out = new Map();
+    const scan = (body, scope, base) => {
+      for (const m of body.matchAll(/static const Color (\w+) = Color\(0x(?:FF)?([0-9A-Fa-f]{6})\);/g)) {
+        out.set(`${scope}.${m[1]}`, { value: `#${m[2]}`, line: lineOf(text, base + m.index), dart: true });
+      }
+    };
+    scan(text.slice(0, split), 'light', 0);
+    scan(text.slice(split), 'dark', split);
+    for (const m of text.matchAll(/static const String (fontDisplay|fontBody) = '([^']*)';/g)) {
+      out.set(m[1] === 'fontDisplay' ? 'font.display' : 'font.body', { value: m[2], line: lineOf(text, m.index) });
+    }
+    const r = text.match(/static const double radius = ([0-9]+(?:\.[0-9]+)?);/);
+    if (r) out.set('size.radius', { value: `${r[1].replace(/\.0$/, '')}px`, line: lineOf(text, text.indexOf(r[0])) });
+    return out;
+  },
+  json() {
+    const doc = readJsonOrRefuse(JSON_OUT, `It is the token table the build-free extension subtree reads.`);
+    const text = readFileSync(join(ROOT, JSON_OUT), 'utf8');
+    const out = new Map();
+    const lineFor = (key) => {
+      const at = text.indexOf(`"${key}":`);
+      return at < 0 ? 1 : lineOf(text, at);
+    };
+    for (const scope of ['light', 'dark']) {
+      for (const [k, v] of Object.entries(doc?.[scope] ?? {})) out.set(`${scope}.${k}`, { value: String(v), line: lineFor(k) });
+    }
+    for (const k of ['display', 'body']) {
+      if (doc?.font?.[k] !== undefined) out.set(`font.${k}`, { value: String(doc.font[k]), line: lineFor(k) });
+    }
+    if (doc?.size?.radius !== undefined) out.set('size.radius', { value: String(doc.size.radius), line: lineFor('radius') });
+    return out;
+  },
+};
+
+for (const [rel, kind] of [
+  [TOKENS_CSS, 'css'],
+  [DART_OUT, 'dart'],
+  [JSON_OUT, 'json'],
+]) {
+  if (!existsSync(join(ROOT, rel))) {
+    coverageLost([
+      `${rel} is a COMMITTED output of packages/tokens and it is not on disk.`,
+      `That is what a build that did not run looks like from here, so this guard refuses rather than`,
+      `reporting a palette disagreement about a file nobody can edit. Rebuild with`,
+      `\`cd packages/tokens && npm ci && npm run build\`, or — if the output was retired on purpose —`,
+      `remove it from this guard and from ci.yml's site-tokens lane in the same change.`,
+    ]);
+  }
+  const got = readGenerated[kind]();
+  const missing = [...expected.keys()].filter((k) => !got.has(kind === 'dart' ? dartKey(k) : k));
+  if (missing.length) {
+    coverageLost([
+      `${rel} declares ${got.size} of the ${expected.size} token(s) the DTCG source names — ${missing.length} missing:`,
+      ...missing.slice(0, 12).map((k) => `  · ${k}`),
+      ...(missing.length > 12 ? [`  · … and ${missing.length - 12} more`] : []),
+      `A generated file that is missing a token compares clean on every token it still has, which is`,
+      `"compared nothing, found nothing wrong" wearing a passing run's clothes.`,
+    ]);
+  }
+  for (const [key, want] of expected) {
+    const lookup = kind === 'dart' ? dartKey(key) : key;
+    const have = got.get(lookup);
+    if (comparable(have.value) === comparable(want)) continue;
+    problems.push(
+      [
+        `${key} disagrees between the token source and a file generated from it:`,
+        `  ${comparable(want)}  — ${DTCG_DIR}/ (the source)`,
+        `  ${comparable(have.value)}  — ${rel}:${have.line}${have.value === comparable(have.value) ? '' : `  (written \`${have.value}\`)`}`,
+      ].join('\n'),
+    );
+  }
+}
+
+/** `light.ink-2` -> `light.ink2`, and the non-colour keys unchanged. Dart cannot
+ *  spell a hyphen in an identifier and that is the ONLY difference between the
+ *  Dart names and the token names — see the emitter's own note on why there is
+ *  no rename table. */
+function dartKey(key) {
+  const dot = key.indexOf('.');
+  const scope = key.slice(0, dot);
+  const name = key.slice(dot + 1);
+  if (scope === 'light' || scope === 'dark') return `${scope}.${dartIdent(name)}`;
+  return key === 'font.display' ? 'font.display' : key;
+}
+
 /* ── Report ────────────────────────────────────────────────────────────────── */
+
+prints.push(
+  `3 generated output(s) held equal to ${DTCG_DIR}/ on ${expected.size} token(s): ${TOKENS_CSS}, ${DART_OUT}, ${JSON_OUT}.`,
+);
 
 prints.push(
   `${excluded.length} dated legal snapshot(s) excluded from the comparison (frozen consent records, [pipeline K-4]):`,
@@ -609,9 +865,12 @@ if (problems.length) {
     `\n  One palette: a property declared in two places must carry the same value in both. Pick the value the`,
   );
   console.error(
-    `  brand actually uses, apply it everywhere it is declared, and remember packages/tokens/tokens/*.json`,
+    `  brand actually uses, apply it everywhere it is declared, and remember ${DTCG_DIR}/*.json is the source`,
   );
-  console.error(`  is the source ${TOKENS_CSS} is generated from — edit the JSON, not the CSS.`);
+  console.error(
+    `  ${TOKENS_CSS}, ${DART_OUT} and ${JSON_OUT} are ALL generated from — edit the DTCG JSON and rebuild`,
+  );
+  console.error(`  (\`cd packages/tokens && npm run build\`), never a generated file.`);
   process.exit(1);
 }
 

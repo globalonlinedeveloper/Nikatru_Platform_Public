@@ -448,7 +448,12 @@ jobs:
           "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
 
   site-tokens:
-    name: Site design tokens (build + drift)
+    # why: the job id stays `site-tokens` even though the lane now covers three
+    # runtimes rather than the sites alone. ci-gate's `needs:` list names it, and
+    # tooling/ci/assert-green-means-ran.mjs asserts that list by name — renaming
+    # a job id here is a two-file change with a required-check consequence, and
+    # the name below is where the widened scope is said out loud instead.
+    name: Design tokens (build + drift, all three outputs)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
@@ -460,13 +465,37 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - run: npm ci
-      - name: Delete the artifact so the build has to produce it
-        run: rm -f ../../sites/_shared/assets/tokens.css
+      # why: ALL THREE outputs are deleted, not just the CSS. The delete is what
+      # makes this a re-derivation rather than a comparison — an output left in
+      # place is checked only for "the build did not change it", which a build
+      # that never wrote the file also satisfies. Source is
+      # contracts/tokens/dtcg/ ([ADR 067] decision 1); the three outputs are the
+      # CSS the sites reference, Dart constants for the Flutter apps, and a JSON
+      # table the build-free extension subtree can read.
+      - name: Delete all three artifacts so the build has to produce them
+        run: |
+          rm -f ../../sites/_shared/assets/tokens.css
+          rm -f ../design_system/lib/src/tokens/brand_tokens.dart
+          rm -f ../../extensions/core/tokens.json
       - run: npm run build
-      - name: The build actually wrote the artifact
-        run: test -s ../../sites/_shared/assets/tokens.css
-      - name: Site tokens.css must equal a fresh build
-        run: git diff --exit-code -- ../../sites/_shared/assets/tokens.css
+      - name: The build actually wrote all three artifacts
+        run: |
+          test -s ../../sites/_shared/assets/tokens.css
+          test -s ../design_system/lib/src/tokens/brand_tokens.dart
+          test -s ../../extensions/core/tokens.json
+      # why: ONE LINE, no backslash continuations. assert-green-means-ran.mjs
+      # pairs every path this step diffs with an "rm -f" of the same path
+      # earlier in the job, and a line continuation makes it read the
+      # continuation character itself as the path. Measured 2026-09-05: written
+      # across three continued lines this guard failed with 'job "site-tokens"
+      # diffs [backslash] against HEAD, but no earlier step deletes it first'.
+      # ⚠️ And the drift-lane phrase is deliberately NOT quoted anywhere in this
+      # comment: green-means-ran.test.mjs counts its occurrences across every
+      # workflow file to derive how many drift checks the guard must report, and
+      # it counts comment text too — a comment quoting the phrase inflates that
+      # count by one and reddens a test about something else entirely.
+      - name: All three outputs must equal a fresh build
+        run: git diff --exit-code -- ../../sites/_shared/assets/tokens.css ../design_system/lib/src/tokens/brand_tokens.dart ../../extensions/core/tokens.json
 
   site-shared:
     name: Shared site build

@@ -35,7 +35,7 @@ single repository. The failure this directory prevents has happened here once.
 | Path | What it is | Consumed by |
 |---|---|---|
 | `entitlement/` | the revocation-reason set, the money environments, and the JSON Schema that grades them | `services/platform` (TS), `extensions/**` (vanilla JS), `packages/purchases` (generated Dart) |
-| `tokens/` | a pointer, for now — see `tokens/README.md` | — |
+| `tokens/` | the DTCG brand-token source in `tokens/dtcg/` — see `tokens/README.md` | `sites/**` (generated CSS), the Flutter apps (generated Dart), `extensions/**` (generated JSON) |
 | `legal/` | the shared text of a published legal document | `sites/nikatru/**`, `extensions/**/publish/**` |
 
 ## The one rule about the form these take
@@ -82,8 +82,11 @@ no directory at all.
 2. Re-point `services/platform/src/lib/mor/contract.ts` to import the enums from
    here rather than restate them, leaving it as the TypeScript-only surface
    (interfaces, `decideSubscription`, `decideAdjustment`).
-3. Move `packages/tokens/tokens/*.json` under `contracts/tokens/` and re-point
-   the Style Dictionary build (see `tokens/README.md`).
+3. ✅ **DONE 2026-09-05.** `packages/tokens/tokens/*.json` moved to
+   `contracts/tokens/dtcg/`, the Style Dictionary build re-pointed, and the two
+   emitters the move existed to make possible added — Dart constants for the
+   apps and a JSON table for the extensions. See `tokens/README.md` for what a
+   token change now reaches and what it deliberately does not.
 4. Make `sites/nikatru/fullshot/privacy.html` and
    `extensions/Extension/Full_Screen_Shot/publish/PRIVACY-POLICY.html` renderings
    of `legal/fullshot-privacy.md`, and add the guard that holds them equal (see

@@ -8,40 +8,24 @@
 # reddens the lane again, so an entry left here by accident becomes loud
 # instead of permanent. An entry with no expiry does not belong in this file.
 #
-# ── 2026-09-05, the first run OSV-Scanner ever made in this repository ────────
-# It found four vulnerabilities in two packages, all of them fixable, all of
-# them DEV dependencies of packages/tokens — the design-token build, which
-# produces a CSS file and ships no code to a user. Two are CVSS 7.5.
+# ── THIS FILE IS DELIBERATELY EMPTY OF ENTRIES, 2026-09-05 ───────────────────
+# It held four, all dated 2026-09-19, all dev dependencies of packages/tokens:
+# brace-expansion 5.0.7 (GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895) and qs 6.15.3
+# (GHSA-4mjr-xmp4-gh2g, GHSA-x5fp-wj9c-mxmx). They were recorded rather than
+# fixed because the change that added the scanner did not own packages/, and a
+# lockfile bump belongs in the same commit as the install that produced it.
 #
-# They are recorded rather than fixed here for one reason: the change that
-# added the scanner does not own packages/, and a lockfile bump belongs in the
-# same commit as the `npm install` that produced it. The fix is now automatic
-# rather than owed to somebody's memory: renovate.json automerges patch and
-# digest updates through ci-gate as of the same change, so brace-expansion
-# 5.0.7 → 5.0.9 lands on its own. `qs` 6.15.3 → 6.16.0 is a MINOR, so Renovate
-# will open it and it will wait for a human.
+# That commit is this one. Both are transitive — minimatch declares
+# `brace-expansion: ^5.0.5` and url declares `qs: ^6.12.3` — so the fix is
+# `npm update brace-expansion qs` inside packages/tokens, which moves them to
+# 5.0.9 and 6.16.0 inside the existing ranges. No direct devDependency was added
+# for either: a direct pin on a package nothing imports would be a second thing
+# to remember, and the ranges already permit the fixed versions.
 #
-# ⚠️ If these are still here on the ignoreUntil date, the thing to check first
-# is whether Renovate is opening pull requests at all — it had been silently
-# opening none since 2026-09-03. That is the failure this expiry exists to
-# catch, not the vulnerabilities themselves.
-
-[[IgnoredVulns]]
-id = "GHSA-mh99-v99m-4gvg"
-ignoreUntil = 2026-09-19
-reason = "brace-expansion 5.0.7 (dev, packages/tokens) — fixed in 5.0.8. Renovate automerges patch through ci-gate; expiry re-reddens if it did not."
-
-[[IgnoredVulns]]
-id = "GHSA-rgw5-rvv9-x895"
-ignoreUntil = 2026-09-19
-reason = "brace-expansion 5.0.7 (dev, packages/tokens) — fixed in 5.0.9. Same PR as the row above."
-
-[[IgnoredVulns]]
-id = "GHSA-4mjr-xmp4-gh2g"
-ignoreUntil = 2026-09-19
-reason = "qs 6.15.3 (dev, packages/tokens) — fixed in 6.16.0, a MINOR, so Renovate opens it and a human merges it."
-
-[[IgnoredVulns]]
-id = "GHSA-x5fp-wj9c-mxmx"
-ignoreUntil = 2026-09-19
-reason = "qs 6.15.3 (dev, packages/tokens) — fixed in 6.16.0. Same PR as the row above."
+# ⚠️ AN EMPTY FILE IS NOT A DEAD FILE. OSV-Scanner resolves this by its own
+# default name and ci.yml passes it explicitly with `--config osv-scanner.toml`
+# (without which v2 resolves a config per lockfile DIRECTORY, loads the root
+# file, prints "unused ignores" and ignores nothing for
+# packages/tokens/package-lock.json — measured, run 33960900452). Deleting this
+# file would make that flag point at nothing, so it stays, and the next
+# acknowledged finding is appended below with its own `ignoreUntil`.

@@ -1,28 +1,55 @@
 # @nikatru/tokens
 
-Single source of truth for NIKATRU brand design tokens. Hand-authored DTCG JSON
-(`tokens/*.json`) is compiled by [Style Dictionary](https://styledictionary.com) v5
-into **exactly one committed output**:
+**The EMITTER. The source moved out of this package on 2026-09-05.**
+
+Hand-authored DTCG JSON now lives at **`contracts/tokens/dtcg/*.json`** — it is a
+contract more than one runtime agrees about ([ADR 067] decision 1), and this
+package is what compiles it. Read `contracts/tokens/README.md` first; it is the
+source's own documentation and it states what a token change reaches.
+
+[Style Dictionary](https://styledictionary.com) v5 compiles that source into
+**three committed outputs**:
 
 | Output | Purpose |
 | --- | --- |
 | `../../sites/_shared/assets/tokens.css` | CSS custom properties, with dark values in a `@media (prefers-color-scheme: dark)` override block. |
+| `../design_system/lib/src/tokens/brand_tokens.dart` | `BrandTokens` / `BrandTokensDark` constants for the Flutter apps. |
+| `../../extensions/core/tokens.json` | a plain JSON table the **build-free** extension subtree can read with no tooling. |
 
-There is **no `build/` directory and no Dart output.** `build/nikatru_tokens.dart`
-was removed on 2026-07-26: a Dart token class encodes ONE fixed palette, but the
-app factory is multi-brand (the Mason brick takes a per-app `seed_hex` and
-`design_system/build_app_theme.dart` derives Material 3 via `ColorScheme.fromSeed`),
-so it had zero consumers. No pubspec depends on this package and no `.dart` file
-carries these hexes. **Changing a token here cannot affect the Flutter apps.**
+There is still **no `build/` directory**: every output is written straight to the
+place that reads it, because emitting to a path nothing read is what previously
+left three copies of the palette and made the generated one a decoy.
 
-The generator writes **straight into `sites/_shared/assets/`** rather than a local
-`build/`, because emitting to a path nothing read is what previously left three
-copies of the palette and made the generated one a decoy.
+## The Dart output, removed 2026-07-26 and back 2026-09-05 on narrower terms
+
+The 2026-07-26 removal was right and its reasoning still holds: a Dart token class
+encodes ONE fixed palette, the app factory is multi-brand (the Mason brick takes a
+per-app `seed_hex` and `design_system/build_app_theme.dart` derives Material 3 via
+`ColorScheme.fromSeed`), so `build/nikatru_tokens.dart` could not be every app's
+paint and had zero consumers.
+
+⚠️ **This README used to end that paragraph with "Changing a token here cannot
+affect the Flutter apps." That sentence is now FALSE and this is its correction.**
+`brand_tokens.dart` is imported by
+`packages/design_system/lib/src/tokens/app_text.dart`, which reads
+`BrandTokens.fontDisplay` and `BrandTokens.fontBody` in all six named
+`TextStyle`s — the two font families were typed there as string literals until
+2026-09-05, and they are brand facts declared in `font.json`. So a change to
+`font.display` reaches every app that uses `AppText`.
+
+🔴 **What has NOT changed is the colour half.** The colours reach Dart as
+constants and **nothing paints with them**, deliberately. Do not repaint a screen
+from `BrandTokens`, and do not generate
+`packages/design_system/lib/src/tokens/app_colors.dart` from this source — that is
+Subly's palette, not this one, and the reasons are in
+`style-dictionary.config.mjs`'s header and in `contracts/tokens/README.md`.
 
 The build is deterministic — no timestamps — so re-running it on unchanged
 sources produces byte-identical output. That is what makes the CI drift check
-(`ci.yml`, `tokens` lane: delete the artifact, rebuild, `git diff --exit-code`)
-meaningful.
+(`ci.yml`, `site-tokens` lane: delete **all three** artifacts, rebuild,
+`git diff --exit-code` all three) meaningful, and it is why
+`tooling/ci/assert-palette-consistent.mjs` can additionally hold all three equal
+to `contracts/tokens/dtcg/` without installing anything.
 
 ## ⚠️ What this file does and does not govern today
 
@@ -46,21 +73,22 @@ that generator, never in place, and they are not driven by this package.
 ## Build
 
 ```sh
-npm install
-npm run build   # regenerates ../../sites/_shared/assets/tokens.css
+npm ci
+npm run build   # regenerates all three outputs listed above
 ```
 
 ## Editing tokens
 
-1. Edit the DTCG sources in `tokens/`: `color.json` (light palette),
-   `color.dark.json` (dark overrides), `size.json` (radius), `font.json` (families).
+1. Edit the DTCG sources in `../../contracts/tokens/dtcg/`: `color.json` (light
+   palette), `color.dark.json` (dark overrides), `size.json` (radius),
+   `font.json` (families).
 2. **Add the token name to `LIGHT_COLORS` / `DARK_COLORS` in
    `style-dictionary.config.mjs`.** The emit order is an explicit list; a token
    present in the JSON but absent from the list would be silently dropped from the
    output, so the build now fails loudly in *both* directions — a listed token
    missing from JSON, and a JSON token missing from the list.
 3. Run `npm run build`.
-4. Commit the sources **and** the regenerated `tokens.css` together, or the CI
+4. Commit the sources **and** all three regenerated outputs together, or the CI
    drift lane goes red.
 
 ⚠️ **Do not write curly-brace token paths inside a `$description`.** Style Dictionary
@@ -115,6 +143,9 @@ These are recorded rather than silently tolerated:
 - `--font-display: "Space Grotesk"` and `--font-body: "Manrope"` appear on **zero**
   live pages; every page uses the system stack
   (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif`).
+  ⚠️ Those two tokens are no longer inert, though: since 2026-09-05 they are the
+  fonts the **Flutter apps** set, through `BrandTokens.fontDisplay` /
+  `fontBody` in `app_text.dart`. Changing one changes the apps and no page.
 - `--ico-bg` (`#EEF3FF` light) is a real variable on `sites/rajasekarselvam/index.html`
   and is in no token file — the same gap `--soft` had, at one page instead of thirteen.
 
@@ -123,6 +154,14 @@ These are recorded rather than silently tolerated:
 - **Web:** link `sites/_shared/assets/tokens.css` and use `var(--primary)`,
   `var(--soft)`, etc. Dark mode is automatic via `prefers-color-scheme`.
   See the deployment caveat above — no site links it today.
-- **Flutter / Dart:** nothing to consume. Per-app colour comes from the brick's
-  `seed_hex` via `ColorScheme.fromSeed`; non-colour cross-app values (spacing,
-  type scale, radii) live in `packages/design_system` as Dart constants.
+- **Flutter / Dart:** import
+  `packages/design_system/lib/src/tokens/brand_tokens.dart` and use
+  `BrandTokens.fontDisplay` / `fontBody` / `radius`. **Per-app COLOUR still comes
+  from the brick's `seed_hex` via `ColorScheme.fromSeed`** — `BrandTokens`'
+  colours are the company brand, not an app's, and painting a screen with one
+  would make every app look like the website. Spacing and the type scale live in
+  `packages/design_system` as hand-written Dart constants and stay there.
+- **Extensions:** read `extensions/core/tokens.json` directly. It is data, so no
+  bundler, transpiler or install step is involved and the build-free guarantee
+  (`tooling/ci/assert-extensions-build-free.mjs`) is untouched. No tool imports
+  it yet; a tool that adopts it also needs a `core.json` module row.
