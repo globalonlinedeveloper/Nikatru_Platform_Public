@@ -54,6 +54,14 @@ name: Extensions
 #    rather than the whole of it, bounded by the two sentinel comments. Reading
 #    the whole file would grade every CI step too and fail on
 #    `actions/upload-artifact`, which is not a publishing surface.
+#  6a ⚠️ AND THE PORT'S OWN TRAP, RECORDED BECAUSE IT COST TWO CI RUNS: the
+#    timeout-minutes above were added mechanically after each `runs-on:`, and two
+#    e2e jobs ALREADY HAD ONE. A duplicate mapping key is silently merged by
+#    every YAML library that reads this file locally — PyYAML, action-validator
+#    and zizmor all reported it clean — and REFUSED by GitHub, which then creates
+#    a run with ZERO JOBS and no message any API returns. The only local check
+#    that saw it was a loader configured to reject duplicate keys. If this file is
+#    ever edited by a script again, run that loader over it before pushing.
 #  6 Two platform-side jobs are added at the top, and they are the reason this
 #    merge is allowed to be an improvement rather than a risk: `build-free`
 #    (`tooling/ci/assert-extensions-build-free.mjs`) and `contracts`. Neither
@@ -1503,7 +1511,6 @@ jobs:
     # matrix rather than in a step anyone can read.
     if: (!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'schedule' || (github.event_name == 'pull_request' && github.event.label.name == 'run-e2e') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'e2e'))) && (needs.e2e-discover.result == 'success' && needs.e2e-discover.outputs.count != '0')
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
     # 45 until 2026-08-25, when it was sized for ONE suite. The five wired
     # suites total 685s (11m25s) on the author machine — run.mjs 122s,
     # claim-reduction 79s, reduction-corpus 451s, batch-artifact 15s,
@@ -2326,7 +2333,6 @@ jobs:
     # so waiting ~798s for this run would only delay the alarm.
     if: (!startsWith(github.ref, 'refs/tags/') && (github.event_name == 'schedule' || (github.event_name == 'pull_request' && github.event.label.name == 'run-e2e') || (github.event_name == 'workflow_dispatch' && inputs.lane == 'e2e'))) && (github.event_name != 'pull_request' || github.event.label.name == 'run-e2e')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
     # The workflow-level block is `contents: read`, and a job block replaces it
     # wholly, so both lines are needed. `actions: read` is what reads run history.
     permissions:
