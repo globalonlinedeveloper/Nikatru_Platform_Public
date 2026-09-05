@@ -145,11 +145,22 @@ const edit = (root, rel, fn) => {
   writeFileSync(p, next);
 };
 
-/** The real two-step walk's first statement, as both routes spell it. */
+/** The real two-step walk's first statement, as both routes spell it.
+ *
+ * 🔴 THIS IS A PIN ON PRODUCTION SOURCE, SO EDITING EITHER ROUTE EXPIRES IT.
+ * Measured 2026-09-05: wrapping the erasure preflight in the D1 retry helper
+ * respelled the call from a bare `.prepare(` continuation to `db.prepare(`
+ * inside `allRows(...)`, and every mutation keyed on this string stopped
+ * applying. The suite did NOT go quietly green — `edit()` asserts the mutation
+ * changed something, so it went RED with "mutation of ... changed nothing".
+ * That assertion is the only reason this was caught, and it is why the pragma
+ * replacements below survived untouched: `.prepare(` is still a SUBSTRING of
+ * `db.prepare(`, so only the indent-anchored pin broke.
+ * Re-derive this from the routes when it expires; never re-date it. */
 const TWO_STEP =
-  "    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)";
+  "    db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)";
 const replaceListing = (sql) => (root, rel = PLATFORM_ROUTE) =>
-  edit(root, rel, (s) => s.replace(TWO_STEP, `    .prepare(\`${sql}\`)`));
+  edit(root, rel, (s) => s.replace(TWO_STEP, `    db.prepare(\`${sql}\`)`));
 /** Adds a statement next to the real walk instead of replacing it — the right
  *  shape for asking "does R1 false-positive on this?", because replacing the
  *  listing also removes a fingerprint and answers a different question. */
@@ -316,7 +327,7 @@ describe('R2 — required coverage, both directions', () => {
               ".prepare(`SELECT name FROM pragma_table_info('${table}')`)",
               ".prepare(`SELECT name FROM columns_cache WHERE tbl = '${table}'`)",
             )
-            .replace(TWO_STEP, '    .prepare(`SELECT tbl AS name FROM tables_cache ORDER BY tbl`)'),
+            .replace(TWO_STEP, '    db.prepare(`SELECT tbl AS name FROM tables_cache ORDER BY tbl`)'),
         ),
       (r) => {
         assert.equal(r.status, 1);
@@ -330,8 +341,15 @@ describe('R2 — required coverage, both directions', () => {
       (root) =>
         edit(root, PLATFORM_ROUTE, (s) =>
           s.replace(
-            `  const listed = await db\n${TWO_STEP}\n    .all<{ name: string }>();`,
-            "  const listSql = `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`;\n  const listed = await db.prepare(listSql).all<{ name: string }>();",
+            // Re-derived 2026-09-05. The `from` side was the bare
+            // `await db` / `.prepare(` / `.all<...>()` chain. The erasure preflight
+            // now goes through the D1 retry helper, so the real shape is an
+            // `allRows(...)` call and the old `from` silently stopped matching --
+            // caught only because `edit()` asserts the mutation changed something.
+            // The intent is unchanged: put the SQL in a VARIABLE so the scanner
+            // cannot read the literal, and assert it is REPORTED, not dropped.
+            `  const listed = await allRows<{ name: string }>(\n${TWO_STEP},\n  );`,
+            "  const listSql = `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`;\n  const listed = await allRows<{ name: string }>(db.prepare(listSql));",
           ),
         ),
       (r) => {
