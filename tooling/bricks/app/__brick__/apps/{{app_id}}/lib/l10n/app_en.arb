@@ -56,6 +56,10 @@
   "@about": {
     "description": "Opens the standard about dialog."
   },
+  "openSourceLicences": "Open-source licences",
+  "@openSourceLicences": {
+    "description": "One-tap route to Flutter's LicensePage from Settings. [pipeline 8]K-11. Not redundant with `about`: that dialog reaches the licences only via the framework's own button. British spelling, matching apps/subly."
+  },
   "legalese": "© Nikatru",
   "@legalese": {
     "description": "Copyright line in the about dialog. The company name is not translated."

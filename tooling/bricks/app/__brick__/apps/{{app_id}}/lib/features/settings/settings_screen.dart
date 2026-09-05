@@ -27,6 +27,17 @@ class SettingsScreen extends ConsumerWidget {
     // value the user can edit from this very screen, and a snapshot read would
     // go on showing the old name after a successful save. [pipeline C-13]
     final core.AuthUser? user = ref.watch(authUserProvider).valueOrNull;
+    // The RUNNING version, not the compiled-in constant: `AppConfig.appVersion`
+    // is a `String.fromEnvironment` default that a build which forgot
+    // `--dart-define` would report as the truth. `packageVersionProvider` reads
+    // what is actually installed and falls back to the constant only while the
+    // plugin resolves (and on platforms where it cannot), exactly as the
+    // force-update gate does with the same value.
+    //
+    // Hoisted to a local because BOTH about-and-licences rows below need it,
+    // and the two must never be able to report different builds.
+    final String runningVersion =
+        ref.watch(packageVersionProvider).valueOrNull ?? AppConfig.appVersion;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       // 🔴 THIS WAS A BARE `Scaffold` + `ListView`, i.e. NO WIDTH DECISION AT
@@ -372,6 +383,39 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: Text(l10n.deleteAccountSubtitle),
                 onTap: () => _confirmDelete(context, ref, l10n),
               ),
+            // ── OPEN-SOURCE LICENCES ([pipeline 8]K-11) ─────────────────────
+            //
+            // 🔴 THE ONE SHIPPING APP HAD A ONE-TAP LICENCES ROW AND THE BRICK
+            // DID NOT, so every app this factory stamps offered the notices
+            // only via the About dialog's "View licenses" button — two taps,
+            // behind a dialog. Several packages a stamped app ships, and the
+            // MaterialIcons font that `uses-material-design: true` bundles,
+            // carry attribution obligations discharged by DISPLAYING the
+            // notice, and both stores may ask for evidence of rights on
+            // demand. The answer has to be a screen the reviewer can reach,
+            // not a search.
+            //
+            // TWO tiles, and they are NOT redundant. The About tile below is
+            // the chassis one and carries the RUNNING VERSION — the single
+            // fact a support mail is worthless without — and reaches the
+            // licences only through the framework's own button. This row is
+            // the one tap K-11 asks for.
+            //
+            // `LicensePage` reads `LicenseRegistry`, which every package
+            // registers into automatically and which `main.dart` now tops up
+            // with the vendored font entries Flutter's collector never sees —
+            // so this list stays correct as dependencies change, instead of
+            // being a list somebody must remember to update.
+            ListTile(
+              leading: const Icon(Icons.copyright_outlined),
+              title: Text(l10n.openSourceLicences),
+              onTap: () => showLicensePage(
+                context: context,
+                applicationName: AppConfig.appName,
+                applicationVersion: runningVersion,
+                applicationLegalese: l10n.legalese,
+              ),
+            ),
             // 🔴 [pipeline C-13] `applicationVersion` WAS MISSING, and the
             // register row for this screen has always promised "version and
             // legalese". Flutter does not complain: `showAboutDialog` simply
@@ -380,17 +424,12 @@ class SettingsScreen extends ConsumerWidget {
             // which is the one fact a support mail is worthless without, and the
             // reason both stores expect a version to be visible in-app.
             //
-            // The RUNNING version, not the compiled-in constant: `AppConfig
-            // .appVersion` is a `String.fromEnvironment` default that a build
-            // which forgot `--dart-define` would report as the truth. The
-            // provider reads what is actually installed and falls back to the
-            // constant only while the plugin resolves (and on platforms where it
-            // cannot), exactly as the force-update gate does with the same value.
+            // It is `runningVersion` — the RUNNING version, not the compiled-in
+            // constant. See where that local is computed at the top of `build`
+            // for why the distinction matters.
             AboutListTile(
               applicationName: AppConfig.appName,
-              applicationVersion:
-                  ref.watch(packageVersionProvider).valueOrNull ??
-                  AppConfig.appVersion,
+              applicationVersion: runningVersion,
               applicationLegalese: l10n.legalese,
               child: Text(l10n.about),
             ),
