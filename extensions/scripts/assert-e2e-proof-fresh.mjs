@@ -74,6 +74,26 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
    exactly as designed: a gate that cannot find its subject says so instead of
    reporting freshness it never measured. */
 const WORKFLOW_CANDIDATES = ['extensions.yml', 'e2e.yml'];
+
+/* 🔴 A HISTORY THAT BEGINS TODAY IS NOT A DEAD CRON, AND EXACTLY ONE OF THOSE
+   TWO STATES IS AN EMERGENCY. On 2026-09-05 this tree moved into
+   Nikatru_Platform_Public ([ADR 067] decision 1). The run history of the three
+   workflows it replaces is in globalonlinedeveloper/Nikatru_Extensions_Public,
+   which is archived and which no query here reaches — so limb 1's
+   "no scheduled run … at all" was true, correct, and about the move rather than
+   about the timer.
+
+   ⚠️ THIS IS A BOOTSTRAP, NOT A WAIVER, AND THE DIFFERENCE IS THAT IT EXPIRES BY
+   ARITHMETIC. It is the same shape tooling/ops/register.json uses for the same
+   problem (`firstDue`, "dated one cadence window out; the schema refuses
+   anything further ahead"). Until BOOTSTRAP_UNTIL an EMPTY history is a NOTICE
+   naming this constant; after it, it is an error again with no code change and
+   nothing to remember. A NON-EMPTY history is graded normally on both sides of
+   the date — the escape covers "nothing has run yet", never "what ran was red".
+
+   Delete this constant once a scheduled run exists; leaving it costs nothing
+   after the date, but a reader deserves to find it gone. */
+const BOOTSTRAP_UNTIL = Date.parse('2026-09-12T00:00:00Z');
 const BRANCH = 'main';
 /* Derived from the cron, and re-derived by the self-check below, which reddens
    if the cadence stops being weekly. */
@@ -397,7 +417,12 @@ const api = async p => {
 
   /* ── LIMB 1: DID THE TIMER FIRE ───────────────────────────────────────── */
   if (!sched.length) {
-    err(`no scheduled run of ${WORKFLOW} on ${BRANCH} is in the run history at all. Either the timer has never fired, or the workflow was renamed and this query is watching a name nothing uses.`);
+    const why = `no scheduled run of ${WORKFLOW} on ${BRANCH} is in the run history at all. Either the timer has never fired, or the workflow was renamed and this query is watching a name nothing uses.`;
+    if (NOW < BOOTSTRAP_UNTIL) {
+      console.log(`::notice::${why} BOOTSTRAP: this repository's history for this workflow begins 2026-09-05 and the cron is weekly, so an empty history is expected until ${new Date(BOOTSTRAP_UNTIL).toISOString()}. This escape expires on that date by arithmetic, not by anybody remembering it.`);
+    } else {
+      err(why);
+    }
   }
   let timerAge = null;
   if (sched.length) {
@@ -454,7 +479,14 @@ const api = async p => {
     err(`COVERAGE LOST — job names matching ${LEG} were found in the newest ${walked} scheduled ${WORKFLOW} run(s), and not one of them yielded a <cat>/<tool> after the prefix. The set compared below was empty on every run, so the leg-name shape in ${WORKFLOW} has changed and this gate is reading nothing out of it.`);
   }
   let greenAge = null;
-  if (!green) {
+  /* ⚠️ THE BOOTSTRAP REACHES THIS LIMB ONLY WHEN THERE IS NOTHING TO GRADE. With
+     `sched.length === 0` there is no run to be green or red about, and reporting
+     "no green run in the newest 0 runs" is a restatement of limb 1 rather than a
+     second finding. As soon as one scheduled run exists, this limb grades it on
+     both sides of the date. */
+  if (!green && !sched.length && NOW < BOOTSTRAP_UNTIL) {
+    console.log(`::notice::no scheduled run to grade yet; see the bootstrap notice above. Expires ${new Date(BOOTSTRAP_UNTIL).toISOString()}.`);
+  } else if (!green) {
     err(`NO GREEN SCHEDULED RUN in the newest ${walked} scheduled ${WORKFLOW} run(s)${sched.length > walked ? ` (of ${sched.length} visible; the walk is capped at ${WALK_BACK})` : ''}. The weekly proof has been red, has run nothing, or did not run the ${EXPECT_LEGS} leg(s) this checkout expects, for every one of them.`);
   } else {
     greenAge = (NOW - Date.parse(green.created_at)) / DAY;
