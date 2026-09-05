@@ -1,6 +1,6 @@
 name: CI
 
-run-name: CI on ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.number) || github.ref_name }} by @${{ github.actor }}
+run-name: "CI on ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.number) || github.ref_name }} by @${{ github.actor }}"
 
 on:
   # why: main only. A branch prefix list cannot cover branches nobody has named
