@@ -29,10 +29,13 @@
 
 # FullShot — Privacy Policy
 
+<!-- render: class=meta nbsp-dots -->
 Effective date: 2026-08-21 · Last updated: 2026-08-21 · Applies to: FullShot – Full Page Screen Capture, the browser extension for Google Chrome, Microsoft Edge, and Mozilla Firefox, version 1.10.1 and later.
 
+<!-- render: class=lead -->
 FullShot is a screenshot tool that runs entirely on your own computer. It does not have accounts, does not send your data anywhere, and does not track you. This policy explains exactly what that means.
 
+<!-- render: callout=In one line -->
 Your screenshots and settings stay on your device. FullShot has no servers, collects no analytics, shows no ads, and never sells or transmits your data.
 
 ## 1. Who we are
@@ -51,7 +54,7 @@ Google classifies taking a screenshot as "handling user data," so we disclose it
 
 - **What:** When you start a capture, FullShot reads the content of the page in the active tab and produces an image of it. That image is *website content*.
 - **Where it goes:** The screenshot is held in your browser's memory during capture and, if you keep it, saved to a local database (IndexedDB) on your device as your capture *History*. It is also saved to your **Downloads** folder or copied to your clipboard only when you choose to export or copy it.
-- **What we do not do:** We do not upload, transmit, back up, share, or sell your screenshots. They never reach us or any third party. We cannot see them.
+- **What we do <u>not</u> do:** We do not upload, transmit, back up, share, or sell your screenshots. They never reach us or any third party. We cannot see them.
 
 ### b. Settings
 
@@ -114,6 +117,7 @@ FullShot is a general-purpose utility and is not directed to children. It collec
 
 ## 10. Limited Use disclosure
 
+<!-- render: class=meta -->
 This section is required by the Chrome Web Store and is stated in the form it requires. The practices it describes are the same in every browser FullShot ships to.
 
 FullShot's use of information received from Chrome APIs adheres to the [Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/limited-use), including the Limited Use requirements. Specifically: FullShot uses on-device data only to provide its single, user-facing purpose — capturing and working with screenshots you choose to take; it does not transfer that data except as part of a user-initiated save/export you perform; it does not use the data for advertising; and no human at FullShot reads your data (we have no access to it).

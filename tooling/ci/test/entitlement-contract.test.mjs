@@ -205,19 +205,43 @@ ON CONFLICT(reason) DO NOTHING;
 const CLAUSE = `WHERE entitlements.occurred_at IS NULL
         OR excluded.occurred_at > entitlements.occurred_at`;
 
-/** The MoR half of limb 4, plus limb 5's `normalizeInstant`. */
+/** The specifier contract.ts must carry — the same literal the guard names. */
+const IMPORT_SPECIFIER = '../../../../../contracts/entitlement/contract.js';
+
+/**
+ * The MoR file, plus limb 5's `normalizeInstant`.
+ *
+ * ⏱ 2026-09-05 — THIS FIXTURE NO LONGER DECLARES THE SET, because the real file
+ * no longer does. `contract.ts` IMPORTS the vocabulary from
+ * `contracts/entitlement/contract.js` and re-exports it, and limb 4 checks that
+ * in both directions. `o.tsRestates` puts the old declaration back, which is now
+ * a failing input rather than the happy path; `o.tsNoImport` drops the import.
+ */
 function contractTs(entries = ALL_REASONS, o = {}) {
-  const body = entries.map(([r, restores]) => `  { reason: '${r}', restores: ${restores === 1} },`).join('\n');
   const bypass = o.morBypass ? "  if (typeof v === 'string' && v.endsWith('Z')) return { ok: true, iso: v };\n" : '';
   const canonical = o.morCanonical ?? 'new Date(ms).toISOString()';
   const fn = o.morFnName ?? 'normalizeInstant';
+  const importLine = o.tsNoImport
+    ? ''
+    : `import { REVOCATION_REASONS, isRevocationReason } from '${IMPORT_SPECIFIER}';\n` +
+      `export { REVOCATION_REASONS, isRevocationReason };\n`;
+  // The restatement case. Written through a concatenation so the identifier and
+  // the `= [` never sit adjacent in THIS file's own source — a fixture that
+  // matched the guard's own pattern when read as text would be a trap for the
+  // next person grepping this directory.
+  const restated = o.tsRestates
+    ? `export const ${'REVOCATION_REASONS_LOCAL'.replace('_LOCAL', '')}: readonly RevocationReason[] = [\n` +
+      entries.map(([r, restores]) => `  { reason: '${r}', restores: ${restores === 1} },`).join('\n') +
+      `\n];\n`
+    : '';
   return `
 // A doc comment that names a reason nobody seeds: 'wibble'.
+// And a COMMENTED-OUT declaration, so a text scan sees one where the code has none:
+//   export const REVOCATION_REASONS: readonly RevocationReason[] = [
+//     { reason: 'refund_approved', restores: false },
+//   ];
 export interface RevocationReason { readonly reason: string; readonly restores: boolean; }
-export const ${'REVOCATION_REASONS'}: readonly RevocationReason[] = [
-${body}
-];
-
+${importLine}${restated}
 // A prose copy of the instant rule, so a text scan for toISOString() finds one
 // even in the fixtures where the code no longer has it:
 //   return { ok: true, iso: new Date(ms).toISOString() };
@@ -228,6 +252,44 @@ ${bypass}  if (typeof v !== 'string') return { ok: false };
   if (!Number.isFinite(ms)) return { ok: false };
   return { ok: true, iso: ${canonical} };
 }
+`;
+}
+
+// ── the four RUNTIME COPIES limb 4 now compares against the seed ─────────────
+// Each is written in its own syntax, because that is the whole point: four
+// languages cannot be byte-compared, so each is parsed and the SET is what has
+// to agree — including which member restores access.
+
+/** contracts/entitlement/contract.js — the authored copy. */
+function contractJs(entries = ALL_REASONS) {
+  return `// @ts-check
+/** @type {readonly MoneyEnvironment[]} */
+export const MONEY_ENVIRONMENTS = ['live', 'sandbox'];
+
+/** @type {readonly RevocationReason[]} */
+export const REVOCATION_REASONS = [
+${entries.map(([r, restores]) => `  { reason: '${r}', restores: ${restores === 1} },`).join('\n')}
+];
+export const CONTRACT_TABLE = { moneyEnvironments: MONEY_ENVIRONMENTS, revocationReasons: REVOCATION_REASONS };
+`;
+}
+
+/** contracts/entitlement/contract.json — generated from contract.js. */
+function contractJson(entries = ALL_REASONS) {
+  return JSON.stringify({
+    $schema: './contract.schema.json',
+    moneyEnvironments: ['live', 'sandbox'],
+    revocationReasons: entries.map(([reason, restores]) => ({ reason, restores: restores === 1 })),
+  }, null, 2) + '\n';
+}
+
+/** packages/purchases/lib/src/generated/entitlement_contract.g.dart. */
+function contractDart(entries = ALL_REASONS) {
+  return `// GENERATED FILE — DO NOT EDIT.
+const List<EntitlementRevocationReason> kRevocationReasons =
+    <EntitlementRevocationReason>[
+${entries.map(([r, restores]) => `  EntitlementRevocationReason('${r}', restoresAccess: ${restores === 1}),`).join('\n')}
+];
 `;
 }
 
@@ -318,6 +380,26 @@ function run(o = {}) {
   writeFileSync(join(migrations, '0001_entitlements.sql'), o.m0001 ?? MIGRATION_0001);
   if (o.m0004 !== null) writeFileSync(join(migrations, '0004_money_rail.sql'), o.m0004 ?? migration0004(o));
   if (o.contract !== null) writeFileSync(join(mor, 'contract.ts'), o.contract ?? contractTs(o.tsReasons, o));
+
+  // The four runtime copies. `tsReasons` drives all of them by default, so the
+  // long-standing "SQL and code disagree" cases keep meaning what they meant;
+  // the per-copy options exist to break exactly ONE of them, which is how a
+  // limb that compares four files is proved to compare all four.
+  const codeReasons = o.tsReasons ?? ALL_REASONS;
+  const contracts = join(root, 'contracts', 'entitlement');
+  const generated = join(root, 'packages', 'purchases', 'lib', 'src', 'generated');
+  const extCore = join(root, 'extensions', 'core');
+  mkdirSync(contracts, { recursive: true });
+  mkdirSync(generated, { recursive: true });
+  mkdirSync(extCore, { recursive: true });
+  if (o.js !== null) writeFileSync(join(contracts, 'contract.js'), o.js ?? contractJs(o.jsReasons ?? codeReasons));
+  if (o.json !== null) writeFileSync(join(contracts, 'contract.json'), o.json ?? contractJson(o.jsonReasons ?? codeReasons));
+  if (o.vendored !== null) {
+    writeFileSync(join(extCore, 'entitlement-contract.js'), o.vendored ?? contractJs(o.vendoredReasons ?? codeReasons));
+  }
+  if (o.dart !== null) {
+    writeFileSync(join(generated, 'entitlement_contract.g.dart'), o.dart ?? contractDart(o.dartReasons ?? codeReasons));
+  }
   if (o.store !== null) writeFileSync(join(mor, 'store.ts'), o.store ?? storeTs(o));
   if (o.webhooks !== null) writeFileSync(join(routes, 'webhooks.ts'), o.webhooks ?? webhooksTs(o));
   if (o.validate !== null) writeFileSync(join(lib, 'validate.ts'), o.validate ?? validateTs(o));
@@ -474,10 +556,25 @@ describe('assert-entitlement-contract — the money rail schema is complete befo
     assert.match(r.out, /COVERAGE LOST — parsed only \d+ column\(s\)/);
   });
 
-  test('COVERAGE LOST when the TypeScript half of the set is gone', () => {
-    const r = run({ contract: 'export const NOTHING_HERE = [];\n' });
-    assert.equal(r.code, 1);
-    assert.match(r.out, /COVERAGE LOST — parsed zero entries from REVOCATION_REASONS/);
+  test('FAILS when contract.ts stops importing the shared contract', () => {
+    const r = run({ tsNoImport: true });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /does not import '\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/contracts\/entitlement\/contract\.js'/);
+  });
+
+  test('FAILS when contract.ts RESTATES the set instead of importing it — the drift that already happened once', () => {
+    const r = run({ tsRestates: true });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /DECLARES its own REVOCATION_REASONS array again/);
+  });
+
+  test('a restated set that AGREES with the seed today still fails — agreement is not the property', () => {
+    // The restatement is byte-for-byte correct against the seed here. It fails
+    // anyway, because "the two copies agree on the day they were written" is
+    // exactly what was true the last time this set drifted.
+    const r = run({ tsRestates: true, tsReasons: ALL_REASONS });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /a second declaration is how this set drifted the first time/);
   });
 
   test('COVERAGE LOST when contract.ts does not exist — one half of a two-place set checks nothing', () => {
@@ -486,12 +583,105 @@ describe('assert-entitlement-contract — the money rail schema is complete befo
     assert.match(r.out, /COVERAGE LOST — services\/platform\/src\/lib\/mor\/contract\.ts does not exist/);
   });
 
-  test('a REVOCATION_REASONS mentioned only in a comment does not count', () => {
+  test('an import mentioned ONLY IN A COMMENT does not satisfy the check', () => {
     const r = run({
-      contract: "// export const REVOCATION_REASONS: readonly RevocationReason[] = [\n//   { reason: 'refund_approved', restores: false },\n// ];\nexport const X = 1;\n",
+      contract: `// import { REVOCATION_REASONS } from '${IMPORT_SPECIFIER}';\nexport const X = 1;\n`,
     });
     assert.equal(r.code, 1);
-    assert.match(r.out, /COVERAGE LOST — parsed zero entries/);
+    assert.match(r.out, /does not import/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB 4, WIDENED — the vocabulary is spoken by four runtimes and the SQL seed
+// is the only one a stranger's money is filed against. Each copy is broken
+// alone, so no single one of them can be the reason the limb is green.
+//
+// ⚠️ REAL-TREE MUTATIONS FIRST, 2026-09-05, six, on this worktree, each restored
+// and the restore re-verified green (green control → mutate → run → restore):
+//   M1 `chargeback_reversed.restores` true→false in contracts/entitlement/contract.js   -> exit 1
+//   M2 the same flip in extensions/core/entitlement-contract.js                          -> exit 1
+//   M3 the same flip in the generated Dart                                               -> exit 1
+//   M4 the same flip in contracts/entitlement/contract.json                              -> exit 1
+//   M5 a REVOCATION_REASONS array re-declared in contract.ts                             -> exit 1
+//   M6 extensions/core/entitlement-contract.js deleted                     -> exit 1, COVERAGE LOST
+// Green controls before and after: exit 0.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-entitlement-contract limb 4 — every runtime copy of the vocabulary answers to the SQL seed', () => {
+  const flip = ALL_REASONS.map(([r, v]) => (r === 'chargeback_reversed' ? [r, 0] : [r, v]));
+
+  const COPIES = [
+    { name: 'contracts/entitlement/contract.js', reasons: 'jsReasons', absent: 'js', junk: 'export const NOTHING = [];\n' },
+    { name: 'contracts/entitlement/contract.json', reasons: 'jsonReasons', absent: 'json', junk: '{ "moneyEnvironments": ["live"] }\n' },
+    { name: 'extensions/core/entitlement-contract.js', reasons: 'vendoredReasons', absent: 'vendored', junk: 'export const NOTHING = [];\n' },
+    { name: 'packages/purchases/lib/src/generated/entitlement_contract.g.dart', reasons: 'dartReasons', absent: 'dart', junk: '// nothing generated\n' },
+  ];
+
+  for (const copy of COPIES) {
+    test(`FAILS when ${copy.name} alone loses the restoring flag`, () => {
+      const r = run({ [copy.reasons]: flip });
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /disagrees about RESTORING ACCESS/);
+      assert.ok(r.out.includes(copy.name), `the failure did not name ${copy.name}:\n${r.out}`);
+    });
+
+    test(`COVERAGE LOST when ${copy.name} is missing`, () => {
+      const r = run({ [copy.absent]: null });
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /COVERAGE LOST/);
+      assert.ok(r.out.includes(copy.name), `the failure did not name ${copy.name}:\n${r.out}`);
+    });
+
+    test(`COVERAGE LOST when ${copy.name} parses to zero reasons`, () => {
+      // An empty right-hand side agrees with any left-hand side. This is the
+      // shape that prints ok while checking nothing.
+      const r = run({ [copy.absent]: copy.junk });
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /parsed zero revocation reasons out of/);
+      assert.ok(r.out.includes(copy.name), `the failure did not name ${copy.name}:\n${r.out}`);
+    });
+
+    test(`FAILS when ${copy.name} alone carries a reason the database never heard of`, () => {
+      const r = run({ [copy.reasons]: [...ALL_REASONS, ['vibes', 0]] });
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /'vibes' exists in .* but is NOT seeded/);
+    });
+  }
+
+  test('FAILS when the vendored copy has the SAME SET but different BYTES', () => {
+    // Set-equality alone would pass this: the eight reasons and their flags are
+    // untouched, and only the predicate around them was edited. The extension
+    // and the Worker are supposed to read the same file, so a fork that agrees
+    // about the table and disagrees about what `restoresAccess` MEANS is exactly
+    // the drift byte-comparison exists for.
+    const forked = contractJs().replace(
+      'export const CONTRACT_TABLE',
+      'export function restoresAccess() { return true; }\nexport const CONTRACT_TABLE',
+    );
+    const r = run({ vendored: forked });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is not byte-identical to contracts\/entitlement\/contract\.js/);
+    assert.match(r.out, /a vendored copy is a COPY, not a fork/);
+  });
+
+  test('COVERAGE LOST when the byte-comparison source is missing', () => {
+    const r = run({ js: null });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /byte-compared to nothing/);
+  });
+
+  test('COVERAGE LOST when EVERY copy is missing — the limb says it compared none', () => {
+    const r = run({ js: null, json: null, vendored: null, dart: null });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /compared the seed against ZERO of its 4 copies/);
+  });
+
+  test('the passing line PRINTS how many copies were compared', () => {
+    // "0 copies, clean" must not be able to read like "4 copies, clean".
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /matching all 4 runtime copy\/copies of the vocabulary/);
+    assert.match(r.out, /importing contracts\/entitlement\/contract\.js rather than restating it/);
   });
 });
 

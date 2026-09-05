@@ -12,6 +12,15 @@ library;
 
 export 'src/checkout_launcher.dart';
 export 'src/entitlement_convergence.dart';
+// GENERATED from contracts/entitlement/contract.js — the one authored copy of
+// the money vocabulary, which the platform Worker and the extensions import
+// directly. Dart cannot import JavaScript, so this is the one transcription and
+// it is machine-made: `node contracts/entitlement/generate-dart.mjs --check`
+// fails on drift, and tooling/ci/assert-entitlement-contract.mjs limb 4 holds it
+// equal to the SQL seed. Exported here so a Dart caller reads the vocabulary
+// from the rail package rather than restating it — the fourth transcription this
+// whole arrangement exists to prevent.
+export 'src/generated/entitlement_contract.g.dart';
 export 'src/hosted_checkout_rail.dart';
 export 'src/money_funnel.dart';
 export 'src/offering.dart';

@@ -51,23 +51,52 @@ corpus names first. The count of copies compared belongs in the guard's own
 output line, for the same reason `check-store-packages.mjs` prints its package
 count: *"so '0 packages, clean' cannot be misread as '12 clean'."*
 
-## What is deliberately NOT done here
+## What was done (2026-09-05)
 
-- 🔴 **Nothing renders this file.** Both HTML copies are still hand-maintained
-  and are still what ships. Making them renderings of this Markdown is a change
-  to `sites/` and to an extension's `publish/` directory, and it is a separate,
-  reviewable piece of work.
-- 🔴 **The provenance comment in `privacy.html` is left exactly as it is.** It
-  is currently the only real control, and deleting it in favour of a guard that
-  does not exist yet would remove the control and leave the claim.
+- ✅ **The guard exists**: `tooling/ci/assert-legal-text-parity.mjs`, wired into
+  `ci.yml`'s guards-legal lane. Two assertions, a 2,000-character floor, a
+  minimum of two copies per document, and the count of copies compared printed on
+  every run.
+- ✅ **Both HTML copies are RENDERED** from `fullshot-privacy.md` by
+  `render-fullshot-privacy.mjs`, whose `--check` fails on drift. The rendering
+  changed **not one visible byte** of either published file: `diff` against the
+  copies as they stood shows only the HTML comment, where the provenance note
+  below is replaced by a pointer to the generator and the guard.
+- ✅ **The provenance comment is replaced, not deleted.** It was the only real
+  control and is now superseded by one that fails a build.
+- ⬜ **`extensions/scripts/check-store-metadata.mjs` was not changed.** It grades
+  the extension's `publish/` copy; the new guard grades the same file against the
+  Markdown. The two do not disagree about which file is the source — the store
+  gate reads the published copy, this one reads where it came from.
 
-## Order of work
+## How the renderer is scoped, and why that is stated
 
-1. Write the guard described above (two assertions, a coverage floor, a printed
-   count) and land it green over the copies as they stand.
-2. Then, and only then, make both HTML copies renderings of
-   `fullshot-privacy.md`, and replace `privacy.html`'s provenance comment with a
-   pointer to the guard by name.
-3. The extension's `publish/` copy is graded by
-   `extensions/scripts/check-store-metadata.mjs` today; that gate and the new
-   guard must not disagree about which file is the source.
+It understands exactly the constructs this policy uses and REFUSES anything else
+rather than guessing — a general Markdown implementation would be a dependency,
+and nothing under `contracts/` may need an install to be consumed ([ADR 067]
+decision 1). Presentation that is not text lives in the Markdown as a directive
+comment on the line above:
+
+```
+<!-- render: class=meta nbsp-dots -->
+<!-- render: class=lead -->
+<!-- render: callout=In one line -->
+```
+
+A Markdown reader ignores HTML comments, so the source still reads as prose. ⚠️
+`callout=` carries **published text** — "In one line" is rendered as a visible
+tag — so the guard's Markdown reduction lifts that value out before it drops
+comments. Treating every directive as metadata would let that string change with
+the guard reporting a clean run.
+
+## Mutation proof, 2026-09-05
+
+Five mutations against the real tree, green control before and after each:
+
+| Mutation | Result |
+|---|---|
+| one sentence changed in `PRIVACY-POLICY.html` | exit 1, naming the pair and the first differing character |
+| a different sentence changed in the served copy | exit 1 — neither copy is the privileged one |
+| **both copies changed IN STEP, the Markdown left alone** | exit 1 — this is the assertion that is easy to leave out |
+| `PRIVACY-POLICY.html` deleted | exit 1, COVERAGE LOST |
+| the Markdown changed, the copies not re-rendered | exit 1, and `render-fullshot-privacy.mjs --check` exits 1 too |

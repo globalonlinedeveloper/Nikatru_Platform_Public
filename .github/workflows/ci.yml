@@ -242,6 +242,8 @@ jobs:
         run: node tooling/ci/assert-no-price-literals.mjs
       - name: The money funnel is wired, and the pseudonymity firewall holds
         run: node tooling/ci/assert-pseudonymity-firewall.mjs
+      - name: A legal document published twice says the same thing in both places
+        run: node tooling/ci/assert-legal-text-parity.mjs
 
   guards-store:
     name: Guards — store, release and versioning

@@ -567,6 +567,7 @@
   },
   {
     "claims": [
+      "ADR 067",
       "M-2",
       "M-3",
       "M-7"
@@ -721,6 +722,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-launcher-icons.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 067"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-legal"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-legal-text-parity.mjs",
     "references": [],
     "state": "WIRED"
   },
