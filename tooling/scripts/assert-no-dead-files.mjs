@@ -453,6 +453,13 @@ const RUNNER_WALKS = [
 // ═════════════════════════════════════════════════════════════════════════════
 const TOOL_CONVENTION = new Map([
   ['README.md', 'GitHub and every file browser render README.md as the directory front page'],
+  [
+    'AGENTS.md',
+    'coding agents locate it by name — it is the agent-facing front page the way README.md is the ' +
+      'human one, and nothing in the tree can reference it: the file that loads it is the repo-root ' +
+      'CLAUDE.md, which is one line (`@AGENTS.md`) and is gitignored, so it is invisible to every ' +
+      'resolver here by construction',
+  ],
   ['LICENSE', 'the licence is located by name by GitHub and by every scanner'],
   ['package.json', 'npm/pnpm locate it by name'],
   ['package-lock.json', 'npm locates it by name'],

@@ -452,6 +452,23 @@ const GUARDS = [
   { name: 'assert-requirements-index', speed: 'fast', needsPrivate: true,
     rel: ['requirements/tooling/assert-requirements-index.mjs'],
     what: "requirements/index.json's `entries` and `perStage` counts are the counts in the kind files" },
+  /* ADDED 2026-09-05 with the knowledge set. `Private/platform-state/` is the
+     cold-start knowledge set [ADR 067] decision 3 created: eight schema-validated
+     files in which every number is `{value, asOf, verify}` and a BARE number is
+     refused anywhere in the directory. It is the FIFTH hand-kept second copy of the
+     tree in this corpus, and the other four each went stale in silence — which is
+     why it was born with a guard rather than a promise.
+     🔴 THE GUARD EXISTED AND NOTHING RAN IT, which is the failure class this whole
+     set exists to close: `assert-platform-state.mjs` was written on the day the
+     directory was, was documented in two READMEs, and was in no runner at all — so
+     a mutated state file committed clean. A guard that is written and not wired is a
+     guard nobody runs. One `rel` candidate, corpus-relative: this guard has never
+     existed under any pre-2026-08-18 layout, so it has no legacy spellings to fall
+     back to and adding dead ones would be citing paths that do not resolve — same
+     reasoning as the `assert-requirements-index` entry above. */
+  { name: 'assert-platform-state', speed: 'fast', needsPrivate: true,
+    rel: ['requirements/tooling/assert-platform-state.mjs'],
+    what: 'platform-state/ validates against its schemas and carries no bare number — every fact names the command that re-derives it' },
 ];
 
 const selected = GUARDS.filter((g) => FULL || g.speed === 'fast');

@@ -129,6 +129,7 @@
   "smoke-web-artifact.test.mjs": 8,
   "snap-submission.test.mjs": 34,
   "snapcraft-generable.test.mjs": 66,
+  "spec-guards.test.mjs": 3,
   "stamp-brand-assets.test.mjs": 11,
   "stamp-platforms.test.mjs": 27,
   "stamp-properties.test.mjs": 10,
