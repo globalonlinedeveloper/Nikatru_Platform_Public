@@ -420,7 +420,11 @@ jobs:
         # repo root, which this reads by its own default name.
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/osv-scanner" scan source -r .
+          # why: --config is EXPLICIT. Without it v2 resolves a config per
+          # lockfile DIRECTORY, so a root file loads, prints "unused ignores"
+          # and ignores nothing for packages/tokens/package-lock.json.
+          # Measured: run 33960900452.
+          "${RUNNER_TEMP}/osv-scanner" scan source -r --config osv-scanner.toml .
       - name: Install Trivy (pinned + checksum-verified)
         env:
           TRIVY_VERSION: '0.74.0'
