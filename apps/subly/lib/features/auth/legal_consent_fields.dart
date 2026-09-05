@@ -31,6 +31,19 @@ import '../shared/widgets.dart' show openExternalUrl;
 /// Rules 2025 and CPRA alike; an "optional" box that arrives ticked is the
 /// oldest one there is.
 ///
+/// 🔒 THE TERMS TICK ALSO CARRIES THE 18+ ATTESTATION ([ADR 068]).
+/// `legalAcceptTerms` reads "I am 18 or older, I agree to the Terms of
+/// Service, and I have read the Privacy Policy." — ONE sentence on ONE
+/// control, deliberately. A second checkbox for the age would be a second
+/// blocking consent `assert-signup-consent-shape.mjs` does not know about,
+/// and a line of prose beside the box would be a statement nobody has to
+/// act on; the tick is the affirmative act, so the attestation rides on it.
+/// The floor is 18 because India's DPDP Act 2023 sets the child threshold
+/// there, and a product lawful under DPDP is lawful under COPPA (13) and
+/// GDPR (13–16) on this axis without a second rule. Nothing else follows:
+/// no age gate, no date-of-birth field, no parental-consent flow —
+/// [ADR 068] rules that no NIKATRU product targets children at all.
+///
 /// ⚠️ THE LINKS OPEN THE LIVE PAGES, not an in-app copy. `AppConfig.termsUrl` /
 /// `privacyUrl` point at nikatru.com, which is the text the user is actually
 /// bound by — an embedded copy is a second version of a legal document that

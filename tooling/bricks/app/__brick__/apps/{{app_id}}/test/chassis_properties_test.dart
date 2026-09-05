@@ -3363,6 +3363,43 @@ void main() {
       expect(ta.consentTitle('Probe'), contains('Probe'));
     });
 
+    // ── the 18+ attestation, in EVERY locale the template ships ──────────
+    //
+    // [ADR 068] sets the audience floor at 18 and requires the sign-up
+    // clickwrap to carry it. In the TEMPLATE that is not one app's wording: it
+    // is the sentence every app this factory stamps will ship, so a locale that
+    // loses the age loses it for the whole portfolio at once. gen-l10n falls
+    // back to English without failing, which is why byte-equality between the
+    // two locales is asserted as a defect rather than trusted as a translation.
+    test('the clickwrap carries the 18 floor in both locales', () async {
+      final AppLocalizations en = await AppLocalizations.delegate.load(
+        const Locale('en'),
+      );
+      final AppLocalizations ta = await AppLocalizations.delegate.load(
+        const Locale('ta'),
+      );
+      expect(
+        en.legalAcceptTerms,
+        contains('18'),
+        reason:
+            'the tick is the affirmative act, so the age floor has to be in '
+            'the sentence it names — [ADR 068], and it is a published claim',
+      );
+      expect(
+        ta.legalAcceptTerms,
+        contains('18'),
+        reason:
+            'a reader shown a sentence without the age has attested to nothing',
+      );
+      expect(
+        ta.legalAcceptTerms,
+        isNot(en.legalAcceptTerms),
+        reason:
+            'byte-equality is what a MISSING Tamil key looks like from here — '
+            'gen-l10n serves the English value and nothing fails',
+      );
+    });
+
     test('NULL means follow the device, and is the default', () {
       final ProviderContainer c = _container(_MemStore());
       addTearDown(c.dispose);

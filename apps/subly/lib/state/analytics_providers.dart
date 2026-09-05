@@ -15,7 +15,7 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 /// that equality a consent artifact proves someone tapped a button but not what
 /// they were shown, which is the one thing the record exists to establish —
 /// so `tooling/ci/assert-seams-wired.mjs` fails the build if the two drift.
-const String kPrivacyPolicyVersion = '2026-08-10';
+const String kPrivacyPolicyVersion = '2026-09-05';
 
 /// 🔒 The version of the Terms of Service the sign-up clickwrap accepts.
 ///
@@ -33,7 +33,7 @@ const String kPrivacyPolicyVersion = '2026-08-10';
 /// is the mechanism working, not a side effect — re-acceptance is a MATERIAL-
 /// CHANGE flag (research/43), never a version bump for its own sake. Ship a
 /// wording tidy-up without touching this line.
-const String kTermsVersion = '2026-08-01';
+const String kTermsVersion = '2026-09-05';
 
 /// The pair the sign-up clickwrap accepts and the interstitial compares
 /// against. ONE constant so no caller can compare half the question.
