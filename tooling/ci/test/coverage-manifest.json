@@ -28,6 +28,7 @@
   "channel-arming.test.mjs": 26,
   "channel-claims.test.mjs": 45,
   "channel-register.test.mjs": 166,
+  "chassis-ledger.test.mjs": 21,
   "chrome-splice.test.mjs": 26,
   "clone-contract.test.mjs": 34,
   "config-registry.test.mjs": 59,

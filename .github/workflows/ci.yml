@@ -226,6 +226,13 @@ jobs:
       - name: The enforcement index is what the tree says
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-enforcement-index.mjs
+      # Measured 2026-09-05: an undeclared file added to the app template
+      # reddened ZERO of the 127 assert-*.mjs guards. Seventeen were red both
+      # with and without it — all needing build artifacts, credentials or CLI
+      # args — so the difference was nil. This is the only thing that notices.
+      - name: Every line of the app template is accounted for
+        working-directory: ${{ github.workspace }}
+        run: node tooling/ci/assert-chassis-ledger.mjs
       - name: An Apple privacy manifest that exists is one the build copies
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-privacy-manifest.mjs
