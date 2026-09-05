@@ -449,6 +449,24 @@
       ]
     },
     {
+      "binding": "SIGNUPS_KV",
+      "kind": "kv_namespaces",
+      "scope": "shared",
+      "purpose": "The `nikatru-signups` namespace, bound READ-ONLY into `platform` for the nightly off-vendor export and NOTHING else. 🔴 `research/revamp-2026-09-05/06 §3.4` measured it bound to no Worker at all — 2 list operations, 0 reads, 0 writes in seven days — which is the exact shape of a store that gets lost with nobody noticing, and it holds contactable email addresses. The writer is still sites/nikatru/functions/api/subscribe.js (a Pages Function), which is also where its expirationTtl is set; this Worker never writes it. A binding is the only way a Worker can back up a namespace.",
+      "readers": [
+        "services/platform/src/backup/index.ts"
+      ]
+    },
+    {
+      "binding": "BACKUPS_R2",
+      "kind": "r2_buckets",
+      "scope": "shared",
+      "purpose": "The ONE portfolio backup bucket, `nikatru-backups`, written by the 02:30 cron only and addressed by key prefix (`d1/`, `kv/`, `manifests/`). 🔴 It closes `06 §4.2` — D1, KV and R2 in NO backup, `recovery.worker-d1-export` NEVER drilled — for the entitlements database that serves the whole portfolio. ⚠️ It is deliberately ONE bucket: the per-app `<app>-exports` buckets removed from the brick on 2026-07-25 are the precedent, and `subly-exports` is still sitting in the account, empty and unbound, as the reminder.",
+      "readers": [
+        "services/platform/src/backup/index.ts"
+      ]
+    },
+    {
       "binding": "EVENTS_LIMITER",
       "kind": "ratelimits",
       "scope": "shared",

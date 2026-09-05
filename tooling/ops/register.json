@@ -611,10 +611,19 @@
         "window in one month. A 24h dispatch cadence would leave 12h of margin against that window; 12h",
         "leaves 24h. The nightly limbs stay on 06:00 alone because the second firing runs the dispatcher",
         "and nothing else -- see the `event.cron` branch in services/platform/src/scheduled.ts, which is",
-        "what keeps a DESTRUCTIVE limb (the retention sweep) firing once a day and not twice."
+        "what keeps a DESTRUCTIVE limb (the retention sweep) firing once a day and not twice.",
+        "",
+        "🔴 `backup_export` KEEPS A THIRD KIND OF FIRING, added 2026-09-05. It is neither the nightly",
+        "chain nor a dispatcher margin: it is the off-vendor export of D1 and KV into R2 that closes",
+        "research/revamp-2026-09-05/06-infrastructure-live.md 4.2 -- 'D1, KV and R2 are in NO backup, and",
+        "recovery.worker-d1-export has NEVER been drilled'. It runs at 02:30 so it lands before Box B's",
+        "02:30 Drive sync picks it up and before the 06:00 retention sweep deletes anything. It is watched",
+        "here for the same reason as every other job: check-heartbeats.mjs refuses a declared cron that no",
+        "job keeps, because a schedule firing with nothing watching what it did is how a backup stops."
       ],
       "watchedJobs": {
         "supabase_keepalive": ["0 6 * * *"],
+        "backup_export": ["30 2 * * *"],
         "analytics_liveness": ["0 6 * * *"],
         "renewals": ["0 6 * * *"],
         "events_rollup": ["0 6 * * *"],
@@ -2562,6 +2571,28 @@
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.kv.platform.SIGNUPS_KV",
+      "kind": "retention",
+      "store": "kv:platform:SIGNUPS_KV",
+      "what": "🔴 THE SAME PHYSICAL NAMESPACE AS `retention.kv.nikatru-signups.signup` AND `.rate-limit`, SEEN FROM A SECOND BINDING. It entered this guard's domain on 2026-09-05, when services/platform bound `nikatru-signups` READ-ONLY so the nightly export could back it up (research/revamp-2026-09-05/06 §3.4 measured it bound to no Worker at all). The tree walk enumerates stores as `kv:<worker>:<binding>`, so a namespace bound twice is two stores to this guard and one store in the account — and the second view must not be allowed to imply a second, weaker rule. It does not: the rule is the SAME rule, set at the SAME place, and this row points at that place rather than restating a period beside it.",
+      "rule": "ttl",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the `ttl` limb requires `mechanism.ttlSource` to appear VERBATIM in the anchor, so this row cannot claim a period the writer does not set.",
+      "response": "n/a from this binding. ⚠️ THE PLATFORM WORKER NEVER WRITES THIS NAMESPACE — it lists and reads it once a night into R2 (services/platform/src/backup/index.ts) and nothing else, so it can neither set nor extend any key's expiry. Workers KV fixes expiry at WRITE time and the only writer is the Pages Function in the anchor. The owner-gated gap on the pre-2026-08-09 keys is recorded ONCE, on `retention.kv.nikatru-signups.signup`, and is not restated here: two copies of one gap is two things to close.",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-kv",
+        "anchor": "sites/nikatru/functions/api/subscribe.js",
+        "record": "the expirationTtl on the signup put, computed from `SIGNUP_RETENTION_DAYS` in the anchor",
+        "failingValue": "the anchor losing the declared period, or this Worker gaining a WRITE to the namespace — which would make a second writer able to set a different expiry and make this row's pointer to a single anchor false",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs",
+        "ttlSource": "const SIGNUP_RETENTION_DAYS = 400;"
       },
       "accessProviders": [
         "cloudflare"
