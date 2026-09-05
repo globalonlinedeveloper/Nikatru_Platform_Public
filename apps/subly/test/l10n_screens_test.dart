@@ -485,7 +485,10 @@ void main() {
         final AppLocalizations l10n = await _load(code);
         await _pump(tester, Locale(code), const LoginScreen());
 
-        await tester.enterText(find.byKey(E2EKeys.loginEmail), 'not-an-address');
+        await tester.enterText(
+          find.byKey(E2EKeys.loginEmail),
+          'not-an-address',
+        );
         await tester.enterText(find.byKey(E2EKeys.loginPassword), 'hunter2!!');
         await tester.tap(find.byKey(E2EKeys.loginSubmit));
         await tester.pump();

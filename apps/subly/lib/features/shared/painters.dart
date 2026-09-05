@@ -20,8 +20,10 @@ class DonutPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double total =
-        segments.fold(0.0, (double a, MapEntry<double, Color> s) => a + s.key);
+    final double total = segments.fold(
+      0.0,
+      (double a, MapEntry<double, Color> s) => a + s.key,
+    );
     if (total <= 0) return;
 
     final Offset center = size.center(Offset.zero);
@@ -116,7 +118,12 @@ class RingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = color;
     canvas.drawArc(
-        rect, -math.pi / 2, progress.clamp(0, 1) * 2 * math.pi, false, arc);
+      rect,
+      -math.pi / 2,
+      progress.clamp(0, 1) * 2 * math.pi,
+      false,
+      arc,
+    );
   }
 
   /// 🔴 [track] AND [stroke] ARE IN HERE NOW BECAUSE [track] BECAME THEME-BOUND.

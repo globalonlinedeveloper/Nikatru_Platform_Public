@@ -22,58 +22,136 @@ void main() {
   /// `'AuthFailure: <server message>'`, so every match runs against that
   /// prefix, not against a bare code. Testing bare strings would pass while the
   /// real call site failed.
-  core.AuthFailure fail(String serverMessage) => core.AuthFailure(serverMessage);
+  core.AuthFailure fail(String serverMessage) =>
+      core.AuthFailure(serverMessage);
 
   group('authErrorText — every branch, against the real AuthFailure shape', () {
-    test('invalid credentials', () => expect(authErrorText(en, fail('invalid_credentials')), en.authIncorrect));
-    test('already registered', () => expect(authErrorText(en, fail('user_already_exists')), en.authAlreadyRegistered));
-    test('weak password', () => expect(authErrorText(en, fail('weak_password')), en.passwordTooShort));
-    test('email not confirmed', () => expect(authErrorText(en, fail('email_not_confirmed')), en.authConfirmEmail));
-    test('rate limited', () => expect(authErrorText(en, fail('over_email_send_rate_limit')), en.authRateLimited));
-    test('network', () => expect(authErrorText(en, fail('SocketException: Failed host lookup')), en.authNetworkError));
+    test(
+      'invalid credentials',
+      () => expect(
+        authErrorText(en, fail('invalid_credentials')),
+        en.authIncorrect,
+      ),
+    );
+    test(
+      'already registered',
+      () => expect(
+        authErrorText(en, fail('user_already_exists')),
+        en.authAlreadyRegistered,
+      ),
+    );
+    test(
+      'weak password',
+      () =>
+          expect(authErrorText(en, fail('weak_password')), en.passwordTooShort),
+    );
+    test(
+      'email not confirmed',
+      () => expect(
+        authErrorText(en, fail('email_not_confirmed')),
+        en.authConfirmEmail,
+      ),
+    );
+    test(
+      'rate limited',
+      () => expect(
+        authErrorText(en, fail('over_email_send_rate_limit')),
+        en.authRateLimited,
+      ),
+    );
+    test(
+      'network',
+      () => expect(
+        authErrorText(en, fail('SocketException: Failed host lookup')),
+        en.authNetworkError,
+      ),
+    );
     test('unmapped falls back, and never leaks the raw text', () {
-      final String out = authErrorText(en, fail('some_new_server_code_nobody_modelled'));
+      final String out = authErrorText(
+        en,
+        fail('some_new_server_code_nobody_modelled'),
+      );
       expect(out, en.authUnknownError);
       expect(out, isNot(contains('some_new_server_code')));
     });
   });
 
   group('🔴 the captcha branch — the one the cutover needs', () {
-    test('the bare code maps', () => expect(authErrorText(en, fail('captcha_failed')), en.authCaptchaFailed));
+    test(
+      'the bare code maps',
+      () => expect(
+        authErrorText(en, fail('captcha_failed')),
+        en.authCaptchaFailed,
+      ),
+    );
 
     test("GoTrue's REAL refusal sentence maps, not just the tidy code", () {
       // Measured on Box A 2026-09-03; the tidy `captcha_failed` is the code, but
       // what arrives in the message is prose. A test that only used the code
       // would pass while production showed the sentence.
       expect(
-        authErrorText(en, fail('captcha protection: request disallowed (invalid-input-response)')),
+        authErrorText(
+          en,
+          fail(
+            'captcha protection: request disallowed (invalid-input-response)',
+          ),
+        ),
         en.authCaptchaFailed,
       );
-      expect(authErrorText(en, fail('captcha protection: request disallowed (no captcha_token found)')), en.authCaptchaFailed);
+      expect(
+        authErrorText(
+          en,
+          fail(
+            'captcha protection: request disallowed (no captcha_token found)',
+          ),
+        ),
+        en.authCaptchaFailed,
+      );
     });
 
-    test('🔴 it does NOT say "incorrect password" — the credentials may be fine', () {
-      // On a gated endpoint the captcha is checked BEFORE the password, and
-      // Turnstile tokens expire in ~5 minutes, so expiry is the dominant cause.
-      // Reusing authIncorrect would tell a user with a correct password that it
-      // was wrong.
-      expect(authErrorText(en, fail('captcha_failed')), isNot(en.authIncorrect));
-    });
+    test(
+      '🔴 it does NOT say "incorrect password" — the credentials may be fine',
+      () {
+        // On a gated endpoint the captcha is checked BEFORE the password, and
+        // Turnstile tokens expire in ~5 minutes, so expiry is the dominant cause.
+        // Reusing authIncorrect would tell a user with a correct password that it
+        // was wrong.
+        expect(
+          authErrorText(en, fail('captcha_failed')),
+          isNot(en.authIncorrect),
+        );
+      },
+    );
 
-    test('it is not swallowed by the network branch, which matches a bare "connection"', () {
-      // The network test is the widest in the function. This pins the ORDER:
-      // move the captcha branch below it and a server string carrying both words
-      // would silently become "check your connection".
-      expect(authErrorText(en, fail('captcha protection: connection disallowed')), en.authCaptchaFailed);
-    });
+    test(
+      'it is not swallowed by the network branch, which matches a bare "connection"',
+      () {
+        // The network test is the widest in the function. This pins the ORDER:
+        // move the captcha branch below it and a server string carrying both words
+        // would silently become "check your connection".
+        expect(
+          authErrorText(en, fail('captcha protection: connection disallowed')),
+          en.authCaptchaFailed,
+        );
+      },
+    );
 
     test('it is localized, not hardcoded English', () {
       expect(authErrorText(ta, fail('captcha_failed')), ta.authCaptchaFailed);
-      expect(authErrorText(ta, fail('captcha_failed')), isNot(en.authCaptchaFailed));
+      expect(
+        authErrorText(ta, fail('captcha_failed')),
+        isNot(en.authCaptchaFailed),
+      );
     });
   });
 
-  test('a String passes through untouched — the pre-repository field errors rely on it', () {
-    expect(authErrorText(en, 'Enter both an email and a password.'), 'Enter both an email and a password.');
-  });
+  test(
+    'a String passes through untouched — the pre-repository field errors rely on it',
+    () {
+      expect(
+        authErrorText(en, 'Enter both an email and a password.'),
+        'Enter both an email and a password.',
+      );
+    },
+  );
 }

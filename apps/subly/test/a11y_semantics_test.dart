@@ -4522,10 +4522,7 @@ void main() {
         // arm and the call below carries NO `except:` map at all. The paragraph
         // above is the record of why the exemption existed, not a description of
         // this call.
-        expectRowCardsLegible(
-          tester,
-          'home',
-        );
+        expectRowCardsLegible(tester, 'home');
       });
     });
 

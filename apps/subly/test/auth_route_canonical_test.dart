@@ -114,11 +114,7 @@ class _SignedOutAuth extends core.AuthRepository {
 class _SignedInAuth extends core.AuthRepository {
   @override
   core.AuthUser? get currentUser =>
-      const core.AuthUser(
-    id: 'u1',
-    email: 'a@b.test',
-    emailVerified: true,
-  );
+      const core.AuthUser(id: 'u1', email: 'a@b.test', emailVerified: true);
 
   @override
   Stream<core.AuthUser?> authStateChanges() =>
@@ -136,20 +132,21 @@ class _OnboardingSeen extends OnboardingSeenController {
   bool? build() => true;
 }
 
-ProviderContainer _container({required core.AuthRepository auth}) =>
-    ProviderContainer(
-      overrides: <Override>[
-        onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
-        // This user has accepted the current terms. Stated, not defaulted: a
-        // signed-in user with no acceptance on record is sent to /reaccept-terms
-        // by the router, which is correct and is what every pre-clickwrap install
-        // sees once. The gate itself is driven in legal_gates_test.dart.
-        legalReacceptanceNeededProvider.overrideWithValue(false),
-        authRepositoryProvider.overrideWithValue(auth),
-        keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
-        analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
-      ],
-    );
+ProviderContainer _container({
+  required core.AuthRepository auth,
+}) => ProviderContainer(
+  overrides: <Override>[
+    onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+    // This user has accepted the current terms. Stated, not defaulted: a
+    // signed-in user with no acceptance on record is sent to /reaccept-terms
+    // by the router, which is correct and is what every pre-clickwrap install
+    // sees once. The gate itself is driven in legal_gates_test.dart.
+    legalReacceptanceNeededProvider.overrideWithValue(false),
+    authRepositoryProvider.overrideWithValue(auth),
+    keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
+    analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+  ],
+);
 
 /// Pump the real router and drive it to [location]; returns where it SETTLED.
 ///

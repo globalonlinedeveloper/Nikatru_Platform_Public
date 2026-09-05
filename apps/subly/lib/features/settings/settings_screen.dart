@@ -1619,9 +1619,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           // password field alone still guards the destructive action, and
           // refusing to enable the button when `TurnstileGate.isConfigured` is
           // false would disable deletion in every build that ships now.
-          TurnstileGate(
-            onToken: (String? t) => widget.captchaToken.value = t,
-          ),
+          TurnstileGate(onToken: (String? t) => widget.captchaToken.value = t),
         ],
       ),
       actions: <Widget>[

@@ -119,8 +119,7 @@ class _OnboardingSeen extends OnboardingSeenController {
 
 class _SignedInAuth extends core.AuthRepository {
   @override
-  core.AuthUser? get currentUser =>
-      const core.AuthUser(
+  core.AuthUser? get currentUser => const core.AuthUser(
     id: 'l10n',
     email: 'l10n@test.dev',
     emailVerified: true,

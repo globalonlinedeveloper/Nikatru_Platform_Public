@@ -110,7 +110,9 @@ Future<_Row> _pumpRow(
       darkTheme: buildAppTheme(seed: kSublySeed, brightness: Brightness.dark),
       themeMode: mode,
       home: Scaffold(
-        body: Center(child: RowCard(title: 'Netflix', onTap: onTap)),
+        body: Center(
+          child: RowCard(title: 'Netflix', onTap: onTap),
+        ),
       ),
     ),
   );
@@ -139,10 +141,14 @@ _Row _readRow(WidgetTester tester) {
   // total). `find.ancestor` orders from the closest ancestor outwards, and
   // nothing sits between the title and the row's own Padding.
   final Padding padding = tester.widget<Padding>(
-    find.ancestor(of: find.text('Netflix'), matching: find.byType(Padding)).first,
+    find
+        .ancestor(of: find.text('Netflix'), matching: find.byType(Padding))
+        .first,
   );
   final Text title = tester.widget<Text>(
-    find.descendant(of: find.byType(RowCard), matching: find.byType(Text)).first,
+    find
+        .descendant(of: find.byType(RowCard), matching: find.byType(Text))
+        .first,
   );
   return (
     decoration: container.decoration! as BoxDecoration,
@@ -451,11 +457,7 @@ void main() {
     testWidgets('HOVER lifts the fill by the theme\'s own hover token', (
       WidgetTester tester,
     ) async {
-      final _Row rest = await _pumpRow(
-        tester,
-        ThemeMode.light,
-        onTap: () {},
-      );
+      final _Row rest = await _pumpRow(tester, ThemeMode.light, onTap: () {});
       expect(rest.material.color, AppColors.surface, reason: 'the rest state');
 
       await _hover(tester);
@@ -483,7 +485,10 @@ void main() {
       WidgetTester tester,
     ) async {
       final _Row rest = await _pumpRow(tester, ThemeMode.dark, onTap: () {});
-      expect((rest.decoration.border! as Border).top.color, dark.outlineVariant);
+      expect(
+        (rest.decoration.border! as Border).top.color,
+        dark.outlineVariant,
+      );
 
       await _hover(tester);
       final _Row hovered = _readRow(tester);

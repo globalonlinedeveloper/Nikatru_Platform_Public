@@ -745,8 +745,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // against a 4.5 bar. The fork landed before these three call sites did, so
     // a11y_semantics_test.dart carried a named exemption citing this exact line;
     // passing brightness is what expires it.
-    final DueInfo due = DueInfo.localized(l10n, s, now,
-        brightness: Theme.of(context).brightness);
+    final DueInfo due = DueInfo.localized(
+      l10n,
+      s,
+      now,
+      brightness: Theme.of(context).brightness,
+    );
     final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     // ⚠️ THIS ROW IS RowCard's TWIN AND HAS TO BE FIXED SEPARATELY, which is
     // annoying and is the point of saying so. It hand-rolls the same
