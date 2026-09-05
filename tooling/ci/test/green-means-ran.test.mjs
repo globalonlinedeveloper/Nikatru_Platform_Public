@@ -233,19 +233,42 @@ describe('§B — a job cannot green-skip its own body when a secret is absent',
 // CSS every site serves went green over a generator that had stopped generating.
 // The three mutations below are the ones a person would plausibly make.
 describe('§C — a drift check cannot pass by diffing the checkout against itself', () => {
-  const RM_STEP =
-    '      - name: Delete the artifact so the build has to produce it\n' +
-    '        run: rm -f ../../sites/_shared/assets/tokens.css\n';
-  /* The site feed's drift lane, added 2026-08-17 with the catalogue inversion.
-     Named here so the removal test above can take out EVERY drift lane rather
-     than assuming there is only one. */
-  const FEED_DIFF_STEP =
-    '      - name: Site feed must equal a fresh generation from the catalogue\n' +
-    '        run: git diff --exit-code -- sites/_shared/_data/apps.json\n';
+  /* 🔴 DERIVED FROM ci.yml, NOT TRANSCRIBED FROM IT — CORRECTED 2026-09-05, THE
+     THIRD TIME THIS SUITE HAS BEEN MADE STALE BY A CORRECT CHANGE TO THE
+     WORKFLOW. Both anchors were full step blocks copied verbatim:
 
-  const DIFF_STEP =
-    '      - name: Site tokens.css must equal a fresh build\n' +
-    '        run: git diff --exit-code -- ../../sites/_shared/assets/tokens.css\n';
+       '      - name: Delete the artifact so the build has to produce it\n' +
+       '        run: rm -f ../../sites/_shared/assets/tokens.css\n'
+       '      - name: Site tokens.css must equal a fresh build\n' +
+       '        run: git diff --exit-code -- ../../sites/_shared/assets/tokens.css\n'
+
+     [ADR 067] decision 1 gave packages/tokens two more outputs, so the lane now
+     deletes three artefacts in one `run:` block and diffs three paths on one
+     line — and both transcriptions stopped matching. `mutant()` refuses an edit
+     that does not apply, so the two cases below failed with "the anchor moved"
+     rather than reporting anything about the guard. The comments further down
+     record the same rot arriving twice through the COUNT and once through the
+     FILE SET; this is it arriving through the step TEXT, and the fix is the same
+     one: read the workflow.
+
+     The anchors are the two LINES that name the site tokens artefact — the one
+     that deletes it and the one that diffs it — because those are what the
+     guard pairs, and a step's `name:` is prose the guard never reads. */
+  const CI_YML = readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8');
+  const TOKENS_ARTIFACT = '../../sites/_shared/assets/tokens.css';
+  const ciLine = (predicate, what) => {
+    const hit = CI_YML.split(String.fromCharCode(10)).find(predicate);
+    assert.ok(hit, `ci.yml no longer holds ${what} — this suite cannot mutate what it cannot find`);
+    return `${hit}\n`;
+  };
+  const RM_STEP = ciLine(
+    (l) => /^\s*rm -f\s/.test(l) && l.includes(TOKENS_ARTIFACT),
+    `an \`rm -f\` of ${TOKENS_ARTIFACT}`,
+  );
+  const DIFF_STEP = ciLine(
+    (l) => l.includes('git diff --exit-code --') && l.includes(TOKENS_ARTIFACT),
+    `a drift check over ${TOKENS_ARTIFACT}`,
+  );
 
   test('deleting the `rm` step fails — the "this looks redundant" edit', () => {
     const root = mutant([['ci.yml', RM_STEP, '']]);

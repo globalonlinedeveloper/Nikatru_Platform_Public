@@ -97,6 +97,12 @@ const LIVE_POLICY = 'sites/nikatru/privacy.html';
 const A_SNAPSHOT = 'sites/nikatru/legal/2026-08-10/en/privacy.html';
 const TOKENS = 'sites/_shared/assets/tokens.css';
 
+/* The 2026-09-05 additions: the token CONTRACT and the two outputs that join
+   tokens.css as generated siblings. [ADR 067] decision 1. */
+const DTCG_DIR = 'contracts/tokens/dtcg';
+const DART_OUT = 'packages/design_system/lib/src/tokens/brand_tokens.dart';
+const JSON_OUT = 'extensions/core/tokens.json';
+
 let TMP;
 let seq = 0;
 before(() => {
@@ -109,15 +115,40 @@ after(() => {
 const git = (cwd, args) => spawnSync('git', args, { cwd, encoding: 'utf8' });
 
 /** The set the guard reads: every tracked stylesheet-bearing file under sites/,
- *  plus the generator whose constant is in the subject. Derived from HEAD rather
- *  than listed, so a page added to the sites joins the fixtures too. */
+ *  plus the generator whose constant is in the subject, plus — since 2026-09-05 —
+ *  the DTCG token source and the three files generated from it.
+ *
+ *  🔴 THE GENERATED-SIBLING PATHS ARE NOT OPTIONAL FIXTURE DECORATION. The
+ *  guard's second limb refuses (exit 2) when the DTCG source or any committed
+ *  output is absent, so a fixture materialising only `sites/` would make EVERY
+ *  case below exit 2 for a reason none of them is testing — thirty tests all
+ *  reporting the same unrelated refusal. Derived from HEAD rather than listed,
+ *  so a token file added to the contract joins the fixtures too. */
 function subjectPaths() {
-  const r = git(REPO, ['ls-tree', '-r', 'HEAD', '--name-only', '--', 'sites', 'tooling/sites']);
+  const r = git(REPO, [
+    'ls-tree',
+    '-r',
+    'HEAD',
+    '--name-only',
+    '--',
+    'sites',
+    'tooling/sites',
+    DTCG_DIR,
+    DART_OUT,
+    JSON_OUT,
+  ]);
   assert.equal(r.status, 0, `git ls-tree failed: ${r.stderr}`);
   return r.stdout
     .split('\n')
     .map((s) => s.trim())
-    .filter((p) => /^sites\/.+\.(?:html|css)$/.test(p) || p === GENERATOR_REL);
+    .filter(
+      (p) =>
+        /^sites\/.+\.(?:html|css)$/.test(p) ||
+        p === GENERATOR_REL ||
+        p.startsWith(`${DTCG_DIR}/`) ||
+        p === DART_OUT ||
+        p === JSON_OUT,
+    );
 }
 
 /** Built ONCE — a git repository holding the real corpus at HEAD, indexed and
@@ -486,5 +517,104 @@ describe('what is NOT in the subject', () => {
     // and sitemaps would start contributing whatever text happened to parse.
     const r = run(add(fixture(), 'sites/nikatru/notes.txt', ':root{--text:#BADBAD}'));
     assert.equal(r.code, 0, `only .html and .css are stylesheets:\n${r.all}`);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+describe('the generated siblings (added 2026-09-05, [ADR 067] decision 1)', () => {
+  // Every case here was FIRST run against the real working tree — mutate,
+  // record the exit code and the message, `git checkout --` the file, re-run
+  // the control — before it was written as a fixture, per this repo's rule that
+  // a fixture written by the author of the guard encodes the same
+  // misunderstanding as the guard. The real-tree codes were: dart value 1 ·
+  // extension JSON value 1 · dart DARK value 1 · dart output deleted 2 ·
+  // a token removed from the JSON 2 · a font family edited 1 · the DTCG
+  // directory moved away 2, with a green control before and after.
+
+  test('a hand edit to a generated DART colour is a finding, citing the Dart line', () => {
+    const r = run(patch(fixture(), DART_OUT, 'Color(0xFF2E6FF2)', 'Color(0xFF2E6FF3)'));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /light\.primary disagrees between the token source and a file generated from it/);
+    assert.match(r.err, /#2e6ff2 {2}— contracts\/tokens\/dtcg\/ \(the source\)/);
+    assert.match(r.err, /brand_tokens\.dart:\d+/);
+  });
+
+  test('a hand edit to a generated DARK Dart colour is a finding in the dark scope', () => {
+    const r = run(patch(fixture(), DART_OUT, 'Color(0xFF22304D)', 'Color(0xFF22304E)'));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /dark\.line disagrees/);
+  });
+
+  test('a hand edit to the generated extension JSON is a finding', () => {
+    const r = run(patch(fixture(), JSON_OUT, '"muted": "#586275"', '"muted": "#586276"'));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /light\.muted disagrees/);
+    assert.match(r.err, /extensions\/core\/tokens\.json:\d+/);
+  });
+
+  test('a hand edit to a generated FONT FAMILY is a finding — the tokens that reach Dart today', () => {
+    const r = run(patch(fixture(), DART_OUT, "fontBody = 'Manrope'", "fontBody = 'Manrop'"));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /font\.body disagrees/);
+  });
+
+  test('a hand edit to the generated CSS is caught by THIS limb too, not only by the page comparison', () => {
+    // --radius and the two font faces are declared by tokens.css alone, so no
+    // other page disagrees with them and the 18-page comparison cannot see a
+    // change to one. This limb can, because it compares against the source.
+    const r = run(patch(fixture(), TOKENS, '--radius: 16px;', '--radius: 18px;'));
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /size\.radius disagrees/);
+    assert.match(r.err, /tokens\.css:\d+/);
+  });
+
+  test('a DELETED generated output is COVERAGE LOST, never a palette finding', () => {
+    const root = fixture();
+    unlinkSync(join(root, DART_OUT));
+    const r = run(root);
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /COVERAGE LOST/);
+    assert.match(r.err, /is a COMMITTED output of packages\/tokens and it is not on disk/);
+  });
+
+  test('a token REMOVED from a generated output is COVERAGE LOST, not a silent smaller subject', () => {
+    const root = fixture();
+    const abs = join(root, JSON_OUT);
+    const doc = JSON.parse(readFileSync(abs, 'utf8'));
+    delete doc.light.teal;
+    writeFileSync(abs, `${JSON.stringify(doc, null, 2)}\n`);
+    const r = run(root);
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /declares \d+ of the \d+ token\(s\) the DTCG source names/);
+    assert.match(r.err, /light\.teal/);
+  });
+
+  test('the DTCG SOURCE going missing is COVERAGE LOST — the contract, not an output', () => {
+    const root = fixture();
+    unlinkSync(join(root, `${DTCG_DIR}/color.json`));
+    const r = run(root);
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /contracts\/tokens\/dtcg\/color\.json is not on disk/);
+  });
+
+  test('an EMPTIED DTCG source is COVERAGE LOST — three outputs agreeing with nothing is not a pass', () => {
+    const root = fixture();
+    writeFileSync(join(root, `${DTCG_DIR}/color.json`), JSON.stringify({ color: { $type: 'color' } }, null, 2));
+    const r = run(root);
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /the DTCG source declares 0 light and \d+ dark colour\(s\)/);
+  });
+
+  test('the Dart class names cannot be renamed out from under the guard quietly', () => {
+    const r = run(patch(fixture(), DART_OUT, 'class BrandTokensDark', 'class BrandTokensNight'));
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /declares no `class BrandTokensDark`/);
+  });
+
+  test('the passing run SAYS how many tokens it held equal, so a shrinking subject is visible', () => {
+    const r = run(fixture());
+    assert.equal(r.code, 0, r.all);
+    assert.match(r.out, /3 generated output\(s\) held equal to contracts\/tokens\/dtcg\/ on \d+ token\(s\)/);
   });
 });

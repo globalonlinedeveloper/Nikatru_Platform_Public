@@ -350,7 +350,7 @@
    "evidence": {
     "buildFile": "packages/tokens/style-dictionary.config.mjs"
    },
-   "detail": "A build step, not a library: style-dictionary compiles the token source into sites/_shared/assets/tokens.css, and ci.yml's `tokens` lane rebuilds and fails on any diff. It has no pubspec because it is a Node package."
+   "detail": "A build step, not a library: style-dictionary compiles the DTCG source at contracts/tokens/dtcg/ into three committed outputs (CSS, Dart, JSON), and ci.yml's `site-tokens` lane deletes all three, rebuilds and fails on any diff. It has no pubspec because it is a Node package."
   },
   "packages/core": {
    "reason": "GRANDFATHERED",
@@ -785,13 +785,17 @@
   },
   {
    "id": "tokens",
-   "capability": "Design tokens built by style-dictionary into sites/_shared/assets/tokens.css, which the websites serve.",
+   "capability": "Design tokens: the DTCG source in contracts/tokens/dtcg/ built by style-dictionary into three committed outputs — CSS for the websites, Dart constants for the Flutter apps, and a JSON table for the build-free extension subtree.",
    "owner": "packages/tokens",
    "package": null,
    "seams": [],
    "seam": "packages/tokens/style-dictionary.config.mjs",
-   "consumers": [],
-   "unconsumedReason": "A Node package with no pubspec.yaml, so the Dart-consumer test cannot apply. Its real consumer is sites/_shared/assets/tokens.css, gated by ci.yml's `tokens` lane which rebuilds and fails on any diff. 39-CHASSIS cut 3's 'zero consumers, delete it' premise was falsified 2026-07-26 — recorded as SUPERSEDED BY FACTS rather than executed blindly."
+   "consumers": [
+    "sites/_shared/assets/tokens.css",
+    "packages/design_system/lib/src/tokens/brand_tokens.dart",
+    "extensions/core/tokens.json"
+   ],
+   "consumersNote": "PATHS, NOT consumerRoots, and that is why `package` is null on this row: direction (a) of check 4 is skipped for a package with no pub name, so these are the three COMMITTED OUTPUTS the emitter writes rather than three pubspecs that depend on it. Was `[]` with an unconsumedReason until 2026-09-05; [ADR 067] decision 1 moved the DTCG source to contracts/tokens/dtcg/ and added the Dart and JSON emitters, so the waiver was removed rather than left to describe a tree that had changed. Each output is gated twice: ci.yml's `site-tokens` lane deletes all three, rebuilds and diffs all three; tooling/ci/assert-palette-consistent.mjs holds all three equal to the DTCG source without needing an install. The Dart output has a live Dart reader — packages/design_system/lib/src/tokens/app_text.dart imports BrandTokens.fontDisplay/fontBody."
   }
  ],
  "cloneTells": {

@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+// The two font families below are BRAND facts, and they are declared once in
+// contracts/tokens/dtcg/font.json. Until 2026-09-05 they were typed into six
+// const TextStyles here as string literals and packages/tokens could not reach
+// Dart at all — its own README said so: "Changing a token here cannot affect the
+// Flutter apps." It can now, through this import. The values are unchanged and
+// `brand_tokens.dart` is generated, so nothing is repainted by this.
+import 'brand_tokens.dart';
 
 /// The six named styles resolved for ONE brightness — what [AppText.of] hands
 /// back.
@@ -71,7 +78,7 @@ class AppText {
   AppText._();
 
   static const TextStyle display = TextStyle(
-    fontFamily: 'Space Grotesk',
+    fontFamily: BrandTokens.fontDisplay,
     fontWeight: FontWeight.w700,
     letterSpacing: -1.0,
     height: 1.03,
@@ -79,7 +86,7 @@ class AppText {
   );
 
   static const TextStyle title = TextStyle(
-    fontFamily: 'Space Grotesk',
+    fontFamily: BrandTokens.fontDisplay,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.4,
     color: AppColors.ink,
@@ -87,7 +94,7 @@ class AppText {
 
   /// Tabular figures for money / dates.
   static const TextStyle fig = TextStyle(
-    fontFamily: 'Space Grotesk',
+    fontFamily: BrandTokens.fontDisplay,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.3,
     color: AppColors.ink,
@@ -95,19 +102,19 @@ class AppText {
   );
 
   static const TextStyle body = TextStyle(
-    fontFamily: 'Manrope',
+    fontFamily: BrandTokens.fontBody,
     fontWeight: FontWeight.w500,
     color: AppColors.ink,
   );
 
   static const TextStyle muted = TextStyle(
-    fontFamily: 'Manrope',
+    fontFamily: BrandTokens.fontBody,
     fontWeight: FontWeight.w500,
     color: AppColors.muted,
   );
 
   static const TextStyle label = TextStyle(
-    fontFamily: 'Manrope',
+    fontFamily: BrandTokens.fontBody,
     fontWeight: FontWeight.w700,
     fontSize: 11,
     letterSpacing: 0.8,

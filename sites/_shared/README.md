@@ -36,7 +36,7 @@ an edit here.
 | `_includes/partials/app-card.njk` | Renders one app object as an accessible card. |
 | `_includes/partials/seo.njk` | Canonical + OG/Twitter meta and JSON-LD (`Organization`, or `SoftwareApplication` when a page sets `app` in front matter). |
 | `_data/site.json` | Site-wide defaults (name, tagline, canonical URL, nav). |
-| `assets/tokens.css` | The shared design-token palette (light + dark). **GENERATED — do not hand-edit.** Written directly by `packages/tokens` (`npm run build` there); CI fails if it drifts from a fresh build. Edit `packages/tokens/tokens/*.json` instead. ⚠️ **Nothing relates this file to the 18 inline `:root` blocks the live pages actually serve** — that gap is the subject of the section below. *(Was a hand-maintained snapshot until 2026-07-26, which meant editing the token JSON changed nothing.)* |
+| `assets/tokens.css` | The shared design-token palette (light + dark). **GENERATED — do not hand-edit.** Written directly by `packages/tokens` (`npm run build` there); CI fails if it drifts from a fresh build. Edit `contracts/tokens/dtcg/*.json` instead. ⚠️ **Nothing relates this file to the 18 inline `:root` blocks the live pages actually serve** — that gap is the subject of the section below. *(Was a hand-maintained snapshot until 2026-07-26, which meant editing the token JSON changed nothing.)* |
 | `assets/base.css` | Small shared reset + component styles built on the tokens. |
 | `demo/index.njk` | Smoke-test page: loops `apps` through the layout + card partial so `npm run build` exercises the whole layer. |
 
@@ -131,7 +131,7 @@ Shape of `tooling/ci/assert-site-palette.mjs`:
    `:root` — parse declarations, never grep prose.
 2. Assert every deploy-root page declaring a given custom property declares the
    **same value**, and that the brand-ink property is named **`--ink`**.
-3. Derive expected values from **one** source, `packages/tokens/tokens/color.json`.
+3. Derive expected values from **one** source, `contracts/tokens/dtcg/color.json`.
 4. **Coverage floor**: fail COVERAGE LOST below 18 parsed `:root` blocks across
    fewer than 2 deploy roots. A walk that stops matching prints clean — this
    repo's single most repeated failure.
