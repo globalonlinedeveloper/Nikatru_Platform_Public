@@ -2376,9 +2376,18 @@ jobs:
     permissions:
       contents: write        # the only write in the repo: creating the release
       actions: read          # read-only, and it buys the ci-conclusion check
-      deployments: write     # record-deployment.mjs writes the [10]D-9 ledger row
-                             # below. A `permissions:` block makes every scope
-                             # it does not name `none`.
+      deployments: write     # the [10]D-9 ledger row is written by the step below.
+                             # A `permissions:` block makes every scope it does
+                             # not name `none`.
+                             #
+                             # 🔴 THIS COMMENT USED TO NAME THE SCRIPT, AND THAT
+                             # MADE IT A PHANTOM CALL SITE. deployment-record.mjs's
+                             # RECORD_CALL reads the environment off any line
+                             # naming the script, so `record-deployment.mjs writes`
+                             # parsed as a deployment to an environment called
+                             # `writes` — a call site with no step behind it,
+                             # reported as unclaimed by the channel register.
+                             # Prose about a guard is inside that guard's subject.
       # ⬜ RESIDUAL, STATED RATHER THAN GLOSSED, 2026-08-25. A dispatch writes
       # nothing — the one step that would is fenced off — but the job token it
       # runs under still carries this `write`, because `permissions:` takes no
@@ -3259,6 +3268,30 @@ jobs:
         run: node tooling/ci/release-manifest.mjs --verify extensions/dist
 
 
+      - name: The register must be able to name where this ships
+        # 🔴 BEFORE THE PUBLISH, DELIBERATELY, AND IT REFUSES TODAY.
+        # `--emit-environments` derives the destinations from
+        # tooling/channel-register.json, and that register carries no
+        # chrome-webstore / edge-addons / amo row yet — measured, and named as
+        # outstanding work by the 2026-09-05 monorepo research (report 16 §5.2,
+        # §8.3). Its own refusal says why that matters: "publishing while
+        # recording nothing is [10]D-9's unrecorded deploy wearing a release
+        # badge — the artifacts would exist and nothing could say what shipped."
+        #
+        # ⚠️ SO A TAG PUSH FAILS HERE UNTIL THOSE ROWS EXIST, AND THAT IS THE
+        # POINT. It fails BEFORE `gh release create`, so nothing is published
+        # that cannot be recorded — rather than after, which is the failure the
+        # test above describes. `git tag` is 0 and no extension has ever been
+        # released, so this costs nothing today and cannot be forgotten later.
+        # Writing those register rows is a store-vocabulary and purchase-rail
+        # decision ([ADR 039] D1 covers app stores, not extension stores) and is
+        # deliberately not made inside a repository merge.
+        if: github.event_name == 'push'
+        working-directory: .
+        env:
+          TOOL: ${{ steps.tag.outputs.id }}
+        run: node tooling/ci/release-manifest.mjs --emit-environments extensions/dist --app "$TOOL"
+
       - name: Publish GitHub Release
         if: github.event_name == 'push' && inputs.dry_run != true
         # ⚠️ AT THE REPOSITORY ROOT, AND THE PATHS ARE WHY. assert-release-durable
@@ -3277,35 +3310,60 @@ jobs:
             --title "${{ steps.tag.outputs.id }} v${{ steps.tag.outputs.version }}" \
             --notes-file extensions/notes.md
 
-      - name: Record what shipped
+      - name: The release must carry the assets this job just built
+        # ⬜ [14]O-7, the same read-back build-platforms.yml performs, over the
+        # same manifest format. It asserts the RELEASE CARRIES THESE FILES WITH
+        # THESE HASHES, in both directions — a release published last month
+        # answers "does a release exist" exactly as well as one published ten
+        # seconds ago, which is why that is not the question being asked.
+        #
+        # 🔴 THIS REPLACES A _deploySmokeExemptions ENTRY WRITTEN EARLIER TODAY.
+        # That entry named the probe that would retire it, and the probe already
+        # existed — `release-manifest.mjs --write` above already produces the
+        # SHA256SUMS it reads. An exemption whose remedy is one existing step is
+        # an exemption that should never have been taken.
+        if: github.event_name == 'push' && inputs.dry_run != true
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: >
+          node tooling/ops/post-deploy-smoke.mjs --release-repo "$REPO"
+          --release-tag "$GITHUB_REF_NAME" --release-manifest extensions/dist/SHA256SUMS
+
+      - name: Record what shipped, per channel this release is the origin for
         # AFTER the publish, and the order is checked: a ledger written before
         # the thing it records says something that was not yet true. It carries
         # the same two-limb guard as the publish itself, because writing a
         # Deployment is an outward-facing act and a rehearsal must not perform one.
+        #
+        # 🔴 THE SET IS DERIVED FROM tooling/channel-register.json, NOT NAMED HERE.
+        # The first spelling of this step named it — `extension-$TOOL_ID`, a value
+        # no register row claims — and tooling/ci/test/deployment-record.test.mjs
+        # refused it in the words that matter: "an unclaimed one turns a SUCCESSFUL
+        # deploy into a red job after the upload already happened." It also named
+        # the one shape it accepts: a loop fed by `release-manifest.mjs
+        # --emit-environments`, which reads the register. So an extension channel
+        # joins this loop by being given a register row, not by anybody editing
+        # this file.
+        #
+        # ⚠️ THE URL IS BUILT FROM ENVIRONMENT VARIABLES, NOT FROM `${{ … }}` IN
+        # THE SHELL BODY. A tag name is chosen by whoever pushed the tag, and an
+        # expression expanded into a `run:` body is substituted BEFORE the shell
+        # sees it, so a tag carrying shell metacharacters would be executed rather
+        # than quoted — `tooling/ci/scan-workflows.mjs` caught exactly that here
+        # on this lane's first run through it (`template-injection`, medium/high).
         if: github.event_name == 'push' && inputs.dry_run != true
         working-directory: .
-        # ⚠️ THE URL IS BUILT FROM ENVIRONMENT VARIABLES, NOT FROM `${{ … }}` IN
-        # THE SHELL LINE. A tag name is chosen by whoever pushed the tag, and an
-        # expression expanded into a `run:` body is substituted BEFORE the shell
-        # sees it — so a tag containing shell metacharacters would be executed
-        # rather than quoted. tooling/ci/scan-workflows.mjs caught this on the
-        # first run of this lane through it (`template-injection`, medium/high).
-        # GitHub sets GITHUB_REF_NAME, GITHUB_SERVER_URL and GITHUB_REPOSITORY
-        # already; the shell reads them as data.
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TOOL_ID: ${{ steps.tag.outputs.id }}
-        # ⚠️ ONE LINE, AND A FOLDED `run: >` IS WHY IT HAD TO BECOME ONE.
-        # tooling/ci/deployment-record.mjs's `RECORD_CALL` reads the environment
-        # off the LINE that invokes the script, and a folded block splits the
-        # arguments across four of them — so the call parsed as an invocation with
-        # NO environment, which its own test calls out by name: "an argument shape
-        # this reader cannot parse leaves the call invisible to every guard built on
-        # it, and each of those guards then reports a smaller domain as a pass."
-        # Found by tooling/ci/test/deployment-record.test.mjs on this lane's first
-        # run through it.
-        run: node tooling/ci/record-deployment.mjs "extension-$TOOL_ID" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
-
+          TOOL: ${{ steps.tag.outputs.id }}
+        run: |
+          set -euo pipefail
+          for environment in $(node tooling/ci/release-manifest.mjs --emit-environments extensions/dist --app "$TOOL"); do
+            node tooling/ci/record-deployment.mjs "$environment" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
+          done
       # The counterpart, so a rehearsal ends in a sentence rather than in the
       # absence of one. A skipped step is rendered the same way whether it was
       # skipped on purpose or skipped because an earlier step died, and this
