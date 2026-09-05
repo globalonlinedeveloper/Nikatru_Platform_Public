@@ -81,24 +81,3 @@ abstract interface class ReviewPrompter {
   /// "this build has no id for that store" is the whole reason it is typed.
   Future<StoreListingOutcome> openStoreListing();
 }
-
-/// The safe default, and the value a stamped app is born with.
-///
-/// ⚠️ [pipeline C-6] A NO-OP DEFAULT IS ONLY SAFE IF SOMETHING ELSE PROVES THE
-/// OPEN PATH. Four seams shipped fail-closed with no consumer and no test went
-/// red, because refusing is the correct behaviour when nothing is configured.
-/// Here the open path is proven by the property test driving a recording
-/// prompter through [ReviewGate] and asserting the request really arrives.
-class NoOpReviewPrompter implements ReviewPrompter {
-  const NoOpReviewPrompter();
-
-  @override
-  Future<bool> isAvailable() async => false;
-
-  @override
-  Future<void> requestReview() async {}
-
-  @override
-  Future<StoreListingOutcome> openStoreListing() async =>
-      StoreListingOutcome.unavailable;
-}
