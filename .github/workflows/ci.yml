@@ -1,14 +1,14 @@
 name: CI
 
+run-name: CI on ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.number) || github.ref_name }} by @${{ github.actor }}
+
 on:
+  # why: main only. A branch prefix list cannot cover branches nobody has named
+  # yet, and `pull_request:` (unfiltered) already covers every branch that opens
+  # a PR — so a commit on a PR branch ran CI TWICE, 116 push + 121 pull_request
+  # over 2026-09-03..05. See docs/ci/README.md "one run per PR".
   push:
-    # ALL THREE documented branch prefixes, not just feat/. architecture.md §24
-    # defines the convention as `feat|fix|chore/<slug>`, but this list watched
-    # only `feat/**` — so every fix/ and chore/ branch got NO CI at all and
-    # would reach the `--no-ff` merge unverified. The failure was silent in the
-    # worst way: `gh run list` simply returns nothing, which is indistinguishable
-    # from "queued" until you notice no run ever appears.
-    branches: [main, 'feat/**', 'fix/**', 'chore/**']
+    branches: [main]
   pull_request:
 
 concurrency:
