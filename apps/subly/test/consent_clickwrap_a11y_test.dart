@@ -360,6 +360,98 @@ void main() {
       );
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 4 · THE 18+ ATTESTATION RIDES ON THE BLOCKING CONTROL ([ADR 068])
+  //
+  // [ADR 068] sets the audience floor at 18 and requires the sign-up clickwrap
+  // to carry it. It is only CARRIED if the sentence the tick names says so.
+  // A line of prose beside the box is a notice, not an attestation — nobody has
+  // to act on it — and a second checkbox would be a second blocking consent
+  // that `tooling/ci/assert-signup-consent-shape.mjs` does not know about.
+  //
+  // ⚠️ BOTH LOCALES, AND THE TAMIL CASE IS THE ONE THAT ROTS. gen-l10n falls
+  // back to English for a missing key without failing, so a Tamil reader can be
+  // shown an English sentence — or, worse, a Tamil sentence written before the
+  // floor existed, which still has the key and still omits the age.
+  group('4 · the terms tick carries the 18+ attestation [ADR 068]', () {
+    Future<AppLocalizations> ta() =>
+        AppLocalizations.delegate.load(const Locale('ta'));
+
+    testWidgets('the sentence a user reads states the 18 floor', (
+      WidgetTester tester,
+    ) async {
+      await pump(tester);
+      final AppLocalizations l10n = await en();
+
+      expect(
+        l10n.legalAcceptTerms,
+        contains('18'),
+        reason:
+            'the clickwrap sentence is the attestation. Without the age in it, '
+            'the tick is an agreement to the Terms and nothing was attested — '
+            'and [ADR 068] is a published audience claim, not a preference.',
+      );
+      expect(
+        find.text(l10n.legalAcceptTerms),
+        findsOneWidget,
+        reason:
+            'precondition: the sentence with the attestation is the one the '
+            'widget actually renders, not a key nothing reads.',
+      );
+    });
+
+    testWidgets('the Tamil sentence states it too, and is not English', (
+      WidgetTester tester,
+    ) async {
+      await pump(tester);
+      final AppLocalizations enL = await en();
+      final AppLocalizations taL = await ta();
+
+      expect(
+        taL.legalAcceptTerms,
+        contains('18'),
+        reason:
+            'a Tamil reader shown a sentence without the age has attested to '
+            'nothing, and no guard in this repo reads Tamil.',
+      );
+      expect(
+        taL.legalAcceptTerms,
+        isNot(enL.legalAcceptTerms),
+        reason:
+            'gen-l10n falls back to English silently. Byte-equality here is '
+            'what "the key is missing" looks like from this side.',
+      );
+    });
+
+    testWidgets('the attestation is the NAME of the control that blocks', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pump(tester);
+
+      final SemanticsData d = tester.semantics
+          .find(find.byKey(LegalConsentFields.termsCheckbox))
+          .getSemanticsData();
+
+      expect(
+        d.flagsCollection.isChecked.name,
+        'isFalse',
+        reason:
+            'precondition: this is the blocking checkbox, unticked',
+      );
+      expect(
+        d.label,
+        contains('18'),
+        reason:
+            'a screen-reader user hears the NAME of the control. If the age '
+            'floor is only in prose the label omits, they tick a box whose '
+            'subject they were never told — which is the same defect group 1 '
+            'exists for, one sentence later.',
+      );
+      handle.dispose();
+    });
+  });
 }
 
 /// A stateful host, because the flags live in the PARENT by design — the widget

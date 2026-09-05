@@ -16,7 +16,7 @@
   "root": "tooling/bricks/app/__brick__/apps/{{app_id}}",
   "totals": {
     "files": 96,
-    "lines": 18205,
+    "lines": 18255,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -89,7 +89,7 @@
     },
     {
       "path": "lib/features/auth/legal_consent_fields.dart",
-      "lines": 253,
+      "lines": 266,
       "verdict": "STAYS",
       "why": "MEASURED: deleting it reddens assert-no-seam-forks (:627) and assert-signup-consent-shape. Its BODY is pinned by nothing beyond its two Key constants — a 27-line stub kept the sweep green."
     },
@@ -539,7 +539,7 @@
     },
     {
       "path": "test/chassis_properties_test.dart",
-      "lines": 5424,
+      "lines": 5461,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable — assert-stamp-properties:2197 exits 1 with COVERAGE LOST, and all SIX feature rows in the brick dod.json resolve to declarations that exist ONLY in this file. 26 property groups, 123 cases, 3,595 code lines. Its bulk is WIRING proof, not duplication: 42 cases boot the real stamped app root and none unit-tests a package class. Reducible only per-property, which the file itself sanctions. One genuine candidate: the content-pack group (117 lines) tests a rail 0 of 600 shipped Dart files read."
     },

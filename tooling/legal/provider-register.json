@@ -254,8 +254,8 @@
     "rows": [
       {
         "page": "privacy.html",
-        "denial": "do not knowingly collect personal information from them",
-        "why": "§7, children's privacy. This denies collecting anything at all FROM A CLASS OF PERSON (under 13, or the local minimum age) — it is scoped by WHO, not by WHAT. Scoping it against a sink's category list would be a category error in the literal sense: every category would intersect it, and the guard would go red on a sentence that is true. The duty it belongs to is age-assurance, which is carried as a row in tooling/legal/duty-matrix.json where the trigger can be stated."
+        "denial": "do not knowingly collect personal information from anyone under 18",
+        "why": "§8, the age requirement. This denies collecting anything at all FROM A CLASS OF PERSON (anyone under 18 - the single floor set by [ADR 068] on the DPDP Act 2023 threshold, replacing the earlier under-13 wording on 2026-09-05) — it is scoped by WHO, not by WHAT. Scoping it against a sink's category list would be a category error in the literal sense: every category would intersect it, and the guard would go red on a sentence that is true. The duty it belongs to is age-assurance, which is carried as a row in tooling/legal/duty-matrix.json where the trigger can be stated."
       }
     ]
   },

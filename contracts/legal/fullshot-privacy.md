@@ -29,7 +29,7 @@
 
 # FullShot — Privacy Policy
 
-Effective date: 2026-08-21 · Last updated: 2026-08-21 · Applies to: FullShot – Full Page Screen Capture, the browser extension for Google Chrome, Microsoft Edge, and Mozilla Firefox, version 1.10.1 and later.
+Effective date: 2026-08-21 · Last updated: 2026-09-05 · Applies to: FullShot – Full Page Screen Capture, the browser extension for Google Chrome, Microsoft Edge, and Mozilla Firefox, version 1.10.1 and later.
 
 FullShot is a screenshot tool that runs entirely on your own computer. It does not have accounts, does not send your data anywhere, and does not track you. This policy explains exactly what that means.
 
@@ -108,9 +108,9 @@ FullShot contains no remotely hosted code; all code ships inside the extension (
 
 Your data stays on your device and is never transmitted by FullShot, which removes the main network exposure. Local data is protected by your operating system and the browser's per-extension storage isolation. We ship no remote code that could later change this behavior.
 
-## 9. Children's privacy
+## 9. Age requirement
 
-FullShot is a general-purpose utility and is not directed to children. It collects no personal information from anyone, including children.
+FullShot is for adults. You must be at least 18 years old to install or use it, and it is not designed for or directed to anyone younger. India's Digital Personal Data Protection Act, 2023 treats every person under 18 as a child, and 18 is the single floor Nikatru applies everywhere it operates. FullShot collects no personal information from anyone, at any age.
 
 ## 10. Limited Use disclosure
 
