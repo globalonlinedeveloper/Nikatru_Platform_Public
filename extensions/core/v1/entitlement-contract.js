@@ -111,8 +111,96 @@ export function restoresAccess(reason) {
   return REVOCATION_REASONS.some((r) => r.reason === reason && r.restores);
 }
 
+
+/**
+ * @typedef {{ readonly event: string, readonly reason: string | null, readonly why: string }} RevenueCatEventReason
+ *
+ * WHICH REVENUECAT WEBHOOK EVENT MEANS WHICH OF OUR REVOCATION REASONS.
+ *
+ * 🔴 THE MAP IS DATA, IN THIS FILE, FOR THE SAME REASON THE REASON SET IS. Three
+ * runtimes have to agree about it: the platform Worker's `revenuecatVerifier`
+ * (when it is written — see the residue in
+ * `Private/research/revamp-2026-09-05/phase3-chassis-billing.md`), the Dart
+ * client, and any extension that reads an entitlement. A translation table
+ * restated in a Worker and remembered in a client is the fourth transcription
+ * this directory exists to prevent — and this one is worse than the reason set,
+ * because getting it wrong REVOKES A PAYING CUSTOMER rather than mislabelling a
+ * row somebody reads later.
+ *
+ * 🔒 `reason: null` MEANS "THIS EVENT IS NOT A REVOCATION", AND IT IS RECORDED
+ * RATHER THAN OMITTED. An absent event and an event we deliberately do not
+ * revoke on are different facts; leaving the second one out of the table makes
+ * them indistinguishable, and the next reader closes the gap by guessing. Every
+ * row carries the sentence that forces its answer, exactly as the channel
+ * register's `purchaseRail.why` does.
+ *
+ * ⚠️ EVERY ROW HERE IS A VENDOR FACT AND THE ACCOUNT DOES NOT EXIST YET. The
+ * conservative direction for a revocation table is the one that does NOT take
+ * access away: an event this table does not map revokes nothing, and the client
+ * still converges on `GET /v1/entitlements`, which is the only thing that ever
+ * unlocks or locks. `Private/runbooks/revenuecat-setup.md` carries the owner
+ * step that re-reads RevenueCat's webhook event reference against this table at
+ * the moment the project is created, and any event this list does not name is a
+ * deliberate refusal to guess rather than an omission.
+ */
+
+/** @type {readonly RevenueCatEventReason[]} */
+export const REVENUECAT_EVENT_REASONS = [
+  {
+    event: 'CANCELLATION',
+    reason: 'cancelled_at_period_end',
+    why: 'Auto-renew was turned off. Access continues to the paid-through date, which is exactly what cancelled_at_period_end names — mapping it to subscription_expired would end access on the day the user pressed cancel.',
+  },
+  {
+    event: 'EXPIRATION',
+    reason: 'subscription_expired',
+    why: 'The subscription reached its end and did not renew. This is the event that actually ends access; the finer expiration_reason sub-field is NOT read here, because a per-sub-reason table would be a second vendor fact nobody has verified.',
+  },
+  {
+    event: 'SUBSCRIPTION_PAUSED',
+    reason: 'subscription_paused',
+    why: 'Play lets a subscriber pause; the row stops being entitled and resumes later. subscription_paused exists in the reason set precisely so a pause is not recorded as an expiry, which would be read as churn.',
+  },
+  {
+    event: 'BILLING_ISSUE',
+    reason: null,
+    why: 'NOT A REVOCATION. It is a grace-period warning and the store retries; the final outcome arrives later as EXPIRATION. Mapping it to payment_failed_final would lock out a customer whose card recovers, which is the failure this whole table is shaped to avoid.',
+  },
+  {
+    event: 'INITIAL_PURCHASE',
+    reason: null,
+    why: 'NOT A REVOCATION — a grant. Recorded so the table is a complete answer for the events the client can see, rather than a list that goes quiet on the ones that matter most.',
+  },
+  {
+    event: 'RENEWAL',
+    reason: null,
+    why: 'NOT A REVOCATION — the subscription continued.',
+  },
+  {
+    event: 'UNCANCELLATION',
+    reason: null,
+    why: 'NOT A REVOCATION — auto-renew was turned back on before the period ended, so there is nothing to take away.',
+  },
+];
+
+const REVENUECAT_EVENT_MAP = new Map(REVENUECAT_EVENT_REASONS.map((r) => [r.event, r.reason]));
+
+/**
+ * The revocation reason a RevenueCat event means, or null when it means none.
+ *
+ * Returns null for an event this table does not name — the SAFE direction, and
+ * the one the header explains: an unknown event revokes nothing and the server
+ * read stays the only authority.
+ * @param {string} event
+ * @returns {string | null}
+ */
+export function revocationReasonForRevenueCatEvent(event) {
+  return REVENUECAT_EVENT_MAP.get(event) ?? null;
+}
+
 /** Machine-readable form, kept byte-identical to contract.json by generate.mjs. */
 export const CONTRACT_TABLE = {
   moneyEnvironments: MONEY_ENVIRONMENTS,
   revocationReasons: REVOCATION_REASONS,
+  revenuecatEventReasons: REVENUECAT_EVENT_REASONS,
 };

@@ -60,3 +60,45 @@ bool isRevocationReason(String reason) =>
 /// Whether `reason` GIVES ACCESS BACK. Resolved, never remembered.
 bool revocationRestoresAccess(String reason) =>
     kRevocationReasons.any((r) => r.reason == reason && r.restoresAccess);
+
+/// One RevenueCat webhook event and the revocation reason it means.
+///
+/// A null [reason] is an event that is deliberately NOT a revocation, which is
+/// a different fact from an event nobody mapped — the table records both so the
+/// next reader does not close the gap by guessing.
+class RevenueCatEventReason {
+  const RevenueCatEventReason(this.event, this.reason);
+
+  /// The vendor event type, verbatim.
+  final String event;
+
+  /// The revocation reason, or null when this event revokes nothing.
+  final String? reason;
+
+  @override
+  String toString() => reason == null ? '$event -> (no revocation)' : '$event -> $reason';
+}
+
+/// The RevenueCat event to revocation-reason map, in the order it is authored.
+const List<RevenueCatEventReason> kRevenueCatEventReasons =
+    <RevenueCatEventReason>[
+  RevenueCatEventReason('CANCELLATION', 'cancelled_at_period_end'),
+  RevenueCatEventReason('EXPIRATION', 'subscription_expired'),
+  RevenueCatEventReason('SUBSCRIPTION_PAUSED', 'subscription_paused'),
+  RevenueCatEventReason('BILLING_ISSUE', null),
+  RevenueCatEventReason('INITIAL_PURCHASE', null),
+  RevenueCatEventReason('RENEWAL', null),
+  RevenueCatEventReason('UNCANCELLATION', null),
+];
+
+/// The revocation reason a RevenueCat event means, or null when it means none.
+///
+/// An event this table does not name also answers null. That is the SAFE
+/// direction: nothing is revoked on an unrecognised event, and the server read
+/// stays the only thing that ever unlocks or locks.
+String? revocationReasonForRevenueCatEvent(String event) {
+  for (final RevenueCatEventReason r in kRevenueCatEventReasons) {
+    if (r.event == event) return r.reason;
+  }
+  return null;
+}

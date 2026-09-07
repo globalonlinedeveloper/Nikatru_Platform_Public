@@ -641,3 +641,136 @@ describe('limb 5 — the notice surfaces are what the declaration renders to', (
     assert.throws(() => parseYaml('collects: {}\n'), YamlError);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('limb 6 — the mobile-IAP opt-in and the bridge dependency travel together', () => {
+  // [ADR 067] decision 7. Two edits make an app sell through a store billing
+  // rail, and either one alone is a defect — in opposite directions and with
+  // very different costs. Every case below mutates the REAL declaration tree.
+  const IAP_BLOCK =
+    '\nbilling:\n  mobileIap:\n    provider: revenuecat\n    entitlementId: pro\n' +
+    '    revenuecatAppIds:\n      android: fixture_android_app\n      ios: fixture_ios_app\n';
+
+  /** apps/subly has a pubspec; the fixture tree does not copy it, so cases that
+   *  are ABOUT the dependency have to supply one. Written rather than copied so
+   *  each case states exactly the dependency set it is testing. */
+  const pubspec = (deps) =>
+    'name: subly\nenvironment:\n  sdk: ">=3.5.0 <4.0.0"\ndependencies:\n' +
+    deps.map((d) => `  ${d}:\n    path: ../../packages/x\n`).join('');
+
+  test('POSITIVE CONTROL — no declaration and no dependency is the shipped tree', () => {
+    const root = tree();
+    try {
+      put(root, 'apps/subly/pubspec.yaml', pubspec(['nikatru_purchases']));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, `expected a clean tree, got ${code}:\n${out}`);
+      // The empty forward domain is PRINTED, never resolved to an ok line — an
+      // ok here would read as "the sworn IAP rows were checked" when none exist.
+      assert.match(out, /limb 6 — NO app declares/);
+    } finally { kill(root); }
+  });
+
+  test('declared WITHOUT the bridge dependency fails', () => {
+    const root = tree();
+    try {
+      put(root, 'apps/subly/pubspec.yaml', pubspec(['nikatru_purchases']));
+      put(root, APP_YAML, get(root, APP_YAML) + IAP_BLOCK);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /does not depend on nikatru_billing_revenuecat/);
+    } finally { kill(root); }
+  });
+
+  test('the DEPENDENCY without the declaration fails — the expensive direction', () => {
+    // 🔴 THIS IS THE CASE THAT PROTECTS ANYBODY. The binary gains StoreKit and
+    // the Play Billing Library, both sworn store declarations change, and
+    // nothing else in the tree says so.
+    const root = tree();
+    try {
+      put(
+        root,
+        'apps/subly/pubspec.yaml',
+        pubspec(['nikatru_purchases', 'nikatru_billing_revenuecat']),
+      );
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /declares no .billing\.mobileIap./);
+    } finally { kill(root); }
+  });
+
+  test('a RevenueCat TOMBSTONE comment is not a dependency', () => {
+    // apps/subly's real pubspec carries a comment recording why no billing
+    // aggregator is present. A substring search over the file reports the
+    // dependency this limb exists to detect; comments are stripped first.
+    const root = tree();
+    try {
+      put(
+        root,
+        'apps/subly/pubspec.yaml',
+        pubspec(['nikatru_purchases']) +
+          '  # nikatru_billing_revenuecat: deliberately absent — see ADR 026.\n',
+      );
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 0, `a comment must not read as a dependency:\n${out}`);
+    } finally { kill(root); }
+  });
+
+  test('declared, depended on, but the Play form does not swear Purchase history', () => {
+    const root = tree();
+    try {
+      put(
+        root,
+        'apps/subly/pubspec.yaml',
+        pubspec(['nikatru_purchases', 'nikatru_billing_revenuecat']),
+      );
+      put(root, APP_YAML, get(root, APP_YAML) + IAP_BLOCK);
+      const ds = JSON.parse(get(root, 'apps/subly/store/android-play/data-safety.json'));
+      const posture = ds.buildPosture.current;
+      for (const a of ds.answers) {
+        if (a.type === 'Purchase history') a.collected[posture] = false;
+      }
+      putJson(root, 'apps/subly/store/android-play/data-safety.json', ds);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /does not swear "Purchase history"/);
+    } finally { kill(root); }
+  });
+
+  test('declared, depended on, and the Apple manifest names the provider nowhere', () => {
+    const root = tree();
+    try {
+      put(
+        root,
+        'apps/subly/pubspec.yaml',
+        pubspec(['nikatru_purchases', 'nikatru_billing_revenuecat']),
+      );
+      put(root, APP_YAML, get(root, APP_YAML) + IAP_BLOCK);
+      const rel = 'apps/subly/store/ios-appstore/privacy-manifest.json';
+      const apple = get(root, rel)
+        .replace(/purchases_flutter/g, 'some_other_package')
+        .replace(/RevenueCat/gi, 'SomeOtherVendor');
+      put(root, rel, apple);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /names the provider nowhere/);
+    } finally { kill(root); }
+  });
+
+  test('the schema refuses a billing block that is missing half the app ids', () => {
+    // An app that declares mobile IAP with only one platform id is an app whose
+    // other store build configures the SDK against nothing.
+    const root = tree();
+    try {
+      put(
+        root,
+        APP_YAML,
+        get(root, APP_YAML) +
+          '\nbilling:\n  mobileIap:\n    provider: revenuecat\n' +
+          '    entitlementId: pro\n    revenuecatAppIds:\n      android: only_android\n',
+      );
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, `expected a finding, got ${code}:\n${out}`);
+      assert.match(out, /ios/);
+    } finally { kill(root); }
+  });
+});

@@ -255,13 +255,44 @@ ${bypass}  if (typeof v !== 'string') return { ok: false };
 `;
 }
 
+/** The RevenueCat event → revocation reason map, in every copy that speaks it.
+ *  [ADR 067] decision 7. Kept beside ALL_REASONS for the same reason that list
+ *  is: a fixture whose default is already wrong makes every case a failing one.
+ *  `null` is an event deliberately NOT a revocation. */
+const RC_EVENTS = [
+  ['CANCELLATION', 'cancelled_at_period_end'],
+  ['EXPIRATION', 'subscription_expired'],
+  ['BILLING_ISSUE', null],
+];
+
+const rcJs = (events = RC_EVENTS) =>
+  `
+/** @type {readonly RevenueCatEventReason[]} */
+export const REVENUECAT_EVENT_REASONS = [
+${events
+  .map(([e, r]) => `  { event: '${e}', reason: ${r === null ? 'null' : `'${r}'`}, why: 'a sourced sentence' },`)
+  .join('\n')}
+];
+`;
+
+const rcDart = (events = RC_EVENTS) =>
+  `
+const List<RevenueCatEventReason> kRevenueCatEventReasons =
+    <RevenueCatEventReason>[
+${events.map(([e, r]) => `  RevenueCatEventReason('${e}', ${r === null ? 'null' : `'${r}'`}),`).join('\n')}
+];
+`;
+
+const rcJson = (events = RC_EVENTS) =>
+  events.map(([event, reason]) => ({ event, reason, why: 'a sourced sentence' }));
+
 // ── the four RUNTIME COPIES limb 4 now compares against the seed ─────────────
 // Each is written in its own syntax, because that is the whole point: four
 // languages cannot be byte-compared, so each is parsed and the SET is what has
 // to agree — including which member restores access.
 
 /** contracts/entitlement/contract.js — the authored copy. */
-function contractJs(entries = ALL_REASONS) {
+function contractJs(entries = ALL_REASONS, rcEvents = RC_EVENTS) {
   return `// @ts-check
 /** @type {readonly MoneyEnvironment[]} */
 export const MONEY_ENVIRONMENTS = ['live', 'sandbox'];
@@ -270,26 +301,29 @@ export const MONEY_ENVIRONMENTS = ['live', 'sandbox'];
 export const REVOCATION_REASONS = [
 ${entries.map(([r, restores]) => `  { reason: '${r}', restores: ${restores === 1} },`).join('\n')}
 ];
-export const CONTRACT_TABLE = { moneyEnvironments: MONEY_ENVIRONMENTS, revocationReasons: REVOCATION_REASONS };
+${rcJs(rcEvents)}
+export const CONTRACT_TABLE = { moneyEnvironments: MONEY_ENVIRONMENTS, revocationReasons: REVOCATION_REASONS, revenuecatEventReasons: REVENUECAT_EVENT_REASONS };
 `;
 }
 
 /** contracts/entitlement/contract.json — generated from contract.js. */
-function contractJson(entries = ALL_REASONS) {
+function contractJson(entries = ALL_REASONS, rcEvents = RC_EVENTS) {
   return JSON.stringify({
     $schema: './contract.schema.json',
     moneyEnvironments: ['live', 'sandbox'],
     revocationReasons: entries.map(([reason, restores]) => ({ reason, restores: restores === 1 })),
+    revenuecatEventReasons: rcJson(rcEvents),
   }, null, 2) + '\n';
 }
 
 /** packages/purchases/lib/src/generated/entitlement_contract.g.dart. */
-function contractDart(entries = ALL_REASONS) {
+function contractDart(entries = ALL_REASONS, rcEvents = RC_EVENTS) {
   return `// GENERATED FILE — DO NOT EDIT.
 const List<EntitlementRevocationReason> kRevocationReasons =
     <EntitlementRevocationReason>[
 ${entries.map(([r, restores]) => `  EntitlementRevocationReason('${r}', restoresAccess: ${restores === 1}),`).join('\n')}
 ];
+${rcDart(rcEvents)}
 `;
 }
 
@@ -392,13 +426,13 @@ function run(o = {}) {
   mkdirSync(contracts, { recursive: true });
   mkdirSync(generated, { recursive: true });
   mkdirSync(extCore, { recursive: true });
-  if (o.js !== null) writeFileSync(join(contracts, 'contract.js'), o.js ?? contractJs(o.jsReasons ?? codeReasons));
-  if (o.json !== null) writeFileSync(join(contracts, 'contract.json'), o.json ?? contractJson(o.jsonReasons ?? codeReasons));
+  if (o.js !== null) writeFileSync(join(contracts, 'contract.js'), o.js ?? contractJs(o.jsReasons ?? codeReasons, o.jsRc ?? RC_EVENTS));
+  if (o.json !== null) writeFileSync(join(contracts, 'contract.json'), o.json ?? contractJson(o.jsonReasons ?? codeReasons, o.jsonRc ?? RC_EVENTS));
   if (o.vendored !== null) {
-    writeFileSync(join(extCore, 'entitlement-contract.js'), o.vendored ?? contractJs(o.vendoredReasons ?? codeReasons));
+    writeFileSync(join(extCore, 'entitlement-contract.js'), o.vendored ?? contractJs(o.vendoredReasons ?? codeReasons, o.vendoredRc ?? RC_EVENTS));
   }
   if (o.dart !== null) {
-    writeFileSync(join(generated, 'entitlement_contract.g.dart'), o.dart ?? contractDart(o.dartReasons ?? codeReasons));
+    writeFileSync(join(generated, 'entitlement_contract.g.dart'), o.dart ?? contractDart(o.dartReasons ?? codeReasons, o.dartRc ?? RC_EVENTS));
   }
   if (o.store !== null) writeFileSync(join(mor, 'store.ts'), o.store ?? storeTs(o));
   if (o.webhooks !== null) writeFileSync(join(routes, 'webhooks.ts'), o.webhooks ?? webhooksTs(o));
@@ -1005,5 +1039,69 @@ describe('the Dart drift gate is wired, and it bites', () => {
 
   test('...and so does the contract.json gate beside it, which this one was modelled on', () => {
     assert.ok(invokes(workflowLines(WORKFLOW_DIR), 'contracts/entitlement/generate.mjs'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-entitlement-contract limb 6 — the RevenueCat event map is one map', () => {
+  // [ADR 067] decision 7. The translation from RevenueCat's event vocabulary to
+  // ours is the one place the two vocabularies touch, and its error mode is
+  // worse than the reason set's: a wrong MAPPING revokes a paying customer.
+
+  test('POSITIVE CONTROL — every copy carries the same map', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /the RevenueCat event map is equal across all 4 runtime copy\/copies/);
+  });
+
+  test('FAILS when one copy LOSES an event', () => {
+    const r = run({ dartRc: RC_EVENTS.filter(([e]) => e !== 'EXPIRATION') });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /'EXPIRATION' is mapped in contracts\/entitlement\/contract\.js but ABSENT/);
+  });
+
+  test('FAILS when one copy DISAGREES about what an event means', () => {
+    // The expensive shape: both copies name the event, and one of them revokes
+    // a subscription the other keeps.
+    const r = run({
+      vendoredRc: RC_EVENTS.map(([e, reason]) =>
+        e === 'BILLING_ISSUE' ? [e, 'payment_failed_final'] : [e, reason],
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /'BILLING_ISSUE' disagrees/);
+    assert.match(r.out, /One of the two revokes a subscription the other keeps/);
+  });
+
+  test('FAILS when a copy knows an event the authored table does not', () => {
+    const r = run({ jsonRc: [...RC_EVENTS, ['TRANSFER', null]] });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /maps RevenueCat event 'TRANSFER', which/);
+    assert.match(r.out, /A copy that knows more than the authored table is a second author/);
+  });
+
+  test('FAILS when an event maps to a reason the migration never seeded', () => {
+    // The limb limb 4 cannot reach: the reason never appears in the reason
+    // ARRAY, so the per-copy loop up there never sees it — and the write would
+    // fail after the money has moved.
+    const rc = RC_EVENTS.map(([e, r]) => (e === 'EXPIRATION' ? [e, 'vanished_into_thin_air'] : [e, r]));
+    const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /which the migration does NOT seed/);
+  });
+
+  test('FAILS when the table maps every event to NOTHING', () => {
+    // Valid data that silently means "no store event ever revokes anything",
+    // and it renders, compiles and reads exactly like a working table.
+    const rc = RC_EVENTS.map(([e]) => [e, null]);
+    const r = run({ jsRc: rc, jsonRc: rc, vendoredRc: rc, dartRc: rc });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /a translation table that translates nothing/);
+  });
+
+  test('COVERAGE LOST when the authored map cannot be parsed at all', () => {
+    const r = run({ jsRc: [] });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no RevenueCat event mapping could be parsed/);
   });
 });

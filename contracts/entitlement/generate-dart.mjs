@@ -39,6 +39,7 @@ const check = process.argv.includes('--check');
 
 const environments = [...CONTRACT_TABLE.moneyEnvironments];
 const reasons = CONTRACT_TABLE.revocationReasons.map((r) => ({ reason: r.reason, restores: r.restores }));
+const events = CONTRACT_TABLE.revenuecatEventReasons.map((r) => ({ event: r.event, reason: r.reason ?? null }));
 
 // A COVERAGE SELF-CHECK, because an empty table renders as valid Dart and reads
 // exactly like a clean run. `restores` is called out separately: a table with
@@ -53,6 +54,29 @@ if (!reasons.some((r) => r.restores)) {
   console.error(`✗ COVERAGE LOST — no revocation reason in contract.js restores access, so ${REL}`);
   console.error('  would be generated with nothing in this rail that ever gives access back.');
   process.exit(1);
+}
+// The RevenueCat table gets its own floor, and a sharper one than "non-empty":
+// a map whose every row is `reason: null` renders as valid Dart, compiles, and
+// silently means "no store event ever revokes anything". That is the shape a
+// well-meaning edit produces while removing a row it is unsure about.
+if (events.length === 0 || !events.some((e) => e.reason !== null)) {
+  console.error(`✗ COVERAGE LOST — contract.js maps no RevenueCat event to a revocation reason, so ${REL}`);
+  console.error('  would carry a translation table that translates nothing. An empty answer is not a safe answer here.');
+  process.exit(1);
+}
+// Every mapped reason must be a member of the reason set. The generator refuses
+// rather than emitting Dart that names a reason the database has never seeded —
+// assert-entitlement-contract limb 6 catches it too, and a generator that can
+// emit a broken table is a generator whose output nobody can trust on its own.
+{
+  const known = new Set(reasons.map((r) => r.reason));
+  const stray = events.filter((e) => e.reason !== null && !known.has(e.reason));
+  if (stray.length) {
+    console.error(`✗ ${REL} would map RevenueCat event(s) ${stray.map((e) => e.event).join(', ')} to reason(s) ` +
+      `${stray.map((e) => e.reason).join(', ')}, which contract.js does not declare as revocation reasons.`);
+    console.error('  A revocation reason nothing seeded is a value the database will reject after the money has moved.');
+    process.exit(1);
+  }
 }
 
 /** Dart single-quoted string literal. The reason set is `[a-z_]+` today; this
@@ -117,13 +141,51 @@ lines.push('');
 lines.push('/// Whether `reason` GIVES ACCESS BACK. Resolved, never remembered.');
 lines.push('bool revocationRestoresAccess(String reason) =>');
 lines.push('    kRevocationReasons.any((r) => r.reason == reason && r.restoresAccess);');
+lines.push('');
+lines.push('/// One RevenueCat webhook event and the revocation reason it means.');
+lines.push('///');
+lines.push('/// A null [reason] is an event that is deliberately NOT a revocation, which is');
+lines.push('/// a different fact from an event nobody mapped — the table records both so the');
+lines.push('/// next reader does not close the gap by guessing.');
+lines.push('class RevenueCatEventReason {');
+lines.push('  const RevenueCatEventReason(this.event, this.reason);');
+lines.push('');
+lines.push('  /// The vendor event type, verbatim.');
+lines.push('  final String event;');
+lines.push('');
+lines.push('  /// The revocation reason, or null when this event revokes nothing.');
+lines.push('  final String? reason;');
+lines.push('');
+lines.push('  @override');
+lines.push("  String toString() => reason == null ? '$event -> (no revocation)' : '$event -> $reason';");
+lines.push('}');
+lines.push('');
+lines.push('/// The RevenueCat event to revocation-reason map, in the order it is authored.');
+lines.push('const List<RevenueCatEventReason> kRevenueCatEventReasons =');
+lines.push('    <RevenueCatEventReason>[');
+for (const e of events) {
+  lines.push(`  RevenueCatEventReason(${dq(e.event)}, ${e.reason === null ? 'null' : dq(e.reason)}),`);
+}
+lines.push('];');
+lines.push('');
+lines.push('/// The revocation reason a RevenueCat event means, or null when it means none.');
+lines.push('///');
+lines.push('/// An event this table does not name also answers null. That is the SAFE');
+lines.push('/// direction: nothing is revoked on an unrecognised event, and the server read');
+lines.push('/// stays the only thing that ever unlocks or locks.');
+lines.push('String? revocationReasonForRevenueCatEvent(String event) {');
+lines.push('  for (final RevenueCatEventReason r in kRevenueCatEventReasons) {');
+lines.push('    if (r.event == event) return r.reason;');
+lines.push('  }');
+lines.push('  return null;');
+lines.push('}');
 
 const rendered = lines.join('\n') + '\n';
 
 if (!check) {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, rendered, 'utf8');
-  console.log(`ok  wrote ${REL} — ${reasons.length} revocation reason(s), ${environments.length} money environment(s)`);
+  console.log(`ok  wrote ${REL} — ${reasons.length} revocation reason(s), ${environments.length} money environment(s), ${events.length} RevenueCat event mapping(s)`);
   process.exit(0);
 }
 
@@ -144,4 +206,4 @@ if (current.replace(/\r\n/g, '\n') !== rendered) {
 }
 
 console.log(`ok  entitlement contract — ${REL} matches contract.js ` +
-  `(${reasons.length} revocation reason(s), ${environments.length} money environment(s))`);
+  `(${reasons.length} revocation reason(s), ${environments.length} money environment(s), ${events.length} RevenueCat event mapping(s))`);

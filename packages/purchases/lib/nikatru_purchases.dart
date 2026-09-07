@@ -10,6 +10,10 @@
 ///   rather than discovered at review ([5]M-15).
 library;
 
+// THE FACADE — [ADR 067] decision 7. One call picks the rail the CHANNEL takes,
+// so a paywall never constructs an implementation and never asks the platform a
+// question the platform cannot answer.
+export 'src/chassis_billing.dart';
 export 'src/checkout_launcher.dart';
 export 'src/entitlement_convergence.dart';
 // GENERATED from contracts/entitlement/contract.js — the one authored copy of
@@ -22,8 +26,14 @@ export 'src/entitlement_convergence.dart';
 // whole arrangement exists to prevent.
 export 'src/generated/entitlement_contract.g.dart';
 export 'src/hosted_checkout_rail.dart';
+// The store-billing seam and its rail. The SDK itself lives in the sibling
+// package nikatru_billing_revenuecat, so an app that sells nothing on mobile
+// links no native IAP payload and swears no purchase-history row.
+export 'src/iap_bridge.dart';
+export 'src/iap_rail.dart';
 export 'src/money_funnel.dart';
 export 'src/offering.dart';
 export 'src/purchase_capabilities.dart';
 export 'src/purchase_rail.dart';
+export 'src/purchase_rail_kind.dart';
 export 'src/rail_config.dart';

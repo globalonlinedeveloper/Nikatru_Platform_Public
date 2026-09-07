@@ -879,9 +879,32 @@ const flat = (v) =>
 
 {
   // ── G0 · THE PREMISE THIS SECTION REASONS FROM ──────────────────────────
-  // One production `PurchaseRail`, and it is the Paddle hosted checkout. If that
-  // stops being true, `canStartCheckout == true` stops meaning "this build opens
-  // PADDLE here" and every comparison below silently changes subject.
+  // ⏱ WIDENED 2026-09-07, [ADR 067] decision 7, AND THE WIDENING IS THE
+  // OPPOSITE OF A RELAXATION. Until today this read "one production
+  // `PurchaseRail`, and it is the Paddle hosted checkout", because while that
+  // held, `technicallySupported && channelPermitted` MEANT "this build opens
+  // Paddle here" and limb (d) could compare that pair against the register's
+  // rail. `IapRail` landed as a second implementation, so the premise had to be
+  // re-stated rather than deleted — the guard REFUSED (COVERAGE LOST) on the
+  // commit that added it, which is the tripwire working.
+  //
+  // 🔴 THE RE-STATED PREMISE IS A DECLARED SET, NOT A COUNT. Each shipped
+  // implementation is named here with the rail VOCABULARY it belongs to, so a
+  // THIRD implementation still refuses this section instead of being absorbed:
+  //
+  //   HostedCheckoutRail → `paddle`       — reads the capability matrix, so
+  //                                          limb (d)'s two booleans still mean
+  //                                          exactly what they meant;
+  //   IapRail            → the STORE rails — reads `PurchaseRailKind`, NOT the
+  //                                          capability matrix, which is why
+  //                                          limb (d) is unchanged and limb (e)
+  //                                          exists to grade the rail by NAME.
+  //
+  // The second half of that sentence is asserted below rather than promised: if
+  // `IapRail` ever consulted `channelPermitted`, the two vocabularies would have
+  // merged and limb (d) would silently be answering for both rails again.
+  const RAIL_IMPLS = { HostedCheckoutRail: 'paddle', IapRail: 'store' };
+  const IAP_RAIL_FILE = 'packages/purchases/lib/src/iap_rail.dart';
   let premiseHolds = true;
   {
     const impls = [];
@@ -900,13 +923,32 @@ const flat = (v) =>
     } catch {
       /* reported below */
     }
-    if (impls.length !== 1 || impls[0] !== 'HostedCheckoutRail') {
+    const declared = Object.keys(RAIL_IMPLS).sort();
+    const found = [...new Set(impls)].sort();
+    if (declared.join(',') !== found.join(',')) {
       premiseHolds = false;
       problems.push(
-        `COVERAGE LOST — §G reasons from "the only PurchaseRail this repo ships is HostedCheckoutRail, the PADDLE hosted checkout", and ${PURCHASES_LIB} now implements [${impls.join(', ') || 'none'}]. ` +
-          `While that held, \`channelPermitted: true\` MEANT "this build opens Paddle here" and could be compared against the register's rail. It no longer does. ` +
-          `Extend this section with the new rail's own code marker before re-greening it — a comparison whose left-hand side changed meaning is not a weaker check, it is a check of something else.`,
+        `COVERAGE LOST — §G reasons from a DECLARED set of PurchaseRail implementations [${declared.join(', ')}], and ${PURCHASES_LIB} implements [${found.join(', ') || 'none'}]. ` +
+          `Limb (d) compares the capability matrix's two booleans against the register on the premise that they answer for the HOSTED rail alone, and limb (e) compares the rail NAME for the store rails. ` +
+          `A rail this section has never heard of belongs to neither comparison. Add it to RAIL_IMPLS with the rail vocabulary it serves, and say which limb grades it, before re-greening — a comparison whose left-hand side changed meaning is not a weaker check, it is a check of something else.`,
       );
+    }
+    // The store rail must not read the HOSTED rail's permission field. If it
+    // did, limb (d)'s booleans would be answering for both rails at once and
+    // the split this section now depends on would be fiction.
+    {
+      const iapRaw = read(IAP_RAIL_FILE);
+      if (iapRaw === null) {
+        premiseHolds = false;
+        problems.push(
+          `COVERAGE LOST — ${IAP_RAIL_FILE} is missing, and RAIL_IMPLS names IapRail as the store-rail implementation. §G's split between the capability matrix (limb d) and the rail name (limb e) rests on that file existing and being readable.`,
+        );
+      } else if (/\bchannelPermitted\b/.test(code(iapRaw))) {
+        premiseHolds = false;
+        problems.push(
+          `COVERAGE LOST — ${IAP_RAIL_FILE} reads \`channelPermitted\`, the HOSTED rail's store-policy field. §G assumes the two rails consult DIFFERENT vocabularies — the matrix for Paddle, PurchaseRailKind for the store rails — and limb (d) would now be answering for both at once. Decide which vocabulary the store rail speaks, then re-state this premise.`,
+        );
+      }
     }
     for (const f of [RAIL_CLIENT_IMPL, RAIL_SERVER_IMPL]) {
       if (!existsSync(join(ROOT, f))) {
@@ -1124,7 +1166,7 @@ const flat = (v) =>
       if (opens && (rail !== 'paddle' || forbids.includes('paddle'))) {
         problems.push(
           `THE SHIPPED CODE OFFERS A RAIL THE REGISTER FORBIDS — channel \`${id}\` declares rail \`${rail}\`${forbids.length ? ` and forbids [${forbids.join(', ')}]` : ''} in ${CHANNELS}, but ${CAPS} answers \`PurchaseChannel.${row.member}\` with technicallySupported: true, channelPermitted: true. ` +
-            `The only PurchaseRail this repo implements is HostedCheckoutRail — the PADDLE hosted checkout — so that pair of booleans IS an instruction to open Paddle on \`${id}\`. On a store channel that is the documented rejection/removal cause, not a style disagreement.`,
+            `Those two booleans are the HOSTED checkout question: a \`true, true\` pair is what instructs a build to open HostedCheckoutRail on \`${id}\`, and since [ADR 067] decision 7 the store rail is a SEPARATE implementation chosen by rail NAME (limb (e) below). On a store channel that pair is the documented rejection/removal cause, not a style disagreement.`,
         );
       } else if (!opens && rail === 'paddle' && !forbids.includes('paddle')) {
         problems.push(
@@ -1197,6 +1239,120 @@ const flat = (v) =>
           'and limb (d) cannot fail on it — the SAFE direction (the build refuses rather than opening a forbidden rail), but not the decided one. ' +
           'This is the exact assignment the owner restated backwards on 2026-08-13. Promoting the parked `android-sideload` entry to a `channels` row, with its enum member, arms every limb in §G for it automatically.',
       );
+    }
+
+    // ── G4 (e) · THE DART RAIL-KIND MAP IS THE REGISTER'S, NOT A SECOND COPY ─
+    //
+    // [ADR 067] decision 7 added `ChassisBilling.railFor`, which picks a rail
+    // per channel — so the client now needs the register's `purchaseRail.rail`
+    // answer AT RUNTIME, and Dart cannot read a JSON register at runtime. The
+    // answer is mirrored in `PurchaseRailKind.forChannel`.
+    //
+    // 🔴 A MIRROR WITH NOTHING COMPARING IT IS JUST A SECOND DECISION. Limb (d)
+    // above cannot see this one: it compares the register against the two
+    // BOOLEANS in the capability matrix, which answer "may this build open a
+    // HOSTED checkout" and are correctly `false` on `android-play` whether that
+    // channel takes `play-billing` or sells nothing at all. The rail NAME is a
+    // different fact, and getting it wrong is not a refusal — it is the build
+    // running the WRONG rail: a store sheet on a Paddle channel, or an external
+    // checkout inside a Play build, which is the anti-steering violation.
+    //
+    // Both directions, and the vocabulary is checked too: a rail name in the
+    // Dart enum that the register's `rails` dictionary does not define is a rail
+    // nobody decided.
+    if (premiseHolds && railOf.size > 0) {
+      const KIND = 'packages/purchases/lib/src/purchase_rail_kind.dart';
+      const kindRaw = read(KIND);
+      if (kindRaw === null) {
+        problems.push(
+          `COVERAGE LOST — ${KIND} does not exist, so the rail the client picks per channel was compared ` +
+            'against nothing. `ChassisBilling.railFor` reads that map; the register is the decision it is ' +
+            'supposed to mirror.',
+        );
+      } else {
+        const kindCode = code(kindRaw);
+        // The enum's own register ids, parsed structurally — the same shape §A
+        // parses PurchaseChannel with.
+        const kindIds = new Set(
+          [...kindCode.matchAll(/^\s*([a-zA-Z]\w*)\('([^']+)'\)[,;]/gm)].map((m) => m[2]),
+        );
+        let dictNames = new Set();
+        try {
+          const d = JSON.parse(read(CHANNELS) ?? "{}").purchaseRails?.rails;
+          if (d && typeof d === "object") dictNames = new Set(Object.keys(d));
+        } catch {
+          // The vocabulary limb above already failed loudly on an unparseable
+          // register; an empty set here simply skips the name check rather
+          // than reporting the same defect a second time.
+        }
+        for (const id of kindIds) {
+          if (dictNames.size && !dictNames.has(id)) {
+            problems.push(
+              `${KIND} declares rail \`${id}\`, which ${CHANNELS}'s \`purchaseRails.rails\` dictionary does ` +
+                'not define. A rail the register has never named is a rail nobody decided, shipped in the ' +
+                'one file that decides which one a build opens.',
+            );
+          }
+        }
+
+        // member -> registerId, from the PurchaseChannel enum §A already parsed.
+        const memberOfId = new Map([...capById].map(([id, r]) => [id, r.member]));
+        // The `case PurchaseChannel.X:` → `return PurchaseRailKind.y;` map,
+        // including the fall-through spelling `case A: case B: return …;`.
+        const shipped = new Map(); // PurchaseChannel member -> rail member
+        for (const m of kindCode.matchAll(
+          /case\s+PurchaseChannel\.(\w+):(?:\s*case\s+PurchaseChannel\.(\w+):)*\s*return\s+PurchaseRailKind\.(\w+)\s*;/g,
+        )) {
+          // The regex's repeated group only keeps the LAST alternative, so the
+          // whole matched text is re-scanned for every member it names. A map
+          // that silently lost the first channel of a fall-through pair would
+          // read as "that channel has no case", which is a different and more
+          // confusing failure than the real one.
+          for (const c of m[0].matchAll(/case\s+PurchaseChannel\.(\w+):/g)) {
+            shipped.set(c[1], m[3]);
+          }
+        }
+        // rail member name (playBilling) -> its register id (play-billing),
+        // read out of the enum declaration rather than lower-cased here.
+        const railIdOfMember = new Map(
+          [...kindCode.matchAll(/^\s*([a-zA-Z]\w*)\('([^']+)'\)[,;]/gm)].map((m) => [m[1], m[2]]),
+        );
+
+        let railsCompared = 0;
+        const problemsBeforeE = problems.length;
+        for (const [id, { rail }] of railOf) {
+          const member = memberOfId.get(id);
+          if (!member) continue; // no enum row — §A already failed on it
+          const shippedMember = shipped.get(member);
+          if (!shippedMember) {
+            problems.push(
+              `${KIND} has no \`case PurchaseChannel.${member}:\` — channel \`${id}\` is registered and the ` +
+                'client has no rail to pick for it. `ChassisBilling.railFor` would answer whatever the ' +
+                'switch falls through to, which on a store channel is the difference between a legal ' +
+                'purchase and a removal.',
+            );
+            continue;
+          }
+          railsCompared += 1;
+          const shippedId = railIdOfMember.get(shippedMember) ?? shippedMember;
+          if (shippedId !== rail) {
+            problems.push(
+              `THE CLIENT WOULD OPEN THE WRONG RAIL — ${CHANNELS} gives channel \`${id}\` rail \`${rail}\`, ` +
+                `and ${KIND} answers \`PurchaseRailKind.${shippedMember}\` (\`${shippedId}\`). ` +
+                'That map is what `ChassisBilling.railFor` consults, so this is not a documentation ' +
+                'disagreement: it is the build choosing a payment mechanism the channel forbids.',
+            );
+          }
+        }
+        if (railsCompared === 0) {
+          problems.push(
+            `COVERAGE LOST — not one channel's rail could be compared between ${CHANNELS} and ${KIND}. ` +
+              'The mirror is unchecked, which is the state that makes it a second decision rather than a copy.',
+          );
+        } else if (problems.length === problemsBeforeE) {
+          ok(`${railsCompared} channel(s): the register's rail NAME and ${KIND} agree`);
+        }
+      }
     }
   } else if (premiseHolds && registerChannels.length > 0 && capById.size === 0) {
     problems.push(

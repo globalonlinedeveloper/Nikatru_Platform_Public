@@ -45,6 +45,12 @@
 //       the only thing that can: the surrounding document is hand-written prose
 //       a person maintains, so the file cannot carry one "generated" header.
 //
+//   6 · mobile IAP is declared and depended on TOGETHER — an app.yaml
+//       `billing.mobileIap` requires a `nikatru_billing_revenuecat` dependency,
+//       a sworn Play `Purchase history` row under the live posture and the
+//       provider named in the Apple manifest; and the dependency without the
+//       declaration FAILS, because that is the direction in which a sworn
+//       store declaration goes false by a one-line pubspec edit.
 // 🔴 WHY LIMB 4 IS A LIMB HERE AND NOT A GUARD OF ITS OWN. Two reasons, and the
 // second is the real one. First, a brand-new guard must be invoked by a workflow
 // or `assert-guard-coverage.mjs` fails it, and this one would have had to add a
@@ -430,6 +436,154 @@ if (privacyPlan.problems.length) {
     ok(
       `limb 5 — ${privacyPlan.files.size} notice rendering(s) are byte-identical to what `
         + `${privacyPlan.declarations.length - extCount} app and ${extCount} extension declaration(s) render to`,
+    );
+  }
+}
+
+
+// ── limb 6 · mobile IAP is declared and depended on TOGETHER, or not at all ──
+//
+// [ADR 067] decision 7. An app opts in to a STORE billing rail by doing two
+// things, and this limb is what stops it doing one of them:
+//
+//   · `billing.mobileIap` in its app.yaml — the DECLARATION, read by humans and
+//     by the store paperwork;
+//   · a dependency on `nikatru_billing_revenuecat` — the CODE, which is what
+//     actually links the native IAP payload into the binary.
+//
+// 🔴 BOTH DIRECTIONS, AND THE SECOND IS THE ONE THAT PROTECTS ANYBODY. Declared
+// without the dependency is a broken paywall — annoying, visible, fixed in a
+// day. The DEPENDENCY WITHOUT THE DECLARATION is the expensive one: the binary
+// gains StoreKit and the Play Billing Library, Apple's aggregated privacy report
+// and Play's Data safety form both change, and NOTHING in the tree says so. That
+// is a sworn declaration going false by a one-line pubspec edit, which is the
+// exact failure `assert-play-declarations`'s dependency-set equality exists for —
+// asked here at the DECLARATION, one level earlier.
+//
+// And when the declaration IS present, the two sworn store files must already
+// say what the SDK makes true: Play's `Purchase history` row collected under the
+// live posture, and the Apple manifest carrying the SDK's own rows. Those files
+// are STATEMENTS, never generated ([ADR 037]) — so this limb reads them and
+// refuses, and never writes them.
+const IAP_PACKAGE = 'nikatru_billing_revenuecat';
+const IAP_PURCHASE_TYPE = 'Purchase history';
+const IAP_SDK_TOKEN = /revenue\s*cat|purchases_flutter/i;
+
+let iapDeclared = 0;
+let iapChecked = 0;
+const problemsBeforeIap = problems.length;
+
+for (const { id, doc } of declarations) {
+  const pubspecRel = `${APPS_DIR}/${id}/pubspec.yaml`;
+  const pubspecAbs = join(ROOT, pubspecRel);
+  // 🔴 COMMENTS STRIPPED BEFORE THE DEPENDENCY IS LOOKED FOR. apps/subly's
+  // pubspec carries a RevenueCat TOMBSTONE — a comment recording why no billing
+  // aggregator is present — and a raw substring search over that file reports
+  // the dependency this limb exists to detect. Measured on the real tree: the
+  // words are there and the dependency is not.
+  const pubspec = existsSync(pubspecAbs)
+    ? readFileSync(pubspecAbs, 'utf8').replace(/^\s*#.*$/gm, '')
+    : null;
+  const dependsOnIap =
+    pubspec !== null && new RegExp(`^\\s+${IAP_PACKAGE}\\s*:`, 'm').test(pubspec);
+
+  const mobileIap = doc?.billing?.mobileIap ?? null;
+  iapChecked += 1;
+
+  if (mobileIap === null) {
+    if (dependsOnIap) {
+      problems.push(
+        `${pubspecRel}: depends on ${IAP_PACKAGE} and ${APPS_DIR}/${id}/app.yaml declares no ` +
+          '`billing.mobileIap`. That dependency links a native in-app-purchase payload into the binary, ' +
+          "which changes what Play's Data safety form and Apple's aggregated privacy report have to say — " +
+          'so an undeclared one is a sworn declaration going false by a one-line pubspec edit. Declare the ' +
+          'opt-in, or remove the dependency.',
+      );
+    }
+    continue;
+  }
+
+  iapDeclared += 1;
+
+  if (!dependsOnIap) {
+    problems.push(
+      `${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and ${pubspecRel} does not depend on ` +
+        `${IAP_PACKAGE}. The declaration is the app saying it sells through the store billing rail; without ` +
+        'the bridge package there is no rail, and the paywall would refuse every purchase on the one channel ' +
+        'the declaration says it sells on.',
+    );
+  }
+
+  const playRel = PLAY_REL(id);
+  const play = readJson(playRel);
+  if (play.missing || play.broken) {
+    problems.push(
+      `${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and ${playRel} ` +
+        `${play.missing ? 'does not exist' : `is not valid JSON (${play.broken})`}. An app that sells through ` +
+        'Play Billing has a Data safety form to answer, and there is nothing here to answer it with.',
+    );
+  } else {
+    const posture = play.json?.buildPosture?.current ?? null;
+    const answers = Array.isArray(play.json?.answers) ? play.json.answers : [];
+    const sworn = answers.some(
+      (a) => a && a.type === IAP_PURCHASE_TYPE && a.collected && a.collected[posture] === true,
+    );
+    if (!sworn) {
+      problems.push(
+        `${playRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and this form does not swear ` +
+          `"${IAP_PURCHASE_TYPE}" \`collected: true\` under posture "${posture}". A store IAP rail records a ` +
+          "purchase against the account — that IS purchase history — and Google attaches app REMOVAL to an " +
+          'inaccurate label. The sworn file is a statement, so answer it: this limb reads it and never writes it.',
+      );
+    }
+  }
+
+  const appleRel = APPLE_REL(id);
+  const apple = readJson(appleRel);
+  if (apple.missing || apple.broken) {
+    problems.push(
+      `${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and ${appleRel} ` +
+        `${apple.missing ? 'does not exist' : `is not valid JSON (${apple.broken})`}. The IAP SDK is a binary ` +
+        "inside the bundle and Apple's privacy report aggregates every binary in it.",
+    );
+  } else if (!IAP_SDK_TOKEN.test(JSON.stringify(apple.json))) {
+    problems.push(
+      `${appleRel}: ${APPS_DIR}/${id}/app.yaml declares \`billing.mobileIap\` and this manifest names the ` +
+        'provider nowhere. Apple aggregates one privacy report from the app target AND every framework in the ' +
+        'bundle, each answering for its own code — so a shipped IAP SDK that appears in no binary inventory ' +
+        'row is a manifest that describes a different app than the one submitted.',
+    );
+  }
+}
+
+if (iapChecked === 0) {
+  coverageLost([
+    'limb 6 examined no app declaration at all.',
+    'Both of its directions quantify over the declarations limb 1 accepted, so a run with none has not',
+    'checked that the mobile-IAP opt-in and the bridge dependency travel together — in either direction.',
+  ]);
+}
+if (problems.length === problemsBeforeIap) {
+  if (iapDeclared === 0) {
+    // ⬜ PRINTED, NOT FAILED, and the distinction is real rather than lenient.
+    // The direction that actually protects a reader — a dependency arriving with
+    // no declaration — is ARMED over all `iapChecked` apps and would fail today.
+    // What is empty is the forward direction, because [ADR 059] shape A makes
+    // mobile FREE-ONLY at v1 and no app has opted in. Saying so on every run is
+    // this repository's rule for a limb whose domain is empty: an ok line that
+    // did not distinguish the two would read as "the sworn IAP rows were
+    // checked" when nothing had any.
+    console.log(
+      `note ⬜ limb 6 — NO app declares \`billing.mobileIap\`, so the forward direction (declared ⇒ bridge ` +
+        `dependency + sworn Purchase history + Apple SDK rows) graded NOTHING. The reverse direction — a ` +
+        `${IAP_PACKAGE} dependency with no declaration — IS armed and was checked against all ${iapChecked} ` +
+        'app(s). The forward half arms itself the day an app opts in; no edit here is needed.',
+    );
+  } else {
+    ok(
+      `limb 6 — ${iapDeclared} of ${iapChecked} app(s) declare mobile IAP, each depending on ${IAP_PACKAGE} ` +
+        `and swearing "${IAP_PURCHASE_TYPE}" on Play with the provider named in the Apple manifest; the ` +
+        'other(s) carry neither the declaration nor the dependency',
     );
   }
 }

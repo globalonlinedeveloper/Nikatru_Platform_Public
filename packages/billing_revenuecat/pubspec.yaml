@@ -1,0 +1,46 @@
+name: nikatru_billing_revenuecat
+description: >-
+  The RevenueCat implementation of nikatru_purchases' IapBridge seam — the store
+  billing half of the money rail ([ADR 067] decision 7, [ADR 039] D5). It ships
+  the native IAP payload and NOTHING else: no rail, no paywall, no entitlement
+  opinion. The unlock still comes from GET /v1/entitlements, converged on by
+  nikatru_purchases, because a store SDK is a payment mechanism and not an
+  authority on entitlement.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_purchases:
+    path: ../purchases
+
+  # 🔴 THE REASON THIS PACKAGE EXISTS, AND WHY IT IS NOT A DEPENDENCY OF
+  # packages/purchases. This is a NATIVE payload: StoreKit on iOS/macOS and the
+  # Play Billing Library on Android, behind one Dart call. Declared HERE rather
+  # than in nikatru_purchases because Subly and every stamped app depend on that
+  # package — so an IAP SDK there would be linked into every app in the
+  # portfolio, and `assert-play-declarations` limb D (dependency-set EQUALITY)
+  # plus the Apple binaryInventory would then demand a sworn purchase-history row
+  # from apps that sell nothing on mobile. [ADR 059] shape A makes mobile
+  # FREE-ONLY at v1, which is most of them. An app opts IN by depending on this
+  # package and declaring `billing.mobileIap` in its app.yaml.
+  #
+  # Pinned to 10.x: RevenueCatCapabilities is tied to that major and must be
+  # re-reviewed on a bump, exactly as PurchaseCapabilities is tied to
+  # url_launcher 6.x.
+  purchases_flutter: ^10.11.0
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

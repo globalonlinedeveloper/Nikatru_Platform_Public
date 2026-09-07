@@ -29,6 +29,13 @@ enum CheckoutRefusal {
 
   /// The platform refused to open the page (popup blocker, no handler).
   couldNotOpen,
+
+  /// The buyer dismissed the store's own purchase sheet. ADDED for the store
+  /// IAP rail ([ADR 067] decision 7), and it is a REFUSAL rather than a failure
+  /// on purpose: a "purchase failed" message after a deliberate cancel is how a
+  /// paywall teaches people it is broken. The hosted rail never produces it —
+  /// once a browser has the page we cannot see what the buyer does there.
+  purchaseCancelled,
 }
 
 /// What happened when the app asked to start a checkout.
@@ -45,6 +52,21 @@ final class CheckoutOpened extends CheckoutStart {
 
   final Offering offering;
   final Uri url;
+}
+
+/// The store's own purchase sheet ran and the buyer completed it.
+///
+/// 🔴 NOT "THE USER HAS PRO", and the distinction is the one [CheckoutOpened]
+/// already carries: the store telling us money moved is a client-side claim, and
+/// the unlock is a SERVER read ([pipeline 5]M-5). The provider's webhook reaches
+/// our Worker some time after the sheet closes, and `EntitlementConvergence` is
+/// what waits for it — exactly as it does for the hosted rail. There is no URL
+/// here because there was no page: the transaction happened inside the store.
+@immutable
+final class CheckoutSubmitted extends CheckoutStart {
+  const CheckoutSubmitted({required this.offering});
+
+  final Offering offering;
 }
 
 /// Nothing was opened, and [reason] says why in a form the UI can explain.

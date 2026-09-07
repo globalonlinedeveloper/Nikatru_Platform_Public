@@ -85,6 +85,44 @@
       "minItems": 1,
       "items": { "type": "string", "minLength": 2 }
     },
+    "billing": {
+      "description": "OPTIONAL. Present only for an app that sells through a STORE billing rail on mobile — [ADR 067] decision 7, [ADR 039] D2/D3/D5. Absent means the app sells through the merchant-of-record hosted checkout on the channels that permit it and sells nothing on Play or the App Store, which is [ADR 059] shape A and is true of every app today. Declaring it is an OPT-IN with consequences a guard holds: tooling/ci/assert-app-yaml.mjs limb 6 requires the app's pubspec to depend on nikatru_billing_revenuecat, its store/android-play/data-safety.json to swear Purchase history, and its store/ios-appstore/privacy-manifest.json to carry the SDK's rows — and requires the reverse, so the dependency cannot arrive without the declaration either.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mobileIap"],
+      "properties": {
+        "mobileIap": {
+          "description": "The store IAP configuration. Holds NO SECRET: the RevenueCat app ids below are public identifiers, and the SDK's public key is supplied at runtime by the app rather than written here — a key in a declaration is a key in git.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "entitlementId", "revenuecatAppIds"],
+          "properties": {
+            "provider": {
+              "description": "The IAP provider. One value today, and an enum rather than a free string so a second provider is a schema change somebody reviews rather than a typo that reads as adoption.",
+              "type": "string",
+              "enum": ["revenuecat"]
+            },
+            "entitlementId": {
+              "description": "The entitlement identifier configured in the provider's dashboard, e.g. 'pro'. The SAME name our own entitlement record uses, because the client only reports what the store says and the server is what grants.",
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "minLength": 2,
+              "maxLength": 40
+            },
+            "revenuecatAppIds": {
+              "description": "The provider's own app id per platform. Both are required: an app that declares mobile IAP with only one is an app whose other store build would configure the SDK against nothing and refuse every purchase with no reason a user could act on.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["android", "ios"],
+              "properties": {
+                "android": { "type": "string", "minLength": 4, "maxLength": 64 },
+                "ios": { "type": "string", "minLength": 4, "maxLength": 64 }
+              }
+            }
+          }
+        }
+      }
+    },
     "audience": {
       "description": "The declared audience. Optional in the same way as `markets`. ADR 068 sets the floor at 18 for every NIKATRU product, so nothing here may describe a child audience.",
       "type": "string",

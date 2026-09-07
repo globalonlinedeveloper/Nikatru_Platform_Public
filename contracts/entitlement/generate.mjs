@@ -42,11 +42,20 @@ if (!payload.revocationReasons?.length || !payload.moneyEnvironments?.length) {
   console.error('  An empty set satisfies every downstream check vacuously; that is not a pass.');
   process.exit(1);
 }
+// The RevenueCat map has its own floor for the same reason, and a sharper one:
+// a table with rows but NO mapped event is a translation table that translates
+// nothing, and it renders as valid JSON that reads exactly like a clean run.
+if (!payload.revenuecatEventReasons?.length || !payload.revenuecatEventReasons.some((r) => r.reason)) {
+  console.error(`✗ COVERAGE LOST — contract.js exported no RevenueCat event that maps to a revocation reason, so ${REL}`);
+  console.error('  would carry a translation table that translates nothing. That is not the same as a table nobody needed.');
+  process.exit(1);
+}
 
 if (!check) {
   writeFileSync(OUT, rendered, 'utf8');
   console.log(`ok  wrote ${REL} — ${payload.revocationReasons.length} revocation reason(s), ` +
-    `${payload.moneyEnvironments.length} money environment(s)`);
+    `${payload.moneyEnvironments.length} money environment(s), ` +
+    `${payload.revenuecatEventReasons.length} RevenueCat event mapping(s)`);
   process.exit(0);
 }
 
@@ -66,4 +75,5 @@ if (current.replace(/\r\n/g, '\n') !== rendered) {
 }
 
 console.log(`ok  entitlement contract — ${REL} matches contract.js ` +
-  `(${payload.revocationReasons.length} revocation reason(s), ${payload.moneyEnvironments.length} money environment(s))`);
+  `(${payload.revocationReasons.length} revocation reason(s), ${payload.moneyEnvironments.length} money environment(s), ` +
+  `${payload.revenuecatEventReasons.length} RevenueCat event mapping(s))`);

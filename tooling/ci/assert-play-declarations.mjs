@@ -230,6 +230,11 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripInert, stripSourceComments } from './text-reductions.mjs';
 import { parseWorkflow } from './workflow-scan.mjs';
+// The IAP limb reads each app's OWN declaration, and reads it with the parser
+// that owns the format. A regex over YAML is a second parser, and two parsers of
+// one file drift — which in this file would mean a store billing rail declared in
+// a spelling this guard cannot see.
+import { parseYaml } from '../app-yaml/yaml.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
@@ -1985,6 +1990,121 @@ for (const app of apps) {
   summaries.push(checkApp(app));
 }
 CURRENT_ROOT = null;
+
+
+// ── THE IAP LIMB · a declared store billing rail is a sworn Purchase history ──
+//
+// [ADR 067] decision 7. `billing.mobileIap` in an app.yaml is the app saying it
+// sells through Google Play Billing. A purchase made that way is recorded
+// against the account by the store and by the provider — that IS Play's
+// `Purchase history` data type — so the Data safety form has to say so.
+//
+// 🔴 WHY THIS IS A LIMB HERE RATHER THAN ONLY IN assert-app-yaml. That guard
+// holds the DECLARATION against the pubspec and against both sworn files, which
+// is the authoring question. This one is the STORE question, asked by the guard
+// whose whole subject is the Data safety label and whose header carries Google's
+// own sentence: "The developer is responsible for the accuracy of the label."
+// The label is what app removal attaches to, and the check belongs beside the
+// other twelve things that grade it. The two limbs overlap on one row and
+// disagree about nothing: this one reads the posture and the answers exactly as
+// every other limb in this file does.
+//
+// The forward direction is what bites. It is stated as: declared ⇒ the row is
+// sworn `collected: true` under the CURRENT posture. The reverse (a sworn
+// Purchase-history row with no IAP declaration) is deliberately NOT a failure —
+// apps/subly swears that row today for the first-party entitlement rail, with a
+// sourced `basis`, and no IAP anywhere. Over-swearing is not the accuracy
+// failure Play punishes; under-swearing is.
+{
+  const IAP_PURCHASE_TYPE = 'Purchase history';
+  let iapDeclaredApps = 0;
+  let iapAppsScanned = 0;
+  const problemsBeforeIap = problems.length;
+
+  for (const app of apps) {
+    const yamlRel = `apps/${app}/app.yaml`;
+    const yamlText = read(yamlRel);
+    if (yamlText === null) {
+      problems.push(
+        `${yamlRel} does not exist, so this app's mobile-IAP opt-in could not be read at all. ` +
+          '[ADR 067] decision 2 makes app.yaml the ONE place an app declares itself; an app root without ' +
+          'one is an app whose Data safety obligations nothing can derive.',
+      );
+      continue;
+    }
+    iapAppsScanned += 1;
+    let doc;
+    try {
+      doc = parseYaml(yamlText);
+    } catch (e) {
+      // assert-app-yaml owns the parse failure and names the repair; saying it
+      // twice in two guards sends the reader to fix one file from two messages.
+      continue;
+    }
+    if (!doc?.billing?.mobileIap) continue;
+    iapDeclaredApps += 1;
+
+    const dsRel = `apps/${app}/store/${CHANNEL}/data-safety.json`;
+    const dsText = read(dsRel);
+    if (dsText === null) {
+      problems.push(
+        `${yamlRel} declares \`billing.mobileIap\` and ${dsRel} does not exist. An app that sells through ` +
+          'Play Billing has a Data safety form to answer and there is nothing here to answer it with.',
+      );
+      continue;
+    }
+    let ds;
+    try {
+      ds = JSON.parse(dsText);
+    } catch (e) {
+      problems.push(`${dsRel} is not valid JSON (${e.message}); the IAP limb had no right-hand side.`);
+      continue;
+    }
+    const posture = ds?.buildPosture?.current ?? null;
+    const answers = Array.isArray(ds?.answers) ? ds.answers : [];
+    if (posture === null || answers.length === 0) {
+      problems.push(
+        `${dsRel} is still UNANSWERED (${posture === null ? 'no `buildPosture.current`' : 'no `answers`'}) ` +
+          `while ${yamlRel} declares \`billing.mobileIap\`. An app cannot ship a store billing rail on a ` +
+          'stamped template form: the comparison would range over nothing and report it clean.',
+      );
+      continue;
+    }
+    const sworn = answers.some(
+      (a) => a && a.type === IAP_PURCHASE_TYPE && a.collected && a.collected[posture] === true,
+    );
+    if (!sworn) {
+      problems.push(
+        `${dsRel}: ${yamlRel} declares \`billing.mobileIap\` — a Play Billing purchase rail — and this form ` +
+          `does not swear "${IAP_PURCHASE_TYPE}" \`collected: true\` under posture "${posture}". A store ` +
+          'purchase is recorded against the account by Google and by the provider, so the label is inaccurate ' +
+          'in the direction Google attaches app REMOVAL to. Answer the sworn file; nothing generates it.',
+      );
+    }
+  }
+
+  if (iapAppsScanned === 0) {
+    problems.push(
+      'COVERAGE LOST — the IAP limb read no app.yaml at all, so no app was asked whether it declares a store ' +
+        'billing rail. Every app would pass this limb by being unreadable.',
+    );
+  } else if (problems.length === problemsBeforeIap) {
+    if (iapDeclaredApps === 0) {
+      prints.push(
+        `THE IAP LIMB HAS AN EMPTY DOMAIN — none of the ${iapAppsScanned} app(s) declares ` +
+          '`billing.mobileIap`, so no Data safety form was asked for a sworn Purchase-history row on account ' +
+          'of a store billing rail. [ADR 059] shape A makes mobile FREE-ONLY at v1, so this is the tree ' +
+          'being honest rather than a gap; the limb arms itself the day an app opts in. Printed on every run ' +
+          'because an ok line here would read as "the IAP rows were checked" when nothing had any.',
+      );
+    } else {
+      prints.push(
+        `✅ ${iapDeclaredApps} of ${iapAppsScanned} app(s) declare a store billing rail, and each swears ` +
+          `"${IAP_PURCHASE_TYPE}" under its current build posture.`,
+      );
+    }
+  }
+}
 
 /** Every Dart package and Android permission ANY answered declaration watches.
  *  The needle-list for the factory sweep below is DERIVED from the declarations

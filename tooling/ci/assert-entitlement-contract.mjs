@@ -990,6 +990,175 @@ for (const { file, fn, why } of INSTANT_PATHS) {
   }
 }
 
+
+// ── LIMB 6 · the RevenueCat event map, in every runtime that speaks it ───────
+//
+// [ADR 067] decision 7 / [ADR 039] D5 put RevenueCat behind the chassis billing
+// facade for the two store rails. The translation from ITS event vocabulary to
+// OUR revocation reasons is the one place the two vocabularies touch, and it is
+// authored as data in contracts/entitlement/contract.js for exactly the reason
+// the reason set is: three runtimes read it (the platform Worker's future
+// verifier, the Dart client, any extension), and a table restated in one and
+// remembered in another is the fourth transcription contracts/ exists to stop.
+//
+// 🔴 THIS TABLE'S ERROR MODE IS WORSE THAN THE REASON SET'S. A wrong reason
+// mislabels a row somebody reads later; a wrong MAPPING revokes a paying
+// customer, or fails to revoke a refunded one. So three things are held here and
+// none of them is "the file exists":
+//
+//   (a) every non-null reason is a member of the SEEDED set — a mapping to a
+//       reason the database has never heard of is a write that fails after the
+//       money has moved, and limb 4's per-copy loop cannot see it because such a
+//       reason never appears in the reason ARRAY it walks;
+//   (b) every runtime copy carries the SAME map, event for event and reason for
+//       reason, compared against the AUTHORED copy rather than in a chain;
+//   (c) the map is not vacuous — at least one event maps to a real reason. A
+//       table whose every row is null is valid data that silently means "no
+//       store event ever revokes anything", and it renders, compiles and reads
+//       exactly like a working table.
+const REVENUECAT_MAP_COPIES = [
+  {
+    file: CONTRACT_JS_REL,
+    why: 'THE AUTHORED COPY',
+    parse: (src) => {
+      const arr = /REVENUECAT_EVENT_REASONS\s*=\s*\[([\s\S]*?)\n\]/.exec(src);
+      const out = new Map();
+      if (!arr) return out;
+      for (const m of arr[1].matchAll(/event:\s*'([^']+)'\s*,\s*reason:\s*(?:'([^']+)'|null)/g)) {
+        out.set(m[1], m[2] ?? null);
+      }
+      return out;
+    },
+  },
+  {
+    file: 'contracts/entitlement/contract.json',
+    why: 'the generated machine-readable form the Dart generator reads',
+    parse: (src) => {
+      const out = new Map();
+      let doc;
+      try {
+        doc = JSON.parse(src);
+      } catch {
+        return out;
+      }
+      for (const row of doc?.revenuecatEventReasons ?? []) {
+        if (typeof row?.event === 'string') {
+          out.set(row.event, typeof row.reason === 'string' ? row.reason : null);
+        }
+      }
+      return out;
+    },
+  },
+  {
+    file: 'extensions/core/v1/entitlement-contract.js',
+    why: 'the copy the build-free extension runtime carries (byte-compared by limb 4 as well)',
+    parse: (src) => {
+      const arr = /REVENUECAT_EVENT_REASONS\s*=\s*\[([\s\S]*?)\n\]/.exec(src);
+      const out = new Map();
+      if (!arr) return out;
+      for (const m of arr[1].matchAll(/event:\s*'([^']+)'\s*,\s*reason:\s*(?:'([^']+)'|null)/g)) {
+        out.set(m[1], m[2] ?? null);
+      }
+      return out;
+    },
+  },
+  {
+    file: 'packages/purchases/lib/src/generated/entitlement_contract.g.dart',
+    why: 'the generated Dart table the mobile IAP rail reads',
+    parse: (src) => {
+      const out = new Map();
+      for (const m of src.matchAll(/RevenueCatEventReason\(\s*'([^']+)'\s*,\s*(?:'([^']+)'|null)\s*\)/g)) {
+        out.set(m[1], m[2] ?? null);
+      }
+      return out;
+    },
+  },
+];
+
+let rcCopiesCompared = 0;
+{
+  const authoredAbs = join(ROOT, CONTRACT_JS_REL);
+  const authored = existsSync(authoredAbs)
+    ? REVENUECAT_MAP_COPIES[0].parse(readFileSync(authoredAbs, 'utf8'))
+    : new Map();
+
+  if (authored.size === 0) {
+    fail(
+      `COVERAGE LOST — no RevenueCat event mapping could be parsed out of ${CONTRACT_JS_REL}, so limb 6 ` +
+        'compared every other copy against an empty table. An empty left-hand side agrees with all of them.',
+    );
+  } else if (![...authored.values()].some((r) => r !== null)) {
+    fail(
+      `${CONTRACT_JS_REL} maps ${authored.size} RevenueCat event(s) and NONE of them to a revocation reason. ` +
+        'That is a translation table that translates nothing: it renders, compiles and reads exactly like a ' +
+        'working one while meaning "no store event ever revokes anything".',
+    );
+  } else {
+    // (a) every mapped reason is seeded
+    for (const [event, reason] of authored) {
+      if (reason !== null && !seeded.has(reason)) {
+        fail(
+          `RevenueCat event '${event}' maps to revocation reason '${reason}', which the migration does NOT seed. ` +
+            'The rail would write a value the database has never heard of, on the one path where the write ' +
+            'happens after the money has moved.',
+        );
+      }
+    }
+    // (b) every copy equals the authored one
+    for (const copy of REVENUECAT_MAP_COPIES) {
+      const abs = join(ROOT, copy.file);
+      if (!existsSync(abs)) {
+        fail(
+          `COVERAGE LOST — ${copy.file} does not exist, so the RevenueCat map is compared against one copy ` +
+            `fewer than this guard claims. It is ${copy.why}.`,
+        );
+        continue;
+      }
+      const inCopy = copy.parse(readFileSync(abs, 'utf8'));
+      if (inCopy.size === 0) {
+        fail(
+          `COVERAGE LOST — parsed zero RevenueCat event mappings out of ${copy.file}. An empty right-hand ` +
+            `side agrees with any left-hand side. That file is ${copy.why}. Run: ` +
+            'node contracts/entitlement/generate.mjs && node contracts/entitlement/generate-dart.mjs && ' +
+            'node extensions/scripts/sync-contracts.mjs',
+        );
+        continue;
+      }
+      rcCopiesCompared++;
+      for (const [event, reason] of authored) {
+        if (!inCopy.has(event)) {
+          fail(
+            `RevenueCat event '${event}' is mapped in ${CONTRACT_JS_REL} but ABSENT from ${copy.file}. ` +
+              'A runtime that has never heard of an event cannot act on it, and the two runtimes would ' +
+              'disagree about whether the same webhook takes access away.',
+          );
+        } else if (inCopy.get(event) !== reason) {
+          const left = reason === null ? 'no revocation' : `'${reason}'`;
+          const right = inCopy.get(event) === null ? 'no revocation' : `'${inCopy.get(event)}'`;
+          fail(
+            `RevenueCat event '${event}' disagrees — ${CONTRACT_JS_REL} maps it to ${left} and ${copy.file} ` +
+              `maps it to ${right}. One of the two revokes a subscription the other keeps.`,
+          );
+        }
+      }
+      for (const event of inCopy.keys()) {
+        if (!authored.has(event)) {
+          fail(
+            `${copy.file} maps RevenueCat event '${event}', which ${CONTRACT_JS_REL} does not. A copy that ` +
+              'knows more than the authored table is a second author.',
+          );
+        }
+      }
+    }
+    if (rcCopiesCompared === 0) {
+      fail(
+        'COVERAGE LOST — limb 6 compared the authored RevenueCat map against ZERO of its ' +
+          `${REVENUECAT_MAP_COPIES.length} copies. The translation is unguarded in every runtime that speaks it.`,
+      );
+    }
+  }
+}
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (problems.length) {
   console.error(`✗ entitlement contract — ${problems.length} problem(s):`);
@@ -1014,5 +1183,7 @@ console.log(
     `with ${CONTRACT_TS} importing ${CONTRACT_JS_REL} rather than restating it; ` +
     `${upsertsScanned} conditional UPSERT(s) into entitlements across ${entitlementWrites.size} file(s) under ` +
     `${WRITER_SCAN.dir}/ carry the one ordering clause, fed by ${INSTANT_PATHS.length} canonicaliser(s) that emit ` +
-    'nothing but new Date(…).toISOString()',
+    'nothing but new Date(…).toISOString(); ' +
+    `the RevenueCat event map is equal across all ${rcCopiesCompared} runtime copy/copies, every mapped ` +
+    'reason is seeded, and at least one store event really revokes',
 );

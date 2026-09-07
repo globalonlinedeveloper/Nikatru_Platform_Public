@@ -395,6 +395,13 @@
     "ledgerTarget": "packages/chassis_screens/lib/auth/reset_password_screen.dart"
    },
    "detail": "[ADR 067] decision 2 / [ADR 071]. Not a name: the ledger row for lib/features/auth/reset_password_screen.dart is MOVES with a measured callSiteDelta of -233 (310 brick lines -> 77, 287 package lines added), and assert-package-earned reads THAT row rather than this sentence. The package exists because a widget that can see nikatru_core keeps the core-type-to-plain-value mapping out of the adapter -- the cost that made both design_system adoptions GROW the call site (+136, +148, [ADR 066]). It declares no third-party dependency, so assert-package-boundaries limb C never records it as an adapter wrapping a vendor."
+  },
+  "packages/billing_revenuecat": {
+   "reason": "native-binary",
+   "evidence": {
+    "dependency": "purchases_flutter"
+   },
+   "detail": "StoreKit on iOS and the Play Billing Library on Android, behind one Dart call — the platform difference is real and somebody has to absorb it once. It is a SIBLING of packages/purchases rather than a dependency OF it, and that is the measured part rather than a preference: Subly and every stamped app depend on nikatru_purchases, so declaring purchases_flutter there would link the native IAP payload into every app in the portfolio, and assert-play-declarations limb D (dependency-set EQUALITY) plus the Apple binaryInventory would then demand a sworn purchase-history row from apps that sell nothing on mobile. [ADR 059] shape A makes mobile FREE-ONLY at v1, which is all of them today. An app opts IN by depending on this package and declaring billing.mobileIap in its app.yaml; assert-app-yaml limb 6 holds those two together in both directions. [ADR 067] decision 7 / [ADR 039] D5."
   }
  },
  "demandGatedModules": {
@@ -771,6 +778,27 @@
     "test": "packages/purchases/test/purchase_capabilities_test.dart",
     "pinnedTo": "url_launcher 6.x, and store commerce policy as read on 2026-08-01 — re-review on any dependency bump AND whenever a channel changes its policy",
     "degradesOn": "TWO FIELDS PER ROW, and the distinction is what makes this a compliance artifact rather than a table of booleans: `technicallySupported` is url_launcher's question (yes on all six targets) and `channelPermitted` is a store-policy question (no on the mobile stores no matter how well the code works). A one-boolean matrix has to pick a lie -- 'we cannot take payment on iOS' (false: the code works) or 'we can' (false in the way that gets an app rejected). FORBIDDEN: ios-appstore + macos-appstore (App Store Review Guideline 3.1.1 requires IAP for digital content; an external checkout is a documented rejection cause), android-play (Play Billing required; 39-CHASSIS S4 cut 5 defers a native IAP rail so nothing is sold there), windows-store (UNVERIFIED -- Microsoft Store commerce policy has never been read against a primary source in this repo, and undecidable means denied). PERMITTED: web, windows-direct, linux-snap, linux-appimage. `forPlatform` takes the RESTRICTIVE answer where a platform ships through more than one channel, because a build cannot tell at runtime which channel installed it."
+   }
+  },
+  {
+   "id": "billing_revenuecat",
+   "capability": "The STORE billing half of the money rail: the RevenueCat implementation of nikatru_purchases’ IapBridge seam, for the two channels [ADR 039] gives a store rail (android-play → play-billing, ios-appstore/macos-appstore → apple-iap). It configures the SDK, asks the store what is purchasable, runs the store’s purchase sheet and reports what the store said. It unlocks NOTHING — the entitlement is a server read ([pipeline 5]M-5), and the store’s word arrives on a device the customer controls.",
+   "owner": "packages/billing_revenuecat",
+   "package": "nikatru_billing_revenuecat",
+   "seams": [
+    {
+     "file": "packages/billing_revenuecat/lib/src/revenuecat_bridge.dart",
+     "symbol": "RevenueCatBridge"
+    }
+   ],
+   "consumers": [],
+   "unconsumedReason": "⬜ NO APP HAS OPTED IN, AND THAT IS THE DESIGN RATHER THAN A GAP. [ADR 059] shape A makes mobile FREE-ONLY at v1, so every app today sells through the merchant-of-record hosted checkout on the channels that permit it and sells nothing on Play or the App Store. This package exists so that the FIRST app to sell on mobile can, without the other apps linking a native IAP payload and swearing a purchase-history declaration they do not need — which is precisely why it is a sibling of packages/purchases and not a dependency of it. Opting in is two edits held together by assert-app-yaml limb 6: a billing.mobileIap block in the app’s app.yaml and a dependency here. The owner steps that must happen first (RevenueCat account, project, entitlement, offerings, Play IAP products, webhook) are recorded in Private/runbooks/revenuecat-setup.md. [ADR 067] decision 7.",
+   "capabilityMatrix": {
+    "file": "packages/billing_revenuecat/lib/src/revenuecat_capabilities.dart",
+    "symbol": "RevenueCatCapabilities",
+    "test": "packages/billing_revenuecat/test/revenuecat_capabilities_test.dart",
+    "pinnedTo": "purchases_flutter 10.x, and the channel register’s per-channel rail as [ADR 039] decides it — re-review on any major bump AND whenever a channel changes which rail it takes",
+    "degradesOn": "TWO FIELDS PER ROW, because a platform that cannot SELL may still be able to READ what the account already owns, and one boolean would hide that. WORKS: android (Play Billing) and iOS (StoreKit), the two channels the register gives a store rail. MECHANICAL FALSE: windows and linux — there is no store billing service to talk to, and both take the hosted checkout anyway (Microsoft Store Policies §10.8.1 permit a third-party purchase rail); web — a browser has no store billing service at all; fuchsia — not a distribution target, so no channel and no rail. UNVERIFIED, THEREFORE DENIED: macOS. The register gives macos-appstore the apple-iap rail, but this repository has not read the plugin’s macOS support against a primary source and there is no Mac App Store build to check it against (the Apple account is awaiting activation). An unverified vendor fact must never resolve to \"allowed\": being wrong that way is a paywall that cannot complete a sale on a channel we told the store we sell on."
    }
   },
   {

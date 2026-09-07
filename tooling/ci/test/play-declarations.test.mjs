@@ -363,6 +363,34 @@ const MANIFEST = `<manifest xmlns:android="http://schemas.android.com/apk/res/an
 </manifest>
 `;
 
+/** The app declaration, WITHOUT `billing.mobileIap` — the shipped state, and
+ *  the tree [ADR 059] shape A describes: mobile is FREE-ONLY at v1. Cases that
+ *  are about the IAP limb opt in by appending IAP_BLOCK. */
+const APP_YAML = `id: subly
+name: Subly
+tagline: Track every subscription in one place
+category: Productivity
+status: live
+hosts:
+  web: subly.nikatru.com
+platforms:
+  - web
+listings:
+legal:
+  privacyPolicyUrl: https://nikatru.com/privacy
+  supportUrl: https://nikatru.com/contact
+`;
+
+const IAP_BLOCK = `
+billing:
+  mobileIap:
+    provider: revenuecat
+    entitlementId: pro
+    revenuecatAppIds:
+      android: fixture_android_app
+      ios: fixture_ios_app
+`;
+
 const PUBSPEC = `name: subly
 dependencies:
   flutter:
@@ -518,6 +546,11 @@ function makeRoot(patch = {}) {
     'apps/subly/ios/Runner/Info.plist': PLIST,
     'apps/subly/macos/Runner/Info.plist': PLIST,
     'apps/subly/pubspec.yaml': PUBSPEC,
+    // [ADR 067] decision 7 — the IAP limb reads each app's OWN declaration to
+    // find out whether it sells through a store billing rail. Without one the
+    // limb refuses, and correctly: an app root whose app.yaml is missing is an
+    // app whose Data safety obligations nothing can derive.
+    'apps/subly/app.yaml': APP_YAML,
     'pubspec.lock': LOCK,
     '.github/workflows/build-platforms.yml': WORKFLOW,
     'apps/subly/store/android-play/category.txt': 'Productivity\n',
@@ -1878,5 +1911,85 @@ describe('assert-play-declarations — THE FACTORY: the brick is a root of a dif
     const r = run(makeRoot());
     assert.match(out(r), /THE TEMPLATE'S NATIVE PERMISSIONS AND iOS USAGE KEYS/);
     assert.match(out(r), /found 0 manifest\(s\) there/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+/** A sworn `Purchase history` answer, in the shape every other fixture row has.
+ *  Added rather than flipped: DATA_SAFETY() carries no such row, and a patch
+ *  that mutated a row that is not there would silently do nothing. */
+const purchaseHistoryRow = (collectedLive) => ({
+  category: 'Financial info',
+  type: 'Purchase history',
+  collected: { demo: collectedLive, 'backend-live': collectedLive },
+  shared: { demo: false, 'backend-live': false },
+  ephemeral: false,
+  required: false,
+  purposes: ['App functionality'],
+  tells: { androidPermissions: [], dartPackages: [], iosUsageDescriptionKeys: [] },
+  evidence: ['apps/subly/pubspec.yaml'],
+  inventoryRows: [],
+  basis: 'the store records the purchase against the account',
+});
+describe('assert-play-declarations — the IAP limb', () => {
+  // [ADR 067] decision 7. A store purchase is recorded against the account by
+  // Google and by the provider — that IS Play's `Purchase history` data type —
+  // so an app that declares a store billing rail has to swear it.
+
+  test('the empty domain is PRINTED, never resolved to an ok line', () => {
+    const r = run(makeRoot());
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /THE IAP LIMB HAS AN EMPTY DOMAIN/);
+  });
+
+  test('declared IAP with no sworn Purchase-history row FAILS', () => {
+    const r = run(
+      makeRoot({
+        files: (f) => {
+          f['apps/subly/app.yaml'] = APP_YAML + IAP_BLOCK;
+        },
+        // No Purchase-history row at all — which is exactly the shipped state
+        // of a form nobody has answered for a store billing rail.
+      }),
+    );
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /does not swear "Purchase history"/);
+  });
+
+  test('declared IAP WITH the sworn row passes, and says how many apps sell', () => {
+    const r = run(
+      makeRoot({
+        files: (f) => {
+          f['apps/subly/app.yaml'] = APP_YAML + IAP_BLOCK;
+        },
+        ds: (d) => {
+          d.vocabulary.categories['Financial info'] = ['Purchase history'];
+          d.answers.push(purchaseHistoryRow(true));
+        },
+      }),
+    );
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /app\(s\) declare a store billing rail/);
+  });
+
+  test('a sworn Purchase-history row with NO IAP declaration is not a failure', () => {
+    // Over-swearing is not the accuracy failure Play punishes, and apps/subly
+    // swears that row today for the first-party entitlement rail with a sourced
+    // basis and no IAP anywhere.
+    const r = run(
+      makeRoot({
+        ds: (d) => {
+          d.vocabulary.categories['Financial info'] = ['Purchase history'];
+          d.answers.push(purchaseHistoryRow(true));
+        },
+      }),
+    );
+    assert.equal(r.status, 0, out(r));
+  });
+
+  test('an app root with no app.yaml is a finding, not a silent pass', () => {
+    const r = run(makeRoot({ files: (f) => { f['apps/subly/app.yaml'] = null; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /apps\/subly\/app\.yaml does not exist/);
   });
 });

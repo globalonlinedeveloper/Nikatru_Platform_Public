@@ -214,12 +214,57 @@ class PurchaseCapabilities {
 }
 `;
 
-// §G0's premise: ONE PurchaseRail in the tree, and it is the Paddle hosted
-// checkout. That is what makes `channelPermitted: true` mean "this build opens
-// PADDLE here" and therefore comparable to the register's rail.
+// §G0's premise, WIDENED 2026-09-07 with [ADR 067] decision 7: a DECLARED set
+// of PurchaseRail implementations, not a count of one. `HostedCheckoutRail`
+// reads the capability matrix — which is what makes `channelPermitted: true`
+// mean "this build opens PADDLE here" and therefore comparable to the
+// register's rail in limb (d) — and `IapRail` reads `PurchaseRailKind`, which
+// limb (e) compares by rail NAME. A THIRD implementation still refuses §G.
 const HOSTED_RAIL = `
 class HostedCheckoutRail implements PurchaseRail {
   const HostedCheckoutRail();
+}
+`;
+
+const IAP_RAIL = `
+class IapRail implements PurchaseRail {
+  const IapRail();
+}
+`;
+
+/** The client's mirror of the register's per-channel rail. Written to agree
+ *  with `channelRows()` above, because the whole subject of limb (e) is whether
+ *  those two agree — a fixture that disagreed by construction would make every
+ *  case in this file a failing one for the wrong reason. */
+const RAIL_KIND = `
+enum PurchaseRailKind {
+  paddle('paddle'),
+  playBilling('play-billing'),
+  appleIap('apple-iap'),
+  none('none');
+
+  const PurchaseRailKind(this.registerId);
+  final String registerId;
+
+  static PurchaseRailKind forChannel(PurchaseChannel channel) {
+    switch (channel) {
+      case PurchaseChannel.web:
+        return PurchaseRailKind.paddle;
+      case PurchaseChannel.androidPlay:
+        return PurchaseRailKind.playBilling;
+      case PurchaseChannel.iosAppStore:
+        return PurchaseRailKind.appleIap;
+      case PurchaseChannel.macosAppStore:
+        return PurchaseRailKind.appleIap;
+      case PurchaseChannel.windowsStore:
+        return PurchaseRailKind.paddle;
+      case PurchaseChannel.windowsDirect:
+        return PurchaseRailKind.paddle;
+      case PurchaseChannel.linuxSnap:
+      case PurchaseChannel.linuxAppImage:
+        return PurchaseRailKind.paddle;
+    }
+  }
 }
 `;
 
@@ -377,6 +422,8 @@ function run(o = {}) {
   write(root, 'tooling/channel-register.json', o.channels ?? CHANNELS);
   write(root, 'packages/purchases/lib/src/purchase_capabilities.dart', o.caps ?? CAPS);
   if (o.hostedRail !== null) write(root, 'packages/purchases/lib/src/hosted_checkout_rail.dart', o.hostedRail ?? HOSTED_RAIL);
+  if (o.iapRail !== null) write(root, 'packages/purchases/lib/src/iap_rail.dart', o.iapRail ?? IAP_RAIL);
+  if (o.railKind !== null) write(root, 'packages/purchases/lib/src/purchase_rail_kind.dart', o.railKind ?? RAIL_KIND);
   if (o.extraRailImpl) write(root, 'packages/purchases/lib/src/second_rail.dart', o.extraRailImpl);
   if (o.morPaddle !== null) write(root, 'services/platform/src/lib/mor/paddle.ts', o.morPaddle ?? 'export const paddle = {};\n');
   write(root, 'packages/purchases/test/purchase_capabilities_test.dart', 'void main() {}');
@@ -819,6 +866,21 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
         );
       case PurchaseChannel.iosAppStore:`,
     );
+  // ⏱ THE PROMOTION GOT ONE FILE BIGGER (2026-09-07, [ADR 067] decision 7).
+  // Limb (e) holds the client rail-kind map against the register, so a ninth
+  // channel row now needs a ninth case there too — the same shape as the enum
+  // member and the launcher test already have. Recorded as a fixture helper
+  // rather than left for the next reader to discover from a red build.
+  const railKindWithSideload = () =>
+    mutate(
+      RAIL_KIND,
+      '      case PurchaseChannel.iosAppStore:',
+      [
+        '      case PurchaseChannel.androidSideload:',
+        '        return PurchaseRailKind.paddle;',
+        '      case PurchaseChannel.iosAppStore:',
+      ].join('\n'),
+    );
   const railTestWithSideload = () =>
     mutate(RAIL_TEST, '    PurchaseChannel.web,', '    PurchaseChannel.web,\n    PurchaseChannel.androidSideload,');
   const sideloadLiveRow = () => ({
@@ -867,6 +929,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
       channels: registerDoc({ channels: [...channelRows(), sideloadLiveRow()], parked: [] }),
       caps: capsWithSideload(),
       railTest: railTestWithSideload(),
+      railKind: railKindWithSideload(),
     });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /9 channel\(s\): the register's rail and the shipped capability matrix agree/);
@@ -1033,14 +1096,78 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     assert.match(r.out, /no `case TargetPlatform.X: return forChannel\(PurchaseChannel.Y\);` could be parsed/);
   });
 
-  test('🔴 COVERAGE LOST when a SECOND PurchaseRail implementation lands — the premise, not the conclusion', () => {
-    // The day a Play Billing rail ships, `channelPermitted: true` stops meaning
-    // "opens Paddle" and every comparison in §G silently changes subject. The
-    // guard must say it has stopped being able to reason.
-    const r = run({ extraRailImpl: 'class PlayBillingRail implements PurchaseRail {\n  const PlayBillingRail();\n}\n' });
+  test('🔴 COVERAGE LOST when an UNDECLARED PurchaseRail implementation lands — the premise, not the conclusion', () => {
+    // ⏱ RE-POINTED 2026-09-07. This case used to plant a SECOND rail, because
+    // the premise was "exactly one". [ADR 067] decision 7 shipped that second
+    // rail (`IapRail`) and the guard REFUSED on the commit that added it —
+    // which is this tripwire working, and is why the premise was re-stated as a
+    // DECLARED SET rather than deleted. The case therefore has to plant a rail
+    // the set does NOT name, or it would be asserting that today's tree is
+    // broken.
+    const r = run({ extraRailImpl: 'class AmazonAppstoreRail implements PurchaseRail {\n  const AmazonAppstoreRail();\n}\n' });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /COVERAGE LOST — §G reasons from "the only PurchaseRail this repo ships is HostedCheckoutRail/);
-    assert.match(r.out, /now implements \[HostedCheckoutRail, PlayBillingRail\]/);
+    assert.match(r.out, /COVERAGE LOST — §G reasons from a DECLARED set of PurchaseRail implementations/);
+    assert.match(r.out, /implements \[AmazonAppstoreRail, HostedCheckoutRail, IapRail\]/);
+  });
+
+  test('🔴 COVERAGE LOST when the store rail reads the HOSTED rail\'s permission field', () => {
+    // If `IapRail` consulted `channelPermitted`, limb (d)'s two booleans would
+    // be answering for BOTH rails at once and the split §G now depends on would
+    // be fiction. The guard must refuse rather than compare.
+    const r = run({
+      iapRail: 'class IapRail implements PurchaseRail {\n  const IapRail();\n  bool get ok => caps.channelPermitted;\n}\n',
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /reads .channelPermitted., the HOSTED rail's store-policy field/);
+  });
+
+  // ── limb (e) · the rail NAME, which is what ChassisBilling.railFor reads ──
+  test('PASSES, and SAYS the register rail NAME and the shipped map agree', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /channel\(s\): the register's rail NAME and packages\/purchases\/lib\/src\/purchase_rail_kind\.dart agree/);
+  });
+
+  test('🔴 FAILS when the Dart map gives a store channel the PADDLE rail', () => {
+    // The expensive direction: an external checkout inside a Play build is the
+    // anti-steering violation, and limb (d) cannot see it — those two booleans
+    // are correctly `false` on android-play either way.
+    const r = run({
+      railKind: RAIL_KIND.replace(
+        'return PurchaseRailKind.playBilling;',
+        'return PurchaseRailKind.paddle;',
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE CLIENT WOULD OPEN THE WRONG RAIL/);
+    assert.match(r.out, /android-play/);
+  });
+
+  test('FAILS when a registered channel has no case in the Dart map', () => {
+    const r = run({
+      railKind: RAIL_KIND.replace(
+        `      case PurchaseChannel.windowsDirect:
+        return PurchaseRailKind.paddle;
+`,
+        '',
+      ),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /has no .case PurchaseChannel\.windowsDirect:./);
+  });
+
+  test('FAILS when the Dart enum names a rail the register never defined', () => {
+    const r = run({
+      railKind: RAIL_KIND.replace("paddle('paddle'),", "paddle('paddle'),\n  amazon('amazon-iap'),"),
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares rail .amazon-iap., which/);
+  });
+
+  test('COVERAGE LOST when the rail-kind map is gone entirely', () => {
+    const r = run({ railKind: null });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /purchase_rail_kind\.dart does not exist/);
   });
 
   test('COVERAGE LOST when the `paddle` rail id resolves to no code', () => {

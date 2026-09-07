@@ -37,5 +37,42 @@
       "reason": "subscription_paused",
       "restores": false
     }
+  ],
+  "revenuecatEventReasons": [
+    {
+      "event": "CANCELLATION",
+      "reason": "cancelled_at_period_end",
+      "why": "Auto-renew was turned off. Access continues to the paid-through date, which is exactly what cancelled_at_period_end names — mapping it to subscription_expired would end access on the day the user pressed cancel."
+    },
+    {
+      "event": "EXPIRATION",
+      "reason": "subscription_expired",
+      "why": "The subscription reached its end and did not renew. This is the event that actually ends access; the finer expiration_reason sub-field is NOT read here, because a per-sub-reason table would be a second vendor fact nobody has verified."
+    },
+    {
+      "event": "SUBSCRIPTION_PAUSED",
+      "reason": "subscription_paused",
+      "why": "Play lets a subscriber pause; the row stops being entitled and resumes later. subscription_paused exists in the reason set precisely so a pause is not recorded as an expiry, which would be read as churn."
+    },
+    {
+      "event": "BILLING_ISSUE",
+      "reason": null,
+      "why": "NOT A REVOCATION. It is a grace-period warning and the store retries; the final outcome arrives later as EXPIRATION. Mapping it to payment_failed_final would lock out a customer whose card recovers, which is the failure this whole table is shaped to avoid."
+    },
+    {
+      "event": "INITIAL_PURCHASE",
+      "reason": null,
+      "why": "NOT A REVOCATION — a grant. Recorded so the table is a complete answer for the events the client can see, rather than a list that goes quiet on the ones that matter most."
+    },
+    {
+      "event": "RENEWAL",
+      "reason": null,
+      "why": "NOT A REVOCATION — the subscription continued."
+    },
+    {
+      "event": "UNCANCELLATION",
+      "reason": null,
+      "why": "NOT A REVOCATION — auto-renew was turned back on before the period ended, so there is nothing to take away."
+    }
   ]
 }

@@ -19,6 +19,7 @@ workspace:
   - packages/core
   - packages/api_client
   - packages/auth_supabase
+  - packages/billing_revenuecat
   - packages/chassis_screens
   - packages/design_system
   - packages/notifications

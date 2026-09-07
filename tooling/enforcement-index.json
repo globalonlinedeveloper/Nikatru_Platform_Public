@@ -158,7 +158,6 @@
   },
   {
     "claims": [
-      "ADR 037",
       "ADR 067"
     ],
     "invokedBy": [
