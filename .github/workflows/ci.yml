@@ -149,6 +149,8 @@ jobs:
         run: node tooling/ci/assert-d1-bindings.mjs
       - name: A D1 location hint is latency, never residency
         run: node tooling/ci/assert-d1-location-hint.mjs
+      - name: A Hyperdrive configuration is capped, and the caps fit the origin
+        run: node tooling/ci/assert-hyperdrive-cap.mjs
       - name: The shared server declares every route and every binding
         run: node tooling/ci/assert-platform-register.mjs
       - name: The served app set is data, and onboarding needs no Worker edit

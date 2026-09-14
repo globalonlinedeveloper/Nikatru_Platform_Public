@@ -884,6 +884,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-hyperdrive-cap.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 006",
       "ADR 080",

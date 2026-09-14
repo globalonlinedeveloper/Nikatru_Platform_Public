@@ -90,6 +90,7 @@
   "guards.test.mjs": 392,
   "heartbeats.test.mjs": 69,
   "hostname-depth.test.mjs": 7,
+  "hyperdrive-cap.test.mjs": 13,
   "indexnow-ping.test.mjs": 11,
   "input-contract.test.mjs": 29,
   "install-pinned-tool.test.mjs": 11,
