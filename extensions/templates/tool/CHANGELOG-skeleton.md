@@ -23,6 +23,10 @@ not your tool's.
 
 ---
 
+## [Unreleased] — the fleet audit finds the fleet again (2026-09-14)
+
+- `tools/audit-fleet.mjs` — the repository-root walk stopped at the nearest `.git`, which since the monorepo merge is one level ABOVE `extensions/`, so a bare run found zero tools and exited 1 (BROKEN AUDIT). The marker is now `scripts/lib/toolinfo.mjs`, the extensions tree's own library. Not an inherited file, so no tool's copy is graded against this change. `README.md` carries a dated amendment beside its stale warning.
+
 ## [Unreleased] — CodeQL triage (2026-09-11)
 
 - `publish/bump-version.mjs` — `strayOldVersion` read each file after a `statSync` of its path, so the file measured need not be the file read (CodeQL #77): wanted files are now read first and only what was not read is stat-ed. The old-version needle escaped only the dot, so `1.0.0+1` missed itself and matched `1.0.00001` (CodeQL #17): exported `versionNeedle` escapes every metacharacter. The unused `PUBLISH` constant is gone.
