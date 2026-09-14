@@ -94,7 +94,12 @@ async function fakeGitHub(script) {
     const key = `${req.method} ${new URL(req.url, 'http://127.0.0.1').pathname}`;
     req.resume();
     req.on('end', () => {
-      calls.push({ key, at: Date.now(), auth: req.headers.authorization ?? '' });
+      // ⏱ 2026-09-14 — the QUERY is recorded and handed to a response function.
+      // The key stays the pathname, so every case written before today is
+      // unchanged; but a reader that must filter or page server-side can only be
+      // graded on the query it sent, and until today this harness threw it away.
+      const url = new URL(req.url, 'http://127.0.0.1');
+      calls.push({ key, url: req.url, query: url.searchParams, at: Date.now(), auth: req.headers.authorization ?? '' });
       const q = queues.get(key);
       if (!q || q.length === 0) {
         res.writeHead(404, { 'content-type': 'application/json' });
@@ -102,7 +107,7 @@ async function fakeGitHub(script) {
         return;
       }
       const next = q.length > 1 ? q.shift() : q[0];
-      const r = typeof next === 'function' ? next() : next;
+      const r = typeof next === 'function' ? next(url) : next;
       res.writeHead(r.status, { 'content-type': 'application/json', ...(r.headers ?? {}) });
       res.end(JSON.stringify(r.body ?? {}));
     });
@@ -283,6 +288,103 @@ describe('assert-gate-passed — FAIL-CLOSED, and "could not read" is not "faile
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-14 · ci-gate IS NOT ON THE FIRST PAGE OF CHECK RUNS ANY MORE.
+//
+// 🔴 RUN 34841097649 — the SCHEDULED six-platform build on main, 8fef6b2c. Its
+// gate step reported `timed out after 1200s waiting for "ci-gate" on 8fef6b2c
+// (last seen: not started)` and the lane failed closed. ci-gate had PASSED on
+// that exact SHA 7 hours earlier (check run, conclusion `success`, 04:59:20Z,
+// from CI run 34738938178). Measured the same day, paging the live API by hand:
+// the SHA carries 246 check runs and ci-gate is at index 25 OF PAGE 3.
+// `fetchGate` asked for `?per_page=100` and read `body.check_runs` — page one of
+// three — so the gate it was waiting for was never in the answer it read, and
+// the script correctly reported what it saw: not started, eighty times.
+//
+// That is a CLASS bug with a growth trigger rather than a flake: it bites every
+// self-gated lane (build-platforms, deploy-web, deploy-workers, extensions and
+// the four submit-* lanes) on every SHA whose check-run count crossed 100, and
+// it can only get worse as shards are added. `tooling/ops/await-pr-checks.mjs`
+// already had the house answer at its `checkRuns` — page until `total_count` is
+// accounted for, and throw loudly rather than silently short.
+//
+// THE TWO CASES BELOW ARE THE FIX'S WHOLE CONTRACT:
+//   (g) the reader asks GitHub for the ONE check by name — `check_name=ci-gate`
+//       — so a 246-check SHA costs one request, not three.
+//   (h) and if that filter is ever ignored (a proxy, a seam, an API change) it
+//       PAGES until it finds the gate rather than believing page one. This case
+//       is the regression control: a server that answers the old unfiltered
+//       shape makes the pre-2026-09-14 script report "not started" and exit 1.
+// ─────────────────────────────────────────────────────────────────────────────
+/** `n` check runs that are NOT the gate — the other 245 on a real main SHA. */
+const filler = (n, from = 0) =>
+  Array.from({ length: n }, (_, i) => ({
+    name: `shard-${from + i}`,
+    status: 'completed',
+    conclusion: 'success',
+  }));
+const GATE_RUN = { name: 'ci-gate', status: 'completed', conclusion: 'success' };
+
+describe('assert-gate-passed — a gate past the first page of check runs is still READ', () => {
+  test('(g) asks for the check BY NAME, so 246 check runs cost one request', async () => {
+    // A server that HONOURS check_name, as GitHub documents it: only the match
+    // comes back, and total_count counts the filtered set.
+    const r = await gateAgainst({
+      [CHECK_RUNS]: [
+        (url) =>
+          url.searchParams.get('check_name') === 'ci-gate'
+            ? { status: 200, body: { total_count: 1, check_runs: [GATE_RUN] } }
+            : { status: 200, body: { total_count: 246, check_runs: filler(100) } },
+      ],
+    });
+    noCrash(r.out);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}ci-gate passed for abc12345/, r.out);
+    assert.equal(count(r.calls, CHECK_RUNS), 1, `spent ${count(r.calls, CHECK_RUNS)} request(s)\n${r.out}`);
+    const q = r.calls.find((c) => c.key === CHECK_RUNS).query;
+    assert.equal(q.get('check_name'), 'ci-gate', `the name filter was not sent: ${r.calls[0].url}`);
+  });
+
+  test('(h) REGRESSION CONTROL — a server that IGNORES the filter is paged, not believed', async () => {
+    // The shape run 34841097649 actually met: 246 check runs, ci-gate on page 3.
+    const pages = {
+      1: { total_count: 246, check_runs: filler(100, 0) },
+      2: { total_count: 246, check_runs: filler(100, 100) },
+      3: { total_count: 246, check_runs: [...filler(45, 200), GATE_RUN] },
+    };
+    const r = await gateAgainst({
+      [CHECK_RUNS]: [
+        (url) => ({ status: 200, body: pages[Number(url.searchParams.get('page') ?? 1)] ?? { total_count: 246, check_runs: [] } }),
+      ],
+    });
+    noCrash(r.out);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {2}ci-gate passed for abc12345/, r.out);
+    assert.doesNotMatch(r.out, /timed out after|not started/, r.out);
+    assert.equal(count(r.calls, CHECK_RUNS), 3, `paged in ${count(r.calls, CHECK_RUNS)} request(s)\n${r.out}`);
+  });
+
+  test('an absent gate on a 246-check SHA is still "not started" — paging did not invent one', async () => {
+    const r = await gateAgainst(
+      {
+        [CHECK_RUNS]: [
+          (url) => ({
+            status: 200,
+            body:
+              Number(url.searchParams.get('page') ?? 1) <= 2
+                ? { total_count: 246, check_runs: filler(100) }
+                : { total_count: 246, check_runs: filler(46) },
+          }),
+        ],
+      },
+      ['--timeout-seconds', '1'],
+    );
+    noCrash(r.out);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /timed out after 1s waiting for "ci-gate".*last seen: not started/s, r.out);
+  });
+});
+
 // ⏱ 2026-09-11 · THE REQUESTS SPENT BEFORE ci-gate CAN EXIST.
 //
 // 🔴 A deploy lane starts at push time, beside CI, and ci-gate's check run is not
