@@ -147,6 +147,8 @@ jobs:
         run: node tooling/ci/check-migrations.mjs
       - name: D1 bindings are real and consistent across Workers
         run: node tooling/ci/assert-d1-bindings.mjs
+      - name: A D1 location hint is latency, never residency
+        run: node tooling/ci/assert-d1-location-hint.mjs
       - name: The shared server declares every route and every binding
         run: node tooling/ci/assert-platform-register.mjs
       - name: The served app set is data, and onboarding needs no Worker edit
