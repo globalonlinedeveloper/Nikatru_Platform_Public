@@ -58,6 +58,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+// The ONE workflow parse in this repository — see the dated block above `invocations`.
+import { parseAllWorkflows, shellSegments } from '../ci/workflow-scan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -91,19 +93,47 @@ if (files.length === 0) {
 // the node flags that precede the path. Two producers build this shape and both
 // must carry all three: the scan below, and the synthetic fallback call further
 // down — which did not, and crashed the spawn on a clean tree.
+//
+// ⏱ 2026-09-14 — READ THROUGH tooling/ci/workflow-scan.mjs, NOT A PRIVATE LINE
+// LOOP (O-GUARD-SWEEP-HAS-A-RIVAL-PARSER). This file split each workflow on
+// newlines and matched one physical line, a fifth copy of the parse that module
+// exists to be the only one of. The measurable cost was the thing that module's
+// header names first: which lines it can see. A folded `run: >` puts the
+// arguments on the lines AFTER `node tooling/ci/<guard>.mjs`, so nine guards were
+// recorded with EMPTY arguments. Measured against origin/main 05b78777:
+// 42 invocations sit inside a block scalar (20 in folded `run: >`, 22 in literal
+// `run: |`) across 19 guards. The old matcher run against this reader changed the
+// recorded invocation of 9 of them (assert-android-vapt-manifest,
+// assert-artifact-shape, assert-artifact-signed, -apple, -msix,
+// assert-elf-page-alignment, assert-snapcraft-generable, release-manifest,
+// windows-signing), with 163 guards invoked either way. No guard's classification
+// class changed: seven are MUTATES either way, and the two RUN guards keep the
+// same shortest candidate. `parseWorkflow` blanks comments, joins block scalars
+// into logical lines, and `shellSegments` ends a command at `&&`, `||`, `;` and
+// `|` — the same stops the old `[^|&;#\n]*` tail made by hand.
 const invocations = new Map();
-const workflows = existsSync(WF_DIR)
-  ? readdirSync(WF_DIR).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
-  : [];
+const parsedWorkflows = parseAllWorkflows(ROOT);
+const workflows = parsedWorkflows.map((p) => p.rel.split('/').pop());
 if (workflows.length === 0) {
   console.error(`✗ COVERAGE LOST — no workflow files under ${WF_DIR}, so no invocation could be read and every guard would look unreferenced.`);
   process.exit(1);
 }
-for (const wf of workflows) {
-  const text = readFileSync(join(WF_DIR, wf), 'utf8');
-  for (const line of text.split(/\r?\n/)) {
-    // Skip YAML comments: a guard named only in a comment is discussed, not run.
-    const code = line.replace(/^\s*#.*$/, '');
+const logicalSegments = [];
+for (const parsed of parsedWorkflows) {
+  const wf = parsed.rel.split('/').pop();
+  for (const job of parsed.jobs.values()) {
+    for (const line of job.logical) {
+      for (const segment of shellSegments(line.text)) logicalSegments.push({ wf, segment });
+    }
+  }
+}
+if (logicalSegments.length === 0) {
+  console.error('✗ COVERAGE LOST — the workflows parsed to ZERO job lines, so no invocation could be read and every guard would look unreferenced.');
+  process.exit(1);
+}
+for (const { wf, segment } of logicalSegments) {
+  {
+    const code = segment;
     // 🔴 NODE FLAGS SIT BETWEEN `node` AND THE PATH, AND IGNORING THEM MADE FOUR
     // INVOKED GUARDS LOOK ORPHANED. This pattern required `node` then WHITESPACE
     // then the path until 2026-09-12, so `node --single-threaded tooling/ci/x.mjs`
@@ -121,7 +151,7 @@ for (const wf of workflows) {
     // configuration the flag exists to avoid. They are kept OUT of the argv below —
     // a node flag is not a script argument, and `blocker()` reads argv to decide
     // whether this machine can satisfy a call.
-    const m = code.match(/node\s+((?:-[^\s]+\s+)*)tooling\/ci\/([a-z0-9._-]+\.mjs)([^|&;#\n]*)/i);
+    const m = code.match(/node\s+((?:-[^\s]+\s+)*)tooling\/ci\/([a-z0-9._-]+\.mjs)(.*)$/i);
     if (!m) continue;
     const [, flagText, name, tail] = m;
     const flags = flagText.trim() ? flagText.trim().split(/\s+/) : [];
@@ -144,6 +174,15 @@ for (const wf of workflows) {
     const key = flags.join(' ');
     if (!list.some((x) => x.raw === raw && x.wf === wf && x.flags.join(' ') === key)) list.push({ wf, raw, flags });
   }
+}
+
+/** `--invocations`: print what the scan recorded, as JSON, and stop. The
+ *  classification below is a function of this map, so a test can pin the READ
+ *  (including arguments folded onto a `run: >` continuation line) without
+ *  executing anything. */
+if (process.argv.includes('--invocations')) {
+  console.log(JSON.stringify(Object.fromEntries([...invocations.entries()].sort(([a], [b]) => a.localeCompare(b))), null, 2));
+  process.exit(0);
 }
 
 const isLibrary = (name) => {
