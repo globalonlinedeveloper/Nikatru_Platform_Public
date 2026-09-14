@@ -71,6 +71,11 @@ const WATCHED = [
   ['monetization/manage_plan_screen.dart', 'monetization/manage_plan_screen.dart'],
   ['monetization/paywall_screen.dart', 'monetization/paywall_screen.dart'],
 ];
+/** …plus the two SHELL pairs (2026-09-14), which sit beside lib/features rather
+ *  than under it, same file name on both sides. */
+const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
+const SUBLY_LIB = 'apps/subscriptiontracker/lib';
+const SHELL = ['app.dart', 'main.dart'];
 
 /** A tree with: core declaring two contracts, packages/ implementing ONE of them
  *  (so the other is deliberately homeless), the parity pair at parity, plus
@@ -132,6 +137,15 @@ function tree({ extra = {}, violations = null, omit = [] } = {}) {
   files[join(root, 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart')] =
     'class App {\n  Widget build() => const Empty();\n}\n';
   files[join(root, 'tooling/bricks/app/hooks/pre_gen.dart')] = '// hook\n';
+  // The SHELL pairs, watched since 2026-09-14 (O-SHELL-PAIR-UNCOMPARED): the
+  // brick's lib/app.dart above and lib/main.dart, each against Subly's copy.
+  // Present and gating on nothing, like every other watched pair.
+  for (const s of SHELL) {
+    if (!files[join(root, `${BRICK_LIB}/${s}`)]) {
+      files[join(root, `${BRICK_LIB}/${s}`)] = 'void main() {}\n';
+    }
+    files[join(root, `${SUBLY_LIB}/${s}`)] = 'class Shell {\n  Widget build() => const Empty();\n}\n';
+  }
 
   const CONTRACTS = ['NotificationService', 'KeyValueStore', 'Analytics', 'PackVerifier', 'AuthRepository'];
   files[join(root, 'packages/core/lib/seams.dart')] =
@@ -352,8 +366,10 @@ describe('the guard knows when it is not looking', () => {
 // floors are now per root.
 //
 // ⚠️ NOT COVERED HERE, said out loud rather than left to be assumed: a fixture
-// cannot push `tooling/bricks` below its floor of 11. The brick contributes 12
-// files to every fixture tree — 3 parity chassis + 9 watched chassis — and
+// cannot push `tooling/bricks` below its floor of 11. The brick contributes 14
+// files to every fixture tree — 3 parity chassis + 11 watched chassis (the 9
+// screens, and since 2026-09-14 the two shell files lib/app.dart and
+// lib/main.dart) — and
 // removing any of them trips the parity or watch limb first, which is the right
 // ordering (a precise diagnosis beats a count). That floor's evidence is the
 // real-tree `tooling/bricks removed` mutation, not this file.
@@ -386,7 +402,8 @@ function classifiable(root, dir, suspect) {
  *  subject, which is the whole reason it is not `apps/pubspec.yaml` or similar. */
 // bricks default 15, not 14: the landed-behaviour rows add one brick file
 // (lib/state/providers.dart) to the base tree, and padding only ever adds.
-function checkout(root, { apps = 40, packages = 95, bricks = 15 } = {}) {
+// 16 since 2026-09-14: the watched SHELL pair adds the brick lib/main.dart.
+function checkout(root, { apps = 40, packages = 95, bricks = 16 } = {}) {
   const sentinel = join(root, 'tooling/ci/assert-no-seam-forks.mjs');
   mkdirSync(dirname(sentinel), { recursive: true });
   writeFileSync(sentinel, '// sentinel: this root is a checkout of the repository\n');
@@ -411,18 +428,19 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     assert.equal(code, 0, out);
     assert.match(out, /apps=40\/floor 37/);
     assert.match(out, /packages=95\/floor 90/);
-    assert.match(out, /tooling\/bricks=15\/floor 11/);
+    assert.match(out, /tooling\/bricks=16\/floor 11/);
   });
 
   test('🔴 apps/ alone below its floor fails, though the UNION is twenty times the old one', () => {
-    // apps = 13 (the chassis/fork pair files plus the landed-behaviour app
-    // file), union = 13 + 300 + 15 = 328.
+    // apps = 15 (the chassis/fork pair files, the landed-behaviour app file
+    // and, since 2026-09-14, the two watched shell files),
+    // union = 15 + 300 + 16 = 331.
     // The old `< 10` floor was satisfied three hundred times over. This is the
     // defect, and it is red only because the floor is now per root.
-    const { code, out } = run(checkout(tree(), { apps: 0, packages: 300, bricks: 15 }));
+    const { code, out } = run(checkout(tree(), { apps: 0, packages: 300, bricks: 16 }));
     assert.equal(code, 1, out);
     assert.match(out, /COVERAGE LOST — 1 of the 3 declared root\(s\)/);
-    assert.match(out, /`apps` yielded only 13 file\(s\) to classify, below its floor of 37/);
+    assert.match(out, /`apps` yielded only 15 file\(s\) to classify, below its floor of 37/);
   });
 
   test('🔴 packages/ below its floor fails — with nothing homed, no fork can be a fork', () => {
@@ -464,7 +482,7 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     // and on the real tree the mirror of this is what keeps the floor off
     // honest work: Subly's 69 test files are 47% of apps/ and moving them
     // must not redden a guard that never classified them.
-    const root = checkout(tree(), { apps: 0, packages: 95, bricks: 15 });
+    const root = checkout(tree(), { apps: 0, packages: 95, bricks: 16 });
     for (let i = 0; i < 200; i++) {
       const p = join(root, `apps/padapp/test/t${i}.dart`);
       mkdirSync(dirname(p), { recursive: true });
@@ -472,7 +490,7 @@ describe('coverage is per ROOT — a pooled floor is satisfied by one root alone
     }
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /`apps` yielded only 13 file\(s\) to classify/);
+    assert.match(out, /`apps` yielded only 15 file\(s\) to classify/);
   });
 });
 
@@ -585,7 +603,7 @@ describe('[ADR 042] an accepted fork must follow the chassis it forked', () => {
     // reading the source, which is the difference between this and a check
     // that quietly stopped checking.
     assert.match(out, /\[ADR 042\] parity — apps\/subscriptiontracker\/lib\/features\/auth\/login_screen\.dart follows all 1 chassis/);
-    assert.match(out, /3 accepted fork\(s\) at parity, 9 watched/);
+    assert.match(out, /3 accepted fork\(s\) at parity, 11 watched/);
   });
 
   test('🔴 the chassis gains a capability the fork never hears about → EXIT 1, naming the fork', () => {
@@ -834,7 +852,7 @@ describe('[ADR 042] the HOME pair — the one no ADR listed', () => {
   });
 });
 
-describe('the watch — the nine pairs this guard does NOT cover, and says so', () => {
+describe('the watch — the eleven pairs this guard does NOT cover, and says so', () => {
   test('🔴 a watched chassis that GAINS a caps gate must demand promotion, not stay quiet', () => {
     // The whole reason the watch exists. Under a guard that only knew the auth
     // pair, this capability reaches every stamped app and not Subly, silently.
@@ -863,8 +881,44 @@ describe('the watch — the nine pairs this guard does NOT cover, and says so', 
   test('the watch is PRINTED on every clean run — a limitation nobody sees is mistaken for coverage', () => {
     const { code, out } = run(tree());
     assert.equal(code, 0, out);
-    assert.match(out, /9 chassis\/fork screen pair\(s\) are WATCHED, NOT COVERED/);
+    assert.match(out, /11 chassis\/fork screen pair\(s\) are WATCHED, NOT COVERED/);
     assert.match(out, /They fail this guard the day that stops being true/);
+    assert.match(out, /lib\/app\.dart, lib\/main\.dart\. The shell pairs .* their content is NOT compared/);
+  });
+
+  // ── THE SHELL PAIR — 2026-09-14, O-SHELL-PAIR-UNCOMPARED ─────────────────
+  // Before this date no list held lib/app.dart or lib/main.dart, and moving
+  // Subly's app.dart aside on the real tree left the guard at EXIT 0. The clean
+  // run above is the green control; these are one half moving without the other.
+  test('🔴 the FORK shell moves without the brick shell → COVERAGE LOST, naming it', () => {
+    const root = tree();
+    rmSync(join(root, `${SUBLY_LIB}/app.dart`));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — the watch lost sight of 1 path\(s\)/);
+    assert.match(out, /apps\/subscriptiontracker\/lib\/app\.dart — the file is not there/);
+  });
+
+  test('🔴 the BRICK shell moves without the fork shell → COVERAGE LOST, naming it', () => {
+    const root = tree();
+    rmSync(join(root, `${BRICK_LIB}/main.dart`));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/main\.dart — the file is not there/);
+  });
+
+  test('🔴 the brick shell gains a caps gate the fork never hears about → promotion demanded', () => {
+    const { code, out } = run(tree({
+      extra: {
+        [`${BRICK_LIB}/app.dart`]:
+          'class App {\n  Widget build(BuildContext context) {\n' +
+          '    if (!caps.canSchedule) return const Empty();\n    return const Shell();\n  }\n}\n',
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /1 watched pair\(s\) BECAME DECIDABLE and were not promoted/);
+    assert.match(out, /__brick__\/apps\/\{\{app_id\}\}\/lib\/app\.dart\n\s+now reads \{canSchedule\}/);
+    assert.match(out, /Its fork is apps\/subscriptiontracker\/lib\/app\.dart/);
   });
 });
 
@@ -1006,10 +1060,11 @@ describe('a caps gate that moved into the chassis is still compared', () => {
 
   // The floors [ADR 066] named are UNTOUCHED by the widening — asserted, not
   // asserted-about. A delegating screen is still a screen that must EXIST at its
-  // declared path, and the pair count is still 12.
+  // declared path, and the pair count is still 12 — RAISED to 14 on 2026-09-14
+  // by the two watched shell pairs (O-SHELL-PAIR-UNCOMPARED), not by delegation.
   test('D6 · MIN_ACCOUNTED_PAIRS and the per-file existsSync are unchanged', () => {
     const guard = readFileSync(GUARD, 'utf8');
-    assert.match(guard, /const MIN_ACCOUNTED_PAIRS = 12;/);
+    assert.match(guard, /const MIN_ACCOUNTED_PAIRS = 14;/);
     // The adapter is a FILE. Deleting it is still loud, delegation or not.
     const root = delegating();
     rmSync(join(root, CHASSIS));

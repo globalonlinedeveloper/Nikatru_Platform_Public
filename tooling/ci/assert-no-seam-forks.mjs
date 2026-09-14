@@ -647,7 +647,36 @@ const WATCHED_PAIRS = [
 ].map(([c, f]) => ({
   chassis: `tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/${c}`,
   fork: `apps/subscriptiontracker/lib/features/${f}`,
-}));
+})).concat(
+  // 🔴 THE SHELL PAIR — 2026-09-14, O-SHELL-PAIR-UNCOMPARED. Both lists were
+  // rooted at lib/features/**, so the app SHELL — lib/app.dart and lib/main.dart
+  // on each side — was in neither and outside MIN_ACCOUNTED_PAIRS entirely: the
+  // guard could not fail on a pair it did not hold. Measured on origin/main
+  // fcdfafb8: `git grep -n "app\.dart\|main\.dart"` over this file -> 0 hits, and
+  // moving apps/subscriptiontracker/lib/app.dart aside left this guard at EXIT 0.
+  // The two shells have diverged widely (the fork is roughly twice the brick's
+  // lines) because Subly does not adopt the chassis packages this phase — the
+  // owner question [ADR 072] is PROPOSED pending, and this watch is its
+  // prerequisite, not its answer.
+  //
+  // WATCHED, NOT PARITY, BY MEASUREMENT: neither shell, nor what the brick's
+  // shell delegates to (packages/chassis_screens/lib/shell/app_shell.dart and
+  // bootstrap.dart), reads a single `caps.<field>` today, so C = {} and C ⊆ F
+  // could not fail. What the watch DOES hold is the two facts that can: both
+  // halves exist at these paths — a shell that moves without the other is
+  // COVERAGE LOST — and the brick's shell still gates on nothing, following the
+  // delegation into the package, so the first capability gate added to the
+  // chassis shell demands promotion before it reaches every stamped app and
+  // not Subly. It is NOT a comparison of the shells' content, and the printed
+  // watch line says so every run.
+  [
+    ['app.dart', 'app.dart'],
+    ['main.dart', 'main.dart'],
+  ].map(([c, f]) => ({
+    chassis: `tooling/bricks/app/__brick__/apps/{{app_id}}/lib/${c}`,
+    fork: `apps/subscriptiontracker/lib/${f}`,
+  })),
+);
 
 /** Every brick screen with a Subly counterpart must be accounted for by exactly
  *  one of the two lists. Re-measured against the filesystem 2026-08-13: 12 such
@@ -663,8 +692,13 @@ const WATCHED_PAIRS = [
  *  DELETED from the lists; it could not catch one ARRIVING in the tree, and it
  *  did not notice one that was never listed. Shipped at 11 while the tree held
  *  12 pairs — `auth/legal_consent_fields.dart` was unexamined and the guard
- *  printed ok. The ARRIVE limb below is the other half. */
-const MIN_ACCOUNTED_PAIRS = 12;
+ *  printed ok. The ARRIVE limb below is the other half.
+ *
+ *  ⚠️ RAISED 12 -> 14 on 2026-09-14 with the two shell pairs (lib/app.dart,
+ *  lib/main.dart) added to WATCHED_PAIRS, so neither can later drop out of both
+ *  lists in silence. The ARRIVE limb does not reach them — it derives its
+ *  universe from lib/features only — so this floor is their only vanish limb. */
+const MIN_ACCOUNTED_PAIRS = 14;
 
 /** Every `caps.<field>` read in a file — comments and string literals blanked
  *  first, so neither prose nor a quoted string can satisfy the requirement.
@@ -703,7 +737,8 @@ function capsReads(rel) {
 //     If the union is still empty the subset test is still vacuous and this
 //     guard still refuses it. The rule is untouched; only where it reads from
 //     has widened.
-//   - MIN_ACCOUNTED_PAIRS stays 12, and the per-file existsSync on both the
+//   - MIN_ACCOUNTED_PAIRS stays 12 (raised to 14 on 2026-09-14 by the shell
+//     pairs, which is not a delegation change), and the per-file existsSync on both the
 //     brick and the fork stays. A delegating screen is still a screen that must
 //     EXIST at its declared path: an adapter is a file, not an absence, and a
 //     pair that vanishes is still loud.
@@ -824,8 +859,12 @@ if (brickFeatureFiles === null || brickFeatureFiles.length === 0) {
   ]);
 }
 
+// Only pairs UNDER the features root can be compared with its walk; the shell
+// pairs sit beside it, and slicing their paths would add a meaningless key.
 const accountedChassis = new Set(
-  [...PARITY_PAIRS, ...WATCHED_PAIRS].map((p) => p.chassis.slice(`${BRICK_FEATURES}/`.length)),
+  [...PARITY_PAIRS, ...WATCHED_PAIRS]
+    .filter((p) => p.chassis.startsWith(`${BRICK_FEATURES}/`))
+    .map((p) => p.chassis.slice(`${BRICK_FEATURES}/`.length)),
 );
 
 const arrived = [];
@@ -1129,7 +1168,11 @@ console.log(
   `⚠  [ADR 042] ${WATCHED_PAIRS.length} chassis/fork screen pair(s) are WATCHED, NOT COVERED — their ` +
     'chassis gates on no `caps.<field>`, so C ⊆ F is vacuous for them. They fail this guard the day ' +
     'that stops being true: ' +
-    WATCHED_PAIRS.map((p) => p.chassis.replace(/^.*\/features\//, '')).join(', '),
+    WATCHED_PAIRS.map((p) =>
+      p.chassis.replace(/^.*\/features\//, '').replace('tooling/bricks/app/__brick__/apps/{{app_id}}/', ''),
+    ).join(', ') +
+    '. The shell pairs (lib/app.dart, lib/main.dart) are watched for existence and a first caps gate only; ' +
+    'their content is NOT compared.',
 );
 
 // The ARRIVE limb's own blind spot, stated every run for the same reason. It
