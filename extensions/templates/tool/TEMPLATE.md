@@ -775,6 +775,11 @@ version are printed on every run — record them with a release.
 > on the same afternoon. If the printed path is not `Tools/_playwright/…`,
 > create the fleet install rather than working around it:
 > `mkdir Tools/_playwright && cd Tools/_playwright && npm init -y && npm i -D playwright && npx playwright install chromium`
+>
+> **Amended 2026-09-14:** `Tools/` is the repository root. Create the install at `<repository root>/_playwright/`,
+> never under `extensions/`, where the build-free guard refuses a `package.json`. CI creates it on every pull
+> request and fails the template's browser tier if the printed path is not that location. See
+> `README-tour.md`, in the same passage as this note, for the reasoning.
 
 **The node tier is RED in `_skeleton` today, with exactly three failures**, and
 they are one fact: 25 of the 51 translatable locales are still English. If you

@@ -801,6 +801,58 @@ jobs:
       # AUDIT (the walk reached no tool) and 2 CANNOT RUN (no root, no template).
       - name: The fleet audit still finds the fleet (drift is printed, never gated)
         run: node templates/tool/tools/audit-fleet.mjs
+      # 2026-09-14, O-PLAYWRIGHT-FLEET-FALLBACK: THE FLEET PLAYWRIGHT INSTALL IS
+      # CREATED HERE, AND THE BROWSER TIER IS GRADED ON FINDING IT. The template's
+      # test/browser/smoke.mjs and publish/shots.mjs look for `_playwright/` by
+      # walking UP from their own folder first, and only then fall back to a walk
+      # that lands inside ONE tool's test/e2e/node_modules — so renaming or
+      # deleting that tool stopped every browser tier at once, and nothing in CI
+      # ran the tier to notice. The docs spell the location `Tools/_playwright/`,
+      # the name the extensions repository root had before the ADR 067 merge.
+      # WHERE IT GOES, AND WHY NOT `extensions/`: the resolver only probes
+      # ANCESTORS, so a `Tools/` subdirectory is never reached, and
+      # tooling/ci/assert-extensions-build-free.mjs walks the extensions/ tree on
+      # DISK and refuses any package.json or node_modules outside a tool's
+      # test/e2e island — a fleet install at extensions/_playwright would turn that
+      # guard red for anyone who followed the setup instructions. The repository
+      # root is an ancestor of every tool and of the template, and is outside that
+      # guard's subject. Installed at run time, never committed (.gitignore), and
+      # pinned to the version the one e2e island's lockfile resolves.
+      - name: Create the fleet Playwright install (the one location every browser tier finds first)
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _playwright
+          cd _playwright
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund --save-dev --save-exact playwright@1.61.1
+          npx playwright install --with-deps chromium
+      - name: The template browser tier runs, and resolves Playwright from the fleet location
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The smoke's own exit is captured on its own line, never through a pipe:
+          # `node … | tee` reports tee's status and reads green over a red tier.
+          code=0
+          node templates/tool/test/browser/smoke.mjs > "$RUNNER_TEMP/smoke.log" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/smoke.log"
+          # The path line is printed on every run that found Playwright at all. It
+          # must name the fleet install; the fallback walk prints a NOT-the-fleet note.
+          resolved=$(grep -m1 '^playwright  ' "$RUNNER_TEMP/smoke.log" || true)
+          echo "resolved: ${resolved:-<no playwright line>}"
+          case "$resolved" in
+            *"/_playwright/node_modules/playwright/"*) ;;
+            *)
+              echo "::error::the browser tier did not resolve Playwright from the fleet location ($GITHUB_WORKSPACE/_playwright). It either found nothing or fell back to another tool's node_modules — the dependency this step exists to remove."
+              exit 1
+              ;;
+          esac
+          if grep -qF 'NOT the fleet location' "$RUNNER_TEMP/smoke.log"; then
+            echo "::error::the browser tier printed its fallback warning."
+            exit 1
+          fi
+          exit "$code"
 
   # why: the single aggregate for this workflow. It carries always(), needs every
   # lane above, and treats skipped as not-green -- a skipped required check

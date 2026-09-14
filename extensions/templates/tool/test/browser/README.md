@@ -50,6 +50,12 @@ mkdir Tools/_playwright && cd Tools/_playwright
 npm init -y && npm i -D playwright && npx playwright install chromium
 ```
 
+> **Amended 2026-09-14:** in the monorepo, `Tools/` is the **repository root**. The install is
+> `<repository root>/_playwright/`, which is gitignored. Do not put it under `extensions/`: the harness
+> only walks UP, and `tooling/ci/assert-extensions-build-free.mjs` refuses a `package.json` or
+> `node_modules` there. The `templates` job in `.github/workflows/extensions.yml` creates exactly this
+> install and fails if the path printed below is not it.
+
 The harness looks, in order, at:
 
 1. `SMOKE_PLAYWRIGHT` — an explicit override

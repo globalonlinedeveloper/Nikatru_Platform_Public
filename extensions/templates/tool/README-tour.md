@@ -615,6 +615,18 @@ mkdir Tools/_playwright && cd Tools/_playwright
 npm init -y && npm i -D playwright && npx playwright install chromium
 ```
 
+> **AMENDED 2026-09-14 — the paragraph above is retired, and kept as the record.** "Does not exist"
+> and "what is actually resolving today" were true when written. CI now creates the fleet install on
+> every pull request (the `templates` job in `.github/workflows/extensions.yml`, pinned to the version
+> the e2e island's lockfile resolves) and runs this template's browser tier. That step fails if the
+> tier resolves Playwright from anywhere but the fleet location, or prints its fallback warning.
+> **In this monorepo `Tools/` is the repository root**, the name it had before the extensions merged
+> in. So the install is `<repository root>/_playwright/`, which is gitignored. It is not
+> `extensions/_playwright/` or `extensions/Tools/_playwright/`. The resolver probes only ancestors, so
+> it never reaches a `Tools/` subdirectory, and `tooling/ci/assert-extensions-build-free.mjs` refuses
+> any `package.json` or `node_modules` under `extensions/` outside a tool's `test/e2e` island. From the
+> repository root: `mkdir _playwright && cd _playwright && npm init -y && npm i -D playwright && npx playwright install chromium`.
+
 **Two documents still paraphrase `optResetDesc` with wording the product no
 longer uses** — `publish/PRIVACY-POLICY.html:155` and `TEMPLATE.md` both say
 "synced profile" where the catalogue says "synced **browser** profile". They are
