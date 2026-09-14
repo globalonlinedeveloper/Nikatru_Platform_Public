@@ -9,6 +9,7 @@ import {
   boxbTargets,
   boxbReachability,
   BOXB_REACH_JOB,
+  platformCronBeat,
 } from '../src/scheduled';
 import type { Env } from '../src/types';
 import { realPlatformDb } from './harness';
@@ -455,5 +456,48 @@ describe('boxbReachability — an outage is a ROW, not a gap', () => {
     expect(bound).toHaveLength(2);
     expect(bound[0][2]).toBe(0);
     expect(bound[1][2]).toBe(1);
+  });
+});
+
+describe('[O-GITHUB-SCHEDULER] platformCronBeat — the off-Cloudflare heartbeat never breaks the cron', () => {
+  const URL_WITH_TOKEN = 'https://glitchtip.example/api/0/organizations/o/heartbeat_check/SECRET-ENDPOINT-ID/';
+
+  it('with the secret ABSENT it sends nothing, says so, and returns skipped', async () => {
+    const fetchSpy = vi.fn(async () => new Response('', { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect(await platformCronBeat(env())).toBe('skipped');
+    expect(await platformCronBeat(env({ PLATFORM_CRON_HEARTBEAT_URL: '   ' }))).toBe('skipped');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(log.mock.calls.flat().join('\n')).toMatch(/PLATFORM_CRON_HEARTBEAT_URL is not set/);
+  });
+
+  it('with the secret set it POSTs that URL exactly once and returns beat', async () => {
+    const fetchSpy = vi.fn(async () => new Response('', { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    expect(await platformCronBeat(env({ PLATFORM_CRON_HEARTBEAT_URL: URL_WITH_TOKEN }))).toBe('beat');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [calledUrl, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(calledUrl).toBe(URL_WITH_TOKEN);
+    expect(init.method).toBe('POST');
+    expect(init.signal).toBeDefined();
+  });
+
+  it('a non-2xx answer is failed, logged WITHOUT the URL, and does not throw', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(platformCronBeat(env({ PLATFORM_CRON_HEARTBEAT_URL: URL_WITH_TOKEN }))).resolves.toBe('failed');
+    const logged = log.mock.calls.flat().join('\n');
+    expect(logged).toMatch(/HTTP 404/);
+    expect(logged).not.toMatch(/SECRET-ENDPOINT-ID/);
+  });
+
+  it('a transport failure is failed, logged WITHOUT the URL, and does not throw', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down'); }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(platformCronBeat(env({ PLATFORM_CRON_HEARTBEAT_URL: URL_WITH_TOKEN }))).resolves.toBe('failed');
+    const logged = log.mock.calls.flat().join('\n');
+    expect(logged).toMatch(/network down/);
+    expect(logged).not.toMatch(/SECRET-ENDPOINT-ID/);
   });
 });

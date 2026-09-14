@@ -211,7 +211,8 @@
       "surface": "Crash and error reporting sink (self-hostable Sentry-protocol server).",
       "stickiness": "★ — deliberately the least sticky choice available.",
       "surfaces": [
-        "GLITCHTIP_DSN"
+        "GLITCHTIP_DSN",
+        "PLATFORM_CRON_HEARTBEAT_URL"
       ],
       "openProtocol": "YES — speaks the Sentry protocol, so the sentry_flutter SDK talks to it unmodified and any Sentry-protocol sink is a drop-in.",
       "seam": {
@@ -228,7 +229,7 @@
         "detail": "Self-hosted; the whole instance is ours, and the runbook covers the server backup."
       },
       "exitPlan": {
-        "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes",
+        "alternative": "Sentry SaaS, or any Sentry-protocol server — the DSN is the only thing that changes ⏱ APPENDED 2026-09-14 (O-GITHUB-SCHEDULER): the second surface, PLATFORM_CRON_HEARTBEAT_URL, is a GlitchTip Heartbeat monitor URL the platform Worker POSTs at the end of every cron firing (services/platform/src/scheduled.ts platformCronBeat). It is not the Sentry protocol but something plainer: a bodyless POST to a URL, the dead-man switch shape every uptime service offers, so the swap is one Worker secret and no code.",
         "swapCost": "Low — one config value, because the protocol is open."
       }
     },

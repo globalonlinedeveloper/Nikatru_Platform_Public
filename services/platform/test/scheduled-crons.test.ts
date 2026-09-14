@@ -196,3 +196,41 @@ describe('which limbs run is decided by which cron fired', () => {
     );
   });
 });
+
+// ── [O-GITHUB-SCHEDULER] every firing ends with the off-Cloudflare beat ─────
+describe('every firing beats the off-Cloudflare heartbeat, AFTER its rows have landed', () => {
+  const BEAT = 'https://glitchtip.example/api/0/organizations/o/heartbeat_check/beat-id/';
+
+  async function fire(cron: string | undefined, beatUrl: string | undefined) {
+    const db = realPlatformDb();
+    const beats: number[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      if (String(input) === BEAT) {
+        // The number of heartbeat rows ALREADY written when the beat goes out.
+        beats.push(Number(db.rows('SELECT COUNT(*) AS n FROM cron_heartbeat')[0].n));
+        return Promise.resolve({ status: 200 } as Response);
+      }
+      return Promise.resolve({ status: 204 } as Response);
+    }) as unknown as typeof fetch;
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => {} };
+    const env = { PLATFORM_DB: db, GITHUB_DISPATCH_TOKEN: 'tok', PLATFORM_CRON_HEARTBEAT_URL: beatUrl } as unknown as Env;
+    await scheduled({ cron } as never, env, ctx as never);
+    await Promise.all(pending);
+    return beats;
+  }
+
+  it('🔴 each declared cron beats exactly once, and only after at least one heartbeat row exists', async () => {
+    expect(CRONS.length).toBeGreaterThan(0);
+    for (const c of CRONS) {
+      const beats = await fire(c, BEAT);
+      expect(beats, `cron ${c}`).toHaveLength(1);
+      expect(beats[0], `cron ${c}: rows written before the beat`).toBeGreaterThan(0);
+    }
+  });
+
+  it('with no URL configured no beat is sent, and the firing still writes its rows', async () => {
+    expect(await fire(NIGHTLY_CRON, undefined)).toEqual([]);
+    expect(await runScheduled(NIGHTLY_CRON)).toContain(GITHUB_DISPATCH_JOB);
+  });
+});

@@ -2021,57 +2021,111 @@ export const BACKUP_JOB = 'backup_export';
 /** The cron BACKUP_JOB keeps. Asserted against wrangler.jsonc by its own test. */
 export const BACKUP_CRON = '30 2 * * *';
 
+/**
+ * [O-GITHUB-SCHEDULER] THE WATCHER OF THE WATCHER, HOSTED OFF CLOUDFLARE.
+ *
+ * 🔴 WHAT WAS TRUE UNTIL 2026-09-14: nothing outside Cloudflare noticed THIS
+ * cron stop. Every firing writes `cron_heartbeat` rows to D1, and the only
+ * reader of those rows is ops-watch.yml — which this same cron dispatches, or
+ * GitHub's scheduler runs at a measured 10.1% on time. GlitchTip held twelve
+ * Heartbeat monitors and none was fed by this Worker. So a cron trigger that
+ * silently stopped firing would have stopped writing the evidence AND stopped
+ * dispatching the reader of the evidence, and the silence would have looked
+ * exactly like a quiet portfolio.
+ *
+ * SO EVERY FIRING ENDS WITH ONE POST to a GlitchTip Heartbeat URL held in the
+ * Worker secret PLATFORM_CRON_HEARTBEAT_URL. GlitchTip lives on Box B, which
+ * this Worker already watches from outside (BOXB_REACH_JOB), so the two watch
+ * each other and neither lives on GitHub.
+ *
+ * ⚠️ THE BEAT IS SENT ONLY AFTER THE FIRING'S OWN WORK HAS RETURNED, so it
+ * claims "the timer fired AND its limbs ran to the end", not merely "an isolate
+ * started". A limb that throws past its own catch skips the beat, and the
+ * missed beat is the alarm.
+ *
+ * ⚠️ ABSENT SECRET = A LOGGED NO-OP, NEVER A THROW. The code lands before the
+ * monitor exists (a Heartbeat monitor created before anything feeds it pages
+ * the owner), and a beat that cannot be sent must never break the cron it
+ * reports on. A non-2xx answer or a transport failure is logged and returned
+ * the same way. The URL is NEVER logged: its path is the credential.
+ */
+export async function platformCronBeat(env: Env): Promise<'beat' | 'skipped' | 'failed'> {
+  const url = (env.PLATFORM_CRON_HEARTBEAT_URL ?? '').trim();
+  if (url.length === 0) {
+    console.log('[cron] PLATFORM_CRON_HEARTBEAT_URL is not set - no off-Cloudflare heartbeat sent');
+    return 'skipped';
+  }
+  try {
+    const res = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(10_000) });
+    if (res.status < 200 || res.status > 299) {
+      console.log(`[cron] off-Cloudflare heartbeat refused: HTTP ${res.status}`);
+      return 'failed';
+    }
+    return 'beat';
+  } catch (err) {
+    console.log(`[cron] off-Cloudflare heartbeat not delivered: ${String(err).slice(0, 120)}`);
+    return 'failed';
+  }
+}
+
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
-      // The off-vendor export runs ALONE on its own firing: it is the one limb
-      // whose value is that it happened before anything else touched the data.
-      if (typeof event?.cron === 'string' && event.cron === BACKUP_CRON) {
-        await recordHeartbeat(env, await runBackup(env), BACKUP_JOB);
-        return;
-      }
-      // Every other cron but the nightly one is a MARGIN firing: the dispatcher,
-      // and nothing else. An unrecognised value falls through to the full handler
-      // — see NIGHTLY_CRON for why that is the safe direction.
-      if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
-        await dispatchGithubWorkflows(env);
-        return;
-      }
-      await keepAliveSupabase(env);
-      await analyticsLiveness(env);
-      await boxbReachability(env);
-      // [research/76 §C] Phase 1 of the GitHub-scheduler replacement. Placed
-      // here rather than last because it is bounded (10s per target) and writes
-      // nothing destructive; the sweep stays last for its own stated reason. It
-      // fires Renovate, which nothing gates a merge on - the deliberately cheap
-      // proving ground for the rail ops-watch will eventually move to.
-      await dispatchGithubWorkflows(env);
-      await renewalsFanOut(env);
-      // Re-derives stored money notifications that never concluded. Its position
-      // is not a safety property either: it writes through the one entitlement
-      // writer and the retention sweep never deletes an unconcluded row, so
-      // nothing here depends on running before or after anything else.
-      await moneyRederive(env);
-      // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
-      // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
-      // retention.d1.platform_db.cancellation_requests) that the sweep below never
-      // touches. It sits ahead of the destructive limb only so a slow sweep cannot
-      // delay a census that costs one query.
-      await cancellationDrainCensus(env);
-      // The rollup runs BEFORE the sweep so a day rolled up tonight is sweepable
-      // tonight.
-      //
-      // 🔴 THIS ORDER IS AN OPTIMISATION, NOT THE SAFETY PROPERTY. Both limbs
-      // catch their own errors so they can write ok=0 heartbeats, so they run
-      // INDEPENDENTLY — a rollup that fails at 06:00:10 does nothing to stop a
-      // sweep that deletes at 06:00:11. The safety property is the watermark the
-      // sweep reads (`rollupBoundedCutoff`). Swap these two lines and nothing is
-      // destroyed; delete the watermark read and everything is.
-      await eventsRollup(env);
-      // LAST, deliberately: the sweep is the only limb that destroys anything,
-      // and a slow or failing sweep must not delay the keep-alive that stands
-      // between a free-tier Supabase project and its ~7-day auto-pause.
-      await retentionSweep(env);
+      await runFiring(event, env);
+      // Last, and only once the firing's rows have landed - see platformCronBeat.
+      await platformCronBeat(env);
     })(),
   );
 };
+
+/** One firing's work, routed by which cron fired. */
+async function runFiring(event: ScheduledController | undefined, env: Env): Promise<void> {
+  // The off-vendor export runs ALONE on its own firing: it is the one limb
+  // whose value is that it happened before anything else touched the data.
+  if (typeof event?.cron === 'string' && event.cron === BACKUP_CRON) {
+    await recordHeartbeat(env, await runBackup(env), BACKUP_JOB);
+    return;
+  }
+  // Every other cron but the nightly one is a MARGIN firing: the dispatcher,
+  // and nothing else. An unrecognised value falls through to the full handler
+  // — see NIGHTLY_CRON for why that is the safe direction.
+  if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
+    await dispatchGithubWorkflows(env);
+    return;
+  }
+  await keepAliveSupabase(env);
+  await analyticsLiveness(env);
+  await boxbReachability(env);
+  // [research/76 §C] Phase 1 of the GitHub-scheduler replacement. Placed
+  // here rather than last because it is bounded (10s per target) and writes
+  // nothing destructive; the sweep stays last for its own stated reason. It
+  // fires Renovate, which nothing gates a merge on - the deliberately cheap
+  // proving ground for the rail ops-watch will eventually move to.
+  await dispatchGithubWorkflows(env);
+  await renewalsFanOut(env);
+  // Re-derives stored money notifications that never concluded. Its position
+  // is not a safety property either: it writes through the one entitlement
+  // writer and the retention sweep never deletes an unconcluded row, so
+  // nothing here depends on running before or after anything else.
+  await moneyRederive(env);
+  // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
+  // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
+  // retention.d1.platform_db.cancellation_requests) that the sweep below never
+  // touches. It sits ahead of the destructive limb only so a slow sweep cannot
+  // delay a census that costs one query.
+  await cancellationDrainCensus(env);
+  // The rollup runs BEFORE the sweep so a day rolled up tonight is sweepable
+  // tonight.
+  //
+  // 🔴 THIS ORDER IS AN OPTIMISATION, NOT THE SAFETY PROPERTY. Both limbs
+  // catch their own errors so they can write ok=0 heartbeats, so they run
+  // INDEPENDENTLY — a rollup that fails at 06:00:10 does nothing to stop a
+  // sweep that deletes at 06:00:11. The safety property is the watermark the
+  // sweep reads (`rollupBoundedCutoff`). Swap these two lines and nothing is
+  // destroyed; delete the watermark read and everything is.
+  await eventsRollup(env);
+  // LAST, deliberately: the sweep is the only limb that destroys anything,
+  // and a slow or failing sweep must not delay the keep-alive that stands
+  // between a free-tier Supabase project and its ~7-day auto-pause.
+  await retentionSweep(env);
+}

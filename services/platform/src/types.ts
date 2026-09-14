@@ -229,6 +229,17 @@ export interface Env {
    */
   GITHUB_DISPATCH_TOKEN?: string;
   /**
+   * [O-GITHUB-SCHEDULER] The GlitchTip Heartbeat URL this Worker POSTs at the end
+   * of every cron firing, so something OFF Cloudflare notices the cron stop.
+   * See `platformCronBeat` in src/scheduled.ts.
+   *
+   * OPTIONAL, AND ABSENT IS A LOGGED NO-OP: the code ships before the monitor
+   * exists, because a Heartbeat monitor nobody feeds pages the owner. Set with
+   * `wrangler secret put PLATFORM_CRON_HEARTBEAT_URL`, never as a committed var:
+   * the path of a heartbeat URL is its credential.
+   */
+  PLATFORM_CRON_HEARTBEAT_URL?: string;
+  /**
    * Supabase SERVICE ROLE key — used ONLY by DELETE /v1/account, to remove the
    * identity record itself.
    *
