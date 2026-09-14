@@ -127,21 +127,15 @@ final List<String> _categories = <String>[
   _uncategorised,
 ];
 
-// ⚠️ THE ONLY TWO STRINGS ON THIS SHEET THAT DO NOT COME FROM THE ARB, AND THEY
-// ARE A DEBT RATHER THAN A DECISION. Every other label here is an `l10n.*` key
-// (`fieldLabelName`, `fieldLabelPrice`, `fieldLabelCycle`); these two have none
-// because `lib/l10n/app_en.arb` and `app_ta.arb` sit outside this change's file
-// ownership and minting a key requires editing both plus the generated set.
-// So they render ENGLISH IN THE TAMIL BUILD until `fieldLabelRenews` and
-// `fieldLabelCategory` are added with exactly the values below and these two
-// constants are deleted. Do NOT translate them here: a second translation seam
-// beside the arb is worse than one visible, named gap.
+// ✅ 2026-09-14 — THE TWO HARD-CODED LABELS THAT STOOD HERE ARE ARB KEYS NOW
+// (O-BRICK-NO-L10N-PARITY-TEST). RENEWS and CATEGORY were `const String`s
+// that rendered ENGLISH IN THE TAMIL BUILD, recorded here as a debt; they are
+// `fieldLabelRenews` and `fieldLabelCategory` in both arb files, with the same
+// English values, so test/l10n_parity_test.dart now covers them.
 //
 // The category VALUES are a different case and are correctly untranslated —
 // they are data, not copy, and every other screen paints them raw for that
 // reason (`scan_screen.dart:529` records it).
-const String _fieldLabelRenewsPendingArb = 'RENEWS';
-const String _fieldLabelCategoryPendingArb = 'CATEGORY';
 
 /// Opens the add sheet.
 ///
@@ -505,14 +499,14 @@ class _AddSheetState extends ConsumerState<_AddSheet> {
               // axis here and width is not.
               const SizedBox(height: 12),
               Text(
-                _fieldLabelRenewsPendingArb,
+                l10n.fieldLabelRenews,
                 style: AppText.label.copyWith(color: p.muted),
               ),
               const SizedBox(height: 6),
               _renewalField(l10n),
               const SizedBox(height: 12),
               Text(
-                _fieldLabelCategoryPendingArb,
+                l10n.fieldLabelCategory,
                 style: AppText.label.copyWith(color: p.muted),
               ),
               const SizedBox(height: 6),

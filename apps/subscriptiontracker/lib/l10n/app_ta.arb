@@ -150,6 +150,8 @@
   "fieldLabelName": "பெயர்",
   "fieldLabelPrice": "விலை",
   "fieldLabelCycle": "சுழற்சி",
+  "fieldLabelRenews": "புதுப்பித்தல்",
+  "fieldLabelCategory": "வகை",
   "addNameHint": "எ.கா. Hulu",
   "cycleMonthly": "மாதாந்திரம்",
   "cycleYearly": "ஆண்டுதோறும்",

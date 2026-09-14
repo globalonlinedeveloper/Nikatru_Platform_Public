@@ -643,6 +643,14 @@
   "@fieldLabelCycle": {
     "description": "Consumed by add_subscription_sheet.dart:226."
   },
+  "fieldLabelRenews": "RENEWS",
+  "@fieldLabelRenews": {
+    "description": "Label above the renewal-date field on the add sheet. Was a hard-coded English constant until 2026-09-14 (O-BRICK-NO-L10N-PARITY-TEST)."
+  },
+  "fieldLabelCategory": "CATEGORY",
+  "@fieldLabelCategory": {
+    "description": "Label above the category field on the add sheet. Was a hard-coded English constant until 2026-09-14. The category VALUES stay untranslated: they are data, not copy."
+  },
   "addNameHint": "e.g. Hulu",
   "@addNameHint": {
     "description": "Consumed by add_subscription_sheet.dart:199. Hint text in the name field. The example service name is a brand and is not translated."
