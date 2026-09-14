@@ -574,6 +574,32 @@ why a toolchain move can change it with no diff. Placed AFTER the shape
 check, so a missing or empty .aab is reported as a missing .aab rather
 than as an unreadable archive.
 
+### before step **The built .apk passes the static apps.gov.in VAPT items**
+
+§vapt — ADDED 2026-09-14, register row O-APPS-GOV-IN-VAPT-CHECKLIST.
+apps.gov.in runs a real VAPT (MobSF, Frida, Jadx, Burp, apktool) against a
+17-item static and 3-item dynamic checklist, and only High findings block.
+Six static items are properties of the build: debuggable, allowBackup,
+usesCleartextTraffic, credential-shaped values in the manifest, exported
+components with no permission, and logging. The guard decodes the binary
+AndroidManifest.xml inside the built .apk — the MERGED manifest, with every
+plugin's and AndroidX library's components in it, which exists nowhere else
+— and checks logging where it is decided (the inherited analyzer config and
+the app's own Kotlin/Java).
+
+It reads the .apk rather than the .aab because an .aab carries a protobuf
+manifest, not AXML; both come from the same manifest merge in this job.
+
+MEASURED BEFORE IT LANDED: `aapt2 link` (build-tools 36.0.0) over the app's
+own source manifest produced an .apk the guard failed on V2 — allowBackup
+ABSENT, which Android reads as true. The manifest now sets it false. A
+stamped app whose android/ tree comes from stock `flutter create` has the
+same gap, and this step is where it will show.
+
+The VAPT report the store returns is not in this repository yet; when it
+arrives it is transcribed into the runbook as the checklist this guard
+tracks, and any item it raises that is statically decidable joins the guard.
+
 ### in step **Every native library is aligned for a 16 KB memory page**, above `- uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4`
 
 🔴 THE POSTURE IS IN THE ARTIFACT NAME, and that is the "labelled, not
