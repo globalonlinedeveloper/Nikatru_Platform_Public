@@ -172,6 +172,58 @@ describe('ONE LEVEL of barrel expansion, and no further', () => {
     // point — and it REFUSES rather than quietly resolving to nothing.
     assert.ok(d.lost, 'the second level must not be reached');
   });
+
+  // ⏱ 2026-09-14 — O-CHASSIS-DELEGATION-RESOLVER-LIMITS, limit 1. B1 passed
+  // only because its barrel sat at lib/ itself, where "relative to lib/" and
+  // "relative to the barrel" are the same directory. B3 is the shape that was
+  // measured failing: a barrel one directory down, exporting its sibling.
+  test('B3 · a barrel in a SUBDIRECTORY resolves its export against its OWN directory', () => {
+    const root = tree({
+      adapter:
+        `import 'package:${CHASSIS_PKG}/shell/app_shell.dart';\n` +
+        '\nclass SettingsScreen {\n  Widget build(c) => const ConsentPromptCard();\n}\n',
+      targetPath: 'shell/app_shell.dart',
+      target: "export 'consent_prompt_card.dart';\n\nclass NikatruApp {}\n",
+      extra: {
+        [`${CHASSIS_DIR}/lib/shell/consent_prompt_card.dart`]: 'class ConsentPromptCard {}\n',
+      },
+    });
+    const d = resolveIn(root);
+    assert.ok(!d.lost, d.lost);
+    assert.deepEqual(d.files, [`${CHASSIS_DIR}/lib/shell/app_shell.dart`, `${CHASSIS_DIR}/lib/shell/consent_prompt_card.dart`]);
+    assert.equal(d.usedSymbol, 'ConsentPromptCard');
+  });
+
+  test('B3-control · the lib/-relative spelling of that path is NOT on disk, and is not invented', () => {
+    // The old resolution would have looked for lib/consent_prompt_card.dart.
+    // Put a DIFFERENT file there: it must not be picked up by a barrel in shell/.
+    const root = tree({
+      adapter:
+        `import 'package:${CHASSIS_PKG}/shell/app_shell.dart';\n` +
+        '\nclass SettingsScreen {\n  Widget build(c) => const Decoy();\n}\n',
+      targetPath: 'shell/app_shell.dart',
+      target: "export 'consent_prompt_card.dart';\n\nclass NikatruApp {}\n",
+      extra: {
+        [`${CHASSIS_DIR}/lib/shell/consent_prompt_card.dart`]: 'class ConsentPromptCard {}\n',
+        [`${CHASSIS_DIR}/lib/consent_prompt_card.dart`]: 'class Decoy {}\n',
+      },
+    });
+    const d = resolveIn(root);
+    assert.ok(d.lost, 'a file at the lib/-relative path is not what the barrel exports');
+  });
+
+  test('B4 · an export that climbs out of the package lib/ is not followed', () => {
+    const root = tree({
+      adapter:
+        `import 'package:${CHASSIS_PKG}/barrel.dart';\n` +
+        '\nclass SettingsScreen {\n  Widget build(c) => const Outside();\n}\n',
+      targetPath: 'barrel.dart',
+      target: "export '../test/outside.dart';\n\nclass Inside {}\n",
+      extra: { [`${CHASSIS_DIR}/test/outside.dart`]: 'class Outside {}\n' },
+    });
+    const d = resolveIn(root);
+    assert.ok(d.lost, 'a file outside lib/ must not become evidence');
+  });
 });
 
 describe('🔴 THE USE CHECK — an import is a claim, a reference is evidence', () => {
@@ -221,6 +273,42 @@ describe('🔴 THE USE CHECK — an import is a claim, a reference is evidence',
     // the rule would be unusable for exactly the case it was written for.
     const api = publicApiOf('void recordAnalyticsConsentBody(WidgetRef ref, {bool granted = false}) {\n  x();\n}\n');
     assert.ok(api.has('recordAnalyticsConsentBody'), [...api].join(','));
+  });
+
+  // ⏱ 2026-09-14 — O-CHASSIS-DELEGATION-RESOLVER-LIMITS, limit 2, measured on
+  // `bootstrapNikatru`: a parameter list CONTAINING parentheses hid the
+  // declaration from both function patterns.
+  test('F1 · a top-level function with a FUNCTION-TYPED parameter is public API', () => {
+    const api = publicApiOf(
+      'Future<void> bootstrapNikatru(Future<void> Function(Future<void> Function() appRunner) runGuarded) async {\n  x();\n}\n',
+    );
+    assert.ok(api.has('bootstrapNikatru'), [...api].join(','));
+  });
+
+  test('F1-delegation · a target whose ONLY public name is that function resolves, instead of refusing', () => {
+    const root = tree({
+      adapter:
+        `import 'package:${CHASSIS_PKG}/bootstrap.dart';\n` +
+        '\nvoid main() {\n  bootstrapNikatru((run) async => run());\n}\n',
+      targetPath: 'bootstrap.dart',
+      target:
+        'Future<void> bootstrapNikatru(\n' +
+        '  Future<void> Function(Future<void> Function() appRunner) runGuarded,\n' +
+        ') async {\n  x();\n}\n',
+    });
+    const d = resolveIn(root);
+    assert.ok(!d.lost, d.lost);
+    assert.equal(d.usedSymbol, 'bootstrapNikatru');
+  });
+
+  test('F2 · a MEMBER with a function-typed parameter is a declared name of the adapter too', () => {
+    const names = declaredNamesOf('class A {\n  void runGuarded(void Function(int Function() f) cb) {\n  }\n}\n');
+    assert.ok(names.has('runGuarded'), [...names].join(','));
+  });
+
+  test('F3-bound · a fourth level of nesting is still unseen, and that is a refusal, never a pass', () => {
+    const api = publicApiOf('void deep(void Function(void Function(void Function() a) b) c) {\n}\n');
+    assert.ok(!api.has('deep'), 'three levels is the stated bound');
   });
 });
 

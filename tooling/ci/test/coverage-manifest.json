@@ -41,7 +41,7 @@
   "channel-arming.test.mjs": 27,
   "channel-claims.test.mjs": 48,
   "channel-register.test.mjs": 208,
-  "chassis-delegation.test.mjs": 47,
+  "chassis-delegation.test.mjs": 54,
   "chassis-ledger.test.mjs": 29,
   "chassis-parity.test.mjs": 14,
   "chrome-raster.test.mjs": 1,
