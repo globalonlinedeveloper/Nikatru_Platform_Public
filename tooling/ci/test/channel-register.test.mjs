@@ -461,6 +461,9 @@ function tree({
   // subtree its `storeMetadataDir` template must resolve into. Both off by
   // default so every existing case keeps its exact output.
   withExtension = false,
+  // The browsers extensions/scripts/schema/tool.schema.json declares; `null`
+  // writes no schema file at all.
+  extensionSchemaBrowsers = ['chrome', 'edge', 'firefox'],
   extensionToolDirs = ['Full_Screen_Shot'],
   omitExtensionStoreDir = false,
   toolJsonStores = null,       // null = derive from the row's extensionStoreKey
@@ -625,6 +628,16 @@ function tree({
         JSON.stringify({ id: tool.toLowerCase(), surface: 'extension', targets, storeMetadata: { stores } }, null, 2),
       );
       if (!omitExtensionStoreDir) write(`extensions/Extension/${tool}/store/${key}/README.md`, 'listing');
+    }
+    // The source `surfaces.extension.platforms` is held to (O-EXT-SURFACE-AXIS).
+    // Written to agree with the fixture register unless a case overrides it.
+    if (extensionSchemaBrowsers !== null) {
+      write(
+        'extensions/scripts/schema/tool.schema.json',
+        JSON.stringify({
+          properties: { listings: { properties: Object.fromEntries(extensionSchemaBrowsers.map((b) => [b, { type: 'object' }])) } },
+        }),
+      );
     }
     if (extensionLane) {
       write(
@@ -2835,6 +2848,35 @@ describe('assert-channel-register — the extension lane is COMPARED, not assume
       toolJsonTargets: { chromium: { overlay: 'publish/manifest.chromium.json' } },
     }));
     assert.equal(code, 0, out);
+  });
+
+  // ⏱ 2026-09-14 — O-EXT-SURFACE-AXIS residue 2: the register's browser list is
+  // held to the schema it names as its source. Green control first.
+  test('surfaces.extension.platforms agreeing with tool.schema.json listings is green', () => {
+    const { code, out } = run(tree({ withExtension: true, extensionLane: true }));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when tool.schema.json gains a browser the register surface does not list', () => {
+    const { code, out } = run(tree({ withExtension: true, extensionLane: true, extensionSchemaBrowsers: ['chrome', 'edge', 'firefox', 'safari'] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /surfaces\."extension"\.platforms is \[chrome, edge, firefox\] and its declared source .* is \[chrome, edge, firefox, safari\]/);
+  });
+
+  test('FAILS when the register surface drops a browser the schema still declares', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      extensionLane: true,
+      mutate: (r) => { r.surfaces.extension.platforms = ['chrome', 'edge']; r.channels.at(-1).platforms = ['chrome']; },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /surfaces\."extension"\.platforms is \[chrome, edge\] and its declared source/);
+  });
+
+  test('FAILS when the schema the surface names as its source is gone', () => {
+    const { code, out } = run(tree({ withExtension: true, extensionLane: true, extensionSchemaBrowsers: null }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names its source as extensions\/scripts\/schema\/tool\.schema\.json .* and that file does not exist/);
   });
 
   test('the pack-target map is EMPTY when tool.json declares no targets — refused, never assumed', () => {

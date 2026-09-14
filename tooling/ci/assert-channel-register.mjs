@@ -1032,6 +1032,46 @@ const EXT_FORMATS = Object.entries(register.artifactBuild?.formats ?? {})
   .map(([f]) => f);
 
 /**
+ * ⏱ 2026-09-14 — `surfaces.extension.platforms` IS HELD TO ITS SOURCE
+ * (O-EXT-SURFACE-AXIS, residue 2). The register's own `platformsSource` names it:
+ * the browser vocabulary extensions/scripts/schema/tool.schema.json declares under
+ * `properties.listings.properties`, which check-catalog.mjs and
+ * check-store-metadata.mjs already treat as authoritative. Until this block
+ * nothing compared the two, so the register's copy was a third, unguarded list,
+ * and a browser added to the schema (or dropped from the register) was invisible
+ * to every register check that reads `surfaces.extension.platforms`.
+ * Only when the register declares the extension surface; a register without one
+ * has no copy to hold.
+ */
+const EXT_SCHEMA_REL = 'extensions/scripts/schema/tool.schema.json';
+if (SURFACE_PLATFORMS.has(EXT_SURFACE)) {
+  const schemaRaw = read(EXT_SCHEMA_REL);
+  let schemaBrowsers = null;
+  try {
+    const listings = JSON.parse(schemaRaw ?? 'null')?.properties?.listings?.properties;
+    if (listings && typeof listings === 'object') schemaBrowsers = Object.keys(listings);
+  } catch {
+    schemaBrowsers = null;
+  }
+  if (schemaBrowsers === null || schemaBrowsers.length === 0) {
+    problems.push(
+      `${REGISTER} surfaces."${EXT_SURFACE}".platforms names its source as ${EXT_SCHEMA_REL} → properties.listings.properties, ` +
+        `and that ${schemaRaw === null ? 'file does not exist' : 'declares no browser there'}. The register's copy has nothing left to be held to.`,
+    );
+  } else {
+    const mine = [...SURFACE_PLATFORMS.get(EXT_SURFACE)].sort();
+    const theirs = [...new Set(schemaBrowsers)].sort();
+    if (mine.join(',') !== theirs.join(',')) {
+      problems.push(
+        `${REGISTER} surfaces."${EXT_SURFACE}".platforms is [${mine.join(', ')}] and its declared source ${EXT_SCHEMA_REL} ` +
+          `→ properties.listings.properties is [${theirs.join(', ')}]. One vocabulary, two lists, and they disagree. ` +
+          'Change the schema and the register together. [pipeline F-2]: the second copy is the one that drifts.',
+      );
+    }
+  }
+}
+
+/**
  * tool.json declares which stores a target reaches TWICE, and both spellings are
  * live: `publish-catalog.mjs:291` reads `targets.chromium.stores` while
  * `check-store-metadata.mjs:404` reads `storeMetadata.stores.<K>.target`. Neither
