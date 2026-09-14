@@ -14,9 +14,9 @@ on GitHub-hosted runners.
 set are the sibling private corpus, cited as the stable logical prefix `Private/...`. The
 legal and tax identity is a third repo this one has no path to at all.
 
-## The tree — 9 tracked top-level directories
+## The tree — 10 tracked top-level directories
 
-`apps` · `catalog` · `contracts` · `docs` · `extensions` · `packages` · `services` · `sites` · `tooling`
+`_playwright` · `apps` · `catalog` · `contracts` · `docs` · `extensions` · `packages` · `services` · `sites` · `tooling`
 
 1 app(s) (`subscriptiontracker`) · 11 shared Dart packages · 3 Cloudflare Worker(s) ·
 3 static site(s) · 6 extension(s). The guards are `tooling/ci/*.mjs` and their tests
