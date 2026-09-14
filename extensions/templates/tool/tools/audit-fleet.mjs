@@ -164,7 +164,26 @@ if (repoRootFlag !== null && !repoRootFlag) die('--repo-root needs a directory')
 
    The marker is .git, which every clone has by definition. It is a file rather
    than a directory in a worktree or a submodule, so existsSync is the right
-   probe and statSync().isDirectory() would not be. */
+   probe and statSync().isDirectory() would not be.
+
+   ⚠️ AMENDED 2026-09-14 — THE MARKER WAS THE THIRD BREAKAGE, AND IT IS NOW
+   scripts/lib/toolinfo.mjs. `.git` named "the repository root" only while the
+   extensions were their own repository. Since the ADR 067 monorepo merge the
+   nearest .git is the MONOREPO root, one level above extensions/, and the fleet
+   sits three levels below that — out of reach of a walk that looks one or two
+   levels down. Measured on origin/main fcdfafb8 before this change: the bare
+   invocation printed `tools 0 found` and exited 1 (the zero-tools refusal below,
+   working); `--repo-root extensions` found 1 and exited 0. The paragraph above
+   is kept because the probe argument still holds; the marker it names does not.
+   scripts/lib/toolinfo.mjs is the extensions tree's own library — every gate
+   under scripts/ resolves the repo root from it — so the directory holding
+   scripts/lib/toolinfo.mjs IS the extensions root by construction, in this
+   monorepo, in a worktree, and in any future split. It is a file path with
+   three segments, so no unrelated directory carries it by accident. The step
+   `The fleet audit still finds the fleet` in .github/workflows/extensions.yml
+   runs this file bare, so a fourth breakage turns that job red rather than
+   waiting for somebody to type the command. */
+const ROOT_MARKER = path.join('scripts', 'lib', 'toolinfo.mjs');
 function findRepoRoot() {
   const forced = repoRootFlag || process.env.TOOLS_REPO_ROOT;
   if (forced) {
@@ -174,7 +193,7 @@ function findRepoRoot() {
   }
   let dir = HERE;
   for (let up = 0; up < 12; up++) {
-    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    if (fs.existsSync(path.join(dir, ROOT_MARKER))) return dir;
     const next = path.dirname(dir);
     if (next === dir) break;
     dir = next;
@@ -211,7 +230,7 @@ if (!TEMPLATE) {
 if (!TEMPLATE) {
   die('no template to compare against. Looked for a skeleton.json with an empty `tool`\n' +
     'and an empty `copiedAt` in:\n' + tried.map(p => '  ' + p).join('\n'),
-    (REPO_ROOT ? '' : 'No repository root either — no .git above ' + HERE + '.\n') +
+    (REPO_ROOT ? '' : 'No repository root either — no ' + ROOT_MARKER + ' above ' + HERE + '.\n') +
     'Falling back to this tree\'s own copy is what the old code did implicitly, and it is\n' +
     'the bug: every sibling gets graded against THIS tool\'s files and THIS tool\'s frozen\n' +
     'skeletonVersion, the running tool excludes itself, and the report looks clean.\n' +
@@ -296,7 +315,7 @@ function resolveNamed(arg) {
 }
 
 if (!named.length && !REPO_ROOT) {
-  die('cannot locate the repository root: no .git above ' + HERE + '.',
+  die('cannot locate the repository root: no ' + ROOT_MARKER + ' above ' + HERE + '.',
     'Automatic discovery walks the repository, so without it there is nothing to walk.\n' +
     'Pass --repo-root <dir>, set TOOLS_REPO_ROOT, or name the tool directories.');
 }
