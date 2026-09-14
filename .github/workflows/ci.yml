@@ -881,7 +881,7 @@ jobs:
         run: node tooling/ci/assert-workspace-coverage.mjs
       - uses: ./.github/actions/setup-flutter
       - name: Activate melos
-        run: dart pub global activate melos 8.6.0
+        run: dart pub global activate melos 8.7.0
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
       # why: the chassis strings are gen-l10n output over
