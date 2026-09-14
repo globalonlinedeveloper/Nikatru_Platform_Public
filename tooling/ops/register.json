@@ -3230,7 +3230,7 @@
       "detector": "This row. Nothing in CI can reach the issuing console, so the register is the detector until a date is written here.",
       "response": "Open the Entra app registration -> Certificates & secrets, read the client secret's expiry, write it into `expires` here, and roll the secret before the lead window closes. Rolling it is a one-line repository-secret change; discovering it expired is a failed store submission.",
       "cadence": "180d",
-      "expires": null,
+      "expires": "2028-09-08",
       "leadDays": 30,
       "mechanism": {
         "substrate": "external-registry",
@@ -3243,7 +3243,7 @@
         "microsoft"
       ],
       "ownerGated": true,
-      "ownerGap": "Owner: create the Entra tenant and app registration, associate it in Partner Center, then set MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_CLIENT_SECRET and MS_STORE_PRODUCT_ID — and write the secret's expiry into `expires` here on the day it is created, which is the only day it is shown. UNKNOWN UNTIL MINTED. The credential does not exist yet — no account has issued it — so there is no date to read anywhere, and writing one would be an invented expiry, which is strictly worse than a null because the lead-window arithmetic would then run and PASS on a fiction. The row exists NOW rather than on the day the credential arrives because the day it arrives is exactly the day nobody remembers to write it down.",
+      "ownerGap": "✅ MINTED 2026-09-09 — this field is CORRECTED off UNKNOWN UNTIL MINTED and the owner step below is DONE. Corroborated rather than taken from prose: `gh secret list` shows MS_STORE_TENANT_ID and MS_STORE_CLIENT_ID at 2026-09-08T21:33:27Z/:37Z and MS_STORE_CLIENT_SECRET at 2026-09-08T21:33:45Z (2026-09-09 IST), with MS_STORE_SELLER_ID and MS_STORE_PRODUCT_ID the same day — so the Entra tenant and app registration exist and all four secrets are set. `expires` is now 2028-09-08, Entra's 24-month default read on the one day that column is shown, so the leadDays-30 arithmetic is RUNNABLE where a null made it UNRUNNABLE rather than merely late — a null expiry does not arrive late, it never arrives (O-MSSTORE-SECRET-EXPIRY-UNWATCHED). ⚠️ WHAT REMAINS OWNER WORK IS NOT THE MINTING: the lane has still never run and the Partner Center product has no published submission, so nothing has yet proved these four credentials authenticate. A secret that exists and a secret that works are different claims and only the first is made here. THE PRIOR TEXT, kept because it was true until 2026-09-09: Owner: create the Entra tenant and app registration, associate it in Partner Center, then set MS_STORE_TENANT_ID, MS_STORE_CLIENT_ID, MS_STORE_CLIENT_SECRET and MS_STORE_PRODUCT_ID — and write the secret's expiry into `expires` here on the day it is created, which is the only day it is shown. UNKNOWN UNTIL MINTED. The credential does not exist yet — no account has issued it — so there is no date to read anywhere, and writing one would be an invented expiry, which is strictly worse than a null because the lead-window arithmetic would then run and PASS on a fiction. The row exists NOW rather than on the day the credential arrives because the day it arrives is exactly the day nobody remembers to write it down.",
       "source": "verified",
       "expiryKnownAt": "Entra ID -> App registrations -> Certificates & secrets, the Expires column. Console-only. Private/runbooks/store-submission-windows.md"
     },
