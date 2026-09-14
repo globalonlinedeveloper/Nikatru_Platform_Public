@@ -249,12 +249,12 @@
       "mutation": {
         "symbol": "lib/features/add/add_subscription_sheet.dart:_save catch → setState(() => _saving = false)",
         "observedRed": "add sheet: a failed save re-arms the button and says so",
-        "date": "2026-09-09",
+        "date": "2026-09-14",
         "edit": {
           "find": "setState(() => _saving = false);",
           "replace": "setState(() => _saving = true);"
         },
-        "codeHash": "a5cff9861217bccbc16db34f9f098c00ee5ca3d17fe4d100b5bf10c0765de968"
+        "codeHash": "82fcf2dc335492d002f894f0903d1aeefc32e0abbcc6d9bbd0343ea03f464577"
       }
     },
     {

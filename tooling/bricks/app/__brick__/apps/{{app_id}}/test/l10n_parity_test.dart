@@ -127,7 +127,8 @@ void main() {
       });
       expect(
         _placeholdersIn(
-          '{count, plural, =1{{name} in 1 day} other{{count} days}}',
+          // Spaced so the brick's mustache pass never reads a double brace.
+          '{count, plural, =1{ {name} in 1 day} other{ {count} days} }',
         ),
         <String>{'count', 'name'},
       );

@@ -19,8 +19,8 @@
   ],
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
-    "files": 123,
-    "lines": 17281,
+    "files": 124,
+    "lines": 17500,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -608,6 +608,12 @@
       "lines": 319,
       "verdict": "STAYS",
       "why": "MEASURED: pinned by NOTHING but this ledger. Stays on value: it is the proof for B-6, that withdrawal completes after its widget is disposed mid-upload — a real release-mode StateError."
+    },
+    {
+      "path": "test/l10n_parity_test.dart",
+      "lines": 219,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-09-14 (O-BRICK-NO-L10N-PARITY-TEST). Per-app by construction: it reads THIS app's AppLocalizations.supportedLocales and THIS app's arb-dir, and gen-l10n falls back to the template silently, so a missing key in a stamped app is invisible to every package suite. Until it existed the assertion lived only in apps/subscriptiontracker."
     },
     {
       "path": "test/promo_objection_surface_test.dart",
