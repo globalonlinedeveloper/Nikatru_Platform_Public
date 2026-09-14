@@ -621,11 +621,13 @@ npm init -y && npm i -D playwright && npx playwright install chromium
 > the e2e island's lockfile resolves) and runs this template's browser tier. That step fails if the
 > tier resolves Playwright from anywhere but the fleet location, or prints its fallback warning.
 > **In this monorepo `Tools/` is the repository root**, the name it had before the extensions merged
-> in. So the install is `<repository root>/_playwright/`, which is gitignored. It is not
+> in. So the install is `<repository root>/_playwright/`, where its `package.json` and `package-lock.json`
+> are tracked and `node_modules` is not. It is not
 > `extensions/_playwright/` or `extensions/Tools/_playwright/`. The resolver probes only ancestors, so
 > it never reaches a `Tools/` subdirectory, and `tooling/ci/assert-extensions-build-free.mjs` refuses
 > any `package.json` or `node_modules` under `extensions/` outside a tool's `test/e2e` island. From the
-> repository root: `mkdir _playwright && cd _playwright && npm init -y && npm i -D playwright && npx playwright install chromium`.
+> repository root: `cd _playwright && npm ci && npx playwright install chromium`. The lockfile decides the
+> version, as it does in CI.
 
 **Two documents still paraphrase `optResetDesc` with wording the product no
 longer uses** — `publish/PRIVACY-POLICY.html:155` and `TEMPLATE.md` both say

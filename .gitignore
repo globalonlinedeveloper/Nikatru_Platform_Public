@@ -38,11 +38,6 @@ private.*/
 # warns; `git add -A` would simply have dropped the file, and the loss would
 # have surfaced as a missing tool in someone else's clone.
 /scripts/
-# The extensions' ONE fleet Playwright install (2026-09-14, O-PLAYWRIGHT-FLEET-FALLBACK).
-# Created by the `templates` job in extensions.yml and by hand per
-# extensions/templates/tool/test/browser/README.md; never committed. Root-anchored:
-# it lives at the repository root, outside the extensions/ build-free walk.
-/_playwright/
 CLAUDE.md
 
 # Personal/ — the OWNER'S OWN documents, not the business's: Form 16, AIS/TIS,

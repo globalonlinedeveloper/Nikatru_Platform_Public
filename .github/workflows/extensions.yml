@@ -816,17 +816,17 @@ jobs:
       # test/e2e island — a fleet install at extensions/_playwright would turn that
       # guard red for anyone who followed the setup instructions. The repository
       # root is an ancestor of every tool and of the template, and is outside that
-      # guard's subject. Installed at run time, never committed (.gitignore), and
-      # pinned to the version the one e2e island's lockfile resolves.
+      # guard's subject. Its package.json and package-lock.json are TRACKED at
+      # _playwright/ (pinned to the version the one e2e island's lockfile resolves,
+      # and reached by Renovate's npm manager); node_modules is installed here by
+      # `npm ci`, never committed. A loose `npm install` was the first draft, and
+      # assert-lockfile-discipline.mjs refused it on this PR's first run, rightly.
       - name: Create the fleet Playwright install (the one location every browser tier finds first)
-        working-directory: .
+        working-directory: _playwright
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p _playwright
-          cd _playwright
-          npm init -y > /dev/null
-          npm install --no-audit --no-fund --save-dev --save-exact playwright@1.61.1
+          npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
       - name: The template browser tier runs, and resolves Playwright from the fleet location
         shell: bash

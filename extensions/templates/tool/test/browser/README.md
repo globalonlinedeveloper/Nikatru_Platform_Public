@@ -51,7 +51,8 @@ npm init -y && npm i -D playwright && npx playwright install chromium
 ```
 
 > **Amended 2026-09-14:** in the monorepo, `Tools/` is the **repository root**. The install is
-> `<repository root>/_playwright/`, which is gitignored. Do not put it under `extensions/`: the harness
+> `<repository root>/_playwright/`. Its `package.json` and `package-lock.json` are tracked, so set it up with
+> `cd _playwright && npm ci && npx playwright install chromium`. Do not put it under `extensions/`: the harness
 > only walks UP, and `tooling/ci/assert-extensions-build-free.mjs` refuses a `package.json` or
 > `node_modules` there. The `templates` job in `.github/workflows/extensions.yml` creates exactly this
 > install and fails if the path printed below is not it.
