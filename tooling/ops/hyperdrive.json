@@ -1,0 +1,37 @@
+{
+  "_why": [
+    "O-HYPERDRIVE-COLLISION. Every Cloudflare Hyperdrive configuration a Worker binds opens its OWN pool of connections to",
+    "the origin Postgres, and the origin has a fixed number to give. This file is the one place a configuration's",
+    "connection cap is declared, and tooling/ci/assert-hyperdrive-cap.mjs refuses a wrangler `hyperdrive` binding without",
+    "a row here, and a set of caps that adds up to more than `origin.budget`.",
+    "",
+    "WHY THE CAP HAS TO BE DECLARED BEFORE THE BINDING EXISTS, NOT AFTER. Hyperdrive's origin connection limit is a SOFT",
+    "limit: Cloudflare's limits page says a client that cannot reach an existing pool gets a new pool with its own",
+    "allocation, so 'connection counts may occasionally exceed the listed limits' (paid plan ~100 per configuration,",
+    "free ~20). The per-configuration knob is `wrangler hyperdrive create|update --origin-connection-limit <n>`, 'the",
+    "(soft) maximum number of connections that Hyperdrive may establish to the origin database'. Nothing sets it by",
+    "default, so an unset configuration may take up to the plan ceiling, and against the budget below that is more",
+    "connections than Box A has free.",
+    "",
+    "⏱ 2026-09-14 — NO CONFIGURATION EXISTS YET. `git grep -nliE \"hyperdrive|max_connections\"` over the whole tree",
+    "returned zero files before this file and its guard landed, so `configs` is empty on purpose, and the guard passes",
+    "over zero bindings while printing that count. The first binding reddens CI until it has a row here.",
+    "",
+    "⚠️ THE ORIGIN NUMBERS ARE COPIED FROM THE REGISTER ROW, NOT RE-MEASURED. Box A is not touched from this repository:",
+    "C-BOXA-SUPABASE-ONLY, the agent documents and the owner executes. The row O-HYPERDRIVE-COLLISION records",
+    "max_connections 100, 3 reserved (superuser_reserved_connections), 25 in use. Re-measure with",
+    "`SHOW max_connections; SHOW superuser_reserved_connections; SELECT count(*) FROM pg_stat_activity;` on Box A before",
+    "the first configuration's cap is chosen, and update `origin` with the date. Raising max_connections is a Postgres",
+    "restart in the owner's window."
+  ],
+  "origin": {
+    "host": "Box A Postgres (self-hosted Supabase)",
+    "maxConnections": 100,
+    "reserved": 3,
+    "inUse": 25,
+    "budget": 72,
+    "asOf": "copied 2026-09-14 from Private platform-state/open.json O-HYPERDRIVE-COLLISION; not re-measured",
+    "verify": "on Box A: SHOW max_connections; SHOW superuser_reserved_connections; SELECT count(*) FROM pg_stat_activity;"
+  },
+  "configs": []
+}
