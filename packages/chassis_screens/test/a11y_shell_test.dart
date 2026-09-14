@@ -14,6 +14,11 @@ import 'support/width_harness.dart';
 /// they are the most reachable surfaces the factory ships. See
 /// `a11y_auth_test.dart`'s header for what each case asserts and why.
 ///
+/// ✅ 2026-09-14 — THE PIN BELOW IS RETIRED: `OfflineBannerHost` now paints the
+/// notice after the routed child, and the offline case sweeps the banner
+/// through the router (O-CHASSIS-OFFLINE-BANNER-UNANNOUNCED). The paragraph
+/// that follows is kept as it was written on 2026-09-07.
+///
 /// 🔴 ONE CASE HERE IS A PIN OVER A DEFECT THIS SUITE FOUND, NOT A SWEEP, AND
 /// THE DEFECT IS IN `lib/` WHICH THIS UNIT DOES NOT OWN. Composed the way the
 /// brick's `app.dart` composes it, `OfflineBannerHost`'s banner is MOUNTED and
@@ -533,8 +538,8 @@ void main() {
       }
     });
 
-    testWidgets('light, kPhone — THE PIN: the offline banner is mounted and '
-        'announces NOTHING through the router', (WidgetTester tester) async {
+    testWidgets('light, kPhone — offline: the banner is announced THROUGH the '
+        'router, and swept with the page', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
         await pumpRootForA11y(
@@ -584,38 +589,47 @@ void main() {
           ),
         );
 
-        // 🔴 THE DEFECT, MEASURED. The notice IS mounted…
+        // ✅ REPAIRED 2026-09-14 (O-CHASSIS-OFFLINE-BANNER-UNANNOUNCED). This
+        // case was a PIN over the defect: the notice mounted, a `BlockSemantics`
+        // from the page route's `ModalBarrier` painted after it, and the reader
+        // handed nothing. `OfflineBannerHost` now paints the notice AFTER the
+        // routed child (see its build), so the same composition announces it.
+        // The `BlockSemantics` is still there — that is the point: the fix
+        // does not depend on the route changing.
         expect(find.byType(OfflineNotice), findsOneWidget);
-        // …a `BlockSemantics` from the page route's `ModalBarrier` sits above
-        // it in paint order…
         expect(find.byType(BlockSemantics), findsOneWidget);
-        // …and the reader is handed NOTHING of it. This is a `lib/` defect and
-        // this unit does not own `lib/`, so it is PINNED here and recorded as a
-        // residue: the day the composition is repaired, this case fails and
-        // asks for the banner's nodes to join the sweep above.
-        final List<String> announced = tester.semantics
+        final List<SemanticsNode> traversal = tester.semantics
             .simulatedAccessibilityTraversal()
+            .toList();
+        final List<String> announced = traversal
             .map((SemanticsNode n) => n.getSemanticsData().label)
             .where((String l) => l.trim().isNotEmpty)
             .toList();
         expect(
-          announced.any(
-            (String l) => l.contains('Could not reach') || l == 'Retry',
-          ),
-          isFalse,
+          announced,
+          contains('Retry'),
           reason:
-              'the offline banner now announces itself through the router — '
-              'REPAIRED. Delete this pin and add the banner to the swept '
-              'shell case above, with the tappable floor raised by one.',
+              'the offline banner is mounted and a screen reader cannot reach '
+              'its Retry control — the BlockSemantics of the routed page is '
+              'dropping it again. Announced: $announced',
+        );
+        expect(
+          traversal.any(
+            (SemanticsNode n) =>
+                n.getSemanticsData().label == 'Retry' &&
+                n.getSemanticsData().hasAction(SemanticsAction.tap),
+          ),
+          isTrue,
+          reason: 'Retry is announced but cannot be activated.',
         );
 
-        // What the reader IS handed is still swept, so this case is a
-        // measurement and not only a complaint.
+        // The routed page's control and title, plus the banner's message and
+        // its Retry: the tappable floor is the unannounced pin's plus one.
         expectSweepHadSubjects(
           tester,
-          'shell (offline, banner unannounced)',
-          tappable: 1,
-          labelled: 2,
+          'shell (offline, banner announced)',
+          tappable: 2,
+          labelled: 4,
         );
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));

@@ -425,14 +425,30 @@ class OfflineBannerHost extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!unreachable) return child;
     final ChassisLocalizations l10n = context.chassisL10n;
-    return Column(
+    // 🔴 THE NOTICE IS PAINTED AFTER THE ROUTED CHILD, AND THAT ORDER IS THE
+    // A11Y FIX, NOT A LAYOUT CHOICE (O-CHASSIS-OFFLINE-BANNER-UNANNOUNCED,
+    // 2026-09-14). Until then this was a `Column` with the notice FIRST. The
+    // router's page route wraps its page in `BlockSemantics` (its
+    // `ModalBarrier`), and `BlockSemantics` drops the semantics of everything
+    // painted BEFORE it. So the banner was mounted and visible and a screen
+    // reader was told nothing, not even the Retry control. Measured
+    // 2026-09-07: `find.text('Retry')` -> 1 widget,
+    // `find.bySemanticsLabel('Retry')` -> 0 nodes.
+    //
+    // `VerticalDirection.up` keeps the picture identical (the notice still
+    // sits on top and the app fills the rest below it). What changes is that
+    // the child list, which is PAINT order, now puts the notice last, so no
+    // BlockSemantics inside the routed child can reach it.
+    return Flex(
+      direction: Axis.vertical,
+      verticalDirection: VerticalDirection.up,
       children: <Widget>[
+        Expanded(child: child),
         OfflineNotice(
           message: l10n.offlineMessage,
           retryLabel: l10n.retry,
           onRetry: onRetry,
         ),
-        Expanded(child: child),
       ],
     );
   }
