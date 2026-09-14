@@ -86,6 +86,39 @@
 // run exists. The rate-limit and permission contract above is untouched: a rate
 // limit still waits as GitHub asks and exits 2 past its bound, and a 401 or a
 // 403 without a rate-limit signal still exits 1 on the first response.
+//
+// ── ⏱ APPENDED 2026-09-14 — ci-gate WAS NOT ON THE PAGE THIS SCRIPT READ ──────
+// 🔴 RUN 34841097649, the SCHEDULED six-platform build on main (8fef6b2c):
+//   ✗ timed out after 1200s waiting for "ci-gate" on 8fef6b2c (last seen: not started)
+// ci-gate had PASSED on that exact SHA seven hours earlier — check run concluded
+// `success` at 04:59:20Z, from CI run 34738938178. Both were true at once, and
+// the reason is one query string. Measured the same day by paging the live API:
+//   gh api ".../commits/8fef6b2c…/check-runs?per_page=100&page=3"
+//     → page 1: 100 · page 2: 100 · page 3: 46 · ci-gate at INDEX 25 OF PAGE 3
+// This script asked for `?per_page=100` with no page and no filter, then read
+// `body.check_runs` — 100 of 246 — so it reported, correctly, what it could see:
+// not started, on every one of its eighty polls, for the full twenty minutes.
+//
+// ⚠️ THE BUG WAS NEVER "THE FIRST PAGE IS UNLUCKY", IT WAS A GROWTH TRIGGER. It
+// arms itself the day a SHA's check-run count crosses 100 and then bites EVERY
+// self-gated lane — build-platforms, deploy-web, deploy-workers, extensions and
+// the four submit-* lanes — on every push, each burning a 20-minute runner to
+// fail closed on a green commit. Adding a CI shard is what pulls the trigger,
+// which is why this is recorded as a class and tested as one.
+//
+// THE FIX, and it is one request rather than three: ask GitHub for the ONE check
+// BY NAME (`check_name=ci-gate`), which is the documented filter on this
+// endpoint and answers with the matching set — so a 246-check SHA costs exactly
+// what a 5-check SHA costs, and the request budget the block above defends is
+// spent no harder. If that filter is ever NOT honoured (a proxy, the loopback
+// seam, an API change) the reader PAGES until `total_count` is accounted for,
+// the same completeness test tooling/ops/await-pr-checks.mjs already made at its
+// `checkRuns` — this file was the one member of that class that never got it.
+// Running past MAX_PAGES is COVERAGE LOST and exits 2, never 1: reading 1,000 of
+// 1,246 check runs is "could not ask", and spending it as "the gate is absent"
+// is the exact mistake that produced the run above.
+// Cases (g) and (h) in test/github-rate-limit.test.mjs hold this contract; (h)
+// is the regression control and reproduces 34841097649 against the old reader.
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   classifyRefusal,
@@ -103,6 +136,12 @@ import {
 const GATE = 'ci-gate';
 
 const POLL_SECONDS = 15;
+
+/** ⏱ 2026-09-14 — the paging bound for the fallback walk, matching
+ *  `tooling/ops/await-pr-checks.mjs`. Reaching it is COVERAGE LOST, never "the
+ *  gate is absent": see `truncated` in `fetchGate`. */
+const PER_PAGE = 100;
+const MAX_PAGES = 10;
 
 /** ⏱ 2026-09-11 — the wait after a poll that found NO ci-gate check run yet, by
  *  how many such polls in a row there have been: 15 s, then 30 s, then 60 s for
@@ -133,29 +172,60 @@ function unread(lines) {
 }
 
 async function fetchGate(base, repo, sha, token, secondaryStrikes) {
-  const url = `${base}/repos/${repo}/commits/${sha}/check-runs?per_page=100`;
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-        'user-agent': 'nikatru-assert-gate-passed',
-      },
-    });
-  } catch (err) {
-    // Network blip — retry rather than reading it as "no gate" either way.
-    return { transient: true, status: String(err?.message ?? err), run: null, refusal: null, text: '' };
+  // ⏱ 2026-09-14 — ask for the ONE check BY NAME, and page if that is ignored.
+  // See the header block of the same date. `page` is sent from the first request
+  // so a server that drops `check_name` is still walked in a defined order.
+  let seen = 0;
+  for (let page = 1; ; page++) {
+    const url =
+      `${base}/repos/${repo}/commits/${sha}/check-runs` +
+      `?check_name=${encodeURIComponent(GATE)}&per_page=${PER_PAGE}&page=${page}`;
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
+          'user-agent': 'nikatru-assert-gate-passed',
+        },
+      });
+    } catch (err) {
+      // Network blip — retry rather than reading it as "no gate" either way.
+      return { transient: true, status: String(err?.message ?? err), run: null, refusal: null, text: '' };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const refusal = classifyRefusal({ status: res.status, headers: res.headers, bodyText: text, secondaryStrikes });
+      return { transient: true, status: res.status, run: null, refusal, text: text.slice(0, 300) };
+    }
+    const body = await res.json();
+    const batch = body.check_runs ?? [];
+    const run = batch.find((c) => c.name === GATE);
+    if (run) return { transient: false, status: res.status, run, refusal: null, text: '', truncated: false };
+
+    seen += batch.length;
+    const expected = Number(body.total_count ?? 0);
+    // A server that HONOURED the name filter answers with the matching set, so a
+    // short page here is the real "the gate does not exist on this SHA yet". A
+    // server that ignored it answers the whole 246, and `total_count` is what
+    // says there is more — the same completeness test await-pr-checks.mjs makes.
+    if (batch.length === 0 || batch.length < PER_PAGE || seen >= expected) {
+      return { transient: false, status: res.status, run: null, refusal: null, text: '', truncated: false };
+    }
+    if (page >= MAX_PAGES) {
+      // NOT "the gate is absent". Only `${seen}` of `${expected}` were read, so
+      // the answer is unknown and must not be spent as a no — C-COVERAGE-LOST.
+      return {
+        transient: false,
+        status: res.status,
+        run: null,
+        refusal: null,
+        text: '',
+        truncated: `only ${seen} of ${expected} check-run(s) could be paged in ${MAX_PAGES} page(s) of ${PER_PAGE}`,
+      };
+    }
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const refusal = classifyRefusal({ status: res.status, headers: res.headers, bodyText: text, secondaryStrikes });
-    return { transient: true, status: res.status, run: null, refusal, text: text.slice(0, 300) };
-  }
-  const body = await res.json();
-  const run = (body.check_runs ?? []).find((c) => c.name === GATE) ?? null;
-  return { transient: false, status: res.status, run, refusal: null, text: '' };
 }
 
 async function main() {
@@ -202,7 +272,16 @@ async function main() {
   // The first poll is still made at once — the redeploy button's ci-gate
   // usually exists already, and waiting before asking would only delay it.
   for (;;) {
-    const { transient, status, run, refusal, text } = await fetchGate(api.base, repo, sha, token, rl?.secondaryStrikes ?? 0);
+    const { transient, status, run, refusal, text, truncated } = await fetchGate(api.base, repo, sha, token, rl?.secondaryStrikes ?? 0);
+
+    if (truncated) {
+      // Read SHORT, not read EMPTY. Exit 2 and not 1: nobody asked ci-gate and
+      // got a no — the list ran past this script's paging bound.
+      return unread([
+        `the check-run list for ${sha.slice(0, 8)} could not be read to the end`,
+        `${truncated}; the name filter \`check_name=${GATE}\` was evidently not honoured by ${api.base}.`,
+      ]);
+    }
 
     if (refusal?.kind === 'rate-limit') {
       const now = Date.now();

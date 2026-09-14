@@ -664,6 +664,68 @@ describe('assert-listing-assets.mjs — the DEBUG ribbon', () => {
     assert.match(r.out, /COVERAGE LOST — apps\/subscriptiontracker\/lib\/app\.dart/);
   });
 
+  // ── THE BRICK IS IN THE DOMAIN — 2026-09-14, O-LISTING-ASSETS-DEBUG-RIBBON-DOMAIN ──
+  //
+  // 🔴 D1-D3 PROVED THE DELEGATION BRANCH ON A FIXTURE AND NOTHING ELSE. The
+  // catalogue's one real app sets the flag inline and does not delegate, so on
+  // every tree CI ran that branch judged nothing: deleting the flag from
+  // packages/chassis_screens/lib/shell/app_shell.dart left the guard at EXIT 0.
+  // The file that DOES delegate is the brick's lib/app.dart. B1 is the green
+  // control; B2 is that exact deletion with the catalogue app still clean, so
+  // only the brick half can turn it red.
+  const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart';
+  const brickAdapter = () =>
+    Buffer.from(
+      "import 'package:nikatru_chassis_screens/shell/app_shell.dart';\n" +
+        'class BrickApp {\n  Widget build() => const NikatruApp();\n}\n',
+    );
+
+  test('B1 · GREEN CONTROL — the brick delegates to a chassis shell that sets the flag', () => {
+    const r = run(build((s) => {
+      s.files[BRICK_APP] = brickAdapter();
+      s.files['packages/chassis_screens/lib/shell/app_shell.dart'] = Buffer.from(
+        'class NikatruApp extends StatelessWidget {\n' +
+          '  Widget build(BuildContext c) => MaterialApp.router(\n' +
+          '    debugShowCheckedModeBanner: false,\n  );\n}\n',
+      );
+    }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 app\(s\) building a MaterialApp all set `debugShowCheckedModeBanner: false`/);
+    assert.match(r.out, /the brick template \(tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/app\.dart/);
+  });
+
+  test('B2 · FAILS when the flag is deleted from the chassis shell the brick delegates to', () => {
+    const r = run(build((s) => {
+      s.files[BRICK_APP] = brickAdapter();
+      s.files['packages/chassis_screens/lib/shell/app_shell.dart'] = Buffer.from(
+        'class NikatruApp extends StatelessWidget {\n' +
+          '  Widget build(BuildContext c) => MaterialApp.router(\n  );\n}\n',
+      );
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(
+      r.out,
+      /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/app\.dart builds a MaterialApp and does not set `debugShowCheckedModeBanner: false`/,
+    );
+  });
+
+  test('B3 · a brick whose shell no longer builds a MaterialApp is COVERAGE LOST, not a skip', () => {
+    const r = run(build((s) => {
+      s.files[BRICK_APP] = brickAdapter();
+      s.files['packages/chassis_screens/lib/shell/app_shell.dart'] = Buffer.from(
+        'class NikatruApp extends StatelessWidget {\n  Widget build(BuildContext c) => const Placeholder();\n}\n',
+      );
+    }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib\/app\.dart was read/);
+  });
+
+  test('B4 · a fixture root with no brick says the brick half was not judged', () => {
+    const r = run(build());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /no brick template in this tree \(a fixture root\); the brick half was not judged/);
+  });
+
   test('COVERAGE LOST when no app builds a MaterialApp at all', () => {
     const r = run(build((s) => {
       delete s.files['apps/subscriptiontracker/lib/app.dart'];

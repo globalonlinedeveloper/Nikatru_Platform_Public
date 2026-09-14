@@ -19,6 +19,15 @@ vanilla-JS extension cannot share modules at run time and each tool has to be fr
 > out of its own folder, which from `templates/tool/tools/` reaches only `templates/`. That is a drift
 > audit reporting "nothing has drifted" because it looked at nothing. `ref/pre-prune-2026-09-08:extensions/MIGRATION.md §6` has the
 > measurement and the one-line fix; until it is applied, pass the tool paths explicitly.
+>
+> ✅ **AMENDED 2026-09-14 — the warning above is stale twice over, and kept as the record.** The one-line
+> fix did land, and the auditor then broke a THIRD way: it ascended to the nearest `.git`, which since the
+> ADR 067 monorepo merge is the monorepo root, and found `tools 0 found` — exiting 1, its zero-tools refusal
+> working, not 0. It now ascends to the directory holding `scripts/lib/toolinfo.mjs`, which is the
+> extensions root by construction, and a bare `node templates/tool/tools/audit-fleet.mjs` finds the fleet
+> again. The `templates` job in `.github/workflows/extensions.yml` runs that bare invocation on every
+> change, so a fourth breakage is a red check rather than a finding. `MIGRATION.md`, which carried a
+> `tools 1 found, exit 0` STATUS box, no longer exists on main; its record is the pinned ref above.
 
 `TEMPLATE.md` is the full procedure, top to bottom. **This file covers one step of it: the stamp.**
 

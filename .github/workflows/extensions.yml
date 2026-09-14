@@ -789,6 +789,18 @@ jobs:
             echo "::error::$failed file(s) above do not parse. new-tool.mjs copies this tree into every new tool, so a syntax error here is not one broken file — it is one broken file per tool created from today onward, discovered by whoever creates the next one."
             exit 1
           fi
+      # 2026-09-14: THE FLEET AUDIT BROKE THREE TIMES, AND WAS WIRED INTO NOTHING
+      # EACH TIME. templates/tool/tools/audit-fleet.mjs finds the fleet by walking
+      # up from its own folder; the walk root has moved with the template twice and
+      # with the ADR 067 monorepo merge once, and every breakage was found by a
+      # reviewer typing the command by hand, weeks later. This step runs it BARE —
+      # no --repo-root, no named tools — because the bare invocation is exactly what
+      # broke. PRINT-ONLY FOR DRIFT: BEHIND / DIVERGED / UNSTAMPED always exit 0 by
+      # the auditor's own contract, so this never gates on a tool's choices. It is
+      # red only on the auditor's two "do not believe this report" exits — 1 BROKEN
+      # AUDIT (the walk reached no tool) and 2 CANNOT RUN (no root, no template).
+      - name: The fleet audit still finds the fleet (drift is printed, never gated)
+        run: node templates/tool/tools/audit-fleet.mjs
 
   # why: the single aggregate for this workflow. It carries always(), needs every
   # lane above, and treats skipped as not-green -- a skipped required check
