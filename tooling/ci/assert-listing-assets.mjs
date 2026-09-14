@@ -720,10 +720,44 @@ for (const row of withGraphics) {
 // deleting one identifier would put a red DEBUG ribbon in the corner of every
 // store screenshot — the loudest possible "unfinished" signal, on the asset
 // reviewers look at first.
+//
+// 🔴 AND THE BRICK, WHICH IS WHERE THE FLAG ACTUALLY LIVES — 2026-09-14,
+// O-LISTING-ASSETS-DEBUG-RIBBON-DOMAIN. Until this date the domain was
+// catalog/apps.json alone, and the catalogue's one app sets the flag INLINE in
+// its own lib/app.dart and imports nothing from the chassis ([ADR 065]). So the
+// delegation branch below was fixture-tested and vacuous on every tree CI ran:
+// measured on origin/main fcdfafb8, deleting `debugShowCheckedModeBanner:
+// false` from packages/chassis_screens/lib/shell/app_shell.dart (grep -c 1 -> 0)
+// left this guard at EXIT 0 printing `1 app(s) … all set`. The brick template's
+// lib/app.dart is the file that delegates to that shell, and every app stamped
+// from today onward inherits whatever the shell says — so the brick is judged
+// here beside the catalogue, through the same delegation, by the same regexes.
+//
+// On the real tree the brick is REQUIRED, and a brick that is not found
+// building a MaterialApp is COVERAGE LOST rather than the quiet `continue` a
+// catalogue row with no app tree gets: a renamed brick path would otherwise
+// drop the one caller that reaches the shell and leave the count at 1, which is
+// the silent shape this limb exists against. A fixture root with no brick is
+// the weaker situation `scanningRealRepo` names, and is skipped out loud.
+const BRICK_APP_DART = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/app.dart';
+let debugBannerBrickChecked = false;
 {
-  for (const app of apps) {
-    if (typeof app.slug !== 'string' || app.slug === '') continue;
-    const rel = `apps/${app.slug}/lib/app.dart`;
+  const brickPresent = read(BRICK_APP_DART) !== null;
+  if (!brickPresent && scanningRealRepo) {
+    coverageLost([
+      `${BRICK_APP_DART} does not exist.`,
+      'It is the brick\'s composition root, and the only file in the tree that delegates to the chassis app',
+      'shell where `debugShowCheckedModeBanner: false` now lives. Without it the DEBUG-ribbon limb judges',
+      'the catalogue apps alone, and the shell every future app is stamped with is held by nothing.',
+    ]);
+  }
+  const targets = [
+    ...apps
+      .filter((app) => typeof app.slug === 'string' && app.slug !== '')
+      .map((app) => ({ rel: `apps/${app.slug}/lib/app.dart`, brick: false })),
+    ...(brickPresent ? [{ rel: BRICK_APP_DART, brick: true }] : []),
+  ];
+  for (const { rel, brick } of targets) {
     const buf = read(rel);
     if (buf === null) continue; // an entry in the catalogue with no app tree here
     // 🔴 AND WHAT THAT FILE DELEGATES TO — [ADR 067] decision 2, unit app-shell.
@@ -763,8 +797,19 @@ for (const row of withGraphics) {
       .split('\n')
       .map((l) => l.replace(/\/\/.*$/, ''))
       .join('\n');
-    if (!/\bMaterialApp\b/.test(code)) continue; // nothing here builds the app shell
-    debugBannerAppsChecked++;
+    if (!/\bMaterialApp\b/.test(code)) {
+      if (brick) {
+        coverageLost([
+          `${rel} was read, with what it delegates to, and no MaterialApp was found in either.`,
+          'The brick always builds the app shell. Not finding one means the shell moved somewhere this scan',
+          'does not follow, and the flag that keeps the DEBUG ribbon off every stamped app\'s store',
+          'screenshots is no longer held by anything.',
+        ]);
+      }
+      continue; // nothing here builds the app shell
+    }
+    if (brick) debugBannerBrickChecked = true;
+    else debugBannerAppsChecked++;
     if (!/debugShowCheckedModeBanner\s*:\s*false/.test(code)) {
       problems.push(
         `${rel} builds a MaterialApp and does not set \`debugShowCheckedModeBanner: false\`. The store screenshot capture runs through \`flutter drive\`, which builds in DEBUG — so every captured frame would carry Flutter's red DEBUG ribbon, and the listing would advertise an unfinished build. It is one identifier, nothing else was holding it, and no size or format check can see it.`,
@@ -896,6 +941,12 @@ if (problems.length) {
   console.log(
     `ok   DEBUG RIBBON — ${debugBannerAppsChecked} app(s) building a MaterialApp all set ` +
       '`debugShowCheckedModeBanner: false`. The capture runs through `flutter drive`, which builds in DEBUG.',
+  );
+  console.log(
+    debugBannerBrickChecked
+      ? `ok   DEBUG RIBBON — the brick template (${BRICK_APP_DART}, with what it delegates to) sets it too, ` +
+          'so every app stamped from it does.'
+      : '   ⬜ DEBUG RIBBON — no brick template in this tree (a fixture root); the brick half was not judged.',
   );
   console.log(
     `ok   THE ACCOUNT — ${captureSuitesScanned} capture suite(s) read, ${capturedFrames} frame(s) resolved to the ` +

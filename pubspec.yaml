@@ -67,7 +67,7 @@ workspace:
 # REQUIRED_YIELD entry fails if melos ever stops being matched here at all.
 # ─────────────────────────────────────────────────────────────────────────────
 dev_dependencies:
-  melos: 8.6.0
+  melos: 8.7.0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # THE ONE OVERRIDE, AND WHY IT IS NOT A SHRUG
