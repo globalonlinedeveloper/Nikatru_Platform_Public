@@ -413,6 +413,8 @@ jobs:
         run: node tooling/ci/assert-android-target-sdk.mjs
       - name: No store artifact is the demo build
         run: node tooling/ci/assert-store-build-config.mjs
+      - name: An app that pulls flutter_inappwebview carries its native build waivers
+        run: node tooling/ci/assert-inappwebview-waivers.mjs
 
   guards-chassis:
     name: Guards — chassis, app surface and packages
