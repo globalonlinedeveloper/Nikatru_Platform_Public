@@ -118,6 +118,8 @@ jobs:
         run: node tooling/ci/assert-case-count-honest.mjs --junit "${{ runner.temp }}/guard-tests.junit.xml"
       - name: Guard tree walks cannot leave the tree
         run: node tooling/ci/assert-walks-bounded.mjs
+      - name: A local script reads a workflow through workflow-scan, or refuses when blind
+        run: node tooling/ci/assert-workflow-readers.mjs
       - name: The enforcement index is what the tree says
         run: node tooling/ci/assert-enforcement-index.mjs
       - name: Every line of the app template is accounted for
