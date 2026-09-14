@@ -23,6 +23,11 @@ not your tool's.
 
 ---
 
+## [Unreleased] — the fleet Playwright install exists, in CI (2026-09-14)
+
+- `README-tour.md`, `TEMPLATE.md`, `test/browser/README.md` — dated amendments: `Tools/` is the repository root in the monorepo, so the fleet install is `<repository root>/_playwright/` (tracked `package.json` + `package-lock.json`, `npm ci`), never under `extensions/` (build-free guard). CI's `templates` job creates it and runs `test/browser/smoke.mjs`, failing unless the tier resolves Playwright from there.
+- `test/browser/smoke.mjs` (INHERITED) — the Arabic browser passes `LANGUAGE=ar` in its launch env. `--lang` is ignored by Chromium on Linux, so the RTL block ran in en-US on the first CI run of this tier and failed 6 checks, all on its own premise. Tools copied earlier carry the Windows-only version; copy this file across.
+
 ## [Unreleased] — the fleet audit finds the fleet again (2026-09-14)
 
 - `tools/audit-fleet.mjs` — the repository-root walk stopped at the nearest `.git`, which since the monorepo merge is one level ABOVE `extensions/`, so a bare run found zero tools and exited 1 (BROKEN AUDIT). The marker is now `scripts/lib/toolinfo.mjs`, the extensions tree's own library. Not an inherited file, so no tool's copy is graded against this change. `README.md` carries a dated amendment beside its stale warning.

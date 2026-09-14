@@ -1089,6 +1089,13 @@ async function readInternals(ctx) {
       headless: !process.env.HEADFUL,
       viewport: { width: 1280, height: 900 },
       locale: 'ar',
+      /* `--lang` sets Chrome's UI language on Windows and macOS ONLY. On Linux
+         Chromium reads it from the LANGUAGE environment variable and ignores the
+         flag, so this whole block ran in en-US there and failed its own premise
+         check — measured 2026-09-14 on ubuntu-24.04, the first run of this tier
+         in CI: `chrome.i18n.getUILanguage() = en-US`, 6 failures, all here.
+         Set for this browser only; the English run above keeps its own env. */
+      env: { ...process.env, LANGUAGE: 'ar' },
       args: [
         '--disable-extensions-except=' + EXT_DIR,
         '--load-extension=' + EXT_DIR,
