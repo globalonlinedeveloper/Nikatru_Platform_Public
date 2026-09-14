@@ -94,6 +94,44 @@ describe('guard-sweep sees a flagged node invocation', () => {
     assert.equal(r.status, 0, out.slice(-600));
   });
 
+  // ⏱ 2026-09-14 — O-GUARD-SWEEP-HAS-A-RIVAL-PARSER. The sweep now reads through
+  // tooling/ci/workflow-scan.mjs. The defect a private line loop cannot avoid is
+  // a folded `run: >` whose arguments sit on the continuation lines: it recorded
+  // those guards with EMPTY arguments. Derived from the real workflows, like the
+  // cases above, so no author picks the example the matcher already handles.
+  test('🔴 arguments folded onto a `run: >` continuation line are recorded', () => {
+    const folded = [];
+    for (const wf of readdirSync(WF_DIR).filter((f) => /\.ya?ml$/.test(f))) {
+      const lines = readFileSync(join(WF_DIR, wf), 'utf8').split(/\r?\n/);
+      for (let i = 0; i + 2 < lines.length; i++) {
+        if (!/^\s*(?:-\s+)?run:\s*>\s*$/.test(lines[i])) continue;
+        const first = lines[i + 1].match(/^\s*node\s+(?:-\S+\s+)*tooling\/ci\/([a-z0-9._-]+\.mjs)\s*$/i);
+        const next = lines[i + 2].trim();
+        if (first && next && !next.startsWith('#') && !/^[a-z-]+:/.test(next)) {
+          folded.push({ wf, guard: first[1], firstArg: next.split(/\s+/)[0] });
+        }
+      }
+    }
+    assert.ok(folded.length >= 3, `expected at least 3 folded guard invocations with arguments on the next line, found ${folded.length}`);
+    // The pre-2026-09-14 reader matched one physical line, so its argument
+    // capture for every one of these was empty — the negative control.
+    for (const f of folded) {
+      const line = `node tooling/ci/${f.guard}`;
+      const m = line.match(/node\s+((?:-[^\s]+\s+)*)tooling\/ci\/([a-z0-9._-]+\.mjs)([^|&;#\n]*)/i);
+      assert.equal(m[3].trim(), '', 'the old one-line capture must see no argument here, or this control controls nothing');
+    }
+    const r = spawnSync(process.execPath, [SWEEP, '--invocations'], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const recorded = JSON.parse(r.stdout);
+    for (const f of folded) {
+      const calls = (recorded[f.guard] ?? []).filter((c) => c.wf === f.wf);
+      assert.ok(
+        calls.some((c) => c.raw.split(/\s+/).includes(f.firstArg.replace(/^["']|["']$/g, '')) || c.raw.includes(f.firstArg)),
+        `${f.wf} folds ${f.guard}'s arguments onto the next line (starting ${f.firstArg}) and the sweep recorded ${JSON.stringify(calls)}`,
+      );
+    }
+  });
+
   test('the node flags are CARRIED, not merely tolerated', () => {
     // If the flags were matched and then thrown away, the sweep would execute
     // those four guards in exactly the configuration the flag exists to avoid.

@@ -85,7 +85,7 @@
   "glitchtip-project.test.mjs": 20,
   "green-means-ran.test.mjs": 25,
   "guard-coverage.test.mjs": 62,
-  "guard-sweep-invocations.test.mjs": 4,
+  "guard-sweep-invocations.test.mjs": 5,
   "guards-refuse-empty.test.mjs": 17,
   "guards.test.mjs": 392,
   "heartbeats.test.mjs": 69,
