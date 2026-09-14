@@ -99,7 +99,7 @@
 // scan, and it is listed in that guard's NOT_A_SCANNER for the reason above.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
 
@@ -155,6 +155,20 @@ export function dartCodeOnly(rawSource) {
   return stripStringLiterals(stripSourceComments(blanked, '.dart'));
 }
 
+/** A parameter list, PARENTHESES INCLUDED, nested three deep.
+ *
+ *  ⏱ 2026-09-14 (O-CHASSIS-DELEGATION-RESOLVER-LIMITS, limit 2). Both function
+ *  patterns spelled the list `\([^;()]*\)`, so a declaration whose parameters
+ *  contain parentheses was invisible to them. The measured case was
+ *  `bootstrapNikatru` taking `Future<void> Function(Future<void> Function()
+ *  appRunner) runGuarded`: the file's only public name went unseen, the resolver
+ *  answered lost, and every guard following the delegation reported COVERAGE
+ *  LOST on a correctly wired tree (worked around then with two typedefs). Three
+ *  levels is that shape exactly — the list, a `Function(…)` inside it, and a
+ *  `Function()` inside that. A fourth level is still unseen, and unseen is a
+ *  refusal, never a quiet pass. */
+const PARAMS = String.raw`\((?:[^;()]|\((?:[^;()]|\([^;()]*\))*\))*\)`;
+
 const DECL_PATTERNS = [
   /^(?:abstract\s+|base\s+|final\s+|interface\s+|sealed\s+|mixin\s+)*class\s+([A-Za-z][\w$]*)/gm,
   /^mixin\s+([A-Za-z][\w$]*)/gm,
@@ -164,7 +178,7 @@ const DECL_PATTERNS = [
   // Top-level functions and getters. Column-anchored, which in Dart is what
   // "top level" means. Deliberately generous: a name this over-collects can
   // only ever be one the adapter would also have to spell out.
-  /^(?:[A-Za-z_$][\w$<>,?\s.[\]]*?\s+)?([a-z][\w$]*)\s*(?:<[^>\n]*>)?\s*\([^;()]*\)\s*(?:async\s*\*?\s*)?[{=]/gm,
+  new RegExp(String.raw`^(?:[A-Za-z_$][\w$<>,?\s.[\]]*?\s+)?([a-z][\w$]*)\s*(?:<[^>\n]*>)?\s*${PARAMS}\s*(?:async\s*\*?\s*)?[{=]`, 'gm'),
   // Top-level `final`/`const`/`var` declarations.
   /^(?:final|const|var)\s+(?:[A-Za-z_$][\w$<>,?\s.[\]]*\s+)?([a-z][\w$]*)\s*=/gm,
 ];
@@ -200,7 +214,7 @@ const NESTED_DECL_PATTERNS = [
   // yields `body` and leaves `SettingsBody` in the evidence set where it belongs.
   /\b(?:final|const|late|var)\s+(?:[A-Za-z_$][\w$<>,?\s.[\]]*?\s+)?([A-Za-z_$][\w$]*)\s*(?==|;|,|\)|\bin\b)/g,
   // Member and local functions/getters: `Widget build(…) {`, `void _open() =>`.
-  /^[ \t]+(?:[A-Za-z_$][\w$<>,?\s.[\]]*?\s+)([A-Za-z_$][\w$]*)\s*(?:<[^>\n]*>)?\s*\([^;()]*\)\s*(?:async\s*\*?\s*)?[{=]/gm,
+  new RegExp(String.raw`^[ \t]+(?:[A-Za-z_$][\w$<>,?\s.[\]]*?\s+)([A-Za-z_$][\w$]*)\s*(?:<[^>\n]*>)?\s*${PARAMS}\s*(?:async\s*\*?\s*)?[{=]`, 'gm'),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -541,8 +555,17 @@ export function delegationOf(repoRoot, relFile, { describe = (r) => `\`${r}\`` }
   }
   const files = [target];
   const targetRaw = readFileSync(join(repoRoot, target), 'utf8');
+  // ⏱ 2026-09-14 (O-CHASSIS-DELEGATION-RESOLVER-LIMITS, limit 1). An export is
+  // resolved against the BARREL'S OWN DIRECTORY, which is what Dart does. It was
+  // resolved against lib/ itself, so a barrel at lib/shell/ exporting a sibling
+  // pointed at lib/<sibling>.dart, a file not on disk, and dropped it. The class
+  // rendering consentPrivacy sat in exactly such a sibling, and
+  // assert-consent-withdrawal-surface reported COVERAGE LOST on a wired tree.
+  // A path that climbs out of the package's lib/ is not followed.
+  const libRoot = `${CHASSIS_DIR}/lib/`;
   for (const m of targetRaw.matchAll(exportRe())) {
-    const t = `${CHASSIS_DIR}/lib/${m[1]}`;
+    const t = posix.normalize(posix.join(posix.dirname(target), m[1]));
+    if (!t.startsWith(libRoot)) continue;
     if (existsSync(join(repoRoot, t)) && !files.includes(t)) files.push(t);
   }
 
