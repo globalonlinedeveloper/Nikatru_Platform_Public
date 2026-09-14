@@ -604,9 +604,15 @@
       "rows, 17 nulls, and expiring.ceilings-citations remains the only row the lead-window comparison",
       "executes on. A ceiling that falls because a credential was REPLACED is not the same event as one that",
       "falls because a date was finally read, and this paragraph exists so the two can never be counted as",
-      "the same kind of progress."
+      "the same kind of progress.",
+      "",
+      "⏱ 2026-09-14 — RATCHETED DOWN 17 -> 14, AND THIS TIME BECAUSE TWO DATES WERE READ, NOT BECAUSE A ROW WAS REPLACED.",
+      "expiring.domain.nikatru.com (2027-07-07) and expiring.domain.rajasekarselvam.com (2027-07-22) were measured live from public RDAP,",
+      "nikatru.com also from the Cloudflare Registrar API, and recorded in the business brain (nikatru commit bc0868e). Before the change",
+      "assert-ops-register printed 16 expiry UNREAD against a ceiling of 17 (one of slack); after it, 14, with two more lead-window comparisons",
+      "actually executed. The ceiling is set to the new count rather than left with slack, because slack is what lets a new null in free."
     ],
-    "_maxNull": 17
+    "_maxNull": 14
   },
   "_retentionCoverage": {
     "_why": [
@@ -2865,22 +2871,22 @@
       "detector": "This row: a missing or past `expires`, or one inside `leadDays`, fails.",
       "response": "Confirm auto-renew is ON and record the renewal date.",
       "cadence": "180d",
-      "expires": null,
+      "expires": "2027-07-07",
       "leadDays": 30,
       "mechanism": {
         "substrate": "cloudflare-registrar",
         "anchor": "Private/runbooks/operations.md",
         "record": "the registrar console",
         "failingValue": "auto-renew off, or a renewal date inside the lead window",
-        "readBy": "nothing yet — the console is not machine-readable from CI"
+        "readBy": "nothing scheduled yet — but the date is MACHINE-READABLE, which this field used to deny: the Cloudflare Registrar API (`GET /accounts/$CLOUDFLARE_ACCOUNT_ID/registrar/domains`, vault token) and public RDAP (https://rdap.verisign.com/com/v1/domain/nikatru.com, no credential) both return it. THE PRIOR TEXT, true until 2026-09-14: nothing yet — the console is not machine-readable from CI"
       },
       "accessProviders": [
         "cloudflare"
       ],
-      "ownerGated": true,
-      "ownerGap": "🔴 ~$10 and a date nobody is watching takes down every checkout return URL, every API hostname and every config fetch AT ONCE. Owner: confirm auto-renew and record the date.",
+      "ownerGated": false,
+      "ownerGap": "✅ CLOSED 2026-09-14 — the owner step this gap asked for is DONE, and by a route that needs no owner console. Measured live that day and recorded in the business brain (nikatru commit bc0868e, nikatru/vendors/cloudflare.md, Obligations table): `GET /accounts/$CLOUDFLARE_ACCOUNT_ID/registrar/domains` returned expires_at 2027-07-07T10:04:36Z, auto_renew true, locked true; https://rdap.verisign.com/com/v1/domain/nikatru.com independently returned expiration 2027-07-07T10:04:36Z. `expires` is 2027-07-07 (the UTC date of that instant), so the leadDays-30 arithmetic now RUNS on this row. `ownerGated` is false because the register reserves it for a missing half that \"can only be supplied from a vendor console, a laptop, or the proprietor's own knowledge\", and neither half is that any more: the date is on public RDAP and the auto-renew flag on the Registrar API an agent reads with the vault token. The `cadence` of 180d still asks for a re-read. THE PRIOR TEXT, kept because it was true until 2026-09-14: 🔴 ~$10 and a date nobody is watching takes down every checkout return URL, every API hostname and every config fetch AT ONCE. Owner: confirm auto-renew and record the date.",
       "source": "verified",
-      "expiryKnownAt": "Cloudflare dashboard -> Domain Registration -> nikatru.com -> Expiry date + Auto-renew toggle. Owner-only console."
+      "expiryKnownAt": "Public RDAP https://rdap.verisign.com/com/v1/domain/nikatru.com (`events[eventAction=expiration]`, no credential) or the Cloudflare Registrar API `GET /accounts/$CLOUDFLARE_ACCOUNT_ID/registrar/domains` (`expires_at`, `auto_renew`), both read 2026-09-14. THE PRIOR TEXT, true until 2026-09-14: Cloudflare dashboard -> Domain Registration -> nikatru.com -> Expiry date + Auto-renew toggle. Owner-only console."
     },
     {
       "id": "expiring.domain.rajasekarselvam.com",
@@ -2889,7 +2895,7 @@
       "detector": "This row.",
       "response": "Confirm auto-renew is ON and record the renewal date.",
       "cadence": "180d",
-      "expires": null,
+      "expires": "2027-07-22",
       "leadDays": 30,
       "mechanism": {
         "substrate": "hostinger",
@@ -2902,9 +2908,9 @@
         "hostinger"
       ],
       "ownerGated": true,
-      "ownerGap": "Two registrars, two behaviours, both unchecked since ~17 July. Owner action.",
+      "ownerGap": "⏱ 2026-09-14 — HALF CLOSED, AND THE OPEN HALF IS WHY THIS STAYS GATED. The DATE was measured live that day from public RDAP (https://rdap.verisign.com/com/v1/domain/rajasekarselvam.com -> expiration 2027-07-22T04:11:50Z) and recorded in the business brain (nikatru commit bc0868e, nikatru/vendors/hostinger.md, Obligations table); `expires` is 2027-07-22, so the leadDays-30 arithmetic now RUNS on this row. AUTO-RENEW IS NOT READ: Hostinger shows it only in hPanel, which is an owner console, so whether the registration renews itself is still unknown here. Owner: confirm auto-renew in hPanel. THE PRIOR TEXT, kept because it was true until 2026-09-14: Two registrars, two behaviours, both unchecked since ~17 July. Owner action.",
       "source": "verified",
-      "expiryKnownAt": "Hostinger hPanel -> Domains -> rajasekarselvam.com -> expiry date + auto-renew. A SECOND registrar with different renewal behaviour; do not infer it from the Cloudflare one."
+      "expiryKnownAt": "The date: public RDAP https://rdap.verisign.com/com/v1/domain/rajasekarselvam.com (`events[eventAction=expiration]`), read 2026-09-14. Auto-renew: hPanel only. THE PRIOR TEXT, true until 2026-09-14: Hostinger hPanel -> Domains -> rajasekarselvam.com -> expiry date + auto-renew. A SECOND registrar with different renewal behaviour; do not infer it from the Cloudflare one."
     },
     {
       "id": "expiring.cert.origin-ca",
