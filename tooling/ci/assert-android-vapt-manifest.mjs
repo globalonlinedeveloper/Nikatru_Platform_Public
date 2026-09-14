@@ -76,10 +76,12 @@
 // Exit 1 = an item is violated.
 // Exit 2 = COVERAGE LOST: nothing was read, or what was read could not be judged.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
+// The ONE directory listing in tooling/ci: it skips nested checkouts (see its header).
+import { listDir } from './tree-walk.mjs';
 
 const NAME = 'assert-android-vapt-manifest';
 const ANALYSIS_REL = 'packages/analysis/lib/analysis_options.yaml';
@@ -465,7 +467,7 @@ if (!/^\s+avoid_print:\s*error\s*$/m.test(readFileSync(analysisAbs, 'utf8'))) {
 const nativeRoot = join(ROOT, 'apps', APP, 'android', 'app', 'src', 'main');
 const nativeFiles = [];
 const collect = (dir) => {
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
+  for (const e of listDir(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
     if (e.isDirectory()) collect(p);
     else if (/\.(kt|java)$/.test(e.name)) nativeFiles.push(p);
@@ -489,7 +491,7 @@ for (const f of nativeFiles) {
 let debugPrints = 0;
 const dartRoots = [join(ROOT, 'apps', APP, 'lib'), join(ROOT, 'packages')];
 const countDart = (dir) => {
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
+  for (const e of listDir(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
     if (e.isDirectory()) {
       if (e.name === 'test' || e.name.startsWith('.') || e.name === 'build') continue;
