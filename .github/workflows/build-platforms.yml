@@ -203,6 +203,13 @@ jobs:
         run: >
           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
           apps/${{ matrix.app }}/build/app/outputs/bundle/release/app-release.aab
+      # why: apps.gov.in runs MobSF over the built .apk, and the merged manifest
+      # exists only inside it. docs/ci/build-platforms.md §vapt.
+      - name: The built .apk passes the static apps.gov.in VAPT items
+        run: >
+          node tooling/ci/assert-android-vapt-manifest.mjs
+          apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-release.apk
+          --app ${{ matrix.app }}
       # why: pinned by version AND by digest, byte-identical to deploy-web.yml's
       # step. The release asset is a GitLab JOB ARTIFACT, which is a re-runnable
       # address rather than an immutable object — so the version alone is a

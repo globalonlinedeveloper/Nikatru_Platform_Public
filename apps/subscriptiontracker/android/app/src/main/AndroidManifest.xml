@@ -41,9 +41,22 @@
          does not. This permission buys PRECISION for the users who grant it,
          and nothing else depends on it. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- 🔴 android:allowBackup="false" ADDED 2026-09-14. Until then this element
+         declared no allowBackup at all, and ABSENT MEANS TRUE: `adb backup` and
+         cloud backup could lift the app's private files - the SecureStore-backed
+         session among them - off a device. It is the first finding MobSF prints
+         for a stock Flutter manifest, and apps.gov.in runs MobSF over the built
+         .apk. Measured on real aapt2 output of this manifest before the change:
+         tooling/ci/assert-android-vapt-manifest.mjs -> "V2 allowBackup ... is
+         ABSENT, which Android reads as TRUE", exit 1. Nothing is lost by it: the
+         account's data lives on the server and returns at sign-in, and a Keystore
+         key never survives a restore anyway, so a restored encrypted session
+         could not be read. The guard reads the MERGED manifest in the built .apk,
+         so a plugin cannot quietly set it back. -->
     <application
         android:label="Subscriptions"
         android:name="${applicationName}"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

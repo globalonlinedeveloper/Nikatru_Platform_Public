@@ -140,6 +140,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/build-platforms.yml#linux_web_android"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-android-vapt-manifest.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 038",
       "ADR 075"
