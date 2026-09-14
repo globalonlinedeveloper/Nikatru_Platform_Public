@@ -1,0 +1,59 @@
+{
+  "_why": [
+    "O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS. Two local gates broke the same way in one day (guard-sweep.mjs on 2026-09-12,",
+    "preflight.mjs on 2026-09-13): each read a detail out of a workflow by text, the workflow moved the detail, and each",
+    "computed on nothing instead of saying it could no longer see. CI was green throughout, which is why both survived.",
+    "",
+    "Every script OUTSIDE .github/ and tooling/ci/ that reads a workflow by text has a row here, and each row names ONE of",
+    "the two properties the register row allows:",
+    "  workflow-scan   it reads through tooling/ci/workflow-scan.mjs, the one workflow parse (checked: the file imports it)",
+    "  refuses-blind   it treats 'the detail I parse is no longer there' as COVERAGE LOST / cannot-run, and `evidence` is",
+    "                  the exact text it prints when that happens (checked: the text is in the file)",
+    "tooling/ci/assert-workflow-readers.mjs finds the readers itself and refuses an undeclared one, a stale row, and a row",
+    "whose property no longer holds.",
+    "",
+    "⏱ MEASURED 2026-09-14 on origin/main 39a0b633: 7 readers outside .github/ and tooling/ci/, 5 through workflow-scan.mjs",
+    "and 2 that already refuse blind. None needed converting. tooling/ci/ itself is NOT in this domain: its guards run in CI",
+    "on every change, the failure mode this register exists for is a LOCAL gate that CI does not exercise, and",
+    "assert-guard-coverage.mjs already holds every guard there to a coverage self-check."
+  ],
+  "readers": [
+    {
+      "path": "extensions/scripts/assert-e2e-proof-fresh.mjs",
+      "property": "refuses-blind",
+      "evidence": "could not read the workflow that carries the e2e cron",
+      "reads": "the e2e cron out of extensions.yml or e2e.yml, to derive the freshness ceiling"
+    },
+    {
+      "path": "tooling/ops/safe-rerun.mjs",
+      "property": "refuses-blind",
+      "evidence": "workflow file(s) parsed and NOT ONE declares a top-level",
+      "reads": "each workflow's top-level concurrency group and cancel-in-progress, to refuse a re-run that would evict a live run"
+    },
+    {
+      "path": "tooling/release/generate-snapcraft.mjs",
+      "property": "workflow-scan",
+      "reads": "build-platforms.yml (BUILD_WORKFLOW), through parseWorkflow and shellSegments"
+    },
+    {
+      "path": "tooling/release/submit-play.mjs",
+      "property": "workflow-scan",
+      "reads": "the submission workflow the channel register names (default submit-play.yml), through parseWorkflow"
+    },
+    {
+      "path": "tooling/release/submit-snap.mjs",
+      "property": "workflow-scan",
+      "reads": "the submission workflow the channel register names (default submit-snap.yml), through parseWorkflow"
+    },
+    {
+      "path": "tooling/scripts/gen-start-here.mjs",
+      "property": "workflow-scan",
+      "reads": "ci.yml's ci-gate needs list"
+    },
+    {
+      "path": "tooling/scripts/guard-sweep.mjs",
+      "property": "workflow-scan",
+      "reads": "every tooling/ci invocation and its arguments"
+    }
+  ]
+}

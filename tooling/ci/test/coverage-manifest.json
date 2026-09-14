@@ -205,6 +205,7 @@
   "windows-store-submission.test.mjs": 33,
   "worker-error-sink.test.mjs": 18,
   "worker-shared-modules.test.mjs": 13,
+  "workflow-readers.test.mjs": 11,
   "workflow-scan.test.mjs": 22,
   "workflow-timeouts.test.mjs": 18,
   "xcode-floor.test.mjs": 19
