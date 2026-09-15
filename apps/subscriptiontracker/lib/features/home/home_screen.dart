@@ -63,6 +63,18 @@ import '../shared/widgets.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
+  /// The narrowest BODY that holds the hero side panel beside a list/detail
+  /// split: `form` (420) + divider (1) + `expanded` (840) = 1261.
+  ///
+  /// ⏱ 2026-09-15 · [ADR 083]: THE TRIGGER IS A BODY THRESHOLD, NOT A WINDOW
+  /// BREAKPOINT. The side panel used to open on `body >= AppBreakpoints.large`
+  /// (a WINDOW class boundary, 1200) AND this arithmetic; the first clause
+  /// could never decide anything (1261 > 1200) and compared a body width to a
+  /// window number. Inside `AppScaffold`'s large-class rail the panel now opens
+  /// at a window of 1261 + the rail + 1 px, i.e. on a 1440 laptop window.
+  static const double asideMinBodyWidth =
+      AppBreakpoints.form + TwoPaneSplit.dividerWidth + AppBreakpoints.expanded;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return const Column(
@@ -219,7 +231,13 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       builder: (BuildContext context, BoxConstraints constraints) {
         // The stated trigger: at [AppBreakpoints.large] the page WANTS a second
         // column (see above).
-        final bool wantsAside = constraints.maxWidth >= AppBreakpoints.large;
+        //
+        // ⏱ 2026-09-15 · [ADR 083] — RETIRED. The two lines above and the
+        // `wantsAside` / feasibility pair below described a WINDOW breakpoint
+        // compared with a BODY width. The decision is now ONE body comparison,
+        // [HomeScreen.asideMinBodyWidth]; the arithmetic paragraphs below still
+        // explain where 1261 comes from, and "the aside opens at a window of
+        // 1622" is history — inside the large-class rail it opens far lower.
 
         // 🔴 …AND THE FEASIBILITY CLAUSE, WITHOUT WHICH GETTING WIDER DELETES A
         // PANE. Measured 2026-08-21 against the real widths, not reasoned about:
@@ -252,12 +270,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         // at a window of 1622 and the body tops out at 1280 — an aside band of
         // 1261…1280. Pumped without a shell (the width test, and any future
         // re-parenting) it runs to whatever width the screen is given.
-        final bool aside =
-            wantsAside &&
-            constraints.maxWidth -
-                    AppBreakpoints.form -
-                    TwoPaneSplit.dividerWidth >=
-                AppBreakpoints.expanded;
+        final bool aside = constraints.maxWidth >= HomeScreen.asideMinBodyWidth;
 
         final Widget panes = TwoPane(
           // 🔴 THE `Builder` IS LOAD-BEARING, NOT TIDINESS.

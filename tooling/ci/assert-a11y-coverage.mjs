@@ -782,9 +782,17 @@ const REQUIRED_COVERAGE = [
     // them — the corpus is `a11y_*_test.dart` and nothing else. A green sweep
     // outside the corpus is exactly the "measured but not counted" shape that
     // leaves a surface reported as unswept forever. It was MOVED, not copied.
+    //
+    // ⏱ RE-MEASURED 2026-09-15 · [ADR 083]: `a11y_app_scaffold_test.dart` sweeps
+    // `AppScaffold`'s large-class rail at 1200 / 1440 / 1599 (labels, one
+    // selected, tap targets, contrast, focus order). Measured off this guard's
+    // own output on the branch: "2 of 20 reachable surface(s) carry an a11y
+    // sweep, from 2 a11y test file(s) across 7 case(s)".
+    //   a11yFiles  1 → 2
+    //   cases      4 → 7
     surfaces: 20,
-    a11yFiles: 1,
-    cases: 4,
+    a11yFiles: 2,
+    cases: 7,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -968,8 +976,12 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     // set is built from `dartFilesUnder(<root>/lib)`, which yields full paths;
     // an app root's is built from the router. The lib-relative spelling was
     // tried first and failed as FLOOR OVER NOTHING — measured, not guessed.
+    // ⏱ 2026-09-15 · [ADR 083]: the second entry, in the same change as its
+    // sweep (a11y_app_scaffold_test.dart) — "belongs in this map in the same
+    // change", obeyed.
     new Set([
       'packages/design_system/lib/src/widgets/data_state.dart#DataStateView',
+      'packages/design_system/lib/src/widgets/app_scaffold.dart#AppScaffold',
     ]),
   ],
 ]);

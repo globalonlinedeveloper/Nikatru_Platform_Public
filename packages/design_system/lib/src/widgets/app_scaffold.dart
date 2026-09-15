@@ -44,9 +44,16 @@ class AppBreakpoints {
   static const double expanded = 840;
 
   /// Large tablets, ordinary desktop windows. → extended [NavigationRail].
+  ///
+  /// ⏱ 2026-09-15 · [ADR 083] (owner: "Rail instead of drawer"). The line above
+  /// was already stale — this class got the fixed 360 px [NavigationDrawer],
+  /// so a 1440 px laptop window left the body 1079 px, too narrow for list,
+  /// detail and the hero side panel together. It now gets the SLIM (collapsed)
+  /// [NavigationRail], the same one as [medium].
   static const double large = 1200;
 
-  /// Desktop maximised. → permanent [NavigationDrawer].
+  /// Desktop maximised. → permanent [NavigationDrawer], body capped at
+  /// [kMaxBodyWidth] — unchanged by [ADR 083].
   static const double extraLarge = 1600;
 
   /// Ultra-wide. Still a drawer, but the body stops growing — see
@@ -116,6 +123,11 @@ WindowClass windowClassFor(double width) {
 /// a bottom [NavigationBar] (compact), a side [NavigationRail] (medium) or a
 /// permanent [NavigationDrawer] (expanded). Replaces the discontinued
 /// `flutter_adaptive_scaffold` package with a tiny, dependency-free primitive.
+///
+/// ⏱ 2026-09-15 · THE CLASS MAP AS IT NOW STANDS ([ADR 083]): compact → bar;
+/// medium → slim rail; expanded → extended rail; LARGE → slim rail (it was the
+/// drawer); extra-large → drawer with the body capped. The sentence above
+/// predates the five classes and is kept as written.
 class AppScaffold extends StatelessWidget {
   const AppScaffold({
     super.key,
@@ -183,7 +195,10 @@ class AppScaffold extends StatelessWidget {
           case WindowClass.expanded:
             return _rail(extended: true);
           case WindowClass.large:
-            return _drawer(capBodyWidth: false);
+            // ⏱ 2026-09-15 · [ADR 083]: a SLIM rail, not the 360 px drawer.
+            // The body is window − rail − 1 px divider instead of window − 361,
+            // so a 1440 laptop window holds Home's list, detail and side panel.
+            return _rail(extended: false);
           case WindowClass.extraLarge:
             return _drawer(capBodyWidth: true);
         }
@@ -221,6 +236,10 @@ class AppScaffold extends StatelessWidget {
   // MEDIUM (600–839): collapsed rail. EXPANDED (840–1199): the same rail,
   // extended — labels beside the icons rather than under them, which is what
   // the extra width buys.
+  //
+  // ⏱ 2026-09-15 · LARGE (1200–1599) takes the COLLAPSED rail too ([ADR 083]).
+  // Collapsed rather than extended because the point of the change is body
+  // width: the extended rail would hand back most of what the drawer took.
   Widget _rail({required bool extended}) {
     return Scaffold(
       appBar: _appBar(),
@@ -254,6 +273,9 @@ class AppScaffold extends StatelessWidget {
   }
 
   // LARGE (1200–1599) and EXTRA-LARGE (>=1600): permanent NavigationDrawer.
+  // ⏱ 2026-09-15: EXTRA-LARGE ONLY since [ADR 083]; large takes the rail above.
+  // `capBodyWidth: false` has no caller left and is kept so the drawer's shape
+  // is one method, not two.
   //
   // The two differ in one real way rather than a cosmetic one: past 1600 the
   // body stops growing. A paragraph measured 1400 px wide is genuinely hard to
