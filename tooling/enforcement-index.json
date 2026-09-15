@@ -1998,6 +1998,7 @@
   },
   {
     "claims": [
+      "ADR 082",
       "S-2"
     ],
     "invokedBy": [

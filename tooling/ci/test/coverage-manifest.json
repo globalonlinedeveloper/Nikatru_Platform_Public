@@ -181,7 +181,7 @@
   "stamp-platforms.test.mjs": 28,
   "stamp-properties.test.mjs": 14,
   "stamp-text-fidelity.test.mjs": 41,
-  "stamp-wiring.test.mjs": 17,
+  "stamp-wiring.test.mjs": 20,
   "start-here.test.mjs": 7,
   "store-bijection.test.mjs": 26,
   "store-build-config.test.mjs": 31,

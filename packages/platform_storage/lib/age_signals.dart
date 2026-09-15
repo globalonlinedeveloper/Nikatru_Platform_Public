@@ -18,6 +18,8 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
+export 'src/age_signal_capabilities.dart';
+
 /// The one channel both native adapters answer on.
 const MethodChannel ageSignalsChannel = MethodChannel('nikatru/age_signals');
 
