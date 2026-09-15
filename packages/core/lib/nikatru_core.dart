@@ -4,6 +4,7 @@ library;
 
 export 'src/analytics/analytics.dart';
 export 'src/auth/account_deletion.dart';
+export 'src/auth/age_signal.dart';
 export 'src/auth/auth_event.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
