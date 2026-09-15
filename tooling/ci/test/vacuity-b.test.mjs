@@ -396,7 +396,7 @@ describe('assert-no-gate-weakening refuses a subject that emptied under it', () 
   });
 
   test('THE DEFECT: apps/ deleted and NOT staged — tracked-but-missing, the shape a half-applied patch leaves', () => {
-    provesRefusal(G, () => rm('apps'), [/NOT ONE real app under apps\//]);
+    provesRefusal(G, () => rm('apps'), [/NOT ONE real app under apps\//], 2);
   });
 
   test('…and with the deletion committed too, so the index agrees', () => {
@@ -408,19 +408,20 @@ describe('assert-no-gate-weakening refuses a subject that emptied under it', () 
         spawnSync('git', ['-C', COPY, 'commit', '-q', '-m', 'drop apps', '--no-gpg-sign'], { encoding: 'utf8' });
       },
       [/NOT ONE real app under apps\//],
+      2,
     );
   });
 
   test('apps/ thinned to one file — the root still exists, so only the floor sees it', () => {
     provesRefusal(G, () => thinDart('apps', 1), [
       /only \d+ tracked Dart file\(s\) were scanned across apps\/ \(floor \d+\)/,
-    ]);
+    ], 2);
   });
 
   test('the brick thinned to one file — the anchor passes, the floor does not', () => {
     provesRefusal(G, () => thinDart(BRICK_APP, 1), [
       /only \d+ tracked Dart file\(s\) were scanned under tooling\/bricks/,
-    ]);
+    ], 2);
   });
 
   // ── packages/, the third root, added 2026-09-05 (ADR 065 chassis step 3) ──
@@ -436,13 +437,13 @@ describe('assert-no-gate-weakening refuses a subject that emptied under it', () 
   // every case above leaves the brick standing: a mutation that empties every
   // tree at once is caught by a check that has nothing to do with this one.
   test('THE DEFECT: packages/ deleted while apps/ and the brick stand', () => {
-    provesRefusal(G, () => rm('packages'), [/NOT ONE package under packages\//]);
+    provesRefusal(G, () => rm('packages'), [/NOT ONE package under packages\//], 2);
   });
 
   test('packages/ thinned to one file — the roots still exist, so only the floor sees it', () => {
     provesRefusal(G, () => thinDart('packages', 1), [
       /only \d+ tracked Dart file\(s\) were scanned across packages\/ \(floor \d+\)/,
-    ]);
+    ], 2);
   });
 
   test('THE CONTROL: dropping apps/subscriptiontracker/integration_test clears the floor and stays green', () => {

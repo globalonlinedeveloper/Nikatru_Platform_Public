@@ -233,7 +233,7 @@ describe('assert-no-gate-weakening', () => {
   // ── the domain, and the detectors ─────────────────────────────────────────
   test('COVERAGE LOST when the scan reaches no app-owned Dart file at all', () => {
     const { code, out } = run(fixture({ 'README.md': '# nothing here\n' }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO tracked Dart files/);
   });
@@ -243,7 +243,7 @@ describe('assert-no-gate-weakening', () => {
       'apps/subscriptiontracker/lib/main.dart': CLEAN_DART,
       'apps/subscriptiontracker/analysis_options.yaml': CLEAN_OPTIONS,
     }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /the scan reached no file under/);
   });
 
@@ -315,7 +315,7 @@ describe('assert-no-gate-weakening', () => {
       'apps/subscriptiontracker/lib/main.dart': CLEAN_DART,
       'apps/subscriptiontracker/analysis_options.yaml': CLEAN_OPTIONS,
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/, out);
     assert.match(out, /NOT ONE package under packages\//, out);
   });

@@ -272,7 +272,7 @@ describe('assert-retention-coverage — the domain is ENUMERATED, so a store can
   test('a rule whose store no longer exists is COVERAGE LOST, not a harmless stale line', () => {
     const root = makeRepo((s) => { s.rows.push(retentionRow('kv:svc:DELETED')); });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /the domain SHRINKING is a failure here/);
   });
@@ -287,7 +287,7 @@ describe('assert-retention-coverage — the domain is ENUMERATED, so a store can
   test('no retention rows at all is COVERAGE LOST, never "perfect coverage of nothing"', () => {
     const root = makeRepo((s) => { s.rows = []; });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
   });
 
@@ -296,7 +296,7 @@ describe('assert-retention-coverage — the domain is ENUMERATED, so a store can
     mkdirSync(join(root, 'tooling/ops'), { recursive: true });
     writeFileSync(join(root, 'tooling/ops/register.json'), register([retentionRow('kv:a:B')], []));
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /no live wrangler config found/);
   });
 
@@ -304,7 +304,7 @@ describe('assert-retention-coverage — the domain is ENUMERATED, so a store can
     const root = makeRepo();
     rmSync(join(root, 'services/svc/migrations'), { recursive: true, force: true });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /that directory does not exist/);
   });
 
@@ -312,7 +312,7 @@ describe('assert-retention-coverage — the domain is ENUMERATED, so a store can
     const root = makeRepo();
     rmSync(join(root, 'services/svc/migrations/0001_init.sql'));
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /contains no .sql file/);
   });
 });
@@ -339,7 +339,7 @@ describe('assert-retention-coverage — the EXTERNAL half no tree walk can reach
       s.rows = s.rows.filter((x) => x.id !== 'retention.kv.external');
     });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /names no `retention\.\*` id/);
   });
 });
@@ -676,7 +676,7 @@ describe('assert-retention-coverage — a period has ONE home, and the register 
       s.rows = s.rows.filter((r) => r.store !== 'd1:demo_db:swept_table');
     });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /declares no `retention\.periodDays` for any store/);
   });
@@ -684,7 +684,7 @@ describe('assert-retention-coverage — a period has ONE home, and the register 
   test('a missing home file is COVERAGE LOST — the comparison would have nothing to compare', () => {
     const root = makeRepo((s) => { s.inventoryStores = null; });
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /data-inventory\.json does not exist/);
   });
 
@@ -692,7 +692,7 @@ describe('assert-retention-coverage — a period has ONE home, and the register 
     const root = makeRepo();
     writeFileSync(join(root, 'tooling/legal/data-inventory.json'), '{ not json');
     const r = run(root);
-    assert.equal(r.code, 1);
+    assert.equal(r.code, 2);
     assert.match(r.out, /could not be parsed/);
   });
 });

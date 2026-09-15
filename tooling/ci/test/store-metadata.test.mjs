@@ -337,7 +337,7 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
 
   test('COVERAGE LOST when every expected tree is gone', () => {
     const { code, out } = run(tree({ omitTree: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — 1 store metadata tree\(s\) are expected and NONE exists/);
   });
 
@@ -419,13 +419,13 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
   // ── the contract itself cannot be quietly emptied ─────────────────────────
   test('COVERAGE LOST when storeMetadataContract.requiredFiles is emptied', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => (r.storeMetadataContract.requiredFiles = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — .*requiredFiles is missing or empty/);
   });
 
   test('COVERAGE LOST when storeMetadataContract is deleted outright', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => delete r.storeMetadataContract }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — .*declares no `storeMetadataContract`/);
   });
 
@@ -481,7 +481,7 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
 
   test('COVERAGE LOST when the surfaces block is deleted — the filter would match nothing', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => delete r.surfaces }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /declares no `surfaces` block/);
   });
 
@@ -489,7 +489,7 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     const { code, out } = run(tree({
       mutateRegister: (r) => { r.surfaces.app.storeMetadataGradedBy = 'tooling/ci/assert-something-else.mjs'; },
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /as `storeMetadataGradedBy` for NO surface/);
   });
 
@@ -497,25 +497,25 @@ describe('assert-store-metadata — the listing exists, is complete, and is deri
     const { code, out } = run(tree({
       mutateRegister: (r) => { for (const c of r.channels) if (c.kind === 'store') c.surface = 'extension'; },
     }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /ZERO `kind: "store"` channels on the surface\(s\) this guard grades/);
   });
 
   test('COVERAGE LOST when no row is kind:"store" any more', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => r.channels.forEach((c) => (c.kind = 'direct')) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — .*ZERO `kind: "store"` channels/);
   });
 
   test('COVERAGE LOST when the register is absent', () => {
     const { code, out } = run(tree({ omitRegister: true }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST — tooling\/channel-register\.json does not exist/);
   });
 
   test('COVERAGE LOST when apps.json carries no apps', () => {
     const { code, out } = run(tree({ apps: [] }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -931,7 +931,7 @@ describe('assert-store-metadata — android-play (Google Play)', () => {
         },
       }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE was evaluated/);
   });
@@ -1131,21 +1131,21 @@ describe('assert-store-metadata — THE FACTORY: a stamped app gets a listing no
     const { code, out } = run(
       tree({ mutateRegister: (r) => (r.storeMetadataContract.portfolioUrls.agreesWithAppConfigConst = { privacyUrl: 'renamedAway' }) }),
     );
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /NOT ONE app_config in this tree declares any of them/);
   });
 
   test('COVERAGE LOST when appConfigPaths is emptied', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => (r.storeMetadataContract.appConfigPaths = []) }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /appConfigPaths is missing, empty/);
   });
 
   test('COVERAGE LOST when portfolioUrls is deleted outright', () => {
     const { code, out } = run(tree({ mutateRegister: (r) => delete r.storeMetadataContract.portfolioUrls }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares no `storeMetadataContract\.portfolioUrls`/);
   });

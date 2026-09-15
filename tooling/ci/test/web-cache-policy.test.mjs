@@ -816,7 +816,7 @@ describe('assert-web-cache-policy', () => {
     const root = join(TMP, `bare${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /found no deployed bundle/);
   });
@@ -826,7 +826,7 @@ describe('assert-web-cache-policy', () => {
     mkdirSync(join(root, 'apps', 'subscriptiontracker', 'web'), { recursive: true });
     writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', '_headers'), GOOD);
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /is not in the scan/);
     assert.match(out, /one wrong line/);
   });
@@ -835,7 +835,7 @@ describe('assert-web-cache-policy', () => {
     // The site directory is there; its index.html is not, which is exactly how
     // a deploy root silently stops being one and the walk reports clean.
     const { code, out } = run(fixture({ sites: { nikatru: null } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /produced ZERO static-site deploy roots/);
   });
@@ -849,14 +849,14 @@ describe('assert-web-cache-policy', () => {
     writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', '_headers'), GOOD);
     writeFileSync(join(root, BRICK_WEB, '_headers'), GOOD);
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /evaluated ZERO files/);
   });
 
   test('COVERAGE LOST when the caller claims a bundle the scan never found', () => {
     const { code, out } = run(fixture({ sites: { nikatru: GOOD_SITE } }), 'sites/gone');
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /claims sites\/gone/);
     assert.match(out, /promising coverage this script does not deliver/);
@@ -994,7 +994,7 @@ describe('assert-web-cache-policy · Pages Function security headers', () => {
     const { code, out } = run(
       fixture({ sites: { nikatru: GOOD_SITE }, siteFiles: { 'functions/api/notes.md': 'not code\n' } }),
     );
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /director\(ies\) exist and the Pages-Function limb evaluated ZERO files/);
   });
 });

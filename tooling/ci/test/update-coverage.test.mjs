@@ -238,7 +238,7 @@ describe('assert-update-coverage — end to end, against the real repository', (
     mkdirSync(join(root, 'tooling'), { recursive: true });
     writeFileSync(join(root, 'tooling/versions.json'), VERSIONS_TEXT);
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     const out = `${r.stdout}\n${r.stderr}`;
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /renovate\.json does not exist under/);
@@ -249,7 +249,7 @@ describe('assert-update-coverage — end to end, against the real repository', (
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, 'renovate.json'), '{"customManagers":[]}');
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}\n${r.stderr}`, /tooling\/versions\.json does not exist under/);
   });
 
@@ -259,7 +259,7 @@ describe('assert-update-coverage — end to end, against the real repository', (
     writeFileSync(join(root, 'renovate.json'), '{"customManagers":[]}');
     writeFileSync(join(root, 'tooling/versions.json'), '{"$comment":["nothing pinned"]}');
     const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(`${r.stdout}\n${r.stderr}`, /declares no pinned version at all/);
   });
 
