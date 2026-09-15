@@ -15,7 +15,18 @@
     "⏱ MEASURED 2026-09-14 on origin/main 39a0b633: 7 readers outside .github/ and tooling/ci/, 5 through workflow-scan.mjs",
     "and 2 that already refuse blind. None needed converting. tooling/ci/ itself is NOT in this domain: its guards run in CI",
     "on every change, the failure mode this register exists for is a LOCAL gate that CI does not exercise, and",
-    "assert-guard-coverage.mjs already holds every guard there to a coverage self-check."
+    "assert-guard-coverage.mjs already holds every guard there to a coverage self-check.",
+    "",
+    "⏱ 2026-09-15 — tooling/ci/ IS IN THE DOMAIN NOW; the sentence above that scoped it out is kept as the first measurement.",
+    "CI running a guard proves only that it still exits 0, which is what a blind guard does. Measured on origin/main d52d04e5",
+    "with .github/workflows moved aside in a worktree: of the 20 tooling/ci readers that do not import workflow-scan.mjs, 15",
+    "already refused by name; assert-lockfile-discipline and assert-version-consistency printed ok and exited 0,",
+    "assert-lane-coverage and assert-no-clone-tells reported findings about the tree, and assert-analytics-contract died on",
+    "ENOENT. Those five were converted to refuse (same verdict on the real tree, byte for byte). 21 tooling/ci guards read",
+    "through workflow-scan.mjs. tooling/ci/workflow-scan.mjs (the parse) and assert-workflow-readers.mjs (the grader) are not",
+    "readers. tooling/ci workflow-scan rows carry no `reads`: the import is the whole property and each guard header says what",
+    "it reads. assert-stamp-platforms also says FAIL \"... ci.yml is missing — nothing builds a stamp.\" when the file is gone;",
+    "its evidence is the COVERAGE LOST it prints when the file is there and its steps are not."
   ],
   "readers": [
     {
@@ -23,6 +34,210 @@
       "property": "refuses-blind",
       "evidence": "could not read the workflow that carries the e2e cron",
       "reads": "the e2e cron out of extensions.yml or e2e.yml, to derive the freshness ceiling"
+    },
+    {
+      "path": "tooling/ci/assert-alert-disposition.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-analytics-contract.mjs",
+      "property": "refuses-blind",
+      "evidence": "The route's only machine consumer stopped consuming it",
+      "reads": "the post-deploy-smoke.mjs /v1/health invocation and its --field / --require-ok flags, across every workflow"
+    },
+    {
+      "path": "tooling/ci/assert-app-dod.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-app-versioning.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-channel-register.mjs",
+      "property": "refuses-blind",
+      "evidence": "and the lane scan resolved NO emitted format for any of",
+      "reads": "each lane workflow: pack.mjs --target formats, packaging-script invocations, secret names"
+    },
+    {
+      "path": "tooling/ci/assert-deploy-triggers-deploy.mjs",
+      "property": "refuses-blind",
+      "evidence": "COVERAGE LOST: no workflow files under",
+      "reads": "each workflow with a paths filter and a push.paths trigger"
+    },
+    {
+      "path": "tooling/ci/assert-deploy-triggers.mjs",
+      "property": "refuses-blind",
+      "evidence": "COVERAGE LOST — no .github/workflows under",
+      "reads": "each deploy workflow and the paths that trigger it"
+    },
+    {
+      "path": "tooling/ci/assert-discovery-surface.mjs",
+      "property": "refuses-blind",
+      "evidence": ".github/workflows holds no YAML, so",
+      "reads": "whether a workflow runs the IndexNow ping"
+    },
+    {
+      "path": "tooling/ci/assert-e2e-proof-fresh.mjs",
+      "property": "refuses-blind",
+      "evidence": "This guard is watching a workflow that is gone",
+      "reads": "e2e.yml's schedule cron and the steps the proof depends on"
+    },
+    {
+      "path": "tooling/ci/assert-enforcement-index.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-glitchtip-project.mjs",
+      "property": "refuses-blind",
+      "evidence": "found ZERO GlitchTip --project call sites in .github/workflows.",
+      "reads": "every GlitchTip --project call site in a workflow"
+    },
+    {
+      "path": "tooling/ci/assert-green-means-ran.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-guard-coverage.mjs",
+      "property": "refuses-blind",
+      "evidence": "does not exist, so the invocation identity ranged over nothing.",
+      "reads": "every tooling/ci invocation in every tracked workflow"
+    },
+    {
+      "path": "tooling/ci/assert-hostname-depth.mjs",
+      "property": "refuses-blind",
+      "evidence": "no .github/workflows/*.yml was found, so no workflow host was read.",
+      "reads": "every Nikatru hostname on a non-comment workflow line"
+    },
+    {
+      "path": "tooling/ci/assert-lane-coverage.mjs",
+      "property": "refuses-blind",
+      "evidence": "so no unit could be claimed by any lane.",
+      "reads": "which deployable unit paths a workflow names, and the extensions lane defaults"
+    },
+    {
+      "path": "tooling/ci/assert-launch-smoke.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-lockfile-discipline.mjs",
+      "property": "refuses-blind",
+      "evidence": "\"every workflow install is reproducible\" was asked of nothing.",
+      "reads": "every npm / pnpm / yarn install command in a workflow"
+    },
+    {
+      "path": "tooling/ci/assert-no-clone-tells.mjs",
+      "property": "refuses-blind",
+      "evidence": "so whether a drift gate proves it could not be checked at all.",
+      "reads": "whether a workflow runs a contract generator with --check (fact (d) of the ADR 070 exemption)"
+    },
+    {
+      "path": "tooling/ci/assert-no-secret-defines.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-obfuscation-coupled.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-platform-proof-fresh.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-play-declarations.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-prod-provenance.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-publish-gate.mjs",
+      "property": "refuses-blind",
+      "evidence": "no workflow was read, so the \"every gate guard is invoked\" check ran over nothing.",
+      "reads": "whether every publish-gate guard is invoked by a workflow"
+    },
+    {
+      "path": "tooling/ci/assert-publish-records.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-publish-steps-guarded.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-release-durable.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-release-lane-generic.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-release-provenance.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-retired-names.mjs",
+      "property": "refuses-blind",
+      "evidence": "no .github/workflows/*.yml was found, so no workflow env name was read.",
+      "reads": "every workflow env name and secret/var/env reference"
+    },
+    {
+      "path": "tooling/ci/assert-seams-wired.mjs",
+      "property": "refuses-blind",
+      "evidence": "which does not exist, so its crash-sink obligation is unenforceable.",
+      "reads": "each channel lane's job and its GLITCHTIP_DSN define"
+    },
+    {
+      "path": "tooling/ci/assert-stamp-platforms.mjs",
+      "property": "refuses-blind",
+      "evidence": "contains ZERO recognisable steps.",
+      "reads": "ci.yml's steps that build the stamped probe app"
+    },
+    {
+      "path": "tooling/ci/assert-store-build-config.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-version-consistency.mjs",
+      "property": "refuses-blind",
+      "evidence": "remaining targets with each other and still prints",
+      "reads": "every version pin written in a workflow"
+    },
+    {
+      "path": "tooling/ci/assert-worker-error-sink.mjs",
+      "property": "refuses-blind",
+      "evidence": "so limb 5 cannot ask whether any deploy supplies the sink's vars",
+      "reads": "deploy-workers.yml's jobs and their --var flags"
+    },
+    {
+      "path": "tooling/ci/assert-workflow-hardening.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/assert-workflow-timeouts.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/build-enforcement-index.mjs",
+      "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/scan-secrets.mjs",
+      "property": "refuses-blind",
+      "evidence": "gitleaks over the wrong directory",
+      "reads": ".github/workflows as a presence marker for the gitleaks scan root"
+    },
+    {
+      "path": "tooling/ci/scan-workflows.mjs",
+      "property": "refuses-blind",
+      "evidence": "zizmor would scan nothing and exit 0.",
+      "reads": "the workflow directory handed to zizmor, with a minimum count"
     },
     {
       "path": "tooling/ops/safe-rerun.mjs",

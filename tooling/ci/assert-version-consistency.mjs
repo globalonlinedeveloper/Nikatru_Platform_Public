@@ -133,6 +133,18 @@ export function collectTargets(repoRoot) {
       TARGETS.push(join('.github', 'workflows', f));
     }
   }
+  // ⏱ 2026-09-15 — THE WORKFLOWS WERE THE ONE existsSync-GATED TARGET LEFT. With
+  // .github/workflows moved aside this guard printed `ok  version consistency — 10
+  // reference(s) across 6 file(s)` and exited 0: every CI pin left the run and the
+  // rest of the tree cleared the floors (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS).
+  // Exit 1, not 2, because that is this function's documented contract with
+  // tooling/scripts/propagate-versions.mjs, the other caller.
+  if (TARGETS.length === 0) {
+    console.error(`✗ COVERAGE LOST — read ZERO workflow files under ${wfDir}.`);
+    console.error('  The CI runner, SDK and tool pins live in those files; without them this scan compares the');
+    console.error('  remaining targets with each other and still prints "ok".');
+    process.exit(1);
+  }
   // 🔴 REQUIRED, NEVER existsSync-GATED — and this is the BRICK_PKG lesson below
   // being paid for a second time. Both of these landed `if (existsSync)` on
   // 2026-08-17 and the hole was mutation-proven the same day: HIDING

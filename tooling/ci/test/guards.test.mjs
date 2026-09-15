@@ -699,6 +699,15 @@ describe('assert-lane-coverage', () => {
     assert.match(out, /COVERAGE LOST/);
   });
 
+  test('COVERAGE LOST (exit 2) when no workflow file is read — not every unit reported unclaimed (2026-09-15)', () => {
+    const dir = build('lc-blind', { workers: ['services/w'], sites: ['sites/s'], named: ['services/w', 'sites/s'] });
+    rmSync(join(dir, '.github'), { recursive: true, force: true });
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — read ZERO workflow files under .*so no unit could be claimed by any lane/);
+    assert.doesNotMatch(out, /name it in a job/);
+  });
+
   // ── 🔴 A COMMENT IS NOT A LANE (2026-08-01 full-corpus review) ──────────────
   // isClaimed() was a raw substring match over the concatenated workflow text,
   // so any mention counted. That was not hypothetical: `sites/nikatru` and
@@ -902,6 +911,22 @@ describe('assert-lockfile-discipline', () => {
     const wf = 'jobs:\n  a:\n    steps:\n      # we used to run npm install here\n      - run: npm ci\n';
     const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-comment', { workflow: wf })] });
     assert.equal(code, 0, out);
+  });
+
+  test('COVERAGE LOST (exit 2) when no workflow file is read — "every install is reproducible" over nothing (2026-09-15)', () => {
+    const dir = build('ld-blind');
+    rmSync(join(dir, '.github'), { recursive: true, force: true });
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [dir] });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — read 0 workflow file\(s\) under \.github\/workflows and 0 install command\(s\)/);
+    assert.doesNotMatch(out, /^ok/m);
+  });
+
+  test('COVERAGE LOST (exit 2) when the workflows exist and no install command is left in them — the installs moved', () => {
+    const wf = 'jobs:\n  a:\n    steps:\n      - uses: ./.github/actions/setup-node\n      # npm ci used to be here\n';
+    const { code, out } = run('assert-lockfile-discipline.mjs', { args: [build('ld-moved', { workflow: wf })] });
+    assert.equal(code, 2, out);
+    assert.match(out, /read 1 workflow file\(s\) under \.github\/workflows and 0 install command\(s\)/);
   });
 
   test('FAILS its own coverage check when the scan finds almost nothing', () => {
@@ -1905,6 +1930,16 @@ describe('assert-version-consistency', () => {
     const { code, out } = run('assert-version-consistency.mjs', { args: [build('vc-ok')] });
     assert.equal(code, 0, out);
     assert.match(out, /all match versions\.json/);
+  });
+
+  test('COVERAGE LOST when no workflow file is read — the CI pins left the run (2026-09-15)', () => {
+    // Exit 1, the documented contract collectTargets shares with propagate-versions.mjs.
+    const dir = build('vc-blind');
+    rmSync(join(dir, '.github'), { recursive: true, force: true });
+    const { code, out } = run('assert-version-consistency.mjs', { args: [dir] });
+    assert.equal(code, 1, out);
+    assert.match(out, /COVERAGE LOST — read ZERO workflow files under/);
+    assert.doesNotMatch(out, /all match versions\.json/);
   });
 
   test('FAILS on a drifted Flutter version, naming file, line and both values', () => {

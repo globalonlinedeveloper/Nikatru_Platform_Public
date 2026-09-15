@@ -146,6 +146,15 @@ const workflowTexts = existsSync(wfDir)
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => claimableText(readFileSync(join(wfDir, f), 'utf8')))
   : [];
+// ⏱ 2026-09-15 — NO WORKFLOW READ IS COVERAGE LOST, NOT A LIST OF UNCLAIMED UNITS.
+// With .github/workflows moved aside this guard named every Worker, site and node
+// unit as unclaimed — a finding about the tree, computed on nothing
+// (O-LOCAL-SCRIPTS-PARSE-MOVED-WORKFLOWS). A reader that lost its workflows says so.
+if (workflowTexts.length === 0) {
+  console.error(`✗ COVERAGE LOST — read ZERO workflow files under ${wfDir}, so no unit could be claimed by any lane.`);
+  console.error('  Every unit would be reported unclaimed; that is a statement about this scan, not about the tree.');
+  process.exit(2);
+}
 const workflowText = workflowTexts.join('\n');
 
 // 🔴 THE EXTENSION LANE IS CLAIMED BY A PAIR OF FACTS IN ONE FILE, NOT BY A

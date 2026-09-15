@@ -817,6 +817,15 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     assert.match(r.out, /NO workflow under \.github\/workflows invokes post-deploy-smoke\.mjs against \/v1\/health/);
   });
 
+  test('COVERAGE LOST when .github/workflows is gone altogether — a refusal, not an ENOENT crash (2026-09-15)', () => {
+    const r = run(makeRepo((f) => Object.fromEntries(
+      Object.entries(f).map(([rel, body]) => [rel, rel.startsWith('.github/workflows/') ? null : body]),
+    )));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — health: \.github\/workflows does not exist, so no workflow could be read for the post-deploy-smoke\.mjs consumer/);
+    assert.doesNotMatch(r.out, /ENOENT/);
+  });
+
   test('COVERAGE LOST when the workflow stops joining on `build`', () => {
     const r = run(makeRepo((f) => ({
       ...f,
