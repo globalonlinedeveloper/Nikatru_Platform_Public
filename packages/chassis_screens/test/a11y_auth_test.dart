@@ -60,16 +60,17 @@ void main() {
     required bool enabled,
     required ValueChanged<bool> onTermsChanged,
     required ValueChanged<bool> onMarketingChanged,
-  }) => LegalConsentFieldsView(
-    termsAccepted: termsAccepted,
-    marketingAccepted: marketingAccepted,
-    enabled: enabled,
-    showMarketing: true,
-    onTermsChanged: onTermsChanged,
-    onMarketingChanged: onMarketingChanged,
-    onOpenTerms: () {},
-    onOpenPrivacy: () {},
-  );
+  }) =>
+      LegalConsentFieldsView(
+        termsAccepted: termsAccepted,
+        marketingAccepted: marketingAccepted,
+        enabled: enabled,
+        showMarketing: true,
+        onTermsChanged: onTermsChanged,
+        onMarketingChanged: onMarketingChanged,
+        onOpenTerms: () {},
+        onOpenPrivacy: () {},
+      );
 
   // ── CheckInboxView ────────────────────────────────────────────────────────
   group('a11y: check-inbox', () {
@@ -120,7 +121,8 @@ void main() {
       }
     });
 
-    testWidgets('light, kDesktop — the form cap changes the layout, not the '
+    testWidgets(
+        'light, kDesktop — the form cap changes the layout, not the '
         'obligation', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
@@ -221,7 +223,8 @@ void main() {
       }
     });
 
-    testWidgets('light, kDesktop — DISABLED, which is a contrast state and not '
+    testWidgets(
+        'light, kDesktop — DISABLED, which is a contrast state and not '
         'a layout one', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
@@ -399,7 +402,8 @@ void main() {
       }
     });
 
-    testWidgets('light, kDesktop — the DEAD-LINK state, which is a different '
+    testWidgets(
+        'light, kDesktop — the DEAD-LINK state, which is a different '
         'screen and not a different width', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
@@ -432,7 +436,8 @@ void main() {
 
   // ── SignInView ────────────────────────────────────────────────────────────
   group('a11y: sign-in', () {
-    testWidgets('light, kPhone — with the Apple button, which is the widest '
+    testWidgets(
+        'light, kPhone — with the Apple button, which is the widest '
         'control set this screen ever shows', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
@@ -445,6 +450,16 @@ void main() {
             onNeedAccount: () {},
             showAppleButton: true,
             onSignInWithApple: () async {},
+            appleTermsOwed: false,
+            consentFields: ({
+              required bool termsAccepted,
+              required bool marketingAccepted,
+              required bool enabled,
+              required ValueChanged<bool> onTermsChanged,
+              required ValueChanged<bool> onMarketingChanged,
+            }) =>
+                const SizedBox.shrink(),
+            onAcceptTerms: ({required bool marketingEmail}) async {},
           ),
         );
         expectSweepHadSubjects(tester, 'sign-in', tappable: 6, labelled: 7);
@@ -468,6 +483,16 @@ void main() {
             onNeedAccount: () {},
             showAppleButton: true,
             onSignInWithApple: () async {},
+            appleTermsOwed: false,
+            consentFields: ({
+              required bool termsAccepted,
+              required bool marketingAccepted,
+              required bool enabled,
+              required ValueChanged<bool> onTermsChanged,
+              required ValueChanged<bool> onMarketingChanged,
+            }) =>
+                const SizedBox.shrink(),
+            onAcceptTerms: ({required bool marketingEmail}) async {},
           ),
           brightness: Brightness.dark,
         );
@@ -485,7 +510,8 @@ void main() {
       }
     });
 
-    testWidgets('light, kDesktop — carrying the deletion notice, the one state '
+    testWidgets(
+        'light, kDesktop — carrying the deletion notice, the one state '
         'that adds prose above the form', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       try {
@@ -498,6 +524,16 @@ void main() {
             onNeedAccount: () {},
             showAppleButton: false,
             onSignInWithApple: () async {},
+            appleTermsOwed: false,
+            consentFields: ({
+              required bool termsAccepted,
+              required bool marketingAccepted,
+              required bool enabled,
+              required ValueChanged<bool> onTermsChanged,
+              required ValueChanged<bool> onMarketingChanged,
+            }) =>
+                const SizedBox.shrink(),
+            onAcceptTerms: ({required bool marketingEmail}) async {},
             deletion: core.AccountDeletionOutcome.deleted,
             deletionDetail: 'Your account and its data are gone.',
             onDismissDeletionNotice: () {},
@@ -527,12 +563,11 @@ void main() {
           tester,
           kPhone,
           SignUpView(
-            onSignUp:
-                ({
-                  required String email,
-                  required String password,
-                  required bool marketingEmail,
-                }) async {},
+            onSignUp: ({
+              required String email,
+              required String password,
+              required bool marketingEmail,
+            }) async {},
             onHaveAccount: () {},
             consentFields: consentFields,
           ),
@@ -553,12 +588,11 @@ void main() {
           tester,
           kPhone,
           SignUpView(
-            onSignUp:
-                ({
-                  required String email,
-                  required String password,
-                  required bool marketingEmail,
-                }) async {},
+            onSignUp: ({
+              required String email,
+              required String password,
+              required bool marketingEmail,
+            }) async {},
             onHaveAccount: () {},
             consentFields: consentFields,
           ),
@@ -585,12 +619,11 @@ void main() {
           tester,
           kDesktop,
           SignUpView(
-            onSignUp:
-                ({
-                  required String email,
-                  required String password,
-                  required bool marketingEmail,
-                }) async {},
+            onSignUp: ({
+              required String email,
+              required String password,
+              required bool marketingEmail,
+            }) async {},
             onHaveAccount: () {},
             consentFields: consentFields,
           ),

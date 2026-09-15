@@ -3,6 +3,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import 'age_signal_host.dart';
+import 'legal_consent_fields.dart';
 
 /// Sign-in — [pipeline C-13], inherited by every stamped app.
 ///
@@ -42,6 +43,9 @@ class SignInView extends StatefulWidget {
     required this.onNeedAccount,
     required this.showAppleButton,
     required this.onSignInWithApple,
+    required this.appleTermsOwed,
+    required this.consentFields,
+    required this.onAcceptTerms,
     this.ageSignals,
     this.deletion,
     this.deletionDetail,
@@ -76,6 +80,30 @@ class SignInView extends StatefulWidget {
 
   final Future<void> Function() onSignInWithApple;
 
+  /// ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. Whether THIS DEVICE still owes the terms
+  /// clickwrap: true when nothing current was accepted here (a fresh install, or
+  /// a session ended since — see the app's `LegalAcceptanceController`). The
+  /// adapter passes `legalReacceptanceNeededProvider != false`, so "not known
+  /// yet" counts as owed.
+  ///
+  /// 🔴 SIGN IN WITH APPLE CAN CREATE AN ACCOUNT, AND WHETHER THIS TAP WILL IS
+  /// ONLY KNOWABLE AFTER THE REDIRECT RETURNS. So the clickwrap cannot wait for a
+  /// "was that a new account?" answer — by then the account exists without it.
+  /// It gates the TAP instead, exactly when the post-sign-in re-acceptance
+  /// interstitial would otherwise have asked: a device that owes nothing (a
+  /// returning user who has accepted here) is never shown it, and one that owes
+  /// it answers it BEFORE the provider is called, with the acceptance recorded
+  /// first. No Apple-created account can exist without an accepted clickwrap.
+  final bool appleTermsOwed;
+
+  /// Renders the SAME tick boxes the sign-up surfaces render, above the Apple
+  /// button while [appleTermsOwed]. The adapter owns the widget and its URLs.
+  final ConsentFieldsBuilder consentFields;
+
+  /// Records the acceptance — the consent artifact and the device stamp — and is
+  /// awaited BEFORE [onSignInWithApple] is called.
+  final Future<void> Function({required bool marketingEmail}) onAcceptTerms;
+
   /// ⏱ 2026-09-15 · [ADR 082] §5. Read before Sign in with Apple, which can
   /// create an account. Null reads [defaultAgeSignalSource] for the running host.
   final core.AgeSignalSource? ageSignals;
@@ -99,6 +127,12 @@ class _SignInViewState extends State<SignInView> {
   final TextEditingController _password = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  /// The Apple door's clickwrap, shown only while [SignInView.appleTermsOwed].
+  /// Both FALSE, always: `assert-signup-consent-shape.mjs` fails the build if
+  /// either initialiser says otherwise.
+  bool _acceptedTerms = false;
+  bool _marketingEmail = false;
 
   /// Where Enter goes from the email box.
   ///
@@ -138,6 +172,13 @@ class _SignInViewState extends State<SignInView> {
   }
 
   Future<void> _appleGated(ChassisLocalizations l10n) async {
+    // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP. The clickwrap first: a device that owes
+    // the terms cannot reach the provider without the tick. The keyboard and a
+    // stale rebuild both reach this handler directly, so the disabled button
+    // below is not enough on its own.
+    if (widget.appleTermsOwed && !_acceptedTerms) {
+      throw core.AuthFailure(l10n.legalMustAcceptTerms);
+    }
     // ⏱ 2026-09-15 · [ADR 082] §5 — Sign in with Apple CAN CREATE AN ACCOUNT, so it
     // passes the store age gate BEFORE the provider is called. Whether this tap
     // creates an account or signs into one is only knowable after the OAuth
@@ -149,50 +190,60 @@ class _SignInViewState extends State<SignInView> {
     if (core.signUpAgeGate(signal) == core.SignUpAgeGate.refuse) {
       throw core.AuthFailure(l10n.signUpAgeRefused);
     }
+    // 🔴 ACCEPTANCE RECORDED BEFORE THE PROVIDER IS CALLED, and after the age gate
+    // (a refused tap records nothing). The order is the whole fix: the account
+    // may exist the instant the redirect returns, so the consent artifact has to
+    // be written while it still does not. The cost, stated: a user who accepts
+    // and then cancels Apple's sheet leaves an acceptance on this device for a
+    // sign-in that did not happen — an extra record of a real, affirmative act,
+    // never a missing one.
+    if (widget.appleTermsOwed) {
+      await widget.onAcceptTerms(marketingEmail: _marketingEmail);
+    }
     await widget.onSignInWithApple();
   }
 
   Future<void> _signIn(ChassisLocalizations l10n) => _run(() async {
-        final String email = _email.text.trim();
-        // 🔴 THIS SCREEN SENT WHATEVER WAS IN THE BOXES. Measured 2026-09-04:
-        // `grep -c "contains('@')"` over it answered 0, so a blank form and a
-        // mistyped address both cost a round trip and came back as the server's own
-        // English. `core.signInProblem` is the same rule Subly has always had, now
-        // in one place — see `packages/core/lib/src/auth/credentials_preflight.dart`.
-        //
-        // ⚠️ IT THROWS RATHER THAN RETURNING, because `_run` is what turns a
-        // failure into the message under the fields. An early `return` here would
-        // clear `_busy` and say nothing at all, which is the shape of a button that
-        // looks broken.
-        final core.CredentialsProblem? problem = core.signInProblem(
-          email: email,
-          password: _password.text,
-        );
-        if (problem != null) {
-          throw core.AuthFailure(switch (problem) {
-            core.CredentialsProblem.incomplete => l10n.authEnterBoth,
-            core.CredentialsProblem.emailMalformed => l10n.authInvalidEmail,
-            // Unreachable from this door, stated rather than defaulted so a future
-            // arm cannot land here wearing the wrong sentence.
-            core.CredentialsProblem.emailMissing => l10n.emailRequired,
-          });
-        }
-        await widget.onSignIn(email, _password.text);
-        // No navigation here: the router's redirect guard moves the user the moment
-        // the session appears. Pushing from both places is how you get two routes
-        // racing to be the top of the stack.
+    final String email = _email.text.trim();
+    // 🔴 THIS SCREEN SENT WHATEVER WAS IN THE BOXES. Measured 2026-09-04:
+    // `grep -c "contains('@')"` over it answered 0, so a blank form and a
+    // mistyped address both cost a round trip and came back as the server's own
+    // English. `core.signInProblem` is the same rule Subly has always had, now
+    // in one place — see `packages/core/lib/src/auth/credentials_preflight.dart`.
+    //
+    // ⚠️ IT THROWS RATHER THAN RETURNING, because `_run` is what turns a
+    // failure into the message under the fields. An early `return` here would
+    // clear `_busy` and say nothing at all, which is the shape of a button that
+    // looks broken.
+    final core.CredentialsProblem? problem = core.signInProblem(
+      email: email,
+      password: _password.text,
+    );
+    if (problem != null) {
+      throw core.AuthFailure(switch (problem) {
+        core.CredentialsProblem.incomplete => l10n.authEnterBoth,
+        core.CredentialsProblem.emailMalformed => l10n.authInvalidEmail,
+        // Unreachable from this door, stated rather than defaulted so a future
+        // arm cannot land here wearing the wrong sentence.
+        core.CredentialsProblem.emailMissing => l10n.emailRequired,
       });
+    }
+    await widget.onSignIn(email, _password.text);
+    // No navigation here: the router's redirect guard moves the user the moment
+    // the session appears. Pushing from both places is how you get two routes
+    // racing to be the top of the stack.
+  });
 
   Future<void> _forgot(ChassisLocalizations l10n) => _run(() async {
-        final String email = _email.text.trim();
-        if (core.passwordResetProblem(email: email) != null) {
-          throw core.AuthFailure(l10n.emailRequired);
-        }
-        await widget.onForgotPassword(email);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.resetSent)));
-      });
+    final String email = _email.text.trim();
+    if (core.passwordResetProblem(email: email) != null) {
+      throw core.AuthFailure(l10n.emailRequired);
+    }
+    await widget.onForgotPassword(email);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(l10n.resetSent)));
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -303,10 +354,28 @@ class _SignInViewState extends State<SignInView> {
               ),
               if (widget.showAppleButton) ...<Widget>[
                 const SizedBox(height: 8),
+                // The SAME tick boxes and wording as sign-up, directly above the
+                // one control they gate, and only while this device owes them.
+                if (widget.appleTermsOwed) ...<Widget>[
+                  widget.consentFields(
+                    termsAccepted: _acceptedTerms,
+                    marketingAccepted: _marketingEmail,
+                    enabled: !_busy,
+                    onTermsChanged: (bool v) =>
+                        setState(() => _acceptedTerms = v),
+                    onMarketingChanged: (bool v) =>
+                        setState(() => _marketingEmail = v),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED WHEN IT IS OWED — and
+                // never on the marketing box (GDPR Art 7(4)).
                 OutlinedButton(
                   key: SignInView.appleButton,
                   onPressed:
-                      _busy ? null : () => _run(() => _appleGated(l10n)),
+                      (_busy || (widget.appleTermsOwed && !_acceptedTerms))
+                      ? null
+                      : () => _run(() => _appleGated(l10n)),
                   child: Text(l10n.continueWithApple),
                 ),
               ],

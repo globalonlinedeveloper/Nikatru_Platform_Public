@@ -42,13 +42,31 @@ class _MemStore implements core.KeyValueStore {
   Future<void> write(String key, String value) async => data[key] = value;
 }
 
-/// Records whether Sign in with Apple reached the provider.
+/// Records whether Sign in with Apple reached the provider — and WHEN, into
+/// [log], so an ordering against the consent write can be asserted.
 class _AppleAuth extends MockAuthRepository {
+  _AppleAuth([this.log]);
+  final List<String>? log;
   int appleCalls = 0;
   @override
   Future<void> signInWithApple() async {
+    log?.add('apple');
     appleCalls++;
     await super.signInWithApple();
+  }
+}
+
+/// Captures what would have gone to the append-only consent record, in order.
+class _RecordingTransport implements core.ConsentTransport {
+  _RecordingTransport(this.log);
+  final List<String> log;
+  @override
+  Future<core.Result<void>> send({
+    required String appId,
+    required core.ConsentArtifact artifact,
+  }) async {
+    log.add('consent:${artifact.purpose}:${artifact.granted}');
+    return const core.Result<void>.ok(null);
   }
 }
 
@@ -57,10 +75,18 @@ Future<void> _pump(
   Widget child, {
   required core.AgeSignal signal,
   required MockAuthRepository auth,
+  bool? termsOwed,
+  core.ConsentTransport? transport,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        // Null leaves the REAL legal gate in place — an empty store, which is
+        // a device that owes the clickwrap.
+        if (termsOwed != null)
+          legalReacceptanceNeededProvider.overrideWithValue(termsOwed),
+        if (transport != null)
+          consentTransportProvider.overrideWithValue(transport),
         keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
         authRepositoryProvider.overrideWithValue(auth),
         ageSignalSourceProvider.overrideWithValue(_Fixed(signal)),
@@ -138,6 +164,7 @@ void main() {
         const LoginScreen(),
         signal: const core.BelowAdultAgeSignal(),
         auth: auth,
+        termsOwed: false,
       );
       await tester.ensureVisible(find.text(_l10n(tester).continueWithApple));
       await tester.pumpAndSettle();
@@ -154,6 +181,7 @@ void main() {
         const LoginScreen(),
         signal: const core.NoAgeSignal(core.NoAgeSignalReason.noApiOnTarget),
         auth: auth,
+        termsOwed: false,
       );
       await tester.ensureVisible(find.text(_l10n(tester).continueWithApple));
       await tester.pumpAndSettle();
@@ -161,6 +189,78 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(auth.appleCalls, 1);
+    });
+  });
+
+  // ⏱ 2026-09-15 · O-SIWA-NO-CLICKWRAP on the app's own LoginScreen (sign-IN arm,
+  // which is where the router sends every signed-out visitor).
+  group('LoginScreen — the Apple door carries the clickwrap', () {
+    Future<void> tapApple(WidgetTester tester) async {
+      await tester.ensureVisible(find.text(_l10n(tester).continueWithApple));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(_l10n(tester).continueWithApple));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets(
+      'FIRST TIME: no Apple sign-in until the terms are ticked, and the terms '
+      'artifact is written BEFORE the provider is called',
+      (WidgetTester tester) async {
+        final List<String> log = <String>[];
+        final _AppleAuth auth = _AppleAuth(log);
+        await _pump(
+          tester,
+          const LoginScreen(),
+          signal: const core.NoAgeSignal(core.NoAgeSignalReason.noApiOnTarget),
+          auth: auth,
+          transport: _RecordingTransport(log),
+        );
+        expect(find.byType(LegalConsentFields), findsOneWidget);
+        await tapApple(tester);
+        expect(auth.appleCalls, 0, reason: 'unticked: no Apple account');
+        expect(log, isEmpty);
+
+        await tester.ensureVisible(
+          find.byKey(LegalConsentFields.termsCheckbox),
+        );
+        await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+        await tester.pumpAndSettle();
+        await tapApple(tester);
+        expect(auth.appleCalls, 1);
+        expect(
+          log.indexOf('consent:terms:true'),
+          isNonNegative,
+          reason: 'the accepted terms must be on the consent record',
+        );
+        expect(
+          log.indexOf('consent:terms:true'),
+          lessThan(log.indexOf('apple')),
+          reason:
+              'the account can exist the moment the redirect returns, so '
+              'the acceptance must already be on record: $log',
+        );
+      },
+    );
+
+    testWidgets('RETURNING: a device that has accepted is not re-prompted', (
+      WidgetTester tester,
+    ) async {
+      final List<String> log = <String>[];
+      final _AppleAuth auth = _AppleAuth(log);
+      await _pump(
+        tester,
+        const LoginScreen(),
+        signal: const core.NoAgeSignal(core.NoAgeSignalReason.noApiOnTarget),
+        auth: auth,
+        termsOwed: false,
+        transport: _RecordingTransport(log),
+      );
+      expect(find.byType(LegalConsentFields), findsNothing);
+      await tapApple(tester);
+      expect(log, <String>[
+        'apple',
+      ], reason: 'no second acceptance for somebody who already accepted');
     });
   });
 }

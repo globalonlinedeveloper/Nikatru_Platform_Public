@@ -29,6 +29,16 @@ void main() {
         onNeedAccount: onNeedAccount ?? () {},
         showAppleButton: showAppleButton,
         onSignInWithApple: onSignInWithApple ?? () async {},
+        appleTermsOwed: false,
+        consentFields: ({
+          required bool termsAccepted,
+          required bool marketingAccepted,
+          required bool enabled,
+          required ValueChanged<bool> onTermsChanged,
+          required ValueChanged<bool> onMarketingChanged,
+        }) =>
+            const SizedBox.shrink(),
+        onAcceptTerms: ({required bool marketingEmail}) async {},
         deletion: deletion,
         deletionDetail: deletionDetail,
         onDismissDeletionNotice: onDismissDeletionNotice,
