@@ -148,6 +148,18 @@ final Finder kAside = find.byKey(const Key('home-aside'));
 /// point for the second pane.
 final Finder kPlaceholder = find.byType(TwoPanePlaceholder);
 
+/// Home as the body of a real [AppScaffold] — the chassis's navigation, with
+/// two plain destinations (the scaffold needs at least two).
+Widget _shell() => AppScaffold(
+  destinations: const <AppDestination>[
+    AppDestination(icon: Icons.home_outlined, label: 'Home'),
+    AppDestination(icon: Icons.more_horiz, label: 'More'),
+  ],
+  selectedIndex: 0,
+  onDestinationSelected: (_) {},
+  body: const HomeScreen(),
+);
+
 void main() {
   // ── HOME · ONE COLUMN, below AppBreakpoints.expanded (840) ─────────────────
   //
@@ -409,6 +421,61 @@ void main() {
       expect(AppBreakpoints.large, 1200);
       expect(AppBreakpoints.kMaxBodyWidth, 1280);
       expect(TwoPaneSplit.dividerWidth, 1);
+      // ⏱ 2026-09-15 · [ADR 083]: the side panel's trigger is this BODY
+      // threshold, and it is the same 420 + 1 + 840 as above.
+      expect(HomeScreen.asideMinBodyWidth, 1261);
+    });
+  });
+
+  // ── ⏱ 2026-09-15 · [ADR 083] HOME INSIDE THE CHASSIS, AT WINDOW WIDTHS ─────
+  //
+  // Every case above pumps HomeScreen BARE, so it measures body widths. The
+  // owner's complaint was about the WINDOW: under the 360 px drawer a 1440
+  // laptop left Home a 1079 body and no side panel. These cases mount Home as
+  // the body of a real `AppScaffold`, so the large class's rail is what
+  // decides the body, at 1200 (first large width), 1440 (the laptop) and 1599
+  // (last large width). Declared one by one, not in a loop.
+  group('ADR 083 · Home inside AppScaffold, at window widths', () {
+    testWidgets('1200 window: the rail, a split, and no side panel yet', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(1200, 900), _shell());
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(
+        kAside,
+        findsNothing,
+        reason:
+            'the body is 1200 minus the rail, below the 1261 the panel '
+            'needs beside a list/detail split',
+      );
+      expect(kPlaceholder, findsOneWidget, reason: 'the split still holds');
+    });
+
+    testWidgets('1440 window: list, detail AND side panel together', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(1440, 900), _shell());
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(
+        kAside,
+        findsOneWidget,
+        reason:
+            'THE CASE ADR 083 WAS DECIDED FOR: under the drawer this window '
+            'gave Home 1079 px and two panes; under the rail it gives the '
+            'body enough for three',
+      );
+      expect(offeredWidth(tester, kAside), AppBreakpoints.form);
+      expect(kPlaceholder, findsOneWidget);
+    });
+
+    testWidgets('1599 window: still the rail, still three columns', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, const Size(1599, 900), _shell());
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(kAside, findsOneWidget);
+      expect(kPlaceholder, findsOneWidget);
     });
   });
 

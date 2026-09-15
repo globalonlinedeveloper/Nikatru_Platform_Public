@@ -330,7 +330,7 @@ function sweepTheNewSheet(root) {
 // POSITIVE CONTROLS
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the guard says YES on the tree as it is', () => {
-  test('the REAL repository — 4 derived roots, 68 surfaces, 37 swept, exit 0', () => {
+  test('the REAL repository — 4 derived roots, 68 surfaces, 38 swept, exit 0', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
     // 🔴 THE ROOT LINE IS PINNED BECAUSE THE ROOT LINE IS THE FIX. Until
@@ -366,9 +366,13 @@ describe('the guard says YES on the tree as it is', () => {
     // falls 48 → 21 and `swept where they delegate to` rises 0 → 10: the ten
     // brick adapters are judged in the chassis and the guard now says so. Read
     // off the guard's own closing line, never arithmetic on this comment.
-    assert.match(out, /68 reachable surface\(s\); 37 swept by 5 a11y test file\(s\) across 165 case\(s\)/);
+    // ⏱ 2026-09-15 · [ADR 083]: 37 → 38 swept, 5 → 6 files, 165 → 168 cases,
+    // 21 → 20 unswept — `packages/design_system/test/a11y_app_scaffold_test.dart`
+    // sweeps AppScaffold's large-class rail (three cases). Read off the guard's
+    // own closing line on that branch.
+    assert.match(out, /68 reachable surface\(s\); 38 swept by 6 a11y test file\(s\) across 168 case\(s\)/);
     assert.match(out, /10 swept where they delegate to/);
-    assert.match(out, /21 unswept and PRINTED/);
+    assert.match(out, /20 unswept and PRINTED/);
     // The per-family tally for subscriptiontracker, pinned. It read `tap-target ×0` from the
     // day this guard was written until 2026-08-13, and a family that has never
     // been non-zero is a limb nothing has exercised — so the number that proves
@@ -480,7 +484,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // surfaces never reach the report is a root this guard cannot see.
     assert.match(out, /apps\/subscriptiontracker: 19 of 19 reachable surface\(s\) carry an a11y sweep/);
     assert.match(out, /\{\{app_id\}\}: 0 of 12 reachable surface\(s\) carry an a11y sweep/);
-    assert.match(out, /packages\/design_system: 1 of 20 reachable surface\(s\) carry an a11y sweep/);
+    // ⏱ 2026-09-15 · [ADR 083]: 1 → 2 (AppScaffold joined DataStateView).
+    assert.match(out, /packages\/design_system: 2 of 20 reachable surface\(s\) carry an a11y sweep/);
     // And the gap in each is PRINTED, by name, not merely counted.
     assert.ok(printedUnswept(out, BRICK).includes('HomeScreen'), out);
     assert.ok(printedUnswept(out, DS).includes('NavShell'), out);
@@ -671,7 +676,8 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     // NEW surface reaches that list, and `showG3ProbeSheet` is asserted by name
     // above, which is the assertion this number was only ever the frame for.
     assert.match(out, /3 of 13 reachable surface\(s\) in tooling\/bricks/);
-    assert.match(out, /20 of 21 reachable surface\(s\) in packages\/design_system/);
+    // ⏱ 2026-09-15 · [ADR 083]: 20 → 19 of 21 — AppScaffold is swept now.
+    assert.match(out, /19 of 21 reachable surface\(s\) in packages\/design_system/);
   });
 });
 

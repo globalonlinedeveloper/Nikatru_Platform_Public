@@ -59,12 +59,17 @@ void main() {
     expect(find.byType(NavigationDrawer), findsNothing);
   });
 
-  testWidgets('large width → NavigationDrawer only',
+  // ⏱ 2026-09-15 · [ADR 083]: this case was 'large width → NavigationDrawer
+  // only'. The large class now navigates by a SLIM rail; the drawer is
+  // extra-large's alone. The width cases at 1200 / 1440 / 1599 are below.
+  testWidgets('large width → slim NavigationRail, no drawer',
       (WidgetTester tester) async {
     await pumpAt(tester, const Size(1300, 900), harness(index: 2));
-    expect(find.byType(NavigationDrawer), findsOneWidget);
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+        isFalse);
+    expect(find.byType(NavigationDrawer), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.byType(NavigationRail), findsNothing);
   });
 
   // ── [pipeline C-14] The five Material window classes, AT THEIR EDGES ───────
@@ -197,6 +202,86 @@ void main() {
       await pumpAt(tester, const Size(375, 812), harness());
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byKey(brandBar), findsNothing);
+    });
+  });
+
+  // ── ⏱ 2026-09-15 · [ADR 083] THE LARGE CLASS AT ITS EDGES AND AT A LAPTOP ──
+  //
+  // The owner's complaint was the laptop web UI. At 1440 the old drawer left
+  // the body 1079, below the 1261 a list + detail + side panel needs (Home's
+  // `asideMinBodyWidth`). These three pin the rail at 1200 (the first large
+  // width), 1440 (the laptop) and 1599 (the last large width), and each case is
+  // declared on its own. Measured as the body's INCOMING constraint, the same
+  // way the app's width harness measures, so a Center cannot hide a change.
+  group('large class navigates by a slim rail (ADR 083)', () {
+    const Key bodyKey = Key('large-body');
+
+    Widget railHarness() => MaterialApp(
+          home: AppScaffold(
+            destinations: destinations,
+            selectedIndex: 0,
+            onDestinationSelected: (_) {},
+            body: const SizedBox.expand(key: bodyKey),
+          ),
+        );
+
+    double bodyWidth(WidgetTester tester) =>
+        tester.renderObject<RenderBox>(find.byKey(bodyKey)).constraints.maxWidth;
+
+    double railWidth(WidgetTester tester) =>
+        tester.getSize(find.byType(NavigationRail)).width;
+
+    testWidgets('1200 — rail, no drawer, body = window − rail − 1',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1200, 900), railHarness());
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(
+          tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+          isFalse,
+          reason: 'SLIM: the extended rail would give back what the drawer took');
+      expect(railWidth(tester), lessThan(360));
+      expect(bodyWidth(tester), 1200 - railWidth(tester) - 1);
+    });
+
+    testWidgets('1440 — the laptop window holds a 1261 px three-column body',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1440, 900), railHarness());
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(bodyWidth(tester), 1440 - railWidth(tester) - 1);
+      expect(bodyWidth(tester), greaterThanOrEqualTo(1261),
+          reason: 'the whole point of ADR 083: under the 360 px drawer this '
+              'body was 1079, too narrow for list + detail + side panel');
+    });
+
+    testWidgets('1599 — still the rail, and the body is not capped',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1599, 900), railHarness());
+      expect(find.byType(NavigationDrawer), findsNothing);
+      expect(bodyWidth(tester), 1599 - railWidth(tester) - 1,
+          reason: 'the kMaxBodyWidth cap belongs to extra-large only');
+    });
+
+    testWidgets('1600 — extra-large keeps its drawer and its body cap',
+        (WidgetTester tester) async {
+      await pumpAt(tester, const Size(1600, 900), railHarness());
+      expect(find.byType(NavigationRail), findsNothing);
+      expect(find.byType(NavigationDrawer), findsOneWidget);
+      expect(bodyWidth(tester),
+          lessThanOrEqualTo(AppBreakpoints.kMaxBodyWidth));
+    });
+
+    testWidgets('tapping a rail destination at 1440 reports its index',
+        (WidgetTester tester) async {
+      int? tapped;
+      await pumpAt(
+        tester,
+        const Size(1440, 900),
+        harness(onSelected: (int i) => tapped = i),
+      );
+      await tester.tap(find.text('Settings'));
+      await tester.pump();
+      expect(tapped, 2);
     });
   });
 

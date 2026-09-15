@@ -38,7 +38,7 @@ import '../../state/subscriptions_controller.dart';
 /// routable-looking class.
 ///
 /// ── 🔴 WHERE THE CALLER MUST PUT IT: INSIDE THE CHROME, NEVER AROUND IT ────
-/// `home_screen.dart:363-381` records the measurement in its own words: the
+/// `home_screen.dart:376-394` records the measurement in its own words: the
 /// live file wrapped the WHOLE body in `.when(...)`, so a fetch in flight left
 /// the user on a bare `CircularProgressIndicator` with no greeting, no account
 /// name and — because the header is also the only route to /notifications —

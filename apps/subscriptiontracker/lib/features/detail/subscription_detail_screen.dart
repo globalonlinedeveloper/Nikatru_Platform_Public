@@ -117,13 +117,13 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     // `_dismiss`), so on a cold load there is no in-app chrome anywhere else on
     // screen. A bare `DataStateView` with no `Scaffold` around it would be a
     // failure message with no way back, which is the dead end `_dismiss` and
-    // `home_screen.dart:363` both exist to prevent.
+    // `home_screen.dart:376` both exist to prevent.
     // 🔴 THE APP BAR STAYS IN EVERY REPLACEMENT STATE. This route is reachable
     // by a bookmarked or reloaded URL (web is on the hash strategy — see
     // `_dismiss`), so on a cold load there is no in-app chrome anywhere else on
     // screen. A bare `DataStateView` with no `Scaffold` around it would be a
     // failure message with no way back, which is the dead end `_dismiss` and
-    // `home_screen.dart:363` both exist to prevent.
+    // `home_screen.dart:376` both exist to prevent.
     //
     // ⚠️ `subscriptionNotFound` IS PASSED AS THE **EMPTY** TITLE, so a user
     // holding zero subscriptions who opens a detail URL is told the record is
