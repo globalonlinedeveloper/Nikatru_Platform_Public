@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
@@ -93,7 +93,22 @@ class SupabaseAuthRepository implements core.AuthRepository {
           email: u.email ?? '',
           displayName: u.userMetadata?['full_name'] as String?,
           emailVerified: u.emailConfirmedAt != null,
+          hasPasswordIdentity: hasPasswordIdentityOf(u.appMetadata),
+          lastSignInAt: u.lastSignInAt == null
+              ? null
+              : DateTime.tryParse(u.lastSignInAt!),
         );
+
+  /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. Password-less ONLY when the provider
+  /// POSITIVELY says so: `app_metadata.providers` is a list without `email`. The
+  /// SAME rule `services/platform/src/middleware/auth.ts` `authRecencyOf` applies
+  /// to the verified token, so the dialog the app shows and the check the server
+  /// makes cannot disagree about which kind of account this is.
+  @visibleForTesting
+  static bool hasPasswordIdentityOf(Map<String, dynamic>? appMetadata) {
+    final Object? providers = appMetadata?['providers'];
+    return providers is! List || providers.contains('email');
+  }
 
   @override
   core.AuthUser? get currentUser => _map(_auth.currentUser);
@@ -520,6 +535,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
       }
     } catch (e) {
       failure = e;
+    }
+    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. THE ONE REFUSAL THAT KEEPS THE SESSION:
+    // the server said this password-less account has not signed in recently
+    // (`reauth_required`). Nothing was touched, the person is being asked to prove
+    // who they are, and signing them out would make the very next step — signing
+    // in with their provider — start from nothing. `reauthFailed`'s own sentence
+    // says "You are still signed in", so this is what makes it true.
+    if (failure is core.AccountDeletionFailure &&
+        failure.outcome == core.AccountDeletionOutcome.reauthFailed) {
+      throw failure;
     }
     // Sign out REGARDLESS. A user who has asked to be deleted must not be left
     // holding a live session — that is the worst of both outcomes.

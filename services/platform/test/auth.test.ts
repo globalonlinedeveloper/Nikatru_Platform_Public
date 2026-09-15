@@ -28,8 +28,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
 import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
-import { platformAuth } from '../src/middleware/auth';
-import account, { parseErasureEndpoints } from '../src/routes/account';
+import { authRecencyOf, platformAuth } from '../src/middleware/auth';
+import account, { RECENT_AUTH_SECONDS, parseErasureEndpoints } from '../src/routes/account';
 import type { AppEnv } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
 
@@ -649,6 +649,100 @@ describe('DELETE /v1/account — three limbs, executed against a real engine', (
     const res = await harness({ db }).del('/v1/account', `Bearer ${await token({ sub: 'user-a' })}`);
     expect(res.status).toBe(503);
     expect(identityCalls).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — a password-less account confirms deletion
+// by signing in with its provider AGAIN, and the server checks that sign-in is
+// recent before anything is destroyed. The token shapes below are GoTrue's:
+// `app_metadata.providers` (a Sign in with Apple account is ["apple"]) and
+// `amr: [{ method, timestamp }]`, the entry GoTrue writes when the user
+// authenticates and carries unchanged through every refresh.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('DELETE /v1/account — a password-less account must have signed in recently', () => {
+  const nowS = () => Math.floor(Date.now() / 1000);
+  const apple = (amrAgoSeconds: number | null, extra: Record<string, unknown> = {}) =>
+    token({
+      sub: 'user-a',
+      app_metadata: { provider: 'apple', providers: ['apple'] },
+      ...(amrAgoSeconds === null ? {} : { amr: [{ method: 'oauth', timestamp: nowS() - amrAgoSeconds }] }),
+      ...extra,
+    });
+
+  it('a FRESH provider sign-in deletes', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await apple(30)}`);
+    expect(res.status).toBe(200);
+    expect(h.db.count('entitlements', 'user_id = ?', 'user-a')).toBe(0);
+    expect(identityCalls).toHaveLength(1);
+  });
+
+  it('🔴 a STALE sign-in is refused 403 reauth_required, and NOTHING is destroyed', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await apple(RECENT_AUTH_SECONDS + 60)}`);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'reauth_required' });
+    expect(h.db.count('entitlements', 'user_id = ?', 'user-a')).toBe(1);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('🔴 a session kept warm by REFRESH is refused: a brand-new iat does not stand in for a sign-in', async () => {
+    // `token()` stamps iat = now. The last authentication was two hours ago — the
+    // shape of a week-old session whose access token was just silently refreshed.
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await apple(2 * 3600)}`);
+    expect(res.status).toBe(403);
+    expect(h.db.count('entitlements', 'user_id = ?', 'user-a')).toBe(1);
+  });
+
+  it('🔴 no amr at all is refused (fails closed)', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await apple(null)}`);
+    expect(res.status).toBe(403);
+    expect(identityCalls).toHaveLength(0);
+  });
+
+  it('🔴 an amr timestamp from the FUTURE is not "recent"', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const res = await h.del('/v1/account', `Bearer ${await apple(-3600)}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('the refusal comes BEFORE the preconditions — nothing is even checked for a stale token', async () => {
+    const h = harness({ serviceRoleKey: null });
+    const res = await h.del('/v1/account', `Bearer ${await apple(RECENT_AUTH_SECONDS + 60)}`);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'reauth_required' });
+  });
+
+  it('a PASSWORD account keeps its path: an old amr still deletes (the app re-authenticates it by password)', async () => {
+    const h = harness();
+    seedEntitlement(h.db, 'user-a');
+    const t = await token({
+      sub: 'user-a',
+      app_metadata: { provider: 'email', providers: ['email', 'apple'] },
+      amr: [{ method: 'password', timestamp: nowS() - 5 * 3600 }],
+    });
+    const res = await h.del('/v1/account', `Bearer ${t}`);
+    expect(res.status).toBe(200);
+    expect(identityCalls).toHaveLength(1);
+  });
+
+  it('authRecencyOf reads only a POSITIVE password-less claim, and the newest amr entry', () => {
+    expect(authRecencyOf({})).toEqual({ passwordless: false, lastAuthenticatedAt: null });
+    expect(authRecencyOf({ app_metadata: { providers: 'apple' } }).passwordless).toBe(false);
+    expect(authRecencyOf({ app_metadata: { providers: ['apple'] } }).passwordless).toBe(true);
+    expect(authRecencyOf({ app_metadata: { providers: ['email'] } }).passwordless).toBe(false);
+    expect(
+      authRecencyOf({ amr: [{ method: 'oauth', timestamp: 100 }, { method: 'otp', timestamp: 250 }, { timestamp: 'x' }] })
+        .lastAuthenticatedAt,
+    ).toBe(250);
   });
 });
 

@@ -69,7 +69,7 @@ import {
   usableJwksDocument,
   verifyOptions,
 } from '../../../_shared/src/auth';
-import type { AppEnv, Env } from '../types';
+import type { AppEnv, AuthRecency, Env } from '../types';
 
 /** The remote JWKS *getter*, cached per SUPABASE_URL for the isolate's life.
  *  `createRemoteJWKSet` keeps its own in-memory cache with request coalescing
@@ -155,6 +155,31 @@ async function warmCache(env: Env): Promise<void> {
 }
 
 /**
+ * ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — how the verified token's user signs in,
+ * and when they last authenticated. Pure, and only ever called on a payload
+ * `jwtVerify` has already accepted. See `AuthRecency` for why `amr` and not `iat`.
+ *
+ * Every unreadable shape lands on a named side: a non-array `providers` is NOT
+ * password-less (no claim to act on), and an `amr` with no numeric timestamp is
+ * "never authenticated recently" (null), which the deletion route refuses.
+ */
+export function authRecencyOf(payload: Record<string, unknown>): AuthRecency {
+  const meta = payload.app_metadata;
+  const providers = meta && typeof meta === 'object' ? (meta as { providers?: unknown }).providers : undefined;
+  const passwordless = Array.isArray(providers) && !providers.includes('email');
+  let lastAuthenticatedAt: number | null = null;
+  if (Array.isArray(payload.amr)) {
+    for (const entry of payload.amr) {
+      const ts = entry && typeof entry === 'object' ? (entry as { timestamp?: unknown }).timestamp : undefined;
+      if (typeof ts === 'number' && Number.isFinite(ts)) {
+        lastAuthenticatedAt = lastAuthenticatedAt === null ? ts : Math.max(lastAuthenticatedAt, ts);
+      }
+    }
+  }
+  return { passwordless, lastAuthenticatedAt };
+}
+
+/**
  * Hono middleware. On success sets `userId` (+ `userEmail` when the token
  * carries one) and calls next(). On ANY failure it answers 401 with
  * `{ error: 'unauthorized' }` and nothing else — the reason a token was refused
@@ -192,6 +217,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     c.set('userId', payload.sub);
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') c.set('userEmail', email);
+    c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));
     await next();
     return;
   } catch {

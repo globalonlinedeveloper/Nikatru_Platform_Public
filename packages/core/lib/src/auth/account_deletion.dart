@@ -1,4 +1,5 @@
 import 'auth_models.dart';
+import 'auth_repository.dart';
 
 /// WHAT ACTUALLY HAPPENED when a user asked to be deleted.
 ///
@@ -53,14 +54,20 @@ enum AccountDeletionOutcome {
   /// 401 / 403 / 503 — refused before any row was touched.
   nothingDeleted,
 
-  /// The re-authentication step failed, so THE REQUEST WAS NEVER SENT.
+  /// The re-authentication step failed, so NOTHING WAS TOUCHED.
   ///
   /// Deliberately not folded into [nothingDeleted]: that value's message says
   /// the user has been signed out, which is true of a server refusal (the seam
   /// signs out regardless) and false here — a mistyped password must leave the
-  /// session exactly as it was. No HTTP status maps to this; it is the one
-  /// outcome decided entirely on the client, which is why [forStatus] never
-  /// returns it.
+  /// session exactly as it was.
+  ///
+  /// Two ways in, one meaning: the password or provider sign-in failed on the
+  /// client and the request was never sent; or (⏱ 2026-09-15 ·
+  /// O-OAUTH-DELETE-REAUTH) the server answered 403 `reauth_required` for a
+  /// password-less account whose last sign-in is not recent, before any
+  /// precondition. The api_client maps that BODY, not the status — [forStatus]
+  /// still never returns this, because a bare 403 is a different refusal — and
+  /// the seam does not sign out on it.
   reauthFailed,
 
   /// No HTTP status at all (transport failure). Whether the request ever
@@ -123,8 +130,8 @@ enum AccountDeletionOutcome {
   String get plainMessage {
     switch (this) {
       case AccountDeletionOutcome.deleted:
-        return 'Your account has been deleted. Signing in with the same email '
-            'and password will not work any more.';
+        return 'Your account has been deleted. Signing in to it again, with a '
+            'password or with Apple, will not work any more.';
       case AccountDeletionOutcome.pending:
         return 'Your deletion request was accepted but isn\'t finished yet. Some of your data couldn\'t be removed right away. We\'ll keep trying automatically, and your sign-in is removed last. You\'ve been signed out of this device.';
       case AccountDeletionOutcome.notConfigured:
@@ -140,10 +147,9 @@ enum AccountDeletionOutcome {
             'and nothing was removed. You have been signed out of this device.';
       case AccountDeletionOutcome.reauthFailed:
         return 'We could not confirm it was you, so nothing was deleted and '
-            'nothing was sent. You are still signed in. If the password was '
-            'wrong, try again. If you signed in with Apple or Google there is '
-            'no password on this account, and the deletion has to be requested '
-            'by email.';
+            'nothing was sent. You are still signed in. If you use a password, '
+            'check it and try again. If you use Sign in with Apple, finish '
+            'signing in with Apple and try again.';
       case AccountDeletionOutcome.couldNotReach:
         return 'We could not reach the server, so we do not know whether '
             'anything was deleted. Check before assuming your account is gone.';
@@ -220,3 +226,62 @@ AccountDeletionOutcome accountDeletionOutcomeOf(Object error) =>
     error is AccountDeletionFailure
         ? error.outcome
         : AccountDeletionOutcome.unknown;
+
+/// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. How recent a password-less account's last
+/// sign-in must be for the app to call `DELETE /v1/account` WITHOUT opening the
+/// provider sheet again. Half the platform Worker's `RECENT_AUTH_SECONDS` (600),
+/// so an app that skips the sheet is always inside the window the server checks.
+const Duration kProviderReauthFreshness = Duration(minutes: 5);
+
+/// How long [confirmIdentityWithProvider] waits for the provider sign-in to land.
+const Duration kProviderReauthTimeout = Duration(minutes: 5);
+
+/// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10) — a
+/// PASSWORD-LESS account confirms deletion by signing in with its provider AGAIN,
+/// at the moment of deletion. Returns when [user] has freshly authenticated;
+/// throws [AuthFailure] when that did not happen, which every delete flow already
+/// reports as [AccountDeletionOutcome.reauthFailed] (nothing sent, still signed in).
+///
+/// 🔴 THE PROOF IS A NEWER SIGN-IN BY THE SAME ACCOUNT, NOT "SOMEBODY IS SIGNED IN".
+/// The provider completes on [AuthRepository.authStateChanges], never as a return
+/// value (a redirect or deep link), so this waits for a user with the SAME id and
+/// a `lastSignInAt` later than the one it started from. A different account
+/// arriving on this device, or the same session refreshing, is not a
+/// confirmation, and a sheet the person closed simply times out.
+///
+/// The server does not take this function's word for it: `DELETE /v1/account`
+/// re-checks the token's own authentication time and refuses a stale one with
+/// `reauth_required`. This exists so a person who just signed in is not sent
+/// round the provider sheet twice — on web, Apple's full-page redirect reloads the
+/// app, so a user who comes back and taps Delete again is inside
+/// [kProviderReauthFreshness] and goes straight through.
+Future<void> confirmIdentityWithProvider({
+  required AuthRepository auth,
+  required AuthUser user,
+  DateTime Function() now = DateTime.now,
+  Duration freshness = kProviderReauthFreshness,
+  Duration timeout = kProviderReauthTimeout,
+}) async {
+  final DateTime? last = user.lastSignInAt;
+  if (last != null && now().toUtc().difference(last.toUtc()) < freshness) {
+    return;
+  }
+  // Subscribed BEFORE the sheet opens, so a fast provider cannot land between.
+  final Future<AuthUser?> fresh = auth
+      .authStateChanges()
+      .firstWhere(
+        (AuthUser? u) =>
+            u != null &&
+            u.id == user.id &&
+            u.lastSignInAt != null &&
+            (last == null || u.lastSignInAt!.isAfter(last)),
+      )
+      .timeout(timeout);
+  await auth.signInWithApple();
+  try {
+    await fresh;
+  } on Object {
+    // A timeout, a closed stream, a stream error: none of them is a confirmation.
+    throw AuthFailure('The provider sign-in did not complete.');
+  }
+}

@@ -1250,6 +1250,10 @@ class SettingsScreen extends ConsumerWidget {
     // `Navigator.pop` and nothing else. Disposed by the dialog, the last reader,
     // exactly as the controller is.
     final ValueNotifier<String?> captchaToken = ValueNotifier<String?>(null);
+    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
+    // kind of proof this account can give.
+    final AuthUser? current = ref.read(authRepositoryProvider).currentUser;
+    final bool passwordless = current != null && !current.hasPasswordIdentity;
     showDialog<void>(
       context: context,
       // 🔴 NOT DISMISSIBLE, and the dialog also refuses a system back/Escape
@@ -1261,6 +1265,7 @@ class SettingsScreen extends ConsumerWidget {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) => _DeleteAccountDialog(
         l10n: l10n,
+        passwordless: passwordless,
         password: password,
         captchaToken: captchaToken,
         onConfirm: () => _deleteAccount(ref, password.text, captchaToken.value),
@@ -1309,11 +1314,21 @@ class SettingsScreen extends ConsumerWidget {
       if (user == null) throw core.AuthFailure('Not signed in');
       // Re-authenticate through the SAME seam sign-in uses, so it works against
       // whatever identity provider is wired.
-      await auth.signInWithEmail(
-        email: user.email,
-        password: password,
-        captchaToken: captchaToken,
-      );
+      // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
+      // PASSWORD-LESS account (Sign in with Apple) has nothing to type here, so
+      // it confirms by signing in with its provider AGAIN — unless it has just
+      // done so (on web Apple's redirect reloads the app, and the user taps
+      // Delete a second time). `DELETE /v1/account` re-checks the token's own
+      // authentication time and refuses a stale one with `reauth_required`.
+      if (user.hasPasswordIdentity) {
+        await auth.signInWithEmail(
+          email: user.email,
+          password: password,
+          captchaToken: captchaToken,
+        );
+      } else {
+        await core.confirmIdentityWithProvider(auth: auth, user: user);
+      }
       try {
         await auth.deleteAccount();
         outcome = core.AccountDeletionOutcome.deleted;
@@ -1322,6 +1337,11 @@ class SettingsScreen extends ConsumerWidget {
         // rather than to a refusal shape this screen invented — an error nobody
         // modelled is exactly the case where how far the deletion got is unknown.
         outcome = core.accountDeletionOutcomeOf(e);
+        // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. The server's `reauth_required`:
+        // nothing was touched and the seam did NOT sign out, so there is no
+        // session-scoped state to forget and nothing to park for the sign-in
+        // screen. The dialog shows the outcome in place, as for a wrong password.
+        if (outcome == core.AccountDeletionOutcome.reauthFailed) return outcome;
         // 🔴 KEEP THE ERROR ITSELF. Until 2026-08-09 this line did not exist and
         // `e` was discarded here — so `unknown` arrived at the screen with the
         // one fact that explains it already thrown away. Parked, not rendered in
@@ -1564,12 +1584,18 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
 class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
+    required this.passwordless,
     required this.password,
     required this.captchaToken,
     required this.onConfirm,
   });
 
   final AppLocalizations l10n;
+
+  /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. A password-less account gets no
+  /// password field and no captcha (nothing is posted to a gated endpoint): the
+  /// provider's own sheet is the confirmation.
+  final bool passwordless;
 
   /// Owned by the caller so `onConfirm` can be the zero-argument closure the
   /// stamp-properties anchor names; disposed here, the last reader.
@@ -1672,33 +1698,49 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(l10n.deleteAccountConfirmBody, style: t.body),
-          const SizedBox(height: 14),
-          Text(l10n.deleteAccountReauthHint, style: t.muted),
-          const SizedBox(height: 8),
-          TextField(
-            key: E2EKeys.deleteAccountPassword,
-            controller: widget.password,
-            obscureText: true,
-            enabled: !_busy,
-            // The button below is disabled until this is non-empty, so the
-            // destructive action cannot be reached by a stray tap.
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(labelText: l10n.deleteAccountPassword),
+          Text(
+            widget.passwordless
+                ? l10n.deleteAccountConfirmBodyApple
+                : l10n.deleteAccountConfirmBody,
+            style: t.body,
           ),
-          const SizedBox(height: 12),
-          // Directly above the destructive action, the same placement and the
-          // same reason as `login_screen.dart`: the user meets the challenge at
-          // the moment they are about to submit, not earlier where a token can
-          // go stale while they are still typing.
-          //
-          // Renders NOTHING when no site key is compiled in, which is every
-          // build today — so this is a no-op until the cutover and correct after
-          // it. `_run` is deliberately NOT gated on a token being present: the
-          // password field alone still guards the destructive action, and
-          // refusing to enable the button when `TurnstileGate.isConfigured` is
-          // false would disable deletion in every build that ships now.
-          TurnstileGate(onToken: (String? t) => widget.captchaToken.value = t),
+          const SizedBox(height: 14),
+          Text(
+            widget.passwordless
+                ? l10n.deleteAccountReauthHintApple
+                : l10n.deleteAccountReauthHint,
+            style: t.muted,
+          ),
+          if (!widget.passwordless) ...<Widget>[
+            const SizedBox(height: 8),
+            TextField(
+              key: E2EKeys.deleteAccountPassword,
+              controller: widget.password,
+              obscureText: true,
+              enabled: !_busy,
+              // The button below is disabled until this is non-empty, so the
+              // destructive action cannot be reached by a stray tap.
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: l10n.deleteAccountPassword,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Directly above the destructive action, the same placement and the
+            // same reason as `login_screen.dart`: the user meets the challenge at
+            // the moment they are about to submit, not earlier where a token can
+            // go stale while they are still typing.
+            //
+            // Renders NOTHING when no site key is compiled in, which is every
+            // build today — so this is a no-op until the cutover and correct after
+            // it. `_run` is deliberately NOT gated on a token being present: the
+            // password field alone still guards the destructive action, and
+            // refusing to enable the button when `TurnstileGate.isConfigured` is
+            // false would disable deletion in every build that ships now.
+            TurnstileGate(
+              onToken: (String? t) => widget.captchaToken.value = t,
+            ),
+          ],
         ],
       ),
       actions: <Widget>[
@@ -1709,7 +1751,10 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
         FilledButton(
           key: E2EKeys.deleteAccountConfirm,
           style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-          onPressed: (_busy || widget.password.text.isEmpty) ? null : _run,
+          onPressed:
+              (_busy || (!widget.passwordless && widget.password.text.isEmpty))
+              ? null
+              : _run,
           child: Text(_busy ? l10n.deletingEllipsis : l10n.deleteAccount),
         ),
       ],

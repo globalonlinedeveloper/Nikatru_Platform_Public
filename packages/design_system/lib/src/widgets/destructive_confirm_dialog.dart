@@ -98,6 +98,7 @@ class DestructiveConfirmDialog extends StatefulWidget {
     required this.acknowledgeLabel,
     required this.onConfirm,
     super.key,
+    this.secretRequired = true,
     this.secretFieldKey,
     this.confirmKey,
     this.resultKey,
@@ -128,6 +129,14 @@ class DestructiveConfirmDialog extends StatefulWidget {
   /// `State.dispose` — which runs after this one, because the framework unmounts
   /// children before their parents.
   final TextEditingController secret;
+
+  /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. False when the confirmation is NOT a
+  /// typed secret — a password-less account confirms deletion by signing in with
+  /// its provider again, and its provider's own sheet is the proof. Then there is
+  /// no field, [secretHint] explains what will happen instead, and the button is
+  /// live whenever the dialog is not busy. [secret] is still owned and disposed
+  /// by the caller, unread.
+  final bool secretRequired;
 
   final String cancelLabel;
 
@@ -206,14 +215,16 @@ class _DestructiveConfirmDialogState extends State<DestructiveConfirmDialog> {
           Text(widget.body),
           const SizedBox(height: 16),
           Text(widget.secretHint),
-          const SizedBox(height: 8),
-          TextField(
-            key: widget.secretFieldKey,
-            controller: widget.secret,
-            obscureText: true,
-            enabled: !_busy,
-            decoration: InputDecoration(labelText: widget.secretLabel),
-          ),
+          if (widget.secretRequired) ...<Widget>[
+            const SizedBox(height: 8),
+            TextField(
+              key: widget.secretFieldKey,
+              controller: widget.secret,
+              obscureText: true,
+              enabled: !_busy,
+              decoration: InputDecoration(labelText: widget.secretLabel),
+            ),
+          ],
         ],
       ),
       actions: <Widget>[
@@ -238,7 +249,8 @@ class _DestructiveConfirmDialogState extends State<DestructiveConfirmDialog> {
         ValueListenableBuilder<TextEditingValue>(
           valueListenable: widget.secret,
           builder: (BuildContext context, TextEditingValue value, Widget? _) {
-            final bool ready = !_busy && value.text.isNotEmpty;
+            final bool ready =
+                !_busy && (!widget.secretRequired || value.text.isNotEmpty);
             return FilledButton(
               key: widget.confirmKey,
               onPressed: ready ? _run : null,

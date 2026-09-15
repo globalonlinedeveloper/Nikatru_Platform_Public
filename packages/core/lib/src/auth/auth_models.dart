@@ -14,6 +14,8 @@ class AuthUser {
     required this.email,
     this.displayName,
     this.emailVerified = false,
+    this.hasPasswordIdentity = true,
+    this.lastSignInAt,
   });
 
   /// The provider's stable subject id — this is the `user_id` every server-side
@@ -42,6 +44,28 @@ class AuthUser {
   /// must say so EXPLICITLY at its construction site rather than inherit this.
   final bool emailVerified;
 
+  /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. Whether this account can prove who it is
+  /// with a PASSWORD. False for an account created through Sign in with Apple
+  /// (or any provider) that never set one: it has nothing to type into the delete
+  /// dialog, and confirms deletion by signing in with its provider again (owner
+  /// ruling on OWNER_QUEUE A-10). Supabase maps it from `app_metadata.providers`
+  /// containing `email` — the same claim the platform Worker reads off the
+  /// verified token, so the app and the server decide it one way.
+  ///
+  /// ⚠️ DEFAULTS TO TRUE, which is today's behaviour for every implementation that
+  /// does not map it (the in-memory repository, fixtures): the password dialog.
+  /// Neither default is safe for an adapter that FORGETS to map it — true strands
+  /// a password-less user at a password box, false sends a password user to a
+  /// provider sheet they have no account with — so the Supabase mapping is pinned
+  /// by its own test rather than by this default.
+  final bool hasPasswordIdentity;
+
+  /// When this person last AUTHENTICATED (a sign-in, not a token refresh), as the
+  /// identity provider records it. Null when unknown. Read by
+  /// [confirmIdentityWithProvider] to skip a second provider sheet when the user
+  /// has just come back from one.
+  final DateTime? lastSignInAt;
+
   String get initial {
     final String source = (displayName != null && displayName!.isNotEmpty)
         ? displayName!
@@ -60,6 +84,11 @@ class AuthUser {
         ? j['display_name'] as String
         : null,
     emailVerified: j['email_verified'] == true,
+    // Absent ⇒ the constructor default (a password account), as before this field.
+    hasPasswordIdentity: j['has_password_identity'] != false,
+    lastSignInAt: j['last_sign_in_at'] is String
+        ? DateTime.tryParse(j['last_sign_in_at']! as String)
+        : null,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -67,6 +96,9 @@ class AuthUser {
     'email': email,
     if (displayName != null) 'display_name': displayName,
     'email_verified': emailVerified,
+    'has_password_identity': hasPasswordIdentity,
+    if (lastSignInAt != null)
+      'last_sign_in_at': lastSignInAt!.toUtc().toIso8601String(),
   };
 
   /// 🔴 `emailVerified` IS PART OF IDENTITY EQUALITY, and leaving it out is how
@@ -79,10 +111,19 @@ class AuthUser {
       other.id == id &&
       other.email == email &&
       other.displayName == displayName &&
-      other.emailVerified == emailVerified;
+      other.emailVerified == emailVerified &&
+      other.hasPasswordIdentity == hasPasswordIdentity &&
+      other.lastSignInAt == lastSignInAt;
 
   @override
-  int get hashCode => Object.hash(id, email, displayName, emailVerified);
+  int get hashCode => Object.hash(
+    id,
+    email,
+    displayName,
+    emailVerified,
+    hasPasswordIdentity,
+    lastSignInAt,
+  );
 
   @override
   String toString() => 'AuthUser($id)';
