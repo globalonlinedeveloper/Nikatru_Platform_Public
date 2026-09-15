@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'age_signal_host.dart';
+
 /// Sign-in — [pipeline C-13], inherited by every stamped app.
 ///
 /// 🏗️ THE BODY OF `SignInScreen`, MOVED HERE BY [ADR 067] decision 2 /
@@ -40,6 +42,7 @@ class SignInView extends StatefulWidget {
     required this.onNeedAccount,
     required this.showAppleButton,
     required this.onSignInWithApple,
+    this.ageSignals,
     this.deletion,
     this.deletionDetail,
     this.onDismissDeletionNotice,
@@ -72,6 +75,10 @@ class SignInView extends StatefulWidget {
   final bool showAppleButton;
 
   final Future<void> Function() onSignInWithApple;
+
+  /// ⏱ 2026-09-15 · [ADR 082] §5. Read before Sign in with Apple, which can
+  /// create an account. Null reads [defaultAgeSignalSource] for the running host.
+  final core.AgeSignalSource? ageSignals;
 
   /// 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE.
   ///
@@ -128,6 +135,21 @@ class _SignInViewState extends State<SignInView> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _appleGated(ChassisLocalizations l10n) async {
+    // ⏱ 2026-09-15 · [ADR 082] §5 — Sign in with Apple CAN CREATE AN ACCOUNT, so it
+    // passes the store age gate BEFORE the provider is called. Whether this tap
+    // creates an account or signs into one is only knowable after the OAuth
+    // redirect returns, so the gate runs for both: a store signal below adult
+    // refuses the tap outright, and no identity is ever created to delete.
+    final core.AgeSignal signal = await core.readAgeSignal(
+      widget.ageSignals ?? defaultAgeSignalSource(),
+    );
+    if (core.signUpAgeGate(signal) == core.SignUpAgeGate.refuse) {
+      throw core.AuthFailure(l10n.signUpAgeRefused);
+    }
+    await widget.onSignInWithApple();
   }
 
   Future<void> _signIn(ChassisLocalizations l10n) => _run(() async {
@@ -284,7 +306,7 @@ class _SignInViewState extends State<SignInView> {
                 OutlinedButton(
                   key: SignInView.appleButton,
                   onPressed:
-                      _busy ? null : () => _run(widget.onSignInWithApple),
+                      _busy ? null : () => _run(() => _appleGated(l10n)),
                   child: Text(l10n.continueWithApple),
                 ),
               ],

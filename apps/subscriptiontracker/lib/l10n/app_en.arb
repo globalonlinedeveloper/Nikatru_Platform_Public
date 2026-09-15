@@ -206,6 +206,10 @@
   "@passwordTooShort": {
     "description": "Client-side length check before sending a sign-up."
   },
+  "signUpAgeRefused": "We can't create an account here. Your app store's age setting says you are under 18, and this app is only for people 18 or older.",
+  "@signUpAgeRefused": {
+    "description": "⏱ 2026-09-15 · [ADR 082] §5. Shown when the app store's age signal (Apple Declared Age Range, Google Play Age Signals) says the person is under 18: no account is created and no terms are recorded. Never shown when there is no signal — that case proceeds on the 18+ declaration. Must not invite a retry with a different age: the declaration cannot override a store signal."
+  },
   "needAccount": "Need an account? Create one",
   "@needAccount": {
     "description": "Link from sign-in to sign-up."

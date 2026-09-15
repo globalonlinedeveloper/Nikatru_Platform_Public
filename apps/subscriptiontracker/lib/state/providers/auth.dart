@@ -11,7 +11,8 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
@@ -175,6 +176,21 @@ passwordRecoveryProvider = NotifierProvider<PasswordRecoveryController, bool>(
 /// not otherwise construct one, and the arrival path would be exactly the
 /// fail-closed-and-untested limb [pipeline C-6] is about.
 final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
+
+/// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal both sign-up doors read
+/// before an account is created (`login_screen.dart`, `sign_up_screen.dart`).
+/// A provider so a test can inject a store answer; the shipped value is the
+/// source for the running host (no store adapter is built in yet, so every
+/// host reads no signal and proceeds on the 18+ declaration).
+final Provider<core.AgeSignalSource> ageSignalSourceProvider =
+    Provider<core.AgeSignalSource>(
+      (ref) => core.ageSignalSourceFor(
+        core.ageSignalHostNamed(
+          isWeb: kIsWeb,
+          platform: defaultTargetPlatform.name,
+        ),
+      ),
+    );
 
 /// What a password-reset link left in the URL, and what became of it.
 ///

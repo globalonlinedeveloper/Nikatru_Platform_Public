@@ -128,6 +128,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final auth = ref.read(authRepositoryProvider);
     try {
       if (_signUp) {
+        // ⏱ 2026-09-15 · [ADR 082] §5 — THE STORE AGE GATE, BEFORE ANYTHING IS CREATED.
+        // Below adult: no account and no terms recorded — both happen below this line.
+        // No signal: proceed on the 18+ declaration the terms box carries.
+        final core.AgeSignal ageSignal = await core.readAgeSignal(
+          ref.read(ageSignalSourceProvider),
+        );
+        if (core.signUpAgeGate(ageSignal) == core.SignUpAgeGate.refuse) {
+          _snack(l10n.signUpAgeRefused);
+          return;
+        }
         await auth.signUpWithEmail(
           email: _email.text.trim(),
           password: _password.text,
@@ -172,9 +182,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _apple() async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _loading = true);
     final auth = ref.read(authRepositoryProvider);
     try {
+      // ⏱ 2026-09-15 · [ADR 082] §5 — Sign in with Apple CAN CREATE AN ACCOUNT, so it
+      // passes the store age gate BEFORE the provider is called. Whether this tap
+      // creates an account or signs into one is only knowable after the OAuth
+      // redirect returns, so the gate runs for both: a store signal below adult
+      // refuses the tap outright, and no identity is ever created to delete.
+      final core.AgeSignal ageSignal = await core.readAgeSignal(
+        ref.read(ageSignalSourceProvider),
+      );
+      if (core.signUpAgeGate(ageSignal) == core.SignUpAgeGate.refuse) {
+        _snack(l10n.signUpAgeRefused);
+        return;
+      }
       await auth.signInWithApple();
       if (mounted && auth.currentUser != null) context.go('/scan');
     } catch (e) {

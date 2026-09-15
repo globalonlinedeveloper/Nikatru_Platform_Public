@@ -66,6 +66,17 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         // told before sending — and this is the one rule we can state exactly.
         throw core.AuthFailure(l10n.passwordTooShort);
       }
+      // ⏱ 2026-09-15 · [ADR 082] §5 — THE STORE AGE GATE, BEFORE ANYTHING IS CREATED.
+      // Below adult: no account and no terms recorded — both happen below this line.
+      // No signal: proceed on the 18+ declaration the terms box carries.
+      final core.AgeSignal ageSignal = await core.readAgeSignal(
+        ref.read(ageSignalSourceProvider),
+      );
+      if (core.signUpAgeGate(ageSignal) == core.SignUpAgeGate.refuse) {
+        // Shown as written: `authErrorText` maps SERVER failures, and this is not one.
+        if (mounted) setState(() => _error = l10n.signUpAgeRefused);
+        return;
+      }
       await auth.signUpWithEmail(
         email: _email.text.trim(),
         password: _password.text,

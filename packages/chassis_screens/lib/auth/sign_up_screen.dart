@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import 'age_signal_host.dart';
 import 'legal_consent_fields.dart';
 
 /// Sign-up — [pipeline C-13], inherited by every stamped app.
@@ -26,6 +27,7 @@ class SignUpView extends StatefulWidget {
     required this.onSignUp,
     required this.onHaveAccount,
     required this.consentFields,
+    this.ageSignals,
     super.key,
   });
 
@@ -48,6 +50,10 @@ class SignUpView extends StatefulWidget {
   /// Renders the tick boxes — see [ConsentFieldsBuilder] for why the ADAPTER
   /// builds them and this surface only owns the flags.
   final ConsentFieldsBuilder consentFields;
+
+  /// ⏱ 2026-09-15 · [ADR 082] §5. The store age signal read before the account
+  /// is created. Null reads [defaultAgeSignalSource] for the running host.
+  final core.AgeSignalSource? ageSignals;
 
   @override
   State<SignUpView> createState() => _SignUpViewState();
@@ -89,6 +95,16 @@ class _SignUpViewState extends State<SignUpView> {
         // a round trip to be told "too short" is a worse experience than being
         // told before sending — and this is the one rule we can state exactly.
         throw core.AuthFailure(l10n.passwordTooShort);
+      }
+      // ⏱ 2026-09-15 · [ADR 082] §5 — THE STORE AGE GATE, BEFORE ANYTHING IS
+      // CREATED. Below adult: no account and no terms recorded (`onSignUp` is
+      // what does both, so it is never called). No signal: proceed on the 18+
+      // declaration the terms box above already carries.
+      final core.AgeSignal signal = await core.readAgeSignal(
+        widget.ageSignals ?? defaultAgeSignalSource(),
+      );
+      if (core.signUpAgeGate(signal) == core.SignUpAgeGate.refuse) {
+        throw core.AuthFailure(l10n.signUpAgeRefused);
       }
       await widget.onSignUp(
         email: _email.text.trim(),
