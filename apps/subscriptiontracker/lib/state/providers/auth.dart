@@ -11,11 +11,8 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'
-    show ChangeNotifier, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nikatru_age_signals/nikatru_age_signals.dart'
-    show storeAgeSignalSourceFor;
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show
@@ -26,6 +23,8 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
         passwordResetArrivalOf,
         passwordResetRedirectUrl;
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_platform_storage/age_signals.dart'
+    show currentStoreAgeSignalSource;
 
 import '../../core/app_config.dart';
 import '../../data/auth/auth_repository.dart';
@@ -183,17 +182,10 @@ final Provider<Uri> launchUriProvider = Provider<Uri>((ref) => Uri.base);
 /// before an account is created (`login_screen.dart`, `sign_up_screen.dart`).
 /// A provider so a test can inject a store answer; the shipped value is the
 /// source for the running host: Google Play Age Signals on android, Apple
-/// Declared Age Range on ios, no signal elsewhere (`nikatru_age_signals`). The
+/// Declared Age Range on ios, no signal elsewhere (`nikatru_platform_storage`). The
 /// age range is used ONLY for this gate and is never stored, logged or sent.
 final Provider<core.AgeSignalSource> ageSignalSourceProvider =
-    Provider<core.AgeSignalSource>(
-      (ref) => storeAgeSignalSourceFor(
-        core.ageSignalHostNamed(
-          isWeb: kIsWeb,
-          platform: defaultTargetPlatform.name,
-        ),
-      ),
-    );
+    Provider<core.AgeSignalSource>((ref) => currentStoreAgeSignalSource());
 
 /// What a password-reset link left in the URL, and what became of it.
 ///

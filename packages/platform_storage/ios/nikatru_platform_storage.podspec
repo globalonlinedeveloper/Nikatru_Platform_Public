@@ -2,7 +2,7 @@
 # Package Manager (ios/nikatru_age_signals/Package.swift); this podspec keeps the
 # plugin buildable for a CocoaPods consumer too.
 Pod::Spec.new do |s|
-  s.name             = 'nikatru_age_signals'
+  s.name             = 'nikatru_platform_storage'
   s.version          = '0.1.0'
   s.summary          = 'Store age-signal adapter for the NIKATRU sign-up age gate.'
   s.description      = 'Reads Apple Declared Age Range for the sign-up age gate only.'
@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.license          = { :type => 'Proprietary' }
   s.author           = { 'NIKATRU' => 'support@nikatru.com' }
   s.source           = { :path => '.' }
-  s.source_files     = 'nikatru_age_signals/Sources/nikatru_age_signals/**/*.swift'
+  s.source_files     = 'nikatru_platform_storage/Sources/nikatru_platform_storage/**/*.swift'
   s.dependency 'Flutter'
   s.platform         = :ios, '13.0'
   s.swift_version    = '5.9'

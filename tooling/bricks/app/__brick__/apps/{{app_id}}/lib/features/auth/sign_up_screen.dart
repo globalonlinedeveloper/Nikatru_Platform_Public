@@ -21,6 +21,10 @@ class SignUpScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
     return SignUpView(
+      // ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal read before the account is
+      // created. Sign-up age gate ONLY: never stored, logged or sent
+      // (`ageSignalSourceProvider`).
+      ageSignals: ref.watch(ageSignalSourceProvider),
       onSignUp: ({required String email, required String password, required bool marketingEmail}) async {
         await auth.signUpWithEmail(email: email, password: password);
         // 🔴 AFTER THE ACCOUNT EXISTS, and the order was the other way round

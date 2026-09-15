@@ -37,10 +37,6 @@ dependencies:
   # ⏱ 2026-09-15 · [ADR 086] the chassis screen bodies, adopted one piece at a time.
   nikatru_chassis_screens:
     path: ../../packages/chassis_screens
-  # ⏱ 2026-09-15 · [ADR 082] §5 the store age-signal adapters (Play Age Signals, Apple
-  # Declared Age Range) the sign-up age gate reads on android and ios.
-  nikatru_age_signals:
-    path: ../../packages/age_signals
 
   # Plugin-backed impls of core's storage seams. Needed by the G-12 analytics
   # funnel: the pseudonymous `anon_id` and the consent decision must BOTH

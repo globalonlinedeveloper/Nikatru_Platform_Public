@@ -5,17 +5,17 @@
 import PackageDescription
 
 let package = Package(
-  name: "nikatru_age_signals",
+  name: "nikatru_platform_storage",
   platforms: [
     .iOS("13.0")
   ],
   products: [
-    .library(name: "nikatru-age-signals", targets: ["nikatru_age_signals"])
+    .library(name: "nikatru-platform-storage", targets: ["nikatru_platform_storage"])
   ],
   dependencies: [],
   targets: [
     .target(
-      name: "nikatru_age_signals",
+      name: "nikatru_platform_storage",
       dependencies: []
     )
   ]

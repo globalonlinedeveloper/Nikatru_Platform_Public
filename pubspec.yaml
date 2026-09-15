@@ -15,7 +15,6 @@ environment:
 # lane resolves with `flutter pub get` because the Flutter members require the
 # Flutter tool (plain `dart pub get` cannot resolve `sdk: flutter` deps).
 workspace:
-  - packages/age_signals
   - packages/analysis
   - packages/core
   - packages/api_client

@@ -198,6 +198,7 @@ ProviderContainer _container(
   _MemStore store, {
   core.AuthRepository? auth,
   core.NotificationService? notifications,
+  core.AgeSignalSource? ageSignals,
 }) => ProviderContainer(
   overrides: <Override>[
     keyValueStoreProvider.overrideWith((_) async => store),
@@ -216,6 +217,14 @@ ProviderContainer _container(
     // channel that does not exist in a widget test.
     if (notifications != null)
       notificationServiceProvider.overrideWithValue(notifications),
+    // ⏱ 2026-09-15 · [ADR 082] §5. Same reason again: the shipped source reads
+    // the Play platform channel on this (android) test host, and it never
+    // answers here, so a registration would wait on it for ever. No store
+    // signal is the answer every host without an API gives: proceed on the 18+
+    // declaration. `store-age-gate-refuses` passes the store's answer instead.
+    ageSignalSourceProvider.overrideWithValue(
+      ageSignals ?? core.ageSignalSourceFor(core.AgeSignalHost.other),
+    ),
   ],
 );
 
@@ -5398,6 +5407,97 @@ void main() {
       );
     });
   });
+
+  // ── PROPERTY: store-age-gate-refuses ──────────────────────────────────────
+  // ⏱ 2026-09-15 · [ADR 082] §5. A store age signal below adult creates NO
+  // account, on the stamped app's own sign-up door, through its own provider.
+  //
+  // 🔴 THE CHASSIS VIEW BEING RIGHT IS NOT THE CLAIM. `SignUpView` refuses when
+  // it is HANDED a below-adult source (packages/chassis_screens/test/
+  // age_gate_view_test.dart); what a stamped app can still get wrong is what it
+  // hands over. A screen that passes a hard-coded source, or no source at all,
+  // gates nothing on a real store and every chassis test stays green. So this
+  // drives the whole stamped path: the provider's answer reaches the screen, the
+  // screen reaches the view, and the repository is never called.
+  //
+  // ⚠️ BOTH DIRECTIONS, for the reason the property above gives: refusing every
+  // registration would pass the first case alone.
+  group('property: store-age-gate-refuses', () {
+    Future<void> registerWith(WidgetTester tester, ProviderContainer c) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(container: c, child: const {{app_id.pascalCase()}}App()),
+      );
+      await _turnsAndSettleRoute(tester);
+      final ChassisLocalizations l10n = lookupChassisLocalizations(
+        const Locale('en'),
+      );
+      await tester.tap(find.text(l10n.needAccount));
+      await _turnsAndSettleRoute(tester);
+      await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+      await _turns(tester);
+      await tester.tap(find.byKey(SignUpScreen.submitButton));
+      await _turnsAndSettleRoute(tester);
+    }
+
+    testWidgets('a store signal BELOW ADULT creates no account and says why', (
+      WidgetTester tester,
+    ) async {
+      final _ConfirmationRequiredAuth auth = _ConfirmationRequiredAuth();
+      final ProviderContainer c = _container(
+        _onboardedStore(),
+        auth: auth,
+        ageSignals: const _FixedAgeSignal(core.BelowAdultAgeSignal()),
+      );
+      addTearDown(c.dispose);
+
+      await registerWith(tester, c);
+
+      expect(
+        auth.signUps,
+        isEmpty,
+        reason:
+            'the store said this person is under 18; the account must not be '
+            'created, and the terms must not be recorded for it',
+      );
+      expect(
+        find.text(
+          lookupChassisLocalizations(const Locale('en')).signUpAgeRefused,
+        ),
+        findsOneWidget,
+        reason: 'a refusal with no words is a form that silently does nothing',
+      );
+    });
+
+    testWidgets('an ADULT store signal creates the account', (
+      WidgetTester tester,
+    ) async {
+      final _ConfirmationRequiredAuth auth = _ConfirmationRequiredAuth();
+      final ProviderContainer c = _container(
+        _onboardedStore(),
+        auth: auth,
+        ageSignals: const _FixedAgeSignal(core.AdultAgeSignal()),
+      );
+      addTearDown(c.dispose);
+
+      await registerWith(tester, c);
+
+      expect(auth.signUps, <String>[
+        'newcomer@b.test',
+      ], reason: 'a gate that refuses everyone passes the case above alone');
+    });
+  });
+}
+
+/// A store age signal fixed in advance — [ADR 082] §5. The shipped source
+/// reads a platform channel that never answers in a widget test.
+final class _FixedAgeSignal implements core.AgeSignalSource {
+  const _FixedAgeSignal(this.signal);
+  final core.AgeSignal signal;
+
+  @override
+  Future<core.AgeSignal> read() async => signal;
 }
 
 /// A repository that registers the account and hands back NO SESSION — the

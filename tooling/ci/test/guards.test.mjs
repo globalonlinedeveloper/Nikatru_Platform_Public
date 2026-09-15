@@ -4018,6 +4018,10 @@ group('property: sessionless-signup-reaches-check-inbox', () {
   testWidgets('ci1', (t) async {});
   testWidgets('ci2', (t) async {});
 });
+group('property: store-age-gate-refuses', () {
+  testWidgets('ag1', (t) async {});
+  testWidgets('ag2', (t) async {});
+});
 group('property: profile-edit-works', () {
   test('ll', () {});
   test('mm', () {});
@@ -4260,6 +4264,10 @@ final Provider<bool> promoObjectionKnownProvider = X();
 // COVERED_BY without adding them here failed eleven of this file's own cases.
 final StateProvider<core.AccountDeletionOutcome?> lastAccountDeletionOutcomeProvider = X();
 final StateProvider<String?> lastAccountDeletionDetailProvider = X();
+// [ADR 082] §5, 2026-09-15 — the store age signal. Here for the same
+// both-directions classification reason as the deletion pair above, and it is
+// also the PROVIDERS anchor of store-age-gate-refuses.
+final Provider<core.AgeSignalSource> ageSignalSourceProvider = X();
 final Provider<core.ConsentStatus> analyticsConsentProvider = X();
 final Provider<bool> consentDecidedProvider = X();
 // The legal gate's anchors, and all three are load-bearing for the
@@ -4701,6 +4709,7 @@ abstract class AuthRepository {
   const SIGN_UP = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/features/auth/sign_up_screen.dart';
   const goodSignUp = `
 Future<void> _submit() async {
+  final AgeSignal age = await readAgeSignal(ref.read(ageSignalSourceProvider));
   final AuthUser? auth = await ref.read(authRepositoryProvider).signUp(email, password);
   if (!mounted) return;
   if (auth.currentUser == null) {
@@ -6800,7 +6809,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // — the deletion outcome, parked above the screen the sign-out tears down.
       // Both are CLASSIFIED (under `account-deletion-works`, DRIVEN through the
       // real router), so the domain moves by two and the gap count below does not.
-      assert.match(out, /tracked domain: 59 chassis behaviour\(s\)/);
+      // 60 since 2026-09-15: [ADR 082] §5 added `ageSignalSourceProvider`,
+      // classified under `store-age-gate-refuses`, so the gap count does not move.
+      assert.match(out, /tracked domain: 60 chassis behaviour\(s\)/);
       // The admitted gaps must PRINT. An inventory nobody sees is a list that
       // quietly grows; this is the same reasoning as the owner-gated residual.
       // 9, not 10: [pipeline C-13] moved notificationServiceProvider out of the
@@ -6884,7 +6895,9 @@ onTap: () => _openUrl(AppConfig.refundUrl),
       // and the floor of 59 trips. Left at 56 the assertion would simply not
       // match and the case would fail loudly — which is the good outcome, and is
       // how it was caught this time too.
-      assert.match(out, /COVERAGE LOST — the domain parse found 58/);
+      // 2026-09-15: 58 → 59, the same three-file act for `ageSignalSourceProvider`
+      // ([ADR 082] §5); MIN_DOMAIN went 59 → 60 in the same commit.
+      assert.match(out, /COVERAGE LOST — the domain parse found 59/);
     });
 
     // The scanner-stopped-scanning case, which is how this repo has been bitten

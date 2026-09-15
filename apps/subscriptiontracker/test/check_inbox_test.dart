@@ -148,6 +148,12 @@ ProviderContainer _container(core.AuthRepository auth) => ProviderContainer(
     keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
     consentTransportProvider.overrideWithValue(_RecordingTransport()),
     analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+    // ⏱ 2026-09-15 · [ADR 082] §5. The shipped source reads the Play platform
+    // channel on this (android) test host, which never answers under
+    // `flutter test`; no store signal proceeds on the 18+ declaration.
+    ageSignalSourceProvider.overrideWithValue(
+      core.ageSignalSourceFor(core.AgeSignalHost.other),
+    ),
   ],
 );
 

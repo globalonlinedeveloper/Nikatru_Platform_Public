@@ -22,6 +22,8 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart';
+import 'package:nikatru_platform_storage/age_signals.dart'
+    show currentStoreAgeSignalSource;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/app_config.dart';
@@ -1054,6 +1056,22 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
     ),
   );
 });
+
+/// ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal the sign-up doors read
+/// before an account is created (`SignUpScreen`, and `SignInScreen` for Sign in
+/// with Apple). The shipped value is the source for the running host: Google
+/// Play Age Signals on android, Apple Declared Age Range on ios, no signal
+/// elsewhere (`nikatru_platform_storage/age_signals.dart`). USE RESTRICTION: the
+/// age range is used ONLY for this gate and is never stored, logged or sent.
+///
+/// 🔴 A PROVIDER, NOT A CALL IN THE SCREEN, and a stamped suite is why. A widget
+/// test runs as an android host, so the shipped value reaches the Play platform
+/// channel — which has no native side under `flutter test` and never answers
+/// inside the fake clock. A screen that called the adapter directly left every
+/// registration property waiting on it for ever; a provider lets the harness
+/// state the store's answer instead.
+final Provider<core.AgeSignalSource> ageSignalSourceProvider =
+    Provider<core.AgeSignalSource>((ref) => currentStoreAgeSignalSource());
 
 /// Whether a PASSWORD-RECOVERY session is in flight.
 ///

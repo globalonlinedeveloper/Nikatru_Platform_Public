@@ -1,4 +1,5 @@
-/// The store age-signal adapters — [ADR 082] §5.
+/// The store age-signal adapters — [ADR 082] §5. Its own library inside
+/// `nikatru_platform_storage`, so a later split into a package stays mechanical.
 ///
 /// 🔴 USE RESTRICTION, accepted by the owner on 2026-09-15 with the Play Age
 /// Signals terms: the age range is read ONLY to decide the sign-up age gate — an
@@ -13,6 +14,7 @@
 /// treats as "no signal" and proceeds on the 18+ declaration — never as "adult".
 library;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
@@ -87,4 +89,10 @@ core.AgeSignalSource storeAgeSignalSourceFor(core.AgeSignalHost host) =>
       host,
       android: const PlayAgeSignalSource(),
       ios: const AppleAgeSignalSource(),
+    );
+
+/// The store source for the host this build is running on.
+core.AgeSignalSource currentStoreAgeSignalSource() => storeAgeSignalSourceFor(
+      core.ageSignalHostNamed(
+          isWeb: kIsWeb, platform: defaultTargetPlatform.name),
     );

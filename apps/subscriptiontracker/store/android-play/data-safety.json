@@ -251,7 +251,7 @@
       "  isApiConfigured      := API_BASE_URL   != placeholder",
       "  isBackendLive        := isSupabaseConfigured && isApiConfigured",
       "and the app branches on them at four places that decide everything this form asks about:",
-      "  providers/auth.dart:121          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
+      "  providers/auth.dart:122          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
       "  providers/subscriptions.dart:80  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:536  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
       "  app.dart:468                  the consent prompt shows only when analyticsEnabledProvider is true",
@@ -1799,7 +1799,7 @@
       },
       "nikatru_platform_storage": {
         "introduces": [],
-        "why": "First-party. shared_preferences and flutter_secure_storage adapters. Writes ON the device only — nothing here transmits."
+        "why": "First-party. shared_preferences and flutter_secure_storage adapters. Writes ON the device only — nothing here transmits. ⏱ 2026-09-15 · [ADR 082] §5: also the store age-signal adapter (android: com.google.android.play:age-signals 0.0.4, the Play Age Signals API beta). The age range Google Play returns is used ONLY for the sign-up age gate — never analytics, advertising, marketing or profiling (Play Age Signals terms, accepted by the owner 2026-09-15) — and is read on the device, decided on and discarded: nothing is stored, logged or sent off the device, so it introduces no collected or shared data type. packages/platform_storage/test/age_signals_test.dart proves the Dart side logs and sends nothing and scans the Kotlin for logging, storage and network calls."
       },
       "nikatru_auth_supabase": {
         "introduces": [

@@ -1,4 +1,4 @@
-group 'com.nikatru.age_signals'
+group 'com.nikatru.platform_storage'
 version '0.1.0'
 
 rootProject.allprojects {
@@ -19,7 +19,7 @@ if (agpMajor < 9 || !builtInKotlinEnabled) {
 }
 
 android {
-    namespace 'com.nikatru.age_signals'
+    namespace 'com.nikatru.platform_storage'
     compileSdk 36
 
     compileOptions {

@@ -1,4 +1,4 @@
-package com.nikatru.age_signals
+package com.nikatru.platform_storage
 
 import android.app.Activity
 import android.content.Context
@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 
 /**
  * [ADR 082] §5 — reads Google Play Age Signals (beta) for the sign-up age gate.
+ * Part of `nikatru_platform_storage` (39-CHASSIS §2: platform capabilities land there).
  *
  * USE RESTRICTION (Play Age Signals terms, accepted by the owner 2026-09-15): the
  * answer is used ONLY to decide whether an account may be created — an
