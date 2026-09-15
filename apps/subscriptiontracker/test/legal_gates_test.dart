@@ -449,6 +449,12 @@ void main() {
           consentTransportProvider.overrideWithValue(transport),
           authRepositoryProvider.overrideWithValue(_RefusingAuth()),
           analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+          // ⏱ 2026-09-15 · [ADR 082] §5. The shipped source reads the Play platform
+          // channel on this (android) test host, which never answers under
+          // `flutter test`; no store signal proceeds on the 18+ declaration.
+          ageSignalSourceProvider.overrideWithValue(
+            core.ageSignalSourceFor(core.AgeSignalHost.other),
+          ),
         ],
       );
       addTearDown(c.dispose);

@@ -52,6 +52,8 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
+import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
+import 'package:subscriptiontracker/features/auth/sign_up_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 // [pipeline 11]E-6. The paywall is the screen that emits the four money events,
@@ -64,6 +66,8 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
+
+import 'support/mock_auth_repository.dart';
 
 /// In-memory store: `PrefsKeyValueStore` needs a platform channel that does not
 /// exist in a widget test, so every test overrides the seam rather than mocking
@@ -4548,6 +4552,73 @@ void main() {
   // that is precisely why this group builds its own container and overrides
   // nothing: the real provider hydrates through the real ConsentController over
   // an empty store, which IS the fresh-install shape.
+  // ── PROPERTY: store-age-gate-refuses ──────────────────────────────────────
+  // ⏱ 2026-09-15 · [ADR 082] §5. A store age signal below adult creates NO
+  // account on this app's own `SignUpScreen`, through `ageSignalSourceProvider`.
+  // The chassis views prove the decision when HANDED a source; this proves the
+  // app hands over the provider's answer. Both directions: a gate that refuses
+  // everyone passes the first case alone. (`age_gate_sign_up_test.dart` covers
+  // the LoginScreen toggle and Sign in with Apple as well.)
+  group('property: store-age-gate-refuses', () {
+    Future<MockAuthRepository> register(
+      WidgetTester tester,
+      core.AgeSignal signal,
+    ) async {
+      final MockAuthRepository auth = MockAuthRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            keyValueStoreProvider.overrideWith((_) async => _onboardedStore()),
+            authRepositoryProvider.overrideWithValue(auth),
+            ageSignalSourceProvider.overrideWithValue(_FixedAgeSignal(signal)),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const SignUpScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(0), 'newcomer@b.test');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(SignUpScreen.submitButton));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      return auth;
+    }
+
+    testWidgets('a store signal BELOW ADULT creates no account and says why', (
+      WidgetTester tester,
+    ) async {
+      final MockAuthRepository auth = await register(
+        tester,
+        const core.BelowAdultAgeSignal(),
+      );
+      expect(
+        auth.currentUser,
+        isNull,
+        reason: 'the store said this person is under 18',
+      );
+      final AppLocalizations l10n = AppLocalizations.of(
+        tester.element(find.byType(SignUpScreen)),
+      );
+      expect(find.text(l10n.signUpAgeRefused), findsOneWidget);
+    });
+
+    testWidgets('an ADULT store signal creates the account', (
+      WidgetTester tester,
+    ) async {
+      final MockAuthRepository auth = await register(
+        tester,
+        const core.AdultAgeSignal(),
+      );
+      expect(auth.currentUser, isNotNull);
+    });
+  });
+
   group('property: legal-reacceptance-gated', () {
     ProviderContainer freshInstall() => ProviderContainer(
       overrides: <Override>[
@@ -4634,4 +4705,14 @@ class _RecordingAnalytics implements core.Analytics {
 
   @override
   Future<void> purge() async => events.clear();
+}
+
+/// A store age signal fixed in advance — [ADR 082] §5. The shipped source
+/// reads a platform channel that never answers in a widget test.
+final class _FixedAgeSignal implements core.AgeSignalSource {
+  const _FixedAgeSignal(this.signal);
+  final core.AgeSignal signal;
+
+  @override
+  Future<core.AgeSignal> read() async => signal;
 }

@@ -1494,6 +1494,24 @@ const REQUIRED_COVERAGE = [
     ],
     why: 'a registration that produces no session is the DEFAULT shape once "Confirm email" is on, and the app said nothing at all about it — the screen, the gate and the router were each correct and none of them owned the gap between them',
   },
+  {
+    // ── A STORE SIGNAL BELOW ADULT CREATES NO ACCOUNT ([ADR 082] §5) ─────────
+    //
+    // ⏱ 2026-09-15. The chassis views refuse when they are HANDED a below-adult
+    // source (packages/chassis_screens/test/age_gate_view_test.dart), and the
+    // store adapters map each store's answer (packages/platform_storage/test/
+    // age_signals_test.dart). What a stamped app can still get wrong is the
+    // wire between them: a sign-up screen that passes a hard-coded source, or
+    // none, gates nothing on a real store while every one of those tests stays
+    // green. Two anchors, one per edit that cuts the wire.
+    key: 'store-age-gate-refuses',
+    group: /group\(\s*'property: store-age-gate-refuses'/,
+    sources: [
+      { file: PROVIDERS, re: /final Provider<core\.AgeSignalSource>\s+ageSignalSourceProvider\s*=/, what: 'the store age signal must be a PROVIDER — a widget test runs as an android host whose Play channel never answers, so a source the screen builds itself can be neither injected nor proven' },
+      { file: SIGN_UP, re: /ref\.(?:watch|read)\(\s*ageSignalSourceProvider\s*\)/, what: 'the sign-up door must read the store signal through the provider — a hard-coded source gates nothing on a real store and no chassis test can see it' },
+    ],
+    why: 'Google Play Age Signals and Apple Declared Age Range say when a person is under 18, and an 18+ app that creates their account anyway has ignored the one signal the stores give it — the chassis decision being right proves nothing if the app never hands it the store\'s answer',
+  },
 ];
 
 // ── THE TRACKED DOMAIN — what "every" ranges over. ──────────────────────────
@@ -1569,7 +1587,10 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // are in COVERED_BY under `account-deletion-works`, so the domain and the
 // classification move together, and both moved in the SAME COMMIT as the
 // providers — the rule the 2026-08-11 note above exists to enforce.
-const MIN_DOMAIN = 59;
+// 2026-09-15: 59 → 60 with `ageSignalSourceProvider` ([ADR 082] §5, the store
+// age signal the sign-up doors read). Classified under `store-age-gate-refuses`,
+// which DRIVES it in both directions, in the same commit as the provider.
+const MIN_DOMAIN = 60;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
@@ -1810,6 +1831,9 @@ const COVERED_BY = {
   // note about `legalAcceptanceProvider` records.
   lastAccountDeletionOutcomeProvider: 'account-deletion-works',
   lastAccountDeletionDetailProvider: 'account-deletion-works',
+  // [ADR 082] §5. Driven, not constructed: the property overrides it with a
+  // below-adult answer and asserts no account, then an adult one and asserts one.
+  ageSignalSourceProvider: 'store-age-gate-refuses',
 };
 
 // Dated, reasoned gaps. NOT an excuse list — it is the honest inventory of what

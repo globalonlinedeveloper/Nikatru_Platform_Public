@@ -335,6 +335,15 @@ function attribute(cap, decls, shared) {
       // prefix, so match the seam name as a dotted-path tail, not a bare word.
       for (const s of seamNames) {
         if (new RegExp(`(?:implements|extends|with)\\b[^{]*\\b(?:\\w+\\s*\\.\\s*)?${s}\\b`).test(decl)) return true;
+        // ⏱ 2026-09-15 · a top-level FACTORY whose DECLARED RETURN TYPE is the
+        // seam — `core.AgeSignalSource currentStoreAgeSignalSource()` ([ADR 082]
+        // §5). Hard evidence in the same sense as an implements clause: the
+        // declaration itself says it hands back this capability's seam. Without
+        // it a stamp wired through the package's factory (the shape an app
+        // SHOULD reach for, rather than choosing a store class per host itself)
+        // read as never calling the package. Return type only, prefix allowed,
+        // nullable allowed; `Future<Seam>` and a bare mention do not count.
+        if (new RegExp(`^(?:\\w+\\s*\\.\\s*)?${s}\\??\\s+${name}\\s*\\(`).test(decl.trim())) return true;
       }
       return false;
     })

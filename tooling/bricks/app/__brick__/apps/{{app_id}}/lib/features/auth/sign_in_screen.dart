@@ -46,6 +46,10 @@ class SignInScreen extends ConsumerWidget {
     );
 
     return SignInView(
+      // ⏱ 2026-09-15 · [ADR 082] §5 — the store age signal read before Sign in with
+      // Apple, which can create an account. Sign-up age gate ONLY: never stored,
+      // logged or sent (`ageSignalSourceProvider`).
+      ageSignals: ref.watch(ageSignalSourceProvider),
       onSignIn: (String email, String password) =>
           auth.signInWithEmail(email: email, password: password),
       // A CALL, NOT A TEAR-OFF — same reason as `verify_email_screen.dart`:

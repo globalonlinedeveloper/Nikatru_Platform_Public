@@ -38,3 +38,20 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+# ⏱ 2026-09-15 · [ADR 082] §5 — THIS PACKAGE IS ALSO A FLUTTER PLUGIN: the store
+# age-signal adapters (lib/age_signals.dart) read Google Play Age Signals on
+# android (android/, com.google.android.play:age-signals) and Apple Declared Age
+# Range on ios (ios/, a system framework). They live HERE, not in a new package,
+# per the locked 39-CHASSIS §2 adjudication in tooling/capability-register.json
+# `packageEarnReasons`: platform capabilities land in platform_storage. Every
+# store app needs the age gate, so linking the adapter everywhere is the intended
+# surface. USE RESTRICTION: sign-up age gate only — nothing stored, logged or sent.
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.nikatru.platform_storage
+        pluginClass: AgeSignalsPlugin
+      ios:
+        pluginClass: AgeSignalsPlugin

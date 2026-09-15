@@ -487,6 +487,10 @@
           "symbol": "AuthRepository"
         },
         {
+          "file": "packages/core/lib/src/auth/age_signal.dart",
+          "symbol": "AgeSignalSource"
+        },
+        {
           "file": "packages/core/lib/src/config/config_loader.dart",
           "symbol": "ConfigTransport"
         },
@@ -648,6 +652,28 @@
         "pinnedTo": "flutter_secure_storage 9.x + shared_preferences 2.x",
         "degradesOn": "Linux secure storage is CONDITIONAL ON THE ENVIRONMENT: libsecret must be installed AND a Secret Service daemon running and unlocked. Headless, kiosk and CI sessions often have neither, so a write can fail at runtime where every other desktop succeeds. Web is not OS-backed at all."
       }
+    },
+    {
+      "id": "age_signals",
+      "capability": "⏱ 2026-09-15 · [ADR 082] §5. The store age-signal adapters behind core's AgeSignalSource seam: PlayAgeSignalSource (Google Play Age Signals beta, com.google.android.play:age-signals 0.0.4) and AppleAgeSignalSource (Apple Declared Age Range, iOS 26.2+), selected per host by storeAgeSignalSourceFor. Native code returns the store's raw fields over one MethodChannel (`nikatru/age_signals`); what they mean is core.ageSignalFromPlay / ageSignalFromApple. USE RESTRICTION: the sign-up age gate ONLY — never analytics, advertising, marketing or profiling (Play Age Signals terms accepted by the owner 2026-09-15); the age range is read, decided on and discarded, never stored, logged or sent.",
+      "owner": "packages/platform_storage",
+      "package": "nikatru_platform_storage",
+      "seams": [],
+      "implementsSeams": [
+        "AgeSignalSource"
+      ],
+      "consumers": [
+        "apps/subscriptiontracker",
+        "tooling/bricks/app/__brick__/apps/{{app_id}}"
+      ],
+      "capabilityMatrix": {
+        "file": "packages/platform_storage/lib/src/age_signal_capabilities.dart",
+        "symbol": "AgeSignalCapabilities",
+        "test": "packages/platform_storage/test/age_signal_capabilities_test.dart",
+        "pinnedTo": "com.google.android.play:age-signals 0.0.4 (beta) + Apple DeclaredAgeRange (iOS 26.2 SDK)",
+        "degradesOn": "Only android (Play Age Signals) and iOS 26.2+ (Declared Age Range) have a store age signal at all; macOS, Windows, Linux, web and fuchsia read no signal and the sign-up gate proceeds on the 18+ declaration. Android additionally needs the Play Store on the device. iOS answers only with the com.apple.developer.declared-age-range entitlement, which the app does not carry yet (App ID capability and profile regeneration are an owner action), so until then iOS also reads no signal. The test asserts the matrix agrees with storeAgeSignalSourceFor on every platform."
+      },
+      "note": "Lives in platform_storage, not a new package, per the locked 39-CHASSIS §2 adjudication (`packageEarnReasons`): platform capabilities land there. Its Dart API is its own library, lib/age_signals.dart, so a later split stays mechanical. ⚠️ iOS ships WITHOUT the com.apple.developer.declared-age-range entitlement until the App ID capability is enabled and the provisioning profile regenerated (owner action); until then requestAgeRange fails and the gate proceeds on the 18+ declaration."
     },
     {
       "id": "review",

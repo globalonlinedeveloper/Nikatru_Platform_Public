@@ -323,6 +323,40 @@ describe('assert-stamp-wiring', () => {
     assert.doesNotMatch(out, /store — the stamp DEPENDS/, 'the storage half is genuinely wired');
   });
 
+  // ⏱ 2026-09-15 · [ADR 082] §5. A stamp wired through the package's FACTORY —
+  // a top-level function whose declared return type is the seam — is wired.
+  // The real shape: `core.AgeSignalSource currentStoreAgeSignalSource()` in
+  // packages/platform_storage, which hosts three capabilities.
+  const FACTORY_PKGS = (returnType) => ({
+    ...PKGS,
+    'packages/store': {
+      ...PKGS['packages/store'],
+      'factory.dart': `
+import 'package:nikatru_core/seams.dart' as core;
+${returnType} createReviewPrompter() => InAppReviewPrompter();
+`,
+    },
+  });
+  const FACTORY_LIB = GOOD_LIB.replace('final prompter = InAppReviewPrompter();', 'final prompter = createReviewPrompter();');
+
+  test('a top-level factory RETURNING the seam is wiring for the capability that implements it', () => {
+    const { code, out } = run(tree({ lib: FACTORY_LIB, pkgs: FACTORY_PKGS('core.ReviewPrompter') }));
+    assert.equal(code, 0, out);
+    assert.match(out, /review → createReviewPrompter/);
+  });
+
+  test('...but a factory whose return type is NOT the seam vouches for nothing', () => {
+    const { code, out } = run(tree({ lib: FACTORY_LIB, pkgs: FACTORY_PKGS('Object') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /review — the stamp DEPENDS on `nikatru_store` but never CALLS it/);
+  });
+
+  test('...and a factory returning ANOTHER capability\'s seam does not vouch across a shared package', () => {
+    const { code, out } = run(tree({ lib: FACTORY_LIB, pkgs: FACTORY_PKGS('core.KeyValueStore') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /review — the stamp DEPENDS/);
+  });
+
   // "Cannot be checked" must never read as "passes".
   test('FAILS when a capability on a shared package has no attributable symbol', () => {
     const { code, out } = run(tree({

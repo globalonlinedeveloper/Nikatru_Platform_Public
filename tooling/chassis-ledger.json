@@ -20,7 +20,7 @@
   "_rootsNote": "TWO roots since 2026-09-07 ([ADR 067] phase 2, unit app-shell). The Worker half of the template - 13 files, 917 lines every stamped backend app inherits - was outside this ledger entirely while `root` was one string, and `git ls-files -- <that one root>` could not see it to complain. assert-chassis-ledger.mjs is the authority on this list and cross-checks it; a row's `root` is optional and defaults to roots[0], which is why the 96 rows written against the single root are unchanged. ⏱ THE FIGURES IN THIS NOTE MOVED ON 2026-09-08 AND ARE CORRECTED RATHER THAN REWRITTEN: the Worker half is now 14 files and 1,021 lines, because the template gained src/lib/error-sink.ts — a stamped backend had NO crash sink at all and failed tooling/ci/assert-worker-error-sink.mjs on limbs 2, 3 and 5 at its first CI run. The guard PRINTS both figures per root on every run, which is the number to read; this sentence is prose and prose rots.",
   "totals": {
     "files": 128,
-    "lines": 17664,
+    "lines": 17790,
     "unclassified": 0,
     "unclassifiedLines": 0
   },
@@ -129,7 +129,7 @@
     },
     {
       "path": "lib/features/auth/sign_in_screen.dart",
-      "lines": 68,
+      "lines": 72,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / [ADR 071] — MEASURED 2026-09-06: 298 -> 68 brick lines, 303 package lines, callSiteDelta -230. THREE things stayed, each for a named guard and not for taste: the caps.oauthRedirect read (assert-no-seam-forks:610-616 fails when a PARITY chassis file yields zero caps.<field> reads, and the zero-caps COVERAGE LOST names the ADAPTER), signInWithEmail( (dod.json:75 anchors the auth-redirect mutation proof at this path and assert-app-dod:836 fails when the symbol leaves the file), and the two context.go calls. The rest — the preflight, the busy latch, the FocusNode, the deletion notice — is now one file for every stamped app.",
       "target": "packages/chassis_screens/lib/auth/sign_in_screen.dart",
@@ -137,7 +137,7 @@
     },
     {
       "path": "lib/features/auth/sign_up_screen.dart",
-      "lines": 94,
+      "lines": 98,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 / [ADR 071] — MEASURED 2026-09-06: 194 -> 94 brick lines, 178 package lines, callSiteDelta -100. Both consent flags moved with their boxes. What stayed is what assert-stamp-properties SIGN_UP (:1428) anchors and a package declaring no go_router cannot hold: signUpWithEmail( then the consent write then the NO-SESSION-only context.go(/check-inbox, extra:), in that order and for the reason written beside it, plus the ConsentFieldsBuilder that keeps the brick consent widget in the render tree.",
       "target": "packages/chassis_screens/lib/auth/sign_up_screen.dart",
@@ -227,7 +227,7 @@
     },
     {
       "path": "lib/state/providers.dart",
-      "lines": 2607,
+      "lines": 2625,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable (9 guards) and NOT reducible to declarations — a 98-line stub carrying all 51 provider names and all 14 class/typedef signatures still left 8 guards red. MIN_DOMAIN=59 is NOT the binding constraint (its regex does accept a one-line delegation, verified: 51 such lines count 51); the binding constraints are 37 literal anchors in assert-stamp-properties, the analytics envelope literal (assert-analytics-contract:207), the consent gate (assert-policy-claims POLICY_CONSTS), two sole non-test seam call sites (assert-seams-wired:588,622) and MIN_PROVIDERS=20 (assert-provider-graph-acyclic:419, the stub parsed 9)."
     },
@@ -587,7 +587,7 @@
     },
     {
       "path": "test/chassis_properties_test.dart",
-      "lines": 5519,
+      "lines": 5619,
       "verdict": "STAYS",
       "why": "MEASURED: undeletable — assert-stamp-properties:2197 exits 1 with COVERAGE LOST, and all SIX feature rows in the brick dod.json resolve to declarations that exist ONLY in this file. 26 property groups, 123 cases, 3,595 code lines. Its bulk is WIRING proof, not duplication: 42 cases boot the real stamped app root and none unit-tests a package class. Reducible only per-property, which the file itself sanctions. One genuine candidate: the content-pack group (117 lines) tests a rail 0 of 600 shipped Dart files read."
     },

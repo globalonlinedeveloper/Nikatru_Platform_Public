@@ -149,7 +149,7 @@ AgeSignalHost ageSignalHostNamed(
 /// documentation on 2026-09-15:
 ///
 ///   · android → Google Play Age Signals (beta) when an adapter is supplied;
-///   · ios     → Apple Declared Age Range (iOS 26+) when an adapter is supplied;
+///   · ios     → Apple Declared Age Range (iOS 26.2+) when an adapter is supplied;
 ///   · macos   → none: the API exists on macOS 26 but the OS reports no age
 ///     assurance there (`isEligibleForAgeFeatures` is false);
 ///   · windows → none: the OS age APIs are Windows Insider only;
@@ -229,7 +229,7 @@ AgeSignal ageSignalFromPlay({
   }
 }
 
-/// Apple Declared Age Range (iOS 26+), requested with a single age gate of 18:
+/// Apple Declared Age Range (iOS 26.2+), requested with a single age gate of 18:
 /// `AgeRangeService.shared.requestAgeRange(ageGates: 18, nil, nil, in: vc)`.
 ///
 /// [eligible] is `isEligibleForAgeFeatures` (null when the OS has no API).
