@@ -126,7 +126,7 @@ enum AccountDeletionOutcome {
         return 'Your account has been deleted. Signing in with the same email '
             'and password will not work any more.';
       case AccountDeletionOutcome.pending:
-        return 'Your account deletion was accepted and is still being completed. Some of your data could not be removed yet; it will be removed automatically, and your sign-in will be removed after that. Do not assume the deletion has finished. You have been signed out of this device.';
+        return 'Your deletion request was accepted but isn\'t finished yet. Some of your data couldn\'t be removed right away. We\'ll keep trying automatically, and your sign-in is removed last. You\'ve been signed out of this device.';
       case AccountDeletionOutcome.notConfigured:
         return 'Nothing was deleted. This app cannot complete an account '
             'deletion yet, so the server refused the request rather than delete '

@@ -130,7 +130,7 @@
   "@deleteAccountSignInSurvives": {
     "description": "The 502 answer: rows purged, identity delete failed. Must NOT say nothing was deleted — the data really is gone and only the login survived."
   },
-  "deleteAccountPending": "Your deletion request was accepted and is still being completed. Some of your data could not be removed yet; it will be removed automatically, and your sign-in will be removed after that. Do not assume the deletion has finished.",
+  "deleteAccountPending": "Your deletion request was accepted but isn't finished yet. Some of your data couldn't be removed right away. We'll keep trying automatically, and your sign-in is removed last.",
   "@deleteAccountPending": {
     "description": "ADR 081, 2026-09-15: the 202 erasure_pending answer. Accepted, not finished: an app could not be reached, its data and the sign-in are removed later automatically. Must NOT say the account is deleted, and must state no turnaround time."
   },

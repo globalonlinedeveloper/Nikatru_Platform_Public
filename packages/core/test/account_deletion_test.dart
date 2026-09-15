@@ -34,7 +34,7 @@ void main() {
           AccountDeletionOutcome.pending);
       expect(AccountDeletionOutcome.pending.accountIsGone, isFalse);
       expect(AccountDeletionOutcome.pending.plainMessage,
-          contains('still being completed'));
+          contains("isn't finished yet"));
     });
 
     test('501 · nothing was deleted — the route refuses BEFORE it destroys',
