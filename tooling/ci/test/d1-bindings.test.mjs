@@ -17,6 +17,14 @@
 // platform_db = 9d1c5c63-…-f3fd22e9b351 and subly_db = 88da9026-…-431148fa8112
 // both exist, with those names.
 //
+// ⏱ 2026-09-15 — the subly_db half of that line is NO LONGER TRUE (kept as the
+// 2026-07-29 record). Re-measured 2026-09-14 against the live account
+// (read-only `GET /accounts/<acct>/d1/database?per_page=100`, 18:07Z): exactly
+// two D1 databases, platform_db = 9d1c5c63-…-f3fd22e9b351 and
+// subscriptiontracker_db = 0a36d6a0-…-970de3482321 ([ADR 079] renamed subly_db
+// away). The `subly_db` / SUBLY names below are FIXTURE values in a temp tree,
+// never read against an account; the guard holds whatever names the configs use.
+//
 // Run:  node --test "tooling/ci/test/*.test.mjs"
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';

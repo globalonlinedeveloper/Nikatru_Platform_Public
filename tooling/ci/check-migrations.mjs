@@ -72,7 +72,7 @@ const PATTERNS = [
  *  files instead of 6 and still printed "clean". Its schema holds real user rows. */
 const REQUIRED_COVERAGE = [
   { fragment: 'services/platform', label: 'the shared platform_db migrations' },
-  { fragment: 'services/subscriptiontracker-api', label: "subly_db's own migrations — the flagship app's real user rows" },
+  { fragment: 'services/subscriptiontracker-api', label: "subscriptiontracker_db's own migrations — the flagship app's real user rows" },
   { fragment: 'tooling/bricks', label: "the brick's starter schema" },
 ];
 

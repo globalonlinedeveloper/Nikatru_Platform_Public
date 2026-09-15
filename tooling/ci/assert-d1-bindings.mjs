@@ -39,6 +39,19 @@
 // than automated, and the automation that WOULD need it is the provisioning
 // script, which runs with the owner's token by design.
 //
+// ⏱ 2026-09-15 — THE 2026-07-29 LINE ABOVE IS NO LONGER TRUE, and is kept as
+// the record of what was verified that day. `subly_db` was renamed away by
+// [ADR 079] (2026-09-11) and the account no longer holds it. Re-measured
+// against the live account 2026-09-14 (read-only
+// `GET /accounts/<acct>/d1/database?per_page=100`, read at 18:07Z by that
+// day's Public writer 2 and again by the session lead the same day): exactly
+// TWO D1 databases — platform_db = 9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351 and
+// subscriptiontracker_db = 0a36d6a0-c909-40aa-853e-970de3482321, both present,
+// both matching the ids in services/platform/wrangler.jsonc and
+// services/subscriptiontracker-api/wrangler.jsonc. The pair declared in BOTH
+// configs (second check above) is now subscriptiontracker_db, not subly_db.
+// Still recorded by hand, for the same reason: CI has no account token.
+//
 // Usage:  node tooling/ci/assert-d1-bindings.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
