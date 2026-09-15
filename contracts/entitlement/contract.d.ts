@@ -45,6 +45,11 @@ export const REVENUECAT_EVENT_REASONS: readonly RevenueCatEventReason[];
 
 export function revocationReasonForRevenueCatEvent(event: string): string | null;
 
+/** What a RevenueCat event does to ACCESS, read off the table. Null: the table does not decide it — ack, change nothing. */
+export type RevenueCatAccessRuling = 'grant' | 'revoke' | 'paid-through';
+
+export function revenueCatAccessRuling(event: string): RevenueCatAccessRuling | null;
+
 export const CONTRACT_TABLE: {
   readonly moneyEnvironments: readonly MoneyEnvironment[];
   readonly revocationReasons: readonly RevocationReason[];

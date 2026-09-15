@@ -14,6 +14,8 @@ import {
   isoFromEpochMs,
   type Invalid,
 } from '../lib/validate';
+// The RevenueCat event vocabulary — see the dated block above resolveIsActive.
+import { revenueCatAccessRuling } from '../../../../contracts/entitlement/contract.js';
 
 const app = new Hono<AppEnv>();
 
@@ -91,19 +93,25 @@ interface RevenueCatEvent {
 // rows on its own evidence.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Access is granted outright. */
-const ACTIVE_TYPES = new Set([
-  'INITIAL_PURCHASE',
-  'RENEWAL',
-  'PRODUCT_CHANGE',
-  'UNCANCELLATION',
-  'NON_RENEWING_PURCHASE',
-  'SUBSCRIPTION_EXTENDED',
-]);
-/** Access is revoked outright — the subscription is over. */
-const INACTIVE_TYPES = new Set(['EXPIRATION']);
-/** Access is decided by the paid-through date carried on the event itself. */
-const GRACE_TYPES = new Set(['CANCELLATION', 'BILLING_ISSUE']);
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-15 — THE EVENT VOCABULARY IS IMPORTED, NOT RESTATED HERE.
+// Until today this file declared three literal sets — ACTIVE (INITIAL_PURCHASE,
+// RENEWAL, PRODUCT_CHANGE, UNCANCELLATION, NON_RENEWING_PURCHASE,
+// SUBSCRIPTION_EXTENDED), INACTIVE (EXPIRATION) and GRACE (CANCELLATION,
+// BILLING_ISSUE) — and imported nothing from contracts/, a second author of the
+// money decision that contracts/entitlement/contract.js already authors
+// (O-REVENUECAT-VERIFIER; tooling/ci/assert-entitlement-contract.mjs limb 7 held
+// the divergence to a declared list). The ruling now comes from
+// `revenueCatAccessRuling`, read off that table:
+//   'grant' ↔ the old ACTIVE, 'revoke' ↔ INACTIVE, 'paid-through' ↔ GRACE.
+// The six-plus-one-plus-two events above map to the same rulings, so behaviour
+// for every event this route handled is unchanged. The one name the table knew
+// and this file did not, SUBSCRIPTION_PAUSED, is still acked and ignored — the
+// vendor reference says not to revoke on it, and the table was corrected to say
+// so before this import could act on it. esbuild inlines the file at bundle
+// time, exactly as services/platform/src/lib/mor/contract.ts already does. The
+// import itself sits with the others at the top of this file.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Resolve a handled event type to is_active (0/1).
@@ -126,21 +134,24 @@ export function resolveIsActive(
   expiresAtMs: number | null | undefined,
   nowMs: number,
 ): 0 | 1 {
-  if (ACTIVE_TYPES.has(type)) return 1;
-  if (INACTIVE_TYPES.has(type)) return 0;
-  if (GRACE_TYPES.has(type)) {
-    if (expiresAtMs === null || expiresAtMs === undefined) return 1;
-    return expiresAtMs > nowMs ? 1 : 0;
+  switch (revenueCatAccessRuling(type)) {
+    case 'grant':
+      return 1;
+    case 'revoke':
+      return 0;
+    case 'paid-through':
+      if (expiresAtMs === null || expiresAtMs === undefined) return 1;
+      return expiresAtMs > nowMs ? 1 : 0;
+    default:
+      // Unreachable: callers gate on isHandledType first. Fails CLOSED if not.
+      return 0;
   }
-  // Unreachable: callers gate on isHandledType first.
-  return 0;
 }
 
-/** Types this handler acts on. Everything else is an ack-and-ignore no-op. */
+/** Types this handler acts on — exactly those the contract table rules on.
+ *  Everything else is an ack-and-ignore no-op. */
 export function isHandledType(type: string): boolean {
-  return (
-    ACTIVE_TYPES.has(type) || INACTIVE_TYPES.has(type) || GRACE_TYPES.has(type)
-  );
+  return revenueCatAccessRuling(type) !== null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
