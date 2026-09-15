@@ -2011,7 +2011,8 @@
   {
     "claims": [
       "ADR 015",
-      "ADR 037"
+      "ADR 037",
+      "ADR 084"
     ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-store"

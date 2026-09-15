@@ -22,6 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/auth/turnstile_gate.dart';
 
 void main() {
@@ -99,6 +100,12 @@ void main() {
       );
     });
 
+    test('the cutover assertion reads the CHASSIS key, not a private copy', () {
+      // [ADR 084]: the read has one home. Both views agree in this build.
+      expect(AppConfig.turnstileSiteKey, TurnstileGate.siteKey);
+      expect(AppConfig.isTurnstileConfigured, isFalse);
+    });
+
     test('it is NOT called at startup, or every current build would crash', () {
       // Pinning the decision, not just the code: every build today correctly
       // has no key, so wiring this into main() would take the app down.
@@ -106,4 +113,47 @@ void main() {
       expect(() => TurnstileGate(onToken: (String? _) {}), returnsNormally);
     });
   });
+
+  // ⏱ 2026-09-15 · [ADR 084] — Turnstile is WEB-ONLY, and the posture is a pure
+  // function so each branch is pinned here rather than implied by the one
+  // branch a VM widget test happens to run (no key, not web). Each case is
+  // declared on its own (assert-no-loop-cases).
+  group('CaptchaPosture (ADR 084)', () {
+    test('web + key: the challenge renders', () {
+      expect(_posture(web: true, key: 'k'), CaptchaPosture.challenge);
+    });
+
+    test('web + live backend + NO key: misconfigured, not a pass', () {
+      expect(_posture(web: true, key: ''), CaptchaPosture.misconfigured);
+    });
+
+    test('web DEMO (no backend) + no key: inert', () {
+      final CaptchaPosture p = _posture(web: true, key: '', live: false);
+      expect(p, CaptchaPosture.notOnThisChannel);
+    });
+
+    test('store (native) + no key: no captcha, by design', () {
+      expect(_posture(web: false, key: ''), CaptchaPosture.notOnThisChannel);
+    });
+
+    test('native handed a key anyway: still renders nothing', () {
+      // The build-time guard names that lane; the app must not render an
+      // unverified webview widget because of it.
+      expect(_posture(web: false, key: 'k'), CaptchaPosture.notOnThisChannel);
+    });
+
+    test('THIS build (a VM test, no key) is not misconfigured', () {
+      // A widget test is not a web build, so it must never trip the report —
+      // FlutterError.reportError would fail every auth-screen test.
+      expect(TurnstileGate.posture, CaptchaPosture.notOnThisChannel);
+    });
+  });
+}
+
+CaptchaPosture _posture({
+  required bool web,
+  required String key,
+  bool live = true,
+}) {
+  return TurnstileGate.postureFor(isWeb: web, siteKey: key, backendLive: live);
 }
