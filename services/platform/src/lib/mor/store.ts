@@ -448,6 +448,11 @@ async function derive(deps: MoneyStoreDeps, n: NormalizedNotification): Promise<
   if (n.subject.kind === 'unknown') {
     return { outcome: 'ignored', detail: n.subject.detail };
   }
+  // ⏱ 2026-09-15 · [ADR 085]: an attribution the adapter refused. Nothing is
+  // written; the route answers 503 and the nightly re-derivation counts it.
+  if (n.subject.kind === 'refused') {
+    return { outcome: 'refused', detail: n.subject.detail };
+  }
   if (n.subject.kind === 'subscription') return applySubscription(deps, n, n.subject);
   return applyAdjustment(deps, n, n.subject);
 }
@@ -457,6 +462,15 @@ async function applySubscription(
   n: NormalizedNotification,
   s: SubjectSubscription,
 ): Promise<ApplyResult> {
+  // ⏱ 2026-09-15 · [5]M-12, for a rail whose body DOES name its world
+  // (RevenueCat `environment`). Checked before any account is linked, so a
+  // sandbox purchase cannot even write a provider_accounts link into live.
+  if (s.railEnvironment != null && s.railEnvironment !== deps.environment) {
+    return {
+      outcome: 'refused',
+      detail: `the notification says it is ${s.railEnvironment} money and this destination is configured for ${deps.environment}`,
+    };
+  }
   const account = await resolveAccount(deps, n, s.subscriptionId, {
     userId: s.accountUserId,
     appId: s.accountAppId,
