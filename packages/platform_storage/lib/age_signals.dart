@@ -56,7 +56,7 @@ final class PlayAgeSignalSource implements core.AgeSignalSource {
   }
 }
 
-/// Apple Declared Age Range on iOS 26+.
+/// Apple Declared Age Range on iOS 26.2+.
 final class AppleAgeSignalSource implements core.AgeSignalSource {
   const AppleAgeSignalSource({this.channel = ageSignalsChannel});
 

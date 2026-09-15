@@ -14,7 +14,7 @@ import DeclaredAgeRange
 ///
 /// Returns raw fields only — `eligible`, `response`, `lowerBound`, `upperBound` —
 /// or `error: true`. What they MEAN is `core.ageSignalFromApple`, tested in Dart.
-/// Before iOS 26, or where the framework is absent, `eligible` is null: no API.
+/// Before iOS 26.2, or where the framework is absent, `eligible` is null: no API.
 public final class AgeSignalsPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
@@ -30,7 +30,7 @@ public final class AgeSignalsPlugin: NSObject, FlutterPlugin {
       return
     }
     #if canImport(DeclaredAgeRange)
-    if #available(iOS 26.0, *) {
+    if #available(iOS 26.2, *) {
       Task { @MainActor in
         result(await AgeSignalsPlugin.readAgeRange())
       }
@@ -41,7 +41,11 @@ public final class AgeSignalsPlugin: NSObject, FlutterPlugin {
   }
 
   #if canImport(DeclaredAgeRange)
-  @available(iOS 26.0, *)
+  // iOS 26.2, not 26.0: `AgeRangeService.isEligibleForAgeFeatures` is only
+  // available from 26.2. Measured by the Build apps branch run 34986632888,
+  // "Swift Compiler Error (Xcode): 'isEligibleForAgeFeatures' is only available
+  // in iOS 26.2 or newer". Below 26.2 the adapter answers no API (eligible null).
+  @available(iOS 26.2, *)
   @MainActor
   private static func readAgeRange() async -> [String: Any] {
     do {

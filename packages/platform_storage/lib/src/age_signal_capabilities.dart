@@ -7,12 +7,12 @@ import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
 ///
 /// 🔴 THE ROW THAT MATTERS IS "NONE", and it is most of the table. Only two
 /// stores publish an age signal a sign-up can read: Google Play (Age Signals,
-/// beta) and Apple on iOS 26+ (Declared Age Range). macOS, Windows, Linux, web
+/// beta) and Apple on iOS 26.2+ (Declared Age Range). macOS, Windows, Linux, web
 /// and anything else have NO API, so the gate there proceeds on the 18+
 /// declaration — the same outcome as a store that answers "not shared". A caller
 /// that assumed a signal everywhere would be believing a check that never runs.
 ///
-/// ⚠️ iOS IS CONDITIONAL TWICE: the API exists only on iOS 26+, and it answers
+/// ⚠️ iOS IS CONDITIONAL TWICE: the API exists only on iOS 26.2+, and it answers
 /// only when the app carries the `com.apple.developer.declared-age-range`
 /// entitlement. Without either, the adapter reports no signal (tested in
 /// `test/age_signals_test.dart`).
@@ -49,7 +49,7 @@ class AgeSignalCapabilities {
         ),
       TargetPlatform.iOS => const AgeSignalCapabilities(
           storeApi: AgeSignalApi.appleDeclaredAgeRange,
-          note: 'iOS: Declared Age Range, iOS 26+ only, and only with the '
+          note: 'iOS: Declared Age Range, iOS 26.2+ only, and only with the '
               'declared-age-range entitlement; otherwise no signal.',
         ),
       TargetPlatform.macOS => const AgeSignalCapabilities(

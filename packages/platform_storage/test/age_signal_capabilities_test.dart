@@ -64,7 +64,8 @@ void main() {
         isFalse);
   });
 
-  test('the iOS row names both of its conditions: iOS 26+ and the entitlement',
+  test(
+      'the iOS row names both of its conditions: iOS 26.2+ and the entitlement',
       () {
     final String note =
         AgeSignalCapabilities.forPlatform(TargetPlatform.iOS, isWeb: false)
