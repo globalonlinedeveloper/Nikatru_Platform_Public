@@ -371,7 +371,7 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
   test('🔴 PM8 — every binary `basis` replaced with "stamped", caught by the AGGREGATE', () => {
     // The per-row floor here is 7 and "stamped" is 7 characters, so the per-row
     // limb passes it by one character — deliberately, because the shortest
-    // CORRECT basis in this document is also 7 ("As iOS."). 29 × 7 = 203 against
+    // CORRECT basis in this document is also 7 ("As iOS."). 30 × 7 = 210 against
     // the live total is what makes the regression visible.
     //
     // ⚠️ THE NUMBERS MOVE WHEN THE INVENTORY DOES, AND THAT IS THE POINT rather
@@ -380,6 +380,8 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
     // `flutter_inappwebview_{ios,macos}` were linked in by cloudflare_turnstile,
     // and 27 → 29 on 2026-09-10 when `flutter_timezone` was linked on both
     // Apple targets so `tz.local` is the device's zone rather than UTC.
+    // 29 → 30 on 2026-09-15 when `nikatru_platform_storage` became an iOS plugin
+    // ([ADR 082] §5, the store age-signal adapter): 30 × 7 = 210.
     // Widening the regex to `\d+` would buy quiet and lose exactly the signal.
     withTree(
       (root) =>
@@ -388,7 +390,7 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
         }),
       (r) => {
         assert.equal(r.status, 1);
-        assert.match(r.stderr, /carries 203 character\(s\) of `basis` across 29 row\(s\); the floor is 2000/);
+        assert.match(r.stderr, /carries 210 character\(s\) of `basis` across 30 row\(s\); the floor is 2000/);
       },
     );
   });

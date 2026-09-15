@@ -341,6 +341,19 @@ const EXEMPTIONS = [
       "service's README happens to name it — an asymmetry between two READMEs, not a difference in how the " +
       'two files are used, so waiving this one is the honest treatment rather than a hint that it is dead.',
   },
+  {
+    path: 'packages/platform_storage/ios/nikatru_platform_storage.podspec',
+    kind: 'platform-scaffold',
+    since: '2026-09-15',
+    why:
+      '[ADR 082] §5 — the CocoaPods half of the store age-signal plugin (its Swift Package Manager half is ' +
+      'ios/nikatru_platform_storage/Package.swift). 🔴 WHO OPENS IT: the Flutter tool, BY CONVENTION ' +
+      '(`ios/<plugin name>.podspec`), whenever a consuming app\'s iOS build integrates plugins through ' +
+      'CocoaPods — a build with Swift Package Manager turned off, or a Podfile the tool generates for a ' +
+      'dependency that has no Package.swift. No tracked file names it and none should: the plugin\'s ' +
+      '`flutter: plugin: platforms: ios:` block in packages/platform_storage/pubspec.yaml is the whole ' +
+      'declaration. Delete this row if the podspec goes (SwiftPM-only) or a resolver learns the convention.',
+  },
   // 🔴 AND THE `human-entry-point` ROW FOR THE APPLE AGE-RATING DECLARATION IS
   // GONE, REMOVED 2026-09-12 — THE SAME DAY IT WAS ADDED, BY ITS OWN TERMS.
   // It waived apps/subscriptiontracker/store/ios-appstore/age-rating.json on the
