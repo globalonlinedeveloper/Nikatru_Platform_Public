@@ -564,6 +564,7 @@
   },
   {
     "claims": [
+      "ADR 079",
       "S-12"
     ],
     "invokedBy": [
