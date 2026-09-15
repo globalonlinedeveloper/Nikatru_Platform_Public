@@ -486,26 +486,26 @@ describe('coverage self-checks — a walk that under-reaches is not a pass', () 
     const root = fixture();
     rmSync(join(root, 'tooling', 'legal', 'data-inventory.json'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /this guard compares the\s+tree to nothing and prints ok/);
   });
 
   test('a migration walk below its floor is COVERAGE LOST', () => {
     const r = run(fixture({ derivation: { minMigrationFiles: 5 } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /migration file\(s\) under/);
   });
 
   test('a wrangler walk below its floor is COVERAGE LOST', () => {
     const r = run(fixture({ derivation: { minWranglerConfigs: 4 } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /wrangler config\(s\), floor 4/);
   });
 
   test('a Pages-Function walk pointed at nothing is COVERAGE LOST', () => {
     const r = run(fixture({ derivation: { pagesFunctionRoots: ['sites/nowhere'] } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 
@@ -513,13 +513,13 @@ describe('coverage self-checks — a walk that under-reaches is not a pass', () 
     const root = fixture();
     write(root, join('services', 'other', 'wrangler.toml'), 'name = "other"\n');
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /only parses JSON\/JSONC/);
   });
 
   test('a migration set with no CREATE TABLE at all is COVERAGE LOST', () => {
     const r = run(fixture({ migration: '-- nothing here\nALTER TABLE people ADD COLUMN x TEXT;\n' }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /ZERO CREATE TABLE statements/);
   });
 
@@ -731,7 +731,7 @@ describe('every table declares how an erasure request reaches it', () => {
 
   test('an erasure walk that checks fewer rows than the floor is COVERAGE LOST', () => {
     const r = run(fixture({ derivation: { minErasureRowsChecked: 9 } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /erasure declaration\(s\) were compared to the schema, floor 9/);
   });
 });

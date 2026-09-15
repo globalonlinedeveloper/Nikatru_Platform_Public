@@ -350,7 +350,7 @@ describe('a blocked leg`s excuse is itself checked', () => {
     withTree(
       (root) => rmSync(join(root, E2E_HARNESS), { recursive: true, force: true }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );
@@ -404,7 +404,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => rmSync(join(root, REGISTER)),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST.*does not exist/s);
       },
     );
@@ -414,7 +414,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => writeFileSync(join(root, REGISTER), '{ not json'),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /could not be parsed/);
       },
     );
@@ -430,7 +430,7 @@ describe('coverage self-checks', () => {
         writeReg(root, reg);
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /missing: feature-unlock/);
       },
     );
@@ -444,7 +444,7 @@ describe('coverage self-checks', () => {
         writeReg(root, reg);
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /unexpected: vibes/);
       },
     );
@@ -458,7 +458,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => rmSync(join(root, SUITE)),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /the named E2E apps\/subscriptiontracker\/integration_test\/app_test\.dart does not exist/);
         assert.doesNotMatch(r.stderr, /claims to be asserted/);
       },
@@ -472,7 +472,7 @@ describe('coverage self-checks', () => {
         writeFileSync(p, readFileSync(p, 'utf8').split('\n').map((l) => `// ${l}`).join('\n'));
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /declares no `testWidgets\(`/);
       },
     );
@@ -485,7 +485,7 @@ describe('coverage self-checks', () => {
         writeFileSync(p, readFileSync(p, 'utf8').replaceAll('integration_test/app_test.dart', 'integration_test/other.dart'));
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /does not name/);
       },
     );
@@ -495,7 +495,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => rmSync(join(root, WORKFLOW)),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /which does not exist/);
       },
     );
@@ -511,7 +511,7 @@ describe('coverage self-checks', () => {
         mkdirSync(join(root, APP_LIB), { recursive: true });
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /no Dart source was read/);
       },
     );

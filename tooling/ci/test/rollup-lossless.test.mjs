@@ -279,7 +279,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
       rmSync(join(root, INSIGHTS, f));
     }
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /contains no \.sql file/);
   });
@@ -288,7 +288,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     const root = copyOfRealTree();
     rmSync(join(root, INSIGHTS), { recursive: true, force: true });
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /R1 would range over zero queries/);
   });
@@ -297,7 +297,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     const root = copyOfRealTree();
     rmSync(join(root, INSIGHTS, '05-feature-adoption.sql'));
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /documents 5 quer\(ies\) and only 4 \.sql file\(s\) are present — 1 MISSING: 05-feature-adoption\.sql/);
   });
@@ -349,7 +349,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     const root = copyOfRealTree();
     mutate(root, join(INSIGHTS, '04-notification-lift.sql'), /FROM events_daily/g, 'FROM events_hourly');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /names neither `events_daily` nor `events` after FROM\/JOIN/);
   });
@@ -370,7 +370,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     const root = copyOfRealTree();
     writeFileSync(join(root, INSIGHTS, '01-activation-rate.sql'), '-- every line a comment\n-- SELECT anon_id FROM events;\n');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /parsed to ZERO column references/);
   });
 
@@ -386,7 +386,7 @@ describe('assert-rollup-lossless [R1] — the grain covers what the queries read
     const root = copyOfRealTree();
     writeFileSync(join(root, INSIGHTS, 'README.md'), '# five numbers\n\nNo machine-read list here any more.\n');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /machine-read list parsed to ZERO entries/);
   });
 });
@@ -397,7 +397,7 @@ describe('assert-rollup-lossless — structural failures of the scan itself', ()
     const root = copyOfRealTree();
     rmSync(join(root, MIGRATION));
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /does not exist, so events_daily's shape was read from nothing/);
   });
 
@@ -405,7 +405,7 @@ describe('assert-rollup-lossless — structural failures of the scan itself', ()
     const root = copyOfRealTree();
     rmSync(join(root, SCHEDULED));
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /neither the rollup INSERT nor the sweep wiring can be read/);
   });
 
@@ -413,7 +413,7 @@ describe('assert-rollup-lossless — structural failures of the scan itself', ()
     const root = copyOfRealTree();
     mutate(root, MIGRATION, /CREATE TABLE IF NOT EXISTS events_daily/, 'CREATE TABLE IF NOT EXISTS events_rollup');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no `CREATE TABLE events_daily` body could be parsed/);
   });
 
@@ -421,7 +421,7 @@ describe('assert-rollup-lossless — structural failures of the scan itself', ()
     const root = copyOfRealTree();
     mutate(root, SCHEDULED, /INSERT INTO events_daily \(day, app_id, anon_id, event, feature, n_rows\)/, 'INSERT INTO events_hourly (day, app_id, anon_id, event, feature, n_rows)');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no string literal in .* contains `INSERT INTO events_daily`/);
     assert.match(r.out, /an assertion that cannot fail/);
   });
@@ -430,7 +430,7 @@ describe('assert-rollup-lossless — structural failures of the scan itself', ()
     const root = copyOfRealTree();
     mutate(root, SCHEDULED, /export async function retentionSweep\(/, 'export async function retentionSweepV2(');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /`retentionSweep` could not be located/);
   });
 
@@ -438,7 +438,7 @@ describe('assert-rollup-lossless — structural failures of the scan itself', ()
     const root = copyOfRealTree();
     mutate(root, SCHEDULED, /const n = await deleteOlderThan\(env, store, store === 'events_daily' \? bounded\.slice\(0, 10\) : bounded\);/, 'const n = 0;');
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no `deleteOlderThan\(env, store, cutoff\)` call with three arguments/);
   });
 });

@@ -134,14 +134,14 @@ describe('assert-xcode-floor — a question that could not be asked is never a p
   // guard is wired into build-platforms.yml's `apple` job and not into ci.yml.
   test('no versions.json at all', () => {
     const { code, out } = run(fixture(null));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /does not exist/);
   });
 
   test('an unparseable versions.json', () => {
     const { code, out } = run(fixture('{ not json'));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /not valid JSON/);
   });
@@ -150,7 +150,7 @@ describe('assert-xcode-floor — a question that could not be asked is never a p
   // in submit-appstore.mjs; the same absence must never quietly disarm this.
   test('versions.json with no `xcode` key — the pin deleted', () => {
     const { code, out } = run(fixture({ flutter: '3.44.9', runner_macos: 'macos-26' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, new RegExp(`declares no \\\`${FLOOR_KEY}\\\` key`));
     assert.match(out, /Xcode 26 or later/);
@@ -158,7 +158,7 @@ describe('assert-xcode-floor — a question that could not be asked is never a p
 
   test('an `xcode` key that is not a major', () => {
     const { code, out } = run(fixture({ xcode: '26.6', runner_macos: 'macos-26' }));
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /is not a major version/);
   });

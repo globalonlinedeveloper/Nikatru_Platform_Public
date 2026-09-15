@@ -353,7 +353,7 @@ process.exit(0);
 describe('assert-mail-transport-claims — coverage self-checks', () => {
   test('COVERAGE LOST when the register is missing', () => {
     const r = run(makeRoot({ register: null }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /COVERAGE LOST/);
   });
 
@@ -361,7 +361,7 @@ describe('assert-mail-transport-claims — coverage self-checks', () => {
     const root = makeRoot();
     writeFileSync(join(root, 'tooling', 'mail-transport.json'), '{ not json');
     const r = run(root);
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /could not be parsed/);
   });
 
@@ -369,7 +369,7 @@ describe('assert-mail-transport-claims — coverage self-checks', () => {
     const reg = GOOD_REGISTER();
     reg.supersededTransportClaims.patterns = [];
     const r = run(makeRoot({ register: reg }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no superseded-claim patterns/);
   });
 
@@ -379,7 +379,7 @@ describe('assert-mail-transport-claims — coverage self-checks', () => {
     const reg = GOOD_REGISTER();
     reg.supersededTransportClaims.correctionMarkers = [];
     const r = run(makeRoot({ register: reg }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /declares no correction markers/);
   });
 
@@ -387,13 +387,13 @@ describe('assert-mail-transport-claims — coverage self-checks', () => {
     const reg = GOOD_REGISTER();
     reg.supersededTransportClaims.patterns = [{ id: 'x', pattern: 'y' }];
     const r = run(makeRoot({ register: reg }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /missing id\/pattern\/why/);
   });
 
   test('COVERAGE LOST when no declared pattern matches ANYWHERE — the scan stopped reading', () => {
     const r = run(makeRoot({ docs: { 'clean.md': '# All good\n\nNothing to see.\n' } }));
-    assert.equal(r.status, 1, out(r));
+    assert.equal(r.status, 2, out(r));
     assert.match(out(r), /not one of the 1 declared patterns matched/);
   });
 

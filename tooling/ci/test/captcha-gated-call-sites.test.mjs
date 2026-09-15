@@ -265,7 +265,7 @@ describe('coverage — a scanner that scans nothing prints perfectly', () => {
     withTree(
       (root) => edit(root, INTERFACE, (s) => s.split('captchaToken').join('unrelatedParam')),
       (r) => {
-        assert.equal(r.status, 1, `expected a failure; stdout was:\n${r.stdout}`);
+        assert.equal(r.status, 2, `expected a failure; stdout was:\n${r.stdout}`);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /declares a `captchaToken` parameter|no method in/);
       },
@@ -276,7 +276,7 @@ describe('coverage — a scanner that scans nothing prints perfectly', () => {
     withTree(
       (root) => rmSync(join(root, INTERFACE)),
       (r) => {
-        assert.equal(r.status, 1, `expected a failure; stdout was:\n${r.stdout}`);
+        assert.equal(r.status, 2, `expected a failure; stdout was:\n${r.stdout}`);
         assert.match(r.stderr, /COVERAGE LOST/);
       },
     );
@@ -286,7 +286,7 @@ describe('coverage — a scanner that scans nothing prints perfectly', () => {
     withTree(
       (root) => rmSync(join(root, SUBLY, 'lib'), { recursive: true }),
       (r) => {
-        assert.equal(r.status, 1, `expected a failure; stdout was:\n${r.stdout}`);
+        assert.equal(r.status, 2, `expected a failure; stdout was:\n${r.stdout}`);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /apps\/subscriptiontracker\/lib/);
       },
@@ -355,14 +355,14 @@ describe('a gated call site that moved into the chassis package', () => {
   // anywhere, and it must not be read as "no delegation" either.
   test('CD3 · 🔴 an import the adapter never uses is refused, not followed', () => {
     withTree(delegate({ used: false }), (r) => {
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /never references anything it declares \(SignInBody\)/);
     });
   });
 
   test('CD4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
     withTree(delegate({ onDisk: false }), (r) => {
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /that file is not on disk/);
     });
   });

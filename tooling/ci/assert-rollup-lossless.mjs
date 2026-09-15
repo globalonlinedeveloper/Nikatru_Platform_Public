@@ -77,6 +77,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // COVERAGE SELF-CHECK (every "COVERAGE LOST" below exits 1 immediately):
+// ⏱ 2026-09-15: exits 2, not 1 — see coverageLost (O-EXIT2-CONVENTION-GAP).
 //   · 0007 must exist, and its CREATE TABLE events_daily must yield columns.
 //   · queries/insights must yield at least one .sql, and the count must match the
 //     machine-read list in its README.md — the same list test/insights-queries.test.ts
@@ -211,7 +212,9 @@ const prints = [];
 const coverageLost = (lines) => {
   console.error(`✗ COVERAGE LOST — ${lines[0]}`);
   for (const l of lines.slice(1)) console.error(`  ${l}`);
-  process.exit(1);
+  // ⏱ 2026-09-15 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
+  // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
+  process.exit(2);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

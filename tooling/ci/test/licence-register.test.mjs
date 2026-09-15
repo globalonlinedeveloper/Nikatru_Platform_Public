@@ -233,7 +233,7 @@ describe('assert-licence-register — the baseline fixture is valid input', () =
     // reported NOT CAUGHT for limbs that all worked.
     const root = fixture({ assets: [] });
     const r = run(root);
-    assert.equal(r.status, 1, 'the guard must have read the fixture root, not its own cwd');
+    assert.equal(r.status, 2, 'the guard must have read the fixture root, not its own cwd');
     assert.match(out(r), /declares no `assets`/);
   });
 });
@@ -361,7 +361,7 @@ describe('licences that cannot ship here are refused, not printed', () => {
 
   test('an EMPTY incompatible list is COVERAGE LOST, not a permissive policy', () => {
     const r = run(fixture({ incompatible: { prefixes: [] } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     // …and NAMING it, because a bare /COVERAGE LOST/ was satisfiable by a
     // DIFFERENT limb's message from 2026-08-13 (the seam's, over a fixture with
@@ -478,14 +478,14 @@ describe('[pipeline K-11] every app shows the licences of what it ships', () => 
         ],
       }),
     );
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /switched off\s+one entry at a time/);
   });
 
   test('an empty pattern set is COVERAGE LOST', () => {
     const r = run(fixture({ patterns: [] }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /declares no `licenceSurfaceCalls\.patterns`/);
   });
@@ -496,7 +496,7 @@ describe('coverage self-checks', () => {
     const root = fixture();
     rmSync(join(root, 'tooling', 'legal', 'asset-register.json'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     // The NEAR register specifically. The seam raises its own COVERAGE LOST over
     // the same two files, and without this line the two are indistinguishable.
@@ -505,25 +505,25 @@ describe('coverage self-checks', () => {
 
   test('an assets: walk that finds nothing while the icon-font flag is on is COVERAGE LOST', () => {
     const r = run(fixture({ appPubspec: 'name: one\nflutter:\n  uses-material-design: true\n' }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /declared asset file\(s\), floor/);
   });
 
   test('a pubspec walk below its floor is COVERAGE LOST', () => {
     const r = run(fixture({ derivation: { minPubspecs: 9 } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /pubspec\.yaml file\(s\), floor 9/);
   });
 
   test('an app walk below its floor is COVERAGE LOST', () => {
     const r = run(fixture({ derivation: { minApps: 5 } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /app\(s\), floor 5/);
   });
 
   test('--bundle pointed at a directory that does not exist is COVERAGE LOST', () => {
     const r = run(fixture(), '--bundle', join(TMP, 'no-such-bundle'));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /does not exist/);
   });
 
@@ -573,7 +573,7 @@ describe('coverage self-checks', () => {
     test('an EMPTY generated list is COVERAGE LOST in bundle mode, not a red build on a correct tree', () => {
       const root = fixture({ generatedFiles: {} });
       const r = run(root, '--bundle', bundle('logo.png', 'icon.png', 'MaterialIcons-Regular.otf'));
-      assert.equal(r.status, 1, out(r));
+      assert.equal(r.status, 2, out(r));
       assert.match(out(r), /COVERAGE LOST/);
       assert.match(out(r), /a step that cries wolf is one somebody deletes/);
     });
