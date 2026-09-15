@@ -271,14 +271,14 @@ describe('the coverage self-check', () => {
     const root = join(TMP, `empty-${seq++}`);
     mkdirSync(root, { recursive: true });
     const r = run(root);
-    assert.equal(r.status, 1, say(r));
+    assert.equal(r.status, 2, say(r));
     assert.match(say(r), /COVERAGE LOST/);
     assert.match(say(r), /provider tree\(s\)/);
   });
 
   test('one tree without the other is COVERAGE LOST', () => {
     const r = run(fixture({ omitBrick: true }));
-    assert.equal(r.status, 1, say(r));
+    assert.equal(r.status, 2, say(r));
     assert.match(say(r), /COVERAGE LOST/);
     assert.match(say(r), /found 1 provider tree/);
   });
@@ -294,7 +294,7 @@ describe('the coverage self-check', () => {
         'final Provider<int> otherProvider = Provider<int>((ref) => 0);\n',
     );
     const r = run(root);
-    assert.equal(r.status, 1, say(r));
+    assert.equal(r.status, 2, say(r));
     assert.match(say(r), /COVERAGE LOST/);
     assert.match(say(r), /provider declaration\(s\)/);
   });
@@ -309,7 +309,7 @@ describe('the coverage self-check', () => {
     }
     writeFileSync(join(root, 'apps', 'demo', 'lib', 'state', 'providers.dart'), `${only.join('\n')}\n`);
     const r = run(root);
-    assert.equal(r.status, 1, say(r));
+    assert.equal(r.status, 2, say(r));
     assert.match(say(r), /COVERAGE LOST/);
     assert.match(say(r), /read edge\(s\)/);
   });

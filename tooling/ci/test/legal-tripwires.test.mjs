@@ -189,7 +189,7 @@ describe('the source-host allowlist', () => {
       m.sourceHosts.allowed = [];
       return m;
     }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 
@@ -199,7 +199,7 @@ describe('the source-host allowlist', () => {
       m.duties[1].verification = 'in-tree';
       return m;
     }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /NOT ONE duty row carried a checkable source URL/);
   });
 });
@@ -278,7 +278,7 @@ describe('"implemented" means something exists', () => {
       delete m.duties[0].artefact;
       return m;
     }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /NOT ONE duty row named an artefact/);
   });
 });
@@ -319,7 +319,7 @@ describe('coverage self-checks', () => {
     const root = fixture();
     rmSync(join(root, 'tooling', 'legal', 'duty-matrix.json'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
   });
 
@@ -328,7 +328,7 @@ describe('coverage self-checks', () => {
       m.duties = [];
       return m;
     }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /declares no duties/);
   });
 
@@ -337,7 +337,7 @@ describe('coverage self-checks', () => {
       m.requirements = {};
       return m;
     }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /declares no `requirements`/);
   });
 
@@ -345,7 +345,7 @@ describe('coverage self-checks', () => {
     const root = fixture();
     writeFileSync(join(root, 'tooling', 'legal', 'duty-matrix.json'), '{ nope');
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /is not valid JSON/);
   });
 });

@@ -387,7 +387,7 @@ describe('coverage self-checks', () => {
         }
       },
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /not one of the 2 root\(s\) was judged to offer accounts/);
       },
@@ -398,7 +398,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => rmSync(join(root, SUBLY, 'lib'), { recursive: true, force: true }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /no Dart source was read under apps\/subscriptiontracker\/lib/);
       },
@@ -409,7 +409,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => writeFileSync(join(root, 'pubspec.yaml'), 'name: nikatru_workspace\n'),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /no readable `workspace:` block/);
       },
@@ -423,7 +423,7 @@ describe('coverage self-checks', () => {
       (root) =>
         edit(root, 'pubspec.yaml', (s) => s.replace(/^\s*-\s*apps\/subscriptiontracker\s*$/m, '')),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /only 1 root\(s\) resolved/);
       },
@@ -522,7 +522,7 @@ describe('the shared confirmation keeps its properties where it now lives', () =
     withTree(
       (root) => rmSync(join(root, CHASSIS), { force: true }),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /destructive_confirm_dialog\.dart is not a file/);
       },
@@ -538,7 +538,7 @@ describe('the shared confirmation keeps its properties where it now lives', () =
     withTree(
       (root) => writeFileSync(join(root, CHASSIS), 'class DestructiveConfirmDialog {}\n'),
       (r) => {
-        assert.equal(r.status, 1);
+        assert.equal(r.status, 2);
         assert.match(r.stderr, /COVERAGE LOST/);
         assert.match(r.stderr, /below its floor of 90/);
       },
@@ -706,14 +706,14 @@ describe('a deletion control that moved into the chassis package', () => {
   // nothing in the adapter references the import.
   test('DD3 · 🔴 an UNUSED chassis import does not stand in for the deleted call site', () => {
     withTree(moved({ inPackage: true, used: false }), (r) => {
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /never references anything it declares \(SettingsBody\)/);
     });
   });
 
   test('DD4 · 🔴 a delegation to a file that is not on disk is COVERAGE LOST', () => {
     withTree(moved({ onDisk: false }), (r) => {
-      assert.equal(r.status, 1, r.stdout);
+      assert.equal(r.status, 2, r.stdout);
       assert.match(r.stdout + r.stderr, /that file is not on disk/);
     });
   });
