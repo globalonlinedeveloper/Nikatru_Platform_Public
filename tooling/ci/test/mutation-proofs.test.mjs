@@ -172,7 +172,7 @@ describe('assert-mutation-proofs', () => {
   // ── COVERAGE LOST: the domain ─────────────────────────────────────────────
   test('COVERAGE LOST when the tree holds no dod.json at all', () => {
     const { code, out } = run(build({ record: null }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /no dod\.json record was found/);
   });
@@ -181,7 +181,7 @@ describe('assert-mutation-proofs', () => {
     const dir = build();
     writeFileSync(join(dir, 'apps/demo/dod.json'), JSON.stringify({ app: 'demo', features: [] }));
     const { code, out } = run(dir);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /records no proof at all|COVERAGE LOST/);
   });
 
@@ -191,7 +191,7 @@ describe('assert-mutation-proofs', () => {
     // the whole — the defect the whole family of guards exists for.
     const dir = build({ extraFiles: { 'apps/demo/build/dod.json': JSON.stringify({ features: [row()] }) } });
     const { code, out } = run(dir);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /MISSED 1/);
   });
@@ -199,14 +199,14 @@ describe('assert-mutation-proofs', () => {
   // ── COVERAGE LOST: the ratchet's right-hand side ──────────────────────────
   test('COVERAGE LOST when the register carries no unprovenFloor', () => {
     const { code, out } = run(build({ registerRaw: JSON.stringify({ mutationProofs: {} }) }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /unprovenFloor/);
   });
 
   test('COVERAGE LOST when the register is not on disk', () => {
     const { code, out } = run(build({ registerRaw: null }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -382,14 +382,14 @@ describe('assert-mutation-proofs', () => {
     delete r.mutation.edit;
     delete r.mutation.codeHash;
     const { code, out } = run(build({ rows: [r], floor: 1 }), ['--execute']);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /nothing to execute/);
   });
 
   test('--execute COVERAGE LOST when --only names a row that is not runnable', () => {
     const { code, out } = run(build(), ['--execute', '--only', 'no such row']);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /matched no row/);
   });

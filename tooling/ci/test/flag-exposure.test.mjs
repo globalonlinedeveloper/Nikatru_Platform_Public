@@ -374,7 +374,7 @@ describe('assert-flag-exposure — the vacuity is printed, not hidden', () => {
 describe('assert-flag-exposure — coverage self-checks', () => {
   test('COVERAGE LOST when the wrapper file is gone', () => {
     const r = run(makeRepo((f) => ({ ...f, 'packages/core/lib/src/config/observed_feature_flags.dart': null })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — .*observed_feature_flags\.dart does not exist/s);
   });
 
@@ -384,19 +384,19 @@ describe('assert-flag-exposure — coverage self-checks', () => {
       'packages/core/lib/src/config/flag_resolver.dart':
         f['packages/core/lib/src/config/flag_resolver.dart'].replace('int flagBucket(', 'int bucketOf('),
     })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — .*no longer declares `flagBucket`/s);
   });
 
   test('COVERAGE LOST when no FeatureFlags construction exists to police', () => {
     const r = run(makeRepo((f) => ({ ...f, [BRICK_REL]: '// nothing here\n' })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — no `FeatureFlags\(` construction was found/);
   });
 
   test('COVERAGE LOST when the consumer scan reaches no Dart at all', () => {
     const r = run(makeRepo((f) => ({ ...f, [BRICK_REL]: null, 'apps/demo/lib/main.dart': null })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — no \.dart file under/);
   });
 });

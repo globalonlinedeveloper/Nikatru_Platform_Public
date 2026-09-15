@@ -303,7 +303,7 @@ describe('assert-obfuscation-coupled', () => {
   test('COVERAGE LOST on --release AND --profile together — a command with two modes has no answer', () => {
     const root = fixture({ 'build.yml': `${wf({ release: ' --release --profile' })}${FLOOR_ANCHOR}` });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /name TWO build modes at once/);
     assert.match(out, /passes --release AND --profile on the same command/);
@@ -315,7 +315,7 @@ describe('assert-obfuscation-coupled', () => {
     // COVERAGE LOST limb answers for it — an unsourced exemption is not a pass.
     const root = fixture({ 'build.yml': `${wf({ target: 'bundle' })}${FLOOR_ANCHOR}` });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /builds target "bundle"/);
   });
@@ -335,7 +335,7 @@ jobs:
 `,
     });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO of them a release build/);
   });
@@ -351,7 +351,7 @@ jobs:
 `,
     });
     const { code, out } = run(root);
-    assert.equal(code, 1, out);
+    assert.equal(code, 2, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /builds target "fuchsia"/);
   });
@@ -558,7 +558,7 @@ jobs:
     const root = join(TMP, `empty${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 
@@ -576,7 +576,7 @@ jobs:
 `,
     });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /found ZERO `flutter build` commands/);
   });
 
@@ -594,7 +594,7 @@ jobs:
 `,
     });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 

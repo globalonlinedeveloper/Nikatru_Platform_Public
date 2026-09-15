@@ -361,7 +361,7 @@ describe('assert-monitor-coverage — coverage self-checks', () => {
       'sites/main/index.html': f['sites/main/index.html'].replace(/<link rel="canonical"[^>]*>/, ''),
       'sites/founder/index.html': f['sites/founder/index.html'].replace(/<link rel="canonical"[^>]*>/, ''),
     })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — the "siteCanonicals" derivation yielded no hostname/);
   });
 
@@ -370,19 +370,19 @@ describe('assert-monitor-coverage — coverage self-checks', () => {
       ...f,
       'services/platform/wrangler.jsonc': f['services/platform/wrangler.jsonc'].replaceAll('"custom_domain": true', '"custom_domain": false'),
     })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — the "workerCustomDomains" derivation yielded no hostname/);
   });
 
   test('COVERAGE LOST when the register is missing', () => {
     const r = run(makeRepo((f) => ({ ...f, 'tooling/monitor-register.json': null })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — .*monitor-register\.json does not exist/s);
   });
 
   test('COVERAGE LOST when the register declares no hosts', () => {
     const r = run(makeRepo(withRegister((reg) => { reg.hosts = []; })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — .*declares no hosts/s);
   });
 
@@ -390,7 +390,7 @@ describe('assert-monitor-coverage — coverage self-checks', () => {
     const r = run(makeRepo(withRegister((reg) => {
       delete reg.hosts.find((h) => h.role === 'observability').role;
     })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — no row .* carries `"role": "observability"`/s);
   });
 });
@@ -506,13 +506,13 @@ describe('assert-monitor-coverage — the app ORIGIN the apex router fetches fro
     // The field renamed or dropped. Limb 5 would then grade an empty set and
     // print ok — the failure this repository repeats most.
     const r = run(makeRepo(withCatalogue((rows) => { for (const row of rows) delete row.origin; })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — .*not one of them yields an `origin` hostname/s);
   });
 
   test('COVERAGE LOST when there are no app declarations to corroborate against', () => {
     const r = run(makeRepo((f) => ({ ...f, 'apps/demo/app.yaml': null })));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — no apps\/ directory/);
   });
 });
