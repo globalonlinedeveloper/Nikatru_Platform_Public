@@ -91,11 +91,12 @@ void main() {
     });
   });
 
-  // ⏱ 2026-09-15 · iOS ships WITHOUT the com.apple.developer.declared-age-range
-  // entitlement until the App ID capability is enabled and the provisioning
-  // profile regenerated (an owner action; signing must not break meanwhile). An
-  // app without it gets a thrown AgeRangeService error, which the Swift adapter
-  // answers as `error: true`. This pins what that means end to end.
+  // ⏱ 2026-09-15 · the com.apple.developer.declared-age-range entitlement is now
+  // carried by apps/subscriptiontracker (Runner.entitlements + the regenerated
+  // App Store profile). Any app or build WITHOUT it — a freshly stamped app before
+  // its own App ID capability exists, a dev build signed without the capability —
+  // gets a thrown AgeRangeService error, which the Swift adapter answers as
+  // `error: true`. This pins what that means end to end.
   group('🔴 entitlement missing on iOS', () {
     test(
         'the thrown request is error → no signal → proceeds on the 18+ declaration',
