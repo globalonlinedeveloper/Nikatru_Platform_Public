@@ -733,6 +733,29 @@ jobs:
           [ "$appid" = "$want" ] \
             || { echo "::error title=ipa::embedded profile is for \"$appid\", not \"$want\""; exit 1; }
 
+          # why: EVERY ENTITLEMENT THE APP DECLARES MUST BE IN THE SIGNATURE AND IN
+          # THE EMBEDDED PROFILE. A key the app declares but the profile lacks is a
+          # distribution rejection; a key the profile carries but the signature
+          # lost is a capability that silently answers "not entitled" on device
+          # ([ADR 082] §5: Declared Age Range then throws and the age gate reads no
+          # signal). Derived from the app's own ios/Runner/Runner.entitlements, so
+          # an app that declares nothing asserts nothing here.
+          ent="ios/Runner/Runner.entitlements"
+          if [ -f "$ent" ]; then
+            codesign -d --entitlements - --xml "$payload" > "$RUNNER_TEMP/ipa-entitlements.plist"
+            keys="$(/usr/libexec/PlistBuddy -c 'Print' "$ent" | sed -n 's/^    \([^ ]*\) = .*$/\1/p')"
+            [ -n "$keys" ] || { echo "::error title=ipa::$ent declares no key this step could read"; exit 1; }
+            echo "::group::declared entitlements, in the signature and the embedded profile"
+            for key in $keys; do
+              signed="$(/usr/libexec/PlistBuddy -c "Print :$key" "$RUNNER_TEMP/ipa-entitlements.plist" 2>/dev/null)" \
+                || { echo "::error title=ipa::the signed app lacks declared entitlement $key"; exit 1; }
+              profiled="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:$key" "$RUNNER_TEMP/embedded.plist" 2>/dev/null)" \
+                || { echo "::error title=ipa::the embedded profile lacks declared entitlement $key"; exit 1; }
+              echo "$key signature=$signed profile=$profiled"
+            done
+            echo "::endgroup::"
+          fi
+
           pkg="build/macos/pkg/${{ matrix.app }}.pkg"
           [ -s "$pkg" ] || { echo "::error title=pkg::the .pkg is missing or empty"; exit 1; }
           echo "pkg: $pkg ($(stat -f%z "$pkg") bytes)"
