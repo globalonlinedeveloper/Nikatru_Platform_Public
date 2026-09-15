@@ -26,6 +26,18 @@ Future<void> requestAccountDeletion(
   try {
     body = await client.delete(path);
   } on ApiException catch (e) {
+    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. 403 `reauth_required`: the route
+    // refused a password-less account whose last sign-in is not recent, BEFORE
+    // touching anything. That is a failed re-authentication, not a server refusal
+    // — the person stays signed in and is asked to sign in with their provider
+    // again — so it is `reauthFailed`, never `nothingDeleted` (whose sentence says
+    // they were signed out).
+    if (e.statusCode == 403 && e.message == 'reauth_required') {
+      throw core.AccountDeletionFailure(
+        core.AccountDeletionOutcome.reauthFailed,
+        detail: 'DELETE $path -> HTTP 403: reauth_required',
+      );
+    }
     // `statusCode == 0` is RestClient's "no response at all", which
     // AccountDeletionOutcome maps to couldNotReach rather than to a refusal.
     //

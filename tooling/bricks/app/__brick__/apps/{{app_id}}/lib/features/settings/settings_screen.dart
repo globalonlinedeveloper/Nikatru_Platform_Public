@@ -312,6 +312,10 @@ class SettingsScreen extends ConsumerWidget {
     // readable from OUT HERE for that closure to have anything to pass — a
     // controller created inside the dialog could not be.
     final TextEditingController password = TextEditingController();
+    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
+    // kind of proof this account can give.
+    final core.AuthUser? current = ref.read(authRepositoryProvider).currentUser;
+    final bool passwordless = current != null && !current.hasPasswordIdentity;
     showDialog<void>(
       context: context,
       // 🔴 WAS THE DEFAULT, WHICH IS `true`. A tap on the barrier closed the
@@ -327,6 +331,7 @@ class SettingsScreen extends ConsumerWidget {
       // the way out — on a route the sign-out was already removing.
       builder: (BuildContext _) => _DeleteAccountDialog(
         l10n: l10n,
+        passwordless: passwordless,
         password: password,
         onConfirm: () => _deleteAccount(ref, password.text),
       ),
@@ -373,7 +378,7 @@ class SettingsScreen extends ConsumerWidget {
     String password,
   ) async {
     final core.AuthRepository auth = ref.read(authRepositoryProvider);
-    final String? email = auth.currentUser?.email;
+    final core.AuthUser? user = auth.currentUser;
     // 🔴 ALL THREE RESOLVED HERE, BEFORE THE FIRST AWAIT, for the reason
     // [userStateDrops] records: `deleteAccount()` signs out, the router tears
     // this shell down, and a `ref.read` on the far side of that await throws
@@ -395,10 +400,20 @@ class SettingsScreen extends ConsumerWidget {
     core.AccountDeletionOutcome outcome;
     String? detail;
     try {
-      if (email == null) throw core.AuthFailure('Not signed in');
+      if (user == null) throw core.AuthFailure('Not signed in');
       // Re-authenticate through the SAME seam sign-in uses, so it works against
       // whatever identity provider is wired.
-      await auth.signInWithEmail(email: email, password: password);
+      // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
+      // PASSWORD-LESS account (Sign in with Apple) has nothing to type here, so
+      // it confirms by signing in with its provider AGAIN — unless it has just
+      // done so (on web Apple's redirect reloads the app, and the user taps
+      // Delete a second time). `DELETE /v1/account` re-checks the token's own
+      // authentication time and refuses a stale one with `reauth_required`.
+      if (user.hasPasswordIdentity) {
+        await auth.signInWithEmail(email: user.email, password: password);
+      } else {
+        await core.confirmIdentityWithProvider(auth: auth, user: user);
+      }
       try {
         await auth.deleteAccount();
         outcome = core.AccountDeletionOutcome.deleted;
@@ -412,6 +427,10 @@ class SettingsScreen extends ConsumerWidget {
         // an error nobody modelled is exactly the case where how far the
         // deletion got is unknown. [ADR 027]
         outcome = core.accountDeletionOutcomeOf(e);
+        // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. The server's `reauth_required`:
+        // nothing was touched and the seam did NOT sign out, so there is nothing
+        // to forget and nothing to park for the sign-in screen.
+        if (outcome == core.AccountDeletionOutcome.reauthFailed) return outcome;
         // 🔴 KEEP THE ERROR ITSELF. `unknown` is a bucket, and a bucket with no
         // label costs a session every time something lands in it. Parked, never
         // rendered in release: see [lastAccountDeletionDetailProvider].
@@ -545,11 +564,16 @@ String deleteAccountFailureMessage(
 class _DeleteAccountDialog extends StatefulWidget {
   const _DeleteAccountDialog({
     required this.l10n,
+    required this.passwordless,
     required this.password,
     required this.onConfirm,
   });
 
   final ChassisLocalizations l10n;
+
+  /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. No password field for a password-less
+  /// account: the provider's own sheet is the confirmation.
+  final bool passwordless;
 
   /// Owned by the caller so [onConfirm] can be the zero-argument closure the
   /// stamp-properties anchor names; disposed here, the last reader.
@@ -603,8 +627,13 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
     final ChassisLocalizations l10n = widget.l10n;
     return DestructiveConfirmDialog(
       title: l10n.deleteAccountConfirmTitle,
-      body: l10n.deleteAccountConfirmBody,
-      secretHint: l10n.deleteAccountReauthHint,
+      body: widget.passwordless
+          ? l10n.deleteAccountConfirmBodyApple
+          : l10n.deleteAccountConfirmBody,
+      secretHint: widget.passwordless
+          ? l10n.deleteAccountReauthHintApple
+          : l10n.deleteAccountReauthHint,
+      secretRequired: !widget.passwordless,
       secretLabel: l10n.deleteAccountPassword,
       secret: widget.password,
       cancelLabel: l10n.cancel,

@@ -138,6 +138,61 @@ class _FakeAuth extends core.AuthRepository {
       currentUser!;
 }
 
+/// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — an account created with Sign in with
+/// Apple: no password identity. [signInWithApple] emits a FRESH sign-in of the
+/// same account when [appleCompletes], and nothing when the person closed the
+/// sheet. [reauthRequired] is the server's 403 `reauth_required`, which the real
+/// seam reports WITHOUT signing out.
+class _AppleOnlyAuth extends _FakeAuth {
+  _AppleOnlyAuth({
+    this.lastSignInAt,
+    this.appleCompletes = true,
+    this.reauthRequired = false,
+  });
+
+  DateTime? lastSignInAt;
+  final bool appleCompletes;
+  final bool reauthRequired;
+  int appleCalls = 0;
+
+  @override
+  core.AuthUser? get currentUser => signedIn
+      ? core.AuthUser(
+          id: 'u1',
+          email: 'relay@privaterelay.appleid.com',
+          emailVerified: true,
+          hasPasswordIdentity: false,
+          lastSignInAt: lastSignInAt,
+        )
+      : null;
+
+  @override
+  Future<core.AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) async => throw core.AuthFailure('this account has no password');
+
+  @override
+  Future<void> signInWithApple() async {
+    appleCalls++;
+    if (!appleCompletes) return;
+    lastSignInAt = DateTime.now().toUtc();
+    _authChanges.add(currentUser);
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    if (reauthRequired) {
+      deleteCalls++;
+      throw core.AccountDeletionFailure(
+        core.AccountDeletionOutcome.reauthFailed,
+      );
+    }
+    await super.deleteAccount();
+  }
+}
+
 Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
   // A TALL SURFACE, deliberately. Settings is a ListView, so an off-screen row
   // has no element and `findsNothing` would pass for a control that exists and
@@ -716,6 +771,131 @@ void main() {
       reason:
           'the published page tells the user to CHECK the deletion by trying to '
           'sign in; the app must name the same test',
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
+  // password-less account confirms deletion by signing in with its provider
+  // AGAIN. Password accounts keep every case above, unchanged.
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('a Sign in with Apple account (no password)', () {
+    final DateTime stale = DateTime.now().toUtc().subtract(
+      const Duration(hours: 3),
+    );
+
+    Future<void> openAndConfirm(WidgetTester tester) async {
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pump();
+    }
+
+    testWidgets(
+      'the dialog asks for NO password and offers the Apple confirmation',
+      (WidgetTester tester) async {
+        final _AppleOnlyAuth auth = _AppleOnlyAuth(lastSignInAt: stale);
+        await _pumpSettings(tester, auth);
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('deleteAccountPassword')),
+          findsNothing,
+          reason: 'there is no password to type on this account',
+        );
+        expect(find.textContaining('sign in with Apple again'), findsOneWidget);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('deleteAccountConfirm')),
+              )
+              .onPressed,
+          isNotNull,
+          reason: 'the provider sheet, not a typed secret, is the confirmation',
+        );
+        expect(auth.deleteCalls, 0);
+      },
+    );
+
+    testWidgets(
+      '🔴 a STALE sign-in opens the Apple sheet FIRST, and only a fresh sign-in deletes',
+      (WidgetTester tester) async {
+        final _AppleOnlyAuth auth = _AppleOnlyAuth(lastSignInAt: stale);
+        await _pumpSettings(tester, auth);
+        await openAndConfirm(tester);
+        await tester.pumpAndSettle();
+        expect(
+          auth.appleCalls,
+          1,
+          reason: 'the fresh provider sign-in is the proof',
+        );
+        expect(auth.deleteCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '🔴 the Apple sheet closed without signing in: NOTHING is sent and the user stays signed in',
+      (WidgetTester tester) async {
+        final _AppleOnlyAuth auth = _AppleOnlyAuth(
+          lastSignInAt: stale,
+          appleCompletes: false,
+        );
+        await _pumpSettings(tester, auth);
+        await openAndConfirm(tester);
+        // The wait for the provider is bounded; run the clock past it.
+        await tester.pump(
+          core.kProviderReauthTimeout + const Duration(seconds: 1),
+        );
+        await tester.pumpAndSettle();
+        expect(auth.appleCalls, 1);
+        expect(
+          auth.deleteCalls,
+          0,
+          reason: 'no confirmation — nothing may be sent',
+        );
+        expect(auth.signedIn, isTrue);
+        expect(_resultText(tester), contains('could not confirm it was you'));
+        expect(_resultText(tester), contains('Sign in with Apple'));
+      },
+    );
+
+    testWidgets(
+      'a sign-in in the last few minutes (back from the web redirect) deletes without a second sheet',
+      (WidgetTester tester) async {
+        final _AppleOnlyAuth auth = _AppleOnlyAuth(
+          lastSignInAt: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 1),
+          ),
+        );
+        await _pumpSettings(tester, auth);
+        await openAndConfirm(tester);
+        await tester.pumpAndSettle();
+        expect(auth.appleCalls, 0);
+        expect(auth.deleteCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '🔴 the SERVER refuses a stale token (reauth_required): nothing deleted, still signed in',
+      (WidgetTester tester) async {
+        final _AppleOnlyAuth auth = _AppleOnlyAuth(
+          lastSignInAt: DateTime.now().toUtc().subtract(
+            const Duration(minutes: 1),
+          ),
+          reauthRequired: true,
+        );
+        await _pumpSettings(tester, auth);
+        await openAndConfirm(tester);
+        await tester.pumpAndSettle();
+        expect(auth.deleteCalls, 1);
+        expect(
+          auth.signOutCalls,
+          0,
+          reason: 'the seam keeps the session on reauth_required',
+        );
+        expect(auth.signedIn, isTrue);
+        expect(_resultText(tester), contains('could not confirm it was you'));
+      },
     );
   });
 }

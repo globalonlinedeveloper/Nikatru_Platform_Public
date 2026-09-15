@@ -319,6 +319,77 @@ void main() {
     });
   });
 
+  // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH ─────────────────────────────────────
+  group('password-less accounts and the deletion re-authentication', () {
+    test(
+        'app_metadata.providers without email maps to hasPasswordIdentity FALSE',
+        () {
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: _FakeGoTrue(
+          session: _session(
+            'live',
+            appMetadata: const <String, dynamic>{
+              'provider': 'apple',
+              'providers': <String>['apple'],
+            },
+            lastSignInAt: '2026-09-15T12:00:00Z',
+          ),
+        ),
+      );
+      expect(auth.currentUser!.hasPasswordIdentity, isFalse);
+      expect(auth.currentUser!.lastSignInAt, DateTime.utc(2026, 9, 15, 12));
+    });
+
+    test(
+        'an email provider — alone or linked with Apple — keeps the password path',
+        () {
+      expect(
+        SupabaseAuthRepository.hasPasswordIdentityOf(<String, dynamic>{
+          'providers': <String>['email', 'apple'],
+        }),
+        isTrue,
+      );
+      expect(
+        SupabaseAuthRepository.hasPasswordIdentityOf(<String, dynamic>{
+          'providers': <String>['email'],
+        }),
+        isTrue,
+      );
+    });
+
+    test(
+        'no providers claim is NOT read as password-less (the same rule as the Worker)',
+        () {
+      expect(SupabaseAuthRepository.hasPasswordIdentityOf(null), isTrue);
+      expect(
+        SupabaseAuthRepository.hasPasswordIdentityOf(<String, dynamic>{}),
+        isTrue,
+      );
+    });
+
+    test('🔴 the server\'s reauth_required does NOT sign out', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        requestServerDeletion: () async => throw core.AccountDeletionFailure(
+          core.AccountDeletionOutcome.reauthFailed,
+        ),
+      );
+      await expectLater(
+        auth.deleteAccount(),
+        throwsA(
+          isA<core.AccountDeletionFailure>().having(
+            (core.AccountDeletionFailure f) => f.outcome,
+            'outcome',
+            core.AccountDeletionOutcome.reauthFailed,
+          ),
+        ),
+      );
+      expect(g.signOutCalls, 0,
+          reason: 'the person is being asked to sign in again, not thrown out');
+    });
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // EMAIL VERIFICATION — the mapping and the two members the gate needs.
   //
@@ -1105,6 +1176,8 @@ sb.Session _session(
   DateTime? expiry,
   String? confirmedAt,
   String? phoneConfirmedAt,
+  Map<String, dynamic> appMetadata = const <String, dynamic>{},
+  String? lastSignInAt,
 }) {
   final DateTime exp = expiry ?? DateTime.utc(2026, 8, 1, 13);
   String seg(Map<String, Object?> m) =>
@@ -1121,10 +1194,11 @@ sb.Session _session(
     tokenType: 'bearer',
     user: sb.User(
       id: 'user-1',
-      appMetadata: const <String, dynamic>{},
+      appMetadata: appMetadata,
       userMetadata: const <String, dynamic>{},
       aud: 'authenticated',
       email: 'a@b.com',
+      lastSignInAt: lastSignInAt,
       // The two fields that look like the same answer and are not: gotrue
       // populates the DEPRECATED `confirmedAt` from either confirmation, so a
       // phone-only fixture is what tells the mapping apart.
