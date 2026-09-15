@@ -292,13 +292,13 @@ function keepOnlyPackages(names) {
  * have nothing to do with coverage, and this repo has three recorded cases of a
  * compile error being read as a caught mutation.
  */
-function provesRefusal(guard, mutate, expected) {
+function provesRefusal(guard, mutate, expected, code = 1) {
   const before_ = run(guard);
   assert.equal(before_.code, 0, `the unmutated copy must be green first, else the mutation proves nothing:\n${before_.out}`);
   mutate();
   const after_ = run(guard);
   restore();
-  assert.equal(after_.code, 1, `${guard} accepted an emptied subject:\n${after_.out}`);
+  assert.equal(after_.code, code, `${guard} accepted an emptied subject:\n${after_.out}`);
   assert.match(after_.out, /COVERAGE LOST/, after_.out);
   for (const re of expected) assert.match(after_.out, re, after_.out);
 }
@@ -350,23 +350,23 @@ describe('assert-no-tls-pinning refuses a subject that emptied under it', () => 
     provesRefusal(G, () => { rm('apps'); rm('packages'); }, [
       /`apps` is not a directory/,
       /`packages` is not a directory/,
-    ]);
+    ], 2);
   });
 
   test('apps/ alone deleted — the brick and packages/ cannot vouch for it', () => {
-    provesRefusal(G, () => rm('apps'), [/`apps` is not a directory/]);
+    provesRefusal(G, () => rm('apps'), [/`apps` is not a directory/], 2);
   });
 
   test('packages/ thinned BELOW its floor while every root still exists', () => {
     provesRefusal(G, () => keepOnlyPackages(['design_system', 'api_client']), [
       /`packages` yielded only \d+ shipped \.dart file\(s\), below its floor of \d+/,
-    ]);
+    ], 2);
   });
 
   test('the brick thinned below ITS floor — the constant is floored too', () => {
     provesRefusal(G, () => thinDart('tooling/bricks', 1), [
       /`tooling\/bricks` yielded only \d+ shipped \.dart file\(s\), below its floor of \d+/,
-    ]);
+    ], 2);
   });
 
   test('THE CONTROL: deleting packages/core is a real shrink that clears the floor', () => {

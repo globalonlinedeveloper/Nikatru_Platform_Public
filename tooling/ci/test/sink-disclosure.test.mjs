@@ -350,7 +350,7 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const root = fixture();
     rmSync(join(root, 'tooling', 'legal', 'provider-register.json'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /COVERAGE LOST/);
     assert.match(out(r), /An absent register is not an empty one/);
   });
@@ -359,7 +359,7 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const root = fixture();
     writeFileSync(join(root, 'tooling', 'legal', 'provider-register.json'), '{ not json');
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /is not valid JSON/);
   });
 
@@ -367,7 +367,7 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const providers = structuredClone(DEFAULT_PROVIDERS);
     providers.dataCategories = {};
     const r = run(fixture({ providers }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /declares no `dataCategories`/);
   });
 
@@ -375,7 +375,7 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const providers = structuredClone(DEFAULT_PROVIDERS);
     for (const p of providers.providers) if (p.role === 'infrastructure') p.status = 'deferred';
     const r = run(fixture({ providers }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /NO `infrastructure` provider with status `live`/);
   });
 
@@ -383,25 +383,25 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const providers = structuredClone(DEFAULT_PROVIDERS);
     for (const p of providers.providers) if (p.role === 'infrastructure') p.receives = [];
     const r = run(fixture({ providers }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /NOT ONE live infrastructure provider declared a single personal-data category/);
   });
 
   test('ZERO denials extracted from the pages is COVERAGE LOST', () => {
     const r = run(fixture({ pages: { 'privacy.html': '<html><body><p>We keep information only as long as necessary.</p></body></html>' } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /ZERO "we do not collect \/ do not store" denials/);
   });
 
   test('every denial excused as out of scope is COVERAGE LOST — the failing limb would run over nothing', () => {
     const r = run(fixture({ pages: { 'privacy.html': '<html><body><p>We do not knowingly collect personal information from them.</p></body></html>' } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /NOT ONE resolved to a declared category/);
   });
 
   test('an empty `pages` set is COVERAGE LOST', () => {
     const r = run(fixture({ claims: { pages: [] } }));
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /declares no `pages`/);
   });
 
@@ -409,7 +409,7 @@ describe('coverage self-checks — an empty domain must be LOUD', () => {
     const root = fixture();
     rmSync(join(root, 'sites', 'nikatru', 'privacy.html'));
     const r = run(root);
-    assert.equal(r.status, 1);
+    assert.equal(r.status, 2);
     assert.match(out(r), /The pages ARE the domain/);
   });
 });

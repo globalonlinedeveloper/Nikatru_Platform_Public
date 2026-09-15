@@ -174,14 +174,14 @@ describe('assert-no-tls-pinning', () => {
     const root = join(TMP, `bare${seq++}`);
     mkdirSync(root, { recursive: true });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /an absence over an empty set/i);
   });
 
   test('COVERAGE LOST when every file found is classified as a test double', () => {
     const { code, out } = run(fixture({ 'packages/api_client/test/only_test.dart': 'class X {}\n' }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /classified as a test double/);
   });
 
