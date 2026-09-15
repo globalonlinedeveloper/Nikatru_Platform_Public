@@ -774,7 +774,7 @@ describe('the four claims are compared to ONE derivation', () => {
 
   test('COVERAGE LOST when the register has no rows at all — the pin would range over nothing', () => {
     const { code, out } = run(tree({ claimsRegister: { claims: [] } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /declares no `claims` rows/);
   });
@@ -819,7 +819,7 @@ describe('the guard knows when it is not looking', () => {
         },
       }),
     );
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /under none of the declared roots/);
   });
@@ -828,31 +828,31 @@ describe('the guard knows when it is not looking', () => {
     const { code, out } = run(
       tree({ dart: { 'packages/design_system/lib/paywall_gate.dart': 'class Renamed extends StatelessWidget {}\n' } }),
     );
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /expects the matcher to find `PaywallGate`/);
   });
 
   test('COVERAGE LOST when the walk reads fewer files than the declared floor', () => {
     const { code, out } = run(tree({ decl: { formatScan: { roots: ['apps/app1/lib', 'packages/design_system/lib'], minFiles: 50, requiredCoverage: [{ file: 'packages/design_system/lib/paywall_gate.dart', symbol: 'PaywallGate', why: 'control' }], configPayloads: ['services/platform/src/app-config-data.json'], appRegistry: 'catalog/apps.json' } } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /floors it at 50/);
   });
 
   test('COVERAGE LOST when a declared root does not exist', () => {
     const { code, out } = run(tree({ dropDart: ['packages/design_system/lib/paywall_gate.dart'] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /director\(ies\) that do not exist/);
   });
 
   test('COVERAGE LOST when the register stops requiring the declaration to exist', () => {
     const { code, out } = run(tree({ additionalFiles: ['data-safety.json', 'content-rating.json'] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /does not list "ads-declaration\.json"/);
   });
 
   test('COVERAGE LOST when the Play vocabulary no longer carries the advertising purpose', () => {
     const { code, out } = run(tree({ dataSafety: { vocabulary: { purposes: ['Analytics'] } } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /vocabulary\.purposes does not contain "Advertising or marketing"/);
   });
 
@@ -870,25 +870,25 @@ describe('the guard knows when it is not looking', () => {
         },
       }),
     );
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /formatScan\.configPayloads is empty/);
   });
 
   test('COVERAGE LOST when the app catalogue yields no slug', () => {
     const { code, out } = run(tree({ registry: [] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /yielded ZERO app slugs/);
   });
 
   test('COVERAGE LOST when no app in the workspace carries a Play tree', () => {
     const { code, out } = run(tree({ workspace: ['apps/other'] }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /carries a "android-play" store metadata tree/);
   });
 
   test('COVERAGE LOST when the declaration cites no source at all', () => {
     const { code, out } = run(tree({ decl: { sources: { allowedHosts: ['support.google.com'] } } }));
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /ZERO usable citations/);
   });
 

@@ -210,7 +210,7 @@ jobs:
   test('COVERAGE LOST when the register does not exist', () => {
     const root = fixture({ workflows: { 'deploy-web.yml': lane(['APP_ENV=production']) }, register: null });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /does not exist/);
   });
@@ -218,14 +218,14 @@ jobs:
   test('COVERAGE LOST when `inputs` is emptied — not a pile of first-direction failures', () => {
     const root = fixture({ workflows: { 'deploy-web.yml': lane(['APP_ENV=production']) }, register: { inputs: {} } });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /declares ZERO inputs/);
   });
 
   test('COVERAGE LOST when the register has no `inputs` object at all', () => {
     const root = fixture({ workflows: { 'deploy-web.yml': lane(['APP_ENV=production']) }, register: { notInputs: {} } });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /no `inputs` object/);
   });
 
@@ -248,7 +248,7 @@ jobs:
       register: reg(['APP_ENV', 'GLITCHTIP_DSN']),
     });
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /appear in the workflow text and NOT in the parsed job scan/);
     assert.match(out, /APP_ENV/);
   });
@@ -258,7 +258,7 @@ jobs:
     mkdirSync(join(root, 'tooling'), { recursive: true });
     writeFileSync(join(root, 'tooling', 'publishable-inputs.json'), JSON.stringify(reg(['APP_ENV'])));
     const { code, out } = run(root);
-    assert.equal(code, 1);
+    assert.equal(code, 2);
     assert.match(out, /COVERAGE LOST/);
   });
 });

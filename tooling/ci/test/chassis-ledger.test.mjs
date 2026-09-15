@@ -234,7 +234,7 @@ describe('assert-chassis-ledger · coverage, because a scan over nothing prints 
     try {
       rmSync(join(root, 'tooling/chassis-ledger.json'));
       const r = run(root);
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*does not exist/);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -252,7 +252,7 @@ describe('assert-chassis-ledger · coverage, because a scan over nothing prints 
     try {
       writeFileSync(join(root, 'tooling/chassis-ledger.json'), 'null\n');
       const r = run(root);
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*not to an object[\s\S]*null/);
       assert.doesNotMatch(r.out, /TypeError/);
     } finally {
@@ -262,7 +262,7 @@ describe('assert-chassis-ledger · coverage, because a scan over nothing prints 
 
   test('a ledger declaring no files is COVERAGE LOST', () => {
     withFixture((b) => { b.ledger.files = []; }, (r) => {
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*vacuously/);
     });
   });
@@ -274,7 +274,7 @@ describe('assert-chassis-ledger · coverage, because a scan over nothing prints 
       execFileSync('git', ['-C', root, 'init', '-q']);
       execFileSync('git', ['-C', root, 'add', '-A']);
       const r = run(root);
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*no tracked file/);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -342,14 +342,14 @@ describe('assert-chassis-ledger · two roots, and nothing between them', () => {
 
   test("a ledger `roots` that disagrees with the guard is COVERAGE LOST", () => {
     withFixture((b) => { b.ledger.roots = [BRICK]; }, (r) => {
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*roots` disagrees/);
     });
   });
 
   test('a ledger with NO `roots` at all is COVERAGE LOST, never a pass', () => {
     withFixture((b) => { delete b.ledger.roots; }, (r) => {
-      assert.equal(r.code, 1, r.out);
+      assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*declares no `roots`/);
     });
   });

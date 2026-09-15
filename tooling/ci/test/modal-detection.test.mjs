@@ -412,7 +412,7 @@ describe('assert-modal-detection · coverage self-checks', () => {
         rmSync(join(root, BRICK_MANIFEST), { force: true });
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /NOT ONE carries a \.dart file/);
       },
@@ -447,7 +447,7 @@ describe('assert-modal-detection · coverage self-checks', () => {
         }
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /NOT ONE `find\.byType\(` was found/);
       },
@@ -458,7 +458,7 @@ describe('assert-modal-detection · coverage self-checks', () => {
     withTree(
       (root) => writeFileSync(join(root, 'pubspec.yaml'), 'name: nikatru_workspace\npublish_to: none\n'),
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /no readable `workspace:` block/);
       },
@@ -477,7 +477,7 @@ describe('assert-modal-detection · coverage self-checks', () => {
         }
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
       },
     );
@@ -522,7 +522,7 @@ describe('assert-modal-detection · the second root cannot leave in silence', ()
     withTree(
       (root) => rmSync(join(root, BRICK), { recursive: true, force: true }),
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /DECLARES a brick/);
         // …and it must NOT have printed a happy count first.
@@ -549,7 +549,7 @@ describe('assert-modal-detection · the second root cannot leave in silence', ()
         mkdirSync(join(root, BRICK, 'test'), { recursive: true });
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /carry NO \.dart file/);
         assert.match(r.out, /__brick__/);
@@ -847,7 +847,7 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
         for (const f of readdirSync(join(root, DS, 'test'))) rmSync(join(root, DS, 'test', f), { force: true });
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /carry NO \.dart file/);
         assert.match(r.out, /packages\/design_system/);
@@ -864,7 +864,7 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
     // stood, cutting `- apps/subscriptiontracker` took the scan from 349 sites to 80 and
     // printed "ok".
     withTree((root) => cutLine(root, 'pubspec.yaml', '- packages/design_system'), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.out, /COVERAGE LOST/);
       assert.match(r.out, /`packages\/design_system` is DECLARED here but is not among/);
       assert.doesNotMatch(r.out, /assert-modal-detection: ok/);
@@ -876,7 +876,7 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
     // anchors on, removed. It must not read as "this package has no widget
     // suites", because 17 of them are still sitting there.
     withTree((root) => cutLine(root, `${DS}/pubspec.yaml`, 'flutter_test:'), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.out, /COVERAGE LOST/);
       assert.match(r.out, /`packages\/design_system` is DECLARED here but is not among/);
     }, { full: true });
@@ -894,7 +894,7 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
         for (const f of files.slice(0, files.length - 8)) rmSync(join(root, DS, 'test', f), { force: true });
       },
       (r) => {
-        assert.equal(r.status, 1, r.out);
+        assert.equal(r.status, 2, r.out);
         assert.match(r.out, /COVERAGE LOST/);
         assert.match(r.out, /`packages\/design_system` yielded only 8 suite file\(s\), below its floor of 10/);
       },
@@ -908,7 +908,7 @@ describe('assert-modal-detection · the shared chassis is inside the domain [ADR
     // past four COVERAGE LOST limbs, because none of them asks about a root the
     // derivation never produced.
     withTree((root) => cutLine(root, 'pubspec.yaml', '- apps/subscriptiontracker'), (r) => {
-      assert.equal(r.status, 1, r.out);
+      assert.equal(r.status, 2, r.out);
       assert.match(r.out, /COVERAGE LOST/);
       assert.match(r.out, /`apps\/subscriptiontracker` is DECLARED here but is not among/);
       assert.doesNotMatch(r.out, /assert-modal-detection: ok/);

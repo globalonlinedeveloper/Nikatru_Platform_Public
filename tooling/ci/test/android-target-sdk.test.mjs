@@ -208,7 +208,7 @@ describe('the guard end to end', () => {
     // Prose satisfying a check about behaviour is this repo's recurring defect —
     // a grep for '"r2_buckets"' once matched the comment explaining there is none.
     const r = run(root({ gradle: baseGradle.replace('targetSdk = 36', '// targetSdk = 36') }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /declares no `targetSdk`/);
   });
@@ -217,7 +217,7 @@ describe('the guard end to end', () => {
     const m = baseMatrix();
     delete m.duties[0].source.url;
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST/);
     assert.match(r.out, /no https `source\.url`/);
   });
@@ -226,7 +226,7 @@ describe('the guard end to end', () => {
     const m = baseMatrix();
     m.duties[0].source.fetched = 'last week';
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no ISO `source\.fetched` date/);
   });
 
@@ -234,7 +234,7 @@ describe('the guard end to end', () => {
     const m = baseMatrix();
     m.duties[0].source.url = 'http://developer.android.com/x';
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no https `source\.url`/);
   });
 
@@ -242,7 +242,7 @@ describe('the guard end to end', () => {
     const m = baseMatrix();
     delete m.duties[0].enforced.targetSdkAtLeast;
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no integer `enforced\.targetSdkAtLeast`/);
   });
 
@@ -252,7 +252,7 @@ describe('the guard end to end', () => {
     delete m.duties[0].enforced;
     m.duties[0].source.quote = 'apps must target API level 36 or higher';
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no integer `enforced\.targetSdkAtLeast`/);
   });
 
@@ -260,7 +260,7 @@ describe('the guard end to end', () => {
     const m = baseMatrix();
     delete m.duties[0].enforced.inForceFrom;
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no ISO `enforced\.inForceFrom`/);
   });
 
@@ -268,13 +268,13 @@ describe('the guard end to end', () => {
     const m = baseMatrix();
     m.duties = [];
     const r = run(root({ matrix: m }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no duty row `play-target-api-level`/);
   });
 
   test('an absent duty matrix is COVERAGE LOST', () => {
     const r = run(root({ matrix: null }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /does not exist/);
   });
 
@@ -282,7 +282,7 @@ describe('the guard end to end', () => {
     const dir = root();
     writeFileSync(join(dir, 'tooling', 'legal', 'duty-matrix.json'), '{ not json');
     const r = run(dir);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /could not be parsed/);
   });
 
@@ -290,7 +290,7 @@ describe('the guard end to end', () => {
     // Deriving the set only from files that MATCH would make moving the module
     // the way to pass, and "not found" prints identically to "compliant".
     const r = run(root({ apps: { demo: true, ghost: false } }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /android\/ directory whose app module this scan did not find/);
   });
 
@@ -301,19 +301,19 @@ describe('the guard end to end', () => {
       join(dir, 'apps', 'demo', 'android-was-here'),
     );
     const r = run(dir);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no Android app module found/);
   });
 
   test('a module with no android { } block is COVERAGE LOST, not zero problems', () => {
     const r = run(root({ gradle: 'plugins { id("x") }\n' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no `android \{/);
   });
 
   test('a module with no defaultConfig block is COVERAGE LOST', () => {
     const r = run(root({ gradle: 'android {\n  compileSdk = 36\n}\n' }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /no `defaultConfig/);
   });
 

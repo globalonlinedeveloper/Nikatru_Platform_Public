@@ -195,7 +195,7 @@ describe('assert-launch-smoke.mjs — (b) the printed half, and the coverage flo
 
   test('COVERAGE LOST on a platform no mechanism classifies', () => {
     const r = run(fixture({ channels: [webRow({ platforms: ['web', 'fuchsia'] })] }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST.*absent from LAUNCH_MECHANISM: fuchsia/s);
   });
 
@@ -203,13 +203,13 @@ describe('assert-launch-smoke.mjs — (b) the printed half, and the coverage flo
     // The shrink the plan named: mark the one launchable channel unserved and
     // serve an un-launchable one instead, and (a) empties while publishing continues.
     const r = run(fixture({ channels: [webRow({ served: false }), deferredRow('ios-appstore', 'ios', 'A-4')].map((c, i) => (i === 1 ? { ...c, served: true } : c)) }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST.*NONE of them resolved into the build-failing half/s);
   });
 
   test('COVERAGE LOST when the register declares no channels', () => {
     const r = run(fixture({ channels: [] }));
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST.*declares no channels/s);
   });
 
@@ -217,7 +217,7 @@ describe('assert-launch-smoke.mjs — (b) the printed half, and the coverage flo
     const root = join(TMP, `f${seq++}`);
     mkdirSync(root, { recursive: true });
     const r = run(root);
-    assert.equal(r.code, 1, r.out);
+    assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST.*is missing/s);
   });
 });
