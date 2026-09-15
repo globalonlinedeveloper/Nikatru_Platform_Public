@@ -118,42 +118,28 @@ void main() {
   // function so each branch is pinned here rather than implied by the one
   // branch a VM widget test happens to run (no key, not web). Each case is
   // declared on its own (assert-no-loop-cases).
-  group('CaptchaPosture — web renders, store skips, a keyless live web build errs', () {
-    test('a WEB build with a key renders the challenge', () {
-      expect(
-        TurnstileGate.postureFor(isWeb: true, siteKey: 'k', backendLive: true),
-        CaptchaPosture.challenge,
-      );
+  group('CaptchaPosture (ADR 084)', () {
+    test('web + key: the challenge renders', () {
+      expect(_posture(web: true, key: 'k'), CaptchaPosture.challenge);
     });
 
-    test('a WEB build with a live backend and NO key is misconfigured, not a pass', () {
-      expect(
-        TurnstileGate.postureFor(isWeb: true, siteKey: '', backendLive: true),
-        CaptchaPosture.misconfigured,
-      );
+    test('web + live backend + NO key: misconfigured, not a pass', () {
+      expect(_posture(web: true, key: ''), CaptchaPosture.misconfigured);
     });
 
-    test('a web DEMO build (no backend) with no key stays inert', () {
-      expect(
-        TurnstileGate.postureFor(isWeb: true, siteKey: '', backendLive: false),
-        CaptchaPosture.notOnThisChannel,
-      );
+    test('web DEMO (no backend) + no key: inert', () {
+      final CaptchaPosture p = _posture(web: true, key: '', live: false);
+      expect(p, CaptchaPosture.notOnThisChannel);
     });
 
-    test('a STORE (native) build with no key carries no captcha, by design', () {
-      expect(
-        TurnstileGate.postureFor(isWeb: false, siteKey: '', backendLive: true),
-        CaptchaPosture.notOnThisChannel,
-      );
+    test('store (native) + no key: no captcha, by design', () {
+      expect(_posture(web: false, key: ''), CaptchaPosture.notOnThisChannel);
     });
 
-    test('a NATIVE build that was handed a key anyway still renders nothing', () {
+    test('native handed a key anyway: still renders nothing', () {
       // The build-time guard names that lane; the app must not render an
       // unverified webview widget because of it.
-      expect(
-        TurnstileGate.postureFor(isWeb: false, siteKey: 'k', backendLive: true),
-        CaptchaPosture.notOnThisChannel,
-      );
+      expect(_posture(web: false, key: 'k'), CaptchaPosture.notOnThisChannel);
     });
 
     test('THIS build (a VM test, no key) is not misconfigured', () {
@@ -162,4 +148,12 @@ void main() {
       expect(TurnstileGate.posture, CaptchaPosture.notOnThisChannel);
     });
   });
+}
+
+CaptchaPosture _posture({
+  required bool web,
+  required String key,
+  bool live = true,
+}) {
+  return TurnstileGate.postureFor(isWeb: web, siteKey: key, backendLive: live);
 }
