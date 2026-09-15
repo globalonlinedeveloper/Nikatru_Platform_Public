@@ -14,6 +14,7 @@
 import type { MoRWebhookVerifier } from './contract';
 import { paddleVerifier } from './paddle';
 import { razorpayVerifier } from './razorpay';
+import { revenuecatVerifier } from './revenuecat';
 
 /**
  * Every rail that can verify a notification today.
@@ -35,7 +36,12 @@ import { razorpayVerifier } from './razorpay';
 // objection to registering a rail was that it 'CANNOT verify anything'. This one
 // verifies - a forged body is refused today - and declines to claim it understands
 // what a genuine one says. The second half is one function, with a real sample.
-export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, razorpayVerifier];
+// ⏱ 2026-09-15: REVENUECAT JOINS ON THE SAME TERMS AS RAZORPAY — a sourced signature
+// (X-RevenueCat-Webhook-Signature, HMAC-SHA256 over `${t}.${body}`), and a `parse`
+// that refuses. O-REVENUECAT-VERIFIER: the store rails' webhook belongs on this door,
+// not on a per-app Worker behind a bearer string ([ADR 020]:18). What the refusal
+// waits on is four row facts, named in revenuecat.ts, not a missing signature check.
+export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, razorpayVerifier, revenuecatVerifier];
 
 const BY_PROVIDER = new Map(MOR_VERIFIERS.map((v) => [v.provider, v]));
 
